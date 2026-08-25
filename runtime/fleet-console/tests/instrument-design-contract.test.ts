@@ -882,6 +882,39 @@ describe("Instrument core design contract", () => {
     expect((components.match(/var\(--glass-lift\)/g) ?? []).length).toBeGreaterThanOrEqual(10);
   });
 
+  // 밴드 유리 뒤로 본문을 흘리는 레이아웃은 라우트가 밴드에 붙어 있을 때만 성립한다. 그 조건을
+  // 바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나가 Reconnect·Dismiss·제어 되찾기의
+  // 히트 테스트를 라우트가 가로챈다(리뷰에서 두 번 적발). 그래서 흐름 바는 한 자리에 모으고,
+  // 게이트는 그 자리가 비었는지만 묻는다.
+  it("gates the band underflow on an empty shell-bar slot, not a list of bars", () => {
+    const layout = source("styles/layout.css");
+    const app = source("app.tsx");
+
+    // 래퍼는 상자를 만들지 않는다 — 있으나 없으나 레이아웃이 같아야 도입 비용이 0이다.
+    expect(layout).toMatch(/\.console-shell-bars \{[^}]*display: contents;/);
+
+    // 게이트 네 곳(마진·밴드 z·축소 투명도 되돌림 둘)이 모두 같은 구조 조건을 쓴다.
+    // :has()는 중첩할 수 없으므로 자식 결합자를 안에 두고 바깥에서 부정한다.
+    const gates = layout.match(/:not\(:has\(\.console-shell-bars > \*\)\)/g) ?? [];
+    expect(gates.length).toBe(4);
+    expect(layout).not.toContain(".console-shell-bars:not(:has(*))");
+
+    // 밴드와 라우트 사이에 흐름 바를 직접 두면 게이트를 우회한다. 그 구간에 남을 수 있는 것은
+    // 흐름 밖 오버레이 레이어와 바 자리뿐이다.
+    const between = app.slice(
+      app.indexOf("<CommandBand"),
+      app.indexOf('<main className="console-route-content"'),
+    );
+    expect(between).not.toBe("");
+    const elementsBetween = [...between.matchAll(/^\s{8}<([A-Za-z][\w.]*)/gm)].map((m) => m[1]);
+    expect(elementsBetween).toEqual(["FloatingWidgetLayer", "div"]);
+    expect(between).toContain('<div className="console-shell-bars">');
+    // 알려진 흐름 바 넷은 그 자리 안에 있어야 한다.
+    for (const bar of ["console-link-banner", "<UpdateCurtain />", "<ControlBar />"]) {
+      expect(between.slice(between.indexOf('<div className="console-shell-bars">'))).toContain(bar);
+    }
+  });
+
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
   it("keeps text color on the semantic three-tier token grammar", () => {
     const violations: string[] = [];

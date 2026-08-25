@@ -26,6 +26,13 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   pointer-events: none;
 }
 
+/* 흐름 바 자리. 상자를 만들지 않으므로 자식이 그대로 .console-shell의 플렉스 아이템이 되고
+   레이아웃은 이 래퍼가 없던 때와 같다 — 이 요소는 오직 "지금 흐름 바가 서 있는가"를
+   :has(*)로 물을 수 있게 하려고 존재한다(밴드 언더플로 게이트). */
+.console-shell-bars {
+  display: contents;
+}
+
 .console-route-content {
   flex: 1;
   min-width: 0;
@@ -252,23 +259,26 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
    현재 문서 스크롤을 갖는 데스크톱 라우트는 설정 하나뿐이다. Operations 캔버스는 스크롤이
    아니라 고정 프레임이라 이 규칙의 대상이 아니다. */
 @supports (selector(:has(*)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))) {
-  /* 셸은 밴드와 라우트 사이에 연결 배너·저하 배너·제어 반납 바를 조건부로 끼운다. 그 바가
-     하나라도 서면 음수 마진은 밴드가 아니라 그 바를 라우트로 덮어 Reconnect·제어 되찾기의
-     히트 테스트를 가로챈다. 본문이 유리 뒤로 가는 일은 라우트가 실제로 밴드에 붙어 있을
-     때만 성립한다.
-     CSS 인접 형제로는 이 조건을 말할 수 없다 — 항상 렌더되는 .floating-widget-layer(fixed,
-     흐름 밖)가 사이에 있어 인접 형제 셀렉터가 영영 매칭되지 않는다. 그래서 흐름 바의 유무는 셸이
-     .has-band-underflow로 알린다.
+  /* 셸은 밴드와 라우트 사이에 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)를
+     조건부로 끼운다. 그 바가 하나라도 서면 음수 마진은 밴드가 아니라 그 바를 라우트로 덮어
+     Reconnect·Dismiss·제어 되찾기의 히트 테스트를 가로챈다. 본문이 유리 뒤로 가는 일은
+     라우트가 실제로 밴드에 붙어 있을 때만 성립한다.
+     조건을 바 목록으로 열거하지 않는다 — 두 번 새어 나갔다. app.tsx가 흐름 바를 전부
+     .console-shell-bars 한 자리에 모으므로, 여기서는 그 자리가 비었는지만 묻는다.
+     :has()는 중첩할 수 없어 :has(... :not(:has(*)))는 셀렉터째 무효가 된다(실측) — 자식
+     결합자를 :has() 안에 두고 바깥에서 부정한다.
+     인접 형제 셀렉터는 쓸 수 없다: 항상 렌더되는 .floating-widget-layer(fixed, 흐름 밖)가
+     사이에 있어 영영 매칭되지 않는다.
      --band-underflow는 그 자리에서만 켜지고 자손이 상속한다 — 조건이 깨지면 0px 기본값으로
      떨어져 페이지 패딩과 sticky 오프셋이 함께 원래 레이아웃으로 돌아간다. */
-  :root:not([data-glass="off"]) .console-shell.has-band-underflow:has(.global-settings-page) .console-route-content {
+  :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
     --band-underflow: var(--chrome-band-height);
     margin-top: calc(-1 * var(--band-underflow));
   }
 
   /* 밴드는 라우트 본문(위치 없음, z:auto)만 이기면 된다. 값을 키우면 What's new(35) 같은
      낮은 오버레이 위로 밴드가 올라서므로(기존 is-docked 주석의 실측 회귀) 사다리의 맨 아래에 둔다. */
-  :root:not([data-glass="off"]) .console-shell.has-band-underflow:has(.global-settings-page) .command-band {
+  :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
     --z-band-underflow: 2;
     isolation: isolate;
     z-index: var(--z-band-underflow);
@@ -277,12 +287,12 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   /* 유리 게이트의 셋째 조건. 투명도 축소를 선호하면 밴드는 불투명 실색으로 돌아가므로,
      본문을 그 뒤로 보내면 굴절 대신 가려지기만 한다 — 공간 예약 레이아웃으로 되돌린다. */
   @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-glass="off"]) .console-shell.has-band-underflow:has(.global-settings-page) .console-route-content {
+    :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
       --band-underflow: 0px;
       margin-top: 0;
     }
 
-    :root:not([data-glass="off"]) .console-shell.has-band-underflow:has(.global-settings-page) .command-band {
+    :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
       isolation: auto;
       z-index: auto;
     }
