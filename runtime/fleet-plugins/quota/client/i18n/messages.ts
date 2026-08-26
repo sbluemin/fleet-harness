@@ -54,6 +54,17 @@ export const quotaEn = {
   "quota.reorder.handle": "Reorder {provider}. Use the arrow keys to move it.",
   "quota.reorder.moved": "{provider} moved to position {n}",
   "quota.reorder.error": "Couldn't save the order.",
+  "quota.fold.action": "Collapse {provider}",
+  "quota.unfold.action": "Expand {provider}",
+  "quota.fold.announced": "{provider} collapsed",
+  "quota.unfold.announced": "{provider} expanded",
+  "quota.fold.saveError": "Couldn't save which cards are collapsed.",
+  "quota.fold.summary": "{pct}% used, resets in {t}",
+  "quota.fold.notConnected": "Not connected",
+  "quota.fold.signedOut": "Not signed in",
+  "quota.fold.expired": "Sign-in expired",
+  "quota.fold.noSubscription": "No plan",
+  "quota.fold.unavailable": "Unavailable",
 } as const;
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
@@ -112,6 +123,17 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.reorder.handle": "{provider} 순서 변경. 화살표 키로 이동합니다.",
   "quota.reorder.moved": "{provider} — {n}번째로 이동",
   "quota.reorder.error": "순서를 저장하지 못했습니다.",
+  "quota.fold.action": "{provider} 접기",
+  "quota.unfold.action": "{provider} 펼치기",
+  "quota.fold.announced": "{provider} 접힘",
+  "quota.unfold.announced": "{provider} 펼침",
+  "quota.fold.saveError": "접힌 카드를 저장하지 못했습니다.",
+  "quota.fold.summary": "{pct}% 사용, 리셋까지 {t}",
+  "quota.fold.notConnected": "연결 안 됨",
+  "quota.fold.signedOut": "로그인 없음",
+  "quota.fold.expired": "로그인 만료",
+  "quota.fold.noSubscription": "구독 없음",
+  "quota.fold.unavailable": "확인 불가",
 };
 
 export const QUOTA_MESSAGES = { en: quotaEn, ko: quotaKo } as const;

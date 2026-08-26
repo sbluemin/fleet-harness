@@ -4,7 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleConnect, handleOrder, handleSummary } from "../server/handlers.js";
+import { handleConnect, handleFold, handleOrder, handleSummary } from "../server/handlers.js";
 import type { SettingsSerializer } from "../server/handlers.js";
 
 function createSerializer(): SettingsSerializer {
@@ -241,6 +241,94 @@ describe("quota route handlers", () => {
       claudeConnected: true,
       providerOrder: ["kimi", "claude", "codex", "xai", "cursor", "opencode", "antigravity"],
     });
+  });
+
+  it("appends the stored fold set to summary responses after sanitizing it", async () => {
+    const test = harness("GET", "/plugins/quota/summary");
+    test.readJson.mockResolvedValue({ foldedProviders: ["kimi", "bogus", "claude", "kimi"] });
+    await handleSummary(test.req, test.res, test.ctx, test.service);
+    expect((test.writes[0]?.payload as { foldedProviders: unknown }).foldedProviders)
+      .toEqual(["claude", "kimi"]);
+  });
+
+  it("persists a partial fold set while preserving connection flags", async () => {
+    const test = harness("POST", "/plugins/quota/fold", { folded: ["kimi", "claude"] });
+    await handleFold(test.req, test.res, test.ctx, test.serializeSettings);
+    expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      cursorConnected: false,
+      foldedProviders: ["claude", "kimi"],
+    });
+    expect(test.writes).toEqual([{ status: 200, payload: { foldedProviders: ["claude", "kimi"] } }]);
+  });
+
+  // 접힘은 순서와 달리 부분집합이다 — 완전한 순열을 요구하면 "전부 펼침"을 보낼 길이 없다.
+  it("accepts an empty fold set as the way to expand everything", async () => {
+    const test = harness("POST", "/plugins/quota/fold", { folded: [] });
+    await handleFold(test.req, test.res, test.ctx, test.serializeSettings);
+    expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      cursorConnected: false,
+      foldedProviders: [],
+    });
+    expect(test.writes[0]?.status).toBe(200);
+  });
+
+  it("rejects duplicated, unknown, oversized, or non-array fold sets", async () => {
+    const invalid: unknown[] = [
+      ["claude", "claude"],
+      ["claude", "bogus"],
+      ["claude", "codex", "xai", "cursor", "opencode", "kimi", "antigravity", "claude"],
+      "claude",
+      null,
+    ];
+    for (const folded of invalid) {
+      const test = harness("POST", "/plugins/quota/fold", { folded });
+      await handleFold(test.req, test.res, test.ctx, test.serializeSettings);
+      expect(test.writes, JSON.stringify(folded)).toEqual([{ status: 400, payload: { error: "invalid_fold_request" } }]);
+      expect(test.writeJson, JSON.stringify(folded)).not.toHaveBeenCalled();
+    }
+  });
+
+  // retainedSettings는 화이트리스트다. 새 키가 거기 없으면 다른 경로의 저장이 그것을
+  // 조용히 지운다 — 카드를 한 번 끌어다 놓거나 Claude를 연결하는 순간 접힘이 사라진다.
+  it("keeps a stored fold set when the order or a connection flag changes", async () => {
+    const foldedProviders = ["claude", "kimi"];
+    const order = ["kimi", "claude", "codex", "xai", "cursor", "opencode", "antigravity"];
+
+    const dragged = harness("POST", "/plugins/quota/order", { order });
+    dragged.readJson.mockResolvedValue({ claudeConnected: true, foldedProviders });
+    await handleOrder(dragged.req, dragged.res, dragged.ctx, dragged.serializeSettings);
+    expect(dragged.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      foldedProviders,
+      providerOrder: order,
+    });
+
+    const connected = harness("POST", "/plugins/quota/connect", { provider: "cursor", connected: true });
+    connected.readJson.mockResolvedValue({ claudeConnected: true, foldedProviders });
+    await handleConnect(connected.req, connected.res, connected.ctx, connected.service, connected.serializeSettings);
+    expect(connected.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      cursorConnected: true,
+      foldedProviders,
+    });
+  });
+
+  it("guards the fold route with the same method, auth, and media-type gates as the others", async () => {
+    const wrongMethod = harness("GET", "/plugins/quota/fold", { folded: [] });
+    await handleFold(wrongMethod.req, wrongMethod.res, wrongMethod.ctx, wrongMethod.serializeSettings);
+    expect(wrongMethod.writes).toEqual([{ status: 405, payload: { error: "method_not_allowed" } }]);
+
+    const wrongType = harness("POST", "/plugins/quota/fold", { folded: [] }, "text/plain");
+    await handleFold(wrongType.req, wrongType.res, wrongType.ctx, wrongType.serializeSettings);
+    expect(wrongType.writes).toEqual([{ status: 415, payload: { error: "unsupported_media_type" } }]);
+
+    const unauthorized = harness("POST", "/plugins/quota/fold", { folded: [] });
+    (unauthorized.ctx.host.security as unknown as { isTerminalAuthorized: () => boolean }).isTerminalAuthorized = () => false;
+    await handleFold(unauthorized.req, unauthorized.res, unauthorized.ctx, unauthorized.serializeSettings);
+    expect(unauthorized.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
+    expect(unauthorized.writeJson).not.toHaveBeenCalled();
   });
 
   it("requires the exact JSON media type while accepting parameters", async () => {

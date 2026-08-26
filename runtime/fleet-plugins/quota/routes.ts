@@ -5,7 +5,7 @@ import {
   createQuotaService,
 } from "@dotobokuri/core-ai-gateway";
 
-import { handleConnect, handleOrder, handleSummary } from "./server/handlers.js";
+import { handleConnect, handleFold, handleOrder, handleSummary } from "./server/handlers.js";
 
 export default definePlugin({
   id: "quota",
@@ -45,5 +45,9 @@ export default definePlugin({
       await handleOrder(req, res, ctx, serializeSettings);
       return true;
     }, { method: "POST", path: "", summary: "Persist the provider card order.", category: "Quota Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "fold", async ({ req, res }) => {
+      await handleFold(req, res, ctx, serializeSettings);
+      return true;
+    }, { method: "POST", path: "", summary: "Persist which provider cards are collapsed.", category: "Quota Plugin", gate: "origin-write", transport: "http" });
   },
 });

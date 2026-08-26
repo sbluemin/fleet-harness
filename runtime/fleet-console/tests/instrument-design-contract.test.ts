@@ -1503,6 +1503,62 @@ describe("Instrument core design contract", () => {
     expect(panel).toContain('if (event.key === "Escape") setPinned(false);');
   });
 
+  it("pins the quota card fold — one severity channel, an honest hide, a sibling control", () => {
+    // 접기는 "치워두기"가 아니라 "밀도 바꾸기"다. 쿼터는 이 패널 밖에 신호가 하나도 없어
+    // 접힌 행이 그 공급자의 유일한 통로이기 때문에, 접힘이 신호를 삼키는 순간 사용자는
+    // 자기가 접어둔 공급자가 말라가는 것을 어디서도 듣지 못한다.
+    const css = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
+    const panel = externalSource(QUOTA_PANEL_PATH).replace(/\r\n/g, "\n");
+
+    // (a) 접힌 행의 요약 막대는 미터와 같은 채널을 탄다 — 심각도가 두 문법으로 갈리면
+    // 한 공급자가 접힘과 펼침에서 서로 다른 판정을 말한다.
+    const spine = css.match(/^\.quota-fold-spine \{[^}]*\}/m)?.[0] ?? "";
+    expect(spine).toContain("--meter-accent: var(--ink-fog);");
+    expect(spine).toContain("--meter-weight: var(--gauge-weight-quiet);");
+    expect(css).toMatch(/\.quota-fold-spine--warning \{[^}]*--meter-accent: var\(--warn\);/);
+    expect(css).toMatch(/\.quota-fold-spine--warning \{[^}]*--meter-weight: var\(--gauge-weight-warn\);/);
+    expect(css).toMatch(/\.quota-fold-spine--critical \{[^}]*--meter-accent: var\(--coral\);/);
+    expect(css).toMatch(/\.quota-fold-spine--critical \{[^}]*--meter-weight: var\(--gauge-weight-critical\);/);
+    const spineFill = css.match(/\.quota-fold-spine__fill \{[^}]*\}/)?.[0] ?? "";
+    expect(spineFill).toContain("background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);");
+    // 접힌 위험 카드의 테두리는 oklab에서 섞는다 — oklch는 coral(25°)과 hairline(245°)
+    // 사이의 짧은 호가 자주색을 지나, 실측에서 hue 309의 보라 테두리가 나왔다.
+    const alarm = css.match(/\.quota-card--alarm \{[^}]*\}/)?.[0];
+    expect(alarm).toBeDefined();
+    expect(alarm).toContain("color-mix(in oklab, var(--coral)");
+
+    // (b) 0fr은 상자를 없애지 않는다 — 높이 0의 내용은 접근성 트리에 그대로 남아
+    // 스크린리더에는 접은 적 없는 카드로 읽힌다. visibility가 눈과 트리를 맞춘다.
+    const rest = css.match(/\.quota-body--compact \.quota-card__rest,\n\.quota-card--folded \.quota-card__rest \{[^}]*\}/)?.[0] ?? "";
+    expect(rest).toContain("visibility: hidden;");
+    expect(css).toMatch(/\.quota-body--compact \.quota-card__collapse,\n\.quota-card--folded \.quota-card__collapse \{\n  grid-template-rows: 0fr;/);
+    // 접힌 밀도는 두 카드형을 이름으로 다 집어야 한다 — 한 클래스짜리 선택자는 파일 뒤쪽의
+    // `.quota-connect-card` 패딩과 특정성이 같아 연결 카드만 두꺼운 채로 접힌다.
+    expect(css).toMatch(/\.quota-provider\.quota-card--folded,\n\.quota-connect-card\.quota-card--folded \{\n  padding: 8px 12px;/);
+
+    // (c) 접기 컨트롤은 헤더의 형제다. 헤더 전체를 disclosure 버튼으로 만들면 이미 그
+    // 안에 사는 그립과 연결 해제 버튼이 접근성 트리에서 사라진다 — 버튼은 버튼을 품지 못한다.
+    expect(panel).toContain('className="quota-fold"');
+    expect(panel).toContain("aria-expanded={!folded}");
+    expect(panel).toContain("aria-controls={regionId}");
+    expect(panel).not.toMatch(/<button[^>]*className="quota-provider__header"/);
+
+    // (d) 헤더 우측 컨트롤은 여백을 다투지 않는다 — 각자 margin-left:auto를 집으면
+    // 접힘에서 display:none이 된 조각의 형제 선택자가 여전히 맞아 남은 컨트롤이 제목에 붙는다.
+    expect(css).toMatch(/\.quota-provider__header h3,\n\.quota-connect-card h3 \{\n  margin: 0 auto 0 0;/);
+    for (const selector of [".quota-plan", ".quota-disconnect"]) {
+      const block = css.match(new RegExp(`^\\${selector} \\{[^}]*\\}`, "m"))?.[0];
+      expect(block, selector).toBeDefined();
+      expect(block, selector).not.toContain("margin-left: auto;");
+    }
+
+    // (e) 좁은 레일은 패널의 폭이지 창의 폭이 아니다 — 미디어 쿼리로 물으면 240px 레일에서
+    // 넓은 화면의 답이 돌아와 헤더가 자기 컨트롤을 밀어낸다.
+    expect(css).toContain("container: quota-panel / inline-size;");
+    expect(css).toMatch(/@container quota-panel \(width < \d+px\) \{/);
+    expect(css).not.toMatch(/@media[^{]*\)\s*\{[^}]*\.quota-fold-spine/);
+  });
+
   it("pins the shared panel motion layer and existence choreography grammar", () => {
     const components = source("styles/components.css");
     // (a) 공통 모션 레이어의 duration/easing은 토큰 표기만 — 리터럴 ms 진입 금지.

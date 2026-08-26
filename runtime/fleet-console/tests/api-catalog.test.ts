@@ -126,6 +126,7 @@ POST|/plugins/file-explorer/files/palette-search|http
 POST|/plugins/file-explorer/files/read|http
 POST|/plugins/file-explorer/files/reveal|http
 POST|/plugins/quota/connect|http
+POST|/plugins/quota/fold|http
 POST|/plugins/quota/order|http
 POST|/plugins/repository/changed|http
 POST|/plugins/repository/commit-create|http
@@ -215,7 +216,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(145);
+    expect(body.routes).toHaveLength(146);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

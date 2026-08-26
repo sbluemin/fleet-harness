@@ -9,11 +9,14 @@
 
 /* position: relative는 드롭 인디케이터의 기준 상자다 — 인디케이터는 스크롤 콘텐츠
    좌표(offsetTop)로 놓이므로 기준이 이 스크롤 컨테이너 자신이어야 한다. */
+/* 카드 밀도는 뷰포트가 아니라 이 패널의 폭이 정한다 — 레일은 240px까지 좁아지는데
+   창은 그대로다. 미디어 쿼리로 물으면 좁은 레일에서 넓은 화면의 답이 돌아온다. */
 .quota-body {
   position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
+  container: quota-panel / inline-size;
   gap: 14px;
   min-height: 0;
   padding: 16px;
@@ -212,25 +215,168 @@
 .quota-card__rest {
   overflow: hidden;
   min-height: 0;
+  /* 펼칠 때는 즉시 되살아나고, 접을 때만 전환이 끝난 뒤에 사라진다. */
+  transition: visibility 0s linear 0s;
 }
 
 .quota-body--compact {
   user-select: none;
 }
 
-.quota-body--compact .quota-card__collapse {
+/* 드래그 중의 일괄 접힘과 사용자가 고른 카드별 접힘은 같은 그림을 쓴다 — 하나가
+   다른 문법으로 접히면 드래그를 놓는 순간 카드가 다른 밀도로 착지한다. */
+.quota-body--compact .quota-card__collapse,
+.quota-card--folded .quota-card__collapse {
   grid-template-rows: 0fr;
 }
 
+/* 0fr은 상자를 없애지 않는다 — 높이 0의 내용은 화면에서만 사라지고 접근성 트리에는
+   그대로 남아, 스크린리더에는 접은 적 없는 카드로 읽힌다. visibility가 그 둘을 맞춘다. */
+.quota-body--compact .quota-card__rest,
+.quota-card--folded .quota-card__rest {
+  visibility: hidden;
+  transition: visibility 0s linear 180ms;
+}
+
+/* 두 카드형을 이름으로 다 적는다 — `.quota-card--folded` 한 클래스만으로는 파일 뒤쪽의
+   `.quota-connect-card { padding: 18px 16px }`와 특정성이 같아, 연결 카드만 20px 더
+   두꺼운 채로 접힌다. */
 .quota-body--compact .quota-provider,
-.quota-body--compact .quota-connect-card {
+.quota-body--compact .quota-connect-card,
+.quota-provider.quota-card--folded,
+.quota-connect-card.quota-card--folded {
   padding: 8px 12px;
 }
 
-/* 접힌 행에서는 헤더 우측 컨트롤을 치운다 — 드래그 중 남는 정보는 정체뿐이다. */
+/* 접힌 행에서는 헤더 우측 컨트롤을 치운다 — 한 줄로 접힌 카드에 남는 정보는 정체뿐이고,
+   연결 해제는 펼친 카드의 조작이다. */
 .quota-body--compact .quota-plan,
-.quota-body--compact .quota-disconnect {
+.quota-body--compact .quota-disconnect,
+.quota-card--folded .quota-plan,
+.quota-card--folded .quota-disconnect {
   display: none;
+}
+
+/* ── 카드별 접기 ───────────────────────────────
+   그립이 순서를 쥐듯 이 버튼은 밀도를 쥔다. 헤더 전체를 하나의 disclosure 버튼으로
+   만들지 않은 이유는 그 안에 이미 버튼이 둘 살기 때문이다 — 버튼은 버튼을 품지 못한다. */
+.quota-fold {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  background: transparent;
+  cursor: pointer;
+  transition: color 120ms ease, transform 180ms ease;
+}
+
+.quota-fold:hover,
+.quota-fold:focus-visible {
+  color: var(--brass);
+}
+
+.quota-fold:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.quota-fold[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+
+/* 드래그 중에는 밀도를 쥐는 손이 둘일 수 없다 — 일괄 접힘 위에서 카드별 접기 버튼이
+   자기 상태를 그리면 화살표가 가리키는 방향과 실제 행이 어긋난다. */
+.quota-body--compact .quota-fold {
+  visibility: hidden;
+}
+
+/* 접힌 행에 남는 요약. 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을
+   어디서도 듣지 못한다 — 쿼터는 이 패널 밖에 신호가 없다. */
+.quota-fold-spine {
+  --meter-accent: var(--ink-fog);
+  --meter-weight: var(--gauge-weight-quiet);
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.quota-fold-spine--warning {
+  --meter-accent: var(--warn);
+  --meter-weight: var(--gauge-weight-warn);
+}
+
+.quota-fold-spine--critical {
+  --meter-accent: var(--coral);
+  --meter-weight: var(--gauge-weight-critical);
+}
+
+.quota-fold-spine__percent {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-fold-spine--warning .quota-fold-spine__percent {
+  color: var(--warn-ink);
+}
+
+.quota-fold-spine--critical .quota-fold-spine__percent {
+  color: var(--coral-ink);
+}
+
+/* 미터와 같은 채널을 탄다 — 심각도가 두 문법으로 갈리면 한 공급자가 접힘과 펼침에서
+   서로 다른 판정을 말한다. */
+.quota-fold-spine__bar {
+  position: relative;
+  width: 40px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+}
+
+.quota-fold-spine__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
+}
+
+.quota-fold-spine__reset {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.quota-fold-spine--quiet {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 위험한 채로 접힌 카드는 테두리도 그 판정을 입는다. 40px 행 일곱 줄을 훑을 때
+   한 줄만 읽게 만드는 것은 스파인의 숫자가 아니라 이 테두리다.
+
+   섞는 공간은 oklab이다 — oklch는 두 색상각 사이의 짧은 호를 도는데, coral(25°)과
+   hairline(245°)은 그 호가 자주색을 지나 실측에서 hue 309의 보라 테두리가 나왔다.
+   직교 좌표에서 섞으면 채도만 빠진 coral로 착지한다. */
+.quota-card--alarm {
+  border-color: color-mix(in oklab, var(--coral) 46%, var(--hairline));
 }
 
 .quota-card--dragging {
@@ -289,9 +435,12 @@
   background: var(--aurora);
 }
 
+/* 헤더 오른쪽에는 상태 칩·연결 해제·접기가 조합에 따라 0~3개 선다. 각자 margin-left:auto를
+   집으면 조합마다 상쇄 규칙이 하나씩 늘고, 그중 하나가 접힘에서 display:none이 되는 순간
+   형제 선택자는 여전히 맞아 남은 컨트롤이 제목에 붙는다. 여백은 제목이 한 번만 가진다. */
 .quota-provider__header h3,
 .quota-connect-card h3 {
-  margin: 0;
+  margin: 0 auto 0 0;
   font-size: var(--t-base);
   font-weight: var(--weight-medium);
 }
@@ -337,7 +486,6 @@
 }
 
 .quota-plan {
-  margin-left: auto;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   padding: 2px 9px;
@@ -348,7 +496,6 @@
 }
 
 .quota-disconnect {
-  margin-left: auto;
   padding: 2px 4px;
   border: 0;
   color: var(--text-tertiary);
@@ -361,11 +508,6 @@
 .quota-disconnect:hover,
 .quota-disconnect:focus-visible {
   color: var(--brass);
-}
-
-.quota-plan + .quota-disconnect,
-.quota-disconnect:has(+ .quota-plan) {
-  margin-left: 0;
 }
 
 /* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
@@ -644,10 +786,24 @@
   cursor: pointer;
 }
 
+/* 좁은 레일에서 헤더는 접기 버튼이 들어갈 28px을 갖고 있지 않다. 먼저 자리를 내주는
+   것은 정체를 말하는 조각들이다 — 상태 칩, 요약 막대, 리셋 시각, 사유 꼬리표가 빠지고
+   퍼센트만 남는다. 그 한 숫자가 접힌 행이 존재하는 이유이기 때문이다. */
+@container quota-panel (width < 300px) {
+  .quota-plan,
+  .quota-fold-spine__bar,
+  .quota-fold-spine__reset,
+  .quota-fold-spine--quiet {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .quota-meter__fill,
   .quota-legend__bubble,
-  .quota-card__collapse {
+  .quota-card__collapse,
+  .quota-card__rest,
+  .quota-fold {
     transition: none;
   }
 }
