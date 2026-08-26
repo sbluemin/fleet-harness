@@ -287,6 +287,26 @@ describe("folded card summary", () => {
   });
 });
 
+describe("fold revision", () => {
+  // 실측한 결함: 서버는 요청을 받은 시점의 접힘을 읽어 답하고, 그 답이 오는 사이에
+  // 사용자가 접은 카드의 저장은 이미 끝나 있을 수 있다. "지금 저장이 날아가는 중인가"로
+  // 판정하면 그 순간 카운터가 0이라 옛 집합이 통과했다 — 화면은 펼쳐졌는데 서버는
+  // 접힘이었고, 다음 토글이 그 옛 집합 위에서 계산되어 앞의 접힘을 지웠다.
+  it("stops a response that left before a toggle from adopting its stale fold set", () => {
+    const revision = { current: 0 };
+    const inFlight = revision.current;      // summary leaves
+    beginRequestGeneration(revision);        // user folds a card while it is in flight
+    expect(isLatestRequestGeneration(revision, inFlight)).toBe(false);
+  });
+
+  it("adopts a response that left after the last toggle", () => {
+    const revision = { current: 0 };
+    beginRequestGeneration(revision);        // user folds a card
+    const afterToggle = revision.current;    // the recovery/poll request leaves afterwards
+    expect(isLatestRequestGeneration(revision, afterToggle)).toBe(true);
+  });
+});
+
 describe("folded providers", () => {
   // 옛 설정 파일이 살아남는다. 순서와 달리 빠진 id를 채우지 않는 것이 계약이다 —
   // 목록에 없다는 것이 곧 "펼침"이고, 채우면 모든 카드가 접힌 채로 열린다.
