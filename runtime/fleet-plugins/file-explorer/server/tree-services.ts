@@ -10,7 +10,8 @@ import { ClipboardUnavailableError, copyPathToClipboard, PathActionError } from 
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
 import { FileReadError, readFileForTheater } from "./file-reader.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
-import type { FileSearchItem, FolderEntry, FolderListResult } from "./types.js";
+import { invalidateSearchCatalog, searchFilesWithRipgrep } from "./search-engine.js";
+import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "./types.js";
 import { watcherRegistry } from "./watcher.js";
 
 // ═══ folder-browser ══════════════════════════════════════════════════════════
@@ -608,6 +609,8 @@ export async function handleFilesSearch(
     readonly limit?: unknown;
     readonly kinds?: unknown;
     readonly includeHidden?: unknown;
+    readonly scope?: unknown;
+    readonly literal?: unknown;
   }>(req);
   if (
     !isPlainObject(body)
@@ -623,6 +626,20 @@ export async function handleFilesSearch(
   }
   const kinds = parseSearchKinds(body.kinds);
   if (kinds === "invalid") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (body.scope !== undefined && body.scope !== "files" && body.scope !== "contents") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  if (body.literal !== undefined && typeof body.literal !== "boolean") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  const scope = body.scope === "contents" ? "contents" : "files";
+  if (scope === "contents" && kinds?.includes("dir")) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  // 생략은 기존 전역 팔레트 계약대로 hidden 포함, 트리 scope는 명시 false를 보낸다.
   const includeHidden = body.includeHidden !== false;
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
@@ -634,34 +651,45 @@ export async function handleFilesSearch(
   const detach = () => { if (typeof res.off === "function") res.off("close", onClose); };
   try {
     if (abort.signal.aborted) return;
-    let outcome = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
-      signal: abort.signal,
-      ...(kinds ? { kinds } : {}),
-      includeHidden,
-    });
-    if (abort.signal.aborted) return;
-    // 무시 목록 때문에 한 건도 못 찾았다면 그 목록을 끄고 한 번 더 본다 —
-    // "찾기가 못 찾는다"를 고치러 넣은 스킵이 같은 증상을 다른 이유로 만들면 안 된다.
-    if (outcome.totalMatches === 0 && outcome.ignoredSkipped && !outcome.walkCapped) {
-      const fallback = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
+    let outcome: FileSearchResult;
+    try {
+      outcome = await searchFilesWithRipgrep(theaterPath, body.query, body.limit as number, {
         signal: abort.signal,
-        includeIgnored: true,
+        includeHidden,
+        scope,
+        literal: body.literal !== false,
+      });
+    } catch {
+      if (abort.signal.aborted) return;
+      // 실행 파일이 없는 플랫폼도 파일명 검색은 유지한다. 내용 검색은 거짓 결과 대신 실패한다.
+      if (scope === "contents") throw new Error("content_search_unavailable");
+      let walker = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
+        signal: abort.signal,
         ...(kinds ? { kinds } : {}),
         includeHidden,
       });
-      if (abort.signal.aborted) return;
-      // 폴백이 실제로 찾아냈을 때만 채택한다 — 이때는 아무것도 숨기지 않았으므로 표식도 내린다.
-      if (fallback.totalMatches > 0) outcome = { ...fallback, ignoredSkipped: false };
+      if (walker.totalMatches === 0 && walker.ignoredSkipped && !walker.walkCapped) {
+        const fallback = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
+          signal: abort.signal,
+          includeIgnored: true,
+          ...(kinds ? { kinds } : {}),
+          includeHidden,
+        });
+        if (fallback.totalMatches > 0) walker = { ...fallback, ignoredSkipped: false };
+      }
+      outcome = {
+        ...walker,
+        complete: walker.walkCapped !== true,
+        engine: "walker",
+        degraded: "walker",
+      };
     }
-    ctx.host.http.writeJson(res, 200, {
-      files: outcome.files,
-      totalMatches: outcome.totalMatches,
-      ignoredSkipped: outcome.ignoredSkipped,
-      ...(outcome.walkCapped ? { walkCapped: true } : {}),
-    });
-  } catch {
     if (abort.signal.aborted) return;
-    ctx.host.http.writeJson(res, 500, { error: "search_failed" });
+    ctx.host.http.writeJson(res, 200, outcome);
+  } catch (error) {
+    if (abort.signal.aborted) return;
+    const message = error instanceof Error ? error.message : "search_failed";
+    ctx.host.http.writeJson(res, message === "content_search_unavailable" ? 503 : 500, { error: message });
   } finally {
     detach();
   }
@@ -962,8 +990,12 @@ export function handleFilesWatch(
   const unsubscribe = watcherRegistry.subscribe(
     theaterId,
     theaterPath,
-    // 개행 포함 파일명이 SSE 필드 경계를 깨지 않도록 JSON으로 프레이밍한다
-    (relDir) => sendEvent("change", JSON.stringify(relDir)),
+    // 개행 포함 파일명이 SSE 필드 경계를 깨지 않도록 JSON으로 프레이밍한다.
+    // 같은 신호로 path catalog도 무효화해 다음 질의가 디스크를 다시 읽는다.
+    (relDir) => {
+      invalidateSearchCatalog(theaterPath);
+      sendEvent("change", JSON.stringify(relDir));
+    },
     (state) => sendEvent("state", state),
   );
 

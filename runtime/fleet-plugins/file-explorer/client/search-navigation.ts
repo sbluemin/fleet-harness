@@ -4,6 +4,9 @@ export interface FileSearchTarget {
   readonly theaterId: string;
   readonly relativePath: string;
   readonly requestId: number;
+  /** 내용 검색에서 선택한 1-based 줄. 뷰어가 열리면 해당 줄로 이동한다. */
+  readonly lineNumber?: number;
+  readonly ranges?: readonly { readonly start: number; readonly end: number }[];
 }
 
 type Listener = () => void;
@@ -12,8 +15,12 @@ const listeners = new Set<Listener>();
 let requestId = 0;
 let target: FileSearchTarget | null = null;
 
-export function activateFileSearchTarget(theaterId: string, relativePath: string): void {
-  target = { theaterId, relativePath, requestId: ++requestId };
+export function activateFileSearchTarget(
+  theaterId: string,
+  relativePath: string,
+  location?: Pick<FileSearchTarget, "lineNumber" | "ranges">,
+): void {
+  target = { theaterId, relativePath, requestId: ++requestId, ...location };
   emit();
 }
 

@@ -80,6 +80,7 @@ test('keeps every external the published console install must resolve', () => {
       ws: '^8.18.0',
       'font-list': '^2.1.0',
       '@anthropic-ai/claude-agent-sdk': '^0.3.212',
+      '@vscode/ripgrep': '1.18.0',
       selfsigned: '^5.5.0',
       esbuild: '0.27.7',
       react: '^19.0.0',
@@ -91,6 +92,7 @@ test('keeps every external the published console install must resolve', () => {
     ws: '^8.18.0',
     'font-list': '^2.1.0',
     '@anthropic-ai/claude-agent-sdk': '^0.3.212',
+    '@vscode/ripgrep': '1.18.0',
     selfsigned: '^5.5.0',
     esbuild: '0.27.7',
   });

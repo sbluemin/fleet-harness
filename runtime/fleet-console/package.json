@@ -69,6 +69,7 @@
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
+    "@vscode/ripgrep": "1.18.0",
     "@xterm/addon-fit": "0.12.0-beta.299",
     "@xterm/addon-unicode11": "0.10.0-beta.299",
     "@xterm/addon-webgl": "0.20.0-beta.298",

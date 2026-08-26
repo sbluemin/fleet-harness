@@ -35,7 +35,7 @@ export default defineConfig([
     // esbuild는 plugin-host가 외부 플러그인의 .ts/.tsx 엔트리를 번들할 때 동적 import한다 —
     // 게시 설치본도 그 경로에 도달하므로 published dependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.
-    external: ["esbuild", "font-list", "node:http"],
+    external: ["@vscode/ripgrep", "esbuild", "font-list", "node:http"],
     esbuildOptions(options) {
       options.alias = {
         ...options.alias,

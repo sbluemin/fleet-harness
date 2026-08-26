@@ -11,6 +11,7 @@
   "dependencies": {
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
+    "@vscode/ripgrep": "1.18.0",
     "react": "^19.2.3"
   },
   "devDependencies": {

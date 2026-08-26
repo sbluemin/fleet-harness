@@ -172,7 +172,8 @@ describe("Files palette search", () => {
     expect(writes[0]?.status).toBe(200);
     expect(writes[0]?.body).toMatchObject({
       totalMatches: 2,
-      ignoredSkipped: false,
+      ignoredSkipped: true,
+      complete: false,
       files: [
         { relativePath: "src/needle.ts", kind: "file" },
         { relativePath: "src/nested/needle.test.ts", kind: "file" },
@@ -225,12 +226,12 @@ describe("Files palette search", () => {
   });
 
   it("returns only the kinds the caller asked for", async () => {
-    // 파일 열기 팔레트가 디렉터리 적중을 받으면 그것을 문서로 열려다 not_a_file로 끝난다.
+    // 공개 검색 경로는 파일 열기와 내용 일치를 위한 파일 결과만 반환한다.
     await fs.mkdir(path.join(theaterPath, "needle-dir"));
-    const both = searchContext({ theaterId: "theater-a", query: "needle", limit: 8 });
-    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, both.ctx);
-    const bothBody = both.writes[0]?.body as { files: Array<{ kind: string }> };
-    expect(bothBody.files.some((file) => file.kind === "dir")).toBe(true);
+    const defaultSearch = searchContext({ theaterId: "theater-a", query: "needle", limit: 8 });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, defaultSearch.ctx);
+    const defaultBody = defaultSearch.writes[0]?.body as { files: Array<{ kind: string }> };
+    expect(defaultBody.files.every((file) => file.kind === "file")).toBe(true);
 
     const filesOnly = searchContext({ theaterId: "theater-a", query: "needle", limit: 8, kinds: ["file"] });
     await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, filesOnly.ctx);
@@ -244,6 +245,18 @@ describe("Files palette search", () => {
     const { ctx, writes } = searchContext({ theaterId: "theater-a", query: "needle", limit: 8, kinds: ["folder"] });
     await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
     expect(writes[0]).toEqual({ status: 400, body: { error: "invalid_request" } });
+  });
+
+  it("keeps the historical hidden default when includeHidden is omitted", async () => {
+    await fs.mkdir(path.join(theaterPath, ".secret"), { recursive: true });
+    await fs.writeFile(path.join(theaterPath, ".secret", "needle-hidden.ts"), "export {}");
+    const request = searchContext({ theaterId: "theater-a", query: "needle-hidden", limit: 8, kinds: ["file"] });
+
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, request.ctx);
+
+    expect((request.writes[0]?.body as { files: Array<{ relativePath: string }> }).files).toContainEqual(
+      expect.objectContaining({ relativePath: ".secret/needle-hidden.ts" }),
+    );
   });
 
   it("drops hidden matches before the limit and the count", async () => {

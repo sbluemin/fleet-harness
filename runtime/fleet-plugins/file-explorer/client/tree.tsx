@@ -9,6 +9,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -32,6 +33,7 @@ interface FileTreeProps {
   readonly selectedPath: string | null;
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
+  readonly onSearchSelect?: (item: FileSearchItem) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
   readonly onEntriesRefreshed?: (result: FolderListResult) => void;
   /** 뷰어가 열어 둔 문서들의 부모 폴더 — 펼침 여부와 무관하게 변경을 지켜본다. */
@@ -225,15 +227,23 @@ export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boo
   return visibilityState === "visible";
 }
 
-export function paletteSearchRequestBody(theaterId: string, query: string, showHidden: boolean): {
+export type FileSearchScope = "files" | "contents";
+
+export function paletteSearchRequestBody(
+  theaterId: string,
+  query: string,
+  showHidden: boolean,
+  scope: FileSearchScope = "files",
+): {
   readonly theaterId: string;
   readonly query: string;
   readonly limit: number;
   readonly includeHidden: boolean;
+  readonly scope: FileSearchScope;
+  readonly kinds: readonly ["file"];
 } {
-  // 숨김 제외는 서버에서 상한·집계 전에 걸러야 한다. 클라이언트에서 뒤늦게 거르면
-  // 200칸을 점(dot) 경로가 채운 뒤 전부 사라지고, 안내는 여전히 일치 수를 말한다.
-  return { theaterId, query, limit: PALETTE_SEARCH_LIMIT, includeHidden: showHidden };
+  // 숨김 제외는 서버에서 후보를 만들기 전에 걸러야 한다. 내용 검색도 파일만 반환한다.
+  return { theaterId, query, limit: PALETTE_SEARCH_LIMIT, includeHidden: showHidden, scope, kinds: ["file"] };
 }
 
 export function shouldClearFilterOnEscape(filterText: string): boolean {
@@ -242,17 +252,6 @@ export function shouldClearFilterOnEscape(filterText: string): boolean {
 
 function isWatchDegraded(state: string): boolean {
   return state === "degraded";
-}
-
-function pathMatchesQuery(relativePath: string, query: string): boolean {
-  const tokens = query.trim().toLowerCase().split(/[\s/]+/).filter(Boolean);
-  if (tokens.length === 0) return false;
-  const haystack = relativePath.toLowerCase();
-  return tokens.every((token) => haystack.includes(token));
-}
-
-function isHiddenRelativePath(relativePath: string): boolean {
-  return relativePath.split("/").some((part) => part.startsWith("."));
 }
 
 function parentRelativePath(relativePath: string): string {
@@ -724,7 +723,7 @@ export function resolveTreeNavigation(
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -734,6 +733,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   const [childResults, setChildResults] = useState<Map<string, FolderListResult>>(new Map());
   const [filterText, setFilterText] = useState<string>("");
+  const [searchScope, setSearchScope] = useState<FileSearchScope>("files");
   const [filterCollapsedDirs, setFilterCollapsedDirs] = useState<Set<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
@@ -961,7 +961,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           const response = await fetch("/plugins/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current)),
+            body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current, searchScope)),
             signal: controller.signal,
           });
           if (!response.ok) throw new Error("search_failed");
@@ -989,7 +989,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [contextKey, filterText, showHidden, theaterId]);
+  }, [contextKey, filterText, searchScope, showHidden, theaterId]);
 
   useEffect(() => {
     const el = treeRef.current;
@@ -1230,59 +1230,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return grouped as ReadonlyMap<string, readonly string[]>;
   }, [childResults, gitAvailable, gitStatusByPath, result]);
 
-  const filterTree = useMemo(() => {
-    if (!isFiltering || !filterOutcome) return null;
-    const visibleMatches = filterOutcome.files.filter((item) => showHidden || !isHiddenRelativePath(item.relativePath));
-    const ghostPaths: string[] = [];
-    const ghostByDir = new Map<string, string[]>();
-    if (gitAvailable) {
-      for (const [statusPath, status] of gitStatusByPath) {
-        if (status !== "deleted") continue;
-        if (!showHidden && isHiddenRelativePath(statusPath)) continue;
-        if (!pathMatchesQuery(statusPath, filterText)) continue;
-        ghostPaths.push(statusPath);
-        const dir = parentRelativePath(statusPath);
-        const name = nameOfRelativePath(statusPath);
-        const bucket = ghostByDir.get(dir);
-        if (bucket) bucket.push(name);
-        else ghostByDir.set(dir, [name]);
-      }
-    }
-    const extraDirs = [...new Set(ghostPaths.map((path) => parentRelativePath(path)).filter(Boolean))];
-    const synthesized = synthesizeFilterTree(visibleMatches, extraDirs);
-    return {
-      rootEntries: synthesized.rootEntries,
-      childResults: synthesized.childResults,
-      deletedByDir: ghostByDir as ReadonlyMap<string, readonly string[]>,
-      // 삭제된 파일의 고스트 행도 화면에 서는 결과다 — 세지 않으면 행을 보여주면서 "0건"이라 말한다.
-      // 서버 총계에 이미 들어 있는 경로는 빼고 센다(삭제 파일은 디스크에 없으므로 보통 겹치지 않는다).
-      totalMatches: filterOutcome.totalMatches
-        + ghostPaths.filter((path) => !filterOutcome.files.some((file) => file.relativePath === path)).length,
-      walkCapped: filterOutcome.walkCapped === true,
-      ignoredSkipped: filterOutcome.ignoredSkipped === true,
-    };
-  }, [filterOutcome, filterText, gitAvailable, gitStatusByPath, isFiltering, showHidden]);
-
   const flatRows = useMemo(() => {
-    if (!result) return [];
-    if (isFiltering) {
-      if (!filterTree) return [];
-      return buildFlatRows(
-        filterTree.rootEntries,
-        0,
-        selectedPath,
-        expandedDirs,
-        loadingDirs,
-        filterTree.childResults,
-        "",
-        showHidden,
-        new Set(),
-        filterCollapsedDirs,
-        {},
-        "",
-        { sortMode, deletedByDir: filterTree.deletedByDir, autoExpandAll: true, failedDirs: expandFailedDirs },
-      );
-    }
+    if (!result || isFiltering) return [];
     return buildFlatRows(
       result.entries,
       0,
@@ -1290,7 +1239,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       expandedDirs,
       loadingDirs,
       childResults,
-      isFiltering ? "" : low,
+      low,
       showHidden,
       new Set(),
       filterCollapsedDirs,
@@ -1298,7 +1247,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       "",
       { sortMode, deletedByDir, autoExpandAll: false, failedDirs: expandFailedDirs },
     );
-  }, [childResults, deletedByDir, expandFailedDirs, expandedDirs, filterCollapsedDirs, filterTree, isFiltering, loadingDirs, low, result, selectedPath, showHidden, sortMode]);
+  }, [childResults, deletedByDir, expandFailedDirs, expandedDirs, filterCollapsedDirs, isFiltering, loadingDirs, low, result, selectedPath, showHidden, sortMode]);
 
   const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
@@ -1321,7 +1270,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     ? resolvedCursorPath
     : firstEntryPath(visibleRows);
 
-  const filterMatchCount = filterTree?.totalMatches ?? 0;
+  const filterMatchCount = filterOutcome?.totalMatches ?? 0;
 
   useEffect(() => {
     if (renderedCursorPath !== cursorPath) setCursorPath(renderedCursorPath);
@@ -1684,6 +1633,26 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           )}
         </button>
       </div>
+      {isFiltering && (
+        <div className="fexp-search-scopes" role="group" aria-label={t("fileExplorer.filter.scopeAria")}>
+          <button
+            type="button"
+            className={searchScope === "files" ? "is-active" : ""}
+            aria-pressed={searchScope === "files"}
+            onClick={() => setSearchScope("files")}
+          >
+            {t("fileExplorer.filter.files")}
+          </button>
+          <button
+            type="button"
+            className={searchScope === "contents" ? "is-active" : ""}
+            aria-pressed={searchScope === "contents"}
+            onClick={() => setSearchScope("contents")}
+          >
+            {t("fileExplorer.filter.contents")}
+          </button>
+        </div>
+      )}
       {isFiltering && filterSearching && (
         <div className="fexp-filter-scan" role="status">
           {t("fileExplorer.filter.searchingAll")}
@@ -1694,12 +1663,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           {t("fileExplorer.filter.resultCount", { count: filterMatchCount })}
         </div>
       )}
-      {isFiltering && !filterSearching && !filterFailed && filterTree?.ignoredSkipped && (
+      {isFiltering && !filterSearching && !filterFailed && filterOutcome?.ignoredSkipped && (
         <div className="fexp-filter-cap" role="status">
           {t("fileExplorer.filter.ignoredHint")}
         </div>
       )}
-      {isFiltering && !filterSearching && !filterFailed && filterTree?.walkCapped && (
+      {isFiltering && !filterSearching && !filterFailed && filterOutcome?.walkCapped && (
         <div className="fexp-filter-cap" role="status">
           {t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: PALETTE_SEARCH_WALK_CAP })}
         </div>
@@ -1720,46 +1689,132 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         </div>
       )}
       </div>
-      <div
-        ref={treeRef}
-        className="fexp-tree"
-        role="tree"
-        tabIndex={-1}
-        aria-label={t("fileExplorer.tree.aria")}
-        onScroll={shouldVirtualize ? handleScroll : undefined}
-      >
-        {false && result?.parentRelativePath !== null && !filterText && (
-          <button
-            className="fexp-tree-up"
-            type="button"
-            onClick={() => setCurrentPath(result?.parentRelativePath ?? "")}
-            aria-label={t("fileExplorer.tree.parentFolder")}
-          >
-            ↑ ..
-          </button>
-        )}
-        {shouldVirtualize ? (
-          <div style={{ height: totalHeight, position: "relative" }}>
-            <div style={{ transform: `translateY(${offsetY}px)` }}>
-              {visibleRows.map(renderTreeRow)}
+      {isFiltering ? (
+        <SearchResultList
+          outcome={filterOutcome}
+          searching={filterSearching}
+          selectedPath={selectedPath}
+          onSelect={(item) => onSearchSelect?.(item)}
+          t={t}
+        />
+      ) : (
+        <div
+          ref={treeRef}
+          className="fexp-tree"
+          role="tree"
+          tabIndex={-1}
+          aria-label={t("fileExplorer.tree.aria")}
+          onScroll={shouldVirtualize ? handleScroll : undefined}
+        >
+          {false && result?.parentRelativePath !== null && (
+            <button
+              className="fexp-tree-up"
+              type="button"
+              onClick={() => setCurrentPath(result?.parentRelativePath ?? "")}
+              aria-label={t("fileExplorer.tree.parentFolder")}
+            >
+              ↑ ..
+            </button>
+          )}
+          {shouldVirtualize ? (
+            <div style={{ height: totalHeight, position: "relative" }}>
+              <div style={{ transform: `translateY(${offsetY}px)` }}>
+                {visibleRows.map(renderTreeRow)}
+              </div>
             </div>
-          </div>
-        ) : (
-          visibleRows.map(renderTreeRow)
-        )}
-        {flatRows.length === 0 && isFiltering && !filterSearching && (
-          <div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div>
-        )}
-        {flatRows.length === 0 && !filterText && result.entries.length === 0 && (
-          <div className="fexp-tree-empty">{t("fileExplorer.status.emptyFolder")}</div>
-        )}
-        {hasOnlyHiddenEntries && (
-          <div className="fexp-tree-empty">{t("fileExplorer.status.onlyHiddenItems")}</div>
-        )}
-      </div>
+          ) : (
+            visibleRows.map(renderTreeRow)
+          )}
+          {flatRows.length === 0 && result.entries.length === 0 && (
+            <div className="fexp-tree-empty">{t("fileExplorer.status.emptyFolder")}</div>
+          )}
+          {hasOnlyHiddenEntries && (
+            <div className="fexp-tree-empty">{t("fileExplorer.status.onlyHiddenItems")}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 });
+
+interface SearchResultListProps {
+  readonly outcome: FileSearchResult | null;
+  readonly searching: boolean;
+  readonly selectedPath: string | null;
+  readonly onSelect: (item: FileSearchItem) => void;
+  readonly t: Translate<FileExplorerMessageKey>;
+}
+
+function SearchResultList({ outcome, searching, selectedPath, onSelect, t }: SearchResultListProps) {
+  const results = outcome?.files ?? [];
+  if (results.length === 0 && !searching) {
+    return <div className="fexp-search-results"><div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div></div>;
+  }
+  return (
+    <div className="fexp-search-results" role="listbox" aria-label={t("fileExplorer.filter.resultsAria")}>
+      {results.map((item) => {
+        const name = nameOfRelativePath(item.relativePath);
+        const parent = parentRelativePath(item.relativePath);
+        return (
+          <button
+            type="button"
+            role="option"
+            aria-selected={selectedPath === item.relativePath}
+            key={`${item.relativePath}:${item.preview?.lineNumber ?? "path"}`}
+            className={`fexp-search-result${selectedPath === item.relativePath ? " is-cur" : ""}`}
+            onClick={() => onSelect(item)}
+          >
+            <span className="fexp-tree-icon" aria-hidden="true"><FileIcon name={name} /></span>
+            <span className="fexp-search-result-main">
+              <span className="fexp-search-result-path">
+                {renderHighlightedPath(item.relativePath, item.pathRanges ?? [], name)}
+              </span>
+              {parent && <span className="fexp-search-result-parent">{parent}</span>}
+              {item.preview && (
+                <span className="fexp-search-preview">
+                  <span className="fexp-search-line">{item.preview.lineNumber}</span>
+                  <span>{renderHighlightedText(item.preview.text, item.preview.ranges)}</span>
+                </span>
+              )}
+            </span>
+            {item.source === "content" && <span className="fexp-search-kind">{t("fileExplorer.filter.contentMatch")}</span>}
+          </button>
+        );
+      })}
+      {outcome?.degraded === "walker" && (
+        <div className="fexp-filter-cap" role="status">{t("fileExplorer.filter.degraded")}</div>
+      )}
+      {!searching && outcome && outcome.complete === false && (
+        <div className="fexp-filter-scan" role="status">{t("fileExplorer.filter.partial")}</div>
+      )}
+    </div>
+  );
+}
+
+function renderHighlightedPath(relativePath: string, ranges: readonly { readonly start: number; readonly end: number }[], name: string) {
+  const nameStart = relativePath.length - name.length;
+  const shifted = ranges
+    .map((range) => ({ start: range.start - nameStart, end: range.end - nameStart }))
+    .filter((range) => range.end > 0 && range.start < name.length)
+    .map((range) => ({ start: Math.max(0, range.start), end: Math.min(name.length, range.end) }));
+  return renderHighlightedText(name, shifted);
+}
+
+export function renderHighlightedText(text: string, ranges: readonly { readonly start: number; readonly end: number }[]) {
+  const normalized = [...ranges]
+    .filter((range) => range.start >= 0 && range.end > range.start && range.end <= text.length)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  const fragments: ReactNode[] = [];
+  let cursor = 0;
+  for (const [index, range] of normalized.entries()) {
+    if (range.start < cursor) continue;
+    if (range.start > cursor) fragments.push(text.slice(cursor, range.start));
+    fragments.push(<mark key={`${range.start}:${range.end}:${index}`}>{text.slice(range.start, range.end)}</mark>);
+    cursor = range.end;
+  }
+  if (cursor < text.length) fragments.push(text.slice(cursor));
+  return fragments.length > 0 ? fragments : text;
+}
 
 function hasFilterMatch(
   entries: readonly FolderEntry[],
