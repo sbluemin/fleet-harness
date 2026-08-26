@@ -6382,15 +6382,20 @@ body[data-side-bar-animating="true"] .canvas-operation {
    상태에서 기본 모습만 바뀐다. 후퇴는 캡션 면과 이름까지다 — 본문(터미널·채팅 로그)은 건드리지
    않는다. 곁의 패널을 읽는 일은 포커스와 무관하게 계속된다. 상태 레일(::after)도 그대로 둔다:
    비포커스 패널의 진행이 0픽셀이 되던 옛 실패로 되돌아가는 길이다.
-   덱 타일은 빠진다 — 카드의 위치 마크는 칸(.canvas-triage-deck-cell)이 이미 소유한다. */
-.operations-canvas:has(.canvas-operation.is-active) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar {
+   덱 타일은 후퇴 대상에서도, 게이트에서도 빠진다 — 카드의 위치 마크는
+   칸(.canvas-triage-deck-cell)이 소유하므로 카드는 표식을 받지 않고, 표식을 받지 않는 것은
+   남들을 물러서게 할 자격도 없다. 게이트가 표식보다 넓으면 아무것도 앞으로 나서지 않은 채
+   무대만 어두워진다: 대기 큐가 비어 있지 않으면 enterTriage가 활성 id를 카드에 남기고
+   (triage-store.ts), 무대의 자동 포커스는 모달·투어가 떠 있던 프레임에서 한 번 걸러지면
+   캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다. */
+.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar {
   background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));
   background-clip: padding-box;
 }
 
 /* 이름은 한 티어 내려간다. :hover 제외가 없으면 이 규칙이 특이도로 이름의 hover를 이겨,
    비포커스 패널에서는 이름 위에 마우스를 얹어도 아무 반응이 없다(이름은 클릭하면 편집이다). */
-.operations-canvas:has(.canvas-operation.is-active) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar .canvas-operation-identity-name:not(:hover) {
+.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar .canvas-operation-identity-name:not(:hover) {
   color: var(--text-tertiary);
 }
 

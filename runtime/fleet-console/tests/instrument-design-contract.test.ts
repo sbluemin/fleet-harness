@@ -3008,7 +3008,7 @@ describe("Instrument core design contract", () => {
     // 후퇴는 무대에 포커스가 설 때만 일어난다 — :has() 게이트가 빠지면 포커스 없는 화면의
     // 기본 캡션까지 어두워진다. 본문과 상태 레일은 후퇴에서 빠지고, 덱 타일도 빠진다
     // (카드의 위치 마크는 칸이 소유한다).
-    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
     expect(recede).toContain("background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*\.canvas-operation-terminal \{/);
@@ -3024,6 +3024,10 @@ describe("Instrument core design contract", () => {
     // 있지 않으면 enterTriage가 활성 id를 그대로 두어 활성 Operation이 카드로 남는 경로가 있다.
     expect(components).not.toMatch(/\n\.canvas-operation\.is-active \{/);
     expect(components).not.toMatch(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \{/);
+    // 게이트는 표식보다 넓어선 안 된다. 표식을 받지 않는 카드가 후퇴를 발화시키면 아무것도
+    // 앞으로 나서지 않은 채 무대만 어두워진다 — 활성 카드는 실제로 남는다(triage-store.ts의
+    // 조기 반환 + canvas.tsx의 무대 자동 포커스 1회 캐시).
+    expect(components).not.toMatch(/\.operations-canvas:has\(\.canvas-operation\.is-active\)/);
     // 중립 rim 블록은 색만 되돌린다. box-shadow를 다시 적으면 유리 rim·bevel inset이 함께
     // 지워져 상태가 켜진 패널만 윗변 광택을 잃는다(실측 inset 16% → 6%).
     const neutralRim = components.match(/\.canvas-operation\.is-active,\n\.canvas-operation\.is-running,\n\.canvas-operation\.is-unseen \{[^}]*\}/)?.[0] ?? "";
