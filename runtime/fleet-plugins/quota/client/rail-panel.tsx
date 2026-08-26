@@ -4,18 +4,20 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { ProviderDto, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
+import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
 import {
   isProviderId,
   PROVIDER_ORDER_DEFAULT,
+  sanitizeFoldedProviders,
   sanitizeProviderOrder,
+  toggledFoldedProviders,
   type ProviderId,
 } from "../provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
-export { PROVIDER_ORDER_DEFAULT, sanitizeProviderOrder };
+export { PROVIDER_ORDER_DEFAULT, sanitizeFoldedProviders, sanitizeProviderOrder, toggledFoldedProviders };
 export type { ProviderId };
 
 type T = Translate<QuotaMessageKey>;
@@ -178,6 +180,12 @@ export function visibleCredits(credits: ResetCredits | undefined): ResetCredits 
   return credits !== undefined && credits.available > 0 ? credits : null;
 }
 
+const SEVERITY_RANK: Readonly<Record<"normal" | "warning" | "critical", number>> = {
+  critical: 2,
+  normal: 0,
+  warning: 1,
+};
+
 /**
  * The gateway's own verdict decides the meter's severity. Re-deriving one from
  * `usedPercent` alone is what let a window read calm here while the roster a
@@ -193,6 +201,39 @@ export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "crit
     default: return window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
   }
 }
+
+/**
+ * 접힌 행이 대변할 창 하나.
+ *
+ * 집계 창(isAggregate)은 형제 창들의 합이라 개별 풀이 말라도 평온하게 읽힌다 —
+ * 실제 풀이 하나라도 있으면 집계는 후보에서 뺀다. 그다음 순위는 퍼센트가 아니라
+ * 게이트웨이의 압력 판정이 먼저다. 회차의 5분의 1 지점에서 44%를 쓴 창은 조용한
+ * 60% 창보다 급하고, 퍼센트만 보는 비교로는 그 사실을 볼 수 없다.
+ */
+export function foldedWindow(windows: readonly QuotaWindow[] | undefined): QuotaWindow | null {
+  if (windows === undefined || windows.length === 0) return null;
+  const pools = windows.filter((window) => window.isAggregate !== true);
+  const candidates = pools.length > 0 ? pools : windows;
+  return candidates.reduce((worst, window) => {
+    const rank = SEVERITY_RANK[meterSeverity(window)] - SEVERITY_RANK[meterSeverity(worst)];
+    if (rank !== 0) return rank > 0 ? window : worst;
+    return window.usedPercent > worst.usedPercent ? window : worst;
+  });
+}
+
+/**
+ * 읽을 수치가 없는 카드가 접혔을 때 그 자리에 남는 한 마디. 카드를 펼쳐야 알 수 있는
+ * 긴 안내를 줄이는 것이 아니라, "여기에는 볼 것이 없다"는 사실 자체를 행에 남긴다 —
+ * 없으면 접힌 행은 이름만 남아 아직 못 읽은 카드와 구분되지 않는다.
+ */
+export const FOLDED_STATUS_KEY: Readonly<Partial<Record<ProviderStatus, QuotaMessageKey>>> = {
+  error: "quota.fold.unavailable",
+  expired: "quota.fold.expired",
+  no_subscription: "quota.fold.noSubscription",
+  not_connected: "quota.fold.notConnected",
+  signed_out: "quota.fold.signedOut",
+  stale: "quota.fold.unavailable",
+};
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
@@ -401,6 +442,82 @@ function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
   );
 }
 
+/* 카드 하나를 헤더 한 줄로 접었다 펴는 조작. 그립·연결 해제와 나란한 형제 버튼인
+   이유는 버튼이 버튼을 품을 수 없어서다 — 헤더 전체를 하나의 disclosure 버튼으로
+   만들면 이미 그 안에 사는 두 컨트롤이 접근성 트리에서 사라진다. */
+function FoldButton({
+  folded,
+  name,
+  regionId,
+  onToggle,
+  t,
+}: {
+  readonly folded: boolean;
+  readonly name: string;
+  readonly regionId: string;
+  readonly onToggle: () => void;
+  readonly t: T;
+}) {
+  return (
+    <button
+      type="button"
+      className="quota-fold"
+      aria-expanded={!folded}
+      aria-controls={regionId}
+      aria-label={t(folded ? "quota.unfold.action" : "quota.fold.action", { provider: name })}
+      onClick={onToggle}
+    >
+      <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M1.5 3.5 L5 7 L8.5 3.5" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * 접힌 행에 남는 요약. 접기가 "치워두기"가 아니라 "밀도 바꾸기"가 되는 지점이다 —
+ * 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을 어디서도 듣지 못한다.
+ * 패널 밖에 쿼터 신호가 하나도 없어 이 행이 유일한 통로이기 때문이다.
+ *
+ * 막대는 미터와 같은 채널을 탄다(--meter-accent/--meter-weight). 심각도가 두 문법으로
+ * 갈리면 같은 공급자가 접힘/펼침에서 서로 다른 판정을 말하게 된다.
+ */
+function FoldSpine({
+  provider,
+  now,
+  t,
+}: {
+  readonly provider: ProviderDto;
+  readonly now: number;
+  readonly t: T;
+}) {
+  const window = (provider.status === "ok" || provider.status === "stale")
+    ? foldedWindow(provider.windows)
+    : null;
+  if (window === null) {
+    const statusKey = FOLDED_STATUS_KEY[provider.status];
+    return statusKey === undefined
+      ? null
+      : <span className="quota-fold-spine quota-fold-spine--quiet">{t(statusKey)}</span>;
+  }
+  const severity = meterSeverity(window);
+  const countdown = window.resetsAt === undefined ? null : formatCountdown(window.resetsAt, now);
+  const used = t("quota.meter.used", { pct: window.usedPercent });
+  return (
+    <span
+      className={`quota-fold-spine quota-fold-spine--${severity}`}
+      role="img"
+      aria-label={countdown === null ? used : t("quota.fold.summary", { pct: window.usedPercent, t: countdown })}
+    >
+      <span className="quota-fold-spine__percent">{window.usedPercent}%</span>
+      <span className="quota-fold-spine__bar">
+        <span className="quota-fold-spine__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
+      </span>
+      {countdown === null ? null : <span className="quota-fold-spine__reset">{countdown}</span>}
+    </span>
+  );
+}
+
 /** 크레딧 칩의 표식. 미터의 리셋 카운트다운과 달리 "내가 당길 수 있는 리셋"이라 회전 화살표를 쓴다. */
 function ResetGlyph() {
   return (
@@ -429,6 +546,8 @@ function ProviderCard({
   t,
   connect,
   dragging,
+  folded,
+  toggleFold,
 }: {
   readonly id: ProviderId;
   readonly provider: ProviderDto;
@@ -437,20 +556,37 @@ function ProviderCard({
   readonly t: T;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
   readonly dragging: boolean;
+  readonly folded: boolean;
+  readonly toggleFold: (provider: ProviderId) => void;
 }) {
   const name = PROVIDER_NAME[id];
+  const regionId = `quota-card-${id}`;
+  // 접힌 카드가 위험을 말하고 있으면 테두리도 그 판정을 입는다. 40px 행 일곱 줄을
+  // 훑을 때 한 줄만 읽게 만드는 것은 스파인의 숫자가 아니라 이 테두리다.
+  const summary = folded && (provider.status === "ok" || provider.status === "stale")
+    ? foldedWindow(provider.windows)
+    : null;
+  const alarm = summary !== null && meterSeverity(summary) === "critical";
+  const modifiers = `${dragging ? " quota-card--dragging" : ""}${folded ? " quota-card--folded" : ""}${alarm ? " quota-card--alarm" : ""}`;
+  const foldButton = (
+    <FoldButton folded={folded} name={name} regionId={regionId} onToggle={() => toggleFold(id)} t={t} />
+  );
   if (isConnectable(id) && provider.status === "not_connected") {
     const titleKey = id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor";
     const bodyKey = id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor";
     const actionKey = id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor";
     return (
-      <section className={`quota-connect-card${dragging ? " quota-card--dragging" : ""}`} data-provider={id}>
+      <section className={`quota-connect-card${modifiers}`} data-provider={id}>
         <header className="quota-provider__header">
           <GripButton name={name} t={t} />
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          <h3>{t(titleKey)}</h3>
+          {/* 접힌 행은 목록의 한 줄이지 권유가 아니다 — 버튼이 사라진 자리에 "연결하세요"만
+              남으면 누를 곳 없는 지시가 된다. 그 자리에는 공급자 이름을 둔다. */}
+          <h3>{folded ? name : t(titleKey)}</h3>
+          {folded ? <FoldSpine provider={provider} now={now} t={t} /> : null}
+          {foldButton}
         </header>
-        <div className="quota-card__collapse">
+        <div className="quota-card__collapse" id={regionId}>
           <div className="quota-card__rest">
             <p>{t(bodyKey)}</p>
             {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
@@ -461,15 +597,17 @@ function ProviderCard({
     );
   }
   return (
-    <section className={`quota-provider${dragging ? " quota-card--dragging" : ""}`} data-provider={id}>
+    <section className={`quota-provider${modifiers}`} data-provider={id}>
       <header className="quota-provider__header">
         <GripButton name={name} t={t} />
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
+        {folded ? <FoldSpine provider={provider} now={now} t={t} /> : null}
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}
+        {foldButton}
       </header>
-      <div className="quota-card__collapse">
+      <div className="quota-card__collapse" id={regionId}>
       <div className="quota-card__rest">
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
@@ -503,8 +641,11 @@ function ProviderCard({
   );
 }
 
-/** summary 계열 응답은 코어 DTO에 플러그인 소유의 저장 순서를 얹어 온다. */
-type SummaryResponse = QuotaSummaryDto & { readonly providerOrder?: unknown };
+/** summary 계열 응답은 코어 DTO에 플러그인 소유의 패널 설정을 얹어 온다. */
+type SummaryResponse = QuotaSummaryDto & {
+  readonly providerOrder?: unknown;
+  readonly foldedProviders?: unknown;
+};
 
 function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
@@ -513,6 +654,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [order, setOrder] = useState<readonly ProviderId[]>(PROVIDER_ORDER_DEFAULT);
+  const [folded, setFolded] = useState<readonly ProviderId[]>([]);
   const [draggingId, setDraggingId] = useState<ProviderId | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const forceRef = useRef(false);
@@ -523,6 +665,19 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   // 저장 요청 체인. 연속 이동의 POST가 서로를 추월하면 서버는 도착순으로 기록해
   // 옛 순열이 최종본이 될 수 있다 — 앞 요청이 끝난 뒤에만 다음을 보낸다.
   const orderSaveRef = useRef<Promise<void>>(Promise.resolve());
+  // 접힘도 같은 이유로 직렬화한다. 두 번 빠르게 누르면 두 POST가 서로를 추월해
+  // 화면은 펼쳐진 채 서버는 접힘으로 남을 수 있다.
+  const foldSaveRef = useRef<Promise<void>>(Promise.resolve());
+  /* 토글이 읽는 진실은 상태가 아니라 이 ref다. 같은 틱에 두 카드를 접으면 두 핸들러가
+     모두 렌더 전의 옛 집합을 읽어, 나중 것이 앞의 접힘을 지운 채로 저장된다. */
+  const foldedRef = useRef<readonly ProviderId[]>([]);
+  // 저장이 날아가 있는 동안 도착한 summary는 내 접힘보다 옛 진실을 싣고 있다.
+  const foldSavesInFlight = useRef(0);
+
+  const adoptFolded = useCallback((next: readonly ProviderId[]) => {
+    foldedRef.current = next;
+    setFolded(next);
+  }, []);
 
   const refresh = useCallback((forceRequest = false) => {
     forceRef.current = forceRequest;
@@ -545,6 +700,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
           setOrder(sanitizeProviderOrder(result.providerOrder));
+          // 저장이 아직 날아가는 중이면 서버의 답은 내 조작 이전의 것이다 — 그대로
+          // 채택하면 방금 접은 카드가 스스로 펼쳐진다.
+          if (foldSavesInFlight.current === 0) adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           setRequestError(false);
           setNow(Date.now());
         }
@@ -572,6 +730,37 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       });
     orderSaveRef.current = orderSaveRef.current.then(save, save);
   }, [ctx.api, t, refresh]);
+
+  const toggleFold = useCallback((id: ProviderId) => {
+    const next = toggledFoldedProviders(foldedRef.current, id);
+    adoptFolded(next);
+    setAnnouncement(t(
+      next.includes(id) ? "quota.fold.announced" : "quota.unfold.announced",
+      { provider: PROVIDER_NAME[id] },
+    ));
+    foldSavesInFlight.current += 1;
+    const save = () => ctx.api.fetch("quota", "fold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folded: next }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("fold_failed");
+      })
+      .then(
+        () => {
+          foldSavesInFlight.current -= 1;
+        },
+        () => {
+          // 순서 저장과 같은 규칙 — 낙관 반영을 손으로 되돌리지 않고 서버 진실로 재동기화한다.
+          // 카운터를 먼저 내려야 그 재동기화가 자기 자신에게 막히지 않는다.
+          foldSavesInFlight.current -= 1;
+          setAnnouncement(t("quota.fold.saveError"));
+          refresh(false);
+        },
+      );
+    foldSaveRef.current = foldSaveRef.current.then(save, save);
+  }, [ctx.api, adoptFolded, t, refresh]);
 
   /* 드롭 판정은 상태가 아니라 DOM에서 읽는다. 카드가 order 상태를 그대로 그리는 동안은
      둘이 같지만, 드래그 중 도착한 connect 응답이 순서를 바꿔도 화면에 보이던 그대로가
@@ -700,6 +889,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
           setOrder(sanitizeProviderOrder(result.providerOrder));
+          // 저장이 아직 날아가는 중이면 서버의 답은 내 조작 이전의 것이다 — 그대로
+          // 채택하면 방금 접은 카드가 스스로 펼쳐진다.
+          if (foldSavesInFlight.current === 0) adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           setRequestError(false);
           setNow(Date.now());
         }
@@ -765,6 +957,8 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
             t={t}
             connect={connect}
             dragging={draggingId === id}
+            folded={folded.includes(id)}
+            toggleFold={toggleFold}
           />
         )) : null}
         {draggingId !== null ? <span className="quota-drop-line" ref={dropLineRef} aria-hidden="true" /> : null}

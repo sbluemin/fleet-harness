@@ -8,6 +8,8 @@ import {
   beginRequestGeneration,
   elapsedMarkPercent,
   EXPIRED_KEY,
+  FOLDED_STATUS_KEY,
+  foldedWindow,
   formatCountdown,
   formatPace,
   formatResetInstant,
@@ -18,8 +20,10 @@ import {
   projectedSpan,
   PROVIDER_ORDER_DEFAULT,
   riskNote,
+  sanitizeFoldedProviders,
   sanitizeProviderOrder,
   SIGNED_OUT_KEY,
+  toggledFoldedProviders,
   visibleCredits,
 } from "../client/rail-panel.js";
 import { providerGlyph } from "../client/cli-glyphs.js";
@@ -235,5 +239,74 @@ describe("provider order", () => {
       .toEqual(["claude", "codex", "xai", "opencode", "cursor", "kimi", "antigravity"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toBeNull();
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "antigravity", 1)).toBeNull();
+  });
+});
+
+describe("folded card summary", () => {
+  function pool(usedPercent: number, extra: Partial<QuotaWindow> = {}): QuotaWindow {
+    return { id: "weekly", usedPercent, ...extra };
+  }
+
+  // 접힌 행이 대변할 창은 "가장 많이 쓴 창"이 아니라 "가장 급한 창"이다. 회차의 5분의 1
+  // 지점에서 44%를 쓴 창은 게이트웨이가 critical로 판정하고, 퍼센트만 보는 비교는 그
+  // 사실을 보지 못해 조용한 60% 창을 대표로 세운다.
+  it("lets the gateway's verdict outrank the raw percentage", () => {
+    const calm = pool(60, { risk: { pressure: "ok" } });
+    const urgent = pool(44, { risk: { pressure: "critical" } });
+    expect(foldedWindow([calm, urgent])).toBe(urgent);
+    expect(foldedWindow([urgent, calm])).toBe(urgent);
+  });
+
+  it("breaks a severity tie on how much of the pool is spent", () => {
+    const lighter = pool(30, { risk: { pressure: "elevated" } });
+    const heavier = pool(72, { risk: { pressure: "elevated" } });
+    expect(foldedWindow([lighter, heavier])).toBe(heavier);
+  });
+
+  // 집계 창은 형제 창들의 합이라 개별 풀이 말라도 평온하게 읽힌다. 그 창을 대표로
+  // 세우면 접힌 행은 "여유 있음"을 말하는데 실제로 모델이 당기는 풀은 비어 있다.
+  it("never speaks for an aggregate window while a real pool is present", () => {
+    const total = pool(40, { isAggregate: true });
+    const drained = pool(98, { scope: "api" });
+    expect(foldedWindow([total, drained])).toBe(drained);
+    // 집계뿐이면 그것이 이 공급자가 가진 전부다.
+    expect(foldedWindow([total])).toBe(total);
+  });
+
+  it("has nothing to say without a window", () => {
+    expect(foldedWindow(undefined)).toBeNull();
+    expect(foldedWindow([])).toBeNull();
+  });
+
+  // 수치가 없는 카드가 이름만 남으면 아직 못 읽은 카드와 구분되지 않는다. 사용자가
+  // 손을 써야 하는 상태에는 전부 접힌 행에 남을 한 마디가 있어야 한다.
+  it("names a reason for every status that carries no reading", () => {
+    for (const status of ["not_connected", "signed_out", "expired", "no_subscription", "error", "stale"] as const) {
+      expect(FOLDED_STATUS_KEY[status], status).toBeDefined();
+    }
+  });
+});
+
+describe("folded providers", () => {
+  // 옛 설정 파일이 살아남는다. 순서와 달리 빠진 id를 채우지 않는 것이 계약이다 —
+  // 목록에 없다는 것이 곧 "펼침"이고, 채우면 모든 카드가 접힌 채로 열린다.
+  it("drops unknown ids, dedupes, and leaves absent providers expanded", () => {
+    expect(sanitizeFoldedProviders(["kimi", "bogus", "claude", "kimi"])).toEqual(["claude", "kimi"]);
+    expect(sanitizeFoldedProviders(undefined)).toEqual([]);
+    expect(sanitizeFoldedProviders("claude")).toEqual([]);
+    expect(sanitizeFoldedProviders([])).toEqual([]);
+  });
+
+  // 같은 집합이 늘 같은 페이로드여야 저장이 순서 때문에 다시 쓰이지 않는다.
+  it("normalises to the default order however the set was built", () => {
+    expect(sanitizeFoldedProviders(["antigravity", "claude", "xai"]))
+      .toEqual(["claude", "xai", "antigravity"]);
+  });
+
+  it("toggles one provider without disturbing the rest", () => {
+    expect(toggledFoldedProviders([], "codex")).toEqual(["codex"]);
+    expect(toggledFoldedProviders(["codex"], "codex")).toEqual([]);
+    expect(toggledFoldedProviders(["antigravity", "claude"], "xai"))
+      .toEqual(["claude", "xai", "antigravity"]);
   });
 });
