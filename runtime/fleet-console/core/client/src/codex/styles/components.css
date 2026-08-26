@@ -2488,6 +2488,26 @@ button.chip:focus-visible {
   line-height: 1;
 }
 
+/* 새로 도착한 대기는 상태 채널이 말한다 — brass는 위치·포커스 전용이므로 도착을 칠할 수 없다.
+   숫자가 늘어난 순간에만 켜지고, 대기열이 비면 꺼진다. */
+.codex-nav-quick .badge[data-arrived="true"] {
+  background: color-mix(in oklch, var(--aurora) 24%, transparent);
+  color: var(--aurora);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 42%, transparent);
+  animation: codex-badge-arrive var(--duration-slow) var(--ease-spring);
+}
+
+@keyframes codex-badge-arrive {
+  from { box-shadow: 0 0 0 5px color-mix(in oklch, var(--aurora) 22%, transparent); }
+  to { box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 42%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-nav-quick .badge[data-arrived="true"] {
+    animation: none;
+  }
+}
+
 /* 헬스는 quick-row에 사는 응축 칩이다 — 문장형 스트립은 좁은 폭에서 잘렸다(F6). */
 .codex-nav-health {
   position: relative;
@@ -3369,4 +3389,55 @@ button.chip:focus-visible {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
+}
+
+/* 읽는 중인 문서가 서버에서 바뀌었다는 표식. 본문은 그대로 두고 이것만 뜬다 —
+   조용히 갈아끼우면 읽던 자리를 잃는다. */
+.codex-reader-stale {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--aurora) 45%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--aurora) 12%, var(--surface-panel));
+  color: var(--text-primary);
+  font-size: var(--t-xs);
+}
+
+/* 결정 사실은 더 강한 소식이다 — 아직 자기가 승인할 수 있다고 믿는 사람을 멈춰 세운다. */
+.codex-reader-stale[data-tone="decided"] {
+  border-color: color-mix(in oklch, var(--warn) 50%, var(--surface-rim));
+  background: color-mix(in oklch, var(--warn) 12%, var(--surface-panel));
+}
+
+.codex-reader-stale-text {
+  min-width: 0;
+}
+
+.codex-reader-stale-action {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--control-hover-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.codex-reader-stale-action:hover {
+  background: var(--control-hover-fill);
+}
+
+.codex-reader-stale-action:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }

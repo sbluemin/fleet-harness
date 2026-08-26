@@ -30,6 +30,13 @@ interface CodexGatewayDeps {
   readonly resolveListener?: (request: IncomingMessage) => ListenerIdentity | null;
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
   readonly dataDir?: string;
+  /**
+   * 지식 루트가 해석될 때마다 불린다(멱등). 호스트는 이 신호로 감시를 시작해, 화면이
+   * 열려 있는 워크스페이스만 지켜본다.
+   */
+  readonly onKnowledgeRootResolved?: (workspaceId: string, knowledgeRoot: string) => void;
+  /** 워크스페이스 등록이 풀렸다 — 감시도 함께 끝나야 한다. */
+  readonly onWorkspaceReleased?: (workspaceId: string) => void;
 }
 
 interface ParsedHostHeader {
@@ -138,6 +145,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
+    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
     coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
@@ -202,7 +210,8 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     theaterRoot: string,
   ): Promise<CodexWorkspaceResolution> {
     const workspace = await registerWorkspace(theaterRoot, undefined, theaterId);
-    deps.wikiWorkspaceResolver.resolve(workspace.realpath);
+    const paths = deps.wikiWorkspaceResolver.resolve(workspace.realpath);
+    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     return { hasWiki: true, id: workspace.id };
   }
 
@@ -220,6 +229,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       coworkServices.delete(id);
       void coworkService.dispose().catch(() => undefined);
     }
+    deps.onWorkspaceReleased?.(id);
     return workspaces.remove(id);
   }
 

@@ -126,8 +126,8 @@ describe("Codex schema UI contract", () => {
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 1 });
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
-    await Promise.resolve();
-    await Promise.resolve();
+    // 상태 칩의 출처는 스토어다 — 스토어가 사실을 읽어 오면 칩이 그것을 되비춘다.
+    await state.revalidateScopes(["queue"]);
     expect(root.querySelector<HTMLElement>(".codex-nav-health")?.hidden).toBe(false);
 
     controller.refreshHealth();
@@ -157,8 +157,7 @@ describe("Codex schema UI contract", () => {
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 0 });
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
-    await Promise.resolve();
-    await Promise.resolve();
+    await state.revalidateScopes(["queue"]);
 
     const strip = root.querySelector<HTMLElement>(".codex-nav-health")!;
     expect(strip.hidden).toBe(false);
@@ -189,8 +188,7 @@ describe("Codex schema UI contract", () => {
     const onRequest = vi.fn();
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest });
-    await Promise.resolve();
-    await Promise.resolve();
+    await state.revalidateScopes(["queue"]);
 
     const strip = root.querySelector<HTMLElement>(".codex-nav-health")!;
     expect(strip.hidden).toBe(false);

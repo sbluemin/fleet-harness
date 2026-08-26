@@ -22,6 +22,7 @@ import {
   teardownReaderNodes,
 } from "../codex-host.js";
 import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
+import { installCodexLiveRevalidation, revalidateCodexNow } from "../codex/live.js";
 import { loadInitialData } from "../codex/state.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -158,12 +159,18 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   useEffect(() => {
     if (shouldMountCodex && workspaceId) {
       setNavigatorTheater(workspaceId);
+      // 레일 탭을 떠났다 돌아온 경우 싱글턴은 재배치만 되고 다시 읽지 않는다 —
+      // 자리를 비운 사이의 변화는 이벤트로도 오지 않았으므로 복귀는 곧 재검증이다.
+      revalidateCodexNow();
       if (!hasReader && theaterId) {
         const entryId = restoreCodexReaderSession(theaterId);
         if (entryId) openCodexReader({ kind: "entry", entryId });
       }
     }
   }, [shouldMountCodex, workspaceId, theaterId]);
+
+  // 창으로 돌아왔을 때의 재검증 — SSE가 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다.
+  useEffect(() => installCodexLiveRevalidation(), []);
 
   // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
   useEffect(() => {

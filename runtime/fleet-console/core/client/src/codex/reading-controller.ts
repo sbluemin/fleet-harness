@@ -32,6 +32,8 @@ import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { mountCoworkInline } from "./cowork-controller.js";
 import type { CoworkController } from "./cowork-controller.js";
+import { CODEX_LIVE_CHANGED_EVENT } from "./live.js";
+import type { CodexLiveChangedDetail } from "./live.js";
 import { entryPath } from "./router.js";
 import { getState } from "./state.js";
 import { escapeAttribute, escapeHtml } from "./utils.js";
@@ -127,6 +129,10 @@ export function mountReadingInto(
   let detailDiffBlocks: readonly DraftBlock[] | null = null;
   let detailProposedToc = "";
   let detailProposedTocItems: readonly TocItem[] = [];
+  // 읽는 중인 문서가 서버에서 바뀌었다는 사실. 본문은 그대로 두고 이 표식만 띄운다.
+  let staleKind: "updated" | "decided" | null = null;
+  // 지금 화면에 그려진 문서의 갱신 시각. 카탈로그의 같은 값과 어긋나면 이 문서가 바뀐 것이다.
+  let renderedEntryStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
   const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
@@ -134,6 +140,13 @@ export function mountReadingInto(
   function handleClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
+
+    const readerRefresh = target.closest<HTMLElement>("[data-reader-refresh]");
+    if (readerRefresh) {
+      event.preventDefault();
+      void reloadCurrentView();
+      return;
+    }
 
     const copyButton = target.closest<HTMLElement>('[data-action="copy-code"]');
     if (copyButton) {
@@ -348,10 +361,131 @@ export function mountReadingInto(
     cleanupSpy = null;
   }
 
+  /**
+   * 목록은 스스로 따라오고, 읽는 중인 본문은 알린 뒤 기다린다.
+   *
+   * 목록에서 잃을 것은 스크롤 몇 픽셀이지만 본문에서 잃는 것은 읽던 자리다 — 두 화면에
+   * 같은 규칙을 적용하면 둘 중 하나는 반드시 나쁘게 동작한다.
+   */
+  function handleLiveChanged(event: Event): void {
+    if (destroyed) return;
+    const detail = (event as CustomEvent<CodexLiveChangedDetail>).detail;
+    const scopes = new Set(detail?.scopes ?? []);
+    if (opts.kind === "entry") {
+      if (!scopes.has("wiki") && !scopes.has("index")) return;
+      if (!currentEntryId) return;
+      // 위키에서 *무언가* 바뀌었다고 이 문서가 바뀐 것은 아니다 — 옆 문서가 등재됐을 뿐인데
+      // "이 문서가 갱신됐다"고 말하면 그 표식은 곧 아무 뜻도 없는 소음이 된다.
+      const stamp = catalogStampFor(currentEntryId);
+      if (stamp === null) return;
+      if (renderedEntryStamp === null) {
+        // 문서를 그릴 때 카탈로그가 아직 비어 있었다 — 지금 값을 기준선으로 삼고,
+        // 다음 변화부터 비교한다. 근거 없는 알림보다 한 번 늦는 편이 정직하다.
+        renderedEntryStamp = stamp;
+        return;
+      }
+      if (stamp === renderedEntryStamp) return;
+      showStaleNotice("updated");
+      return;
+    }
+    if (opts.kind === "drydock") {
+      if (!scopes.has("queue")) return;
+      if (!currentSubId) {
+        void renderDrydockView(undefined);
+        return;
+      }
+      void noticeForOpenPatch(currentSubId);
+      return;
+    }
+    if (opts.kind === "conflicts") {
+      if (!scopes.has("conflicts")) return;
+      if (!currentSubId) {
+        void renderConflictsView(undefined);
+        return;
+      }
+      showStaleNotice("updated");
+      return;
+    }
+    if (opts.kind === "schema") {
+      if (!scopes.has("schema")) return;
+      if (!currentSubId) {
+        void renderSchemaView(undefined);
+        return;
+      }
+      showStaleNotice("updated");
+    }
+  }
+
+  /**
+   * 읽던 제안이 밖에서 승인·반려됐다면 그렇게 말해야 한다 — "갱신됐다"로 뭉뚱그리면
+   * 사용자는 아직 자기가 결정할 수 있다고 믿은 채 승인 버튼을 누르러 간다.
+   */
+  async function noticeForOpenPatch(patchId: string): Promise<void> {
+    const wasPending = currentDetailMeta?.status === "pending";
+    if (!wasPending) {
+      showStaleNotice("updated");
+      return;
+    }
+    try {
+      const detail = await fetchDrydockDetail(liveOpts.theaterId, patchId);
+      if (destroyed || currentSubId !== patchId) return;
+      showStaleNotice(detail.meta.status === "pending" ? "updated" : "decided");
+    } catch {
+      if (destroyed || currentSubId !== patchId) return;
+      showStaleNotice("updated");
+    }
+  }
+
+  function catalogStampFor(entryId: string): string | null {
+    return getState().index.find((entry) => entry.id === entryId)?.updated ?? null;
+  }
+
+  function showStaleNotice(kind: "updated" | "decided"): void {
+    // 결정 사실은 단순 갱신보다 강한 소식이다 — 한 번 켜지면 갱신 문구로 내려가지 않는다.
+    if (staleKind === "decided" && kind === "updated") return;
+    staleKind = kind;
+    const t = consoleT();
+    const label = kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
+    const action = kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
+    const existing = readContainer.querySelector<HTMLElement>(".codex-reader-stale");
+    const markup = `
+      <span class="codex-reader-stale-text">${escapeHtml(label)}</span>
+      <button class="codex-reader-stale-action" type="button" data-reader-refresh>${escapeHtml(action)}</button>
+    `;
+    if (existing) {
+      existing.dataset.tone = kind;
+      existing.innerHTML = markup;
+      return;
+    }
+    const notice = document.createElement("div");
+    notice.className = "codex-reader-stale";
+    notice.dataset.tone = kind;
+    notice.setAttribute("role", "status");
+    notice.innerHTML = markup;
+    readContainer.prepend(notice);
+  }
+
+  async function reloadCurrentView(): Promise<void> {
+    if (opts.kind === "entry") {
+      if (currentEntryId) await renderEntryView(currentEntryId);
+      return;
+    }
+    if (opts.kind === "drydock") {
+      await renderDrydockView(currentSubId);
+      return;
+    }
+    if (opts.kind === "conflicts") {
+      await renderConflictsView(currentSubId);
+      return;
+    }
+    await renderSchemaView(currentSubId);
+  }
+
   async function renderEntryView(entryId: string): Promise<void> {
     if (destroyed) return;
     const requestEpoch = ++entryRequestEpoch;
     currentEntryId = entryId;
+    staleKind = null;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -402,6 +536,9 @@ export function mountReadingInto(
           onApplied: () => { void renderEntryView(entryId); },
         });
       }
+      // 지금 그린 본문이 어느 판본인지 적어 둔다 — 이후 카탈로그의 같은 값과 비교해
+      // "이 문서가" 바뀌었는지 판정한다.
+      renderedEntryStamp = catalogStampFor(entryId);
       opts.onEntryRendered?.(entryId);
     } catch (error) {
       if (!destroyed && requestEpoch === entryRequestEpoch && entryId === currentEntryId) {
@@ -422,6 +559,7 @@ export function mountReadingInto(
     if (destroyed) return;
     const requestEpoch = ++subRequestEpoch;
     currentSubId = patchId;
+    staleKind = null;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -508,6 +646,7 @@ export function mountReadingInto(
     if (destroyed) return;
     const requestEpoch = ++subRequestEpoch;
     currentSubId = conflictId;
+    staleKind = null;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -565,6 +704,8 @@ export function mountReadingInto(
     void renderSchemaView(opts.subId);
   }
 
+  document.addEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
+
   return {
     destroy(): void {
       destroyed = true;
@@ -572,6 +713,7 @@ export function mountReadingInto(
       subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
+      document.removeEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
       linkPreview.destroy();
       cleanupReader();
       coworkController?.destroy();
