@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useConsoleState } from "./use-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
-import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
+import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,9 +57,11 @@ export function useCodexReaderUrlSync(): void {
     }
 
     if (!entryId) {
-      // 리더 문서가 주소에서 사라졌다 = 뒤로가기로 리더 앞 상태에 도달했다.
+      // 리더 문서가 주소에서 사라졌다 = 뒤로가기로 리더를 열기 전 상태에 도달했다.
+      // 여기서 확대만 접으면 리더는 같은 문서를 그대로 들고 있어, 반대 방향 effect가
+      // 그 문서를 주소에 다시 밀어 넣는다 — 뒤로가기가 리더 앞으로 나갈 수 없게 된다.
       targetRef.current = null;
-      if (reader?.kind === "entry") collapseCodexReader();
+      if (reader !== null) closeCodexReader();
       return;
     }
     targetRef.current = { entryId, expanded: wantExpanded };

@@ -16,7 +16,7 @@ import {
 } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
-import { resolvedCodexWorkspaceIdFor } from "../rail/codex-panel.js";
+import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "../rail/codex-panel.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 import { getState as getCodexState, loadInitialData, subscribeState as subscribeCodexState } from "../codex/state.js";
 import type { SearchEntry } from "../codex/api.js";
@@ -52,6 +52,13 @@ export function CodexReadingSheet() {
     codexReaderExpanded: expanded,
     activeTheaterId: theaterId,
   } = useConsoleState();
+  // 공유 링크로 곧장 들어오면 워크스페이스 해석이 아직 끝나지 않았다 — 그 결과를 구독해
+  // 해석이 도착한 프레임에 리더를 세운다(그 전에는 세우지 않는다).
+  const workspaceId = useSyncExternalStore(
+    subscribeCodexWorkspace,
+    () => resolvedCodexWorkspaceIdFor(theaterId),
+    () => resolvedCodexWorkspaceIdFor(theaterId),
+  );
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
@@ -124,19 +131,20 @@ export function CodexReadingSheet() {
   // 콘텐츠 effect: reader 호스트 노드를 시트 슬롯으로 relocate
   useEffect(() => {
     if (!isOpen || !readRef.current || !tocRef.current || !dockRef.current || !reader) return;
+    // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
+    // Theater id로 대신 부르면 /console/codex/w/ 라우터가 workspace_not_found로 거절한다.
+    // 해석 전에는 아무것도 세우지 않고, 해석이 도착하면 이 effect가 다시 돈다.
+    if (!workspaceId) return;
 
     const kind = reader.kind;
     const subId =
       kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
 
-    // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
-    // Theater id는 /console/codex/w/ 라우터에서 workspace_not_found로 떨어진다.
-    const workspaceId = resolvedCodexWorkspaceIdFor(theaterId);
     mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
-      theaterId: workspaceId ?? theaterId,
+      theaterId: workspaceId,
       sessionTheaterId: theaterId,
       // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
       // (split의 onRelatedClick은 split에 머문다 — codex-panel.tsx). expandCodexReader가
@@ -175,7 +183,7 @@ export function CodexReadingSheet() {
     requestAnimationFrame(() => {
       readRef.current?.focus({ preventScroll: true });
     });
-  }, [isOpen, readerKey]);
+  }, [isOpen, readerKey, workspaceId]);
 
   // 읽기 진행률 — 헤드바가 "지금 어디쯤"을 말한다.
   useEffect(() => {

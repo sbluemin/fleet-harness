@@ -36,11 +36,21 @@ interface CodexWorkspaceState {
 
 let lastCodexContextKey: string | null = null;
 let lastResolvedWorkspace: CodexWorkspaceState | null = null;
+const workspaceListeners = new Set<() => void>();
+
+function publishResolvedWorkspace(next: CodexWorkspaceState): void {
+  lastResolvedWorkspace = next;
+  for (const listener of workspaceListeners) listener();
+}
 
 /**
  * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
  * 레일 패널이 해석해 둔 12-hex id여야 /console/codex/w/ 라우터가 인식한다.
- * 덱은 항상 레일의 확대 버튼을 거쳐 열리므로 해석 결과가 이미 따뜻하다.
+ *
+ * 공유 링크로 곧장 들어오면 그 해석이 아직 진행 중이라 여기서 null이 나온다. 그때
+ * Theater id로 대신 요청하면 라우터가 workspace_not_found로 거절하고, 해석이 끝나도
+ * 아무도 다시 부르지 않아 리더가 에러 화면에 머문다 — 그래서 해석 결과는 구독 가능한
+ * 값이어야 하고, 소비자는 null인 동안 마운트를 미뤄야 한다.
  */
 export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | null {
   const contextKey = theaterId ?? "";
@@ -48,6 +58,11 @@ export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | 
     return lastResolvedWorkspace.id;
   }
   return null;
+}
+
+export function subscribeCodexWorkspace(listener: () => void): () => void {
+  workspaceListeners.add(listener);
+  return () => workspaceListeners.delete(listener);
 }
 
 function hasCodexEntryInUrl(): boolean {
@@ -113,19 +128,19 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     lastCodexContextKey = contextKey;
     if (!theaterId) {
       const nextWorkspace = { contextKey, hasWiki: false, id: null };
-      lastResolvedWorkspace = nextWorkspace;
+      publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
       return;
     }
     void resolveCodexWorkspace(theaterId).then((result) => {
       if (latestContextKeyRef.current !== contextKey) return;
       const nextWorkspace = { contextKey, ...result };
-      lastResolvedWorkspace = nextWorkspace;
+      publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     }).catch(() => {
       if (latestContextKeyRef.current !== contextKey) return;
       const nextWorkspace = { contextKey, hasWiki: false, id: null };
-      lastResolvedWorkspace = nextWorkspace;
+      publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     });
   }, [contextKey, theaterId]);
