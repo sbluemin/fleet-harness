@@ -234,8 +234,7 @@ describe("Codex schema UI contract", () => {
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
     try {
-      await Promise.resolve();
-      await Promise.resolve();
+      await state.revalidateScopes(["queue"]);
 
       const detail = root.querySelector<HTMLButtonElement>("[data-health-detail]")!;
       detail.getBoundingClientRect = () => new DOMRect(500, 250, 150, 32);
