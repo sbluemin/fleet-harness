@@ -6433,9 +6433,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
    남들을 물러서게 할 자격도 없다. 게이트가 표식보다 넓으면 아무것도 앞으로 나서지 않은 채
    무대만 어두워진다: 대기 큐가 비어 있지 않으면 enterTriage가 활성 id를 카드에 남기고
    (triage-store.ts), 무대의 자동 포커스는 모달·투어가 떠 있던 프레임에서 한 번 걸러지면
-   캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다. */
+   캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다.
+   세기는 0.6이다. 이 값은 곁의 본문에서 읽기 편함을 얼마나 떼어 포커스에 줄지를 정한다 —
+   실측(다크, 터미널 프롬프트 기준) 1.0에서 9.22:1, 0.72에서 5.31:1, 0.6에서 4.06:1이다.
+   0.6은 본문 대비 기준(4.5:1) 바로 아래에 서지만, 그 자리는 지금 읽는 자리가 아니고
+   포커스를 주는 순간 9.22:1로 돌아온다. 더 내리면(0.55 = 3.61:1) 곁을 훑는 일까지 끊긴다. */
 .operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-terminal {
-  opacity: 0.72;
+  opacity: 0.6;
   transition: opacity var(--duration-base) var(--ease-glide);
 }
 
