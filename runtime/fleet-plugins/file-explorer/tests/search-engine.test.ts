@@ -57,6 +57,26 @@ describe("ripgrep file search engine", () => {
     });
   });
 
+  it("does not let one aborted caller poison the shared path catalog", async () => {
+    const controller = new AbortController();
+    const first = searchFilesWithRipgrep(root, "fsc", 20, { scope: "files", signal: controller.signal });
+    controller.abort();
+    await first;
+
+    const next = await searchFilesWithRipgrep(root, "fsc", 20, { scope: "files" });
+    expect(next.files[0]?.relativePath).toBe("src/FleetSearchCoordinator.ts");
+  });
+
+  it("finds an ignored path on the zero-result fallback", async () => {
+    await fs.writeFile(path.join(root, ".gitignore"), "ignored/\n");
+    await fs.mkdir(path.join(root, "ignored"));
+    await fs.writeFile(path.join(root, "ignored", "only-ignored-needle.ts"), "export {}\n");
+    invalidateSearchCatalog();
+
+    const result = await searchFilesWithRipgrep(root, "only-ignored-needle", 20, { scope: "files" });
+    expect(result.files[0]?.relativePath).toBe("ignored/only-ignored-needle.ts");
+  });
+
   it("invalidates the cached file catalog after changes", async () => {
     const first = await searchFilesWithRipgrep(root, "later", 20, { scope: "files" });
     expect(first.files).toEqual([]);

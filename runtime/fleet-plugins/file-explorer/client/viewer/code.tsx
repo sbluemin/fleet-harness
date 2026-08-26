@@ -69,7 +69,14 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
-    if (!node || !target || wrapping) return;
+    if (!node || !target) return;
+    if (wrapping) {
+      // wrap 행은 가변 높이라 수식으로 좌표를 만들 수 없다. 전체 렌더 뒤 실제 target 행을 맞춘다.
+      const frame = window.requestAnimationFrame(() => {
+        windowRef.current?.querySelector<HTMLElement>(".is-search-target")?.scrollIntoView({ block: "center" });
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
     const targetTop = Math.max(0, (target.lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
     node.scrollTop = targetTop;
     setScrollTop(targetTop);

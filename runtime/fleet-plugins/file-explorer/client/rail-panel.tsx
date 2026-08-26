@@ -283,6 +283,9 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       ...(item.preview ? { lineNumber: item.preview.lineNumber, ranges: item.preview.ranges } : {}),
     };
     setRevealTarget(target);
+    if (item.preview && /\.mdx?$/i.test(item.relativePath)) {
+      setSourceModePaths((current) => new Set(current).add(item.relativePath));
+    }
     openFilePath(item.relativePath);
   }, [openFilePath, theaterId]);
 

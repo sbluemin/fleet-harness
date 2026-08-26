@@ -117,9 +117,15 @@ export async function searchFilesWithRipgrep(
   const startedAt = performance.now();
   const root = await fsp.realpath(theaterPath);
   const scope = options.scope ?? "files";
-  const outcome = scope === "contents"
+  let outcome = scope === "contents"
     ? await searchContents(root, query, limit, options)
     : await searchPaths(root, query, limit, options);
+  // 기본 ignore 규칙 때문에 0건이 된 파일명 질의만 한 번 더 확인한다. 기존 walker와 같은
+  // 정직성 계약이며, 일반 hit 질의마다 거대한 no-ignore catalog를 만드는 비용은 피한다.
+  if (scope === "files" && outcome.items.length === 0 && options.includeIgnored !== true && !options.signal?.aborted) {
+    const fallback = await searchPaths(root, query, limit, { ...options, includeIgnored: true });
+    if (fallback.items.length > 0) outcome = fallback;
+  }
   return {
     files: outcome.items,
     totalMatches: outcome.totalMatches ?? outcome.items.length,
@@ -166,7 +172,9 @@ async function getPathCatalog(root: string, options: SearchFilesWithRipgrepOptio
     if (performance.now() - catalog.createdAt <= PATH_CACHE_TTL_MS) return catalog;
     pathCatalogs.delete(key);
   }
-  const pending = collectPaths(root, includeHidden, includeIgnored, options.signal)
+  // catalog 수집은 공유 작업이다. 한 입력 세대의 abort로 process를 죽이면 빈 catalog가 다른
+  // 질의에 재사용된다. 호출자는 아래 wait만 취소하고 수집은 완성해 다음 질의가 이어 쓴다.
+  const pending = collectPaths(root, includeHidden, includeIgnored)
     .then((paths): PathCatalog => ({ root, includeHidden, createdAt: performance.now(), paths }))
     .catch((error) => {
       pathCatalogs.delete(key);
@@ -206,6 +214,9 @@ async function searchContents(
     "never",
     "--max-count",
     "3",
+    // files/read가 앞 1 MiB만 제공하므로, 이동할 수 없는 뒤쪽 match는 검색 결과로 내지 않는다.
+    "--max-filesize",
+    "1M",
   ];
   if (options.literal !== false) args.push("--fixed-strings");
   if (options.includeHidden === true) args.push("--hidden");
