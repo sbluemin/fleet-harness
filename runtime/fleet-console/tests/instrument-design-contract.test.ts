@@ -3012,8 +3012,11 @@ describe("Instrument core design contract", () => {
     expect(recede).toContain("background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*\.canvas-operation-terminal \{/);
-    // 이름 티어 하강은 hover를 이기면 안 된다 — 이름은 클릭하면 편집이라 hover가 곧 그 초대다.
-    expect(components).toContain(".canvas-operation-identity-name:not(:hover) {");
+    // 이름 티어 하강은 편집 초대를 이기면 안 된다 — 이름은 눌러서 고치는 자리다. hover만 빼면
+    // 그 초대가 마우스만의 것이 된다: 이름의 focus-visible 규칙은 아웃라인만 그리고 색은
+    // 건드리지 않아, 키보드로 닿은 사용자만 물러난 색에 남는다.
+    expect(components).toContain(".canvas-operation-identity-name:not(:hover):not(:focus-visible) {");
+    expect(components).not.toMatch(/\.canvas-operation-identity-name:not\(:hover\) \{/);
     // 포커스의 깊이는 색을 하나도 쓰지 않는다 — 상태 채널과 겹칠 자리가 없다. 중립 rim 블록보다
     // 뒤에 서서, 진행 중인 패널이 포커스를 받아도 깊이는 포커스가 소유한다.
     const lift = components.match(/\n\.canvas-operation\.is-active:not\(\.is-deck-tile\) \{[^}]*\}/)?.[0] ?? "";

@@ -6393,9 +6393,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background-clip: padding-box;
 }
 
-/* 이름은 한 티어 내려간다. :hover 제외가 없으면 이 규칙이 특이도로 이름의 hover를 이겨,
-   비포커스 패널에서는 이름 위에 마우스를 얹어도 아무 반응이 없다(이름은 클릭하면 편집이다). */
-.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar .canvas-operation-identity-name:not(:hover) {
+/* 이름은 한 티어 내려간다. 제외가 없으면 이 규칙이 특이도로 이름의 hover를 이겨, 비포커스
+   패널에서는 이름 위에 마우스를 얹어도 아무 반응이 없다(이름은 클릭하면 편집이다).
+   :focus-visible도 같은 이유로 함께 빠진다 — 그 초대는 마우스만의 것이 아니다. 이름의
+   focus-visible 규칙은 brass 아웃라인만 그리고 색은 건드리지 않아, 이 규칙을 그대로 두면
+   키보드로 이름에 닿은 사용자만 물러난 색에 머문다. 링은 어디에 있는지를 말하고 색은 무엇을
+   할 수 있는지를 말하므로, 두 입력 수단이 같은 초대를 받아야 한다. */
+.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar .canvas-operation-identity-name:not(:hover):not(:focus-visible) {
   color: var(--text-tertiary);
 }
 
