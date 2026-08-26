@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { prepareReaderSessionScroll } from "../codex-host.js";
 import { useConsoleState } from "./use-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "../store.js";
@@ -87,14 +88,18 @@ export function useCodexReaderUrlSync(): void {
         return;
       }
       // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한
-      // 문서가 아닌 것을 보여주게 되므로 열지 않고, 목표도 버려 매 렌더 재시도를 끊는다.
+      // 문서가 아닌 것을 보여주게 되므로 열지 않는다. 앞서 보던 문서를 그대로 두면
+      // 주소와 화면이 어긋난 채 남으므로 리더도 닫고, 목표는 버려 재시도를 끊는다.
       targetRef.current = null;
+      if (reader !== null) closeCodexReader();
       return;
     }
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다.
     openRailPanel("codex");
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
+      // 주소가 문서를 정한다 — 읽던 자리는 그 문서가 저장된 세션의 문서와 같을 때만 따라온다.
+      prepareReaderSessionScroll(theaterId, target.entryId);
       openCodexReader({ kind: "entry", entryId: target.entryId });
       if (target.expanded) expandCodexReader();
       return;

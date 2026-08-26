@@ -183,10 +183,12 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       // 레일 탭을 떠났다 돌아온 경우 싱글턴은 재배치만 되고 다시 읽지 않는다 —
       // 자리를 비운 사이의 변화는 이벤트로도 오지 않았으므로 복귀는 곧 재검증이다.
       revalidateCodexNow();
-      if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
-        // 주소가 문서를 지목했으면 그쪽이 이긴다 — 세션 복원은 주소가 비었을 때의 기본값이다.
+      if (!hasReader && theaterId) {
+        // 세션은 항상 읽는다 — 읽던 자리(scrollTop)를 아는 유일한 경로이기 때문이다.
+        // 어떤 문서를 열지는 주소가 지목했으면 주소가 이기고, 저장된 자리는 그 문서가
+        // 세션의 문서와 같을 때에만 쓰인다(mountReaderInto의 pendingSessionRestore).
         const entryId = restoreCodexReaderSession(theaterId);
-        if (entryId) {
+        if (entryId && !hasCodexEntryInUrl()) {
           openCodexReader({ kind: "entry", entryId });
           // 확대는 리더 세션의 일부다 — 떠날 때의 화면으로 돌아온다.
           if (consumeRestoredReaderExpanded()) expandCodexReader();

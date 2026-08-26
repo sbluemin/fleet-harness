@@ -61,6 +61,7 @@ let lastReaderScrollTop = 0;
 let scrollRestoreCleanup: (() => void) | null = null;
 let scrollSaveSlot: HTMLElement | null = null;
 let scrollSaveTimerId: ReturnType<typeof setTimeout> | null = null;
+let lastObservedScrollTop = 0;
 let pageHideBound = false;
 
 let historyEntries: HistoryEntry[] = [];
@@ -145,6 +146,22 @@ export function navigateCodexReaderHistory(direction: -1 | 1): void {
   pendingHistoryScrollTop = target.scrollTop;
   emitHistoryState();
   activeEntryRequest?.(target.entryId);
+}
+
+/**
+ * 주소가 지목한 문서가 저장된 세션의 문서와 같으면 그 자리를 복원 대상으로 세운다.
+ *
+ * 세션을 읽는 다른 경로(레일 패널의 최초 복원)는 리더가 아직 없을 때만 돈다. 링크나
+ * 새로고침으로 주소가 먼저 문서를 열면 그 경로가 건너뛰어져, 저장된 자리를 아무도
+ * 읽지 않은 채 문서가 맨 위에서 열린다.
+ */
+export function prepareReaderSessionScroll(theaterId: string, entryId: string): void {
+  const session = readReaderSession(theaterId);
+  if (!session || session.entryId !== entryId) return;
+  prepareReaderTheater(theaterId);
+  pendingSessionRestore = session;
+  readerExpandedForSession = session.expanded;
+  lastReaderScrollTop = session.scrollTop;
 }
 
 export function getCodexReaderDocumentState(): ReaderDocumentState {
@@ -239,6 +256,7 @@ export function mountReaderInto(
       dockContainer: dNode,
       onEntryRendered: handleEntryRendered,
       onTocChanged: handleTocChanged,
+      onDocumentChanged: emitDocumentState,
     });
     activeReaderKind = opts.kind;
     activeReaderSubId = opts.subId;
@@ -404,6 +422,7 @@ function attachSessionScrollSaver(slot: HTMLElement): void {
   if (scrollSaveSlot === slot) return;
   detachSessionScrollSaver();
   scrollSaveSlot = slot;
+  lastObservedScrollTop = slot.scrollTop;
   slot.addEventListener("scroll", handleSessionScroll, { passive: true });
   if (!pageHideBound && typeof window !== "undefined") {
     pageHideBound = true;
@@ -412,14 +431,20 @@ function attachSessionScrollSaver(slot: HTMLElement): void {
   }
 }
 
-/** 500ms 디바운스가 만료되기 전에 창을 떠나면 마지막 스크롤이 저장되지 않는다. */
+/**
+ * 500ms 디바운스가 만료되기 전에 창을 떠나면 마지막 스크롤이 저장되지 않는다.
+ * 다만 이탈 시점의 컨테이너는 이미 0으로 접혀 있을 수 있으므로, 그때는 마지막으로
+ * 관측한 위치를 쓴다 — 그 값이 0이면 사용자가 정말로 맨 위에 있던 것이다.
+ */
 function flushReaderSession(): void {
   if (typeof document !== "undefined" && document.visibilityState === "visible") return;
   if (scrollSaveTimerId !== null) {
     clearTimeout(scrollSaveTimerId);
     scrollSaveTimerId = null;
   }
-  if (scrollSaveSlot) persistCurrentReaderSession(scrollSaveSlot.scrollTop);
+  if (!scrollSaveSlot) return;
+  const live = scrollSaveSlot.scrollTop;
+  persistCurrentReaderSession(live > 0 ? live : lastObservedScrollTop);
 }
 
 function detachSessionScrollSaver(): void {
@@ -430,6 +455,7 @@ function detachSessionScrollSaver(): void {
 }
 
 function handleSessionScroll(): void {
+  if (scrollSaveSlot) lastObservedScrollTop = scrollSaveSlot.scrollTop;
   if (pendingSessionRestore || scrollSaveTimerId !== null) return;
   scrollSaveTimerId = setTimeout(() => {
     scrollSaveTimerId = null;

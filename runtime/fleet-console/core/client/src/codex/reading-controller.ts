@@ -83,6 +83,8 @@ export interface ReaderDocument {
 }
 
 export interface MountReadingOptions {
+  /** 현재 문서가 바뀌거나 비워졌음을 호스트에 알린다(헤드바 제목·링크 복사·원문의 출처). */
+  readonly onDocumentChanged?: () => void;
   readonly initialEntryId: string;
   readonly kind: "entry" | "drydock" | "conflicts" | "schema";
   readonly subId?: string;
@@ -389,7 +391,12 @@ export function mountReadingInto(
     cleanupSpy?.();
     cleanupSpy = null;
     spyContext = null;
-    currentDocument = null;
+    if (currentDocument !== null) {
+      currentDocument = null;
+      // 드라이독·충돌·스키마로 넘어가거나 다음 문서를 못 읽어 온 순간부터 이전 문서는
+      // 화면에 없다 — 그 사실을 알리지 않으면 머리줄이 옛 제목을 계속 말한다.
+      opts.onDocumentChanged?.();
+    }
   }
 
   /**
