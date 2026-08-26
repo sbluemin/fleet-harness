@@ -2569,10 +2569,11 @@ button.chip:focus-visible {
 }
 
 /* 레일은 의도적으로 overflow:hidden인 유리 프레임이다. 헬스 상세는 app의 루트 레이어로
-   이식해 그 프레임과 인접 레일에 갇히지 않고, 트리거 좌표를 따라 뷰포트 안에서 배치한다. */
+   이식해 그 프레임과 인접 레일에 갇히지 않고, 트리거 좌표를 따라 뷰포트 안에서 배치한다.
+   다만 일반 팝오버이므로 전역 모달(80+) 아래에 머물러 입력 격리를 침범하지 않는다. */
 .codex-nav-health-popover {
   position: fixed;
-  z-index: var(--z-overlay);
+  z-index: 70;
   display: grid;
   min-width: min(190px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
