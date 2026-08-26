@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.75.0] - 2026-08-26
+
+### fleet-console
+
+#### Changed
+- Make Liquid Glass legible on the light theme. The glass now carries color, a shadowed lower bevel, and a contact shadow, and the canvas behind it gained the same chroma budget the dark themes already used, so turning the setting on and off is a visible change instead of a 2 percent shift in brightness.
+- Let the settings page scroll behind the command band so the glass has something to refract.
+- Give the Maritime and Carbon dark themes their own Map ground across Cruise, Tactical, and War Room, instead of the single Instrument-shaped field all three dark themes shared. Maritime reads as a chart table with a teal graticule, depth contours, and one warm lamp; Carbon reads as a machined graphite deck with an achromatic lattice, planar light, and a single copper bevel. Instrument keeps its existing Map exactly.
+- Group Settings by what each section does rather than which plugin owns it, and add a search box that finds any setting by name or by a related word such as "dormant" or "pairing".
+- Show all four themes as cards at once, including in the light theme, and preview the console beside them so a theme, liquid glass, and the interface font size can be judged where they are chosen.
+- Say on/off with one switch and either/or with one segmented control everywhere in Settings, and replace the repeated "stored server-side" sentences with a chip on each row that states when the setting takes effect.
+- Let every Theater sidebar section expand or collapse without first switching the active Theater.
+
+#### Fixed
+- Give the environment popover in the command band the same glass surface as the menu beside it.
+- Keep remote control disconnected after the host takes it back or another device connects, until the remote user explicitly reconnects.
+- Correct the Console port and display language rows, which shared one note claiming changes apply to new sessions even though the language repaints the Console at once and the port waits for a console restart.
+- Keep the Settings section list readable below 1120px, where it previously reflowed into a ragged grid that buried its group headings among the sections.
+- Keep dimmed terminal output on the glass surface in the dark themes, so diff gutters and faded lines no longer print as solid black blocks.
+
 ## [1.74.0] - 2026-08-24
 
 ### fleet-console
