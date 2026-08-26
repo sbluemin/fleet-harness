@@ -238,11 +238,14 @@ export function CodexReadingSheet() {
     const url = new URL(window.location.href);
     url.searchParams.set("codex", entryId);
     url.searchParams.set("codexView", "full");
+    // 항목 id는 Theater 안에서만 뜻이 있다 — 링크를 받은 콘솔이 다른 Theater를 보고
+    // 있으면 같은 id로 엉뚱한 문서를 찾게 되므로 사는 곳을 함께 싣는다.
+    if (theaterId) url.searchParams.set("codexTheater", theaterId);
     void navigator.clipboard?.writeText(url.toString()).then(
       () => setLinkCopied(true),
       () => setLinkCopied(false),
     );
-  }, [document_.entryId]);
+  }, [document_.entryId, theaterId]);
 
   const openSwitcher = useCallback(() => {
     setSwitcherTag(null);

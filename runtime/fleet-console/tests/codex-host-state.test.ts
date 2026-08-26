@@ -13,9 +13,11 @@ const codexMocks = vi.hoisted(() => ({
   },
   readerController: {
     destroy: vi.fn(),
+    getDocument: vi.fn(() => null),
     navigateSub: vi.fn(async () => undefined),
     refreshCallbacks: vi.fn(),
     refreshLocale: vi.fn(async () => undefined),
+    refreshScrollSpy: vi.fn(),
     setEntry: vi.fn(async () => undefined),
   },
 }));
@@ -199,9 +201,11 @@ describe("Codex host in-memory state", () => {
     readSlot.dispatchEvent(new Event("scroll"));
     vi.advanceTimersByTime(500);
 
+    // 확대 여부도 리더 세션의 일부다 — 새로고침이 화면 모드까지 되살린다.
     expect(JSON.parse(localStorage.getItem("fleet.codex.reader.session.theater-a") ?? "null")).toEqual({
       entryId: "entry-new",
       scrollTop: 480,
+      expanded: false,
     });
   });
 
