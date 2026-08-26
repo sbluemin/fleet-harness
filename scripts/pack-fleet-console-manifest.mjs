@@ -8,7 +8,7 @@ const BACKUP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.j
 const TEMP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-tmp");
 // 번들에 인라인되지 않고 산출물이 그대로 해석하려 드는 의존성. 빠뜨리면 게시본이 설치처에서
 // ERR_MODULE_NOT_FOUND로 죽으므로, check-dist-published-externals.mjs가 빌드마다 dist와 대조한다.
-const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list", "@anthropic-ai/claude-agent-sdk", "selfsigned", "esbuild"];
+const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list", "@anthropic-ai/claude-agent-sdk", "@vscode/ripgrep", "selfsigned", "esbuild"];
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const action = process.argv[2];

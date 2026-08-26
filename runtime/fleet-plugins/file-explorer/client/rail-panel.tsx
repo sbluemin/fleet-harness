@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { RailPanelContext, RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
-import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
+import type { FileReadResult, FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
 import {
   FileContextMenu,
@@ -273,6 +273,18 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     openFilePath(searchTarget.relativePath);
     consumeFileSearchTarget(searchTarget);
   }, [openFilePath, searchTarget, theaterId]);
+
+  const handleSearchSelect = useCallback((item: FileSearchItem) => {
+    if (!theaterId || item.kind !== "file") return;
+    const target: FileSearchTarget = {
+      theaterId,
+      relativePath: item.relativePath,
+      requestId: mintRevealRequestId(),
+      ...(item.preview ? { lineNumber: item.preview.lineNumber, ranges: item.preview.ranges } : {}),
+    };
+    setRevealTarget(target);
+    openFilePath(item.relativePath);
+  }, [openFilePath, theaterId]);
 
   const handleSelect = useCallback((entry: FolderEntry) => {
     if (entry.kind !== "file") return;
@@ -763,6 +775,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   lang={viewState.lang}
                   truncated={viewState.truncated}
                   wrap={wrapLines}
+                  target={revealTarget?.relativePath === activePath && revealTarget.lineNumber ? {
+                    lineNumber: revealTarget.lineNumber,
+                    ranges: revealTarget.ranges ?? [],
+                  } : undefined}
                   t={t}
                 />
               )}
@@ -811,6 +827,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}
+          onSearchSelect={handleSearchSelect}
           onContextMenu={handleOpenContextMenu}
           onEntriesRefreshed={handleEntriesRefreshed}
           watchedDirectories={watchedDocumentDirectories}

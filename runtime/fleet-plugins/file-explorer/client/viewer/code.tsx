@@ -24,6 +24,10 @@ interface CodeViewerProps {
   readonly lang: string;
   readonly truncated?: boolean;
   readonly wrap?: boolean;
+  readonly target?: {
+    readonly lineNumber: number;
+    readonly ranges: readonly { readonly start: number; readonly end: number }[];
+  };
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -44,7 +48,7 @@ export function visibleLineWindow(
   return { start, end, offsetY: start * lineHeight, totalHeight };
 }
 
-export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeViewerProps) {
+export function CodeViewer({ content, lang, truncated, wrap = false, target, t }: CodeViewerProps) {
   const lines = useMemo(() => content.split("\n"), [content]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const windowRef = useRef<HTMLDivElement>(null);
@@ -63,6 +67,14 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
     return () => observer.disconnect();
   }, []);
 
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !target || wrapping) return;
+    const targetTop = Math.max(0, (target.lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
+    node.scrollTop = targetTop;
+    setScrollTop(targetTop);
+  }, [target?.lineNumber, wrapping]);
+
   const windowed = visibleLineWindow(scrollTop, viewportHeight, lines.length);
   // 줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 높이 격자에 얹으면 뒷줄이 도달 불가가 된다.
   const { start, end, offsetY, totalHeight } = wrapping
@@ -71,6 +83,19 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
   const rendered = useMemo(() => {
     return lines.slice(start, end).map((line) => renderLine(line, lang));
   }, [lang, lines, start, end]);
+  const rows = rendered.map((html, index) => {
+    const lineNumber = start + index + 1;
+    return (
+      <CodeRow
+        key={start + index}
+        lineNumber={lineNumber}
+        html={html}
+        target={lineNumber === target?.lineNumber ? target : undefined}
+        rawLine={lines[start + index] ?? ""}
+        lang={lang}
+      />
+    );
+  });
 
   return (
     <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}`}>
@@ -85,17 +110,13 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
         {wrapping ? (
           <div className="fexp-code-sizer">
             <div className="fexp-code-window" ref={windowRef}>
-              {rendered.map((html, index) => (
-                <CodeRow key={start + index} lineNumber={start + index + 1} html={html} />
-              ))}
+              {rows}
             </div>
           </div>
         ) : (
           <div className="fexp-code-sizer" style={{ height: totalHeight }}>
             <div className="fexp-code-window" ref={windowRef} style={{ transform: `translateY(${offsetY}px)` }}>
-              {rendered.map((html, index) => (
-                <CodeRow key={start + index} lineNumber={start + index + 1} html={html} />
-              ))}
+              {rows}
             </div>
           </div>
         )}
@@ -104,14 +125,27 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
   );
 }
 
-function CodeRow({ lineNumber, html }: { readonly lineNumber: number; readonly html: string }) {
+function CodeRow({
+  lineNumber,
+  html,
+  target,
+  rawLine,
+  lang,
+}: {
+  readonly lineNumber: number;
+  readonly html: string;
+  readonly target?: { readonly ranges: readonly { readonly start: number; readonly end: number }[] };
+  readonly rawLine: string;
+  readonly lang: string;
+}) {
+  const highlighted = target ? renderLineWithSearchRanges(rawLine, lang, target.ranges) : html;
   return (
-    <div className="fexp-code-row">
+    <div className={`fexp-code-row${target ? " is-search-target" : ""}`}>
       <span className="fexp-line-num" aria-hidden="true">{lineNumber}</span>
       <span
         className="fexp-line-code"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: highlighted }}
       />
     </div>
   );
@@ -124,6 +158,27 @@ function renderLine(line: string, lang: string): string {
     const escaped = escapeHtml(tok.value);
     return tok.kind === "text" ? escaped : `<span class="syn-${tok.kind}">${escaped}</span>`;
   }).join("") || " ";
+}
+
+export function renderLineWithSearchRanges(
+  line: string,
+  lang: string,
+  ranges: readonly { readonly start: number; readonly end: number }[],
+): string {
+  const normalized = [...ranges]
+    .filter((range) => range.start >= 0 && range.end > range.start && range.end <= line.length)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  if (normalized.length === 0) return renderLine(line, lang);
+  let cursor = 0;
+  let rendered = "";
+  for (const range of normalized) {
+    if (range.start < cursor) continue;
+    rendered += renderLine(line.slice(cursor, range.start), lang);
+    rendered += `<mark class="fexp-code-search-mark">${escapeHtml(line.slice(range.start, range.end))}</mark>`;
+    cursor = range.end;
+  }
+  rendered += renderLine(line.slice(cursor), lang);
+  return rendered || " ";
 }
 
 function escapeHtml(str: string): string {

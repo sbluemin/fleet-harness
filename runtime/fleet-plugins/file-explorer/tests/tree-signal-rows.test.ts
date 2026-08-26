@@ -152,9 +152,12 @@ describe("palette-search filter tree", () => {
       query: "needle",
       limit: PALETTE_SEARCH_LIMIT,
       includeHidden: true,
+      scope: "files",
+      kinds: ["file"],
     });
-    // 숨김 토글이 꺼져 있으면 서버가 상한·집계 전에 걸러야 표시 수와 안내 수가 일치한다.
+    // 숨김 토글과 scope는 서버가 후보 생성 전에 적용한다.
     expect(paletteSearchRequestBody("theater-a", "needle", false)).toMatchObject({ includeHidden: false });
+    expect(paletteSearchRequestBody("theater-a", "needle", false, "contents")).toMatchObject({ scope: "contents", kinds: ["file"] });
     expect(PALETTE_SEARCH_LIMIT).toBe(200);
   });
 

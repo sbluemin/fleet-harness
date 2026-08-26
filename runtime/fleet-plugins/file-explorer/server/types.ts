@@ -31,17 +31,42 @@ export interface FileReadResult {
   readonly mtimeMs: number;
 }
 
+export interface Utf16Span {
+  /** JavaScript 문자열 기준 UTF-16 code-unit 오프셋. */
+  readonly start: number;
+  /** Half-open 끝 오프셋. */
+  readonly end: number;
+}
+
+export interface FileSearchPreview {
+  /** 1부터 시작하는 파일 줄 번호. */
+  readonly lineNumber: number;
+  readonly text: string;
+  /** preview.text 기준 UTF-16 half-open 범위. */
+  readonly ranges: readonly Utf16Span[];
+}
+
 export interface FileSearchItem {
   readonly relativePath: string;
   readonly kind: "file" | "dir";
+  readonly source?: "path" | "content";
+  readonly score?: number;
+  /** relativePath 기준 UTF-16 half-open 범위. */
+  readonly pathRanges?: readonly Utf16Span[];
+  readonly preview?: FileSearchPreview;
 }
 
 export interface FileSearchResult {
   readonly files: readonly FileSearchItem[];
-  /** limit로 자르기 전의 전체 매치 수 */
+  /** complete=true일 때만 limit로 자르기 전의 정확한 전체 매치 수다. */
   readonly totalMatches: number;
+  /** false면 top-K를 먼저 반환했으며 totalMatches는 현재까지 확인한 수다. */
+  readonly complete?: boolean;
+  readonly elapsedMs?: number;
+  readonly engine?: "ripgrep" | "walker";
+  readonly degraded?: "walker";
   /** 탐색 상한(디렉터리/엔트리 캡)에 걸려 전체를 탐색하지 못한 경우에만 존재 */
   readonly walkCapped?: true;
-  /** 탐색 보행이 의존성/빌드 디렉터리를 하나라도 건너뛴 경우 true */
+  /** ignore 규칙 때문에 검색하지 않은 경로가 있을 수 있으면 true. */
   readonly ignoredSkipped: boolean;
 }
