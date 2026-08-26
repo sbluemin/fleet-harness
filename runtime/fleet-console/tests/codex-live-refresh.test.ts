@@ -165,6 +165,37 @@ describe("codex live refresh", () => {
     uninstall();
   });
 
+  /**
+   * 스트림이 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다 — 재연결은 곧 "놓친 것이 있을 수
+   * 있다"는 뜻이다.
+   */
+  it("catches up when the stream reconnects", async () => {
+    applyCodexWatchState(WS, "watching");
+    await settle();
+    expect(apiMocks.fetchSearch).not.toHaveBeenCalled();
+
+    applyCodexWatchState(WS, "watching");
+    await settle();
+
+    expect(apiMocks.fetchSearch).toHaveBeenCalled();
+    expect(apiMocks.fetchDrydock).toHaveBeenCalled();
+  });
+
+  it("does not claim a fresh check when every request failed", async () => {
+    applyCodexChanged(WS, ["queue"]);
+    await settle();
+    const checkedAt = getState().lastCheckedAt;
+    expect(checkedAt).not.toBeNull();
+
+    apiMocks.fetchDrydock.mockRejectedValueOnce(new Error("offline"));
+    apiMocks.fetchHealth.mockRejectedValueOnce(new Error("offline"));
+    applyCodexChanged(WS, ["queue"]);
+    await settle();
+
+    // 확인한 것이 없는데 시각을 밀면 신선도 표기가 거짓말을 한다.
+    expect(getState().lastCheckedAt).toBe(checkedAt);
+  });
+
   it("keeps the previous catalog when a revalidation request fails", async () => {
     applyCodexChanged(WS, ["wiki"]);
     await settle();

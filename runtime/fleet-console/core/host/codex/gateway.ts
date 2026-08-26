@@ -145,7 +145,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
-    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
     coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
@@ -161,6 +160,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       coworkService,
     });
     request.url = originalUrl;
+    // 감시는 요청을 처리한 *뒤에* 시작한다 — 지식 루트를 만드는 것은 그 요청이고,
+    // 아직 없는 경로에 감시를 붙이면 첫 화면이 degraded부터 보게 된다.
+    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     return handled;
   }
 
@@ -210,8 +212,10 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     theaterRoot: string,
   ): Promise<CodexWorkspaceResolution> {
     const workspace = await registerWorkspace(theaterRoot, undefined, theaterId);
-    const paths = deps.wikiWorkspaceResolver.resolve(workspace.realpath);
-    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
+    // 여기서는 감시를 걸지 않는다. 이 경로는 워크스페이스를 해석만 하고 지식 루트를 만들지
+    // 않으므로, 한 번도 열린 적 없는 Theater라면 아직 그 디렉토리가 없다. 패널은 곧바로
+    // 카탈로그를 요청하고, 그 요청이 루트를 만든 뒤 감시가 시작된다.
+    deps.wikiWorkspaceResolver.resolve(workspace.realpath);
     return { hasWiki: true, id: workspace.id };
   }
 

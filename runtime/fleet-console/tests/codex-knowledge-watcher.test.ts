@@ -16,7 +16,11 @@ interface FakeWatcher extends KnowledgeWatcherHandle {
 
 const ROOT = path.join("/tmp", "codex-knowledge");
 
-function createHarness(options?: { platform?: NodeJS.Platform; failFor?: (target: string) => boolean }) {
+function createHarness(options?: {
+  platform?: NodeJS.Platform;
+  failFor?: (target: string) => boolean;
+  directories?: Record<string, readonly string[]>;
+}) {
   const watchers: FakeWatcher[] = [];
   const changes: Array<{ workspaceId: string; scopes: readonly CodexKnowledgeScope[] }> = [];
   const states: Array<{ workspaceId: string; state: CodexWatchState }> = [];
@@ -43,6 +47,7 @@ function createHarness(options?: { platform?: NodeJS.Platform; failFor?: (target
     watcherFactory: factory,
     debounceMs: 50,
     platform: options?.platform ?? "darwin",
+    readDirectory: (target) => options?.directories?.[target] ?? [],
   });
 
   return { watcher, watchers, changes, states };
@@ -108,11 +113,23 @@ describe("codex knowledge watcher", () => {
     expect(h.watchers.every((w) => w.closed)).toBe(true);
   });
 
-  it("reports degraded when the knowledge root cannot be watched at all", () => {
-    const h = createHarness({ failFor: (target) => target === ROOT });
+  /**
+   * 지식 루트가 아직 없는 워크스페이스는 고장난 것이 아니라 비어 있을 뿐이다. degraded로
+   * 알리면 화면은 놓친 변화가 있다고 믿고 주기 확인으로 강등하는데, 감시할 대상이 없다.
+   */
+  it("stays silent for a workspace whose knowledge root does not exist yet", () => {
+    let rootExists = false;
+    const h = createHarness({ failFor: (target) => target === ROOT && !rootExists });
+    h.watcher.watch("ws1", ROOT);
     h.watcher.watch("ws1", ROOT);
 
-    expect(h.states).toEqual([{ workspaceId: "ws1", state: "degraded" }]);
+    expect(h.states).toEqual([]);
+    expect(h.watcher.stateOf("ws1")).toBeNull();
+    expect(h.watcher.snapshot()).toEqual([]);
+
+    rootExists = true;
+    h.watcher.watch("ws1", ROOT);
+    expect(h.states).toEqual([{ workspaceId: "ws1", state: "watching" }]);
   });
 
   it("stops delivering after unwatch", () => {
@@ -191,6 +208,73 @@ describe("codex knowledge watcher", () => {
 
     h.watcher.unwatch("ws1");
     expect(h.watcher.snapshot()).toEqual([{ workspaceId: "ws2", state: "degraded" }]);
+  });
+
+  /**
+   * 대기 중 제안의 본문 편집은 `queue/<patch-id>/patch.md`를 고쳐 쓴다. 부모 디렉토리만
+   * 보면 편집된 제안이 낡은 채 화면에 남고, 읽는 사람이 못 본 내용을 승인하게 된다.
+   */
+  it("watches inside each queue entry where recursive watching is unavailable", () => {
+    const queueDir = path.join(ROOT, "queue");
+    const h = createHarness({
+      platform: "linux",
+      directories: { [queueDir]: ["patch-a", "patch-b"] },
+    });
+    h.watcher.watch("ws1", ROOT);
+
+    const nested = h.watchers.find((w) => w.watchPath === path.join(queueDir, "patch-a"));
+    expect(nested).toBeDefined();
+    nested!.emit("change", "patch.md");
+    vi.advanceTimersByTime(50);
+
+    expect(h.changes).toEqual([{ workspaceId: "ws1", scopes: ["queue"] }]);
+  });
+
+  it("follows queue entries that appear and disappear", () => {
+    const queueDir = path.join(ROOT, "queue");
+    const directories: Record<string, readonly string[]> = { [queueDir]: ["patch-a"] };
+    const h = createHarness({ platform: "linux", directories });
+    h.watcher.watch("ws1", ROOT);
+    const parent = h.watchers.find((w) => w.watchPath === queueDir)!;
+
+    directories[queueDir] = ["patch-a", "patch-b"];
+    parent.emit("rename", "patch-b");
+    expect(h.watchers.some((w) => w.watchPath === path.join(queueDir, "patch-b"))).toBe(true);
+
+    // 결정된 패치는 큐에서 archive로 옮겨 간다 — 남은 감시자는 정리되어야 한다.
+    const goneWatcher = h.watchers.find((w) => w.watchPath === path.join(queueDir, "patch-a"))!;
+    directories[queueDir] = ["patch-b"];
+    parent.emit("rename", "patch-a");
+    expect(goneWatcher.closed).toBe(true);
+  });
+
+  /**
+   * 지식 루트는 첫 API 요청이 만든다. 그 전에 붙이려다 실패한 워크스페이스에 매 요청마다
+   * degraded를 다시 알리면, 화면이 그때마다 전 범위 재검증에 들어가 요청이 부챗살처럼 퍼진다.
+   */
+  /**
+   * 살아 있던 감시가 죽은 뒤에는 매 요청이 재무장을 시도한다. 그때마다 degraded를 다시
+   * 알리면 화면이 그때마다 전 범위 재검증에 들어가 요청이 부챗살처럼 퍼진다.
+   */
+  it("does not re-announce a degraded workspace on every arming attempt", () => {
+    let healthy = true;
+    const h = createHarness({ failFor: (target) => target === ROOT && !healthy });
+    h.watcher.watch("ws1", ROOT);
+    expect(h.states).toEqual([{ workspaceId: "ws1", state: "watching" }]);
+
+    healthy = false;
+    h.watchers[0]!.fail();
+    expect(h.states.at(-1)).toEqual({ workspaceId: "ws1", state: "degraded" });
+    const announced = h.states.length;
+
+    h.watcher.watch("ws1", ROOT);
+    h.watcher.watch("ws1", ROOT);
+    expect(h.states).toHaveLength(announced);
+
+    // 되살아나면 그때는 승격을 알린다.
+    healthy = true;
+    h.watcher.watch("ws1", ROOT);
+    expect(h.states.at(-1)).toEqual({ workspaceId: "ws1", state: "watching" });
   });
 
   it("drops every watcher on disposeAll", () => {

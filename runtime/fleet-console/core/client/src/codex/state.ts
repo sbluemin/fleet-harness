@@ -123,7 +123,7 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
   ]);
   if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
 
-  const next: Partial<AppState> = { lastCheckedAt: Date.now() };
+  const next: Partial<AppState> = {};
   if (searchResult) {
     next.index = searchResult.entries;
     // 재검증이 성공했다면 이전 로드 실패는 더 이상 사실이 아니다.
@@ -132,6 +132,9 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
   if (drydockList) next.pendingPatchCount = drydockList.pendingCount;
   if (schemaCatalog) next.schemaCatalog = schemaCatalog;
   if (health) next.health = health;
+  // 모든 요청이 실패했다면 확인한 것이 없다 — 그때 시각을 밀면 신선도 표기가 거짓말을 한다.
+  const verified = searchResult !== null || drydockList !== null || schemaCatalog !== null || health !== null;
+  if (verified) next.lastCheckedAt = Date.now();
   setState(next);
 }
 

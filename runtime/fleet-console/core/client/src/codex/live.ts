@@ -20,6 +20,9 @@ const DEGRADED_POLL_MS = 30_000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let installed = false;
 let watchStateByWorkspace = new Map<string, CodexWatchState>();
+// 이 화면이 살아 있는 동안 "감시 중"을 이미 한 번 받아 본 워크스페이스. 두 번째부터는
+// 새 스트림이 붙었다는 뜻이다.
+let watchedSince = new Set<string>();
 // 마지막으로 감시 상태를 맞춰 둔 워크스페이스. undefined는 "아직 한 번도"라는 뜻이다.
 let syncedWorkspace: string | null | undefined = undefined;
 
@@ -66,8 +69,13 @@ export function applyCodexWatchState(workspaceId: string, state: CodexWatchState
     void revalidateAll().catch(() => {});
     return;
   }
+  // 스트림이 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다 — 이 워크스페이스를 이미 보고
+  // 있었다면 재연결은 곧 "놓친 것이 있을 수 있다"는 뜻이므로 한 번 따라잡는다.
+  const reconnected = watchedSince.has(workspaceId);
+  watchedSince.add(workspaceId);
   setLiveState("live");
   stopPolling();
+  if (reconnected) void revalidateAll().catch(() => {});
 }
 
 /**
@@ -136,6 +144,7 @@ export function revalidateCodexNow(): void {
 /** 테스트 전용 — 모듈 스코프 감시 상태를 비운다. */
 export function resetCodexLiveForTest(): void {
   watchStateByWorkspace = new Map();
+  watchedSince = new Set();
   syncedWorkspace = undefined;
   stopPolling();
   installed = false;
