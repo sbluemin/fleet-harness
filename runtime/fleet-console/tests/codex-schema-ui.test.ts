@@ -164,7 +164,7 @@ describe("Codex schema UI contract", () => {
     expect(strip.textContent).toContain("Wiki log unreadable");
     expect(strip.querySelector(".codex-nav-health-dot")?.classList.contains("is-coral")).toBe(false);
     strip.querySelector<HTMLButtonElement>("[data-health-detail]")?.click();
-    expect(strip.querySelector(".codex-nav-health-popover")?.textContent).toContain("Wiki log unreadableCheck");
+    expect(document.body.querySelector(".codex-nav-health-popover")?.textContent).toContain("Wiki log unreadableCheck");
     controller.destroy();
   });
 
@@ -197,13 +197,70 @@ describe("Codex schema UI contract", () => {
     const detail = strip.querySelector<HTMLButtonElement>("[data-health-detail]")!;
     detail.click();
     expect(strip.querySelector("[data-health-detail]")?.getAttribute("aria-expanded")).toBe("true");
-    expect(strip.querySelector(".codex-nav-health-popover")?.textContent).toContain("Errors1");
+    expect(document.body.querySelector(".codex-nav-health-popover")?.textContent).toContain("Errors1");
+    expect(strip.contains(document.body.querySelector(".codex-nav-health-popover"))).toBe(false);
     expect(onRequest).not.toHaveBeenCalled();
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    expect(strip.querySelector(".codex-nav-health-popover")).toBeNull();
+    expect(document.body.querySelector(".codex-nav-health-popover")).toBeNull();
+    expect(detail.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(detail);
     expect(onRequest).not.toHaveBeenCalled();
     controller.destroy();
+  });
+
+  it("keeps health details inside the viewport when the rail trigger hugs an edge", async () => {
+    vi.resetModules();
+    apiMocks.fetchHealth.mockResolvedValue({
+      lastDrydock: {
+        at: "2026-08-03T02:03:04.000Z",
+        ok: false,
+        errorCount: 1,
+        warningCount: 2,
+        infoCount: 3,
+        issueCount: 6,
+      },
+      conflictCount: 1,
+      pendingCount: 2,
+    });
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 2 });
+    const clientWidth = Object.getOwnPropertyDescriptor(document.documentElement, "clientWidth");
+    const clientHeight = Object.getOwnPropertyDescriptor(document.documentElement, "clientHeight");
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 668 });
+    Object.defineProperty(document.documentElement, "clientHeight", { configurable: true, value: 734 });
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const detail = root.querySelector<HTMLButtonElement>("[data-health-detail]")!;
+      detail.getBoundingClientRect = () => new DOMRect(500, 250, 150, 32);
+      detail.getClientRects = () => ({ length: 1 }) as DOMRectList;
+      HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+        if (this.classList.contains("codex-nav-health-popover")) return new DOMRect(0, 0, 190, 312);
+        return originalRect.call(this);
+      };
+
+      detail.click();
+      const popover = document.body.querySelector<HTMLElement>(".codex-nav-health-popover")!;
+      expect(popover.style.left).toBe("460px");
+      expect(popover.style.top).toBe("288px");
+
+      detail.style.visibility = "hidden";
+      window.dispatchEvent(new Event("resize"));
+      expect(document.body.querySelector(".codex-nav-health-popover")).toBeNull();
+    } finally {
+      controller.destroy();
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      if (clientWidth) Object.defineProperty(document.documentElement, "clientWidth", clientWidth);
+      else delete (document.documentElement as unknown as Record<string, unknown>).clientWidth;
+      if (clientHeight) Object.defineProperty(document.documentElement, "clientHeight", clientHeight);
+      else delete (document.documentElement as unknown as Record<string, unknown>).clientHeight;
+    }
   });
 
   it("keeps the latest entry when an older request resolves last", async () => {

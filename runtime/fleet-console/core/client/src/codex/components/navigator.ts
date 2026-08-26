@@ -44,6 +44,8 @@ type SortOrder = "updated" | "name";
 
 const SEARCH_DEBOUNCE_MS = 120;
 const SORT_STORAGE_KEY = "fleet.codex.navigator.sort";
+const HEALTH_POPOVER_VIEWPORT_GUTTER = 12;
+const HEALTH_POPOVER_TRIGGER_GAP = 6;
 
 function resolveActiveLocale() {
   const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
@@ -214,6 +216,9 @@ export function mountNavigatorInto(
   let searchController: AbortController | null = null;
   let searchEpoch = 0;
   let healthPopoverOpen = false;
+  let healthPopoverElement: HTMLElement | null = null;
+  let healthPopoverTrigger: HTMLButtonElement | null = null;
+  let healthPopoverResizeObserver: ResizeObserver | null = null;
   // 대기 수가 늘어난 순간에만 도착 표식을 켠다 — 줄어드는 변화(승인·반려)는 알림이 아니다.
   let lastSeenPendingCount: number | null = null;
 
@@ -271,6 +276,107 @@ export function mountNavigatorInto(
   const sortControls = root.querySelector<HTMLElement>(".codex-nav-sort")!;
   const healthStrip = root.querySelector<HTMLElement>(".codex-nav-health")!;
 
+  function stopHealthPopoverTracking(): void {
+    healthPopoverResizeObserver?.disconnect();
+    healthPopoverResizeObserver = null;
+    window.removeEventListener("resize", positionHealthPopover);
+    window.removeEventListener("scroll", positionHealthPopover, true);
+  }
+
+  function isHealthPopoverTriggerVisible(trigger: HTMLButtonElement): boolean {
+    if (!trigger.isConnected) return false;
+    if (typeof trigger.checkVisibility === "function") {
+      return trigger.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+    }
+    const style = getComputedStyle(trigger);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+
+  function closeHealthPopover(restoreFocus = false): void {
+    healthPopoverOpen = false;
+    stopHealthPopoverTracking();
+    healthPopoverElement?.remove();
+    healthPopoverElement = null;
+    const trigger = healthPopoverTrigger;
+    healthPopoverTrigger = null;
+    trigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus && trigger && isHealthPopoverTriggerVisible(trigger)) trigger.focus();
+  }
+
+  function positionHealthPopover(): void {
+    if (!healthPopoverElement || !healthPopoverTrigger) return;
+    if (!isHealthPopoverTriggerVisible(healthPopoverTrigger)) {
+      closeHealthPopover();
+      return;
+    }
+    const triggerRect = healthPopoverTrigger.getBoundingClientRect();
+    const popoverRect = healthPopoverElement.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+    const maxLeft = Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, viewportWidth - popoverRect.width - HEALTH_POPOVER_VIEWPORT_GUTTER);
+    const left = Math.min(maxLeft, Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, triggerRect.right - popoverRect.width));
+    const below = triggerRect.bottom + HEALTH_POPOVER_TRIGGER_GAP;
+    const above = triggerRect.top - popoverRect.height - HEALTH_POPOVER_TRIGGER_GAP;
+    const top = below + popoverRect.height <= viewportHeight - HEALTH_POPOVER_VIEWPORT_GUTTER || above < HEALTH_POPOVER_VIEWPORT_GUTTER
+      ? below
+      : above;
+    healthPopoverElement.style.left = `${Math.round(left)}px`;
+    healthPopoverElement.style.top = `${Math.round(Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, top))}px`;
+  }
+
+  function startHealthPopoverTracking(): void {
+    positionHealthPopover();
+    if (!healthPopoverOpen) return;
+    window.addEventListener("resize", positionHealthPopover);
+    window.addEventListener("scroll", positionHealthPopover, true);
+    if (typeof ResizeObserver !== "undefined" && healthPopoverTrigger && healthPopoverElement) {
+      healthPopoverResizeObserver = new ResizeObserver(positionHealthPopover);
+      healthPopoverResizeObserver.observe(root);
+      healthPopoverResizeObserver.observe(healthPopoverTrigger);
+      healthPopoverResizeObserver.observe(healthPopoverElement);
+    }
+  }
+
+  function openHealthPopover(trigger: HTMLButtonElement): void {
+    const state = getState();
+    const health = state.health;
+    if (!health) return;
+    const t = consoleT();
+    const drydock = health.lastDrydock ?? null;
+    const logUnreadable = health.logUnreadable === true;
+    const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
+    closeHealthPopover();
+    healthPopoverOpen = true;
+    healthPopoverTrigger = trigger;
+    trigger.setAttribute("aria-expanded", "true");
+    const popover = document.createElement("div");
+    popover.className = "codex-nav-health-popover";
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", t("codex.nav.healthDetailsAria"));
+    popover.innerHTML = `
+      ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
+      <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? 0}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthWatch"))}</span><strong>${escapeHtml(
+        state.liveState === "live"
+          ? t("codex.nav.healthWatchLive")
+          : state.liveState === "polling"
+            ? t("codex.nav.healthWatchPolling")
+            : t("codex.nav.healthWatchUnknown"),
+      )}</strong></div>
+      <p>${escapeHtml(t("codex.nav.healthRanAt", { at: timestamp }))}</p>
+      <p>${escapeHtml(state.lastCheckedAt === null
+        ? t("codex.nav.healthCheckedNever")
+        : t("codex.nav.healthCheckedAt", { at: new Date(state.lastCheckedAt).toLocaleTimeString(resolveActiveLocale()) }))}</p>
+    `;
+    (document.getElementById("app") ?? document.body).appendChild(popover);
+    healthPopoverElement = popover;
+    startHealthPopoverTracking();
+  }
+
   function renderHealth(): void {
     const t = consoleT();
     const state = getState();
@@ -279,11 +385,12 @@ export function mountNavigatorInto(
     const issueCount = drydock?.issueCount ?? 0;
     const logUnreadable = health?.logUnreadable === true;
     // 문장형 스트립은 좁은 폭에서 잘려 나갔다 — 항상 보이는 응축 칩으로 바꾸고
-    // 세부는 팝오버가 계속 담당한다. 충돌 수는 충돌 칩의 배지로 옮긴다.
+    // 세부는 뷰포트 레이어가 담당한다. 충돌 수는 충돌 칩의 배지로 옮긴다.
     conflictBadge.textContent = String(health?.conflictCount ?? 0);
     conflictBadge.hidden = (health?.conflictCount ?? 0) === 0;
     healthStrip.hidden = health === null;
     if (!health) {
+      closeHealthPopover();
       healthStrip.innerHTML = "";
       return;
     }
@@ -294,31 +401,15 @@ export function mountNavigatorInto(
       : attention
         ? t("codex.nav.healthIssues", { count: issueCount })
         : t("codex.nav.healthOk");
-    const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
     healthStrip.innerHTML = `
-      <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
+      <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="false" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
         <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>${escapeHtml(label)}
       </button>
-      ${healthPopoverOpen ? `<div class="codex-nav-health-popover" role="dialog" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
-        ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
-        <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
-        <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? 0}</strong></div>
-        <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>
-        <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
-        <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
-        <div><span>${escapeHtml(t("codex.nav.healthWatch"))}</span><strong>${escapeHtml(
-          state.liveState === "live"
-            ? t("codex.nav.healthWatchLive")
-            : state.liveState === "polling"
-              ? t("codex.nav.healthWatchPolling")
-              : t("codex.nav.healthWatchUnknown"),
-        )}</strong></div>
-        <p>${escapeHtml(t("codex.nav.healthRanAt", { at: timestamp }))}</p>
-        <p>${escapeHtml(state.lastCheckedAt === null
-          ? t("codex.nav.healthCheckedNever")
-          : t("codex.nav.healthCheckedAt", { at: new Date(state.lastCheckedAt).toLocaleTimeString(resolveActiveLocale()) }))}</p>
-      </div>` : ""}
     `;
+    if (healthPopoverOpen) {
+      const trigger = healthStrip.querySelector<HTMLButtonElement>("[data-health-detail]");
+      if (trigger) openHealthPopover(trigger);
+    }
   }
 
   function loadHealth(): void {
@@ -451,11 +542,11 @@ export function mountNavigatorInto(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
-    const healthDetail = target.closest<HTMLElement>("[data-health-detail]");
+    const healthDetail = target.closest<HTMLButtonElement>("[data-health-detail]");
     if (healthDetail) {
       event.stopPropagation();
-      healthPopoverOpen = !healthPopoverOpen;
-      renderHealth();
+      if (healthPopoverOpen) closeHealthPopover();
+      else openHealthPopover(healthDetail);
       return;
     }
 
@@ -510,16 +601,15 @@ export function mountNavigatorInto(
   }
 
   function handleDocumentClick(event: MouseEvent): void {
-    if (!healthPopoverOpen || healthStrip.contains(event.target as Node)) return;
-    healthPopoverOpen = false;
-    renderHealth();
+    if (!healthPopoverOpen) return;
+    const target = event.target as Node;
+    if (healthStrip.contains(target) || healthPopoverElement?.contains(target)) return;
+    closeHealthPopover();
   }
 
   function handleDocumentKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Escape" || !healthPopoverOpen) return;
-    healthPopoverOpen = false;
-    renderHealth();
-    root.querySelector<HTMLButtonElement>("[data-health-detail]")?.focus();
+    closeHealthPopover(true);
   }
 
   function handleSearchInput(): void {
@@ -554,6 +644,7 @@ export function mountNavigatorInto(
       searchInput.removeEventListener("input", handleSearchInput);
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("keydown", handleDocumentKeyDown);
+      closeHealthPopover();
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchController?.abort();
       root.innerHTML = "";
