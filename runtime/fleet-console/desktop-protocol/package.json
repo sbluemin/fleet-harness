@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/desktop-protocol",
-  "version": "1.75.0",
+  "version": "1.76.0",
   "private": true,
   "type": "module",
   "exports": {

@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.76.0] - 2026-08-26
+
+### fleet-console
+
+#### Added
+- Codex reading at full size now keeps a head bar that names the document you are reading, shows how far into it you are, and carries Find, Copy link, Source and reading width beside the close button. Cmd+K opens an entry switcher inside the reading surface, so you can search the catalog and move to the next document without leaving full size, and a tag in the document opens that same switcher already filtered.
+- The document you are reading now lives in the address bar, so a reload comes back to the same document at the same place and in the same view, the browser's back and forward walk the documents you moved through, and Copy link hands someone else exactly what you are looking at.
+- Full-size reading is now keyboard-first: the document body takes focus when it opens, so Space, PageDown, Home and End move through it, J and K jump between sections, Cmd+[ and Cmd+] walk reader history, and Cmd+F finds inside the document instead of across the whole page.
+- Reading width and size can be set to narrow, wide or large, the full markdown source can be read and copied, and on a wide screen related entries and backlinks move beside the text instead of waiting at the end of it.
+- Search File Explorer by ranked file names or literal file contents, with highlighted path and line matches and direct navigation to matching source lines.
+- Usage limits cards now collapse one at a time. A chevron in each card header folds that provider to a single row, and the row keeps reporting: the percentage of its most pressed window, a bar in the same severity colour the full meter uses, and the countdown to its reset. A provider that is collapsed while in trouble also carries a coloured rim, so a folded card is a density change rather than a blind spot. Cards with nothing to report say why instead - "Not connected", "No plan". Which cards are folded is remembered across restarts, next to the card order.
+
+#### Changed
+- Codex keeps up with the wiki on its own. A draft staged by an agent, an approval made elsewhere, or an entry that just landed now reaches the catalog, the review-queue count and the status chip within a moment, instead of waiting for a page refresh. A document you are reading is never swapped out from under you - it says it changed and waits for you, and says so differently when the proposal you were reading has already been decided somewhere else. The status chip carries when Codex last checked and whether it is watching or falling back to periodic checks.
+- Show where keyboard focus went on the Map. The panels you are not working in now fade back while one panel holds focus, that panel sits one step above the board, and a brass ring runs around it once at the moment focus arrives - so an arrow-key move reads on the panels themselves instead of only in the sidebar. Settings -> Appearance carries a slider for how far the other panels fade, from off to strong. Captions keep the look they always had, a faded panel keeps its status rail and stays readable, and the ring is skipped entirely when the system asks for reduced motion.
+
+#### Fixed
+- The table of contents no longer freezes on the first section when you open a document at full size. Moving the reader between the split pane and full size re-anchors the scroll spy, so the current section keeps following what you are reading.
+- Reader history keeps your place. Following a link out of a long document and pressing back returns to the line you left, instead of dropping you at the top, and a reload restores the same scroll position as well.
+- The console preview in Settings -> Appearance now runs the full height of the theme controls beside it, instead of sitting as a small box pinned to the top of its column with a third of that column empty. The preview terminal fills the taller frame and the floating menu stays over its output, so liquid glass still reads as glass.
+
 ## [1.75.0] - 2026-08-26
 
 ### fleet-console
