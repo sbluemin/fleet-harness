@@ -108,13 +108,14 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
     );
   } else if (activeTab === "operations") {
     content = <MobileOperationList operations={operations} operationRuntime={operationRuntime} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
-  } else if (activeTab === "skills") {
-    const skillsPanel = railPanels.find((panel) => panel.id === "skills" && panel.render !== undefined);
-    content = (
-      <section className="mobile-rail-panel" aria-label={skillsPanel ? resolveLocalizedText(skillsPanel.title, language) : "Skills"}>
-        {skillsPanel?.render?.(railContext)}
+  } else if (activeTab.startsWith("panel:")) {
+    const panelId = activeTab.slice("panel:".length);
+    const panel = railPanels.find((candidate) => candidate.id === panelId && candidate.render !== undefined);
+    content = panel ? (
+      <section className="mobile-rail-panel" aria-label={resolveLocalizedText(panel.title, language)}>
+        {panel.render?.(railContext)}
       </section>
-    );
+    ) : null;
   } else {
     content = (
       <section className="mobile-simple-panel">

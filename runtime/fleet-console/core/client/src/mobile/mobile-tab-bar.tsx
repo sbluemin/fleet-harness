@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -8,10 +8,12 @@ import { useConsoleLocale, useT } from "../i18n/index.js";
 import { setMobileTab, useMobileTab, type MobileTab } from "./mobile-store.js";
 
 type RouteTab = "theaters" | "settings";
-type TabId = MobileTab | RouteTab;
+type CoreTab = "operations" | "alerts";
+type TabEntry =
+  | { readonly kind: "route"; readonly id: RouteTab }
+  | { readonly kind: "core"; readonly id: CoreTab }
+  | { readonly kind: "panel"; readonly id: `panel:${string}`; readonly panel: RailPanelDescriptor };
 
-// Theater leads because it contains the rest: a Theater holds Operations, and their alerts follow.
-const TABS: readonly TabId[] = ["theaters", "operations", "alerts", "skills", "settings"];
 const ROUTE_TABS: Readonly<Record<RouteTab, string>> = { theaters: "/theaters", settings: "/settings" };
 
 export function MobileTabBar({ mobilePanels, onSelect }: {
@@ -20,44 +22,55 @@ export function MobileTabBar({ mobilePanels, onSelect }: {
 }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const skillsPanel = mobilePanels.find((panel) => panel.id === "skills");
-  const skillsLabel = skillsPanel ? resolveLocalizedText(skillsPanel.title, locale) : "Skills";
-  const tabs = skillsPanel ? TABS : TABS.filter((tab) => tab !== "skills");
   const activeTab = useMobileTab();
   const navigate = useNavigate();
   const location = useLocation();
   const path = location.pathname.replace(/\/+$/, "");
   const routeTab = (Object.keys(ROUTE_TABS) as readonly RouteTab[]).find((tab) => ROUTE_TABS[tab] === path) ?? null;
+  const panelTabs = mobilePanels.map((panel): TabEntry => ({ kind: "panel", id: `panel:${panel.id}`, panel }));
+  const tabs: readonly TabEntry[] = [
+    { kind: "route", id: "theaters" },
+    { kind: "core", id: "operations" },
+    { kind: "core", id: "alerts" },
+    ...panelTabs,
+    { kind: "route", id: "settings" },
+  ];
+  const activePanelAvailable = !activeTab.startsWith("panel:")
+    || mobilePanels.some((panel) => activeTab === `panel:${panel.id}`);
 
   useEffect(() => {
-    if (!skillsPanel && activeTab === "skills") setMobileTab("operations");
-  }, [activeTab, skillsPanel]);
+    if (!activePanelAvailable) setMobileTab("operations");
+  }, [activePanelAvailable]);
 
   return (
     <nav className="mobile-tab-bar" aria-label={t("mobile.tabs.aria")}>
       {tabs.map((tab) => {
-        const active = isRouteTab(tab) ? tab === routeTab : routeTab === null && activeTab === tab;
+        const active = tab.kind === "route"
+          ? tab.id === routeTab
+          : routeTab === null && activeTab === tab.id;
+        const label = tab.kind === "panel"
+          ? resolveLocalizedText(tab.panel.title, locale)
+          : t(`mobile.tabs.${tab.id}`);
         return (
           <button
-            key={tab}
+            key={tab.id}
             type="button"
             className={`mobile-tab ${active ? "is-active" : ""}`}
             aria-current={active ? "page" : undefined}
             onClick={() => {
-              if (isRouteTab(tab)) {
-                navigate(ROUTE_TABS[tab]);
+              if (tab.kind === "route") {
+                navigate(ROUTE_TABS[tab.id]);
                 return;
               }
-              setMobileTab(tab);
-              // A tab is a destination, so an operations tab pressed from a route tab returns there.
+              setMobileTab(tab.id);
               if (routeTab !== null) navigate("/operations");
-              onSelect?.(tab);
+              onSelect?.(tab.id);
             }}
           >
-            {tab === "skills" && skillsPanel
-              ? <span className="mobile-tab-icon">{typeof skillsPanel.icon === "function" ? skillsPanel.icon() : skillsPanel.icon}</span>
-              : <MobileTabIcon tab={tab} />}
-            <span>{tab === "skills" ? skillsLabel : t(`mobile.tabs.${tab}`)}</span>
+            {tab.kind === "panel"
+              ? <span className="mobile-tab-icon">{resolvePanelIcon(tab.panel)}</span>
+              : <MobileTabIcon tab={tab.id} />}
+            <span>{label}</span>
           </button>
         );
       })}
@@ -65,11 +78,11 @@ export function MobileTabBar({ mobilePanels, onSelect }: {
   );
 }
 
-function isRouteTab(tab: TabId): tab is RouteTab {
-  return tab === "theaters" || tab === "settings";
+function resolvePanelIcon(panel: RailPanelDescriptor): ReactNode {
+  return typeof panel.icon === "function" ? panel.icon() : panel.icon;
 }
 
-function MobileTabIcon({ tab }: { readonly tab: TabId }) {
+function MobileTabIcon({ tab }: { readonly tab: RouteTab | CoreTab }) {
   if (tab === "theaters") {
     return (
       <svg className="mobile-tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true">
@@ -95,7 +108,6 @@ function MobileTabIcon({ tab }: { readonly tab: TabId }) {
       </svg>
     );
   }
-  if (tab === "skills") return null;
   return (
     <svg className="mobile-tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true">
       <path d="M8.4 3.6h3.2l.35 1.9 1.6.92 1.8-.68 1.6 2.77-1.45 1.24v1.84l1.45 1.24-1.6 2.77-1.8-.68-1.6.92-.35 1.9H8.4l-.35-1.9-1.6-.92-1.8.68-1.6-2.77 1.45-1.24V10.4L3.05 9.16l1.6-2.77 1.8.68 1.6-.92Z" />
