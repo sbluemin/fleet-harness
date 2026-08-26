@@ -1,6 +1,8 @@
 import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
+import type { CodexKnowledgeScope } from "../../host/codex/contracts";
+import { applyCodexChanged, applyCodexWatchState } from "./codex/live.js";
 import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
@@ -58,6 +60,34 @@ export function connectOperationsSse(): void {
       applyDesktopFullscreenSnapshot(JSON.parse(msg.data));
     } catch {
       resetDesktopFullscreenSnapshot();
+    }
+  });
+
+  // Codex(wiki) 지식 루트 변화 — 이벤트는 "여기가 변했다"만 싣고, 화면이 정식 API로 다시 읽는다.
+  source.addEventListener("codex:changed", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      const data = JSON.parse(msg.data) as { readonly workspaceId?: unknown; readonly scopes?: unknown };
+      if (typeof data.workspaceId !== "string" || !Array.isArray(data.scopes)) return;
+      const scopes = data.scopes.filter((scope): scope is CodexKnowledgeScope => isCodexScope(scope));
+      if (scopes.length === 0) return;
+      applyCodexChanged(data.workspaceId, scopes);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
+  source.addEventListener("codex:watch", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      const data = JSON.parse(msg.data) as { readonly workspaceId?: unknown; readonly state?: unknown };
+      if (typeof data.workspaceId !== "string") return;
+      if (data.state !== "watching" && data.state !== "degraded") return;
+      applyCodexWatchState(data.workspaceId, data.state);
+    } catch {
+      // ignore malformed SSE event
     }
   });
 
@@ -184,6 +214,12 @@ export function refreshObserverStatus(): void {
       statusRefreshPending = false;
       refreshObserverStatus();
     });
+}
+
+const CODEX_SCOPES: ReadonlySet<string> = new Set(["queue", "wiki", "conflicts", "schema", "index"]);
+
+function isCodexScope(value: unknown): value is CodexKnowledgeScope {
+  return typeof value === "string" && CODEX_SCOPES.has(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

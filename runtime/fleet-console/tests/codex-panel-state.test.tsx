@@ -58,6 +58,12 @@ vi.mock("../core/client/src/store.js", () => ({
 
 vi.mock("../core/client/src/codex/state.js", () => ({
   loadInitialData: vi.fn(),
+  // 패널은 복귀 재검증을 위해 스토어를 읽는다 — 워크스페이스가 없으면 아무 요청도 나가지 않는다.
+  getState: vi.fn(() => ({ currentWorkspaceId: null })),
+  revalidateAll: vi.fn(async () => undefined),
+  revalidateScopes: vi.fn(async () => undefined),
+  setLiveState: vi.fn(),
+  subscribeState: vi.fn(() => () => undefined),
 }));
 
 import { CodexReadingSheet } from "../core/client/src/components/codex-reading-sheet.js";

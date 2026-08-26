@@ -18,6 +18,9 @@ import { listRemoteInterfaces, probeRemoteIdentity } from "./remote-discovery.js
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
+import { createCodexKnowledgeWatcher } from "./codex/knowledge-watcher.js";
+import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./codex/contracts.js";
+import type { CodexKnowledgeScope, CodexWatchState } from "./codex/contracts.js";
 import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
@@ -438,6 +441,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lockDir: path.join(workspace.path, "knowledge.migration.lock"),
     }, operation),
   });
+  const codexKnowledgeWatcher = createCodexKnowledgeWatcher({
+    onChange: (workspaceId, scopes) => broadcastCodexChanged(workspaceId, scopes),
+    onState: (workspaceId, state) => broadcastCodexWatchState(workspaceId, state),
+  });
   const codex = createCodexGateway({
     cwd: deps.codexCwd ?? process.cwd(),
     host,
@@ -446,6 +453,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveListener: (request) => listenerForRequest(request),
     wikiWorkspaceResolver,
     dataDir: durablePaths.dir,
+    onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => codexKnowledgeWatcher.watch(workspaceId, knowledgeRoot),
+    onWorkspaceReleased: (workspaceId) => codexKnowledgeWatcher.unwatch(workspaceId),
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
@@ -824,6 +833,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
       if (audience === "local") {
         res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
+      }
+      // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
+      for (const entry of codexKnowledgeWatcher.snapshot()) {
+        res.write(encodeSseData(CODEX_WATCH_EVENT, entry));
       }
       const subscriber: OperationSseSubscriber = { res, audience, sessionHandle };
       operationSseSubscribers.add(subscriber);
@@ -2051,6 +2064,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
+    codexKnowledgeWatcher.disposeAll();
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
@@ -2142,6 +2156,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ];
     const sanitized = createSanitizedOpDto(node, { sensitiveFields });
     const data = encodeSseData("operation:changed", { operation: sanitized });
+    for (const subscriber of operationSseSubscribers) {
+      subscriber.res.write(data);
+    }
+  }
+
+  /**
+   * 이벤트는 힌트다 — 변한 범위만 싣고 내용은 싣지 않는다. 원격 세션도 이 채널을 받으므로
+   * 경로·본문이 실리면 안 되고, workspaceId(12-hex 해시)와 범위 이름만 나간다.
+   */
+  function broadcastCodexChanged(workspaceId: string, scopes: readonly CodexKnowledgeScope[]): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(CODEX_CHANGED_EVENT, { workspaceId, scopes });
+    for (const subscriber of operationSseSubscribers) {
+      subscriber.res.write(data);
+    }
+  }
+
+  function broadcastCodexWatchState(workspaceId: string, state: CodexWatchState): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(CODEX_WATCH_EVENT, { workspaceId, state });
     for (const subscriber of operationSseSubscribers) {
       subscriber.res.write(data);
     }

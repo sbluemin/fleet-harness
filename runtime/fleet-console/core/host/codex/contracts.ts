@@ -207,6 +207,29 @@ export interface CodexHealthResponse {
   logUnreadable?: true;
 }
 
+/** Operation SSE 채널 위의 Codex 이벤트 이름 — 클라이언트 리스너와 한 글자도 달라선 안 된다. */
+export const CODEX_CHANGED_EVENT = "codex:changed";
+export const CODEX_WATCH_EVENT = "codex:watch";
+
+/**
+ * Codex 지식 루트에서 변한 범위. 이벤트는 사실을 싣지 않고 "여기가 변했다"만 말한다 —
+ * 화면은 그 힌트를 받아 정식 API로 다시 읽는다(순서 뒤바뀜·유실에 강하다).
+ */
+export type CodexKnowledgeScope = "queue" | "wiki" | "conflicts" | "schema" | "index";
+
+/** 감시가 살아 있는지. degraded면 화면은 스스로 주기 재검증으로 강등한다. */
+export type CodexWatchState = "watching" | "degraded";
+
+export interface CodexChangedEvent {
+  readonly workspaceId: string;
+  readonly scopes: readonly CodexKnowledgeScope[];
+}
+
+export interface CodexWatchEvent {
+  readonly workspaceId: string;
+  readonly state: CodexWatchState;
+}
+
 export interface AllowedAccessSets {
   allowedHosts: Set<string>;
   allowedOrigins: Set<string>;

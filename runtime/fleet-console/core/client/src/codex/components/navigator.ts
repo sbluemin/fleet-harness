@@ -2,8 +2,8 @@ import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
 import { formatRelativeUpdated, getEntryStatusBadge } from "./meta-chips.js";
-import { fetchHealth, fetchSearch } from "../api.js";
-import { getState, subscribeState } from "../state.js";
+import { fetchSearch } from "../api.js";
+import { getState, revalidateScopes, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
 import type { CodexHealthResponse, SearchEntry, WikiIndexEntry } from "../api.js";
 
@@ -212,11 +212,10 @@ export function mountNavigatorInto(
   let mode: "entries" | "schema" = "entries";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let searchController: AbortController | null = null;
-  let healthController: AbortController | null = null;
   let searchEpoch = 0;
-  let healthEpoch = 0;
-  let health: CodexHealthResponse | null = null;
   let healthPopoverOpen = false;
+  // 대기 수가 늘어난 순간에만 도착 표식을 켠다 — 줄어드는 변화(승인·반려)는 알림이 아니다.
+  let lastSeenPendingCount: number | null = null;
 
   function renderShell(): void {
     const t = consoleT();
@@ -274,6 +273,8 @@ export function mountNavigatorInto(
 
   function renderHealth(): void {
     const t = consoleT();
+    const state = getState();
+    const health: CodexHealthResponse | null = state.health;
     const drydock = health?.lastDrydock ?? null;
     const issueCount = drydock?.issueCount ?? 0;
     const logUnreadable = health?.logUnreadable === true;
@@ -305,28 +306,26 @@ export function mountNavigatorInto(
         <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>
         <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
         <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
+        <div><span>${escapeHtml(t("codex.nav.healthWatch"))}</span><strong>${escapeHtml(
+          state.liveState === "live"
+            ? t("codex.nav.healthWatchLive")
+            : state.liveState === "polling"
+              ? t("codex.nav.healthWatchPolling")
+              : t("codex.nav.healthWatchUnknown"),
+        )}</strong></div>
         <p>${escapeHtml(t("codex.nav.healthRanAt", { at: timestamp }))}</p>
+        <p>${escapeHtml(state.lastCheckedAt === null
+          ? t("codex.nav.healthCheckedNever")
+          : t("codex.nav.healthCheckedAt", { at: new Date(state.lastCheckedAt).toLocaleTimeString(resolveActiveLocale()) }))}</p>
       </div>` : ""}
     `;
   }
 
   function loadHealth(): void {
-    healthController?.abort();
-    healthController = null;
-    healthEpoch += 1;
-    health = null;
     healthPopoverOpen = false;
     renderHealth();
     if (!activeTheaterId) return;
-    const requestEpoch = healthEpoch;
-    const theaterId = activeTheaterId;
-    const controller = new AbortController();
-    healthController = controller;
-    void fetchHealth(theaterId, controller.signal).then((result) => {
-      if (controller.signal.aborted || requestEpoch !== healthEpoch || theaterId !== activeTheaterId) return;
-      health = result;
-      renderHealth();
-    }).catch(() => {});
+    void revalidateScopes(["queue"]).catch(() => {});
   }
 
   function renderList(state: AppState): void {
@@ -342,6 +341,7 @@ export function mountNavigatorInto(
         <button class="codex-nav-entry" type="button" ${catalog.schema.exists ? 'data-schema-resource="workspace"' : 'disabled aria-disabled="true"'}><span class="t">${escapeHtml(t("codex.nav.workspaceSchema"))}</span><span class="meta">${catalog.schema.exists ? escapeHtml(catalog.schema.ref) : escapeHtml(t("codex.nav.unavailable"))}</span></button>
         ${catalog.templates.map((template) => `<button class="codex-nav-entry" type="button" data-template-id="${escapeHtml(template.id)}"><span class="t">${escapeHtml(template.id)}</span><span class="meta">${escapeHtml(template.ref)}</span></button>`).join("")}` : `<div class="codex-nav-empty">${escapeHtml(t("codex.nav.schemaUnavailable"))}</div>`;
       drydockBadge.textContent = String(state.pendingPatchCount);
+      markQueueArrival(state.pendingPatchCount);
       return;
     }
 
@@ -371,6 +371,7 @@ export function mountNavigatorInto(
     });
     drydockBadge.textContent = String(state.pendingPatchCount);
     drydockBadge.hidden = state.pendingPatchCount === 0;
+    markQueueArrival(state.pendingPatchCount);
 
     if (state.loading && state.index.length === 0) {
       navList.innerHTML = `<div class="codex-nav-loading" aria-live="polite">${escapeHtml(t("common.loading"))}</div>`;
@@ -396,6 +397,22 @@ export function mountNavigatorInto(
       return;
     }
     navList.innerHTML = renderGroupedEntries(merged, renderRow, t);
+  }
+
+  /**
+   * 도착 표식은 상태 채널(aurora)이 맡는다 — brass는 위치·포커스 전용이라는 계약이 있어
+   * "새로 왔다"를 brass로 칠하면 그 색이 두 가지를 말하게 된다.
+   */
+  function markQueueArrival(pendingCount: number): void {
+    const previous = lastSeenPendingCount;
+    lastSeenPendingCount = pendingCount;
+    // 줄어든 변화(승인·반려)는 도착이 아니다 — 그때는 표식을 끈다. 켜진 채로 두면
+    // 이미 처리된 소식이 계속 새것인 척한다.
+    if (previous === null || pendingCount <= previous) {
+      drydockBadge.removeAttribute("data-arrived");
+      return;
+    }
+    drydockBadge.setAttribute("data-arrived", "true");
   }
 
   function requestServerSearch(): void {
@@ -482,6 +499,8 @@ export function mountNavigatorInto(
 
     const quickBtn = target.closest<HTMLElement>("[data-action]");
     if (quickBtn?.dataset.action === "drydock") {
+      // 대기열을 연 순간 그 소식은 읽힌 것이다.
+      drydockBadge.removeAttribute("data-arrived");
       options.onRequest({ kind: "drydock" });
       return;
     }
@@ -521,9 +540,12 @@ export function mountNavigatorInto(
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("keydown", handleDocumentKeyDown);
 
-  const unsubscribe = subscribeState((state) => renderList(state));
+  const unsubscribe = subscribeState((state) => {
+    renderList(state);
+    renderHealth();
+  });
   renderList(getState());
-  loadHealth();
+  renderHealth();
 
   return {
     destroy(): void {
@@ -534,7 +556,6 @@ export function mountNavigatorInto(
       document.removeEventListener("keydown", handleDocumentKeyDown);
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchController?.abort();
-      healthController?.abort();
       root.innerHTML = "";
     },
     setTheater(theaterId: string | null): void {
@@ -548,6 +569,7 @@ export function mountNavigatorInto(
       searchController = null;
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchInput.value = "";
+      lastSeenPendingCount = null;
       renderList(getState());
       loadHealth();
     },

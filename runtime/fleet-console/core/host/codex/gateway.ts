@@ -30,6 +30,13 @@ interface CodexGatewayDeps {
   readonly resolveListener?: (request: IncomingMessage) => ListenerIdentity | null;
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
   readonly dataDir?: string;
+  /**
+   * 지식 루트가 해석될 때마다 불린다(멱등). 호스트는 이 신호로 감시를 시작해, 화면이
+   * 열려 있는 워크스페이스만 지켜본다.
+   */
+  readonly onKnowledgeRootResolved?: (workspaceId: string, knowledgeRoot: string) => void;
+  /** 워크스페이스 등록이 풀렸다 — 감시도 함께 끝나야 한다. */
+  readonly onWorkspaceReleased?: (workspaceId: string) => void;
 }
 
 interface ParsedHostHeader {
@@ -153,6 +160,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       coworkService,
     });
     request.url = originalUrl;
+    // 감시는 요청을 처리한 *뒤에* 시작한다 — 지식 루트를 만드는 것은 그 요청이고,
+    // 아직 없는 경로에 감시를 붙이면 첫 화면이 degraded부터 보게 된다.
+    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     return handled;
   }
 
@@ -202,6 +212,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     theaterRoot: string,
   ): Promise<CodexWorkspaceResolution> {
     const workspace = await registerWorkspace(theaterRoot, undefined, theaterId);
+    // 여기서는 감시를 걸지 않는다. 이 경로는 워크스페이스를 해석만 하고 지식 루트를 만들지
+    // 않으므로, 한 번도 열린 적 없는 Theater라면 아직 그 디렉토리가 없다. 패널은 곧바로
+    // 카탈로그를 요청하고, 그 요청이 루트를 만든 뒤 감시가 시작된다.
     deps.wikiWorkspaceResolver.resolve(workspace.realpath);
     return { hasWiki: true, id: workspace.id };
   }
@@ -220,6 +233,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       coworkServices.delete(id);
       void coworkService.dispose().catch(() => undefined);
     }
+    deps.onWorkspaceReleased?.(id);
     return workspaces.remove(id);
   }
 
