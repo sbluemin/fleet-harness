@@ -841,6 +841,38 @@ describe("Instrument core design contract", () => {
     expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
   });
 
+  /* 겉모습 축소판은 자기가 고르게 하는 화면을 대신 보여 준다. 계약은 둘이다. 축소판은 컨트롤
+     열의 높이를 따라야 하고(예전에는 208px 프레임이 열 꼭대기에 못박혀 폭과 무관하게 아래
+     126px가 늘 비었다 — 바로 아래 타이포그래피 카드의 목록/미리보기 동일 높이 문법과도 어긋난다),
+     떠 있는 메뉴는 터미널 글줄 위에 얹혀야 한다(유리 뒤가 비면 backdrop-filter는 블러 없음과
+     똑같은 픽셀을 그린다). */
+  it("lets the appearance preview follow its controls column and keep glass over text", () => {
+    const components = source("styles/components.css");
+    const settings = source("pages/global-settings.tsx");
+    const split = components.match(/\.appearance-split \{[^}]*\}/)?.[0] ?? "";
+    const preview = components.match(/\.appearance-preview \{[^}]*\}/)?.[0] ?? "";
+    const stage = components.match(/\.appearance-preview-stage \{[^}]*\}/)?.[0] ?? "";
+    const flow = components.match(/\.appearance-preview-terminal-flow \{[^}]*\}/)?.[0] ?? "";
+    const menu = components.match(/\.appearance-preview-menu \{[^}]*\}/)?.[0] ?? "";
+
+    // 상단 고정이 곧 예전 결함이다 — 열이 아무리 길어져도 축소판만 제 크기로 남았다.
+    expect(split).not.toContain("align-items: start;");
+    expect(preview).toContain("grid-template-rows: minmax(0, 1fr) auto;");
+    // 남는 높이는 터미널이 흡수한다 — 패널이 늘어나면 두 줄짜리 카드가 빈 상자가 된다.
+    expect(stage).toContain("grid-template-rows: auto minmax(0, 1fr);");
+    expect(stage).not.toContain("align-content: start;");
+    // 글줄은 흐름 밖에 둔다. 흐름 안이면 줄 수가 프레임의 최소 높이를 정해 버려 위 규칙이
+    // "컨트롤 열 높이"가 아니라 "글줄 수와의 우연"에 기대게 된다.
+    expect(flow).toContain("position: absolute;");
+    expect(flow).toContain("mask-image: linear-gradient(to bottom, oklch(0% 0 0) calc(100% - 18px), transparent);");
+    // 메뉴는 프레임 바닥이 아니라 터미널 칸을 기준으로 앉는다 — 바닥에 매달면 프레임이 자랄수록
+    // 글줄에서 멀어져 빈 바탕 위로 떠오르고, 그때 유리는 유리로 읽히지 않는다.
+    expect(settings).toContain('<div className="appearance-preview-terminal-slot">');
+    expect(menu).toContain("position: absolute;");
+    expect(menu).toContain("top: 26px;");
+    expect(menu).not.toContain("bottom:");
+  });
+
   // 다크 유리의 판독 계약 — 유리 뒤가 앱에서 가장 어두운 캔버스라 투과는 명도를 빼기만 한다.
   it("keeps the dark glass pane lit and the terminal field single-layered", () => {
     const components = source("styles/components.css");

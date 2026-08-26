@@ -537,18 +537,32 @@ function AppearancePreview() {
               <p className="appearance-preview-panel-title">{t("settings.preview.panel.title")}</p>
               <p className="appearance-preview-panel-value">{t("settings.preview.panel.value")}</p>
             </div>
-            <pre className="appearance-preview-terminal">
-              <span className="is-prompt">$</span> fleet status{"\n"}
-              <span className="is-good">ready</span> 3 operations{"\n"}
-              <span className="is-busy">running</span> rebuild-index{"\n"}
-              <span className="is-prompt">$</span> fleet logs
-            </pre>
+            {/* 글줄은 프레임 높이보다 넉넉히 둔다 — 넘친 줄은 흐려지며 잘리므로, 축소판이
+                자라도 터미널이 반쯤 빈 상자로 보이지 않는다. */}
+            <div className="appearance-preview-terminal-slot">
+              <div className="appearance-preview-terminal">
+                <pre className="appearance-preview-terminal-flow">
+                  <span className="is-prompt">$</span> fleet status{"\n"}
+                  <span className="is-good">ready</span> 3 operations{"\n"}
+                  <span className="is-busy">running</span> rebuild-index{"\n"}
+                  <span className="is-prompt">$</span> fleet logs rebuild-index{"\n"}
+                  scan 2481 files{"\n"}
+                  index 18 packages{"\n"}
+                  <span className="is-warn">warn</span> 2 stale entries{"\n"}
+                  <span className="is-good">done</span> in 6.4s{"\n"}
+                  <span className="is-prompt">$</span> fleet open rebuild-index{"\n"}
+                  attach terminal{"\n"}
+                  watch 4 sources{"\n"}
+                  sync repository
+                </pre>
+              </div>
+              {/* 겹침이 핵심이다 — 이 메뉴가 터미널 글줄 위에 떠 있어야 유리가 읽힌다. */}
+              <div className="appearance-preview-menu">
+                <p>{t("settings.preview.menu.first")}<span>↵</span></p>
+                <p>{t("settings.preview.menu.second")}<span>F2</span></p>
+              </div>
+            </div>
           </div>
-        </div>
-        {/* 겹침이 핵심이다 — 이 메뉴가 터미널 위에 떠 있어야 유리가 읽힌다. */}
-        <div className="appearance-preview-menu">
-          <p>{t("settings.preview.menu.first")}<span>↵</span></p>
-          <p>{t("settings.preview.menu.second")}<span>F2</span></p>
         </div>
       </div>
       <figcaption>{t("settings.preview.caption.help")}</figcaption>
