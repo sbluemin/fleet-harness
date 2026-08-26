@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { QuotaWindow } from "@dotobokuri/core-ai-gateway";
 
 import {
+  adoptsFoldedProviders,
   beginRequestGeneration,
   elapsedMarkPercent,
   EXPIRED_KEY,
@@ -287,23 +288,36 @@ describe("folded card summary", () => {
   });
 });
 
-describe("fold revision", () => {
-  // 실측한 결함: 서버는 요청을 받은 시점의 접힘을 읽어 답하고, 그 답이 오는 사이에
-  // 사용자가 접은 카드의 저장은 이미 끝나 있을 수 있다. "지금 저장이 날아가는 중인가"로
-  // 판정하면 그 순간 카운터가 0이라 옛 집합이 통과했다 — 화면은 펼쳐졌는데 서버는
-  // 접힘이었고, 다음 토글이 그 옛 집합 위에서 계산되어 앞의 접힘을 지웠다.
-  it("stops a response that left before a toggle from adopting its stale fold set", () => {
-    const revision = { current: 0 };
-    const inFlight = revision.current;      // summary leaves
-    beginRequestGeneration(revision);        // user folds a card while it is in flight
-    expect(isLatestRequestGeneration(revision, inFlight)).toBe(false);
+describe("fold adoption", () => {
+  // 두 결함 모두 실측으로 재현했다. 화면과 서버가 갈리고, 다음 토글이 그 옛 집합 위에서
+  // 계산되어 이미 저장된 접힘을 지웠다. 조건 하나만으로는 각각 하나씩 남는다.
+
+  // (1) 요청이 떠난 뒤 사용자가 접은 경우 — 이 답은 그 조작 이전의 것이다.
+  it("refuses a response that left before a toggle", () => {
+    const captured = { persisted: 3, revision: 3 };
+    expect(adoptsFoldedProviders(captured, 4)).toBe(false);
   });
 
-  it("adopts a response that left after the last toggle", () => {
+  // (2) 저장이 아직 서버에 닿지 않은 채로 떠난 경우 — 리비전은 이미 올라 있어
+  // 통과하지만, 서버가 읽은 것은 그 이전 집합이다.
+  it("refuses a response that left while a fold was still unpersisted", () => {
+    const captured = { persisted: 3, revision: 4 };
+    expect(adoptsFoldedProviders(captured, 4)).toBe(false);
+  });
+
+  it("adopts a response that left with the server already holding what we hold", () => {
+    const captured = { persisted: 4, revision: 4 };
+    expect(adoptsFoldedProviders(captured, 4)).toBe(true);
+  });
+
+  // 저장 실패 뒤의 재동기화가 자기 검사에 걸리면 화면은 영영 갈린 채로 남는다.
+  it("adopts the recovery response after a failed save gives up its local intent", () => {
     const revision = { current: 0 };
-    beginRequestGeneration(revision);        // user folds a card
-    const afterToggle = revision.current;    // the recovery/poll request leaves afterwards
-    expect(isLatestRequestGeneration(revision, afterToggle)).toBe(true);
+    beginRequestGeneration(revision);
+    const persisted = { current: revision.current };
+    const captured = { persisted: persisted.current, revision: revision.current };
+    expect(adoptsFoldedProviders(captured, revision.current)).toBe(true);
+    expect(isLatestRequestGeneration(revision, captured.revision)).toBe(true);
   });
 });
 

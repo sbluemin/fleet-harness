@@ -98,6 +98,25 @@ export function isLatestRequestGeneration(generation: RequestGeneration, capture
   return generation.current === captured;
 }
 
+/**
+ * 응답이 실어온 접힘을 채택해도 되는가. 두 조건의 논리곱이며, 둘 중 하나만으로는
+ * 실측된 두 결함이 각각 남는다.
+ *
+ * - `revision === persisted` — 요청이 떠날 때 서버가 이미 우리가 든 것과 같은 집합을
+ *   들고 있었는가. 저장이 아직 도달하지 않은 채로 나간 요청은 그 이전 집합을 실어 온다.
+ * - `current === revision` — 떠난 뒤로 사용자가 카드를 접지 않았는가. 그 사이의 조작은
+ *   이 답보다 새롭다.
+ *
+ * 둘 다 아닐 때 채택하면 화면과 서버가 갈리고, 다음 토글이 그 옛 집합 위에서 계산되어
+ * 이미 저장된 접힘을 지운다.
+ */
+export function adoptsFoldedProviders(
+  captured: { readonly revision: number; readonly persisted: number },
+  current: number,
+): boolean {
+  return captured.revision === captured.persisted && current === captured.revision;
+}
+
 function elapsed(at: number | undefined, now: number): string {
   const delta = Math.max(0, now - (at ?? now));
   const days = Math.floor(delta / 86_400_000);
@@ -677,6 +696,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
      펼쳐졌는데 서버는 접힘이었고, 다음 토글이 그 옛 집합 위에서 계산되어 앞의 접힘을
      지웠다. 그래서 요청이 출발한 시점의 리비전을 들고 있다가 그때 그대로일 때만 채택한다. */
   const foldRevisionRef = useRef(0);
+  /* 서버가 들고 있다고 확인된 리비전. 토글은 리비전을 올리지만 저장은 foldSaveRef 뒤에
+     줄을 서므로, 둘이 어긋난 동안 떠난 요청은 아직 저장되지 않은 집합을 실어 온다. */
+  const foldPersistedRef = useRef(0);
 
   const adoptFolded = useCallback((next: readonly ProviderId[]) => {
     foldedRef.current = next;
@@ -690,7 +712,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
 
   const connect = useCallback((provider: ConnectableProviderId, connected: boolean) => {
     const generation = beginRequestGeneration(requestGenerationRef);
-    const foldRevision = foldRevisionRef.current;
+    const foldCapture = { persisted: foldPersistedRef.current, revision: foldRevisionRef.current };
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     ctx.api.fetch("quota", "connect", {
       method: "POST",
@@ -705,8 +727,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
           setOrder(sanitizeProviderOrder(result.providerOrder));
-          // 요청이 출발한 뒤 사용자가 카드를 접었다면 이 답은 그 조작 이전의 것이다.
-          if (isLatestRequestGeneration(foldRevisionRef, foldRevision)) {
+          if (adoptsFoldedProviders(foldCapture, foldRevisionRef.current)) {
             adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           }
           setRequestError(false);
@@ -744,7 +765,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       next.includes(id) ? "quota.fold.announced" : "quota.unfold.announced",
       { provider: PROVIDER_NAME[id] },
     ));
-    beginRequestGeneration(foldRevisionRef);
+    const revision = beginRequestGeneration(foldRevisionRef);
     const save = () => ctx.api.fetch("quota", "fold", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -753,12 +774,19 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       .then((response) => {
         if (!response.ok) throw new Error("fold_failed");
       })
-      .catch(() => {
-        // 순서 저장과 같은 규칙 — 낙관 반영을 손으로 되돌리지 않고 서버 진실로 재동기화한다.
-        // 새로 나가는 요청은 지금 리비전을 들고 가므로 그 답은 채택된다.
-        setAnnouncement(t("quota.fold.saveError"));
-        refresh(false);
-      });
+      .then(
+        () => {
+          // 저장은 직렬화되어 순서대로 끝나지만, 이 값은 앞으로만 간다는 것이 계약이다.
+          foldPersistedRef.current = Math.max(foldPersistedRef.current, revision);
+        },
+        () => {
+          // 순서 저장과 같은 규칙 — 낙관 반영을 손으로 되돌리지 않고 서버 진실로 재동기화한다.
+          // 미저장 의도를 여기서 함께 접어야 그 재동기화 응답이 자기 검사에 걸리지 않는다.
+          foldPersistedRef.current = foldRevisionRef.current;
+          setAnnouncement(t("quota.fold.saveError"));
+          refresh(false);
+        },
+      );
     foldSaveRef.current = foldSaveRef.current.then(save, save);
   }, [ctx.api, adoptFolded, t, refresh]);
 
@@ -877,7 +905,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
 
   useEffect(() => {
     const generation = beginRequestGeneration(requestGenerationRef);
-    const foldRevision = foldRevisionRef.current;
+    const foldCapture = { persisted: foldPersistedRef.current, revision: foldRevisionRef.current };
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     const force = forceRef.current;
     forceRef.current = false;
@@ -890,8 +918,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
           setOrder(sanitizeProviderOrder(result.providerOrder));
-          // 요청이 출발한 뒤 사용자가 카드를 접었다면 이 답은 그 조작 이전의 것이다.
-          if (isLatestRequestGeneration(foldRevisionRef, foldRevision)) {
+          if (adoptsFoldedProviders(foldCapture, foldRevisionRef.current)) {
             adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           }
           setRequestError(false);
