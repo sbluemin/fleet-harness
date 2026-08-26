@@ -30,6 +30,12 @@ type StateListener = (state: AppState) => void;
 
 const listeners = new Set<StateListener>();
 let workspaceEpoch = 0;
+/**
+ * 재검증 세대. 같은 워크스페이스 안에서도 재검증은 겹친다(연달아 온 변화 힌트, 창 복귀와
+ * 이벤트의 충돌). 나중에 시작한 요청이 먼저 끝나면 오래된 응답이 최신 사실을 덮어써
+ * 화면이 뒤로 간다 — 자기보다 새 재검증이 이미 시작됐다면 결과를 버린다.
+ */
+let revalidateEpoch = 0;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +83,7 @@ export function setLiveState(next: CodexLiveState): void {
 export async function loadInitialData(): Promise<void> {
   const theaterId = state.currentWorkspaceId;
   const capturedEpoch = workspaceEpoch;
+  const requestEpoch = ++revalidateEpoch;
   setState({ loading: true, error: null });
   try {
     const [searchResult, drydockList, schemaCatalog, health] = await Promise.all([
@@ -86,6 +93,7 @@ export async function loadInitialData(): Promise<void> {
       fetchHealth(theaterId).catch(() => null),
     ]);
     if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
+    if (requestEpoch !== revalidateEpoch) return;
     setState({
       index: searchResult.entries,
       pendingPatchCount: drydockList?.pendingCount ?? 0,
@@ -110,6 +118,7 @@ export async function loadInitialData(): Promise<void> {
 export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): Promise<void> {
   const theaterId = state.currentWorkspaceId;
   const capturedEpoch = workspaceEpoch;
+  const requestEpoch = ++revalidateEpoch;
   const wanted = new Set(scopes);
   const needsIndex = wanted.has("wiki") || wanted.has("index");
   const needsQueue = wanted.has("queue");
@@ -122,6 +131,7 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
     fetchHealth(theaterId).catch(() => null),
   ]);
   if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
+  if (requestEpoch !== revalidateEpoch) return;
 
   const next: Partial<AppState> = {};
   if (searchResult) {

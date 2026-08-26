@@ -133,6 +133,8 @@ export function mountReadingInto(
   let staleKind: "updated" | "decided" | null = null;
   // 지금 화면에 그려진 문서의 갱신 시각. 카탈로그의 같은 값과 어긋나면 이 문서가 바뀐 것이다.
   let renderedEntryStamp: string | null = null;
+  // 지금 화면에 그려진 패치의 판본. 대기열에서 *다른* 패치가 움직인 것으로는 이 값이 변하지 않는다.
+  let renderedPatchStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
   const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
@@ -408,10 +410,8 @@ export function mountReadingInto(
     }
     if (opts.kind === "schema") {
       if (!scopes.has("schema")) return;
-      if (!currentSubId) {
-        void renderSchemaView(undefined);
-        return;
-      }
+      // 워크스페이스 스키마(subId 없음)도 목록이 아니라 읽는 문서다 — 대기열·충돌 목록과
+      // 달리 말없이 갈아끼우면 읽던 자리를 잃는다.
       showStaleNotice("updated");
     }
   }
@@ -422,18 +422,30 @@ export function mountReadingInto(
    */
   async function noticeForOpenPatch(patchId: string): Promise<void> {
     const wasPending = currentDetailMeta?.status === "pending";
-    if (!wasPending) {
-      showStaleNotice("updated");
-      return;
-    }
     try {
       const detail = await fetchDrydockDetail(liveOpts.theaterId, patchId);
       if (destroyed || currentSubId !== patchId) return;
-      showStaleNotice(detail.meta.status === "pending" ? "updated" : "decided");
-    } catch {
-      if (destroyed || currentSubId !== patchId) return;
+      if (wasPending && detail.meta.status !== "pending") {
+        showStaleNotice("decided");
+        return;
+      }
+      // 대기열에서 *다른* 제안이 움직인 것으로 이 제안이 바뀌지는 않는다 — 판본이 실제로
+      // 달라졌을 때만 알린다. 매번 알리면 그 표식은 곧 아무 뜻도 없는 소음이 된다.
+      const stamp = patchStampOf(detail);
+      if (renderedPatchStamp === null) {
+        renderedPatchStamp = stamp;
+        return;
+      }
+      if (stamp === renderedPatchStamp) return;
       showStaleNotice("updated");
+    } catch {
+      // 조회 자체가 실패했다면 무엇이 달라졌는지 알 수 없다 — 근거 없는 알림은 띄우지 않는다.
     }
+  }
+
+  /** 이 패치의 판본 — 결정 상태와 제안 본문이 함께 움직여야 다른 판본이다. */
+  function patchStampOf(detail: DrydockDetailResponse): string {
+    return `${detail.meta.status}:${detail.meta.decidedAt ?? ""}:${detail.patch.body.length}:${detail.patch.body}`;
   }
 
   function catalogStampFor(entryId: string): string | null {
@@ -567,6 +579,7 @@ export function mountReadingInto(
     // 새 뷰 진입 시 결정 상태 초기화
     currentDetailMeta = null;
     currentDetailPatchId = null;
+    renderedPatchStamp = null;
     decisionPhase = "idle";
     decisionError = null;
     detailDiffBlocks = null;
@@ -581,6 +594,7 @@ export function mountReadingInto(
 
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
+        renderedPatchStamp = patchStampOf(detail);
 
         // 대기 중인 update 패치는 현행 본문을 함께 읽어 "무엇이 바뀌는가"를 보여준다.
         // 결정된 패치·신규 문서·현행 조회 실패는 전문 렌더로 자연 강등된다.

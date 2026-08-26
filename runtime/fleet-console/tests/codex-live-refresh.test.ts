@@ -196,6 +196,33 @@ describe("codex live refresh", () => {
     expect(getState().lastCheckedAt).toBe(checkedAt);
   });
 
+  /**
+   * 같은 워크스페이스 안에서도 재검증은 겹친다(연달아 온 힌트, 창 복귀와 이벤트의 충돌).
+   * 나중에 시작한 요청이 먼저 끝나면 오래된 응답이 최신 사실을 덮어써 화면이 뒤로 간다.
+   */
+  it("discards a revalidation that a newer one has already superseded", async () => {
+    let releaseSlow: (() => void) | null = null;
+    apiMocks.fetchDrydock.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => { releaseSlow = resolve; });
+      return { pendingCount: 1, archivedCount: 0, items: [] };
+    });
+
+    const slow = applyCodexChanged(WS, ["queue"]);
+    void slow;
+    await Promise.resolve();
+
+    apiMocks.fetchDrydock.mockResolvedValueOnce({ pendingCount: 7, archivedCount: 0, items: [] });
+    applyCodexChanged(WS, ["queue"]);
+    await settle();
+    expect(getState().pendingPatchCount).toBe(7);
+
+    releaseSlow?.();
+    await settle();
+
+    // 늦게 도착한 옛 응답이 최신 숫자를 되돌리면 안 된다.
+    expect(getState().pendingPatchCount).toBe(7);
+  });
+
   it("keeps the previous catalog when a revalidation request fails", async () => {
     applyCodexChanged(WS, ["wiki"]);
     await settle();
