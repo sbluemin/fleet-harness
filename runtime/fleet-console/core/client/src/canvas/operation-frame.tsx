@@ -151,11 +151,22 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   }, []);
 
   // 포커스가 이 패널로 옮겨 앉는 순간에만 링을 돌린다 — 상태의 존재가 아니라 전이다.
-  // 포커스를 잃는 쪽은 아무것도 돌리지 않는다: 이동은 도착지 하나로 읽혀야 한다.
+  // 포커스를 잃는 쪽은 링을 그 자리에서 거둔다. 타이머가 끝나기를 기다리면 링이 두 장 된다:
+  // 360ms 안에 한 번 더 옮기면 떠난 패널이 도착한 패널과 나란히 테두리를 두르고(실측 140ms
+  // 간격에서 14프레임 중첩), 그사이 되돌아오면 클래스가 한 번도 빠지지 않아 애니메이션이
+  // 다시 돌지도 않는다. 이동은 언제나 도착지 하나로 읽혀야 한다.
   useEffect(() => {
     const previous = previousActiveRef.current;
     previousActiveRef.current = active;
-    if (previous || !active) return;
+    if (!active) {
+      if (focusArrivalTimeoutRef.current !== null) {
+        window.clearTimeout(focusArrivalTimeoutRef.current);
+        focusArrivalTimeoutRef.current = null;
+      }
+      setFocusArrival(false);
+      return;
+    }
+    if (previous) return;
     if (focusArrivalTimeoutRef.current !== null) window.clearTimeout(focusArrivalTimeoutRef.current);
     setFocusArrival(true);
     focusArrivalTimeoutRef.current = window.setTimeout(() => {

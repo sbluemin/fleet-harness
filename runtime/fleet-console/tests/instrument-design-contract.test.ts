@@ -3022,6 +3022,12 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/\.canvas-operation\.is-focus-arriving::after \{/);
     expect(operationFrame).toContain('focusArrival ? "is-focus-arriving" : ""');
     expect(operationFrame).toContain("previousActiveRef");
+    // 포커스를 잃는 쪽은 링을 그 자리에서 거둔다 — 타이머를 기다리면 360ms 안의 두 번째 이동에서
+    // 링이 두 장 되고(실측 중첩), 그사이 되돌아오면 클래스가 빠진 적이 없어 다시 돌지도 않는다.
+    const arrivalEffect = operationFrame.match(/useEffect\(\(\) => \{\n\s*const previous = previousActiveRef\.current;[\s\S]*?\}, \[active\]\);/)?.[0] ?? "";
+    expect(arrivalEffect).toContain("if (!active) {");
+    expect(arrivalEffect).toContain("setFocusArrival(false);");
+    expect(arrivalEffect).not.toMatch(/if \(previous \|\| !active\) return;/);
     // 포커스의 깊이는 색을 하나도 쓰지 않는다 — 상태 채널과 겹칠 자리가 없다. 중립 rim 블록보다
     // 뒤에 서서, 진행 중인 패널이 포커스를 받아도 깊이는 포커스가 소유한다.
     const lift = components.match(/\n\.canvas-operation\.is-active:not\(\.is-deck-tile\) \{[^}]*\}/)?.[0] ?? "";
