@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/core-process": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",

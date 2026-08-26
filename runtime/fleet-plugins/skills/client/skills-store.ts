@@ -14,6 +14,7 @@ export interface SkillsState {
   readonly searchQuery: string;
   readonly searchResults: readonly SkillSearchItem[];
   readonly searchLoading: boolean;
+  readonly searchFailed: boolean;
   readonly installedList: readonly SkillListItem[];
   readonly installedLoading: boolean;
   readonly installedContextKey: string | null;
@@ -33,6 +34,7 @@ const DEFAULT_STATE: SkillsState = {
   searchQuery: "",
   searchResults: [],
   searchLoading: false,
+  searchFailed: false,
   installedList: [],
   installedLoading: false,
   installedContextKey: null,
@@ -85,8 +87,8 @@ export function setSearchQuery(searchQuery: string): void {
   emit();
 }
 
-export function setSearchState(results: readonly SkillSearchItem[], loading: boolean): void {
-  state = { ...state, searchResults: results, searchLoading: loading };
+export function setSearchState(results: readonly SkillSearchItem[], loading: boolean, failed = false): void {
+  state = { ...state, searchResults: results, searchLoading: loading, searchFailed: failed };
   emit();
 }
 

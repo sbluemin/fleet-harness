@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -51,6 +51,24 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
   const searchTarget = useSkillSearchTarget();
+  const installedTabRef = useRef<HTMLButtonElement | null>(null);
+  const findTabRef = useRef<HTMLButtonElement | null>(null);
+
+  const activatePanelTab = useCallback((tab: "installed" | "find", focus = false) => {
+    setActiveTab(tab);
+    if (focus) {
+      window.requestAnimationFrame(() => (tab === "installed" ? installedTabRef.current : findTabRef.current)?.focus());
+    }
+  }, []);
+
+  const handleTabKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    let next: "installed" | "find" | null = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "Home") next = "installed";
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "End") next = "find";
+    if (!next) return;
+    event.preventDefault();
+    activatePanelTab(next, true);
+  }, [activatePanelTab]);
 
   const installedCount = hasInstalledStateForContext(state, contextKey) ? state.installedList.length : 0;
 
@@ -108,24 +126,30 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
     <div className="skills-root">
       <div className="skills-tab-bar" role="tablist" aria-label={t("skills.tab.panelsAria")}>
         <button
+          ref={installedTabRef}
           type="button"
           role="tab"
           id="skills-tab-installed"
           aria-selected={activeTab === "installed"}
           aria-controls="skills-tabpanel"
+          tabIndex={activeTab === "installed" ? 0 : -1}
           className={`skills-tab-btn${activeTab === "installed" ? " is-active" : ""}`}
-          onClick={() => setActiveTab("installed")}
+          onClick={() => activatePanelTab("installed")}
+          onKeyDown={handleTabKeyDown}
         >
           {t("skills.tab.installed")}{installedCount > 0 ? ` ${installedCount}` : ""}
         </button>
         <button
+          ref={findTabRef}
           type="button"
           role="tab"
           id="skills-tab-find"
           aria-selected={activeTab === "find"}
           aria-controls="skills-tabpanel"
+          tabIndex={activeTab === "find" ? 0 : -1}
           className={`skills-tab-btn${activeTab === "find" ? " is-active" : ""}`}
-          onClick={() => setActiveTab("find")}
+          onClick={() => activatePanelTab("find")}
+          onKeyDown={handleTabKeyDown}
         >
           {t("skills.tab.find")}
         </button>
@@ -193,6 +217,8 @@ export const skillsPanel: RailPanelDescriptor = {
   id: "skills",
   title: (locale) => getT(locale)("skills.panel.title"),
   defaultWidth: 360,
+  preferredExtraWidth: 300,
+  mobileTab: true,
   icon: SkillsIcon,
   render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,
   search: async ({ query, theaterId, limit, signal }) => {

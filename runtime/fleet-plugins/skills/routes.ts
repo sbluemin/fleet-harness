@@ -6,6 +6,7 @@ import { createDefaultExecutor } from "./server/cli.js";
 import {
   handleGetJob,
   handleInstalledFile,
+  handleInstalledPackage,
   handleInstall,
   handleList,
   handlePaletteSearch,
@@ -53,9 +54,13 @@ export default definePlugin({
       await handlePreview(req, res, ctx, executor);
       return true;
     }, { method: "POST", path: "", summary: "Preview a skill.", category: "Skills Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "installed-package", async ({ req, res }) => {
+      await handleInstalledPackage(req, res, ctx, executor);
+      return true;
+    }, { method: "POST", path: "", summary: "Inspect an installed skill package.", category: "Skills Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "installed-file", async ({ req, res }) => {
       await handleInstalledFile(req, res, ctx, executor);
       return true;
-    }, { method: "POST", path: "", summary: "Read an installed skill file.", category: "Skills Plugin", gate: "origin-write", transport: "http" });
+    }, { method: "POST", path: "", summary: "Read an installed skill package file.", category: "Skills Plugin", gate: "origin-write", transport: "http" });
   },
 });

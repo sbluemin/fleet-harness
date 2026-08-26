@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { Scope, SkillListItem, SkillSearchItem } from "../server/skill-types.js";
@@ -47,16 +48,16 @@ function formatInstalls(n: number): string {
   return String(n);
 }
 
-async function doSearch(q: string): Promise<void> {
+async function doSearch(q: string, signal: AbortSignal): Promise<void> {
   if (q.length < MIN_QUERY_LEN) { setSearchState([], false); return; }
   setSearchState([], true);
   try {
-    const res = await fetch(`/plugins/skills/search?q=${encodeURIComponent(q)}&limit=10`);
-    if (!res.ok) { setSearchState([], false); return; }
+    const res = await fetch(`/plugins/skills/search?q=${encodeURIComponent(q)}&limit=10`, { signal });
+    if (!res.ok) throw new Error(String(res.status));
     const data = await res.json() as { skills: SkillSearchItem[] };
-    setSearchState(data.skills ?? [], false);
+    if (!signal.aborted) setSearchState(data.skills ?? [], false);
   } catch {
-    setSearchState([], false);
+    if (!signal.aborted) setSearchState([], false, true);
   }
 }
 
@@ -92,7 +93,7 @@ function FindResultCard({
           {result.name}
         </button>
         {result.installs > 0 && (
-          <span className="skills-card-installs">{formatInstalls(result.installs)}</span>
+          <span className="skills-card-installs">{t("skills.card.installs", { count: formatInstalls(result.installs) })}</span>
         )}
       </div>
       <span className="skills-card-meta">{result.source}</span>
@@ -123,20 +124,30 @@ function FindResultCard({
 // ─── FindTab ─────────────────────────────────────────────────────────────────
 
 export function FindTab({ theaterId, onReadMore, onInstallSuccess, t }: FindTabProps) {
-  const { searchQuery, searchResults, searchLoading, installFormOpenId } = useSkillsStore();
+  const { searchQuery, searchResults, searchLoading, searchFailed, installFormOpenId } = useSkillsStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const installJobLog = useJobLog();
   const [installTarget, setInstallTarget] = useState<{ name: string; scope: Scope } | null>(null);
+
+  const runSearch = useCallback((q: string) => {
+    searchAbortRef.current?.abort();
+    const abort = new AbortController();
+    searchAbortRef.current = abort;
+    void doSearch(q, abort.signal);
+  }, []);
 
   const handleQueryChange = useCallback((q: string) => {
     setSearchQuery(q);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchAbortRef.current?.abort();
     if (q.length < MIN_QUERY_LEN) { setSearchState([], false); return; }
-    debounceRef.current = setTimeout(() => { void doSearch(q); }, SEARCH_DEBOUNCE_MS);
-  }, []);
+    debounceRef.current = setTimeout(() => runSearch(q), SEARCH_DEBOUNCE_MS);
+  }, [runSearch]);
 
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchAbortRef.current?.abort();
   }, []);
 
   // 설치 완료 전파(설치 목록 새로고침·Installed 탭 전환·토스트)는 잡 소유자인 FindTab이
@@ -165,9 +176,18 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess, t }: FindTabP
           aria-label={t("skills.filter.searchAria")}
         />
 
-        {searchLoading && <div className="skills-empty-state">{t("skills.empty.searching")}</div>}
+        {searchLoading && <div className="skills-empty-state" role="status" aria-live="polite">{t("skills.empty.searching")}</div>}
 
-        {!searchLoading && searchQuery.length >= MIN_QUERY_LEN && searchResults.length === 0 && (
+        {!searchLoading && searchFailed ? (
+          <FailureNotice
+            title={t("skills.failure.search.title")}
+            cause={t("skills.failure.search.cause")}
+            actions={[{ label: t("skills.action.retry"), onSelect: () => runSearch(searchQuery), primary: true }]}
+            tone="coral"
+          />
+        ) : null}
+
+        {!searchLoading && !searchFailed && searchQuery.length >= MIN_QUERY_LEN && searchResults.length === 0 && (
           <div className="skills-empty-state">{t("skills.empty.noResults", { query: searchQuery })}</div>
         )}
 

@@ -71,6 +71,7 @@ export function SkillCard({ skill, shadowsOtherScope, onReadMore, onRemove, t }:
           className="skills-card-name-btn"
           onClick={() => onReadMore?.(skill)}
           title={t("skills.action.readSkillMd")}
+          aria-label={t("skills.action.readSkillPackageAria", { name: skill.name })}
         >
           {skill.name}
         </button>
@@ -87,6 +88,12 @@ export function SkillCard({ skill, shadowsOtherScope, onReadMore, onRemove, t }:
             type="button"
             className={`skills-btn skills-btn--remove${removeArmed ? " is-armed" : ""}`}
             onClick={handleRemoveClick}
+            onKeyDown={(event) => {
+              if ((event.key === "Enter" || event.key === " ") && event.repeat) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+            }}
             aria-label={
               removeArmed
                 ? t("skills.action.removeConfirmAria", { name: skill.name })

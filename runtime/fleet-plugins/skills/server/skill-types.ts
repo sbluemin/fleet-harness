@@ -25,6 +25,37 @@ export interface SkillListResult {
   readonly skills: SkillListItem[];
 }
 
+export type SkillPackageFileRole = "entry" | "reference" | "script" | "asset" | "file";
+export type SkillPackageFileFormat = "markdown" | "code" | "text" | "unsupported";
+
+export interface SkillPackageFile {
+  readonly path: string;
+  readonly name: string;
+  readonly role: SkillPackageFileRole;
+  readonly format: SkillPackageFileFormat;
+  readonly size: number;
+  readonly readable: boolean;
+}
+
+export interface SkillPackageManifest {
+  readonly files: readonly SkillPackageFile[];
+  readonly folderCount: number;
+  readonly totalBytes: number;
+  readonly truncated: boolean;
+  readonly tooLarge: boolean;
+  readonly omittedSymlinks: number;
+}
+
+export interface SkillPackageResult {
+  readonly manifest: SkillPackageManifest;
+  readonly displayPath: string;
+}
+
+export interface SkillPackageFileResult {
+  readonly content: string;
+  readonly file: SkillPackageFile;
+}
+
 export interface InstalledSkillSearchItem {
   readonly name: string;
   readonly scope: Scope;

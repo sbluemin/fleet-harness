@@ -154,6 +154,7 @@ POST|/plugins/scuttlebutt/chat/:chatId/message|http
 POST|/plugins/scuttlebutt/chat/:chatId/stop|http
 POST|/plugins/scuttlebutt/chat/start|http
 POST|/plugins/skills/installed-file|http
+POST|/plugins/skills/installed-package|http
 POST|/plugins/skills/install|http
 POST|/plugins/skills/palette-search|http
 POST|/plugins/skills/preview|http

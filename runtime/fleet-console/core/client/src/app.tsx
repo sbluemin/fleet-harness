@@ -125,6 +125,10 @@ export function App() {
     () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right" && panel.render !== undefined)],
     [registry.railPanels],
   );
+  const mobileRailPanels = useMemo(
+    () => registry.railPanels.filter((panel) => panel.render !== undefined && panel.mobileTab === true),
+    [registry.railPanels],
+  );
   const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
     const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId);
     if (!activeOperation) return [];
@@ -383,7 +387,7 @@ export function App() {
           // The tab bar sits outside the routes because its destinations are routes: settings is a
           // tab, and a bar that unmounted with the operations route would strand the way back.
           return mobileLayout
-            ? <div className="mobile-frame">{routeContent}{mobileSessionOpen ? null : <MobileTabBar />}</div>
+            ? <div className="mobile-frame">{routeContent}{mobileSessionOpen ? null : <MobileTabBar mobilePanels={mobileRailPanels} />}</div>
             : routeContent;
         })()}
         <OperationSearch

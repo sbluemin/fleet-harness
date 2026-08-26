@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type MobileTab = "operations" | "alerts";
+export type MobileTab = "operations" | "alerts" | "skills";
 
 const STORAGE_KEY = "fleet-console.mobile.activeTab";
 const listeners = new Set<() => void>();
@@ -41,7 +41,7 @@ function readStoredTab(): MobileTab {
   try {
     // "tools" was a tab before settings replaced it; a stored one falls back to operations.
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "alerts") return stored;
+    if (stored === "alerts" || stored === "skills") return stored;
   } catch { /* storage is optional */ }
   return "operations";
 }

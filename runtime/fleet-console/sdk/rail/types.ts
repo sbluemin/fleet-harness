@@ -59,6 +59,8 @@ export type RailPanelDescriptor = RailContributionBase & ({
   readonly pathAware?: boolean;
   readonly defaultWidth?: number;
   readonly preferredExtraWidth?: number;
+  /** 이 패널을 모바일 하단 내비게이션의 목적지로도 노출한다. */
+  readonly mobileTab?: boolean;
 } | {
   /** 패널을 펼치는 대신 즉시 실행하는 rail 동작. */
   readonly activate: (ctx: RailPanelContext) => void;
@@ -67,4 +69,5 @@ export type RailPanelDescriptor = RailContributionBase & ({
   readonly pathAware?: never;
   readonly defaultWidth?: never;
   readonly preferredExtraWidth?: never;
+  readonly mobileTab?: never;
 });

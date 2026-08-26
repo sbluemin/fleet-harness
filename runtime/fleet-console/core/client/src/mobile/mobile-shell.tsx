@@ -1,7 +1,9 @@
 import { pluginRuntimeState } from "../operation-activity.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { createHostCapabilities } from "../plugin-capabilities.js";
 
@@ -12,7 +14,7 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, operationKinds, capabilities, onSelectOperation, onCloseOperation }: {
+export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, operationKinds, railPanels, railContext, capabilities, onSelectOperation, onCloseOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
@@ -22,6 +24,8 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly railPanels: readonly RailPanelDescriptor[];
+  readonly railContext: RailPanelContext;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly onSelectOperation: (operationId: string | null) => void;
   readonly onCloseOperation: (operationId: string) => void;
@@ -104,6 +108,13 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
     );
   } else if (activeTab === "operations") {
     content = <MobileOperationList operations={operations} operationRuntime={operationRuntime} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
+  } else if (activeTab === "skills") {
+    const skillsPanel = railPanels.find((panel) => panel.id === "skills" && panel.render !== undefined);
+    content = (
+      <section className="mobile-rail-panel" aria-label={skillsPanel ? resolveLocalizedText(skillsPanel.title, language) : "Skills"}>
+        {skillsPanel?.render?.(railContext)}
+      </section>
+    );
   } else {
     content = (
       <section className="mobile-simple-panel">

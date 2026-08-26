@@ -8,6 +8,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
 import { readSkillDescription } from "./frontmatter.js";
+import { buildSkillDisplayPath, inspectSkillPackage, readSkillPackageFile } from "./package-files.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
 import type { AgentId, Scope, SkillListItem } from "./skill-types.js";
@@ -128,19 +129,12 @@ async function readSkillSources(cwd: string): Promise<LockLookup> {
 
 async function runListCommand(args: string[], cwd: string, executor: CliExecutor): Promise<RawSkillEntry[]> {
   const result = await executor(args, { cwd, timeout: CLI_TIMEOUT_MS });
+  if (result.exitCode !== 0) throw new Error("list_failed");
   const text = stripAnsi(result.stdout).trim();
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as RawSkillEntry[];
-  } catch {
-    return [];
-  }
-}
-
-function buildDisplayPath(scope: Scope, name: string): string {
-  return scope === "global" ? `~/.agents/skills/${name}` : `.agents/skills/${name}`;
+  if (!text) throw new Error("list_failed");
+  const parsed = JSON.parse(text) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("list_failed");
+  return parsed as RawSkillEntry[];
 }
 
 async function resolveProjectScopeCwd(
@@ -228,9 +222,12 @@ async function toListItems(
   allowedRoot: string,
 ): Promise<SkillListItem[]> {
   return Promise.all(raw.map(async (entry) => {
-    const description = entry.path
-      ? await readSkillDescription(entry.path, allowedRoot)
-      : undefined;
+    const [description, displayPath] = entry.path
+      ? await Promise.all([
+          readSkillDescription(entry.path, allowedRoot),
+          buildSkillDisplayPath(entry.path, allowedRoot, scope),
+        ])
+      : [undefined, undefined];
     const source = lock.sources.get(entry.name);
     // lock을 읽었는데 이 스킬이 없을 때만 "관리 밖"이라고 단언할 수 있다.
     const unmanaged = !source && lock.lockRead;
@@ -241,7 +238,7 @@ async function toListItems(
       ...(source ? { source } : {}),
       ...(unmanaged ? { unmanaged: true } : {}),
       ...(description ? { description } : {}),
-      displayPath: buildDisplayPath(scope, entry.name),
+      displayPath: displayPath ?? (scope === "global" ? `~/${entry.name}` : entry.name),
     };
   }));
 }
@@ -300,8 +297,8 @@ export async function handleList(
     if (theaterId) installedSkillsByTheater.set(theaterId, skills);
     ctx.host.http.writeJson(res, 200, { skills });
   } catch {
-    if (theaterId) installedSkillsByTheater.set(theaterId, []);
-    ctx.host.http.writeJson(res, 200, { skills: [] });
+    if (theaterId) installedSkillsByTheater.delete(theaterId);
+    ctx.host.http.writeJson(res, 502, { error: "list_failed" });
   }
 }
 
@@ -342,9 +339,22 @@ export async function handlePaletteSearch(
     ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
     return;
   }
+  let installedSkills = installedSkillsByTheater.get(body.theaterId);
+  if (!installedSkills) {
+    try {
+      installedSkills = await listInstalledSkills(projectCwd, executor);
+      installedSkillsByTheater.set(body.theaterId, installedSkills);
+    } catch {
+      ctx.host.http.writeJson(res, 502, { error: "list_failed" });
+      return;
+    }
+  }
   const tokens = body.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const skills = (installedSkillsByTheater.get(body.theaterId) ?? [])
-    .filter((skill) => tokens.every((token) => skill.name.toLocaleLowerCase().includes(token)))
+  const skills = installedSkills
+    .filter((skill) => {
+      const haystack = `${skill.name} ${skill.description ?? ""}`.toLocaleLowerCase();
+      return tokens.every((token) => haystack.includes(token));
+    })
     .sort((left, right) => left.name.localeCompare(right.name) || left.scope.localeCompare(right.scope))
     .slice(0, body.limit as number)
     .map(({ name, scope }) => ({ name, scope }));
@@ -562,9 +572,85 @@ export async function handlePreview(
   try {
     // F3: use stdout는 <SKILL.md>...</SKILL.md> 래퍼 포함 → 태그 사이 본문만 추출
     const result = await executor([`use`, `${source}@${skill}`], { cwd, timeout: PREVIEW_TIMEOUT_MS });
+    if (result.exitCode !== 0) {
+      ctx.host.http.writeJson(res, 502, { error: "preview_failed" });
+      return;
+    }
     ctx.host.http.writeJson(res, 200, { markdown: extractSkillMarkdown(result.stdout) });
   } catch {
     ctx.host.http.writeJson(res, 502, { error: "preview_failed" });
+  }
+}
+
+interface InstalledSkillLocation {
+  readonly cwd: string;
+  readonly skillRoot: string;
+}
+
+async function resolveInstalledSkillLocation(
+  scope: Scope,
+  skill: string,
+  theaterId: string | undefined,
+  ctx: FleetPluginServerContext,
+  executor: CliExecutor,
+): Promise<InstalledSkillLocation | null> {
+  let projectCwd: string | null = null;
+  if (scope === "project") projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
+  const cwd = scope === "global" ? defaultCwd() : projectCwd;
+  if (!cwd) return null;
+  const listArgs = scope === "global" ? ["list", "-g", "--json"] : ["list", "--json"];
+  const rawSkills = await runListCommand(listArgs, cwd, executor);
+  const entry = rawSkills.find((candidate) => candidate.name === skill && candidate.scope === scope);
+  return entry?.path ? { cwd, skillRoot: entry.path } : null;
+}
+
+function writePackageReadError(res: http.ServerResponse, ctx: FleetPluginServerContext, error: unknown): void {
+  const code = error instanceof Error ? error.message : "read_failed";
+  if (code === "path_outside_scope" || code === "path_outside_skill") {
+    ctx.host.http.writeJson(res, 403, { error: "path_outside_skill" });
+    return;
+  }
+  if (code === "invalid_file_path") {
+    ctx.host.http.writeJson(res, 400, { error: code });
+    return;
+  }
+  if (code === "file_not_found") {
+    ctx.host.http.writeJson(res, 404, { error: code });
+    return;
+  }
+  if (code === "file_too_large" || code === "unsupported_file" || code === "symlink_not_allowed") {
+    ctx.host.http.writeJson(res, 422, { error: code });
+    return;
+  }
+  ctx.host.http.writeJson(res, 502, { error: "read_failed" });
+}
+
+export async function handleInstalledPackage(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  executor: CliExecutor,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
+  if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  const { scope, skill, theaterId: rawTheaterId } = body;
+  const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
+  if (!validateScope(scope) || !validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+
+  try {
+    const location = await resolveInstalledSkillLocation(scope, skill, theaterId, ctx, executor);
+    if (!location) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
+    const [manifest, displayPath] = await Promise.all([
+      inspectSkillPackage(location.skillRoot, location.cwd),
+      buildSkillDisplayPath(location.skillRoot, location.cwd, scope),
+    ]);
+    if (!displayPath) { ctx.host.http.writeJson(res, 403, { error: "path_outside_skill" }); return; }
+    ctx.host.http.writeJson(res, 200, { manifest, displayPath });
+  } catch (error) {
+    if (error instanceof ProjectPathError) { writeProjectPathError(res, ctx, error); return; }
+    writePackageReadError(res, ctx, error);
   }
 }
 
@@ -576,61 +662,24 @@ export async function handleInstalledFile(
 ): Promise<void> {
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
-
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
-
-  const { scope, skill, theaterId: rawTheaterId } = body;
+  const { scope, skill, file, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
-
-  if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
-  if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
-
-  let projectCwd: string | null = null;
-  if (scope === "project") {
-    try {
-      projectCwd = await resolveProjectScopeCwd(ctx, theaterId);
-    } catch (error) {
-      writeProjectPathError(res, ctx, error);
-      return;
-    }
+  const relativeFile = file === undefined ? "SKILL.md" : file;
+  if (!validateScope(scope) || !validateSkill(skill) || typeof relativeFile !== "string") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_argument" });
+    return;
   }
-  const cwd = scope === "global" ? defaultCwd() : projectCwd;
-  if (!cwd) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {
-    // F2: global scope는 -g 플래그 필수
-    const listArgs = scope === "global" ? ["list", "-g", "--json"] : ["list", "--json"];
-    const rawSkills = await runListCommand(listArgs, cwd, executor);
-    const entry = rawSkills.find((e) => e.name === skill && e.scope === scope);
-    if (!entry?.path) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
-
-    const skillRoot = entry.path;
-    const skillMdPath = path.join(skillRoot, "SKILL.md");
-
-    const [realAllowedRoot, realRoot, realMd] = await Promise.all([
-      // CLI가 보고한 skillRoot 자체도 신뢰하지 않는다 — scope의 정당한 상위 경계
-      // (project=theater 루트, global=홈)를 벗어나면 읽지 않는다. `.agents/skills`로
-      // 고정하지 않는 이유: claude 단독 설치는 `.claude/skills` 아래에 놓인다.
-      fs.realpath(cwd),
-      fs.realpath(skillRoot),
-      fs.realpath(skillMdPath).catch(() => null),
-    ]);
-
-    if (!realMd) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
-    if (realRoot !== realAllowedRoot && !realRoot.startsWith(realAllowedRoot + path.sep)) {
-      ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
-      return;
-    }
-    if (realMd !== realRoot && !realMd.startsWith(realRoot + path.sep)) {
-      ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
-      return;
-    }
-
-    const markdown = await fs.readFile(realMd, "utf-8");
-    ctx.host.http.writeJson(res, 200, { markdown });
-  } catch {
-    ctx.host.http.writeJson(res, 502, { error: "read_failed" });
+    const location = await resolveInstalledSkillLocation(scope, skill, theaterId, ctx, executor);
+    if (!location) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
+    const result = await readSkillPackageFile(location.skillRoot, location.cwd, relativeFile);
+    ctx.host.http.writeJson(res, 200, result);
+  } catch (error) {
+    if (error instanceof ProjectPathError) { writeProjectPathError(res, ctx, error); return; }
+    writePackageReadError(res, ctx, error);
   }
 }
 

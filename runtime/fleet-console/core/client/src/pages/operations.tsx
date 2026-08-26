@@ -5,6 +5,7 @@ import { useT } from "../i18n/index.js";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
@@ -398,6 +399,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleRailLaunchOperation = useCallback((pluginId: string, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
   }, [handleSideBarLaunchKind]);
+  const mobileRailContext = useMemo<RailPanelContext>(() => ({
+    theaterId: state.activeTheaterId,
+    pathContext: { kind: "root", relPath: null, label: "" },
+    api: STABLE_RAIL_API,
+    launchOperation: handleRailLaunchOperation,
+    language,
+    theme: state.activeTheme,
+  }), [handleRailLaunchOperation, language, state.activeTheaterId, state.activeTheme]);
 
   // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만
   // 실행해야 한다 — activeTheaterId가 아직 이전 Theater면 launch 좌표와 포커스 승계가 엉뚱한 캔버스로 간다.
@@ -702,6 +711,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       theme={state.activeTheme}
       language={language}
       operationKinds={registry.operationKinds}
+      railPanels={registry.railPanels.filter((panel) => panel.render !== undefined && panel.mobileTab === true)}
+      railContext={mobileRailContext}
       capabilities={poolCapabilities}
       onSelectOperation={setActiveOperation}
       onCloseOperation={handleClose}

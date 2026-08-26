@@ -11,13 +11,49 @@ import { getT, markdownCopyOptions } from "./i18n/index.js";
 interface MarkdownViewProps {
   readonly content: string;
   readonly language: ConsoleLocale | undefined;
+  readonly currentPath?: string | undefined;
+  readonly onOpenRelativeFile?: ((path: string) => void) | undefined;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function neutralizeUntrustedDom(root: ParentNode): void {
+function resolveRelativeMarkdownPath(href: string, currentPath: string): string | null {
+  const trimmed = href.trim();
+  if (!trimmed || /^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(trimmed) || trimmed.includes("\\")) return null;
+  const encodedPath = trimmed.split(/[?#]/, 1)[0] ?? "";
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(encodedPath);
+  } catch {
+    return null;
+  }
+  if (!decodedPath || decodedPath.startsWith("/") || decodedPath.includes("\\")) return null;
+
+  const baseParts = currentPath.includes("/")
+    ? currentPath.slice(0, currentPath.lastIndexOf("/")).split("/").filter(Boolean)
+    : [];
+  for (const part of decodedPath.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (baseParts.length === 0) return null;
+      baseParts.pop();
+      continue;
+    }
+    if (part.startsWith(".")) return null;
+    baseParts.push(part);
+  }
+  return baseParts.length > 0 ? baseParts.join("/") : null;
+}
+
+function neutralizeUntrustedDom(root: ParentNode, allowRelativeFiles: boolean, currentPath: string): void {
   for (const anchor of root.querySelectorAll("a[href]")) {
     const href = anchor.getAttribute("href") ?? "";
+    const relativePath = resolveRelativeMarkdownPath(href, currentPath);
+    if (relativePath && allowRelativeFiles) {
+      anchor.setAttribute("href", "#");
+      anchor.setAttribute("data-skill-file", relativePath);
+      continue;
+    }
     if (href && !/^(https?:|mailto:|#)/i.test(href)) {
       anchor.removeAttribute("href");
       anchor.setAttribute("role", "link");
@@ -33,22 +69,22 @@ function neutralizeUntrustedDom(root: ParentNode): void {
 
 // ─── MarkdownView ─────────────────────────────────────────────────────────────
 
-export function MarkdownView({ content, language }: MarkdownViewProps) {
+export function MarkdownView({ content, language, currentPath = "SKILL.md", onOpenRelativeFile }: MarkdownViewProps) {
   const t = getT(language);
   const html = useMemo(() => {
     const rendered = renderMarkdown(content, markdownCopyOptions(t)).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body);
+    neutralizeUntrustedDom(doc.body, onOpenRelativeFile !== undefined, currentPath);
     return doc.body.innerHTML;
-  }, [content, t]);
+  }, [content, currentPath, onOpenRelativeFile, t]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    neutralizeUntrustedDom(root);
-    const observer = new MutationObserver(() => neutralizeUntrustedDom(root));
+    neutralizeUntrustedDom(root, onOpenRelativeFile !== undefined, currentPath);
+    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, onOpenRelativeFile !== undefined, currentPath));
     observer.observe(root, {
       childList: true,
       subtree: true,
@@ -56,9 +92,16 @@ export function MarkdownView({ content, language }: MarkdownViewProps) {
       attributeFilter: ["href", "src", "srcset"],
     });
     return () => observer.disconnect();
-  }, [html]);
+  }, [currentPath, html, onOpenRelativeFile]);
 
-  const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const relativeAnchor = (e.target as HTMLElement).closest<HTMLElement>("[data-skill-file]");
+    if (relativeAnchor && onOpenRelativeFile) {
+      e.preventDefault();
+      const relativePath = relativeAnchor.getAttribute("data-skill-file");
+      if (relativePath) onOpenRelativeFile(relativePath);
+      return;
+    }
     const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
     if (!button) return;
     const code = button.closest("pre")?.getAttribute("data-code");
@@ -67,13 +110,13 @@ export function MarkdownView({ content, language }: MarkdownViewProps) {
     const original = button.textContent;
     button.textContent = t("skills.markdown.copied");
     window.setTimeout(() => { button.textContent = original; }, 1200);
-  }, [t]);
+  }, [onOpenRelativeFile, t]);
 
   return (
     <div
       ref={rootRef}
       className="markdown-body"
-      onClick={handleCopyClick}
+      onClick={handleClick}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: html }}
     />

@@ -36,7 +36,7 @@ async function fetchInstalledList(theaterId: string | null): Promise<SkillListIt
     ? `?theaterId=${encodeURIComponent(theaterId)}`
     : "";
   const res = await fetch(`/plugins/skills/list${query}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(String(res.status));
   const data = await res.json() as { skills: SkillListItem[] };
   return data.skills ?? [];
 }
@@ -52,19 +52,31 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
   const [removeFailed, setRemoveFailed] = useState(false);
+  const [listFailed, setListFailed] = useState(false);
   // 실패한 제거의 대상 Theater까지 들고 있어야 한다. Theater를 바꾼 뒤 재시도를 누르면
   // 지금 보고 있는 Theater에서 같은 이름의 스킬을 지우게 되기 때문이다.
   const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string; readonly theaterId: string | null } | null>(null);
   // 나간 요청을 세어 그 번호로 완료를 맞춰 본다. Theater를 옮기는 동안 날아가던 요청이
   // 뒤늦게 실패로 돌아오면, 그 실패는 지금 화면의 사실이 아니다.
   const removeRequestRef = useRef(0);
+  const listRequestRef = useRef(0);
 
   const loadList = useCallback((tid: string | null) => {
     const requestContextKey = skillsContextKey(tid);
+    const requestId = listRequestRef.current + 1;
+    listRequestRef.current = requestId;
+    setListFailed(false);
     setInstalledState(requestContextKey, [], true);
     fetchInstalledList(tid)
-      .then((skills) => setInstalledState(requestContextKey, skills, false))
-      .catch(() => setInstalledState(requestContextKey, [], false));
+      .then((skills) => {
+        if (listRequestRef.current !== requestId) return;
+        setInstalledState(requestContextKey, skills, false);
+      })
+      .catch(() => {
+        if (listRequestRef.current !== requestId) return;
+        setInstalledState(requestContextKey, [], false);
+        setListFailed(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -202,9 +214,18 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
           </div>
         )}
 
-        {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}
+        {installedLoading && <div className="skills-empty-state" role="status" aria-live="polite">{t("skills.empty.loading")}</div>}
 
-        {!installedLoading && filtered.length === 0 && (
+        {!installedLoading && listFailed ? (
+          <FailureNotice
+            title={t("skills.failure.list.title")}
+            cause={t("skills.failure.list.cause")}
+            actions={[{ label: t("skills.action.retry"), onSelect: () => loadList(theaterId), primary: true }]}
+            tone="coral"
+          />
+        ) : null}
+
+        {!installedLoading && !listFailed && filtered.length === 0 && (
           <div className="skills-empty-state">
             {filterText
               ? t("skills.empty.noMatch")

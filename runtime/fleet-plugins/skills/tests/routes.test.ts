@@ -11,6 +11,7 @@ import {
   extractSkillMarkdown,
   handleGetJob,
   handleInstalledFile,
+  handleInstalledPackage,
   handleInstall,
   handleList,
   handlePaletteSearch,
@@ -103,6 +104,12 @@ describe("미인가 요청 401", () => {
     expect(res._status).toBe(401);
   });
 
+  it("handleInstalledPackage → 401", async () => {
+    const res = makeRes();
+    await handleInstalledPackage(makeReq("POST", "/plugins/skills/installed-package"), res, unauthorizedCtx, dummyExec);
+    expect(res._status).toBe(401);
+  });
+
   it("handleInstalledFile → 401", async () => {
     const res = makeRes();
     await handleInstalledFile(makeReq("POST", "/plugins/skills/installed-file"), res, unauthorizedCtx, dummyExec);
@@ -181,12 +188,21 @@ describe("project scope cwd", () => {
 });
 
 describe("palette installed-skill search", () => {
-  it("returns an empty result without invoking the CLI when no list is cached", async () => {
+  it("hydrates the cache before searching when no list is cached", async () => {
     const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-search-empty-"));
     const theaterRoot = path.join(temporaryDirectory, "theater");
     await fs.mkdir(theaterRoot, { recursive: true });
     try {
-      const executor = vi.fn<CliExecutor>(async () => ({ stdout: "[]", stderr: "", exitCode: 0 }));
+      const executor = vi.fn<CliExecutor>(async (args, options) => ({
+        stdout: args.includes("-g") ? "[]" : JSON.stringify([{
+          name: "needle-browser",
+          path: path.join(options.cwd, ".claude", "skills", "needle-browser"),
+          scope: "project",
+          agents: ["Claude Code"],
+        }]),
+        stderr: "",
+        exitCode: 0,
+      }));
       const ctx = {
         host: {
           security: { isTerminalAuthorized: () => true },
@@ -205,8 +221,8 @@ describe("palette installed-skill search", () => {
       await handlePaletteSearch(makeReq("POST", "/plugins/skills/palette-search"), res, ctx, executor);
 
       expect(res._status).toBe(200);
-      expect(res._body).toEqual({ skills: [] });
-      expect(executor).not.toHaveBeenCalled();
+      expect(res._body).toEqual({ skills: [{ name: "needle-browser", scope: "project" }] });
+      expect(executor).toHaveBeenCalled();
     } finally {
       await fs.rm(temporaryDirectory, { force: true, recursive: true });
     }

@@ -6,6 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 import { MarkdownView } from "./markdown-view.js";
+import { PackageAtlas } from "./package-atlas.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -56,8 +57,10 @@ export function ReadingOverlay({
   t,
   language,
 }: ReadingOverlayProps) {
-  const [markdown, setMarkdown] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewRequestKey, setPreviewRequestKey] = useState(0);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -69,49 +72,31 @@ export function ReadingOverlay({
   }, [skill]);
 
   useEffect(() => {
-    if (!skill) {
-      setMarkdown(null);
+    if (!skill || isInstalled) {
+      setPreviewMarkdown(null);
+      setPreviewFailed(false);
       return;
     }
-    setLoading(true);
-    setMarkdown(null);
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        let res: Response;
-        if (isInstalled) {
-          const body: Record<string, unknown> = { scope: skill.scope, skill: skill.name };
-          if (skill.scope === "project" && theaterId) {
-            body["theaterId"] = theaterId;
-          }
-          res = await fetch("/plugins/skills/installed-file", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        } else {
-          res = await fetch("/plugins/skills/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source: skill.source, skill: skill.name, theaterId }),
-          });
-        }
-        if (cancelled) return;
-        if (!res.ok) { setLoading(false); return; }
-        const data = await res.json() as { markdown: string };
-        if (!cancelled) {
-          setMarkdown(data.markdown ?? "");
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => { cancelled = true; };
-  }, [skill, isInstalled, theaterId]);
+    setPreviewLoading(true);
+    setPreviewFailed(false);
+    setPreviewMarkdown(null);
+    const abort = new AbortController();
+    void fetch("/plugins/skills/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: skill.source, skill: skill.name, theaterId }),
+      signal: abort.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const data = await response.json() as { markdown: string };
+      setPreviewMarkdown(data.markdown ?? "");
+    }).catch(() => {
+      if (!abort.signal.aborted) setPreviewFailed(true);
+    }).finally(() => {
+      if (!abort.signal.aborted) setPreviewLoading(false);
+    });
+    return () => abort.abort();
+  }, [skill, isInstalled, previewRequestKey, theaterId]);
 
   useEffect(() => {
     if (!skill) return;
@@ -119,17 +104,22 @@ export function ReadingOverlay({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         onClose();
       } else if (event.key === "Tab") {
         trapFocus(event, dialogRef.current);
+        event.stopImmediatePropagation();
       }
-      event.stopImmediatePropagation();
     };
 
+    const appShell = document.querySelector<HTMLElement>(".console-shell");
+    const previousInert = appShell?.inert ?? false;
+    if (appShell) appShell.inert = true;
     closeButtonRef.current?.focus();
     window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
+      if (appShell) appShell.inert = previousInert;
       const target = returnFocusRef.current;
       returnFocusRef.current = null;
       target?.focus?.();
@@ -158,7 +148,7 @@ export function ReadingOverlay({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t("skills.overlay.skillMdAria", { name: skill.name })}
+        aria-label={t(isInstalled ? "skills.overlay.packageAria" : "skills.overlay.skillMdAria", { name: skill.name })}
         className="skills-overlay-dialog"
         onClick={(e) => e.stopPropagation()}
       >
@@ -178,13 +168,22 @@ export function ReadingOverlay({
           </button>
         </div>
         <div className="skills-overlay-body">
-          {loading && (
-            <div className="skills-empty-state">{t("skills.overlay.loading")}</div>
+          {isInstalled ? (
+            <PackageAtlas skill={skill} theaterId={theaterId} t={t} language={language} />
+          ) : (
+            <>
+              {previewLoading ? <div className="skills-empty-state" role="status">{t("skills.overlay.loading")}</div> : null}
+              {previewFailed ? (
+                <div className="skills-overlay-preview-failure">
+                  <p>{t("skills.overlay.loadFailed")}</p>
+                  <button type="button" className="skills-btn skills-btn--primary" onClick={() => setPreviewRequestKey((key) => key + 1)}>
+                    {t("skills.action.retry")}
+                  </button>
+                </div>
+              ) : null}
+              {previewMarkdown !== null ? <MarkdownView content={previewMarkdown} language={language} /> : null}
+            </>
           )}
-          {!loading && markdown === null && (
-            <div className="skills-empty-state">{t("skills.overlay.loadFailed")}</div>
-          )}
-          {markdown !== null && <MarkdownView content={markdown} language={language} />}
         </div>
         <div className="skills-overlay-footer">
           <p className="skills-permission-warning">{t("skills.overlay.permissionWarning")}</p>

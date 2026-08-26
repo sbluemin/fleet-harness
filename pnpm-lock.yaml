@@ -633,6 +633,9 @@ importers:
 
   runtime/fleet-plugins/skills:
     dependencies:
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../../../packages/core-infra
       '@dotobokuri/core-process':
         specifier: workspace:*
         version: link:../../../packages/core-process
