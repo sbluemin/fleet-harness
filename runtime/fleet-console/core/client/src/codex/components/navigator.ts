@@ -317,11 +317,16 @@ export function mountNavigatorInto(
     const left = Math.min(maxLeft, Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, triggerRect.right - popoverRect.width));
     const below = triggerRect.bottom + HEALTH_POPOVER_TRIGGER_GAP;
     const above = triggerRect.top - popoverRect.height - HEALTH_POPOVER_TRIGGER_GAP;
-    const top = below + popoverRect.height <= viewportHeight - HEALTH_POPOVER_VIEWPORT_GUTTER || above < HEALTH_POPOVER_VIEWPORT_GUTTER
+    const preferredTop = below + popoverRect.height <= viewportHeight - HEALTH_POPOVER_VIEWPORT_GUTTER || above < HEALTH_POPOVER_VIEWPORT_GUTTER
       ? below
       : above;
+    const maxTop = Math.max(
+      HEALTH_POPOVER_VIEWPORT_GUTTER,
+      viewportHeight - popoverRect.height - HEALTH_POPOVER_VIEWPORT_GUTTER,
+    );
+    const top = Math.min(maxTop, Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, preferredTop));
     healthPopoverElement.style.left = `${Math.round(left)}px`;
-    healthPopoverElement.style.top = `${Math.round(Math.max(HEALTH_POPOVER_VIEWPORT_GUTTER, top))}px`;
+    healthPopoverElement.style.top = `${Math.round(top)}px`;
   }
 
   function startHealthPopoverTracking(): void {

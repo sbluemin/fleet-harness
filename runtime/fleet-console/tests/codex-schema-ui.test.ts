@@ -250,6 +250,10 @@ describe("Codex schema UI contract", () => {
       expect(popover.style.left).toBe("460px");
       expect(popover.style.top).toBe("288px");
 
+      Object.defineProperty(document.documentElement, "clientHeight", { configurable: true, value: 300 });
+      window.dispatchEvent(new Event("resize"));
+      expect(popover.style.top).toBe("12px");
+
       detail.style.visibility = "hidden";
       window.dispatchEvent(new Event("resize"));
       expect(document.body.querySelector(".codex-nav-health-popover")).toBeNull();
