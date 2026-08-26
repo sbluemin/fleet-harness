@@ -217,7 +217,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(146);
+    expect(body.routes).toHaveLength(147);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);
