@@ -164,6 +164,25 @@ export function prepareReaderSessionScroll(theaterId: string, entryId: string): 
   lastReaderScrollTop = session.scrollTop;
 }
 
+/**
+ * 주소가 지목한 문서가 리더 기록의 바로 뒤/앞이면 그 걸음으로 옮긴다.
+ *
+ * 브라우저 뒤로가기는 리더에게는 그냥 "이 문서를 열어라"로 도착한다. 그대로 새 방문으로
+ * 처리하면 같은 문서가 기록에 중복으로 쌓이고, 그 항목이 들고 있던 읽던 자리도 쓰이지
+ * 않으며, 시트의 ←는 엉뚱한 문서를 가리킨 채 남는다.
+ */
+export function stepReaderHistoryTo(entryId: string): boolean {
+  if (historyEntries[historyIndex - 1]?.entryId === entryId) {
+    navigateCodexReaderHistory(-1);
+    return true;
+  }
+  if (historyEntries[historyIndex + 1]?.entryId === entryId) {
+    navigateCodexReaderHistory(1);
+    return true;
+  }
+  return false;
+}
+
 export function getCodexReaderDocumentState(): ReaderDocumentState {
   return documentSnapshot;
 }
@@ -236,7 +255,11 @@ export function mountReaderInto(
       pendingHistoryEntryId = null;
       historyRestoreScrollTop = pendingHistoryScrollTop;
       pendingHistoryScrollTop = 0;
-    } else if (!sessionRestore && !sameEntry) {
+    } else if (sessionRestore) {
+      // 복원된 문서는 방문이 아니지만 기록의 출발점이긴 하다 — 심어 두지 않으면 다음
+      // 문서가 유일한 항목이 되어 ←로 돌아올 곳이 사라진다.
+      seedHistoryEntry(opts.initialEntryId, sessionRestore.scrollTop);
+    } else if (!sameEntry) {
       pushHistoryEntry(opts.initialEntryId);
     }
   }
@@ -358,6 +381,13 @@ function pushHistoryEntry(entryId: string): void {
   historyEntries = historyEntries.slice(0, historyIndex + 1);
   historyEntries.push({ entryId, scrollTop: 0 });
   historyIndex = historyEntries.length - 1;
+  emitHistoryState();
+}
+
+function seedHistoryEntry(entryId: string, scrollTop: number): void {
+  if (historyEntries.length > 0) return;
+  historyEntries = [{ entryId, scrollTop }];
+  historyIndex = 0;
   emitHistoryState();
 }
 

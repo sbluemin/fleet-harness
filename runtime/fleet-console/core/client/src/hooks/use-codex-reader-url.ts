@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { prepareReaderSessionScroll } from "../codex-host.js";
+import { prepareReaderSessionScroll, stepReaderHistoryTo } from "../codex-host.js";
 import { useConsoleState } from "./use-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "../store.js";
@@ -98,9 +98,13 @@ export function useCodexReaderUrlSync(): void {
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다.
     openRailPanel("codex");
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
-      // 주소가 문서를 정한다 — 읽던 자리는 그 문서가 저장된 세션의 문서와 같을 때만 따라온다.
-      prepareReaderSessionScroll(theaterId, target.entryId);
-      openCodexReader({ kind: "entry", entryId: target.entryId });
+      // 브라우저 뒤로/앞으로가 리더 기록의 인접 걸음이면 그 걸음으로 옮긴다 — 그래야
+      // 그 항목이 들고 있던 읽던 자리와 ←/→ 방향이 함께 따라온다.
+      if (!stepReaderHistoryTo(target.entryId)) {
+        // 주소가 문서를 정한다 — 읽던 자리는 그 문서가 저장된 세션의 문서와 같을 때만 따라온다.
+        prepareReaderSessionScroll(theaterId, target.entryId);
+        openCodexReader({ kind: "entry", entryId: target.entryId });
+      }
       if (target.expanded) expandCodexReader();
       return;
     }
