@@ -2568,17 +2568,31 @@ button.chip:focus-visible {
   box-shadow: 0 0 8px color-mix(in oklch, var(--positive) 45%, transparent);
 }
 
+/* 레일은 의도적으로 overflow:hidden인 유리 프레임이다. 헬스 상세는 app의 루트 레이어로
+   이식해 그 프레임과 인접 레일에 갇히지 않고, 트리거 좌표를 따라 뷰포트 안에서 배치한다.
+   다만 일반 팝오버이므로 전역 모달(80+) 아래에 머물러 입력 격리를 침범하지 않는다. */
 .codex-nav-health-popover {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + var(--space-1));
-  right: 0;
+  position: fixed;
+  z-index: 70;
   display: grid;
-  min-width: 190px;
+  min-width: min(190px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: var(--ink-deep);
+  /* 팝업 판독성 계약: glass 틴트 아래 불투명 fallback 언더레이를 유지하고,
+     유리 게이트가 열릴 때만 body 뒤의 화면을 흐린다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
 }

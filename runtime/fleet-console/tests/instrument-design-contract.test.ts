@@ -479,6 +479,14 @@ function findRawProductSelectsInSourceFile(
 }
 
 describe("Instrument core design contract", () => {
+  it("keeps the Codex health popover below blocking modal layers", () => {
+    const codexComponents = source("codex/styles/components.css");
+    const popover = codexComponents.match(/\.codex-nav-health-popover \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(popover).toContain("position: fixed;");
+    expect(popover).toContain("z-index: 70;");
+    expect(popover).not.toContain("var(--z-overlay)");
+  });
+
   it("collapses backend API rows against their Settings card width", () => {
     const components = source("styles/components.css");
     const section = components.match(/\.backend-api-section \{[^}]*\}/)?.[0] ?? "";
