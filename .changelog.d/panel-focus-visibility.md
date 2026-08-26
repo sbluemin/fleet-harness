@@ -4,5 +4,5 @@ branch: panel-focus-visibility
 
 ### fleet-console
 #### Changed
-- Make the focused panel stand out on the Map. The panel holding keyboard focus now carries a deeper caption wash and sits one step above the board, while the other panels' captions and names step back toward the canvas - so moving focus with the arrow shortcuts is visible where the panels are, not only in the sidebar. Panels recede only while a panel is focused, and their status rails and terminal bodies stay untouched.
-  ko: Map에서 포커스한 패널이 눈에 띄게 했습니다. 키보드 포커스를 가진 패널은 캡션 워시가 진해지고 한 단 올라서며, 나머지 패널의 캡션과 이름은 캔버스 쪽으로 물러납니다. 화살표 단축키로 포커스를 옮길 때 사이드바가 아니라 패널이 있는 자리에서 그 변화가 보입니다. 후퇴는 포커스한 패널이 있을 때만 일어나고, 상태 레일과 터미널 본문은 그대로 둡니다.
+- Show where keyboard focus went on the Map. The panels you are not working in now fade back a little while one panel holds focus, that panel sits one step above the board, and a brass ring runs around it once at the moment focus arrives - so an arrow-key move reads on the panels themselves instead of only in the sidebar. Captions keep the look they always had, a faded panel keeps its status rail and stays readable, and the ring is skipped entirely when the system asks for reduced motion.
+  ko: Map에서 키보드 포커스가 어디로 갔는지 보이게 했습니다. 한 패널이 포커스를 쥐고 있는 동안 나머지 패널의 본문이 조금 물러나고, 그 패널은 한 단 올라서며, 포커스가 옮겨 앉는 순간 창 둘레를 brass 링이 한 번 지나갑니다. 화살표로 옮긴 결과가 사이드바가 아니라 패널이 있는 자리에서 읽힙니다. 캡션은 늘 쓰던 모습 그대로이고, 물러난 패널도 상태 레일을 유지하며 읽을 수 있습니다. 시스템이 모션 최소화를 요청하면 링은 돌지 않습니다.

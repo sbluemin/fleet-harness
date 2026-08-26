@@ -5090,6 +5090,53 @@ body[data-side-bar-animating="true"] .canvas-operation {
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
 }
 
+/* 이동의 순간만 도는 테두리 — 포커스가 새로 앉을 때 창 둘레를 brass 링이 한 번 지나간다.
+   상주 표식(캡션 워시·본문 후퇴·융기)이 "지금 어디인가"를 말한다면 이 링은 "방금 저기로
+   갔다"를 말한다. 둘은 서로를 대신하지 못한다: 가만히 있는 표식은 눈길을 끌지 못하고,
+   지나간 신호는 남지 않는다.
+   전이 전용이므로 지속 상태(is-active)가 아니라 일시 클래스가 소유한다 — is-active에 걸면
+   Theater를 오갈 때마다 리마운트로 다시 돈다(도착 플래시 is-unseen-arriving의 선례와 같다).
+   기본 opacity가 0이라 애니메이션이 없으면 아무것도 그리지 않는다: reduced-motion은 이 링을
+   조용히 건너뛰고 상주 표식만 남긴다. 색은 위치 채널 brass 하나이며 상태 레일과 겹치는 자리가
+   없다 — 링은 창의 바깥선을 돌고, 레일은 캡션 안쪽 아랫변에 있다.
+   덱 타일은 여기서도 빠진다 — 카드의 위치는 칸이 소유하고, 카드로 남은 채 활성이 되는 경로가
+   실제로 있다(enterTriage의 조기 반환). 무대로 오른 패널은 덱 타일이 아니므로 링을 받는다.
+   링의 위쪽 끝은 캡션이 창의 꼭대기를 소유하는지에 달렸다: 떠 있는 캡션은 루트 박스 밖
+   -32px에 서므로 링도 그만큼(+캡션 보더 1px) 위에서 시작하고, 흐름 안 캡션(is-top-edge)은
+   루트의 top이 곧 꼭대기다. z는 캡션(7) 위에 서서 창 전체를 한 줄로 두른다. */
+.canvas-operation.is-focus-arriving:not(.is-deck-tile)::after {
+  content: "";
+  position: absolute;
+  top: var(--focus-ring-top, -33px);
+  right: -1px;
+  bottom: -1px;
+  left: -1px;
+  z-index: 8;
+  border: 2px solid var(--brass);
+  border-radius: var(--radius-md);
+  opacity: 0;
+  pointer-events: none;
+  animation: panel-focus-arrive var(--duration-slow) var(--ease-spring) 1;
+}
+
+.canvas-operation.is-top-edge {
+  --focus-ring-top: -1px;
+}
+
+@keyframes panel-focus-arrive {
+  0% {
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
 /* 상태 레일 색 — OperationActivity 매핑 축(.tenant-beacon 선언)과 같은 토큰을 쓴다.
    turn/background: warn(에이전트 턴·백그라운드 작업) · awaiting: aurora(운영자 입력 대기)
    · unseen: positive(미확인 완료). idle·dormant는 레일을 켜지 않는다. */
@@ -6362,13 +6409,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
    hue 141(초록)에 착지했고, 위치 채널이 신호 채널 positive(160) 옆에 앉았다.
    워시는 캡션만 진다. 채팅·터미널 본문은 --surface-panel에 남아, 포커스가 로그 전체를
    다른 면으로 다시 칠하지 않는다.
-   비율은 28%다. 10%는 실측에서 포커스/비포커스 캡션의 실렌더 대비가 1.14:1이었다 —
-   상태 표시가 인접색과 가져야 할 3:1의 절반에도 못 미쳐, 단축키로 패널을 옮겨도 캔버스에서
-   무엇이 바뀌었는지 보이지 않았다. 28%는 같은 측정에서 1.67:1이다. 그 위(50% = 3.01:1)로는
-   캡션이 금색 판이 되어 바로 아랫변의 warn 레일과 한 덩어리로 읽힌다 — 채움 채널의 상한은
-   기준선이 아니라 상태 채널과의 거리가 정한다. 남는 몫은 주변 후퇴가 진다. */
+   비율은 10%다. 한때 28%까지 올렸으나(실렌더 대비 1.14 → 1.67:1) 캡션 혼자 화면에서 튀었고,
+   그 대비를 살 자리는 캡션이 아니었다 — 지금은 곁의 본문이 물러나서 포커스한 창을 세우고,
+   이동의 순간은 링이 말한다. 캡션은 오늘의 값 그대로 둔다. */
 .canvas-operation.is-active:not(.is-deck-tile) > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 28%, var(--glass-tint-caption));
+  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -6377,30 +6422,21 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--text-primary);
 }
 
-/* 주변 후퇴 — 무대에 포커스가 서 있을 때만 나머지 캡션이 바탕 쪽으로 물러난다.
-   :has() 게이트가 없으면 포커스가 없는 화면에서도 모든 캡션이 어두워져, 물러설 기준이 없는
-   상태에서 기본 모습만 바뀐다. 후퇴는 캡션 면과 이름까지다 — 본문(터미널·채팅 로그)은 건드리지
-   않는다. 곁의 패널을 읽는 일은 포커스와 무관하게 계속된다. 상태 레일(::after)도 그대로 둔다:
-   비포커스 패널의 진행이 0픽셀이 되던 옛 실패로 되돌아가는 길이다.
+/* 주변 후퇴 — 무대에 포커스가 서 있을 때만 곁의 본문이 물러난다. 캡션은 건드리지 않는다:
+   창의 머리는 어느 패널인지를 말하는 자리라 흐려지면 목록을 훑는 일이 함께 흐려진다.
+   물러나는 것은 읽던 내용 쪽이고, 그래서 포커스한 창의 본문만 또렷하게 남는다.
+   :has() 게이트가 없으면 포커스가 없는 화면에서도 모든 본문이 흐려져, 물러설 기준이 없는
+   상태에서 기본 모습만 바뀐다. 상태 레일(캡션 ::after)은 캡션 소속이라 자동으로 남는다 —
+   비포커스 패널의 진행이 0픽셀이 되던 옛 실패로 되돌아가지 않는다.
    덱 타일은 후퇴 대상에서도, 게이트에서도 빠진다 — 카드의 위치 마크는
    칸(.canvas-triage-deck-cell)이 소유하므로 카드는 표식을 받지 않고, 표식을 받지 않는 것은
    남들을 물러서게 할 자격도 없다. 게이트가 표식보다 넓으면 아무것도 앞으로 나서지 않은 채
    무대만 어두워진다: 대기 큐가 비어 있지 않으면 enterTriage가 활성 id를 카드에 남기고
    (triage-store.ts), 무대의 자동 포커스는 모달·투어가 떠 있던 프레임에서 한 번 걸러지면
    캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다. */
-.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));
-  background-clip: padding-box;
-}
-
-/* 이름은 한 티어 내려간다. 제외가 없으면 이 규칙이 특이도로 이름의 hover를 이겨, 비포커스
-   패널에서는 이름 위에 마우스를 얹어도 아무 반응이 없다(이름은 클릭하면 편집이다).
-   :focus-visible도 같은 이유로 함께 빠진다 — 그 초대는 마우스만의 것이 아니다. 이름의
-   focus-visible 규칙은 brass 아웃라인만 그리고 색은 건드리지 않아, 이 규칙을 그대로 두면
-   키보드로 이름에 닿은 사용자만 물러난 색에 머문다. 링은 어디에 있는지를 말하고 색은 무엇을
-   할 수 있는지를 말하므로, 두 입력 수단이 같은 초대를 받아야 한다. */
-.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-titlebar .canvas-operation-identity-name:not(:hover):not(:focus-visible) {
-  color: var(--text-tertiary);
+.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-terminal {
+  opacity: 0.72;
+  transition: opacity var(--duration-base) var(--ease-glide);
 }
 
 /* 캡션 아랫변 = 상태 채널. 포커스는 채움이 말하므로 선은 상태 하나만 소유한다. */

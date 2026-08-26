@@ -2999,24 +2999,35 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active:not(.is-deck-tile) > .canvas-operation-titlebar {");
-    // 워시는 28%다. 10%는 실렌더 대비 1.14:1로 상태 표시의 3:1에 크게 못 미쳤고, 50%(3.01:1)는
-    // 캡션을 금색 판으로 만들어 아랫변 warn 레일과 한 덩어리가 된다. 채움의 상한은 기준선이
-    // 아니라 상태 채널과의 거리가 정하므로, 나머지 몫은 주변 후퇴와 융기가 나눠 진다.
+    // 워시는 10%다. 한때 28%까지 올렸으나 캡션 혼자 화면에서 튀었다 — 대비를 살 자리는 캡션이
+    // 아니라 곁의 본문(후퇴)과 이동의 순간(링)이다. 캡션은 오늘의 값에 남는다.
     const focusWash = components.match(/\.canvas-operation\.is-active:not\(\.is-deck-tile\) > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
-    expect(focusWash).toContain("background: color-mix(in oklab, var(--brass) 28%, var(--glass-tint-caption));");
+    expect(focusWash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));");
     expect(focusWash).toContain("background-clip: padding-box;");
-    // 후퇴는 무대에 포커스가 설 때만 일어난다 — :has() 게이트가 빠지면 포커스 없는 화면의
-    // 기본 캡션까지 어두워진다. 본문과 상태 레일은 후퇴에서 빠지고, 덱 타일도 빠진다
-    // (카드의 위치 마크는 칸이 소유한다).
-    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
-    expect(recede).toContain("background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));");
+    // 후퇴는 본문이 진다 — 캡션은 어느 패널인지를 말하는 자리라 흐려지면 목록을 훑는 일이 함께
+    // 흐려진다. 상태 레일은 캡션 소속이라 자동으로 남는다. 무대에 포커스가 설 때만 일어나며
+    // (:has() 게이트), 덱 타일은 대상에서도 게이트에서도 빠진다.
+    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
+    expect(recede).toContain("opacity: 0.72;");
+    expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
-    expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*\.canvas-operation-terminal \{/);
-    // 이름 티어 하강은 편집 초대를 이기면 안 된다 — 이름은 눌러서 고치는 자리다. hover만 빼면
-    // 그 초대가 마우스만의 것이 된다: 이름의 focus-visible 규칙은 아웃라인만 그리고 색은
-    // 건드리지 않아, 키보드로 닿은 사용자만 물러난 색에 남는다.
-    expect(components).toContain(".canvas-operation-identity-name:not(:hover):not(:focus-visible) {");
-    expect(components).not.toMatch(/\.canvas-operation-identity-name:not\(:hover\) \{/);
+    // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,
+    // 기본 opacity 0이라 애니메이션이 없는 reduced-motion에서는 아무것도 그리지 않는다.
+    const ring = components.match(/\.canvas-operation\.is-focus-arriving:not\(\.is-deck-tile\)::after \{[^}]*\}/)?.[0] ?? "";
+    expect(ring).toContain("border: 2px solid var(--brass);");
+    expect(ring).toContain("opacity: 0;");
+    expect(ring).toContain("animation: panel-focus-arrive var(--duration-slow) var(--ease-spring) 1;");
+    expect(components).toContain("@keyframes panel-focus-arrive {");
+    expect(components).not.toContain(".canvas-operation.is-active::after {");
+    expect(components).not.toMatch(/\.canvas-operation\.is-focus-arriving::after \{/);
+    expect(operationFrame).toContain('focusArrival ? "is-focus-arriving" : ""');
+    expect(operationFrame).toContain("previousActiveRef");
+    // 포커스를 잃는 쪽은 링을 그 자리에서 거둔다 — 타이머를 기다리면 360ms 안의 두 번째 이동에서
+    // 링이 두 장 되고(실측 중첩), 그사이 되돌아오면 클래스가 빠진 적이 없어 다시 돌지도 않는다.
+    const arrivalEffect = operationFrame.match(/useEffect\(\(\) => \{\n\s*const previous = previousActiveRef\.current;[\s\S]*?\}, \[active\]\);/)?.[0] ?? "";
+    expect(arrivalEffect).toContain("if (!active) {");
+    expect(arrivalEffect).toContain("setFocusArrival(false);");
+    expect(arrivalEffect).not.toMatch(/if \(previous \|\| !active\) return;/);
     // 포커스의 깊이는 색을 하나도 쓰지 않는다 — 상태 채널과 겹칠 자리가 없다. 중립 rim 블록보다
     // 뒤에 서서, 진행 중인 패널이 포커스를 받아도 깊이는 포커스가 소유한다.
     const lift = components.match(/\n\.canvas-operation\.is-active:not\(\.is-deck-tile\) \{[^}]*\}/)?.[0] ?? "";
