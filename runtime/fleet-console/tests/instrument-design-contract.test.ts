@@ -3016,7 +3016,7 @@ describe("Instrument core design contract", () => {
     // 흐려진다. 상태 레일은 캡션 소속이라 자동으로 남는다. 무대에 포커스가 설 때만 일어나며
     // (:has() 게이트), 덱 타일은 대상에서도 게이트에서도 빠진다.
     const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
-    expect(recede).toContain("opacity: 0.6;");
+    expect(recede).toContain("opacity: 0.5;");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,
