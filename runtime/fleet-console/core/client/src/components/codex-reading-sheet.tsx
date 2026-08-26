@@ -783,14 +783,28 @@ function highlightRegistry(): HighlightRegistry | null {
   return api && typeof ctor === "function" ? api : null;
 }
 
+/**
+ * 대소문자를 접되 길이는 보존한다. `İ`처럼 소문자가 두 코드 유닛이 되는 글자가 있으면
+ * 접은 문자열의 인덱스가 원본 텍스트 노드와 어긋나 Range가 범위 밖을 가리킨다
+ * (setEnd가 IndexSizeError로 던져 그 문서의 찾기가 통째로 죽는다).
+ */
+function foldKeepingLength(text: string): string {
+  let folded = "";
+  for (const char of text) {
+    const lower = char.toLowerCase();
+    folded += lower.length === char.length ? lower : char;
+  }
+  return folded;
+}
+
 function collectRanges(root: HTMLElement, query: string): Range[] {
-  const needle = query.toLowerCase();
+  const needle = foldKeepingLength(query);
   const ranges: Range[] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
     const text = node.textContent ?? "";
-    const haystack = text.toLowerCase();
+    const haystack = foldKeepingLength(text);
     let from = haystack.indexOf(needle);
     while (from !== -1) {
       const range = document.createRange();

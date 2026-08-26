@@ -116,6 +116,10 @@ export function useCodexReaderUrlSync(): void {
       collapseCodexReader();
       return;
     }
+    // 항목 id는 Theater마다 독립이다 — 같은 id를 가진 다른 Theater의 문서로 옮기는
+    // 중이라면 아직 도착한 것이 아니다. 목표를 여기서 버리면 Theater 전환이 이전 리더를
+    // 닫는 사이에 링크만 주소에서 지워진다.
+    if (target.theaterId && target.theaterId !== theaterId) return;
     targetRef.current = null;
     // location.search를 함께 물어야 뒤로가기가 세운 새 목표가 이 effect를 깨운다 —
     // ref 갱신만으로는 리렌더도 재실행도 일어나지 않는다.
