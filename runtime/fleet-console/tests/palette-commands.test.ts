@@ -27,6 +27,7 @@ beforeEach(() => {
     seenFeatureTours: [],
     theme: "instrument",
     liquidGlass: true,
+    unfocusedPanelFade: 50,
     uiFont: DEFAULT_UI_FONT,
     language: "en",
   });

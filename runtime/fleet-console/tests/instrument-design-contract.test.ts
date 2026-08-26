@@ -171,7 +171,7 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   // Right Rail TSX injects the user-selected overlay opacity.
   "--right-rail-overlay-alpha",
   // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
-  "--alpha-fill",
+  "--slider-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
@@ -1852,8 +1852,12 @@ describe("Instrument core design contract", () => {
     // gate open the same channel turns transparent under backdrop blur.
     expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // opacity control communicates its filled range in either engine.
-    expect(rail).toContain(".right-rail-alpha-slider::-moz-range-progress");
+    // opacity control communicates its filled range in either engine. The recipe is shared -
+    // the rail's opacity and the Settings fade strength are one control grammar, and the rail
+    // keeps only its own layout.
+    expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
+    expect(rail).not.toContain(".right-rail-alpha-slider::-moz-range-progress");
+    expect(rightRail).toContain("right-rail-alpha-slider fleet-slider");
     expect(rightRail).toContain("useRailPanelBehavior");
     expect(rightRail).toContain("right-rail-float-toggle");
     expect(rightRail).toContain("right-rail-alpha-slider");
@@ -3072,7 +3076,11 @@ describe("Instrument core design contract", () => {
     // 흐려진다. 상태 레일은 캡션 소속이라 자동으로 남는다. 무대에 포커스가 설 때만 일어나며
     // (:has() 게이트), 덱 타일은 대상에서도 게이트에서도 빠진다.
     const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
-    expect(recede).toContain("opacity: 0.5;");
+    // 세기는 설정이 소유한다 — 규칙은 변수를 소비하고, 폴백이 곧 기본값이라 값이 실리기 전
+    // 첫 페인트에서도 패널이 제자리를 지킨다. 폴백 없는 참조로 바뀌면 설정 이전 프레임이 비어 버린다.
+    expect(recede).toContain("opacity: var(--unfocused-panel-opacity, 0.5);");
+    expect(source("store.ts")).toContain("--unfocused-panel-opacity");
+    expect(source("pages/global-settings.tsx")).toContain('className="fleet-slider settings-slider"');
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,

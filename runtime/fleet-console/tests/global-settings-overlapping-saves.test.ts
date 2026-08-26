@@ -20,6 +20,7 @@ const BASE: GlobalSettingsState = {
   seenFeatureTours: [],
   theme: "instrument",
   liquidGlass: true,
+  unfocusedPanelFade: 50,
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
 };

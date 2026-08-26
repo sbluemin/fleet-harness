@@ -161,9 +161,15 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     theme: payload.theme,
     // 구서버 응답에는 필드가 없다 — 기본 옵트인(true)으로 정규화해 화면 계약을 한 형으로 유지한다.
     liquidGlass: payload.liquidGlass !== false,
+    // 같은 이유로 구서버 응답에는 세기가 없다 — 기본값으로 정규화한다.
+    unfocusedPanelFade: isUnfocusedPanelFade(payload.unfocusedPanelFade) ? payload.unfocusedPanelFade : 50,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,
   };
+}
+
+function isUnfocusedPanelFade(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 70;
 }
 
 function isValidConsoleStaticPort(value: unknown): value is number {

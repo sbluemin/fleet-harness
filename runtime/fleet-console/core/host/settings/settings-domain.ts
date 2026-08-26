@@ -66,7 +66,22 @@ export interface ConsoleGeneralSettings {
   readonly theme?: ConsoleThemeId;
   /** 리퀴드 글래스 머티리얼 — 부재는 켜짐(기본 옵트인)이다. */
   readonly liquidGlass?: boolean;
+  /**
+   * 포커스하지 않은 패널의 본문이 물러나는 세기(백분율). 0은 물러나지 않음, 클수록 더 흐리다.
+   * 부재는 기본값이며, 상한은 곁을 훑는 일이 끊기지 않는 선에서 정한다.
+   */
+  readonly unfocusedPanelFade?: number;
   readonly uiFont?: UiFontSettings;
+}
+
+/** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
+export const UNFOCUSED_PANEL_FADE_MIN = 0;
+export const UNFOCUSED_PANEL_FADE_MAX = 70;
+export const UNFOCUSED_PANEL_FADE_DEFAULT = 50;
+
+export function isUnfocusedPanelFade(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value)
+    && value >= UNFOCUSED_PANEL_FADE_MIN && value <= UNFOCUSED_PANEL_FADE_MAX;
 }
 
 /** 바인드 주소는 IPv4 리터럴이거나 단순 호스트명만 허용한다. */
@@ -254,6 +269,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
       : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
+  const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -262,6 +278,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(liquidGlass !== undefined ? { liquidGlass } : {}),
+    ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };
 }
@@ -398,6 +415,7 @@ interface GlobalSettingsBody {
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
   readonly liquidGlass?: unknown;
+  readonly unfocusedPanelFade?: unknown;
   readonly uiFont?: unknown;
 }
 
@@ -501,6 +519,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_liquid_glass" });
     return;
   }
+  if (body.unfocusedPanelFade !== undefined && !isUnfocusedPanelFade(body.unfocusedPanelFade)) {
+    deps.writeJson(res, 400, { error: "invalid_unfocused_panel_fade" });
+    return;
+  }
   if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
@@ -524,6 +546,7 @@ async function mutateGlobalSettings(
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(typeof body.liquidGlass === "boolean" ? { liquidGlass: body.liquidGlass } : {}),
+      ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
     plugins: current.plugins,
@@ -590,6 +613,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     liquidGlass: general.liquidGlass ?? true,
+    unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
 }

@@ -236,72 +236,9 @@
 }
 
 .right-rail-alpha-slider {
-  -webkit-appearance: none;
-  appearance: none;
   flex: 1 1 44px;
   width: 64px;
   min-width: 44px;
-  height: 16px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.right-rail-alpha-slider::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(to right, var(--brass) 0%, var(--brass) var(--alpha-fill, 100%), var(--surface-rim-strong) var(--alpha-fill, 100%), var(--surface-rim-strong) 100%);
-}
-
-.right-rail-alpha-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  margin-top: -4.5px;
-  border-radius: 50%;
-  background: var(--text-primary);
-  border: 1px solid var(--surface-rim-strong);
-}
-
-/* Firefox는 runnable-track 채움 그라데이션을 지원하지 않으므로 progress 의사요소로 병기한다. */
-.right-rail-alpha-slider::-moz-range-track {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--surface-rim-strong);
-}
-
-.right-rail-alpha-slider::-moz-range-progress {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--brass);
-}
-
-.right-rail-alpha-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--text-primary);
-  border: 1px solid var(--surface-rim-strong);
-}
-
-.right-rail-alpha-slider:focus-visible {
-  outline: none;
-}
-
-.right-rail-alpha-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
-}
-
-.right-rail-alpha-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
-}
-
-/* forced-colors 모드는 box-shadow 포커스 링을 제거하므로 outline으로 병기한다. */
-@media (forced-colors: active) {
-  .right-rail-alpha-slider:focus-visible {
-    outline: 2px solid CanvasText;
-    outline-offset: 1px;
-  }
 }
 
 .right-rail-alpha-value {

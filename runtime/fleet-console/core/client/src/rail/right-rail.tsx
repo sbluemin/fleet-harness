@@ -490,7 +490,7 @@ function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha, revealed
         {panelBehavior === "overlay" ? (
           <div className="right-rail-alpha">
             <input
-              className="right-rail-alpha-slider"
+              className="right-rail-alpha-slider fleet-slider"
               type="range"
               min={RAIL_OVERLAY_ALPHA_MIN}
               max={RAIL_OVERLAY_ALPHA_MAX}
@@ -499,7 +499,7 @@ function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha, revealed
               aria-label={t("rail.chrome.opacityAria")}
               onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
               onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
-              style={{ "--alpha-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+              style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
             />
             <span className="right-rail-alpha-value" aria-hidden="true">{overlayAlpha}%</span>
           </div>

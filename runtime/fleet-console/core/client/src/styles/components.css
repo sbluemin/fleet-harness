@@ -6434,13 +6434,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
    무대만 어두워진다: 대기 큐가 비어 있지 않으면 enterTriage가 활성 id를 카드에 남기고
    (triage-store.ts), 무대의 자동 포커스는 모달·투어가 떠 있던 프레임에서 한 번 걸러지면
    캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다.
-   세기는 0.5이다. 이 값은 곁의 본문에서 읽기 편함을 얼마나 떼어 포커스에 줄지를 정한다 —
-   실측(다크, 터미널 프롬프트 기준) 1.0에서 9.22:1, 0.72에서 5.31:1, 0.6에서 4.06:1,
-   0.5에서 3.20:1이다. 본문 대비 기준(4.5:1) 아래이고 큰 글자 기준(3:1)은 넘는 자리다:
-   물러난 패널은 지금 읽는 자리가 아니라 곁눈으로 훑는 자리이며, 포커스를 주는 순간
-   9.22:1로 돌아온다. 무엇이 지금 내 창인지가 곧바로 읽히는 쪽을 택한 값이다. */
+   세기는 사람마다 다르므로 설정이 소유한다(겉모습 > 비포커스 패널 흐리기). 여기 적힌 0.5는
+   그 값이 아직 실리지 않은 첫 페인트의 폴백이자 기본값이다 — 규칙은 그대로 두고 세기만 바뀐다.
+   이 값이 곁의 본문에서 읽기 편함을 얼마나 떼어 포커스에 줄지를 정한다: 실측(다크, 터미널
+   프롬프트 기준) 1.0에서 9.22:1, 0.72에서 5.31:1, 0.6에서 4.06:1, 0.5에서 3.20:1이다.
+   기본값 0.5는 본문 대비 기준(4.5:1) 아래이고 큰 글자 기준(3:1)은 넘는 자리다: 물러난 패널은
+   지금 읽는 자리가 아니라 곁눈으로 훑는 자리이며, 포커스를 주는 순간 9.22:1로 돌아온다.
+   상한(0.3)을 그보다 낮추지 않는 이유도 같다 — 곁을 훑는 일까지 끊기면 후퇴가 아니라 소거다. */
 .operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-terminal {
-  opacity: 0.5;
+  opacity: var(--unfocused-panel-opacity, 0.5);
   transition: opacity var(--duration-base) var(--ease-glide);
 }
 
@@ -15033,4 +15035,97 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   color: var(--text-tertiary);
   font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* 연속값을 고르는 하나의 문법 — Activity Rail의 불투명도와 설정의 후퇴 세기가 같은 트랙·손잡이를
+   쓴다. 채움 비율은 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가 따로 소유한다.
+   두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다. */
+.fleet-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fleet-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--brass) 0%, var(--brass) var(--slider-fill, 100%), var(--surface-rim-strong) var(--slider-fill, 100%), var(--surface-rim-strong) 100%);
+}
+
+.fleet-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 1px solid var(--surface-rim-strong);
+}
+
+/* Firefox는 runnable-track 채움 그라데이션을 지원하지 않으므로 progress 의사요소로 병기한다. */
+.fleet-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-rim-strong);
+}
+
+.fleet-slider::-moz-range-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brass);
+}
+
+.fleet-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 1px solid var(--surface-rim-strong);
+}
+
+.fleet-slider:focus-visible {
+  outline: none;
+}
+
+.fleet-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--brass);
+}
+
+.fleet-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--brass);
+}
+
+/* forced-colors 모드는 box-shadow 포커스 링을 제거하므로 outline으로 병기한다. */
+@media (forced-colors: active) {
+  .fleet-slider:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 1px;
+  }
+}
+
+/* 설정의 연속값 행 — 손잡이와 값이 한 줄로 붙는다. 값은 tabular-nums라 끌 때 자리가 흔들리지
+   않고, 폭은 두 자리+기호를 담는 최소치로 고정한다. */
+.settings-slider-field {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-slider {
+  width: 168px;
+  min-width: 120px;
+}
+
+.settings-slider-value {
+  flex: none;
+  width: 42px;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--brass-ink);
 }

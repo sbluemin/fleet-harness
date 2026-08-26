@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -20,7 +20,7 @@ import { isDesktopShell } from "../desktop-shell.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveTheme, setActiveUiFont, setLiquidGlass } from "../store.js";
+import { setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import { buildRemoteEndpointPresentation, generateRemoteAutoPort, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
@@ -147,7 +147,7 @@ function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): rea
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -177,6 +177,15 @@ function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): rea
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
+
+/**
+ * 비포커스 패널 흐리기 세기의 구간과 기본값. 브라우저 코드는 호스트를 import하지 않으므로
+ * 정적 포트 상·하한과 같은 관례로 여기에 적는다 — 서버는 settings-domain에서 같은 수로
+ * 검증한다. 상한이 70인 이유는 CSS 쪽 주석에 있다: 그 아래로 내려가면 곁을 훑는 일까지 끊긴다.
+ */
+const UNFOCUSED_PANEL_FADE_MIN = 0;
+const UNFOCUSED_PANEL_FADE_MAX = 70;
+const UNFOCUSED_PANEL_FADE_DEFAULT = 50;
 
 export function GlobalSettings() {
   const settings = useGlobalSettingsStore();
@@ -431,6 +440,25 @@ export function ThemeCard({
     });
   };
   const liquidGlass = state?.liquidGlass ?? true;
+  const savedPanelFade = state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT;
+  // 끄는 동안의 값은 화면이 들고, 서버 값은 손을 뗄 때 따라온다. 저장 왕복마다 손잡이가
+  // 서버 값으로 되튀면 연속 조작이 끊긴다.
+  const [draftPanelFade, setDraftPanelFade] = useState<number | null>(null);
+  const panelFade = draftPanelFade ?? savedPanelFade;
+  const previewPanelFade = (next: number) => {
+    setDraftPanelFade(next);
+    setUnfocusedPanelFade(next);
+  };
+  const commitPanelFade = (next: number) => {
+    if (next === savedPanelFade) {
+      setDraftPanelFade(null);
+      return;
+    }
+    void setGlobalSettingsField("unfocusedPanelFade", next).then((saved) => {
+      setDraftPanelFade(null);
+      if (!saved) setUnfocusedPanelFade(savedPanelFade);
+    });
+  };
   const toggleLiquidGlass = (enabled: boolean) => {
     if (!state) return;
     // 낙관 적용 후 저장 실패 시 되돌린다 — selectTheme의 실패 복원과 같은 문법.
@@ -494,6 +522,39 @@ export function ThemeCard({
               label={t("settings.theme.liquidGlass")}
               onChange={toggleLiquidGlass}
             />
+          </div>
+
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.theme.panelFade")}
+                <SettingsScope kind="live" />
+              </p>
+              <p className="global-settings-help">{t("settings.theme.panelFadeHelp")}</p>
+            </div>
+            {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
+                것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다. */}
+            <div className="settings-slider-field">
+              <input
+                className="fleet-slider settings-slider"
+                type="range"
+                min={UNFOCUSED_PANEL_FADE_MIN}
+                max={UNFOCUSED_PANEL_FADE_MAX}
+                step={5}
+                value={panelFade}
+                disabled={saving || state === null}
+                aria-label={t("settings.theme.panelFade")}
+                aria-valuetext={`${panelFade}%`}
+                style={{ "--slider-fill": `${(panelFade / UNFOCUSED_PANEL_FADE_MAX) * 100}%` } as CSSProperties}
+                onChange={(event) => previewPanelFade(Number(event.currentTarget.value))}
+                onPointerUp={(event) => commitPanelFade(Number(event.currentTarget.value))}
+                onKeyUp={(event) => commitPanelFade(Number(event.currentTarget.value))}
+                onBlur={(event) => commitPanelFade(Number(event.currentTarget.value))}
+              />
+              {/* 백분율 표기는 번역 대상이 아니라 두 로케일에서 같은 문자열이다 — i18n parity 게이트가
+                  en===ko를 거부하므로 메시지 키를 두지 않고 여기서 조립한다. */}
+              <output className="settings-slider-value">{`${panelFade}%`}</output>
+            </div>
           </div>
         </div>
 
