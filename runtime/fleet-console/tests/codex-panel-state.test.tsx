@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const panelMocks = vi.hoisted(() => ({
   historyState: { canGoBack: false, canGoForward: false },
+  documentState: { entryId: null as string | null, title: "" },
   closeCodexReader: vi.fn(),
   mountNavigatorInto: vi.fn(),
   mountReaderInto: vi.fn(),
@@ -25,7 +26,13 @@ const panelMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../core/client/src/codex-host.js", () => ({
+  consumeRestoredReaderExpanded: vi.fn(() => false),
+  getCodexReaderDocumentState: () => panelMocks.documentState,
   getCodexReaderHistoryState: () => panelMocks.historyState,
+  getCodexReaderMarkdown: vi.fn(() => ""),
+  setCodexReaderExpandedForSession: vi.fn(),
+  setNavigatorTagFilter: vi.fn(),
+  subscribeCodexReaderDocument: vi.fn(() => () => undefined),
   mountNavigatorInto: panelMocks.mountNavigatorInto,
   mountReaderInto: panelMocks.mountReaderInto,
   navigateCodexReaderHistory: vi.fn(),

@@ -20,6 +20,19 @@ export interface ReaderHistoryState {
 interface ReaderSession {
   readonly entryId: string;
   readonly scrollTop: number;
+  /** 새로고침 전에 확대(전체 읽기) 상태였는지 — 화면 모드까지 함께 복원한다. */
+  readonly expanded: boolean;
+}
+
+interface HistoryEntry {
+  readonly entryId: string;
+  /** 이 문서를 떠날 때의 읽던 자리. 돌아오면 여기서 이어 읽는다. */
+  scrollTop: number;
+}
+
+export interface ReaderDocumentState {
+  readonly entryId: string | null;
+  readonly title: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -48,13 +61,20 @@ let lastReaderScrollTop = 0;
 let scrollRestoreCleanup: (() => void) | null = null;
 let scrollSaveSlot: HTMLElement | null = null;
 let scrollSaveTimerId: ReturnType<typeof setTimeout> | null = null;
+let pageHideBound = false;
 
-let historyEntries: string[] = [];
+let historyEntries: HistoryEntry[] = [];
 let historyIndex = -1;
 let historySnapshot: ReaderHistoryState = { canGoBack: false, canGoForward: false };
 let pendingHistoryEntryId: string | null = null;
+let pendingHistoryScrollTop = 0;
 let pendingSessionRestore: ReaderSession | null = null;
 const historyListeners = new Set<() => void>();
+
+let pendingRestoredExpanded = false;
+let documentSnapshot: ReaderDocumentState = { entryId: null, title: "" };
+const documentListeners = new Set<() => void>();
+let readerExpandedForSession = false;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -97,6 +117,8 @@ export function restoreCodexReaderSession(theaterId: string): string | null {
   const session = readReaderSession(theaterId);
   if (!session) return null;
   pendingSessionRestore = session;
+  pendingRestoredExpanded = session.expanded;
+  readerExpandedForSession = session.expanded;
   lastReaderScrollTop = session.scrollTop;
   return session.entryId;
 }
@@ -112,12 +134,38 @@ export function subscribeCodexReaderHistory(listener: () => void): () => void {
 
 export function navigateCodexReaderHistory(direction: -1 | 1): void {
   const nextIndex = historyIndex + direction;
-  const entryId = historyEntries[nextIndex];
-  if (!entryId || nextIndex < 0 || nextIndex >= historyEntries.length) return;
+  const target = historyEntries[nextIndex];
+  if (!target || nextIndex < 0 || nextIndex >= historyEntries.length) return;
+  // 떠나기 전에 지금 자리를 현재 항목에 적어 둔다 — 돌아왔을 때 이어 읽기 위한 값이다.
+  const current = historyEntries[historyIndex];
+  const slot = readerHostNode?.parentElement;
+  if (current && slot) current.scrollTop = slot.scrollTop;
   historyIndex = nextIndex;
-  pendingHistoryEntryId = entryId;
+  pendingHistoryEntryId = target.entryId;
+  pendingHistoryScrollTop = target.scrollTop;
   emitHistoryState();
-  activeEntryRequest?.(entryId);
+  activeEntryRequest?.(target.entryId);
+}
+
+export function getCodexReaderDocumentState(): ReaderDocumentState {
+  return documentSnapshot;
+}
+
+export function subscribeCodexReaderDocument(listener: () => void): () => void {
+  documentListeners.add(listener);
+  return () => documentListeners.delete(listener);
+}
+
+/** 확대 여부는 리더 세션의 일부다 — 새로고침 뒤 같은 화면으로 돌아오게 한다. */
+export function setCodexReaderExpandedForSession(expanded: boolean): void {
+  if (readerExpandedForSession === expanded) return;
+  readerExpandedForSession = expanded;
+  const slot = readerHostNode?.parentElement;
+  persistCurrentReaderSession(slot?.scrollTop ?? 0);
+}
+
+export function consumeRestoredReaderExpanded(): boolean {
+  return pendingRestoredExpanded;
 }
 
 /** 열린 navigator/reader 문구를 현재 로케일로 다시 그린다(문서·스크롤 보존). */
@@ -165,15 +213,19 @@ export function mountReaderInto(
   if (opts.kind === "entry" && pendingSessionRestore && !sessionRestore) {
     pendingSessionRestore = null;
   }
+  let historyRestoreScrollTop: number | null = null;
   if (opts.kind === "entry" && opts.initialEntryId) {
     if (pendingHistoryEntryId === opts.initialEntryId) {
       pendingHistoryEntryId = null;
+      historyRestoreScrollTop = pendingHistoryScrollTop;
+      pendingHistoryScrollTop = 0;
     } else if (!sessionRestore && !sameEntry) {
       pushHistoryEntry(opts.initialEntryId);
     }
   }
 
   // DOM의 appendChild는 기존 부모에서 자동 detach → split·오버레이 사이를 콘텐츠 보존으로 relocate
+  const relocated = rNode.parentElement !== readSlot;
   if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
   if (tNode.parentElement !== tocSlot) tocSlot.appendChild(tNode);
   if (dNode.parentElement !== dockSlot) dockSlot.appendChild(dNode);
@@ -215,8 +267,12 @@ export function mountReaderInto(
   });
   syncInlineOutline(tNode);
   attachSessionScrollSaver(readSlot);
+  // 노드만 옮기면 스크롤 스파이의 IntersectionObserver는 옛 루트를 계속 물고 있다 —
+  // relocate한 쪽에서 다시 세워야 확대 화면의 목차가 읽는 위치를 따라온다.
+  if (relocated) readerController.refreshScrollSpy();
 
-  const targetScrollTop = sessionRestore?.scrollTop ?? (sameEntry ? lastReaderScrollTop : 0);
+  const targetScrollTop =
+    sessionRestore?.scrollTop ?? historyRestoreScrollTop ?? (sameEntry ? lastReaderScrollTop : 0);
   if (targetScrollTop <= 0) {
     requestAnimationFrame(() => {
       readSlot.scrollTop = targetScrollTop;
@@ -238,6 +294,8 @@ export function saveReaderScroll(): void {
 
 export function teardownReaderNodes(): void {
   saveReaderScroll();
+  documentSnapshot = { entryId: null, title: "" };
+  for (const listener of documentListeners) listener();
   scrollRestoreCleanup?.();
   detachSessionScrollSaver();
   readerController?.destroy();
@@ -274,9 +332,13 @@ function prepareReaderTheater(theaterId: string | null): void {
 }
 
 function pushHistoryEntry(entryId: string): void {
-  if (historyEntries[historyIndex] === entryId) return;
+  if (historyEntries[historyIndex]?.entryId === entryId) return;
+  // 새 문서로 떠나기 전에 현재 문서의 자리를 적는다(뒤로 돌아오면 그 자리에서 이어 읽는다).
+  const current = historyEntries[historyIndex];
+  const slot = readerHostNode?.parentElement;
+  if (current && slot) current.scrollTop = slot.scrollTop;
   historyEntries = historyEntries.slice(0, historyIndex + 1);
-  historyEntries.push(entryId);
+  historyEntries.push({ entryId, scrollTop: 0 });
   historyIndex = historyEntries.length - 1;
   emitHistoryState();
 }
@@ -297,7 +359,24 @@ function emitHistoryState(): void {
   for (const listener of historyListeners) listener();
 }
 
+function emitDocumentState(): void {
+  const doc = readerController?.getDocument() ?? null;
+  const next: ReaderDocumentState = {
+    entryId: doc?.entryId ?? null,
+    title: doc?.title ?? "",
+  };
+  if (next.entryId === documentSnapshot.entryId && next.title === documentSnapshot.title) return;
+  documentSnapshot = next;
+  for (const listener of documentListeners) listener();
+}
+
+/** 확대 헤드바가 현재 문서의 원문을 읽는다(원문 보기·복사). */
+export function getCodexReaderMarkdown(): string | null {
+  return readerController?.getDocument()?.markdown ?? null;
+}
+
 function handleEntryRendered(entryId: string): void {
+  emitDocumentState();
   const completedSessionRestore = pendingSessionRestore?.entryId === entryId;
   pendingSessionRestore = null;
   if (completedSessionRestore) return;
@@ -326,6 +405,21 @@ function attachSessionScrollSaver(slot: HTMLElement): void {
   detachSessionScrollSaver();
   scrollSaveSlot = slot;
   slot.addEventListener("scroll", handleSessionScroll, { passive: true });
+  if (!pageHideBound && typeof window !== "undefined") {
+    pageHideBound = true;
+    window.addEventListener("pagehide", flushReaderSession);
+    document.addEventListener("visibilitychange", flushReaderSession);
+  }
+}
+
+/** 500ms 디바운스가 만료되기 전에 창을 떠나면 마지막 스크롤이 저장되지 않는다. */
+function flushReaderSession(): void {
+  if (typeof document !== "undefined" && document.visibilityState === "visible") return;
+  if (scrollSaveTimerId !== null) {
+    clearTimeout(scrollSaveTimerId);
+    scrollSaveTimerId = null;
+  }
+  if (scrollSaveSlot) persistCurrentReaderSession(scrollSaveSlot.scrollTop);
 }
 
 function detachSessionScrollSaver(): void {
@@ -345,7 +439,11 @@ function handleSessionScroll(): void {
 
 function persistCurrentReaderSession(scrollTop: number): void {
   if (activeReaderKind !== "entry" || !activeReaderEntryId || !activeReaderSessionTheaterId) return;
-  writeReaderSession(activeReaderSessionTheaterId, { entryId: activeReaderEntryId, scrollTop });
+  writeReaderSession(activeReaderSessionTheaterId, {
+    entryId: activeReaderEntryId,
+    scrollTop,
+    expanded: readerExpandedForSession,
+  });
 }
 
 function readReaderSession(theaterId: string): ReaderSession | null {
@@ -355,7 +453,7 @@ function readReaderSession(theaterId: string): ReaderSession | null {
     const record = value as Record<string, unknown>;
     if (typeof record.entryId !== "string" || record.entryId.length === 0) return null;
     if (typeof record.scrollTop !== "number" || !Number.isFinite(record.scrollTop) || record.scrollTop < 0) return null;
-    return { entryId: record.entryId, scrollTop: record.scrollTop };
+    return { entryId: record.entryId, scrollTop: record.scrollTop, expanded: record.expanded === true };
   } catch {
     return null;
   }

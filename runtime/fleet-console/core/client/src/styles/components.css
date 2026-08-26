@@ -12113,6 +12113,340 @@ body[data-codex-side="true"] .command-card {
   border-bottom: 1px solid var(--surface-rim);
 }
 
+/* 머리는 화면 이름이 아니라 읽고 있는 문서를 말한다 — 스크롤을 내려도 사라지지 않는
+   유일한 문서 표식이므로, 제목 자체가 항목 전환기(⌘K)의 손잡이를 겸한다. */
+.codex-reader-headline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 46ch;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast);
+}
+
+.codex-reader-headline:hover,
+.codex-reader-headline:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
+.codex-reader-headline-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-reader-headline-hint {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+}
+
+.codex-reader-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.codex-reader-progress-track {
+  width: 56px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-rim);
+  overflow: hidden;
+}
+
+.codex-reader-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--brass);
+  transition: width var(--duration-fast) linear;
+}
+
+.codex-reader-progress-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+}
+
+.codex-reader-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.codex-reader-tool {
+  height: 24px;
+  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast),
+    background var(--duration-fast);
+}
+
+.codex-reader-tool:hover:not(:disabled),
+.codex-reader-tool:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
+.codex-reader-tool[aria-pressed="true"] {
+  color: var(--text-primary);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+}
+
+.codex-reader-tool:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 문서 안에서 찾기 — 브라우저 찾기는 스크롤포트 밖 문맥까지 훑어 정독을 흩뜨린다. */
+.codex-reader-find {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--surface-panel) 60%, transparent);
+}
+
+.codex-reader-find-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.codex-reader-find-input:focus-visible {
+  outline: none;
+  border-color: var(--control-focus-ring);
+}
+
+.codex-reader-find-count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 7ch;
+  text-align: right;
+}
+
+::highlight(codex-find) {
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
+  color: var(--text-primary);
+}
+
+::highlight(codex-find-current) {
+  background: color-mix(in oklch, var(--brass) 52%, transparent);
+  color: var(--text-on-brass);
+}
+
+/* 항목 전환기·원문 보기 — 시트 안에 머무는 보조 표면(캔버스 밖으로 나가지 않는다). */
+.codex-reader-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: calc(48px + var(--space-4)) var(--space-4) var(--space-4);
+  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
+}
+
+.codex-reader-overlay-panel {
+  width: min(640px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+  box-shadow: 0 28px 60px -32px oklch(0% 0 0 / 70%);
+  overflow: hidden;
+}
+
+.codex-reader-switcher-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-reader-switcher-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.codex-reader-switcher-input:focus-visible {
+  outline: none;
+  border-color: var(--control-focus-ring);
+}
+
+.codex-reader-switcher-tag {
+  flex: none;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--control-selected-rim);
+  border-radius: var(--radius-pill);
+  background: var(--control-selected-fill);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  cursor: pointer;
+}
+
+.codex-reader-switcher-count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.codex-reader-switcher-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.codex-reader-switcher-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.codex-reader-switcher-row[data-active="true"] {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.codex-reader-switcher-row[data-current="true"] .codex-reader-switcher-title {
+  color: var(--brass-bright);
+}
+
+.codex-reader-switcher-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+}
+
+.codex-reader-switcher-tags {
+  flex: none;
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.codex-reader-switcher-chip {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+}
+
+.codex-reader-switcher-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.codex-reader-source {
+  width: min(860px, 100%);
+}
+
+.codex-reader-source-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-reader-source-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.codex-reader-source-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .codex-reader-history {
   display: inline-flex;
   align-items: center;
@@ -12206,10 +12540,73 @@ body[data-codex-side="true"] .command-card {
 
 /* 덱은 넓다 — 본문은 읽기 measure로 캡하고 중앙 정렬한다. 전폭이 필요한 유틸 표면
    (스티키 결정 독)만 예외다. 리더는 싱글톤 .codex-reader-host 한 겹을 끼고
-   relocate되므로 그 호스트를 경로에 포함해야 실제 문서에 닿는다. */
+   relocate되므로 그 호스트를 경로에 포함해야 실제 문서에 닿는다.
+   폭과 크기는 화면이 아니라 읽는 사람이 고른다 — 시트의 data-reading-size가 그 선택이다. */
+.codex-reading-sheet {
+  --codex-reading-measure: 72ch;
+  --codex-reading-scale: 1;
+}
+
+.codex-reading-sheet[data-reading-size="wide"] {
+  --codex-reading-measure: 96ch;
+}
+
+.codex-reading-sheet[data-reading-size="large"] {
+  --codex-reading-measure: 80ch;
+  --codex-reading-scale: 1.14;
+}
+
 .codex-reading-sheet-read > .codex-reader-host > .document > :not(.queue-decision-dock) {
-  max-inline-size: 72ch;
+  max-inline-size: var(--codex-reading-measure);
   margin-inline: auto;
+}
+
+.codex-reading-sheet-read > .codex-reader-host > .document > .markdown-body {
+  font-size: calc(var(--font-size-body) * var(--codex-reading-scale));
+}
+
+/* 넓은 화면의 오른쪽 여백은 비워 두는 자리가 아니라 문서의 이웃을 두는 자리다 —
+   관련 항목과 백링크를 본문 옆으로 옮겨 읽는 동안 문서의 위치가 보이게 한다.
+   inline-size 컨테이너의 폭은 content box 기준이다 — 스크롤포트 좌우 거터(--space-8 ×2)를
+   뺀 값이 여기 임계값과 비교되므로, 시트 폭이 아니라 본문이 실제로 쓰는 폭으로 잡는다. */
+@container codex-reader (min-width: 940px) {
+  .codex-reading-sheet-read > .codex-reader-host > .document {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 264px);
+    column-gap: var(--space-8);
+    align-items: start;
+    justify-content: center;
+  }
+
+  .codex-reading-sheet-read > .codex-reader-host > .document > .document-header {
+    grid-column: 1 / -1;
+  }
+
+  .codex-reading-sheet-read > .codex-reader-host > .document > .markdown-body {
+    grid-column: 1;
+    grid-row: 2 / span 3;
+  }
+
+  .codex-reading-sheet-read > .codex-reader-host > .document > .related-list {
+    grid-column: 2;
+    max-inline-size: none;
+    margin-inline: 0;
+    position: sticky;
+    top: 0;
+  }
+
+  .codex-reading-sheet-read > .codex-reader-host > .document > .related-list + .related-list {
+    position: static;
+  }
+
+  .codex-reading-sheet-read > .codex-reader-host > .document > .related-list .related-items {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 넓은 격자에서 가운데로 두던 카드 글은 좁은 옆단에서는 왼쪽에서 시작해야 읽힌다. */
+  .codex-reading-sheet-read > .codex-reader-host > .document > .related-list .related-card {
+    text-align: start;
+  }
 }
 
 .codex-reading-sheet-toc {

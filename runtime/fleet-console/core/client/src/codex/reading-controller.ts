@@ -63,9 +63,23 @@ export interface ReadingController {
   destroy(): void;
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
+  /**
+   * 스크롤 스파이를 현재 스크롤 루트 위에 다시 세운다. 리더 노드가 split↔확대로 relocate되면
+   * IntersectionObserver는 설치 시점의 루트(옛 스크롤 컨테이너)를 계속 물고 있어 교차를 영영
+   * 보고하지 않는다 — 노드를 옮긴 쪽이 이 함수를 불러야 목차가 다시 읽는 위치를 따라온다.
+   */
+  refreshScrollSpy(): void;
+  /** 헤드바·링크 복사·원문 보기가 쓰는 현재 문서 사실. */
+  getDocument(): ReaderDocument | null;
   refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "onTagClick" | "theaterId">>): void;
   /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
   refreshLocale(): Promise<void>;
+}
+
+export interface ReaderDocument {
+  readonly entryId: string;
+  readonly title: string;
+  readonly markdown: string;
 }
 
 export interface MountReadingOptions {
@@ -110,6 +124,9 @@ export function mountReadingInto(
   let subRequestEpoch = 0;
   let schemaRequestEpoch = 0;
   let cleanupSpy: (() => void) | null = null;
+  // 재부착에 필요한 마지막 설치 인자 — relocate 후 같은 문서 위에 스파이를 다시 세운다.
+  let spyContext: { article: HTMLElement; items: TocItem[] } | null = null;
+  let currentDocument: ReaderDocument | null = null;
   let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
@@ -350,7 +367,7 @@ export function mountReadingInto(
       opts.onTocChanged?.(detailProposedTocItems.length);
       const article = readContainer.querySelector<HTMLElement>("article");
       if (article && detailProposedTocItems.length > 0) {
-        cleanupSpy = installTocScrollSpy(article, [...detailProposedTocItems], opts.tocContainer);
+        installSpy(article, [...detailProposedTocItems]);
       }
     } else {
       opts.tocContainer.innerHTML = "";
@@ -360,11 +377,19 @@ export function mountReadingInto(
 
   readContainer.addEventListener("click", handleClick);
 
+  function installSpy(article: HTMLElement, items: TocItem[]): void {
+    cleanupSpy?.();
+    spyContext = { article, items };
+    cleanupSpy = installTocScrollSpy(article, items, opts.tocContainer);
+  }
+
   function cleanupReader(): void {
     coworkController?.destroy();
     coworkController = null;
     cleanupSpy?.();
     cleanupSpy = null;
+    spyContext = null;
+    currentDocument = null;
   }
 
   /**
@@ -565,11 +590,12 @@ export function mountReadingInto(
         </article>
       `;
 
+      currentDocument = { entryId, title: entry.frontmatter.title, markdown: entry.body };
       opts.tocContainer.innerHTML = renderTocSheet(toc);
       opts.onTocChanged?.(toc.length);
       const article = readContainer.querySelector<HTMLElement>("article");
       if (article && toc.length > 0) {
-        cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
+        installSpy(article, toc);
       }
       // 별도 화면 전환 없이 리딩 뷰 자체를 Cowork로 증강한다(드래그 → Comment → 도크).
       const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
@@ -674,7 +700,7 @@ export function mountReadingInto(
           opts.onTocChanged?.(detailProposedTocItems.length);
           const article = readContainer.querySelector<HTMLElement>("article");
           if (article && toc.length > 0) {
-            cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
+            installSpy(article, toc);
           }
         }
       } else {
@@ -783,6 +809,13 @@ export function mountReadingInto(
       } else if (opts.kind === "schema") {
         await renderSchemaView(subId);
       }
+    },
+    refreshScrollSpy(): void {
+      if (!spyContext || !spyContext.article.isConnected) return;
+      installSpy(spyContext.article, spyContext.items);
+    },
+    getDocument(): ReaderDocument | null {
+      return currentDocument;
     },
     refreshCallbacks(next): void {
       liveOpts = { ...liveOpts, ...next };

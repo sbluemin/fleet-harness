@@ -70,6 +70,9 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
+      // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
+      if (windowFor.document.body.dataset.codexReading === "true") return;
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleOperationSearch();
