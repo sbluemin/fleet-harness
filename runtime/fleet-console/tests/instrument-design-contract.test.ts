@@ -2999,7 +2999,32 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption))");
+    // 워시는 28%다. 10%는 실렌더 대비 1.14:1로 상태 표시의 3:1에 크게 못 미쳤고, 50%(3.01:1)는
+    // 캡션을 금색 판으로 만들어 아랫변 warn 레일과 한 덩어리가 된다. 채움의 상한은 기준선이
+    // 아니라 상태 채널과의 거리가 정하므로, 나머지 몫은 주변 후퇴와 융기가 나눠 진다.
+    const focusWash = components.match(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    expect(focusWash).toContain("background: color-mix(in oklab, var(--brass) 28%, var(--glass-tint-caption));");
+    expect(focusWash).toContain("background-clip: padding-box;");
+    // 후퇴는 무대에 포커스가 설 때만 일어난다 — :has() 게이트가 빠지면 포커스 없는 화면의
+    // 기본 캡션까지 어두워진다. 본문과 상태 레일은 후퇴에서 빠지고, 덱 타일도 빠진다
+    // (카드의 위치 마크는 칸이 소유한다).
+    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    expect(recede).toContain("background: color-mix(in oklab, var(--canvas-abyss) 34%, var(--glass-tint-caption));");
+    expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
+    expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*\.canvas-operation-terminal \{/);
+    // 이름 티어 하강은 hover를 이기면 안 된다 — 이름은 클릭하면 편집이라 hover가 곧 그 초대다.
+    expect(components).toContain(".canvas-operation-identity-name:not(:hover) {");
+    // 포커스의 깊이는 색을 하나도 쓰지 않는다 — 상태 채널과 겹칠 자리가 없다. 중립 rim 블록보다
+    // 뒤에 서서, 진행 중인 패널이 포커스를 받아도 깊이는 포커스가 소유한다.
+    const lift = components.match(/\n\.canvas-operation\.is-active \{[^}]*\}/)?.[0] ?? "";
+    expect(lift).toContain("var(--shadow-floating)");
+    expect(lift).toContain("inset 0 1px 0 var(--glass-rim)");
+    expect(lift).not.toMatch(/--(?:brass|warn|aurora|positive|coral)\b/);
+    // 중립 rim 블록은 색만 되돌린다. box-shadow를 다시 적으면 유리 rim·bevel inset이 함께
+    // 지워져 상태가 켜진 패널만 윗변 광택을 잃는다(실측 inset 16% → 6%).
+    const neutralRim = components.match(/\.canvas-operation\.is-active,\n\.canvas-operation\.is-running,\n\.canvas-operation\.is-unseen \{[^}]*\}/)?.[0] ?? "";
+    expect(neutralRim).toContain("border-color: var(--surface-rim);");
+    expect(neutralRim).not.toContain("box-shadow:");
     expect(components).not.toContain("--surface-window");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
