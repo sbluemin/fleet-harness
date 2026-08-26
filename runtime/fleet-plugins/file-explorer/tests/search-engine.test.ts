@@ -33,7 +33,8 @@ describe("ripgrep file search engine", () => {
     const result = await searchFilesWithRipgrep(root, "fsc", 20, { scope: "files" });
 
     expect(result.engine).toBe("ripgrep");
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
+    expect(result.ignoredSkipped).toBe(true);
     expect(result.files[0]?.relativePath).toBe("src/FleetSearchCoordinator.ts");
     expect(result.files[0]?.pathRanges).toEqual([
       { start: 4, end: 5 },
@@ -48,7 +49,8 @@ describe("ripgrep file search engine", () => {
     const result = await searchFilesWithRipgrep(root, "한글Needle", 20, { scope: "contents" });
     const hit = result.files[0];
 
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
+    expect(result.ignoredSkipped).toBe(true);
     expect(hit?.source).toBe("content");
     expect(hit?.preview).toMatchObject({
       lineNumber: 1,
@@ -75,6 +77,21 @@ describe("ripgrep file search engine", () => {
 
     const result = await searchFilesWithRipgrep(root, "only-ignored-needle", 20, { scope: "files" });
     expect(result.files[0]?.relativePath).toBe("ignored/only-ignored-needle.ts");
+    expect(result.ignoredSkipped).toBe(false);
+    expect(result.complete).toBe(true);
+  });
+
+  it("marks mixed visible and ignored filename results as incomplete", async () => {
+    await fs.writeFile(path.join(root, ".gitignore"), "ignored/\n");
+    await fs.mkdir(path.join(root, "ignored"));
+    await fs.writeFile(path.join(root, "src", "mixed-needle.ts"), "export {}\n");
+    await fs.writeFile(path.join(root, "ignored", "mixed-needle.ts"), "export {}\n");
+    invalidateSearchCatalog();
+
+    const result = await searchFilesWithRipgrep(root, "mixed-needle", 20, { scope: "files" });
+    expect(result.files.map((item) => item.relativePath)).toEqual(["src/mixed-needle.ts"]);
+    expect(result.ignoredSkipped).toBe(true);
+    expect(result.complete).toBe(false);
   });
 
   it("invalidates the cached file catalog after changes", async () => {

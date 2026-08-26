@@ -120,17 +120,21 @@ export async function searchFilesWithRipgrep(
   let outcome = scope === "contents"
     ? await searchContents(root, query, limit, options)
     : await searchPaths(root, query, limit, options);
+  let ignoredSkipped = options.includeIgnored !== true;
   // 기본 ignore 규칙 때문에 0건이 된 파일명 질의만 한 번 더 확인한다. 기존 walker와 같은
   // 정직성 계약이며, 일반 hit 질의마다 거대한 no-ignore catalog를 만드는 비용은 피한다.
-  if (scope === "files" && outcome.items.length === 0 && options.includeIgnored !== true && !options.signal?.aborted) {
+  if (scope === "files" && outcome.items.length === 0 && ignoredSkipped && !options.signal?.aborted) {
     const fallback = await searchPaths(root, query, limit, { ...options, includeIgnored: true });
-    if (fallback.items.length > 0) outcome = fallback;
+    if (fallback.items.length > 0) {
+      outcome = fallback;
+      ignoredSkipped = false;
+    }
   }
   return {
     files: outcome.items,
     totalMatches: outcome.totalMatches ?? outcome.items.length,
-    complete: outcome.complete,
-    ignoredSkipped: false,
+    complete: outcome.complete && !ignoredSkipped,
+    ignoredSkipped,
     elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
     engine: "ripgrep",
   };
