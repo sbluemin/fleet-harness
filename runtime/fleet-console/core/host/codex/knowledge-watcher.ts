@@ -76,9 +76,10 @@ const INDEX_FILENAME = "index.json";
 
 /**
  * 하위 디렉토리 *안쪽* 쓰기가 화면을 바꾸는 곳. 대기 중 제안 본문 편집은
- * `queue/<patch-id>/patch.md`를 고쳐 쓰므로, 부모 디렉토리 감시만으로는 잡히지 않는다.
+ * `queue/<patch-id>/patch.md`를, 충돌 해소는 `conflicts/<id>/meta.json`을 고쳐 쓰므로,
+ * 부모 디렉토리 감시만으로는 잡히지 않는다.
  */
-const NESTED_SCOPE_DIRS: readonly string[] = ["queue", "archive"];
+const NESTED_SCOPE_DIRS: readonly string[] = ["queue", "archive", "conflicts"];
 // 큐가 비정상적으로 커진 워크스페이스에서 감시자가 무한정 늘지 않게 하는 상한.
 // 초과분은 조용히 포기한다 — 목록에 드러나는 추가·삭제·결정은 부모 감시가 계속 잡는다.
 const MAX_NESTED_WATCHERS = 256;

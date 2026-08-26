@@ -201,14 +201,14 @@ describe("codex live refresh", () => {
    * 나중에 시작한 요청이 먼저 끝나면 오래된 응답이 최신 사실을 덮어써 화면이 뒤로 간다.
    */
   it("discards a revalidation that a newer one has already superseded", async () => {
-    let releaseSlow: (() => void) | null = null;
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve; });
     apiMocks.fetchDrydock.mockImplementationOnce(async () => {
-      await new Promise<void>((resolve) => { releaseSlow = resolve; });
+      await slowGate;
       return { pendingCount: 1, archivedCount: 0, items: [] };
     });
 
-    const slow = applyCodexChanged(WS, ["queue"]);
-    void slow;
+    applyCodexChanged(WS, ["queue"]);
     await Promise.resolve();
 
     apiMocks.fetchDrydock.mockResolvedValueOnce({ pendingCount: 7, archivedCount: 0, items: [] });
@@ -216,11 +216,36 @@ describe("codex live refresh", () => {
     await settle();
     expect(getState().pendingPatchCount).toBe(7);
 
-    releaseSlow?.();
+    releaseSlow();
     await settle();
 
     // 늦게 도착한 옛 응답이 최신 숫자를 되돌리면 안 된다.
     expect(getState().pendingPatchCount).toBe(7);
+  });
+
+  /**
+   * 무효화는 요청 단위가 아니라 상태 조각 단위여야 한다. 스키마를 다시 읽는 요청은 대기열을
+   * 가져오지도 않았으므로 진행 중인 대기열 재검증을 무효로 만들 수 없다.
+   */
+  it("lets a slower revalidation land when the newer one covers other scopes", async () => {
+    let releaseQueue!: () => void;
+    const queueGate = new Promise<void>((resolve) => { releaseQueue = resolve; });
+    apiMocks.fetchDrydock.mockImplementationOnce(async () => {
+      await queueGate;
+      return { pendingCount: 4, archivedCount: 0, items: [] };
+    });
+
+    applyCodexChanged(WS, ["queue"]);
+    await Promise.resolve();
+
+    // 다른 범위의 재검증이 그 사이에 끝난다.
+    applyCodexChanged(WS, ["schema"]);
+    await settle();
+
+    releaseQueue();
+    await settle();
+
+    expect(getState().pendingPatchCount).toBe(4);
   });
 
   it("keeps the previous catalog when a revalidation request fails", async () => {

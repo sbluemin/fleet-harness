@@ -31,11 +31,23 @@ type StateListener = (state: AppState) => void;
 const listeners = new Set<StateListener>();
 let workspaceEpoch = 0;
 /**
- * 재검증 세대. 같은 워크스페이스 안에서도 재검증은 겹친다(연달아 온 변화 힌트, 창 복귀와
- * 이벤트의 충돌). 나중에 시작한 요청이 먼저 끝나면 오래된 응답이 최신 사실을 덮어써
- * 화면이 뒤로 간다 — 자기보다 새 재검증이 이미 시작됐다면 결과를 버린다.
+ * 요청 일련번호. 같은 워크스페이스 안에서도 재검증은 겹치고(연달아 온 변화 힌트, 창 복귀와
+ * 이벤트의 충돌), 나중에 시작한 요청이 먼저 끝나면 오래된 응답이 최신 사실을 덮어쓴다.
  */
-let revalidateEpoch = 0;
+let requestSeq = 0;
+/**
+ * 상태 조각마다 마지막으로 반영한 요청 번호. 무효화를 요청 단위가 아니라 조각 단위로 두는
+ * 이유는, 서로 다른 범위의 재검증이 겹칠 때 한쪽이 다른 쪽을 통째로 버리면 안 되기 때문이다 —
+ * 스키마를 다시 읽는 요청은 대기열을 가져오지도 않았으므로 대기열 결과를 무효로 만들 수 없다.
+ */
+const committedSeq: Record<"index" | "queue" | "schema" | "health", number> = {
+  index: 0,
+  queue: 0,
+  schema: 0,
+  health: 0,
+};
+/** loading·error는 초기 로드만의 상태다 — 그 경합은 따로 센다. */
+let loadEpoch = 0;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -83,7 +95,8 @@ export function setLiveState(next: CodexLiveState): void {
 export async function loadInitialData(): Promise<void> {
   const theaterId = state.currentWorkspaceId;
   const capturedEpoch = workspaceEpoch;
-  const requestEpoch = ++revalidateEpoch;
+  const seq = ++requestSeq;
+  const myLoad = ++loadEpoch;
   setState({ loading: true, error: null });
   try {
     const [searchResult, drydockList, schemaCatalog, health] = await Promise.all([
@@ -93,17 +106,18 @@ export async function loadInitialData(): Promise<void> {
       fetchHealth(theaterId).catch(() => null),
     ]);
     if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
-    if (requestEpoch !== revalidateEpoch) return;
-    setState({
-      index: searchResult.entries,
-      pendingPatchCount: drydockList?.pendingCount ?? 0,
-      schemaCatalog,
-      health,
-      loading: false,
-      lastCheckedAt: Date.now(),
-    });
+    const next: Partial<AppState> = { loading: myLoad === loadEpoch ? false : state.loading };
+    if (commitSlot("index", seq)) next.index = searchResult.entries;
+    if (commitSlot("queue", seq)) next.pendingPatchCount = drydockList?.pendingCount ?? 0;
+    if (commitSlot("schema", seq)) next.schemaCatalog = schemaCatalog;
+    if (commitSlot("health", seq)) next.health = health;
+    next.lastCheckedAt = Date.now();
+    setState(next);
   } catch (error) {
     if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
+    // 나보다 새 로드가 이미 시작됐다면 이 실패는 낡은 소식이다 — 최신 화면에 옛 오류를
+    // 씌우거나 진행 중인 로드의 loading을 대신 꺼서는 안 된다.
+    if (myLoad !== loadEpoch) return;
     setState({ loading: false, error: errorMessage(error) });
   }
 }
@@ -118,7 +132,7 @@ export async function loadInitialData(): Promise<void> {
 export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): Promise<void> {
   const theaterId = state.currentWorkspaceId;
   const capturedEpoch = workspaceEpoch;
-  const requestEpoch = ++revalidateEpoch;
+  const seq = ++requestSeq;
   const wanted = new Set(scopes);
   const needsIndex = wanted.has("wiki") || wanted.has("index");
   const needsQueue = wanted.has("queue");
@@ -131,20 +145,30 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
     fetchHealth(theaterId).catch(() => null),
   ]);
   if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
-  if (requestEpoch !== revalidateEpoch) return;
 
   const next: Partial<AppState> = {};
-  if (searchResult) {
+  let committed = false;
+  if (searchResult && commitSlot("index", seq)) {
     next.index = searchResult.entries;
     // 재검증이 성공했다면 이전 로드 실패는 더 이상 사실이 아니다.
     next.error = null;
+    committed = true;
   }
-  if (drydockList) next.pendingPatchCount = drydockList.pendingCount;
-  if (schemaCatalog) next.schemaCatalog = schemaCatalog;
-  if (health) next.health = health;
-  // 모든 요청이 실패했다면 확인한 것이 없다 — 그때 시각을 밀면 신선도 표기가 거짓말을 한다.
-  const verified = searchResult !== null || drydockList !== null || schemaCatalog !== null || health !== null;
-  if (verified) next.lastCheckedAt = Date.now();
+  if (drydockList && commitSlot("queue", seq)) {
+    next.pendingPatchCount = drydockList.pendingCount;
+    committed = true;
+  }
+  if (schemaCatalog && commitSlot("schema", seq)) {
+    next.schemaCatalog = schemaCatalog;
+    committed = true;
+  }
+  if (health && commitSlot("health", seq)) {
+    next.health = health;
+    committed = true;
+  }
+  // 확인한 것이 없는데 시각을 밀면 신선도 표기가 거짓말을 한다. 이미 더 새 응답이 반영된
+  // 뒤 도착한 낡은 응답도 마찬가지로 아무것도 확인해 주지 못한다.
+  if (committed) next.lastCheckedAt = Date.now();
   setState(next);
 }
 
@@ -154,6 +178,13 @@ export async function revalidateAll(): Promise<void> {
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
+
+/** 이 조각에 더 새 응답이 이미 반영됐다면 낡은 응답은 버린다. */
+function commitSlot(slot: keyof typeof committedSeq, seq: number): boolean {
+  if (seq <= committedSeq[slot]) return false;
+  committedSeq[slot] = seq;
+  return true;
+}
 
 function setState(next: Partial<AppState>): void {
   Object.assign(state, next);

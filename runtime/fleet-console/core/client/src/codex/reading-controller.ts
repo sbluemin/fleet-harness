@@ -135,6 +135,10 @@ export function mountReadingInto(
   let renderedEntryStamp: string | null = null;
   // 지금 화면에 그려진 패치의 판본. 대기열에서 *다른* 패치가 움직인 것으로는 이 값이 변하지 않는다.
   let renderedPatchStamp: string | null = null;
+  // 같은 이유로 충돌·스키마 문서도 자기 판본을 들고 있어야 한다 — 범위 이벤트는 어느 문서가
+  // 바뀌었는지 말해 주지 않으므로, 비교 없이 알리면 옆 문서의 변화가 이 문서의 표식이 된다.
+  let renderedConflictStamp: string | null = null;
+  let renderedSchemaStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
   const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
@@ -405,14 +409,14 @@ export function mountReadingInto(
         void renderConflictsView(undefined);
         return;
       }
-      showStaleNotice("updated");
+      void noticeForOpenConflict(currentSubId);
       return;
     }
     if (opts.kind === "schema") {
       if (!scopes.has("schema")) return;
       // 워크스페이스 스키마(subId 없음)도 목록이 아니라 읽는 문서다 — 대기열·충돌 목록과
       // 달리 말없이 갈아끼우면 읽던 자리를 잃는다.
-      showStaleNotice("updated");
+      void noticeForOpenSchema(currentSubId);
     }
   }
 
@@ -440,6 +444,38 @@ export function mountReadingInto(
       showStaleNotice("updated");
     } catch {
       // 조회 자체가 실패했다면 무엇이 달라졌는지 알 수 없다 — 근거 없는 알림은 띄우지 않는다.
+    }
+  }
+
+  async function noticeForOpenConflict(conflictId: string): Promise<void> {
+    try {
+      const detail = await fetchConflictDetail(liveOpts.theaterId, conflictId);
+      if (destroyed || currentSubId !== conflictId) return;
+      const stamp = JSON.stringify(detail);
+      if (renderedConflictStamp === null) {
+        renderedConflictStamp = stamp;
+        return;
+      }
+      if (stamp === renderedConflictStamp) return;
+      showStaleNotice("updated");
+    } catch {
+      // 조회가 실패했다면 무엇이 달라졌는지 알 수 없다 — 근거 없는 알림은 띄우지 않는다.
+    }
+  }
+
+  async function noticeForOpenSchema(templateId: string | undefined): Promise<void> {
+    try {
+      const document = await fetchSchemaDocument(liveOpts.theaterId, templateId);
+      if (destroyed || currentSubId !== templateId) return;
+      const stamp = document.content;
+      if (renderedSchemaStamp === null) {
+        renderedSchemaStamp = stamp;
+        return;
+      }
+      if (stamp === renderedSchemaStamp) return;
+      showStaleNotice("updated");
+    } catch {
+      // 위와 같다.
     }
   }
 
@@ -661,6 +697,7 @@ export function mountReadingInto(
     const requestEpoch = ++subRequestEpoch;
     currentSubId = conflictId;
     staleKind = null;
+    renderedConflictStamp = null;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -672,6 +709,7 @@ export function mountReadingInto(
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictDetail(detail);
+        renderedConflictStamp = JSON.stringify(detail);
       } else {
         const conflicts = await fetchConflicts(liveOpts.theaterId);
         if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
@@ -690,6 +728,7 @@ export function mountReadingInto(
     const requestEpoch = ++schemaRequestEpoch;
     const theaterId = liveOpts.theaterId;
     currentSubId = templateId;
+    renderedSchemaStamp = null;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -701,6 +740,7 @@ export function mountReadingInto(
       const schemaLabel = templateId ?? t("codex.reading.workspaceSchema");
       readContainer.innerHTML = `<article class="document"><header class="document-header"><nav class="breadcrumb"><ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.schema"))}</span></li><li><span aria-current="page">${escapeHtml(schemaLabel)}</span></li></ol></nav><h1>${escapeHtml(schemaLabel)}</h1><span class="queue-dl-mono">${escapeHtml(document.ref)}</span></header><div class="markdown-body" id="codex-reader-body">${html}</div></article>`;
       opts.tocContainer.innerHTML = renderTocSheet(toc);
+      renderedSchemaStamp = document.content;
     } catch (error) {
       if (!destroyed && requestEpoch === schemaRequestEpoch && theaterId === liveOpts.theaterId) {
         showError(readContainer, opts.tocContainer, error);

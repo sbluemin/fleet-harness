@@ -277,6 +277,26 @@ describe("codex knowledge watcher", () => {
     expect(h.states.at(-1)).toEqual({ workspaceId: "ws1", state: "watching" });
   });
 
+  /**
+   * 충돌 해소는 `conflicts/<id>/meta.json`을 고쳐 쓴다 — 큐와 같은 이유로 부모만 보면
+   * 다른 곳에서 해소된 충돌이 목록·상태 칩·열린 화면에 그대로 남는다.
+   */
+  it("watches inside each conflict record where recursive watching is unavailable", () => {
+    const conflictsDir = path.join(ROOT, "conflicts");
+    const h = createHarness({
+      platform: "linux",
+      directories: { [conflictsDir]: ["conflict-a"] },
+    });
+    h.watcher.watch("ws1", ROOT);
+
+    const nested = h.watchers.find((w) => w.watchPath === path.join(conflictsDir, "conflict-a"));
+    expect(nested).toBeDefined();
+    nested!.emit("change", "meta.json");
+    vi.advanceTimersByTime(50);
+
+    expect(h.changes).toEqual([{ workspaceId: "ws1", scopes: ["conflicts"] }]);
+  });
+
   it("drops every watcher on disposeAll", () => {
     const h = createHarness();
     h.watcher.watch("ws1", ROOT);
