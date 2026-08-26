@@ -212,8 +212,6 @@ async function searchContents(
     "--with-filename",
     "--color",
     "never",
-    "--max-count",
-    "3",
     // files/read가 앞 1 MiB만 제공하므로, 이동할 수 없는 뒤쪽 match는 검색 결과로 내지 않는다.
     "--max-filesize",
     "1M",

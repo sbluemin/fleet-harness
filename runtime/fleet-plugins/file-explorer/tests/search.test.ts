@@ -246,6 +246,18 @@ describe("Files palette search", () => {
     expect(writes[0]).toEqual({ status: 400, body: { error: "invalid_request" } });
   });
 
+  it("keeps the historical hidden default when includeHidden is omitted", async () => {
+    await fs.mkdir(path.join(theaterPath, ".secret"), { recursive: true });
+    await fs.writeFile(path.join(theaterPath, ".secret", "needle-hidden.ts"), "export {}");
+    const request = searchContext({ theaterId: "theater-a", query: "needle-hidden", limit: 8, kinds: ["file"] });
+
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, request.ctx);
+
+    expect((request.writes[0]?.body as { files: Array<{ relativePath: string }> }).files).toContainEqual(
+      expect.objectContaining({ relativePath: ".secret/needle-hidden.ts" }),
+    );
+  });
+
   it("drops hidden matches before the limit and the count", async () => {
     // 숨김 경로가 상한을 채운 뒤 클라이언트에서 걸리면 화면은 비고 안내만 일치 수를 말한다.
     await fs.mkdir(path.join(theaterPath, ".secret"), { recursive: true });

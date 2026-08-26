@@ -639,7 +639,8 @@ export async function handleFilesSearch(
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
-  const includeHidden = body.includeHidden === true;
+  // 생략은 기존 전역 팔레트 계약대로 hidden 포함, 트리 scope는 명시 false를 보낸다.
+  const includeHidden = body.includeHidden !== false;
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   const abort = new AbortController();
