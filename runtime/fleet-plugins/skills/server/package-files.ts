@@ -92,12 +92,13 @@ export async function inspectSkillPackage(
 
   const walk = async (directory: string, relativeDirectory: string, depth: number): Promise<void> => {
     if (truncated) return;
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
+    const dir = await fs.opendir(directory);
+    for await (const entry of dir) {
+      // 숨김 항목도 inspection 비용이므로 cap에 포함한다. 그렇지 않으면 수십만 hidden entry가
+      // 200개 예산 밖에서 readdir/정렬 비용을 만들 수 있다.
       if (visitedEntries >= MAX_ENTRIES) { truncated = true; return; }
       visitedEntries += 1;
+      if (entry.name.startsWith(".")) continue;
       const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       const absolutePath = path.join(directory, entry.name);
       const stats = await fs.lstat(absolutePath);
@@ -151,40 +152,53 @@ function validateRelativeFilePath(relativePath: string): boolean {
 
 async function openPackageFileNoFollow(root: string, relativePath: string): Promise<FileHandle> {
   const segments = relativePath.split("/");
-  let current = root;
-  for (const segment of segments.slice(0, -1)) {
-    current = path.join(current, segment);
-    const stats = await fs.lstat(current);
-    if (stats.isSymbolicLink()) throw new Error("symlink_not_allowed");
-    if (!stats.isDirectory()) throw new Error("file_not_found");
-  }
-
-  const candidate = path.join(root, ...segments);
-  const finalStats = await fs.lstat(candidate);
-  if (finalStats.isSymbolicLink()) throw new Error("symlink_not_allowed");
-  let handle: FileHandle;
-  try {
-    handle = await fs.open(candidate, fsConstants.O_RDONLY | NOFOLLOW_FLAG);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new Error("symlink_not_allowed");
-    throw error;
-  }
-  try {
-    // Windows에는 O_NOFOLLOW가 없다. 열린 handle과 현재 directory entry의 identity를 비교하면
-    // open이 symlink를 따라갔거나 검증 뒤 entry가 교체된 경우에도 외부 파일을 읽지 않는다.
-    const [openedStats, currentStats] = await Promise.all([handle.stat(), fs.lstat(candidate)]);
-    if (
-      currentStats.isSymbolicLink()
-      || openedStats.dev !== currentStats.dev
-      || openedStats.ino !== currentStats.ino
-    ) {
-      throw new Error("symlink_not_allowed");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const pinnedRoot = await fs.realpath(root);
+    let current = pinnedRoot;
+    for (const segment of segments.slice(0, -1)) {
+      current = path.join(current, segment);
+      const stats = await fs.lstat(current);
+      if (stats.isSymbolicLink()) throw new Error("symlink_not_allowed");
+      if (!stats.isDirectory()) throw new Error("file_not_found");
     }
-    return handle;
-  } catch (error) {
-    await handle.close().catch(() => {});
-    throw error;
+
+    const candidate = path.join(pinnedRoot, ...segments);
+    const finalStats = await fs.lstat(candidate);
+    if (finalStats.isSymbolicLink()) throw new Error("symlink_not_allowed");
+    let handle: FileHandle;
+    try {
+      handle = await fs.open(candidate, fsConstants.O_RDONLY | NOFOLLOW_FLAG);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new Error("symlink_not_allowed");
+      throw error;
+    }
+    try {
+      const [openedStats, currentStats, currentRoot] = await Promise.all([
+        handle.stat(),
+        fs.lstat(candidate),
+        fs.realpath(root),
+      ]);
+      if (
+        currentStats.isSymbolicLink()
+        || openedStats.dev !== currentStats.dev
+        || openedStats.ino !== currentStats.ino
+      ) {
+        throw new Error("symlink_not_allowed");
+      }
+      if (currentRoot !== pinnedRoot) {
+        // skill root가 교체됐다. 열린 handle은 검증했던 이전 root 안일 수 있지만, 지금 사용자가
+        // 선택한 package identity와 달라졌으므로 한 번만 새 root를 검증해 다시 연다.
+        await handle.close();
+        if (attempt === 0) continue;
+        throw new Error("symlink_not_allowed");
+      }
+      return handle;
+    } catch (error) {
+      await handle.close().catch(() => {});
+      throw error;
+    }
   }
+  throw new Error("symlink_not_allowed");
 }
 
 export async function readSkillPackageFile(
