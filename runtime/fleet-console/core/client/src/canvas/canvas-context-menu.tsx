@@ -348,8 +348,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 시각 헤더 없이도 보조기술에는 메뉴의 역할을 온전히 알린다. 플러그인 이름이나 동작 이름을
   // 상자 위에 반복하지 않아 첫 번째 실제 선택지가 곧 메뉴의 시작점이 되게 한다.
   const menuLabel = t("canvas.menu.aria");
-  // Terminal Shell은 우측 rail 아이콘이 캔버스 중앙에 즉시 생성한다. 우클릭 실행 목록에는
-  // 에이전트/모델 종류만 남겨 두 진입점이 같은 Shell 동작을 중복 광고하지 않게 한다.
+  // Shell은 더 이상 Operation으로 태어나지 않는다 — 우현 rail 아이콘이 캔버스 면을 여는 것이
+  // 유일한 길이다. 이 메뉴가 Operation을 만드는 단 하나의 표면이므로, 제외도 여기 한 번만 선다.
   const launchCatalog = catalog
     .map((plugin) => plugin.id === "terminal"
       ? { ...plugin, kinds: plugin.kinds.filter((kind) => kind.type !== "shell") }

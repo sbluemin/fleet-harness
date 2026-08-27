@@ -12702,6 +12702,91 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   pointer-events: auto;
 }
 
+/* ─── Canvas Surface Sheet ───────────────────────────────────────────────────── */
+
+:root {
+  /* 리딩 덱과 같은 이유로 정수 최대치 근방에 선다(.operations-canvas 안에서 Operation 패널의
+     상호 승격 zIndex를 항상 넘기 위해). 둘은 상호 배타라 같은 높이로 다투지 않는다. */
+  --z-canvas-surface-sheet: 2147480000;
+}
+
+/* 레일 기여가 캔버스 열을 빌려 서는 면. 기하는 리딩 덱과 같다 — 캔버스 안에 정박해
+   사이드바·레일 폭을 침범하지 않고 리사이즈를 그대로 따라간다. */
+.canvas-surface-sheet {
+  position: absolute;
+  z-index: var(--z-canvas-surface-sheet);
+  inset: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  user-select: text;
+  touch-action: auto;
+  cursor: auto;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  /* 리딩 덱과 같은 carbon glass 표면 — 팝업 판독성 계약대로 glass 믹스 아래 불투명
+     --ink-deep 언더레이를 깐다. */
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
+}
+
+.canvas-surface-sheet-head {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.canvas-surface-sheet-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+/* 머리의 동작은 전부 캡션 밴드 문법(.fleet-caption-action)으로 선다 — 호스트의 닫기와
+   플러그인이 실어 오는 동작이 같은 줄에 서므로, 두 벌의 문법이 서면 곧바로 어긋나 보인다. */
+.canvas-surface-sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 본문은 남는 높이를 전부 가진다 — 터미널은 자기 상자의 크기로 cols/rows를 정하므로
+   여기서 높이가 새면 PTY가 잘못된 격자를 받는다. */
+.canvas-surface-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 리딩 덱과 같은 계약: 면이 선 동안 캔버스 제스처만 끊고, 면 자신과 사이드바·레일은 살린다. */
+body[data-canvas-surface="true"] .operations-canvas {
+  pointer-events: none;
+  cursor: default;
+}
+
+body[data-canvas-surface="true"] .operations-canvas .canvas-surface-sheet {
+  pointer-events: auto;
+}
+
 
 
 

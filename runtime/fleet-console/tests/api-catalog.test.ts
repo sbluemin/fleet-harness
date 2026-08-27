@@ -54,6 +54,7 @@ DELETE|/plugins/terminal/agent/sessions/:sessionId|http
 DELETE|/plugins/terminal/analysis/:operationId/artifacts|http
 DELETE|/plugins/terminal/model-auth/providers/:providerId|http
 DELETE|/plugins/terminal/shell/sessions/:operationId|http
+DELETE|/plugins/terminal/shell/theater-sessions/:theaterId|http
 GET|/api/v1/access-links|http
 GET|/api/v1/desktop/shell|http
 GET|/api/v1/desktop/theme/events|sse
@@ -177,6 +178,7 @@ POST|/plugins/terminal/analysis/:operationId/message|http
 POST|/plugins/terminal/analysis/:operationId/start|http
 POST|/plugins/terminal/analysis/:operationId/stop|http
 POST|/plugins/terminal/shell/sessions/:operationId/relaunch|http
+POST|/plugins/terminal/shell/theater-ticket|http
 POST|/plugins/terminal/shell/ticket|http
 PUT|/api/v1/desktop/fullscreen|http
 PUT|/api/v1/desktop/shell|http
@@ -216,7 +218,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(146);
+    expect(body.routes).toHaveLength(148);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

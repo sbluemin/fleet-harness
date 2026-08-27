@@ -13,6 +13,11 @@ export interface TerminalLike {
 
 export interface TerminalConnectionOptions {
   readonly operationId: string;
+  /**
+   * 티켓 요청 본문. 생략하면 `{ operationId }` — Operation 경로의 지금까지 계약이다.
+   * Theater 셸처럼 Operation이 없는 세션은 여기에 `{ theaterId }`를 실어 보낸다.
+   */
+  readonly ticketBody?: Readonly<Record<string, string>>;
   readonly terminal: TerminalLike;
   readonly ticketPath: string;
   readonly wsPath: string;
@@ -133,7 +138,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       if (consecutiveFailures === 0) options.onStatus?.("connecting");
       try {
         const requested = role;
-        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested);
+        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.ticketBody ?? { operationId: options.operationId }, abort.signal, options.colorScheme, requested);
         if (abort.signal.aborted) return;
         // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
         role = granted;
@@ -265,12 +270,12 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
+async function requestTerminalTicket(ticketPath: string, identity: Readonly<Record<string, string>>, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // control은 서버 기본값이라 싣지 않는다 — 옛 서버에 붙어도 같은 요청이 된다.
-    body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
+    body: JSON.stringify({ ...identity, ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
   if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);

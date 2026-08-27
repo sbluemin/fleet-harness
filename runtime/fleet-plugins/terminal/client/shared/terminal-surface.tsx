@@ -31,7 +31,10 @@ import "./terminal-key-bar.css";
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
 export interface TerminalSurfaceProps {
+  /** 이 표면의 클라이언트 식별자 — 재마운트 경계이자 상태 보고 키다. */
   readonly operationId: string;
+  /** 티켓 요청 본문. 생략하면 `{ operationId }`. Theater 셸은 `{ theaterId }`를 싣는다. */
+  readonly ticketBody?: Readonly<Record<string, string>>;
   readonly ticketPath: string;
   readonly wsPath: string;
   readonly theme?: TerminalThemeId;
@@ -181,7 +184,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketBody, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings } = useTerminalPrefs();
   const inactiveFlushMs = terminalInactiveFlushMs(terminalInactiveFlush);
@@ -403,6 +406,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       statusDetailReporterRef.current = statusDetailReporter;
       const connection = createTerminalConnection({
         operationId,
+        ...(ticketBody ? { ticketBody } : {}),
         ticketPath,
         wsPath,
         // spawn env COLORFGBG 힌트 — 연결 생성 시점의 최신 극성으로 고정된다(PTY는 최초 spawn 시 env 확정).

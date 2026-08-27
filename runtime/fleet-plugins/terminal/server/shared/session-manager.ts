@@ -42,8 +42,6 @@ interface TerminalSession {
   readonly viewers: Set<TerminalSocket>;
   cols: number;
   rows: number;
-  // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
-  graceTimer: ReturnType<typeof setTimeout> | null;
   terminalQueryResidual: string;
   // 인메모리 유후 추적(서버 monotonic). 생성 시 시드되고 attach / PTY 출력 / binary 입력 / 서버 주입 write에서 갱신.
   lastActivityAt: number | undefined;
@@ -60,10 +58,6 @@ const DEFAULT_SCROLLBACK_LIMIT = 512;
 const WS_OPEN_STATE = 1;
 const FILE_TYPE_MASK = 0o170000;
 const CHARACTER_DEVICE_TYPE = 0o020000;
-// 캔버스 순정 셸 패널 세션 id 접두사(싱글톤 오버레이 "shell"과 구별).
-const THEATER_SHELL_SESSION_PREFIX = "shell:";
-// theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
-const THEATER_SHELL_DETACH_GRACE_MS = 4_000;
 const TERMINAL_QUERY_RESIDUAL_LIMIT = 64;
 const ANSI_ESCAPE = "\x1b";
 const ANSI_CSI_PREFIX = `${ANSI_ESCAPE}[`;
@@ -90,8 +84,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   async function attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void> {
     const session = await getOrCreateSession(context);
-    // (재)연결이 들어오면 theater-shell 정리 grace 타이머를 취소한다.
-    clearGraceTimer(session);
     if (session.activeSocket && session.activeSocket !== socket) {
       session.activeSocket.close(4000, "terminal_replaced");
     }
@@ -124,7 +116,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
     socket.once("close", () => {
       session.viewers.delete(socket);
-      scheduleTheaterShellCleanup(session);
     });
     return true;
   }
@@ -268,7 +259,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       viewers: new Set<TerminalSocket>(),
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
-      graceTimer: null,
       terminalQueryResidual: "",
       // 생성 시각으로 시드한다 — 조용한 PTY가 attach 전에 고아가 되어도 sweeper가 유후 판정할 수 있게 한다.
       lastActivityAt: now(),
@@ -359,32 +349,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.pty.resize(frame.cols, frame.rows);
   }
 
-  /**
-   * theater-shell은 "상태 미유지"라 아무도 보고 있지 않게 된 순간부터 짧은 유예 뒤 정리된다.
-   *
-   * 관전자도 보는 사람이므로 유예가 끝나도 남아 있으면 살려 둔다. 다만 그때 정리를 포기하면
-   * 마지막 관전자가 나간 뒤 아무도 다시 걸어 주지 않아 PTY가 영영 남는다 — 소켓이 하나라도
-   * 떨어질 때마다 다시 건다.
-   */
-  function scheduleTheaterShellCleanup(session: TerminalSession): void {
-    if (!isTheaterShell(session.id)) return;
-    if (session.activeSocket !== null || session.viewers.size > 0) return;
-    clearGraceTimer(session);
-    session.graceTimer = setTimeout(() => {
-      session.graceTimer = null;
-      if (session.activeSocket === null && session.viewers.size === 0) removeSession(session);
-    }, THEATER_SHELL_DETACH_GRACE_MS);
-  }
-
   function detachSocket(session: TerminalSession, socket: TerminalSocket): void {
     if (session.activeSocket !== socket) return;
     // 소켓이 끊겨도(콘솔 웹 종료·세션 전환 언마운트) PTY 세션은 유지한다. activeSocket만 비워
     // 죽은 소켓으로의 전송을 막고, 출력은 scrollback에 계속 쌓여 재연결 시 attach가 그대로 재생한다.
     // PTY는 오직 PTY 자가종료·운영자 terminate·서버 stop에서만 죽는다(자동 종료 grace 타이머는 제거됨).
     session.activeSocket = null;
-    // 예외: theater-shell(캔버스 순정 셸)은 "상태 미유지" 요구에 따라 소켓 단절 후 짧은 grace 뒤 PTY를 정리한다.
-    // 패널 닫기·새로고침이 이 경로로 흘러 orphan PTY를 막는다. 재연결이 들어오면 attach가 타이머를 취소한다.
-    scheduleTheaterShellCleanup(session);
   }
 
   function replayScrollback(session: TerminalSession, socket: TerminalSocket): void {
@@ -408,7 +378,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   async function killSession(session: TerminalSession, options: KillSessionOptions = {}): Promise<void> {
     const killPty = options.killPty ?? true;
-    clearGraceTimer(session);
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
     // 관전자도 같은 이유로 끝난다 — 남겨 두면 죽은 PTY를 보며 살아 있는 화면인 척한다.
@@ -491,16 +460,6 @@ function readOpenCharacterDeviceFds(): ReadonlySet<number> {
     }
   }
   return fds;
-}
-
-function isTheaterShell(sessionId: string): boolean {
-  return sessionId.startsWith(THEATER_SHELL_SESSION_PREFIX);
-}
-
-function clearGraceTimer(session: TerminalSession): void {
-  if (session.graceTimer === null) return;
-  clearTimeout(session.graceTimer);
-  session.graceTimer = null;
 }
 
 function scanTerminalQueries(session: TerminalSession, buffer: Buffer): string[] {

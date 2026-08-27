@@ -311,10 +311,11 @@ describe("terminal session manager", () => {
   });
 
   /**
-   * 관전자가 남아 있어 grace가 세션을 살려 둔 뒤, 그 마지막 관전자가 나가면 아무도 정리를 다시
-   * 걸어 주지 않는다 — theater-shell PTY가 패널이 모두 닫힌 뒤에도 영원히 남는다.
+   * Theater 셸(캔버스 면에 서는 순정 셸)은 면을 닫아도 끝나지 않는다 — 닫았다 다시 열면
+   * 하던 자리로 돌아오는 것이 이 세션의 계약이라, 마지막 소켓이 나가도 PTY는 남아야 한다.
+   * 끝내기는 명시적인 terminate 하나뿐이다.
    */
-  it("cleans up a theater shell once its last viewer leaves", async () => {
+  it("keeps a theater shell alive after every socket leaves, and ends it only on terminate", async () => {
     vi.useFakeTimers();
     try {
       const exits: string[] = [];
@@ -329,12 +330,13 @@ describe("terminal session manager", () => {
       manager.attachViewer(viewer, "shell:theater-1");
 
       controller.emitClose();
-      await vi.advanceTimersByTimeAsync(5_000);
-      // 보는 사람이 남아 있으므로 아직 정리하지 않는다.
+      viewer.emitClose();
+      await vi.advanceTimersByTimeAsync(60_000);
+      // 아무도 보고 있지 않아도 세션은 살아 있다 — 다시 열면 scrollback이 재생된다.
       expect(exits).toEqual([]);
 
-      viewer.emitClose();
-      await vi.advanceTimersByTimeAsync(5_000);
+      manager.terminate("shell:theater-1");
+      await vi.advanceTimersByTimeAsync(0);
       expect(exits).toEqual(["shell:theater-1"]);
     } finally {
       vi.useRealTimers();

@@ -11,6 +11,8 @@ import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
+import { toggleCanvasSurface, useCanvasSurfacePanelId } from "../canvas-surface-store.js";
+import { CanvasSurfaceSheet } from "../components/canvas-surface-sheet.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
 import type { ConnectionState } from "../types.js";
@@ -117,9 +119,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const previousPanelBehaviorRef = useRef(panelBehavior);
   const pluginContributions = useRailPanels();
+  const canvasSurfaceId = useCanvasSurfacePanelId();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const pluginPanels = pluginContributions.filter((panel) => panel.render !== undefined);
   const pluginActions = pluginContributions.filter((panel) => panel.activate !== undefined && panel.render === undefined);
+  // 캔버스 면 기여는 좁은 패널을 열지 않는다 — 레일에서는 즉시 실행하는 동작과 같은 줄에 선다.
+  const pluginSurfaces = pluginContributions.filter((panel) => panel.canvasSurface !== undefined);
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
@@ -412,12 +417,15 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
           ))}
-          {builtInPanels.length > 0 && (pluginActions.length > 0 || pluginPanels.length > 0) ? (
+          {builtInPanels.length > 0 && (pluginActions.length > 0 || pluginSurfaces.length > 0 || pluginPanels.length > 0) ? (
             <div className="right-rail-divider" role="separator" aria-hidden="true" />
           ) : null}
         </div>
         {pluginActions.map((panel) => (
           <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={false} />
+        ))}
+        {pluginSurfaces.map((panel) => (
+          <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={canvasSurfaceId === panel.id} />
         ))}
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {pluginPanels.map((panel) => (
@@ -425,6 +433,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           ))}
         </div>
       </nav>
+      {/* 면 자체는 캔버스로 portal된다 — 여기서 마운트하는 이유는 레일이 기여 목록과
+          문맥을 이미 쥐고 있어서다. 트리 위치는 화면 위치와 무관하다. */}
+      <CanvasSurfaceSheet panels={pluginSurfaces} baseCtx={baseCtx} language={language} />
     </div>
   );
 }
@@ -595,6 +606,11 @@ interface RailIconProps {
 
 function RailIcon({ panel, context, language, isActive }: RailIconProps) {
   const handleClick = useCallback(() => {
+    if (panel.canvasSurface) {
+      if (context.theaterId === null) return;
+      toggleCanvasSurface(panel.id);
+      return;
+    }
     if (panel.activate) {
       if (context.theaterId === null) return;
       panel.activate(context);
@@ -602,6 +618,9 @@ function RailIcon({ panel, context, language, isActive }: RailIconProps) {
     }
     toggleRailPanel(panel.id);
   }, [context, panel]);
+  // 캔버스 면과 즉시 동작은 둘 다 "패널을 여는 탭"이 아니다 — 탭 문법(role=tab/aria-selected)은
+  // 레일 패널에만 준다.
+  const isTab = panel.activate === undefined && panel.canvasSurface === undefined;
   const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
   const title = resolveLocalizedText(panel.title, language);
 
@@ -610,10 +629,11 @@ function RailIcon({ panel, context, language, isActive }: RailIconProps) {
       id={`rail-tab-${panel.id}`}
       className={`right-rail-ico${isActive ? " is-active" : ""}`}
       type="button"
-      role={panel.activate ? "button" : "tab"}
-      aria-selected={panel.activate ? undefined : isActive}
+      role={isTab ? "tab" : "button"}
+      aria-selected={isTab ? isActive : undefined}
+      {...(panel.canvasSurface ? { "aria-pressed": isActive } : {})}
       aria-label={title}
-      disabled={panel.activate !== undefined && context.theaterId === null}
+      disabled={!isTab && context.theaterId === null}
       title={title}
       onClick={handleClick}
     >

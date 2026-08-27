@@ -5,6 +5,17 @@ import { readSocketRole } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown };
+type TheaterTicketBody = { readonly theaterId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown };
+
+/**
+ * Theater 셸의 세션 id. Operation이 없으므로 식별자를 Theater에서 직접 만든다.
+ *
+ * 이 값은 **서버가 짓는다**. 클라이언트가 보낸 sessionId를 그대로 쓰면 다른 Theater의 PTY에
+ * 붙는 티켓을 스스로 발급하게 된다.
+ */
+function theaterShellSessionId(theaterId: string): string {
+  return `shell:${theaterId}`;
+}
 
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const RESTORED_DORMANT_PAYLOAD_KEY = "restoredDormant";
@@ -73,6 +84,66 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       }));
       return true;
     }, { method: "POST", path: "", summary: "Issue a Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "shell/theater-ticket", async ({ req, res }) => {
+      if (req.method !== "POST") {
+        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      if (!ctx.host.security.isTerminalAuthorized(req)) {
+        ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
+        return true;
+      }
+      const body = await ctx.host.http.readJsonBody<TheaterTicketBody>(req);
+      const theaterId = typeof body?.theaterId === "string" ? body.theaterId : null;
+      if (!theaterId) {
+        ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
+        return true;
+      }
+      // cwd는 Operation이 아니라 Theater가 정한다. 해석에 실패하면 그 Theater는 없는 것이다.
+      const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
+      if (!theaterPath) {
+        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+        return true;
+      }
+      const sessionId = theaterShellSessionId(theaterId);
+      if (!runtime.canAttach(sessionId)) {
+        ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
+        return true;
+      }
+      const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
+      // Operation 경로와 같은 규칙: 등급은 Console이 정한다.
+      const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
+      ctx.host.http.writeJson(res, 200, runtime.issueTicket({
+        cwd: theaterPath,
+        sessionId,
+        operationType: "shell",
+        pluginId: ctx.pluginId,
+        theaterId,
+        kind: "shell",
+        ...(colorScheme ? { colorScheme } : {}),
+        ...(role ? { role } : {}),
+      }));
+      return true;
+    }, { method: "POST", path: "", summary: "Issue a Theater Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
+
+    registerRouter(ctx, "shell/theater-sessions", ({ req, res, pathname }) => {
+      const suffix = pathname.slice(`${ctx.basePath}/shell/theater-sessions/`.length);
+      if (!suffix || suffix.includes("/")) return false;
+      if (req.method !== "DELETE") {
+        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      if (!ctx.host.security.isTerminalAuthorized(req)) {
+        ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
+      // 면을 닫는 것은 세션을 끝내지 않는다(닫았다 열면 이어서 계속). 그래서 끝내기는
+      // 별도의 명시적 동작이고, 이 경로가 그 유일한 출구다.
+      runtime.terminate(theaterShellSessionId(decodeURIComponent(suffix)));
+      ctx.host.http.writeJson(res, 200, { ok: true });
+      return true;
+    }, { method: "DELETE", path: "/:theaterId", summary: "Terminate the Theater Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
+
     registerRouter(ctx, "shell/sessions", ({ req, res, pathname }) => {
       const suffix = pathname.slice(`${ctx.basePath}/shell/sessions/`.length);
       const match = suffix.match(/^([^/]+)(?:\/(relaunch))?$/);
