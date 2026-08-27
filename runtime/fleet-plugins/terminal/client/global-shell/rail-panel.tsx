@@ -58,9 +58,13 @@ function renderTheaterShellActions(ctx: RailCanvasSurfaceContext) {
     actionId: "theater-shell-end",
     children: glyph,
     onClick: () => {
+      // 성공했을 때만 면을 접는다. 거절·통신 실패에도 접으면 "끝냈다"고 말한 화면만 사라지고
+      // 셸은 그대로 살아 있어, 다시 열었을 때 끝냈다던 세션이 돌아온다.
       void Promise.resolve(
         ctx.api.fetch("terminal", `shell/theater-sessions/${encodeURIComponent(theaterId)}`, { method: "DELETE" }),
-      ).finally(() => ctx.close());
+      )
+        .then((response) => { if (response.ok) ctx.close(); })
+        .catch(() => undefined);
     },
   });
 }

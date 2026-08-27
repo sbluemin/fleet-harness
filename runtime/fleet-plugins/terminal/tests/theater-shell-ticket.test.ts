@@ -54,6 +54,43 @@ describe("theater shell ticket", () => {
     expect(terminated).toEqual(["shell:theater-1"]);
     expect(responses.at(-1)).toMatchObject({ status: 200 });
   });
+
+  /**
+   * 티켓은 발급 뒤 소켓이 물기 전까지 잠시 유효하다. 그 틈에 끝내기가 들어오면 terminate는
+   * 아직 없는 세션을 찾아 헛돌고, 남은 티켓이 소비되어 "끝냈다"는 응답 직후 새 PTY가 태어난다.
+   */
+  it("invalidates outstanding tickets before terminating, so a live ticket cannot revive the shell", async () => {
+    const invalidated: string[] = [];
+    const terminated: string[] = [];
+    const { callDelete } = await mount({ issued: [], terminated, invalidated });
+    await callDelete("theater-1");
+    expect(invalidated).toEqual(["shell:theater-1"]);
+    // 순서가 계약이다 — terminate가 먼저면 그 사이 티켓이 소비될 수 있다.
+    expect(order).toEqual(["invalidate:shell:theater-1", "terminate:shell:theater-1"]);
+  });
+
+  /**
+   * Theater가 잊히면 그 Theater로 돌아갈 길이 사라지므로, 끝내기 버튼도 함께 사라진다.
+   * 이 신호가 없으면 셸과 그 안에서 돌던 명령이 서버가 꺼질 때까지 남는다.
+   */
+  it("ends the Theater shell when its Theater is forgotten", async () => {
+    const terminated: string[] = [];
+    const invalidated: string[] = [];
+    const { emit } = await mount({ issued: [], terminated, invalidated });
+
+    emit("theater:deleted", { theaterId: "theater-1" });
+
+    expect(invalidated).toEqual(["shell:theater-1"]);
+    expect(terminated).toEqual(["shell:theater-1"]);
+  });
+
+  it("ignores a malformed Theater deletion payload", async () => {
+    const terminated: string[] = [];
+    const { emit } = await mount({ issued: [], terminated });
+    emit("theater:deleted", { theaterId: "" });
+    emit("theater:deleted", null);
+    expect(terminated).toEqual([]);
+  });
 });
 
 interface MountOptions {
@@ -61,13 +98,19 @@ interface MountOptions {
   readonly role?: "control" | "viewer";
   readonly theaterPath?: string | null;
   readonly terminated?: string[];
+  readonly invalidated?: string[];
 }
+
+let order: string[] = [];
 
 async function mount(options: MountOptions): Promise<{
   call(body: Record<string, unknown>): Promise<void>;
   callDelete(theaterId: string): Promise<void>;
+  emit(channel: string, payload: unknown): void;
   responses: Array<{ status: number; body: unknown }>;
 }> {
+  order = [];
+  const subscribers = new Map<string, Array<(payload: unknown) => void>>();
   const responses: Array<{ status: number; body: unknown }> = [];
   const routes = new Map<string, RouteHandler>();
   let requestBody: Record<string, unknown> = {};
@@ -80,7 +123,10 @@ async function mount(options: MountOptions): Promise<{
       return { ticket: "ticket", ttlMs: 1_000, role: context.role ?? "control" };
     },
     renegotiateSockets: () => {},
-    invalidateTicketsForSession: () => {},
+    invalidateTicketsForSession: (sessionId: string) => {
+      options.invalidated?.push(sessionId);
+      order.push(`invalidate:${sessionId}`);
+    },
     canAttach: () => true,
     attach: async () => {},
     attachViewer: () => true,
@@ -89,7 +135,11 @@ async function mount(options: MountOptions): Promise<{
     getSessionRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
-    terminate: (sessionId: string) => { options.terminated?.push(sessionId); return true; },
+    terminate: (sessionId: string) => {
+      options.terminated?.push(sessionId);
+      order.push(`terminate:${sessionId}`);
+      return true;
+    },
     stop: async () => {},
     writeToSession: () => false,
   } as unknown as TerminalRuntime;
@@ -105,7 +155,15 @@ async function mount(options: MountOptions): Promise<{
       operations: { get: () => null, list: () => [], patch: () => {}, delete: () => {} },
       paths: { resolveTheaterPath: () => theaterPath, workspaceHash: () => "theater-1" },
       storage: { readJson: async () => null, writeJson: async () => {} },
-      events: { subscribe: () => () => {}, publish: () => {} },
+      events: {
+        subscribe: (channel: string, listener: (payload: unknown) => void) => {
+          const list = subscribers.get(channel) ?? [];
+          list.push(listener);
+          subscribers.set(channel, list);
+          return () => {};
+        },
+        publish: () => {},
+      },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { responses.push({ status, body }); },
         readJsonBody: async <T,>() => requestBody as T,
@@ -124,6 +182,9 @@ async function mount(options: MountOptions): Promise<{
 
   return {
     responses,
+    emit(channel, payload) {
+      for (const listener of subscribers.get(channel) ?? []) listener(payload);
+    },
     async call(body) {
       requestBody = body;
       const handler = routes.get("shell/theater-ticket");

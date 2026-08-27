@@ -17,7 +17,21 @@ function theaterShellSessionId(theaterId: string): string {
   return `shell:${theaterId}`;
 }
 
+/**
+ * Theater 셸을 끝낸다.
+ *
+ * 티켓을 먼저 무효화하는 이유: 티켓은 발급된 뒤 소켓이 물기 전까지 잠시 유효하다. 그 사이에
+ * 끝내기가 들어오면 terminate는 아직 없는 세션을 찾아 헛돌고, 남은 티켓이 곧이어 소비되어
+ * "끝냈다"고 말한 직후에 새 PTY가 태어난다.
+ */
+function endTheaterShell(runtime: TerminalRuntime, theaterId: string): void {
+  const sessionId = theaterShellSessionId(theaterId);
+  runtime.invalidateTicketsForSession(sessionId);
+  runtime.terminate(sessionId);
+}
+
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
+const THEATER_DELETED_EVENT_CHANNEL = "theater:deleted";
 const RESTORED_DORMANT_PAYLOAD_KEY = "restoredDormant";
 
 export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {
@@ -30,6 +44,15 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, [RESTORED_DORMANT_PAYLOAD_KEY]: true } });
     });
     ctx.host.lifecycle.registerCleanup(unsubscribeRestore);
+    // Theater 셸은 Operation이 아니라 Theater에 매인다 — Operation 삭제 이벤트에 실리지 않으므로
+    // Theater가 잊히면 이 신호만이 PTY를 끝낼 수 있다. 없으면 UI에서 그 Theater로 돌아갈 길이
+    // 사라진 뒤에도 셸과 그 안에서 돌던 명령이 서버가 꺼질 때까지 남는다.
+    const unsubscribeTheaterDelete = ctx.host.events.subscribe(THEATER_DELETED_EVENT_CHANNEL, (payload) => {
+      const theaterId = (payload as { readonly theaterId?: unknown } | null)?.theaterId;
+      if (typeof theaterId !== "string" || !theaterId) return;
+      endTheaterShell(runtime, theaterId);
+    });
+    ctx.host.lifecycle.registerCleanup(unsubscribeTheaterDelete);
     registerRouter(ctx, "shell/ticket", async ({ req, res }) => {
       if (req.method !== "POST") {
         ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -139,7 +162,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       }
       // 면을 닫는 것은 세션을 끝내지 않는다(닫았다 열면 이어서 계속). 그래서 끝내기는
       // 별도의 명시적 동작이고, 이 경로가 그 유일한 출구다.
-      runtime.terminate(theaterShellSessionId(decodeURIComponent(suffix)));
+      endTheaterShell(runtime, decodeURIComponent(suffix));
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }, { method: "DELETE", path: "/:theaterId", summary: "Terminate the Theater Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });

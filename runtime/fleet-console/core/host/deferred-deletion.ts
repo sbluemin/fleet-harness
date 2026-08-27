@@ -63,6 +63,9 @@ interface DeferredDeletionCoordinatorDeps {
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
+// Theater가 사라졌다. Operation이 아닌 Theater 단위 자원(예: Theater 셸 PTY)은 Operation
+// 삭제 이벤트에 실리지 않으므로, 그것들을 정리할 유일한 신호가 이 채널이다.
+const THEATER_DELETED_EVENT_CHANNEL = "theater:deleted";
 const PURGE_RETRY_MS = 1_000;
 
 export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordinatorDeps): DeferredDeletionCoordinator {
@@ -148,6 +151,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     tombstones = nextTombstones;
     deps.unregisterTheaterWorkspaces(theaterId);
     for (const operation of deletedOperations) publishOperation(OPERATION_DELETED_EVENT_CHANNEL, operation);
+    deps.publish(THEATER_DELETED_EVENT_CHANNEL, { theaterId: theater.id });
     schedule();
     return toReceipt(tombstone);
   }
