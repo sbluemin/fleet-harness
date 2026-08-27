@@ -52,8 +52,19 @@ export function CanvasSurfaceSheet({ panels, baseCtx, language }: CanvasSurfaceS
   }, [isOpen]);
 
   // 지금 서 있는 면의 신원. 늦게 도착한 비동기 완료가 그 사이 바뀐 면을 접지 않도록,
-  // `close`는 자기가 태어난 면이 아직 그대로일 때만 듣는다. Theater가 바뀌면 신원도 바뀐다.
-  const identity = `${getCanvasSurfaceEpoch()}::${baseCtx.theaterId ?? ""}`;
+  // `close`는 자기가 태어난 면이 아직 그대로일 때만 듣는다.
+  //
+  // Theater 값을 그대로 신원에 쓰면 A→B→A가 처음의 A와 같은 문자열로 되돌아와, 첫 A에서
+  // 시작한 완료가 두 번째 A를 자기 것으로 착각한다. 그래서 값이 아니라 **바뀐 횟수**를 센다 —
+  // 신원은 되돌아오지 않는다. 렌더 중 갱신이지만 값이 달라질 때만 올리므로 이중 렌더에 안전하다.
+  const theaterGenerationRef = useRef({ theaterId: baseCtx.theaterId, generation: 0 });
+  if (theaterGenerationRef.current.theaterId !== baseCtx.theaterId) {
+    theaterGenerationRef.current = {
+      theaterId: baseCtx.theaterId,
+      generation: theaterGenerationRef.current.generation + 1,
+    };
+  }
+  const identity = `${getCanvasSurfaceEpoch()}::${theaterGenerationRef.current.generation}`;
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
