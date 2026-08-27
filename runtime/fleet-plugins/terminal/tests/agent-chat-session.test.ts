@@ -1278,6 +1278,46 @@ describe("AgentChatRegistry — background jobs on a live session", () => {
     await registry.disposeAll();
   });
 
+  it("titles a live job from the tool call that started it, not from the notification's copy", async () => {
+    // 실사용 제보(2026-08-27, Windows 한국어): 채팅뷰의 잡 카드 제목만 CJK가 깨져 섰다.
+    // 어시스턴트 본문은 멀쩡했으므로 자식에게 닿은 바이트는 온전했고, 깨진 것은 자식이 자기
+    // 태스크 레코드에서 다시 꺼낸 사본뿐이었다. 화면은 모델이 쓴 그 문장을 읽어야 한다.
+    const transcriptPath = writeTranscript("sid-job-title", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          {
+            type: "assistant",
+            message: {
+              content: [{
+                type: "tool_use",
+                id: "call-9",
+                name: "Bash",
+                input: { command: "echo hi", description: "WORLD 공간 조회", run_in_background: true },
+              }],
+            },
+          },
+          {
+            type: "system", subtype: "task_started",
+            task_id: "sh9", tool_use_id: "call-9", description: "WORLD 怨듦컙 議고쉶", task_type: "local_bash",
+          },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-title", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("run it in the background");
+    await drainTurn(registry, "op-job-title");
+
+    const job = events.find((entry) => entry.event.kind === "job");
+    expect(job?.event).toEqual(expect.objectContaining({ kind: "job", id: "sh9", title: "WORLD 공간 조회" }));
+    await registry.disposeAll();
+  });
+
   it("closes still-running jobs as stopped when the session goes away", async () => {
     // 자식과 함께 사라진 작업을 "도는 중"으로 남겨 두면 화면은 오지 않을 결말을 기다린다.
     const transcriptPath = writeTranscript("sid-job-retire", []);

@@ -516,6 +516,33 @@ describe("background job mapping", () => {
     })).toEqual([expect.objectContaining({ kind: "job", id: "w1", jobKind: "workflow", who: "two-step" })]);
   });
 
+  it("titles a job from the model's own tool input, not the notification's copy", () => {
+    // 같은 문장의 사본이 둘이고 권위는 원본에 있다. Windows 한국어 환경에서는 알림이 실어 온
+    // 사본만 ANSI 코드페이지를 지나 CJK가 깨진 채 도착하는 것이 보고됐다(2026-08-27) —
+    // 아래 description이 바로 "WORLD 공간 조회"가 그 경로를 지났을 때의 모습이다.
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "b2", tool_use_id: "call-2", description: "WORLD 怨듦컙 議고쉶", task_type: "local_bash",
+    }, { toolTitles: new Map([["call-2", "WORLD 공간 조회"]]) }))
+      .toEqual([expect.objectContaining({ kind: "job", id: "b2", title: "WORLD 공간 조회", toolUseId: "call-2" })]);
+  });
+
+  it("falls back to the notification when no tool call carries the original", () => {
+    // 원본이 없는 잡도 있다(도구 호출 없이 서거나, 상한이 그 호출을 이미 밀어냈거나). 그때
+    // 제목을 비우면 사본이 깨졌을 때보다 더 나쁘다 — 아는 유일한 값으로 되돌아간다.
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "b3", tool_use_id: "call-3", description: "tail the log", task_type: "local_bash",
+    }, { toolTitles: new Map([["call-other", "unrelated"]]) }))
+      .toEqual([expect.objectContaining({ kind: "job", id: "b3", title: "tail the log" })]);
+
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "b4", description: "no tool call at all", task_type: "local_bash",
+    }, { toolTitles: new Map([["call-2", "unrelated"]]) }))
+      .toEqual([expect.objectContaining({ kind: "job", id: "b4", title: "no tool call at all" })]);
+  });
+
   it("keeps an unknown task_type visible instead of dropping it", () => {
     expect(chatEventsFromSdkMessage({
       type: "system", subtype: "task_started", task_id: "x1", description: "?", task_type: "remote_thing",
