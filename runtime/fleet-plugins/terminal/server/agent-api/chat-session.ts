@@ -418,6 +418,18 @@ class AgentChatSession {
    * 무한히 자라지 않게 상한을 두고 오래된 것부터 버린다 — 결과는 호출 직후에 오므로 잃을 게 없다.
    */
   private readonly toolNames = new Map<string, string>();
+  /**
+   * tool_use id → 그 도구 입력이 실어 온 `description`. 잡 제목의 원본이다.
+   *
+   * 알림(`task_started`)도 같은 문장을 싣고 오지만 그것은 자식이 자기 태스크 레코드에서 다시
+   * 꺼낸 사본이고, Windows 한국어 환경에서 그 사본만 CJK가 깨진 채 도착하는 것이 보고됐다
+   * (2026-08-27). 모델이 쓴 문장 자체는 이 스트림의 assistant 줄에 이미 흘렀으므로 여기서
+   * 붙잡아 둔다 — 도구 호출은 언제나 그것이 낳은 잡보다 먼저 온다.
+   *
+   * `toolNames`와 같은 상한·같은 퇴장 규칙을 쓴다. 잡은 자기를 낳은 호출 직후에 서므로 오래된
+   * 항목을 버려서 잃는 제목은 없다.
+   */
+  private readonly toolTitles = new Map<string, string>();
   /** 잡 id → 종류. 상세를 어디서 읽을지 정하고, 동시에 상세 라우트가 받는 좌표의 화이트리스트다. */
   private readonly jobKinds = new Map<string, AgentChatJobKind>();
   /**
@@ -940,6 +952,38 @@ class AgentChatSession {
   }
 
   /**
+   * 이번 assistant 줄이 낸 도구 호출들의 `description`을 붙잡아 둔다.
+   *
+   * 여기가 그 문장이 서버에 닿는 첫 자리이고, 그래서 잡 제목의 원본이다. 뒤따라 오는
+   * `task_started`도 같은 문장을 싣지만 그것은 자식의 태스크 레코드를 지나온 사본이며,
+   * 그 경로에서만 CJK가 깨지는 것이 보고됐다(`toolTitles` 참조).
+   *
+   * 도구 이름과 달리 이벤트를 거치지 않고 원본 메시지에서 직접 읽는다 — 스텝 이벤트는
+   * description을 나르지 않고, 나르게 만들면 브라우저로 가는 어휘에 쓰이지 않는 필드가 하나
+   * 늘어난다. 이 값은 서버 안에서만 산다.
+   */
+  private rememberToolTitles(message: ClaudeGatewayMessage): void {
+    if (message.type !== "assistant") return;
+    const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const record = block as { readonly type?: unknown; readonly id?: unknown; readonly input?: unknown };
+      if (record.type !== "tool_use") continue;
+      if (typeof record.id !== "string" || record.id.length === 0) continue;
+      const input = record.input;
+      if (!input || typeof input !== "object" || Array.isArray(input)) continue;
+      const description = (input as { readonly description?: unknown }).description;
+      if (typeof description !== "string" || description.length === 0) continue;
+      this.toolTitles.set(record.id, description);
+      if (this.toolTitles.size > TOOL_NAME_CAP) {
+        const oldest = this.toolTitles.keys().next();
+        if (!oldest.done) this.toolTitles.delete(oldest.value);
+      }
+    }
+  }
+
+  /**
    * 결말 알림이 알려 준 출력 파일 경로를 적어 둔다.
    *
    * 이 경로를 우리가 재구성하지 않는 이유는 실측이다: 셸 출력은 격리 config dir이 아니라 CLI가
@@ -1421,8 +1465,13 @@ class AgentChatSession {
         }
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);
+        this.rememberToolTitles(message);
         this.trackLiveContext(message);
-        for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
+        for (const event of chatEventsFromSdkMessage(message, {
+          cwd: this.seed.cwd,
+          toolNames: this.toolNames,
+          toolTitles: this.toolTitles,
+        })) {
           this.ingest(event);
         }
       }

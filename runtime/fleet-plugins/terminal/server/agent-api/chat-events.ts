@@ -332,6 +332,16 @@ export interface ChatEventMapOptions {
    * 되는지 판단하려면 이 축이 필요하다. 세션이 소유하고 매퍼는 읽기만 한다.
    */
   readonly toolNames?: ReadonlyMap<string, string>;
+  /**
+   * tool_use id → 그 도구 입력이 실어 온 `description` 원문. 세션이 소유하고 매퍼는 읽기만 한다.
+   *
+   * 잡 제목에는 같은 문장의 사본이 둘 있고, 권위는 이쪽이다. 알림이 싣는 값은 자식이 자기
+   * 태스크 레코드에서 다시 꺼낸 사본이고 그 레코드는 디스크를 왕복하는데, Windows 한국어
+   * 환경에서 그 사본만 ANSI 코드페이지(CP949)를 지나 CJK가 깨진 채 도착하는 것이 보고됐다
+   * (2026-08-27). 모델이 실제로 쓴 그 문장은 같은 스트림의 tool_use 입력으로 이미 한 번
+   * 흘렀으므로, 사본을 받아 적는 대신 원본을 되찾는다.
+   */
+  readonly toolTitles?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -638,13 +648,19 @@ function jobStartedEvent(message: Readonly<Record<string, unknown>>, options: Ch
   // 제목은 도구 입력의 description — 모델이 쓴 자유 텍스트다. 절대 경로나 자격증명 모양이
   // 들어올 수 있고, 이 값은 저널에 실려 스트립·카드·상세 세 곳에 그대로 그려진다. 다른 잡
   // 텍스트와 같은 문(경로 정규화·축약·마스킹)을 지나지 않으면 이 표면이 유출 경로가 된다.
-  const description = readString(message.description);
+  //
+  // 원본을 먼저 보는 이유는 사본만 깨져 도착하는 경로가 있기 때문이다(`toolTitles`). 원본이
+  // 없으면 — 도구 호출 없이 선 잡이거나 원장 상한이 그 호출을 이미 밀어냈으면 — 알림이 아는
+  // 유일한 값으로 되돌아간다. 아는 것이 사본뿐일 때 제목을 비우는 쪽이 더 나쁘다.
+  const toolUseId = readString(message.tool_use_id);
+  const description = (toolUseId === undefined ? undefined : options.toolTitles?.get(toolUseId))
+    ?? readString(message.description);
   return [{
     kind: "job",
     id,
     jobKind: readJobKind(message.task_type),
     title: description === undefined ? id : safeJobText(description, options, MAX_JOB_TITLE_CHARS),
-    ...(readString(message.tool_use_id) !== undefined ? { toolUseId: readString(message.tool_use_id) as string } : {}),
+    ...(toolUseId !== undefined ? { toolUseId } : {}),
     ...(who !== undefined ? { who: safeJobText(who, options, MAX_JOB_TITLE_CHARS) } : {}),
     at: Date.now(),
   }];
