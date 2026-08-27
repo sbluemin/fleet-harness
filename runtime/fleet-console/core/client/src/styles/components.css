@@ -12548,18 +12548,23 @@ body[data-codex-side="true"] .command-card {
 /* 덱은 넓다 — 본문은 읽기 measure로 캡하고 중앙 정렬한다. 전폭이 필요한 유틸 표면
    (스티키 결정 독)만 예외다. 리더는 싱글톤 .codex-reader-host 한 겹을 끼고
    relocate되므로 그 호스트를 경로에 포함해야 실제 문서에 닿는다.
-   폭과 크기는 화면이 아니라 읽는 사람이 고른다 — 시트의 data-reading-size가 그 선택이다. */
+   폭과 크기는 화면이 아니라 읽는 사람이 고른다 — 시트의 data-reading-size가 그 선택이다.
+   measure는 ch로 두지 않는다 — 캡이 자식마다 걸리는 구조에서 ch는 각 자식의 폰트로
+   풀려, 같은 72ch가 헤더(UI 활자)와 본문(리딩 활자)에서 다른 픽셀 폭이 되어 중앙
+   정렬 축이 갈라진다(실측 615px vs 747px). 본문 활자 토큰 한 기준으로 환산해 모든
+   자식이 같은 캡을 받게 한다(0.611 = 본문 서체 "0"의 em 폭 ≈ 1ch). */
 .codex-reading-sheet {
-  --codex-reading-measure: 72ch;
+  --codex-reading-ch: calc(0.611 * var(--font-size-body) * var(--codex-reading-scale));
+  --codex-reading-measure: calc(72 * var(--codex-reading-ch));
   --codex-reading-scale: 1;
 }
 
 .codex-reading-sheet[data-reading-size="wide"] {
-  --codex-reading-measure: 96ch;
+  --codex-reading-measure: calc(96 * var(--codex-reading-ch));
 }
 
 .codex-reading-sheet[data-reading-size="large"] {
-  --codex-reading-measure: 80ch;
+  --codex-reading-measure: calc(80 * var(--codex-reading-ch));
   --codex-reading-scale: 1.14;
 }
 
@@ -12575,9 +12580,11 @@ body[data-codex-side="true"] .command-card {
 /* 넓은 화면의 오른쪽 여백은 비워 두는 자리가 아니라 문서의 이웃을 두는 자리다 —
    관련 항목과 백링크를 본문 옆으로 옮겨 읽는 동안 문서의 위치가 보이게 한다.
    inline-size 컨테이너의 폭은 content box 기준이다 — 스크롤포트 좌우 거터(--space-8 ×2)를
-   뺀 값이 여기 임계값과 비교되므로, 시트 폭이 아니라 본문이 실제로 쓰는 폭으로 잡는다. */
+   뺀 값이 여기 임계값과 비교되므로, 시트 폭이 아니라 본문이 실제로 쓰는 폭으로 잡는다.
+   2열은 옆단(관련 항목·백링크)이 실제로 있을 때만 켠다 — 없는 문서에서도 열을 예약하면
+   본문은 왼쪽으로 밀리고 헤더만 중앙에 남아 제목/본문 기준선이 갈라진다. */
 @container codex-reader (min-width: 940px) {
-  .codex-reading-sheet-read > .codex-reader-host > .document {
+  .codex-reading-sheet-read > .codex-reader-host > .document:has(> .related-list) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(200px, 264px);
     column-gap: var(--space-8);
@@ -12585,8 +12592,18 @@ body[data-codex-side="true"] .command-card {
     justify-content: center;
   }
 
+  /* 그리드 아이템은 auto 마진에서 블록과 달리 fit-content로 수축한다 — 짧은 제목의
+     헤더가 제 폭만큼만 남아 본문과 좌측 기준선이 갈라지므로, 열 폭을 채우고 나서
+     measure 캡과 auto 마진으로 중앙을 잡게 한다. */
+  .codex-reading-sheet-read > .codex-reader-host > .document:has(> .related-list) > :not(.queue-decision-dock) {
+    inline-size: 100%;
+  }
+
+  /* 헤더는 본문과 같은 1열에서 같은 measure로 접혀야 한 기준선을 공유한다 —
+     전폭(1 / -1) 스팬은 margin-inline: auto의 중심을 그리드 전체 폭으로 옮겨
+     본문(1열 중심)과 축이 어긋난다. */
   .codex-reading-sheet-read > .codex-reader-host > .document > .document-header {
-    grid-column: 1 / -1;
+    grid-column: 1;
   }
 
   .codex-reading-sheet-read > .codex-reader-host > .document > .markdown-body {
@@ -12596,6 +12613,8 @@ body[data-codex-side="true"] .command-card {
 
   .codex-reading-sheet-read > .codex-reader-host > .document > .related-list {
     grid-column: 2;
+    /* 헤더가 1열로 내려오면 auto 배치가 옆단을 1행(헤더 옆)으로 끌어올린다 — 본문 첫 줄 옆에 고정. */
+    grid-row: 2;
     max-inline-size: none;
     margin-inline: 0;
     position: sticky;
@@ -12603,6 +12622,7 @@ body[data-codex-side="true"] .command-card {
   }
 
   .codex-reading-sheet-read > .codex-reader-host > .document > .related-list + .related-list {
+    grid-row: 3;
     position: static;
   }
 
