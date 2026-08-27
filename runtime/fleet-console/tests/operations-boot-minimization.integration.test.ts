@@ -611,6 +611,38 @@ describe("Operations boot minimization", () => {
     expect(getState().activeOperationId).toBe("first");
   });
 
+  // 채팅 패널에서 캐럿이 사는 자리는 컴포저 하나뿐이다. 편집 중이라는 이유로 Alt+화살표를 삼키면
+  // 패널 축이 정확히 필요한 순간에만 죽는다 — 같은 키가 터미널 포커스에서는 이미 살아 있다.
+  it("keeps panel arrows alive while a composer textarea holds focus", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      restoreOperation("first");
+      restoreOperation("second");
+      setActiveOperation("first");
+      await Promise.resolve();
+    });
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const composer = document.createElement("textarea");
+    document.body.appendChild(composer);
+    composer.focus();
+    expect(document.activeElement).toBe(composer);
+
+    await act(async () => {
+      window.dispatchEvent(altKeyDown("ArrowRight"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getState().activeOperationId).toBe("second");
+
+    // 수식자 없는 키는 그대로 타자다 — 편집 중에는 언제나 컴포저의 것이다.
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1", key: "!", shiftKey: true, bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(getState().activeOperationId).toBe("second");
+    composer.remove();
+  });
+
   it("blocks panel arrows, companion shortcuts, and armed Escape behind a modal", async () => {
     registryMocks.operationKinds = [shortcutCompanionKind()];
     await bootApp([operation("first")]);
