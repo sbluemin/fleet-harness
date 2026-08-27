@@ -240,21 +240,22 @@ export function focusCommandBandToggleWhenPanelContainsActiveElement(panel: HTML
 /**
  * 편집 중인 요소에 포커스가 있을 때 Operations 단축키를 삼킬지 정하는 정책.
  *
- * 기본은 삼키는 것이다 — 타자가 단축키에 먹히면 글을 쓸 수 없다. 예외는 Console 뷰 축(Alt+문자)
- * 하나다: 같은 키가 터미널 포커스에서는 이미 살아 있으므로(xterm은 편집 판정에서 빠진다),
- * 채팅 컴포저에 포커스가 있다는 이유로만 화면을 바꾸는 키가 죽으면 표면마다 문법이 갈린다.
- * macOS의 Option+문자 합성은 각 분기의 preventDefault가 막으므로 문자가 새지 않는다.
+ * 기본은 삼키는 것이다 — 타자가 단축키에 먹히면 글을 쓸 수 없다. 예외는 Alt를 쥔 조합 전체,
+ * 즉 Console 뷰 축(Alt+문자)과 패널 축(Alt+화살표)이다: 같은 키가 터미널 포커스에서는 이미
+ * 살아 있으므로(xterm은 편집 판정에서 빠진다), 컴포저에 포커스가 있다는 이유로만 화면을 바꾸는
+ * 키가 죽으면 표면마다 문법이 갈린다. macOS의 Option+문자 합성은 각 분기의 preventDefault가
+ * 막으므로 문자가 새지 않는다.
  *
- * 화살표는 그 예외에서 다시 빠진다. 편집 중 Alt+화살표는 단어 단위 이동이고, 그것은 화면 배치
- * 명령보다 먼저 이 자리의 것이다.
+ * 화살표에도 예외를 두지 않는다. 채팅 패널에서 캐럿이 사는 자리는 컴포저 하나뿐이라, 편집 중
+ * Alt+화살표를 캐럿 이동에 내주면 패널 사이를 오가는 키가 정확히 필요한 순간에만 죽는다.
+ * macOS의 단어 단위 이동은 같은 사정을 이미 터미널에서 Console에 내주고 있고, 선택(Alt+Shift+
+ * 화살표)은 shiftKey 분기가 preventDefault 없이 통과시키므로 편집자에게 그대로 남는다.
  */
 export function blocksOperationsShortcutWhileEditing(
   editing: boolean,
-  event: { readonly altKey: boolean; readonly code: string },
+  event: { readonly altKey: boolean },
 ): boolean {
-  if (!editing) return false;
-  if (!event.altKey) return true;
-  return event.code.startsWith("Arrow");
+  return editing && !event.altKey;
 }
 
 // ─── arrow keys — Operations focus, triage, and layout actions ─────────────────
