@@ -12,6 +12,9 @@ type Listener = () => void;
 
 const listeners = new Set<Listener>();
 let activePanelId: string | null = null;
+// 면이 열릴 때마다 오르는 번호. 닫았다 다시 연 면은 같은 id를 쓰더라도 다른 면이다 —
+// 늦게 도착한 옛 면의 콜백이 지금 서 있는 면을 접지 못하게 하는 손잡이다.
+let openEpoch = 0;
 
 export function useCanvasSurfacePanelId(): string | null {
   return useSyncExternalStore(subscribe, getCanvasSurfacePanelId, getCanvasSurfacePanelId);
@@ -19,6 +22,10 @@ export function useCanvasSurfacePanelId(): string | null {
 
 export function getCanvasSurfacePanelId(): string | null {
   return activePanelId;
+}
+
+export function getCanvasSurfaceEpoch(): number {
+  return openEpoch;
 }
 
 export function openCanvasSurface(panelId: string): void {
@@ -39,6 +46,7 @@ export function toggleCanvasSurface(panelId: string): void {
 
 function setActivePanelId(next: string | null): void {
   if (activePanelId === next) return;
+  if (next !== null) openEpoch += 1;
   activePanelId = next;
   for (const listener of listeners) listener();
 }

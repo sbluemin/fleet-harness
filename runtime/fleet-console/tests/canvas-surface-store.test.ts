@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   closeCanvasSurface,
+  getCanvasSurfaceEpoch,
   getCanvasSurfacePanelId,
   openCanvasSurface,
   toggleCanvasSurface,
@@ -48,5 +49,26 @@ describe("canvas surface store", () => {
 
     expect(getCanvasSurfacePanelId()).toBeNull();
     expect(getState().codexReaderExpanded).toBe(true);
+  });
+
+  /**
+   * 면의 신원은 열릴 때마다 새로 매겨진다. 같은 패널을 닫았다 다시 열어도 그때 것과 지금 것은
+   * 다른 면이므로, 옛 면을 붙들고 있던 비동기 완료가 지금 면을 접어서는 안 된다.
+   */
+  it("gives every open its own epoch so a stale completion cannot close the current surface", () => {
+    openCanvasSurface("global-shell");
+    const first = getCanvasSurfaceEpoch();
+
+    closeCanvasSurface();
+    openCanvasSurface("global-shell");
+
+    expect(getCanvasSurfaceEpoch()).toBeGreaterThan(first);
+  });
+
+  it("does not advance the epoch when nothing opened", () => {
+    openCanvasSurface("global-shell");
+    const epoch = getCanvasSurfaceEpoch();
+    openCanvasSurface("global-shell");
+    expect(getCanvasSurfaceEpoch()).toBe(epoch);
   });
 });

@@ -54,7 +54,13 @@ export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonl
 export interface RailCanvasSurfaceContext extends RailPanelContext {
   /** 이 면이 지금 화면에 서 있는가. 숨은 동안 무거운 일을 멈추는 판단에 쓴다. */
   readonly visible: boolean;
-  /** 호스트에게 면을 접어 달라고 청한다. 실제로 접는 주체는 호스트다. */
+  /**
+   * 호스트에게 **이 면**을 접어 달라고 청한다. 실제로 접는 주체는 호스트다.
+   *
+   * 늦게 도착해도 안전하다: 이 문맥이 만들어진 뒤 면이 닫혔거나 다른 Theater로 바뀌었으면
+   * 아무 일도 일어나지 않는다. 비동기 작업이 끝난 뒤 부르는 자리를 위한 약속이다 —
+   * 그렇지 않으면 그 사이에 열린 남의 면을 접는다.
+   */
   readonly close: () => void;
 }
 

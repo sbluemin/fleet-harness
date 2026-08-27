@@ -5,7 +5,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailCanvasSurfaceContext, RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import { closeCanvasSurface, useCanvasSurfacePanelId } from "../canvas-surface-store.js";
+import { closeCanvasSurface, getCanvasSurfaceEpoch, useCanvasSurfacePanelId } from "../canvas-surface-store.js";
 import { useT } from "../i18n/index.js";
 
 export interface CanvasSurfaceSheetProps {
@@ -51,11 +51,21 @@ export function CanvasSurfaceSheet({ panels, baseCtx, language }: CanvasSurfaceS
     };
   }, [isOpen]);
 
-  const ctx: RailCanvasSurfaceContext = useMemo(() => ({
-    ...baseCtx,
-    visible: isOpen,
-    close: closeCanvasSurface,
-  }), [baseCtx, isOpen]);
+  // 지금 서 있는 면의 신원. 늦게 도착한 비동기 완료가 그 사이 바뀐 면을 접지 않도록,
+  // `close`는 자기가 태어난 면이 아직 그대로일 때만 듣는다. Theater가 바뀌면 신원도 바뀐다.
+  const identity = `${getCanvasSurfaceEpoch()}::${baseCtx.theaterId ?? ""}`;
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
+
+  const ctx: RailCanvasSurfaceContext = useMemo(() => {
+    const bornAs = identity;
+    return {
+      ...baseCtx,
+      visible: isOpen,
+      // 계약대로 "이 면"만 접는다 — 열려 있는 아무 면이나 접지 않는다.
+      close: () => { if (identityRef.current === bornAs) closeCanvasSurface(); },
+    };
+  }, [baseCtx, isOpen, identity]);
 
   if (!panel || !surface || !canvasHost) return null;
 
