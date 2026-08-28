@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
+import { themePolarity } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { appendSeenFeatureTour } from "./feature-tour.js";
 
@@ -16,6 +17,8 @@ import { appendSeenFeatureTour } from "./feature-tour.js";
  * 이 모달의 제품 계약이다(기능 안내 자체는 설정 체크박스 도움말이 상시 대신한다).
  * 이미 설정에서 리퀴드 글래스를 꺼 둔 사용자에게는 소개가 무의미하므로 띄우지 않는다
  * (그 경우에도 seen을 남기지 않는다 — 켠 뒤 처음 What's New를 닫는 순간 소개를 받는다).
+ * 라이트 테마도 같은 이유로 건너뛴다 — 그 테마에는 유리가 실리지 않으므로 소개가 곧 거짓이
+ * 되고, 마찬가지로 seen을 남기지 않아 다크로 옮긴 뒤 제때 소개를 받는다.
  */
 export const GLASS_WELCOME_SEEN_KEY = "liquid-glass.welcome";
 
@@ -28,7 +31,9 @@ export function LiquidGlassWelcome({ state }: { readonly state: ConsoleState }) 
   const confirmRef = useRef<HTMLButtonElement | null>(null);
 
   const seen = settings.state?.seenFeatureTours ?? null;
-  const liquidGlassOn = settings.state?.liquidGlass ?? true;
+  // 화면에 실제로 유리가 실렸는가 — 저장된 선호와 테마 극성이 함께 정한다. 극성은 DOM에 방금
+  // 실린 activeTheme에서 읽는다(설정 왕복을 기다리는 settings.state.theme는 한 박자 늦다).
+  const liquidGlassOn = (settings.state?.liquidGlass ?? true) && themePolarity(state.activeTheme) === "dark";
 
   useEffect(() => {
     const wasOpen = prevWhatsNewOpen.current;

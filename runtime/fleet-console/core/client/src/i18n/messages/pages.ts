@@ -45,6 +45,7 @@ export const pagesEn = {
   "settings.theme.cliNote": "* Agent CLIs paint their own colors. After changing the console theme, pick a matching theme in each CLI too - for example, run /theme in Claude Code or Codex.",
   "settings.theme.liquidGlass": "Liquid glass",
   "settings.theme.liquidGlassHelp": "Floating menus and chrome take on a translucent, blurred material. Turn it off for the classic solid look.",
+  "settings.theme.liquidGlassLightHelp": "The light theme does not use liquid glass - on paper there is no light behind the glass to bend. Your setting is kept for the dark themes.",
   "settings.theme.panelFade": "Unfocused panel fade",
   "settings.theme.panelFadeHelp": "How far the panels you are not working in step back on the Map. Drag right to make the focused panel stand out more; at 0% nothing fades.",
   "settings.theme.instrument": "Instrument",
@@ -333,8 +334,8 @@ export const pagesEn = {
 
   // whatsnew tabs (catalog labels owned by pages; chrome owns modal chrome)
   "glassWelcome.title": "A new liquid glass finish",
-  "glassWelcome.body": "Floating menus, popups, and the console chrome now carry a translucent, blurred glass material on every theme.",
-  "glassWelcome.revert": "Prefer the classic solid look? Open Settings \u2192 Theme and uncheck \u201cLiquid glass\u201d anytime.",
+  "glassWelcome.body": "Floating menus, popups, and the console chrome now carry a translucent, blurred glass material on the dark themes.",
+  "glassWelcome.revert": "Prefer the classic solid look? Open Settings \u2192 Theme and uncheck \u201cLiquid glass\u201d anytime. The light theme always stays solid.",
   "glassWelcome.confirm": "Got it",
   "glassWelcome.dismiss": "Dismiss the liquid glass introduction",
   "glassWelcome.aria": "Liquid glass introduction",
@@ -594,6 +595,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.theme.cliNote": "* Agent CLI는 자체 색상으로 출력합니다. 콘솔 테마를 바꾼 뒤에는 각 CLI에서도 어울리는 테마를 다시 선택해 주세요 — 예: Claude Code·Codex에서 /theme 실행.",
   "settings.theme.liquidGlass": "리퀴드 글래스",
   "settings.theme.liquidGlassHelp": "떠 있는 메뉴와 크롬에 반투명 블러 질감을 입힙니다. 끄면 기존의 불투명한 모습으로 돌아갑니다.",
+  "settings.theme.liquidGlassLightHelp": "라이트 테마는 리퀴드 글래스를 쓰지 않습니다 — 종이 위에는 유리가 굴절시킬 빛이 없습니다. 설정값은 다크 테마를 위해 그대로 둡니다.",
   "settings.theme.panelFade": "비포커스 패널 흐리기",
   "settings.theme.panelFadeHelp": "Map에서 지금 쓰고 있지 않은 패널이 얼마나 물러날지 정합니다. 오른쪽으로 끌수록 포커스한 패널이 더 도드라지고, 0%면 아무것도 흐려지지 않습니다.",
   "settings.theme.instrument": "Instrument",
@@ -879,8 +881,8 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "shortcuts.codex.fitLightbox": "다이어그램 라이트박스를 뷰포트에 맞추기",
 
   "glassWelcome.title": "새로운 리퀴드 글래스 마감",
-  "glassWelcome.body": "떠 있는 메뉴·팝업과 콘솔 크롬에 모든 테마에서 반투명 블러 유리 질감이 적용됩니다.",
-  "glassWelcome.revert": "기존의 불투명한 모습이 좋다면 언제든 설정 \u2192 테마에서 \u201c리퀴드 글래스\u201d 체크를 해제하세요.",
+  "glassWelcome.body": "떠 있는 메뉴·팝업과 콘솔 크롬에 다크 테마에서 반투명 블러 유리 질감이 적용됩니다.",
+  "glassWelcome.revert": "기존의 불투명한 모습이 좋다면 언제든 설정 \u2192 테마에서 \u201c리퀴드 글래스\u201d 체크를 해제하세요. 라이트 테마는 늘 불투명합니다.",
   "glassWelcome.confirm": "확인",
   "glassWelcome.dismiss": "리퀴드 글래스 소개 닫기",
   "glassWelcome.aria": "리퀴드 글래스 소개",
