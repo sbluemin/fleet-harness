@@ -121,7 +121,9 @@ export function ChatComposerDeck({
             const descriptionId = entry.description.length > 0 ? `${optionId(rowIndex)}-desc` : undefined;
             return (
               <button
-                key={`${section.id}:${entry.name}`}
+                // 인덱스를 키에 넣는다 — 같은 이름이 두 번 올 수 있고(플러그인 스킬), 이름만
+                // 쓰면 두 행이 키를 공유해 React 재조정이 깨진다(실측: 행이 복제되어 그려졌다).
+                key={`${section.id}:${rowIndex}:${entry.name}`}
                 type="button"
                 id={optionId(rowIndex)}
                 ref={active ? activeRef : undefined}
@@ -139,14 +141,16 @@ export function ChatComposerDeck({
                 <span className="agent-chat-deck-glyph" aria-hidden="true">
                   {token.kind === "agent" ? "◎" : section.id === "skills" ? "◇" : "›"}
                 </span>
-                <span className="agent-chat-deck-main">
-                  <span className="agent-chat-deck-name">
-                    {token.kind === "agent" ? entry.name : `/${entry.name}`}
-                  </span>
-                  {entry.description.length > 0 ? (
-                    <span className="agent-chat-deck-desc" id={descriptionId}>{entry.description}</span>
-                  ) : null}
+                <span className="agent-chat-deck-name">
+                  {token.kind === "agent" ? entry.name : `/${entry.name}`}
                 </span>
+                {entry.description.length > 0 ? (
+                  <span className="agent-chat-deck-desc" id={descriptionId}>
+                    {/* 안쪽 한 겹이 필요하다 — flex 아이템은 blockify되어 `-webkit-box`가
+                        `flow-root`로 바뀌고, 그러면 두 줄 자르기가 걸리지 않는다(실측). */}
+                    <span className="agent-chat-deck-desc-clamp">{entry.description}</span>
+                  </span>
+                ) : null}
                 {entry.argumentHint.length > 0 ? (
                   <span className="agent-chat-deck-hint">{entry.argumentHint}</span>
                 ) : null}

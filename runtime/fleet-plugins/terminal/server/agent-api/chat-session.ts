@@ -374,11 +374,16 @@ class AgentChatSession {
   } | null = null;
   private catalogFlight: Promise<void> | null = null;
   /**
-   * init 메시지가 실어 온 스킬 이름들. `supportedCommands()`는 내장 명령과 스킬을 한 레코드
-   * 타입으로 섞어 주고 카테고리 필드가 없으므로, 둘을 가르는 유일한 근거가 이 이름 집합이다.
-   * init을 못 받았으면 비어 있고, 그때는 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
+   * 지금까지 스킬로 확인된 이름들. `supportedCommands()`는 내장 명령과 스킬을 한 레코드 타입으로
+   * 섞어 주고 카테고리 필드가 없으므로, 이 집합이 둘을 가르는 유일한 근거다.
+   *
+   * **두 출처의 합집합**이며 덮어쓰지 않고 쌓는다 — 실측(2026-08-29)에서 둘은 서로를 포함하지
+   * 않았다: `reloadSkills()`는 grill-me·doctor·debug를 빼먹고, init은 delegation·eli5·review를
+   * 빼먹는다. 어느 한쪽만 믿으면 그쪽이 놓친 스킬이 명령 칸에 선다.
+   *
+   * 비어 있으면 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
    */
-  private skillNames: ReadonlySet<string> = new Set();
+  private skillNames: Set<string> = new Set();
   /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
   private readerDone: Promise<void> | null = null;
   /**
@@ -1017,7 +1022,8 @@ class AgentChatSession {
     if (message.type !== "system" || message.subtype !== "init") return;
     const skills = (message as { skills?: unknown }).skills;
     if (!Array.isArray(skills)) return;
-    this.skillNames = new Set(skills.filter((name): name is string => typeof name === "string"));
+    // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
+    for (const name of skills) if (typeof name === "string") this.skillNames.add(name);
   }
 
   /**
@@ -1508,7 +1514,7 @@ class AgentChatSession {
           session.reloadSkills(),
         ]);
         if (commands === null && agents === null) return;
-        if (skills !== null) this.skillNames = new Set(skills.map((entry) => entry.name));
+        if (skills !== null) for (const entry of skills) this.skillNames.add(entry.name);
         // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
         // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
         this.rawCatalog = { commands: commands ?? [], agents: agents ?? [] };
@@ -1546,10 +1552,22 @@ class AgentChatSession {
       description: entry.description,
       argumentHint: entry.argumentHint,
     });
+    // 같은 이름이 둘 이상 올 수 있다(실측: 플러그인 스킬과 평범한 스킬이 같은 `frontend-design`
+    // 으로 왔다). 두 행은 **같은 텍스트를 보내므로** 사용자에게는 고를 수 없는 중복이고, 설명이
+    // 덜 꾸며진 쪽을 남긴다(플러그인 쪽은 `(이름) `이 앞에 붙는다).
+    const dedupe = (entries: readonly AgentChatCatalogEntry[]): readonly AgentChatCatalogEntry[] => {
+      const byName = new Map<string, AgentChatCatalogEntry>();
+      for (const entry of entries) {
+        const seen = byName.get(entry.name);
+        if (!seen) { byName.set(entry.name, entry); continue; }
+        if (seen.description.startsWith("(") && !entry.description.startsWith("(")) byName.set(entry.name, entry);
+      }
+      return [...byName.values()];
+    };
     return {
-      commands: raw.commands.filter((entry) => !this.skillNames.has(entry.name)).map(toEntry),
-      skills: raw.commands.filter((entry) => this.skillNames.has(entry.name)).map(toEntry),
-      agents: raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" })),
+      commands: dedupe(raw.commands.filter((entry) => !this.skillNames.has(entry.name)).map(toEntry)),
+      skills: dedupe(raw.commands.filter((entry) => this.skillNames.has(entry.name)).map(toEntry)),
+      agents: dedupe(raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" }))),
     };
   }
 

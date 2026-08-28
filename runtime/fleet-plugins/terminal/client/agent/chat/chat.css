@@ -1498,14 +1498,17 @@
   position: sticky;
   top: calc(var(--space-1) * -1);
   z-index: 1;
+  /* 덱의 유리 틴트를 다시 칠하되 **불투명 바닥** 위에 올린다.
+     `/model` 밴드처럼 알파 틴트 + backdrop-filter만 두면 이 표면에서는 가려지지 않는다(실측):
+     덱 자신이 이미 backdrop-filter를 쓰는 탓에 그 안의 밴드는 형제 행을 흐리지 못하고, 두 줄로
+     펼쳐진 활성 행이 머리글 글자 사이로 그대로 읽힌다. 바닥은 리터럴이 아니라 면 토큰이라
+     테마를 따라 함께 움직인다. */
   background:
     linear-gradient(
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+    var(--surface-panel);
 }
 
 .agent-chat-deck-category-rule {
@@ -1521,7 +1524,7 @@
 
 .agent-chat-deck-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
   width: 100%;
   padding: 7px var(--space-2);
@@ -1560,36 +1563,46 @@
   line-height: 1;
 }
 
-.agent-chat-deck-main {
-  flex: 1;
-  min-width: 0;
-}
-
+/* 이름은 자기 열을 갖는다 — 설명이 붙어도 이름 기둥이 흔들리지 않아야 목록이 훑힌다
+   (Claude Code 자신의 슬래시 목록과 같은 배치). */
 .agent-chat-deck-name {
-  display: block;
+  flex: none;
+  width: 15rem;
+  max-width: 42%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
 }
 
-/* 설명은 **활성 행에서만** 편다. 모든 행에 세우면 같은 높이에 여섯 행밖에 서지 못하고,
-   아무 행에도 없으면 뜻 모를 이름의 벽이 된다 — 눈이 멈춘 자리에서만 값을 치른다.
-   접근성 트리에는 언제나 있다(aria-describedby). */
+/* 설명은 이름 오른쪽 열에 서고 **두 줄에서 잘린다**. 활성 행에서만 보이되, 자라는 높이가
+   두 줄로 묶여 있어야 행 하나가 덱의 절반을 먹지 않는다(실측에서 그렇게 됐다). */
 .agent-chat-deck-desc {
-  display: none;
-  margin-top: 1px;
+  /* 숨겨도 자리는 지킨다 — `display:none`으로 접으면 인자 힌트가 이름 바로 옆으로 딸려 와
+     행마다 힌트의 x가 달라진다. 보이지 않을 뿐 열은 그대로다. */
+  flex: 1;
+  min-width: 0;
+  visibility: hidden;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
   line-height: 1.45;
 }
 
 .agent-chat-deck-row.is-active .agent-chat-deck-desc {
-  display: block;
+  visibility: visible;
+}
+
+.agent-chat-deck-desc-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .agent-chat-deck-hint {
   flex: none;
+  margin-left: auto;
   padding: 1px 6px;
   border: 1px solid var(--hairline);
   border-radius: 4px;
