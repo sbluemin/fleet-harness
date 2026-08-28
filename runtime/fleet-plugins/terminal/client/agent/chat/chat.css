@@ -374,11 +374,11 @@
 .agent-chat-live-text {
   background-image: linear-gradient(
     100deg,
-    var(--text-tertiary) 0%,
-    var(--text-tertiary) 34%,
-    var(--text-primary) 50%,
-    var(--text-tertiary) 66%,
-    var(--text-tertiary) 100%
+    var(--live-sweep-trough) 0%,
+    var(--live-sweep-trough) 34%,
+    var(--live-sweep-crest) 50%,
+    var(--live-sweep-trough) 66%,
+    var(--live-sweep-trough) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -507,6 +507,15 @@
 .agent-chat-step-verb {
   color: var(--text-secondary);
   flex: none;
+}
+
+/* 동사 자리의 물결 — 위 규칙이 `.agent-chat-live-text`와 같은 특정성(0,1,0)인데 뒤에 서므로
+   `color: transparent`를 이긴다. 그러면 클립된 그라데이션은 그대로 돌면서 그 위를 불투명한
+   secondary 잉크가 덮어, "Thinking" 줄의 물결이 두 테마 모두에서 통째로 죽는다(실측: 이 자리의
+   계산값 color가 oklch(0.7 0.012 245)였다). 두 클래스를 함께 다는 자리에만 못을 박아 채움을
+   되돌린다 — 아래 감속 봉인에 같은 짝이 서야 `color: transparent`가 남지 않는다. */
+.agent-chat-step-verb.agent-chat-live-text {
+  color: transparent;
 }
 
 .agent-chat-step-object {
@@ -1938,6 +1947,13 @@
      것만으로 시계가 밝아져, 없는 상태 변화를 말하게 된다. */
   .agent-chat-turn-head .agent-chat-live-text {
     color: var(--text-tertiary);
+  }
+
+  /* 동사 자리의 짝(0,2,0)은 봉인의 기본 채움(0,1,0)을 이기므로 여기서도 함께 세워야 한다 —
+     빠지면 감속 모션에서 `color: transparent`가 살아남아 "Thinking"이 통째로 사라진다.
+     되돌리는 잉크는 이 자리 본래의 secondary다. */
+  .agent-chat-step-verb.agent-chat-live-text {
+    color: var(--text-secondary);
   }
 
   /* 컴포저가 가운데에서 하단으로 내려앉는 이동을 세운다 — 자리는 그대로 바뀌되 한 프레임에 간다. */

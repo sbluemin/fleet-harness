@@ -139,11 +139,11 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__live-text {
   background-image: linear-gradient(
     100deg,
-    var(--text-tertiary) 0%,
-    var(--text-tertiary) 34%,
-    var(--text-primary) 50%,
-    var(--text-tertiary) 66%,
-    var(--text-tertiary) 100%
+    var(--live-sweep-trough) 0%,
+    var(--live-sweep-trough) 34%,
+    var(--live-sweep-crest) 50%,
+    var(--live-sweep-trough) 66%,
+    var(--live-sweep-trough) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
