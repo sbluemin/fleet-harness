@@ -3419,18 +3419,6 @@
 .is-formation-entering .canvas-mode-bracket--sw { animation: formation-bracket-sw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-formation-entering .canvas-mode-bracket--se { animation: formation-bracket-se var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 
-.canvas-triage-scan {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 12%;
-  z-index: 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(to right, transparent, color-mix(in oklch, var(--brass) 34%, transparent) 22%, color-mix(in oklch, var(--brass) 34%, transparent) 78%, transparent);
-  animation: triage-scan-line 9s linear infinite;
-}
-
 .canvas-triage-sweep {
   position: absolute;
   inset: 0;
@@ -4229,12 +4217,6 @@
 @keyframes formation-bracket-sw { from { transform: translate(-18px, 18px); } to { transform: translate(0, 0); } }
 @keyframes formation-bracket-se { from { transform: translate(18px, 18px); } to { transform: translate(0, 0); } }
 
-@keyframes triage-scan-line {
-  from { transform: translateY(0); opacity: 0.25; }
-  50% { opacity: 0.85; }
-  to { transform: translateY(68vh); opacity: 0.25; }
-}
-
 @keyframes triage-sweep-pass {
   from { transform: translateY(-100%); }
   to { transform: translateY(100%); }
@@ -4281,7 +4263,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-triage-sweep,
-  .canvas-triage-scan,
   .canvas-triage-map-dot.is-awaiting::after,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,
