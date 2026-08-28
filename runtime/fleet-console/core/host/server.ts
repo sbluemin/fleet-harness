@@ -16,11 +16,6 @@ import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCook
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces, probeRemoteIdentity } from "./remote-discovery.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
-import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
-import { createCodexGateway } from "./codex/gateway.js";
-import { createCodexKnowledgeWatcher } from "./codex/knowledge-watcher.js";
-import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./codex/contracts.js";
-import type { CodexKnowledgeScope, CodexWatchState } from "./codex/contracts.js";
 import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
@@ -68,7 +63,6 @@ export interface ConsoleServerDeps {
   readonly host?: string;
   readonly port?: number;
   readonly version?: string;
-  readonly codexCwd?: string;
   readonly dataDir?: string;
   readonly pluginHomeDir?: string;
   readonly agentRuntime?: unknown;
@@ -86,7 +80,6 @@ export interface ConsoleServer {
   readonly port: number;
   start(lockPaths: { readonly dir: string; readonly lockFile: string }): Promise<string>;
   stop(): Promise<void>;
-  registerCodexWorkspace(cwd: string): Promise<string>;
 }
 
 type TheaterFolderListBody = { readonly path?: unknown };
@@ -441,21 +434,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lockDir: path.join(workspace.path, "knowledge.migration.lock"),
     }, operation),
   });
-  const codexKnowledgeWatcher = createCodexKnowledgeWatcher({
-    onChange: (workspaceId, scopes) => broadcastCodexChanged(workspaceId, scopes),
-    onState: (workspaceId, state) => broadcastCodexWatchState(workspaceId, state),
-  });
-  const codex = createCodexGateway({
-    cwd: deps.codexCwd ?? process.cwd(),
-    host,
-    version,
-    getPort: () => lockHandle?.payload.port ?? port,
-    resolveListener: (request) => listenerForRequest(request),
-    wikiWorkspaceResolver,
-    dataDir: durablePaths.dir,
-    onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => codexKnowledgeWatcher.watch(workspaceId, knowledgeRoot),
-    onWorkspaceReleased: (workspaceId) => codexKnowledgeWatcher.unwatch(workspaceId),
-  });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
   // 리스너는 바인드 시점에 확정된다. 요청은 소켓의 로컬 주소로 자기 리스너를 찾고, 그
@@ -536,7 +514,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     save: saveDurableState,
     publish: publishPluginEvent,
     unregisterTheaterWorkspaces: (theaterId) => {
-      codex.unregisterTheaterWorkspaces(theaterId);
       publishTheaterLifecycle("forgotten", theaterId);
     },
     validateTheaterRestore: async (theater) => {
@@ -551,7 +528,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     },
     registerTheaterWorkspace: async (theater) => {
-      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
       publishTheaterLifecycle("restored", theater.id);
     },
   });
@@ -843,13 +819,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     systemFonts: deps.systemFonts ?? createSystemFontsService(),
     writeJson,
   });
-  const codexWorkspaceRouter = createCodexWorkspaceRouter({
-    getTheater: (theaterId) => theaters.get(theaterId),
-    isAuthorized: isTerminalAuthorized,
-    readJsonBody,
-    resolveWorkspace: (theaterId, theaterRoot) => codex.resolveWorkspaceForTheater(theaterId, theaterRoot),
-    writeJson,
-  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -884,9 +853,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
       // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
-      for (const entry of codexKnowledgeWatcher.snapshot()) {
-        res.write(encodeSseData(CODEX_WATCH_EVENT, entry));
-      }
       const subscriber: OperationSseSubscriber = { res, audience, sessionHandle };
       operationSseSubscribers.add(subscriber);
       startSseKeepaliveLifecycle(res, () => {
@@ -896,7 +862,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
   routeRegistry.register("/api/v1/theaters", async (context) => {
-    return codexWorkspaceRouter(context);
+    return false;
   });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
@@ -959,10 +925,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const listener = listenerForRequest(req);
     if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
       writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
-      runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
     // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
@@ -1808,7 +1770,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     const theater = await theaters.register(cwd);
-    await codex.registerWorkspace(theater.realpath, undefined, theater.id);
     publishTheaterLifecycle("registered", theater.id);
     persistDurableState();
     writeJson(res, 200, toTheaterInfo(theater, true));
@@ -2078,16 +2039,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
-      hasWiki,
       ...resolveTheaterFlags(theater.id),
+      hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === "terminal" && operation.type === "agent").length,
     };
   }
 
+  /**
+   * 지식 서버 상태는 그것을 소유한 플러그인이 말한다. 소유자가 없으면 "unknown"이다 —
+   * 코어가 대신 "unavailable"이라고 답하면, 아무도 모른다는 사실이 없다는 주장으로 바뀐다.
+   */
   function resolveWikiServerStatus(theaterId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
     if (!theaterId) return "unknown";
     if (!theaters.get(theaterId)) return "unknown";
-    return codex.getWorkspace(theaterId) ? "available" : "unavailable";
+    const resolve = pluginTheaterFlags.get("hasWiki");
+    if (!resolve) return "unknown";
+    try {
+      return resolve(theaterId) ? "available" : "unavailable";
+    } catch {
+      return "unknown";
+    }
   }
 
   async function stopAfterAcceptedUpdateApply(): Promise<void> {
@@ -2138,7 +2109,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
-    codexKnowledgeWatcher.disposeAll();
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
@@ -2182,7 +2152,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       console.warn(`[fleet-console] Expired deletion sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
     }
     // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
-    await restoreCodexWorkspaces();
   }
 
   function migrateLegacyCaptureState(): void {
@@ -2197,19 +2166,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
   }
 
-  async function restoreCodexWorkspaces(): Promise<void> {
-    // durable lastOpenedAt 오름차순으로 순차 등록하면서 durable 타임스탬프를 그대로 보존한다.
-    // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
-    // MRU가 되고, durable 타임스탬프 보존으로 listRegistrations()의 동순위(같은 밀리초) 모호성
-    // 없이 getMru() 기반 라우트가 재시작 후에도 durable 최근성 순서를 유지한다.
-    // 등록은 durable realpath로 한다. theater.path(심볼릭일 수 있음)를 다시 정규화하면 정지 중
-    // 심볼릭 타깃이 바뀐 경우 theater.id와 다른 workspaceHash로 등록되어 hasWiki 판정이 깨진다.
-    const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
-    for (const theater of ordered) {
-      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
-      publishTheaterLifecycle("restored", theater.id);
-    }
-  }
 
   // patch 브로드캐스트 게이트가 쓰는 "브라우저가 보는 모양" — broadcastOperationChanged와 같은
   // 새니타이즈 규칙을 공유해야 민감 필드 전용 patch가 조용히 남는다. ts는 모든 patch가 건드리는
@@ -2240,21 +2196,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 이벤트는 힌트다 — 변한 범위만 싣고 내용은 싣지 않는다. 원격 세션도 이 채널을 받으므로
    * 경로·본문이 실리면 안 되고, workspaceId(12-hex 해시)와 범위 이름만 나간다.
    */
-  function broadcastCodexChanged(workspaceId: string, scopes: readonly CodexKnowledgeScope[]): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CODEX_CHANGED_EVENT, { workspaceId, scopes });
-    for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
-    }
-  }
 
-  function broadcastCodexWatchState(workspaceId: string, state: CodexWatchState): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CODEX_WATCH_EVENT, { workspaceId, state });
-    for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
-    }
-  }
 
   function broadcastUpdateAvailable(): void {
     if (operationSseSubscribers.size === 0) return;
@@ -2443,10 +2385,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     async stop() {
       await stopServer();
-    },
-    async registerCodexWorkspace(cwd: string) {
-      const workspace = await codex.registerWorkspace(cwd);
-      return workspace.id;
     },
   };
 
