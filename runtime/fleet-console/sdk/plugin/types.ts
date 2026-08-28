@@ -563,6 +563,11 @@ export interface FleetPluginSecurityHost {
    * 지금 그 리스너가 무엇을 허용하는지는 Console만 안다.
    */
   isWriteAdmitted(req: http.IncomingMessage): boolean;
+  /**
+   * 이 요청을 받은 리스너가 인정하는 Origin. 허용 집합은 리스너마다 다르므로 호스트가
+   * 알려 주고, 대조는 플러그인이 자기 실패 어휘로 한다.
+   */
+  expectedOrigin(req: http.IncomingMessage): string | null;
 }
 
 export interface FleetPluginLifecycleHost {

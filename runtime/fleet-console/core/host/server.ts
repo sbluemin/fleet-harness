@@ -666,6 +666,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       isLockAuthorized,
       resolveTerminalSocketRole,
       isWriteAdmitted,
+      expectedOrigin: expectedOriginFor,
     },
     lifecycle: {
       registerCleanup: (cleanup) => {
@@ -1537,8 +1538,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function isWriteAdmitted(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
-    if (listener !== null && listener.audience !== "local") return true;
+    if (listener === null) return false;
+    // Origin 판정도 여기서 끝낸다 — 허용 집합은 리스너마다 다르고, 플러그인이 그것을
+    // 다시 짜면 원격 리스너로 들어온 쓰기가 자기 주소를 실었는데도 거절된다.
+    if (listener.audience !== "local") return true;
     return isLoopbackRemoteAddress(req.socket.remoteAddress);
+  }
+
+  /**
+   * 이 요청을 받은 리스너가 인정하는 Origin. 허용 집합은 리스너마다 다르고 그 사실은
+   * 호스트만 안다 — 플러그인은 판정을 스스로 하되, 무엇과 대조할지는 여기서 받는다.
+   */
+  function expectedOriginFor(req: http.IncomingMessage): string | null {
+    const listener = listenerForRequest(req);
+    if (listener === null) return null;
+    return `${listener.secure ? "https" : "http"}://${listenerAuthority(listener.host, listener.port, listener.secure)}`;
   }
 
   function resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer" {
@@ -2114,6 +2128,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     currentLock?.release();
   }
 
+  /**
+   * durable Theater들을 플러그인에게 알린다.
+   *
+   * 가장 최근에 연 Theater를 마지막에 알린다 — 이 순서를 재현해야 재시작 뒤에도
+   * "마지막에 보던 것"이 그대로 앞에 선다.
+   */
+  function announceRestoredTheaters(): void {
+    const ordered = [...theaters.list()].sort((left, right) =>
+      String(left.lastOpenedAt ?? "").localeCompare(String(right.lastOpenedAt ?? "")));
+    for (const theater of ordered) publishTheaterLifecycle("restored", theater.id);
+  }
+
   async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
     let restored = false;
@@ -2360,6 +2386,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         await rehydrateDurableState();
         await pluginHost.boot();
+        // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
+        // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
+        announceRestoredTheaters();
         await pluginClientAssets.prepare();
         const listenPlan = resolveConsolePortListenPlan();
         const result = await listenConsolePort(listenPlan);

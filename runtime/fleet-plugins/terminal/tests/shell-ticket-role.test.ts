@@ -108,6 +108,7 @@ async function mount(options: MountOptions): Promise<{
         isLockAuthorized: () => true,
         resolveTerminalSocketRole: () => options.role,
         isWriteAdmitted: () => true,
+        expectedOrigin: () => "http://127.0.0.1:1",
       },
       theaterFlags: { register: () => () => undefined },
       lifecycle: { registerCleanup: () => () => {} },

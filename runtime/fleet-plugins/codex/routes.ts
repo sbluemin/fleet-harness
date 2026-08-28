@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -11,6 +12,8 @@ import { createCodexWorkspaceRouter } from "./server/codex/workspace-routes.js";
 
 const CODEX_PLUGIN_ID = "codex";
 const MIGRATION_LOCK = "knowledge.migration.lock";
+/** Theater 뿌리에 놓인 지식 디렉터리. 마이그레이션 전에도 위키가 있다는 사실이다. */
+const KNOWLEDGE_DIRNAME = path.join(".fleet", "knowledge");
 
 export default definePlugin({
   id: CODEX_PLUGIN_ID,
@@ -53,8 +56,10 @@ export default definePlugin({
         hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),
       },
       getPort: () => readPort(ctx),
-      allowedOrigins: () => {
-        const origin = ctx.host.server.origin();
+      // 대조할 Origin은 요청을 받은 리스너의 것이다 — 콘솔의 루프백 주소로 고정하면
+      // 원격 리스너로 들어온 정당한 쓰기가 자기 주소를 실었는데도 막힌다.
+      allowedOriginsFor: (request) => {
+        const origin = ctx.host.security.expectedOrigin(request);
         return origin ? [origin] : [];
       },
       security: {
@@ -84,7 +89,13 @@ export default definePlugin({
 
     // 이 Theater가 위키를 가졌는가 — 코어가 추측하지 않고 소유자가 답한다.
     ctx.host.lifecycle.registerCleanup(
-      ctx.host.theaterFlags.register("hasWiki", (theaterId) => gateway.getWorkspace(theaterId) !== null),
+      ctx.host.theaterFlags.register("hasWiki", (theaterId) => {
+        // 이미 열려 있으면 그것으로 답하고, 아직이면 디스크에 지식 뿌리가 있는지 본다.
+        // "열려 있는가"로만 답하면 아직 아무도 펴 보지 않은 위키가 없는 것으로 읽힌다.
+        if (gateway.getWorkspace(theaterId) !== null) return true;
+        const root = ctx.host.paths.resolveTheaterPath(theaterId);
+        return root !== null && existsSync(path.join(root, KNOWLEDGE_DIRNAME));
+      }),
     );
 
     const workspaceRouter = createCodexWorkspaceRouter({

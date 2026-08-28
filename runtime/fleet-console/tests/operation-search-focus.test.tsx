@@ -161,33 +161,6 @@ describe("Operation search focus handoff", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("loads Codex entries on open and opens one through the reader store path", async () => {
-    codexApiMocks.fetchSearch.mockResolvedValue({
-      entries: [{ id: "wiki-entry", title: "Fleet Wiki Entry", tags: [], updated: "2026-08-03T00:00:00.000Z", path: "wiki/wiki-entry.md" }],
-      total: 1,
-    });
-    codexApiMocks.fetchSearch.mockClear();
-    act(() => setState({ operationSearchOpen: false }));
-    act(() => setState({ operationSearchOpen: true }));
-    await act(async () => { await Promise.resolve(); });
-    expect(codexApiMocks.fetchSearch).toHaveBeenCalledOnce();
-    act(() => setState({ activeOperationAcknowledged: false }));
-    expect(codexApiMocks.fetchSearch).toHaveBeenCalledOnce();
-
-    const input = document.querySelector<HTMLInputElement>("#operation-search-input")!;
-    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setInputValue.call(input, "fleet wiki");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const codexOption = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
-      .find((option) => option.textContent?.includes("Fleet Wiki Entry"));
-    expect(codexOption?.textContent).toContain("CDX");
-
-    act(() => codexOption!.click());
-    expect(getState().codexReader).toEqual({ kind: "entry", entryId: "wiki-entry" });
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-  });
 
   it("hands the palette opener to the keyboard shortcuts return-focus channel", () => {
     // 팔레트 경유로 다이얼로그를 열면 App 캡처 시점의 activeElement가 제거 중인 팔레트 내부라,

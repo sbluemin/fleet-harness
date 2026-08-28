@@ -17,7 +17,7 @@ import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
-import { workspaceHash } from "../core/host/theaters/theater-domain.js";
+import { canonicalizeTheaterPathSync, workspaceHash } from "../core/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
 import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
@@ -104,7 +104,8 @@ afterEach(async () => {
 describe("console terminal observability", () => {
   it("publishes only the Theater-root Codex route and no path-context catalog surface", () => {
     const paths = SERVER_API_CATALOG.map((entry) => entry.path);
-    expect(paths).toContain("/api/v1/theaters/:theaterId/codex-workspace");
+    // Codex 워크스페이스 경로는 플러그인 이름공간으로 옮겨 갔다 — 코어 카탈로그에는 없다.
+    expect(paths).not.toContain("/api/v1/theaters/:theaterId/codex-workspace");
     expect(paths.some((entry) => entry.includes("path-context"))).toBe(false);
   });
 
@@ -1324,10 +1325,10 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const fixture = await startFixture();
     const theater = await createTheater(fixture, dir);
-    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/codex-workspace`, {
+    const resolved = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ theaterId: theater.id }),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true });
@@ -1350,10 +1351,10 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture();
     const parentTheater = await createTheater(fixture, parentDir);
     const nestedTheater = await createTheater(fixture, nestedDir);
-    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(nestedTheater.id)}/codex-workspace`, {
+    const resolved = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ theaterId: nestedTheater.id }),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true, id: nestedTheater.id });
@@ -2394,7 +2395,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     try {
       const theaters = new TheaterRegistry();
-      const codexWorkspaces = new WorkspaceRegistry({ canonicalize: (cwd: string) => cwd, hash: (cwd: string) => cwd });
+      const codexWorkspaces = new WorkspaceRegistry({ canonicalize: canonicalizeTheaterPathSync, hash: workspaceHash });
       const observability = createConsoleObservabilityStore();
       const theater = await theaters.register(variantDir);
       const codexWorkspace = await codexWorkspaces.register(variantDir);

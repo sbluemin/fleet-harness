@@ -38,7 +38,7 @@ describe("Codex Theater-root workspace resolution", () => {
       version: "0.0.0",
       getPort: () => 0,
       wikiWorkspaceResolver,
-      allowedOrigins: () => ["http://127.0.0.1:0"],
+      allowedOriginsFor: () => ["http://127.0.0.1:0"],
       theaterPaths: { canonicalize: (cwd: string) => realpathSync(cwd), hash: (cwd: string) => cwd },
       security: { validateHost: () => true, isWriteAdmitted: () => true },
     });
@@ -81,17 +81,20 @@ describe("Codex Theater-root workspace route", () => {
     return { router, resolveWorkspace, writeJson };
   }
 
-  it("accepts exactly an empty object and returns a path-free DTO", async () => {
-    const { router, resolveWorkspace, writeJson } = routerFor({});
-    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/theaters/theater/codex-workspace" });
+  it("resolves the Theater named in the body and returns a path-free DTO", async () => {
+    const { router, resolveWorkspace, writeJson } = routerFor({ theaterId: "theater" });
+    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/plugins/codex/workspace" });
     expect(resolveWorkspace).toHaveBeenCalledWith("theater", "/tmp/theater");
     expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 200, { hasWiki: true, id: WORKSPACE_ID });
   });
 
-  it.each([null, [], { relPath: null }, { relPath: "nested" }, { unknown: true }])("rejects non-empty or non-object request bodies", async (body) => {
+  // Theater가 경로에서 본문으로 옮겨 왔으므로 "빈 본문만 허용"은 더 이상 계약이 아니다.
+  // 남는 계약은 하나다: Theater를 말하지 않은 요청은 워크스페이스를 열지 않는다.
+  it.each([null, [], {}, { theaterId: "" }, { theaterId: 7 }])("refuses a body that names no Theater", async (body) => {
     const { router, resolveWorkspace, writeJson } = routerFor(body);
-    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/theaters/theater/codex-workspace" });
+    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/plugins/codex/workspace" });
     expect(resolveWorkspace).not.toHaveBeenCalled();
-    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_request" });
+    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_theater" });
   });
+
 });

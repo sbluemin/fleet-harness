@@ -37,7 +37,7 @@ interface CodexGatewayDeps {
    * 어느 리스너로 들어왔는지, 그 리스너가 지금 무엇을 허용하는지는 Console만 안다.
    */
   /** 쓰기를 허용할 Origin 집합. 호스트의 `server.origin()`이 원본이다. */
-  readonly allowedOrigins: () => readonly string[];
+  readonly allowedOriginsFor: (request: IncomingMessage) => readonly string[];
   readonly theaterPaths: TheaterPathResolver;
   /**
    * 아직 등록되지 않은 워크스페이스를 요청받았을 때 그 뿌리를 찾아 준다.
@@ -212,7 +212,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       workspaceId: workspace.id,
       // Origin 허용집합은 콘솔 자신의 오리진이다 — 리스너별 집합을 플러그인이 다시 짜면
       // 그 사본이 호스트의 경계와 갈라진다. 쓰기 자격 판정은 호스트가 내린다.
-      allowedOrigins: new Set(deps.allowedOrigins()),
+      allowedOrigins: new Set(deps.allowedOriginsFor(request)),
       externalMode: true,
       admitted: deps.security.isWriteAdmitted(request),
       coworkService,
