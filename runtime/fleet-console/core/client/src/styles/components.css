@@ -15336,3 +15336,205 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   text-align: right;
   color: var(--brass-ink);
 }
+
+/* ─── Expanded Surface ───────────────────────────────────────────────────────
+   캔버스 좌표 상자 안에 정박하는 비모달 작업면. Codex 확대 읽기의 후신이며,
+   콘텐츠를 모르는 프레임이다 — 슬롯 본문은 표면 기여자가 그린다. */
+
+:root {
+  /* 캔버스(자체 스택 컨텍스트) 안에서만 경쟁한다 — Operation 패널의 zIndex는
+     상호 승격으로 상한 없이 자라므로, 정수 최대치 근방으로 항상 위를 보장한다. */
+  --z-expanded-surface: 2147480000;
+}
+
+.expanded-surface {
+  position: absolute;
+  z-index: var(--z-expanded-surface);
+  inset: var(--space-3);
+  display: grid;
+  /* 열 템플릿은 슬롯 가중치에서 인라인으로 들어온다(레이어 소유). */
+  gap: 0;
+  /* 캔버스가 끄는 텍스트 선택·터치 제스처를 작업면에서 복원한다. */
+  user-select: text;
+  touch-action: auto;
+  cursor: auto;
+}
+
+.expanded-surface-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이
+     (canonical 주석은 components.css의 .whatsnew-card 참조). */
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
+  transition: border-color var(--duration-fast);
+}
+
+/* 포커스는 위치 신호다 — brass 채널. 상태(aurora/warn/coral)와 섞지 않는다. */
+.expanded-surface-slot.is-focused {
+  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim-strong));
+}
+
+.expanded-surface-slot-head {
+  flex: 0 0 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.expanded-surface-slot-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
+}
+
+.expanded-surface-slot-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* 닫기는 호스트 소유다 — 표면이 tools를 안 내도 항상 오른쪽 끝에 선다.
+   tools가 있으면 auto 여백은 tools가 가져가고, 둘 사이는 head의 gap이 벌린다. */
+.expanded-surface-slot-close {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.expanded-surface-slot-tools ~ .expanded-surface-slot-close {
+  margin-left: 0;
+}
+
+.expanded-surface-slot-close:hover,
+.expanded-surface-slot-close:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.expanded-surface-slot-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.expanded-surface-slot-aside {
+  flex: none;
+  width: 220px;
+  min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--surface-rim);
+}
+
+.expanded-surface-slot-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 분할선 ─────────────────────────────────────────────────────────────────
+   콘솔 최초의 드래그 분할선. 히트 영역은 gap보다 넓게 잡고(포인터 정확도),
+   보이는 획은 가늘게 남긴다. */
+.expanded-surface-divider {
+  position: relative;
+  flex: none;
+  width: var(--space-2);
+  cursor: col-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  touch-action: none;
+}
+
+.expanded-surface-divider-grip {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--surface-rim);
+  transition: background var(--duration-fast), width var(--duration-fast);
+}
+
+.expanded-surface-divider:hover .expanded-surface-divider-grip,
+.expanded-surface-divider:focus-visible .expanded-surface-divider-grip,
+.expanded-surface-divider.is-dragging .expanded-surface-divider-grip {
+  width: 2px;
+  background: var(--brass);
+}
+
+.expanded-surface-divider:focus-visible {
+  outline: none;
+}
+
+/* 드래그 중에는 슬롯 본문이 텍스트를 집어가지 않게 한다. */
+body[data-expanded-surface-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.expanded-surface-missing {
+  margin: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* 작업면이 서 있는 동안 캔버스만 입력을 잃는다 — 사이드바·레일은 계속 살아 있다.
+   모달이 아니므로 inert도 focus trap도 걸지 않는다. */
+body[data-expanded-surface="true"] .operations-canvas {
+  pointer-events: none;
+  cursor: default;
+}
+
+body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expanded-surface-slot,
+  .expanded-surface-divider-grip {
+    transition: none;
+  }
+}

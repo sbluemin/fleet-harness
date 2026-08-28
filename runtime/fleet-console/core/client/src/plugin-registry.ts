@@ -1,4 +1,5 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type { OperationKindDescriptor, FleetClientPlugin } from "@fleet-console/sdk/plugin";
@@ -22,6 +23,7 @@ export interface PluginRegistry {
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
+  readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
 }
 
 interface PluginRuntimeManifest {
@@ -135,7 +137,22 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
+    // 확대 표면 id는 URL과 슬롯 저장소가 함께 쓰는 주소다 — floating widget과 같은
+    // 규칙으로 플러그인 id를 접두해 전역 유일성을 호스트가 보장한다.
+    expandedSurfaces: plugins.flatMap((plugin) => (plugin.expandedSurfaces ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
   };
+}
+
+/** 표면 id → 서술자. 레이어가 슬롯마다 조회하므로 배열이 아니라 맵으로 준다. */
+export function useExpandedSurfaceDescriptors(): ReadonlyMap<string, ExpandedSurfaceDescriptor> {
+  const { expandedSurfaces } = usePluginRegistry();
+  return useMemo(
+    () => new Map(expandedSurfaces.map((descriptor) => [descriptor.id, descriptor])),
+    [expandedSurfaces],
+  );
 }
 
 function isFleetClientPlugin(value: unknown): value is FleetClientPlugin {

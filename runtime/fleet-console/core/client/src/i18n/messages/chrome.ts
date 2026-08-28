@@ -335,6 +335,12 @@ export const chromeEn = {
   "chrome.backendApi.foot": "Routes declared by Console core and successfully loaded plugins are shown here automatically. Codex/Fleet Wiki routes are excluded.",
   "chrome.backendApi.uncategorized": "Uncategorized",
 
+  // expanded-surface — the canvas-anchored non-modal work surface
+  "chrome.expandedSurface.regionAria": "Expanded work surface",
+  "chrome.expandedSurface.closeAria": "Close slot",
+  "chrome.expandedSurface.dividerAria": "Resize slot",
+  "chrome.expandedSurface.missing": "The plugin that provided this surface is no longer loaded.",
+
   // codex-reading-sheet
   "chrome.codexReading.dialogAria": "Codex reading",
   "chrome.codexReading.eyebrow": "Codex · Reading",
@@ -707,6 +713,11 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.backendApi.noRoutes": "보고된 Backend API 라우트가 없습니다.",
   "chrome.backendApi.foot": "Console core와 성공적으로 로드된 플러그인이 선언한 라우트가 여기에 자동으로 표시됩니다. Codex/Fleet Wiki는 포함되지 않습니다.",
   "chrome.backendApi.uncategorized": "미분류",
+
+  "chrome.expandedSurface.regionAria": "확대 작업면",
+  "chrome.expandedSurface.closeAria": "슬롯 닫기",
+  "chrome.expandedSurface.dividerAria": "슬롯 폭 조절",
+  "chrome.expandedSurface.missing": "이 표면을 제공하던 플러그인이 더 이상 로드되어 있지 않습니다.",
 
   "chrome.codexReading.dialogAria": "Codex 읽기",
   "chrome.codexReading.eyebrow": "Codex · 읽기",

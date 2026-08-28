@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
+import type { ExpandedSurfaceDescriptor } from "../expanded-surface/types.js";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
@@ -87,6 +88,11 @@ export interface FleetClientPlugin {
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
   readonly railPanels?: readonly RailPanelDescriptor[];
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
+  /**
+   * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은
+   * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.
+   */
+  readonly expandedSurfaces?: readonly ExpandedSurfaceDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;

@@ -85,6 +85,11 @@
       "import": "./rail/types.ts",
       "default": "./rail/types.ts"
     },
+    "./expanded-surface": {
+      "types": "./expanded-surface/types.ts",
+      "import": "./expanded-surface/types.ts",
+      "default": "./expanded-surface/types.ts"
+    },
     "./i18n": {
       "types": "./i18n/types.ts",
       "import": "./i18n/types.ts",
