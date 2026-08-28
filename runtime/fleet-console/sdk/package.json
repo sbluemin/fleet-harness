@@ -95,6 +95,11 @@
       "import": "./i18n/types.ts",
       "default": "./i18n/types.ts"
     },
+    "./i18n/format": {
+      "types": "./i18n/format.ts",
+      "import": "./i18n/format.ts",
+      "default": "./i18n/format.ts"
+    },
     "./i18n/translate": {
       "types": "./i18n/translate.ts",
       "import": "./i18n/translate.ts",
