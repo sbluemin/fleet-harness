@@ -2595,6 +2595,10 @@
   .fc-select__option[aria-selected="true"],
   .global-settings-nav-item.is-active,
   .global-settings-nav-item[aria-pressed="true"],
+  .appearance-preview-rail b,
+  .host-switcher-panel > button.is-current,
+  .remote-interface-preset.is-selected,
+  .theme-card.is-active,
   .settings-switch.is-on,
   .fc-settings-toggle__input:checked + .settings-switch {
     background: SelectedItem;
