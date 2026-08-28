@@ -308,7 +308,7 @@ export function mountReaderInto(
   });
   syncInlineOutline(tNode);
   attachSessionScrollSaver(readSlot);
-  // 노드만 옮기면 스크롤 스파이의 IntersectionObserver는 옛 루트를 계속 물고 있다 —
+  // 노드만 옮기면 스크롤 스파이의 리스너는 옛 스크롤 루트를 계속 붙잡고 있다 —
   // relocate한 쪽에서 다시 세워야 확대 화면의 목차가 읽는 위치를 따라온다.
   if (relocated) readerController.refreshScrollSpy();
 
