@@ -974,9 +974,7 @@ export function OperationsCanvas({
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             groupName: operationGroup?.name ?? null,
             groupColor: operationGroupColor,
-            theaterLabel: operation.type === "shell"
-              ? state.theaters.find((theater) => theater.id === operation.theaterId)?.label || null
-              : null,
+            theaterLabel: null,
             onActivate: () => {
               setActiveOperation(operation.id);
               // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
@@ -1258,7 +1256,7 @@ function resolveDefaultLaunchTarget(catalog: readonly OperationCatalogPlugin[]):
   const availableKinds = catalog.flatMap((plugin) =>
     plugin.kinds.filter((kind) => kind.disabled !== true).map((kind) => ({ pluginId: plugin.id, kind })),
   );
-  return availableKinds.find(({ kind }) => kind.type === "shell") ?? availableKinds[0] ?? null;
+  return availableKinds[0] ?? null;
 }
 
 // 패널 헤더 이름 변경은 캔버스 내부에서 즉시 처리한다.

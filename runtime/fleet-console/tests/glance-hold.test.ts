@@ -4,8 +4,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../core/client/src/plugin-registry.js", () => ({
-  usePluginRegistry: () => ({ plugins: [], failures: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }),
+vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(),
+  usePluginRegistry: () => ({ plugins: [], failures: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] , expandedSurfaces: []}),
 }));
 
 import { useGlanceHold } from "../core/client/src/canvas/canvas.js";

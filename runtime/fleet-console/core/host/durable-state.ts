@@ -280,6 +280,10 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   const title = readNonEmptyString(value.title);
   const ts = sanitizeOperationTimestamps(value.ts);
   if (!id || !theaterId || !type || !pluginId || !title || !ts) return null;
+  // Shell은 콘솔 전역 확대 표면으로 옮겨 갔고 더 이상 Operation이 아니다. 예전 상태 파일이
+  // 실어 온 Shell 노드는 그릴 종류가 없으므로 복원하지 않고 흘려보낸다 — 남겨 두면 캔버스에
+  // 렌더러 없는 패널로 서고, 사용자는 그것을 고장으로 읽는다.
+  if (type === "shell") return null;
   const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
   return {

@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
-import type { ExpandedSurfaceDescriptor } from "../expanded-surface/types.js";
+import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
@@ -152,6 +152,7 @@ export interface PluginInstallContext {
   readonly runtime: ClientOperationRuntimeCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly composer: ClientComposerCapability;
+  readonly surfaces: ClientExpandedSurfacesCapability;
 }
 
 export interface ClientApiCapability {
@@ -205,6 +206,18 @@ export interface ClientOperationsCapability {
   create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
+}
+
+/**
+ * 확대 표면을 여닫는 능력. 슬롯 목록·기하·포커스는 호스트가 소유하므로 플러그인은
+ * "이걸 열어 달라"고 요청할 뿐이고, 어느 슬롯에 어떤 폭으로 서는지는 결정하지 못한다.
+ */
+export interface ClientExpandedSurfacesCapability {
+  /** 표면을 연다. 이미 열려 있으면 기본적으로 그 슬롯을 재사용한다. 인스턴스 id를 돌려준다. */
+  open(request: ExpandedSurfaceOpenRequest): string;
+  close(instanceId: string): void;
+  /** 이 표면이 지금 슬롯을 차지하고 있는지. */
+  isOpen(surfaceId: string): boolean;
 }
 
 export interface ClientPreferencesCapability {

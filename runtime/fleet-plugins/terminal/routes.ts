@@ -3,7 +3,6 @@ import path from "node:path";
 /** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
 const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
 
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
@@ -56,14 +55,12 @@ function applyStoredWireLog(ctx: FleetPluginServerContext, read: () => AiGateway
 
 const TERMINAL_PLUGIN_ID = "terminal";
 const TERMINAL_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
-const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export default definePlugin({
   id: TERMINAL_PLUGIN_ID,
   name: "Terminal",
   async register(ctx) {
-    ctx.host.operations.registerOperationType("shell");
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
@@ -122,7 +119,7 @@ export default definePlugin({
         origin: () => ctx.host.server.origin(),
       },
     });
-    registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);
+    registerLaunchCatalog(ctx, async () => agentLaunchKinds());
   },
 });
 

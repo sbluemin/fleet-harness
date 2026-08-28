@@ -26,8 +26,8 @@ import type { OperationNode } from "../core/client/src/types.js";
 
 let floatingWidgets: readonly FloatingWidgetDescriptor[] = [];
 
-vi.mock("../core/client/src/plugin-registry.js", () => ({
-  usePluginRegistry: () => ({ floatingWidgets }),
+vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(),
+  usePluginRegistry: () => ({ floatingWidgets , expandedSurfaces: []}),
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

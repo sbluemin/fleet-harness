@@ -17,7 +17,7 @@ describe("shell ticket role", () => {
     const issued: TerminalTicketContext[] = [];
     const { call, responses } = await mount({ role: "viewer", issued });
 
-    await call({ operationId: "op-1", role: "control" });
+    await call({ theaterId: "theater-1", role: "control" });
 
     expect(issued).toHaveLength(1);
     expect(issued[0]!.role).toBe("viewer");
@@ -28,7 +28,7 @@ describe("shell ticket role", () => {
     const issued: TerminalTicketContext[] = [];
     const { call, responses } = await mount({ role: "control", issued });
 
-    await call({ operationId: "op-1" });
+    await call({ theaterId: "theater-1" });
 
     expect(issued[0]!.role).toBeUndefined();
     expect(responses.at(-1)).toMatchObject({ status: 200, body: { role: "control" } });
@@ -36,7 +36,7 @@ describe("shell ticket role", () => {
 
   it("still honours an explicit viewer request while control is available", async () => {
     const issued: TerminalTicketContext[] = [];
-    await mount({ role: "control", issued }).then(({ call }) => call({ operationId: "op-1", role: "viewer" }));
+    await mount({ role: "control", issued }).then(({ call }) => call({ theaterId: "theater-1", role: "viewer" }));
 
     expect(issued[0]!.role).toBe("viewer");
   });
@@ -72,6 +72,7 @@ async function mount(options: MountOptions): Promise<{
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     terminate: () => true,
+    onExit: () => () => {},
     stop: async () => {},
     writeToSession: () => false,
   } as unknown as TerminalRuntime;

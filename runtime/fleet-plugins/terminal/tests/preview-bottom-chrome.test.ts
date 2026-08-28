@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../client/shared/index.js", () => ({ TerminalSurface: () => null }));
 
 import { agentOperationKind } from "../client/agent/index.js";
-import { shellOperationKind } from "../client/shell/index.js";
 import { setTerminalFontSize } from "../client/shared/terminal-preferences.js";
 
 // 바닥 크롬 선언은 body 소유자의 계약이다 — 호스트 프리뷰(War Room Watch Deck)는 이 값만큼을
@@ -24,9 +23,5 @@ describe("preview bottom chrome declarations", () => {
     expect(agentOperationKind.previewBottomChrome?.()).toBe(70);
     setTerminalFontSize(22);
     expect(agentOperationKind.previewBottomChrome?.()).toBe(154);
-  });
-
-  it("leaves a bare shell undeclared so its prompt stays in frame", () => {
-    expect(shellOperationKind.previewBottomChrome).toBeUndefined();
   });
 });

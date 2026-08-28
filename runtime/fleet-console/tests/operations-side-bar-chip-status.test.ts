@@ -32,22 +32,6 @@ describe("OperationsSideBarChip activity status", () => {
     expect(statusDot.getAttribute("aria-label")).toBe(expectedLabel);
   });
 
-  // Shell은 활동 축을 발행하지 않는다 — 비콘을 그리면 활동값이 무엇이든 "초록 유휴" 또는
-  // "중공 종료"로 굳어, 없는 상태를 있는 것처럼 말하게 된다. 그 자리는 종류가 가져간다.
-  it.each(["idle", "ended", "running", undefined] as const)(
-    "draws a shell as the kind glyph regardless of the %s activity value",
-    (status) => {
-      const mark = renderChip(status, "shell");
-
-      expect(mark.className).toContain("shell-kind-mark");
-      expect(mark.className).toContain("side-bar-chip-status");
-      expect(mark.className).not.toContain("tenant-beacon");
-      expect(mark.getAttribute("aria-label")).toBe("Shell");
-      // 발광·맥동을 붙일 자리가 없도록 활동 클래스는 하나도 실리지 않는다.
-      expect(mark.className).not.toMatch(/\bis-(idle|ended|awaiting|unseen|turn-running|background)\b/);
-      expect(mark.querySelector("svg")).not.toBeNull();
-    },
-  );
 });
 
 // degraded 는 "모른다"는 뜻이다 — 마지막으로 알던 값을 지금의 사실처럼 패널에 넘기면,

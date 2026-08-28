@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
-import type { ClientApiCapability, ConsoleTheme } from "../plugin/types.js";
+import type { ClientApiCapability, ClientExpandedSurfacesCapability, ConsoleTheme } from "../plugin/types.js";
 import type { OperationLaunchKind } from "../operations/types.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
@@ -20,6 +20,8 @@ export interface RailPanelContext {
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly launchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  /** rail 동작이 Operation 대신 확대 표면을 열 때 쓴다. */
+  readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }

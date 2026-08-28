@@ -1,15 +1,21 @@
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { getT } from "../i18n/index.js";
 
-const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
+const SHELL_SURFACE_ID = "shell";
 
+/**
+ * 레일 아이콘은 패널을 펼치지 않고 곧장 확대 표면을 연다. 이미 열려 있으면 스토어의
+ * reuse 규칙이 새 슬롯을 만들지 않고 그 슬롯으로 포커스만 옮긴다 — 아이콘을 두 번
+ * 눌렀다고 셸이 둘이 되지 않는다.
+ */
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
-  activate: (ctx: RailPanelContext) => ctx.launchOperation?.("terminal", SHELL_LAUNCH_KIND),
+  activate: (ctx: RailPanelContext) => {
+    ctx.surfaces?.open({ surfaceId: SHELL_SURFACE_ID });
+  },
 };
 
 function TerminalGlyphIcon() {

@@ -116,6 +116,21 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
+  // 표면 id는 URL(`?surface=<id>`)과 슬롯 저장소가 함께 쓰는 주소다. rail 패널과 같은
+  // 규칙으로 접두 없이 두고 선착순 중복 제거한다 — 주소가 플러그인 id를 끌고 다니면
+  // 공유 링크가 구현 세부를 노출하고, 플러그인을 옮기는 순간 링크가 깨진다.
+  const expandedSurfaceIds = new Set<string>();
+  const expandedSurfaces: ExpandedSurfaceDescriptor[] = [];
+  for (const plugin of plugins) {
+    for (const surface of plugin.expandedSurfaces ?? []) {
+      if (expandedSurfaceIds.has(surface.id)) {
+        console.warn(`Skipping expanded surface with duplicate id: ${surface.id}`);
+        continue;
+      }
+      expandedSurfaceIds.add(surface.id);
+      expandedSurfaces.push(surface);
+    }
+  }
   for (const plugin of plugins) {
     for (const panel of plugin.railPanels ?? []) {
       if (railPanelIds.has(panel.id)) {
@@ -137,12 +152,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
-    // 확대 표면 id는 URL과 슬롯 저장소가 함께 쓰는 주소다 — floating widget과 같은
-    // 규칙으로 플러그인 id를 접두해 전역 유일성을 호스트가 보장한다.
-    expandedSurfaces: plugins.flatMap((plugin) => (plugin.expandedSurfaces ?? []).map((descriptor) => ({
-      ...descriptor,
-      id: `${plugin.id}:${descriptor.id}`,
-    }))),
+    expandedSurfaces,
   };
 }
 

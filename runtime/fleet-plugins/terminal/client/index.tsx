@@ -2,7 +2,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection } from "./agent/index.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
-import { shellOperationKind, shellPlugin } from "./shell/index.js";
+import { shellSurface } from "./shell/index.js";
 import { preloadTerminalFallbackFonts } from "./shared/terminal-fallback-fonts.js";
 import { connectTerminalSettings } from "./shared/terminal-preferences.js";
 import "./assets/fonts/symbols-nerd-font-mono.css";
@@ -18,38 +18,22 @@ const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
 const terminalPlugin = definePlugin({
   id: "terminal",
-  operationKinds: [shellOperationKind, agentOperationKind],
+  operationKinds: [agentOperationKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   railPanels: [globalShellPanel],
+  expandedSurfaces: [shellSurface],
   install: (ctx) => { void preloadTerminalFallbackFonts(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
   closeOperation: async (operationId) => {
     const operation = await fetchOperation(operationId);
-    if (operation?.type === "shell") {
-      await shellPlugin.closeOperation?.(operationId);
-      return;
-    }
     if (operation && AGENT_OPERATION_TYPES.has(operation.type)) {
       await agentPlugin.closeOperation?.(operationId);
     }
   },
   // 팔레트 등 호스트 경유 resume 요청을 agent 구현으로 전달한다 — 래퍼가 삼키면
-  // 호스트는 hook 부재로 판단해 포커스 폭백만 수행한다(Codex P1).
+  // 호스트는 hook 부재로 판단해 포커스 폭백만 수행한다. Shell은 Operation이 아니므로
+  // 여기에 오지 않는다(비영속이라 되살릴 휴면 자체가 없다).
   resumeOperation: async (operationId) => {
-    // 타입 조회 실패(null/예외)는 shell 판별이 불가능하다는 뜻이므로 agent 경로로 넘긴다 —
-    // 여기서 조용히 반환하면 호스트의 catch만 삼켜 실패 알림이 어디에도 나가지 않는다(Codex P2).
-    // 서버가 404/409로 거절하면 agentPlugin.resumeOperation이 agent.resume-failed를 emit한다.
-    let operation: { readonly type: string } | null = null;
-    try {
-      operation = await fetchOperation(operationId);
-    } catch {
-      operation = null;
-    }
-    if (operation?.type === "shell") {
-      const response = await fetch(`/plugins/terminal/shell/sessions/${encodeURIComponent(operationId)}/relaunch`, { method: "POST" });
-      if (!response.ok) throw new Error("shell_relaunch_failed");
-      return;
-    }
     await agentPlugin.resumeOperation?.(operationId);
   },
   // Quick Launch 멘션 전달. 대상 자체가 messageableOperationTypes로 agent 타입에 한정되므로
@@ -71,13 +55,11 @@ const terminalPlugin = definePlugin({
   discardLaunchAttachment: async (id) => {
     await agentPlugin.discardLaunchAttachment?.(id);
   },
-  launch: async (ctx) => ctx.kind.type === "shell"
-    ? shellPlugin.launch?.(ctx) ?? { id: "" }
-    : agentPlugin.launch?.(ctx) ?? { id: "" },
-  renderLaunchIcon: (kind) => kind.type === "shell" ? shellPlugin.renderLaunchIcon?.(kind) : agentPlugin.renderLaunchIcon?.(kind),
+  launch: async (ctx) => agentPlugin.launch?.(ctx) ?? { id: "" },
+  renderLaunchIcon: (kind) => agentPlugin.renderLaunchIcon?.(kind),
 });
 
-export const operationKinds = [shellOperationKind, agentOperationKind] as const;
+export const operationKinds = [agentOperationKind] as const;
 export const settingsSections = [generalSettingsSection, agentSettingsSection] as const;
 export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;

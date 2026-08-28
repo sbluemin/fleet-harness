@@ -6,6 +6,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
@@ -25,6 +26,8 @@ interface RightRailProps {
   readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
 }
 
+/** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
+const STABLE_RAIL_SURFACES = createHostCapabilities().surfaces;
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 // 호버-리빌 헤더 입력 계약: 진입은 pointermove로만 판정하고(스크롤-언더-포인터 오발화 방지)
@@ -349,6 +352,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     api,
     language,
     theme,
+    surfaces: STABLE_RAIL_SURFACES,
     launchOperation: onLaunchOperation,
   }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
   const ctx: RailPanelContext = useMemo(() => ({

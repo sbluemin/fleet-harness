@@ -9,7 +9,7 @@ import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, requestFitAllOperations, resetCanvasViewportSize, setCanvasViewportSize, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
-vi.mock("../core/client/src/plugin-registry.js", () => ({
+vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(),
   usePluginRegistry: () => ({
     plugins: [],
     operationKinds: [{

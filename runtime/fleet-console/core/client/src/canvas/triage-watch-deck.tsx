@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
-import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph";
 import type { OperationActivityVisual } from "../operation-activity.js";
 
 import { useT } from "../i18n/index.js";
@@ -1207,9 +1206,6 @@ function renderTriageMapDots(
       operationId: operation.id,
       idleArrivalIds: getIdleArrivalIds(),
     }));
-    // Shell은 활동 축을 발행하지 않는다 — 활동 is-* 를 아예 달지 않아 채움·발광·링이 사라지고,
-    // 그 자리를 종류 글리프가 채운다. 점 자체가 마크라 글리프는 버튼의 자식으로 직접 선다.
-    const shell = operation.type === "shell";
     // 미룬(deferred) 마커는 대기 링 맥동에서 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
     const deferred = isTriageOperationDeferred(operation.id);
     const dragging = draggingMarkerId === operation.id;
@@ -1235,7 +1231,7 @@ function renderTriageMapDots(
       ) : null}
       <button
         type="button"
-        className={`canvas-triage-map-dot ${shell ? "is-shell" : `is-${visual}`}${deferred ? " is-deferred" : ""}${dragging ? " is-dragging" : ""}`}
+        className={`canvas-triage-map-dot is-${visual}${deferred ? " is-deferred" : ""}${dragging ? " is-dragging" : ""}`}
         data-triage-map-dot={marker.operationId}
         style={style}
         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
@@ -1262,7 +1258,6 @@ function renderTriageMapDots(
           pick(operation.id, event.currentTarget);
         }}
       >
-        {shell ? <ShellGlyph /> : null}
         <span className="canvas-triage-map-dot-label">{operation.title}</span>
       </button>
       </Fragment>

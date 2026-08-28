@@ -81,6 +81,12 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       emit: () => undefined,
       dismiss: () => undefined,
     },
+    // 확대 표면 슬롯은 호스트 클라이언트 상태다 — SDK 사본은 무해한 no-op으로 둔다.
+    surfaces: {
+      open: () => "",
+      close: () => undefined,
+      isOpen: () => false,
+    },
     composer: {
       open: () => undefined,
     },
