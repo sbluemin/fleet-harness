@@ -15,6 +15,7 @@ packages:
   - "runtime/fleet-console/markdown"
   - "runtime/fleet-console/font-picker"
   - "runtime/fleet-plugins/terminal"
+  - "runtime/fleet-plugins/codex"
   - "runtime/fleet-plugins/repository"
   - "runtime/fleet-plugins/file-explorer"
   - "runtime/fleet-plugins/skills"
