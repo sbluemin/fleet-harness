@@ -49,6 +49,7 @@ function ScuttlebuttSettingsSection() {
   // 끌기 시작 전의 저장값. 저장이 실패하면 미리보기를 여기로 되돌려야, 화면에 남은 크기와
   // 실제 저장된 크기가 갈리지 않는다.
   const committedRef = React.useRef<Partial<Record<ScuttlebuttAideId, number>>>({});
+  const generationRef = React.useRef<Partial<Record<ScuttlebuttAideId, number>>>({});
 
   const save = async (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => {
     setSaving(true);
@@ -64,8 +65,20 @@ function ScuttlebuttSettingsSection() {
   const previewSize = (aide: ScuttlebuttAideId, width: number) => {
     if (committedRef.current[aide] === undefined) {
       committedRef.current[aide] = getScuttlebuttSettings().sizes[aide];
+      bumpGeneration(aide);
     }
     previewAideSize(aide, width);
+  };
+
+  /**
+   * 부관마다 세는 조작 세대. 크기 컨트롤은 저장 중에도 잠기지 않으므로(그것이 카드 전역 잠금을
+   * 쓰지 않는 이유다) 앞선 저장이 아직 떠 있는 동안 같은 부관을 또 조절할 수 있다. 되돌리기는
+   * 그 사이에 더 새로운 조작이 없었을 때만 유효하다.
+   */
+  const bumpGeneration = (aide: ScuttlebuttAideId): number => {
+    const next = (generationRef.current[aide] ?? 0) + 1;
+    generationRef.current[aide] = next;
+    return next;
   };
 
   /**
@@ -78,7 +91,11 @@ function ScuttlebuttSettingsSection() {
     delete committedRef.current[aide];
     // 한 번의 드래그가 내는 pointerup·blur 중복은 SettingsSlider가 이미 걸러 낸다 — 여기서 또
     // 거르면 같은 규칙을 두 곳이 갖게 되고, 언젠가 한쪽만 바뀐다.
+    const generation = bumpGeneration(aide);
     void writeAideSize(aide, width).catch(() => {
+      // 이 실패가 났을 때 같은 부관에 더 새로운 조작(다음 저장이든 진행 중인 드래그든)이 이미
+      // 올라갔다면 되돌리지 않는다. 옛 실패가 새 값을 덮으면 화면과 저장이 갈린 채로 남는다.
+      if (generationRef.current[aide] !== generation) return;
       // 저장이 실패하면 미리보기를 거둔다. 그대로 두면 화면은 새 크기인데 저장된 값은 옛 크기라,
       // 다음 새로고침에 영문 없이 되돌아간다.
       if (revertTo !== undefined) previewAideSize(aide, revertTo);
