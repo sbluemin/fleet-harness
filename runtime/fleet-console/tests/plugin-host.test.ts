@@ -47,6 +47,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   http: {
     writeJson: () => {},
     readJsonBody: async () => null,
+    securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
   },
   security: {
     validateHost: () => true,

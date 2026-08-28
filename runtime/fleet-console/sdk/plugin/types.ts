@@ -488,6 +488,13 @@ export interface FleetPluginStorageHost {
 export interface FleetPluginHttpHost {
   writeJson(res: http.ServerResponse, status: number, payload: unknown): void;
   readJsonBody<T>(req: http.IncomingMessage): Promise<T | null>;
+  /**
+   * 플러그인이 HTML이나 자산을 직접 쓸 때 얹는 보안 헤더.
+   *
+   * 목록을 플러그인이 각자 적으면 언젠가 하나가 빠지고, 그 하나가 빠진 응답만
+   * 스크립트를 실행할 수 있게 된다. 호스트가 한 벌로 소유한다.
+   */
+  securityHeaders(extra?: Readonly<Record<string, string>>): Record<string, string>;
 }
 
 export interface FleetPluginSecurityHost {

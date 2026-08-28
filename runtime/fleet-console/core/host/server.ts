@@ -53,7 +53,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
 import { RouteRegistry } from "./route-registry/registry.js";
 import { UpgradeRegistry } from "./route-registry/registry.js";
-import { encodeSseData, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
+import { CONSOLE_SECURITY_HEADERS, encodeSseData, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theaters/theater-domain.js";
 import { createFolderGrantStore } from "./theaters/theater-domain.js";
@@ -676,6 +676,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     http: {
       writeJson,
       readJsonBody,
+      securityHeaders: (extra) => ({ ...CONSOLE_SECURITY_HEADERS, ...(extra ?? {}) }),
     },
     security: {
       validateHost: isRequestHostAllowed,
