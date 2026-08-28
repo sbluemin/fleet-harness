@@ -2630,10 +2630,18 @@ describe("Instrument core design contract", () => {
     const themeCssForSweep = source("styles/theme.css");
     expect(themeCssForSweep).toContain("--live-sweep-trough: var(--text-tertiary);");
     expect(themeCssForSweep).toContain("--live-sweep-crest: var(--text-primary);");
-    // 라이트만 트러프를 텍스트 사다리에서 한 단 떼어 낸다. 이 값은 패널 면 위에서 본문 AA
-    // (4.5:1)를 넘겨야 한다 — 트러프는 물결의 3분의 2를 차지하는 휴지 잉크다.
+    // 라이트만 트러프를 텍스트 사다리에서 한 단 떼어 낸다. 대비의 기준 면은 평평한 패널이 아니라
+    // 물결이 실제로 도는 **라이브 행**이다 — "Thinking" 줄과 분석가 펄스는 aurora 4%를 섞은
+    // raised(라이트에서 --ink-deep) 위 L93.68%에 앉아 패널보다 어둡다. 패널 기준으로 고른 L55는
+    // 그 행에서 4.03:1로 본문 AA 아래였다. L52가 라이브 행 4.58:1 / 패널 5.23:1로 경계(L52.39)
+    // 안쪽이다. 트러프는 물결의 3분의 2를 차지하는 휴지 잉크라 판독이 진폭보다 먼저다.
     const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
-    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(55% 0.012 95);");
+    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
+    // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 두 면이 같은 레시피를 쓰는 것이
+    // 그 계산의 근거이므로 함께 못박는다.
+    const liveRowSurface = "background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));";
+    expect(chat).toContain(liveRowSurface);
+    expect(externalSource(TERMINAL_ANALYSIS_CSS_PATH)).toContain(liveRowSurface);
     // 라이트가 마루를 따로 잡으면 극성 계약이 조용히 갈린다 — 마루는 기본값을 그대로 받는다.
     expect(whitesSweepBlock).not.toContain("--live-sweep-crest:");
     // 진행 중 턴 헤드의 시계도 같은 물결을 진다 — 집계 줄과 같은 사실("이 턴이 아직 살아
