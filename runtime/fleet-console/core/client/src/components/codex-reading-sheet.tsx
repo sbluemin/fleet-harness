@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
 
 import {
   getCodexReaderDocumentState,
@@ -361,22 +360,15 @@ export function CodexReadingSheet() {
 
   if (!isOpen) return null;
 
-  // 캔버스 안에 정박한다 — 캔버스의 pan/제스처 핸들러가 덱에서 시작한 입력을 집어
-  // 가지 않도록 포인터 계열 이벤트는 덱 경계에서 끊는다.
-  const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
   const title = document_.title || t("chrome.codexReading.eyebrow");
 
-  return createPortal(
-    (
+  // 자리와 크기는 확대 표면 슬롯이 소유한다 — 예전에는 이 컴포넌트가 캔버스에 직접
+  // portal해 자기 자리를 잡았고, 그래서 다른 표면과 같은 칸을 두고 겹쳤다.
+  return (
       <div
         ref={sheetRef}
-        className="codex-reading-sheet"
+        className="codex-reading-body"
         data-reading-size={size}
-        role="region"
-        aria-label={t("chrome.codexReading.dialogAria")}
-        onPointerDown={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
-        onContextMenu={(e) => e.stopPropagation()}
       >
         <div className="codex-reading-sheet-head">
           <div className="codex-reader-history">
@@ -460,15 +452,6 @@ export function CodexReadingSheet() {
               onClick={() => setSize((current) => READING_SIZES[(READING_SIZES.indexOf(current) + 1) % READING_SIZES.length] ?? "comfortable")}
             >
               {t(`chrome.codexReading.size.${size}` as Parameters<typeof t>[0])}
-            </button>
-            <button
-              data-sheet-initial-focus
-              className="codex-reading-sheet-close"
-              type="button"
-              aria-label={t("chrome.codexReading.closeAria")}
-              onClick={closeReading}
-            >
-              ✕
             </button>
           </div>
         </div>
@@ -583,8 +566,6 @@ export function CodexReadingSheet() {
           />
         ) : null}
       </div>
-    ),
-    canvasHost ?? document.body,
   );
 }
 

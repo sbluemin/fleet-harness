@@ -13,6 +13,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../plugin-registry.js";
 import { getState, subscribe } from "../store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { BUILT_IN_EXPANDED_SURFACES } from "./built-in.js";
 import {
   closeExpandedSurface,
   focusExpandedSurface,
@@ -22,6 +23,21 @@ import {
   useExpandedSurfaces,
   type ExpandedSurfaceInstance,
 } from "./store.js";
+
+/**
+ * 두 최소폭을 실제 가용 폭에 맞춘다.
+ *
+ * 선언된 최소폭은 희망이지 물리가 아니다. 두 슬롯을 합쳐도 둘의 최소폭을 못 담는 좁은
+ * 캔버스에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
+ * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — Formation 슬롯이 최소치를 실제 가용
+ * 폭으로 캡하는 것과 같은 규칙이다(canvas-store의 calculateGridSlots).
+ */
+function fitMinimums(left: number, right: number, pair: number): readonly [number, number] {
+  const total = left + right;
+  if (total <= pair || total <= 0) return [left, right];
+  const scale = pair / total;
+  return [left * scale, right * scale];
+}
 
 /** 분할선이 넘어오지 못하는 슬롯 최소폭. 표면이 더 큰 값을 요구할 수 있다. */
 const DEFAULT_MIN_SLOT_WIDTH = 280;
@@ -36,7 +52,13 @@ const KEYBOARD_STEP_PX = 24;
  * 살아 있으므로 focus trap도 inert도 걸지 않는다 — 모달이 아니다.
  */
 export function ExpandedSurfaceLayer() {
-  const descriptors = useExpandedSurfaceDescriptors();
+  const pluginDescriptors = useExpandedSurfaceDescriptors();
+  // 코어 소유 표면이 먼저 선다 — 같은 id를 든 플러그인이 코어 표면을 가로채지 못한다.
+  const descriptors = useMemo(() => {
+    const merged = new Map(pluginDescriptors);
+    for (const descriptor of BUILT_IN_EXPANDED_SURFACES) merged.set(descriptor.id, descriptor);
+    return merged;
+  }, [pluginDescriptors]);
   const { instances, focusedInstanceId } = useExpandedSurfaces();
   const t = useT();
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId, () => null);
@@ -110,9 +132,7 @@ export function ExpandedSurfaceLayer() {
       const leftStart = startWidths[dividerIndex] ?? 0;
       const rightStart = startWidths[dividerIndex + 1] ?? 0;
       const pair = leftStart + rightStart;
-
-      // 두 슬롯을 합쳐도 최소폭 둘을 못 담으면 드래그는 의미가 없다.
-      if (pair < leftMin + rightMin) return;
+      const [leftFloor, rightFloor] = fitMinimums(leftMin, rightMin, pair);
 
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
@@ -120,7 +140,7 @@ export function ExpandedSurfaceLayer() {
       document.body.setAttribute("data-expanded-surface-resizing", "true");
 
       const applyDelta = (delta: number) => {
-        const left = Math.max(leftMin, Math.min(pair - rightMin, leftStart + delta));
+        const left = Math.max(leftFloor, Math.min(pair - rightFloor, leftStart + delta));
         const next = [...startWidths];
         next[dividerIndex] = left;
         next[dividerIndex + 1] = pair - left;
@@ -155,8 +175,8 @@ export function ExpandedSurfaceLayer() {
       const leftStart = widths[dividerIndex] ?? 0;
       const rightStart = widths[dividerIndex + 1] ?? 0;
       const pair = leftStart + rightStart;
-      if (pair < leftMin + rightMin) return;
-      const left = Math.max(leftMin, Math.min(pair - rightMin, leftStart + deltaPx));
+      const [leftFloor, rightFloor] = fitMinimums(leftMin, rightMin, pair);
+      const left = Math.max(leftFloor, Math.min(pair - rightFloor, leftStart + deltaPx));
       const next = [...widths];
       next[dividerIndex] = left;
       next[dividerIndex + 1] = pair - left;
@@ -186,7 +206,11 @@ export function ExpandedSurfaceLayer() {
   if (!open) return null;
 
   const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
-  const template = instances.map((instance) => `${Math.max(0.0001, instance.weight)}fr`).join(" ");
+  // 분할선도 그리드 자식이다 — 슬롯 트랙만 세면 자식 수가 트랙 수를 넘어 다음 줄로
+  // 접히고, 나란히 놓으려던 슬롯이 위아래로 쌓인다. 트랙을 슬롯·분할선 순으로 짠다.
+  const template = instances
+    .map((instance) => `${Math.max(0.0001, instance.weight)}fr`)
+    .join(" var(--space-2) ");
 
   return createPortal(
     <div

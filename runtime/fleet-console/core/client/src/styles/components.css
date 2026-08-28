@@ -12216,6 +12216,14 @@ body[data-codex-side="true"] .command-card {
 
 /* 리딩 덱 — 중앙 모달 시트의 후신. 캔버스 영역 전체를 문서 작업면으로 쓴다(캔버스
    안에 정박: 사이드바·레일 폭을 침범하지 않고, 리사이즈를 그대로 따라간다). */
+/* 슬롯 안에 서는 리더 본문. 자리와 유리 표면은 슬롯이 소유하므로 여기서는 채우기만 한다. */
+.codex-reading-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
 .codex-reading-sheet {
   position: absolute;
   z-index: var(--z-codex-reading-sheet);
@@ -12694,17 +12702,18 @@ body[data-codex-side="true"] .command-card {
    풀려, 같은 72ch가 헤더(UI 활자)와 본문(리딩 활자)에서 다른 픽셀 폭이 되어 중앙
    정렬 축이 갈라진다(실측 615px vs 747px). 본문 활자 토큰 한 기준으로 환산해 모든
    자식이 같은 캡을 받게 한다(0.611 = 본문 서체 "0"의 em 폭 ≈ 1ch). */
-.codex-reading-sheet {
+.codex-reading-sheet,
+.codex-reading-body {
   --codex-reading-ch: calc(0.611 * var(--font-size-body) * var(--codex-reading-scale));
   --codex-reading-measure: calc(72 * var(--codex-reading-ch));
   --codex-reading-scale: 1;
 }
 
-.codex-reading-sheet[data-reading-size="wide"] {
+.codex-reading-sheet[data-reading-size="wide"], .codex-reading-body[data-reading-size="wide"] {
   --codex-reading-measure: calc(96 * var(--codex-reading-ch));
 }
 
-.codex-reading-sheet[data-reading-size="large"] {
+.codex-reading-sheet[data-reading-size="large"], .codex-reading-body[data-reading-size="large"] {
   --codex-reading-measure: calc(80 * var(--codex-reading-ch));
   --codex-reading-scale: 1.14;
 }
@@ -13001,8 +13010,8 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
    보이는 획은 가늘게 남긴다. */
 .expanded-surface-divider {
   position: relative;
-  flex: none;
-  width: var(--space-2);
+  /* 자기 트랙을 가득 채운다 — 폭은 그리드 트랙(var(--space-2))이 정한다. */
+  width: 100%;
   cursor: col-resize;
   background: transparent;
   border: 0;

@@ -59,6 +59,7 @@ vi.mock("../core/client/src/i18n/index.js", () => ({
 
 vi.mock("../core/client/src/store.js", () => ({
   closeCodexReader: panelMocks.closeCodexReader,
+  collapseCodexReader: vi.fn(),
   expandCodexReader: vi.fn(),
   openCodexReader: vi.fn(),
 }));
