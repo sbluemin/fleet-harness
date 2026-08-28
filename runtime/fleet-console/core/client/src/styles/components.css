@@ -11883,6 +11883,74 @@ body[data-codex-side="true"] .command-card {
   min-width: 0;
 }
 
+/* SDK 연속값 행 — 트랙과 손잡이는 공유 `.fleet-slider`가 그리고, 여기서는 배치와 스테퍼만
+   소유한다. 스테퍼는 컨트롤 상태 어휘(--control-*)를 그대로 쓴다: 켜짐이나 상태가 아니라
+   조작 가능한 자리이므로 신호 토큰(aurora/warn/coral)은 쓰지 않는다. */
+.fc-settings-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.fc-settings-slider__range {
+  width: 132px;
+  min-width: 72px;
+}
+
+/* 공유 `.fleet-slider`는 appearance:none 이라 브라우저 기본 비활성 표시가 지워진다 — 꺼진 트랙이
+   조작 가능한 트랙과 똑같이 보이면 눌러도 아무 일이 없는 컨트롤이 된다. */
+.fc-settings-slider__range:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.fc-settings-slider__stepper {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.fc-settings-slider__stepper:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.fc-settings-slider__stepper:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+.fc-settings-slider__stepper:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: not-allowed;
+}
+
+/* 값은 tabular-nums라 끌 때 자리가 흔들리지 않고, 폭은 세 자리+단위를 담는 최소치로 고정한다. */
+.fc-settings-slider__value {
+  flex: none;
+  min-width: 46px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .fc-settings-toggle {
   display: inline-flex;
   align-items: center;

@@ -11,11 +11,9 @@ import { connectScuttlebuttMentions } from "./mention-bridge.js";
 import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
-  BIRD_HALF_HEIGHT,
-  BIRD_HALF_WIDTH,
-  BIRD_HEIGHT,
-  BIRD_WIDTH,
+  birdSize,
   createBirdBody,
+  parkedLayout,
   PERSONAS,
   pickWaypoint,
   placeStayPut,
@@ -43,8 +41,8 @@ const PARKED_GAP = 8;
 /** 첫 rAF 전에도 제자리에 그려야 세 마리가 좌상단에 겹쳤다가 흩어지는 깜빡임이 없다. */
 function framesFromBodies(bodies: readonly BirdBody[]): readonly BirdFrame[] {
   return bodies.map((body): BirdFrame => ({
-    left: body.x - BIRD_HALF_WIDTH,
-    top: body.y - BIRD_HALF_HEIGHT,
+    left: body.x - body.size.halfWidth,
+    top: body.y - body.size.halfHeight,
     tilt: 0,
     flight: "hover",
     mode: "fly",
@@ -110,7 +108,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   if (bodiesRef.current === null) {
     const stored = getScuttlebuttSettings();
     bodiesRef.current = MORPHS.map((morph, index) => {
-      const body = createBirdBody(index, viewportRef.current, Math.random);
+      const body = createBirdBody(index, viewportRef.current, Math.random, stored.sizes[morph]);
       const stay = stored.stayPut[morph];
       body.moored = stay.enabled;
       if (stay.enabled && stay.nx != null && stay.ny != null) {
@@ -239,8 +237,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       const body = bodies[index]!;
       if (stay.enabled && stay.nx != null && stay.ny != null) {
         placeStayPut(body, viewport, stay.nx, stay.ny);
-        const left = body.x - BIRD_HALF_WIDTH;
-        const top = body.y - BIRD_HALF_HEIGHT;
+        const left = body.x - body.size.halfWidth;
+        const top = body.y - body.size.halfHeight;
         frames[index] = { left, top, tilt: 0, flight: "hover", mode: body.mode };
         const element = birdRefs.current[index];
         if (element) element.style.transform = `translate(${left}px, ${top}px) rotate(0deg)`;
@@ -374,19 +372,17 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const viewport = viewportRef.current;
     const bodies = bodiesRef.current;
     if (!bodies) return;
-    // 좁은 창에서는 간격을 좁혀서라도 켜진 새를 모두 화면 안에 남긴다.
-    const rightmost = Math.max(8, viewport.width - 16 - BIRD_WIDTH);
-    const step = activeIndices.length > 1 ? Math.min(
-      BIRD_WIDTH + PARKED_GAP,
-      Math.max(24, (viewport.width - 32 - BIRD_WIDTH) / (activeIndices.length - 1)),
-    ) : 0;
+    const slots = parkedLayout(
+      activeIndices.map((index) => bodies[index]!.size),
+      viewport,
+      PARKED_GAP,
+    );
     const parkedFrames = [...motionFramesRef.current];
     activeIndices.forEach((index, activeIndex) => {
-      const left = Math.max(8, rightmost - step * (activeIndices.length - 1 - activeIndex));
-      const top = Math.max(8, viewport.height - 16 - BIRD_HEIGHT);
       const body = bodies[index]!;
-      body.x = left + BIRD_HALF_WIDTH;
-      body.y = top + BIRD_HALF_HEIGHT;
+      const { left, top } = slots[activeIndex]!;
+      body.x = left + body.size.halfWidth;
+      body.y = top + body.size.halfHeight;
       body.vx = 0;
       body.vy = 0;
       body.mode = "fly";
@@ -398,6 +394,57 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     motionFramesRef.current = parkedFrames;
     setMotionFrames(parkedFrames);
   }, [activeIndices]);
+
+  /**
+   * 설정에서 고른 폭을 엔진 몸체에 싣는다. 크기는 렌더 값이 아니라 엔진 입력이므로 이 동기화가
+   * 없으면 화면만 커지고 경계·바닥·반발력은 옛 치수에 남는다.
+   *
+   * 크기가 바뀌면 좌표도 다시 잡아야 한다 — 커진 부관은 방금까지 유효하던 자리가 화면 밖이 되고,
+   * 정박 중이면 저장된 화면비 좌표를 새 치수의 경계로 다시 clamp해야 한다. 모션을 줄인 화면에서는
+   * 편대 루프가 돌지 않아 아무도 자리를 고쳐 주지 않으므로 주차 줄을 직접 다시 세운다 — 그러지
+   * 않으면 커진 부관이 제자리에서 이웃을 파고든 채로 남는다.
+   *
+   * 마지막으로 positionRevision을 올려 열려 있는 채팅 카드가 새 상자 기준으로 다시 앉게 한다 —
+   * 말풍선들은 매 프레임 rect를 다시 재지만 카드만은 이 신호로만 움직인다.
+   */
+  React.useLayoutEffect(() => {
+    const bodies = bodiesRef.current;
+    if (!bodies) return;
+    const viewport = viewportRef.current;
+    let changed = false;
+    const frames = [...motionFramesRef.current];
+    for (let index = 0; index < MORPHS.length; index += 1) {
+      const morph = MORPHS[index]!;
+      const body = bodies[index]!;
+      const width = settings.sizes[morph];
+      if (body.size.width === width) continue;
+      changed = true;
+      body.size = birdSize(width);
+      const stay = settings.stayPut[morph];
+      if (body.moored && stay.enabled && stay.nx != null && stay.ny != null) {
+        placeStayPut(body, viewport, stay.nx, stay.ny);
+      } else if (!body.moored && !fleetSignals.reducedMotion) {
+        // 새 치수로는 지금 목적지가 닿지 않는 자리일 수 있다.
+        pickWaypoint(body, viewport, Math.random);
+      }
+      const left = body.x - body.size.halfWidth;
+      const top = body.y - body.size.halfHeight;
+      frames[index] = { ...frames[index]!, left, top };
+      const element = birdRefs.current[index];
+      if (element) {
+        element.style.width = `${width}px`;
+        element.style.transform = `translate(${left}px, ${top}px) rotate(0deg)`;
+      }
+    }
+    if (!changed) return;
+    if (fleetSignals.reducedMotion) {
+      parkBirds();
+    } else {
+      motionFramesRef.current = frames;
+      setMotionFrames(frames);
+    }
+    setPositionRevision((revision) => revision + 1);
+  }, [fleetSignals.reducedMotion, parkBirds, settings.sizes, settings.stayPut]);
 
   React.useEffect(() => {
     const resize = () => {
@@ -564,6 +611,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         const common = {
           className: `scuttlebutt-bird is-${visual}${saying[index] ? " is-saying" : ""}`,
           style: {
+            // 폭은 엔진이 싣는다 — 스타일시트에 상수로 두면 물리와 두 곳에서 갈린다.
+            width: `${settings.sizes[morph]}px`,
             transform: `translate(${frame.left}px, ${frame.top}px) rotate(${frame.tilt}deg)`,
           },
           onPointerDown: (event: React.PointerEvent<HTMLElement>) => onPointerDown(index, event),

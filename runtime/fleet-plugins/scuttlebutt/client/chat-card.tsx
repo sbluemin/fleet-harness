@@ -53,9 +53,14 @@ export function ChatCard({
     ));
   }, [mascot]);
 
+  // 포커스는 카드가 열릴 때(그리고 다른 부관으로 바뀔 때) 한 번만 준다. 재배치 신호에 묶어 두면
+  // 부관 크기 조절처럼 카드 밖에서 일어난 사건이 사용자가 잡고 있던 포커스를 빼앗는다.
+  React.useLayoutEffect(() => {
+    inputRef.current?.focus();
+  }, [admiral]);
+
   React.useLayoutEffect(() => {
     position();
-    inputRef.current?.focus();
     const card = cardRef.current;
     if (typeof ResizeObserver === "undefined" || !card) return;
     const observer = new ResizeObserver(position);
