@@ -65,8 +65,9 @@ export interface ReadingController {
   navigateSub(subId: string | undefined): Promise<void>;
   /**
    * 스크롤 스파이를 현재 스크롤 루트 위에 다시 세운다. 리더 노드가 split↔확대로 relocate되면
-   * IntersectionObserver는 설치 시점의 루트(옛 스크롤 컨테이너)를 계속 물고 있어 교차를 영영
-   * 보고하지 않는다 — 노드를 옮긴 쪽이 이 함수를 불러야 목차가 다시 읽는 위치를 따라온다.
+   * 스파이의 스크롤·크기 리스너는 설치 시점의 루트(옛 스크롤 컨테이너)를 계속 붙잡고 있어 새
+   * 컨테이너의 스크롤을 영영 듣지 못한다 — 노드를 옮긴 쪽이 이 함수를 불러야 목차가 다시 읽는
+   * 위치를 따라온다.
    */
   refreshScrollSpy(): void;
   /** 헤드바·링크 복사·원문 보기가 쓰는 현재 문서 사실. */
