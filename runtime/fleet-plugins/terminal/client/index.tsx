@@ -3,9 +3,16 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection } from "./agent/index.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
-import { preloadSymbolsNerdFontMono } from "./shared/symbols-font.js";
+import { preloadTerminalFallbackFonts } from "./shared/terminal-fallback-fonts.js";
 import { connectTerminalSettings } from "./shared/terminal-preferences.js";
 import "./assets/fonts/symbols-nerd-font-mono.css";
+/* 한글 등폭 폴백의 실체. unicode-range로 쪼갠 청크판(400.css/700.css)이 아니라 한글 서브셋
+   통짜판을 쓴다 — WebGL glyph atlas는 글리프를 처음 그릴 때 래스터화해 캐시하는데, 그 atlas는
+   같은 설정의 터미널들이 모듈 레벨에서 공유하므로 한 터미널이 비울 수 없다(terminal-surface의
+   clearTextureAtlas 주석). 즉 폰트가 늦게 도착하면 첫 한글이 폴백 글리프로 구워져 그대로 남는다.
+   통짜 @font-face라야 open 직전에 한 번 선대기해 그 경합을 없앨 수 있다. */
+import "@fontsource/nanum-gothic-coding/korean-400.css";
+import "@fontsource/nanum-gothic-coding/korean-700.css";
 
 const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
@@ -15,7 +22,7 @@ const terminalPlugin = definePlugin({
   settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   railPanels: [globalShellPanel],
-  install: (ctx) => { void preloadSymbolsNerdFontMono(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
+  install: (ctx) => { void preloadTerminalFallbackFonts(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
   closeOperation: async (operationId) => {
     const operation = await fetchOperation(operationId);
     if (operation?.type === "shell") {

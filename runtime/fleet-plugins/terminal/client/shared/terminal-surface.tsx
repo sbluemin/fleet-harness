@@ -25,7 +25,7 @@ import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preference
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
-import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
+import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
 import "./terminal-key-bar.css";
 
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
@@ -302,7 +302,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
 
     const mountTerminal = async () => {
       // WebGL glyph atlas는 첫 open 시점의 폰트 측정을 공유 캐시에 고정하므로, 심볼 폰트만 짧게 선대기한다.
-      await waitForSymbolsNerdFontMono();
+      await waitForTerminalFallbackFonts();
       if (disposed) return;
 
       const terminalTheme = terminalThemeFor(activeTheme);

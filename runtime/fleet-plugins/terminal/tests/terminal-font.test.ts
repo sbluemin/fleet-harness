@@ -17,10 +17,10 @@ describe("terminal font settings", () => {
 
   it("pins curated terminal fonts to the measured fontsource variable family names", () => {
     expect(CURATED_TERMINAL_FONTS.map((font) => [font.name, font.family])).toEqual([
-      ["Cascadia Code", "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
-      ["JetBrains Mono", "\"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
-      ["Fira Code", "\"Fira Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
-      ["Source Code Pro", "\"Source Code Pro Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["Cascadia Code", "\"Cascadia Code Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["JetBrains Mono", "\"JetBrains Mono Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["Fira Code", "\"Fira Code Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
+      ["Source Code Pro", "\"Source Code Pro Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace"],
     ]);
   });
 
@@ -32,7 +32,7 @@ describe("terminal font settings", () => {
     }))).toMatchObject({
       source: "custom",
       customName: "MesloLGS NF",
-      family: "\"MesloLGS NF\", \"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
+      family: "\"MesloLGS NF\", \"Cascadia Code Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
       size: 22,
     });
   });
@@ -58,7 +58,7 @@ describe("terminal font settings", () => {
     expect(settings).toMatchObject({
       source: "custom",
       customName: "",
-      family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
+      family: "\"Cascadia Code Variable\", \"Nanum Gothic Coding\", ui-monospace, \"SF Mono\", Menlo, \"Symbols Nerd Font Mono\", monospace",
       size: 14,
     });
   });
@@ -71,6 +71,28 @@ describe("terminal font settings", () => {
       expect(family).toMatch(/"Symbols Nerd Font Mono", monospace$/);
       expect(family).not.toMatch(/"Symbols Nerd Font Mono".*"Symbols Nerd Font Mono"/);
     }
+  });
+
+  /* 한글 등폭 폴백은 "체인에 있다"로 부족하다 — 선택 서체 바로 뒤라야 한다. 뒤로 밀리면 한글이
+     ui-monospace/SF Mono/Menlo가 플랫폼에서 무엇으로 풀리느냐에 걸리고, 앞으로 당겨지면 사용자가
+     고른 서체의 라틴을 이 서체가 가로챈다. 위치가 곧 계약이다. */
+  it("seats the Korean monospace fallback immediately after the selected family in every generated chain", () => {
+    const custom = createCustomTerminalFontSettings("MesloLGS NF", 14);
+    const families = [...CURATED_TERMINAL_FONTS.map((font) => font.family), custom.family];
+
+    for (const family of families) {
+      expect(family).toContain("\"Nanum Gothic Coding\"");
+      expect(family).toMatch(/"Nanum Gothic Coding", ui-monospace/);
+      expect(family).not.toMatch(/^"Nanum Gothic Coding"/);
+      expect(family).not.toMatch(/"Nanum Gothic Coding".*"Nanum Gothic Coding"/);
+    }
+
+    /* 큐레이트 4종은 선택 서체가 곧 첫 자리다. 커스텀은 사용자 이름이 첫 자리고 기본 Cascadia가
+       그 뒤에 붙으므로, 한글 폴백은 라틴 후보를 전부 지나온 자리에 선다. */
+    for (const font of CURATED_TERMINAL_FONTS) {
+      expect(font.family).toMatch(new RegExp(`^"${font.familyName}", "Nanum Gothic Coding", `));
+    }
+    expect(custom.family).toMatch(/^"MesloLGS NF", "Cascadia Code Variable", "Nanum Gothic Coding", /);
   });
 
   it("maps self-hosted, resolved, and fallback selections through the shared resolver", () => {
