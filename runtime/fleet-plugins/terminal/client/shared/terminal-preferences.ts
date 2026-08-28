@@ -70,7 +70,13 @@ interface StoredTerminalFontSettings {
 }
 
 const SYMBOLS_NERD_FONT_MONO_FAMILY = "Symbols Nerd Font Mono";
-const TERMINAL_FONT_FALLBACK_STACK = `ui-monospace, "SF Mono", Menlo, "${SYMBOLS_NERD_FONT_MONO_FAMILY}", monospace`;
+/* 한글 등폭 폴백 — 큐레이트 4종도, ui-monospace/SF Mono/Menlo도 한글 글리프가 없다. 이 서체가
+   없으면 한글만 체인을 전부 빠져나가 OS 기본 폴백(비례폭 고딕)이 그리고, 같은 줄의 라틴과 굵기·
+   폭이 어긋나 "폰트가 깨진" 것처럼 읽힌다. 선택 서체 바로 뒤에 두는 이유는 커버리지가 겹치지 않기
+   때문이다 — 라틴은 앞의 선택 서체가 이미 소화하므로 이 서체는 한글에서만 깨어난다. 뒤쪽(ui-
+   monospace 다음)에 두면 그 제네릭이 플랫폼마다 무엇으로 풀리는지에 한글 렌더가 의존하게 된다. */
+const KOREAN_MONO_FALLBACK_FAMILY = "Nanum Gothic Coding";
+const TERMINAL_FONT_FALLBACK_STACK = `"${KOREAN_MONO_FALLBACK_FAMILY}", ui-monospace, "SF Mono", Menlo, "${SYMBOLS_NERD_FONT_MONO_FAMILY}", monospace`;
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
@@ -275,6 +281,15 @@ export function useTerminalPrefs(): TerminalPrefsState {
 
 export function useChatReadingWidth(): ChatReadingWidth {
   return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
+}
+
+/* Chat은 터미널 뷰와 같은 Operation의 다른 얼굴이다 — 같은 세션을 CLI로 보다 Chat으로 넘어왔을 때
+   서체가 갈리면 두 화면이 다른 앱으로 읽힌다. 그래서 Chat도 이 글꼴을 권위로 삼는다. family만
+   구독하는 이유는 크기는 Chat이 자기 타입 스케일을 따로 지기 때문이다(터미널 셀 크기와 읽기
+   본문 크기는 같은 축이 아니다). 문자열이라 스냅샷이 안정적이고, 하이드레이션으로 서버 값이
+   늦게 도착해도 그 시점에 한 번만 다시 그린다. */
+export function useTerminalFontFamily(): string {
+  return useSyncExternalStore(subscribe, () => state.font.family, () => state.font.family);
 }
 
 export function setTerminalRenderer(renderer: TerminalRenderer): void {

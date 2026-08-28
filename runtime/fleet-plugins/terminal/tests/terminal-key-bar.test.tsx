@@ -71,7 +71,7 @@ vi.mock("../client/shared/ime-shift-enter.js", () => ({
     onCompositionStart() {},
   }),
 }));
-vi.mock("../client/shared/symbols-font.js", () => ({ waitForSymbolsNerdFontMono: () => terminalMocks.symbolsReady }));
+vi.mock("../client/shared/terminal-fallback-fonts.js", () => ({ waitForTerminalFallbackFonts: () => terminalMocks.symbolsReady }));
 vi.mock("../client/shared/terminal-connection.js", () => ({
   createTerminalConnection: (options: { terminal: { onData: (listener: (data: string) => void) => unknown } }) => {
     options.terminal.onData((data) => terminalMocks.sent(data));
