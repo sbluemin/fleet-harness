@@ -2407,12 +2407,18 @@ describe("Instrument core design contract", () => {
     // 그래서 이 채널만은 라이트가 자기 값으로 분화해야 하며, 형상·타이포 오버라이드 차단은 그대로 유지된다.
     const lightVariantBlocks = theme.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(lightVariantBlocks).toHaveLength(1);
+    // [doctrine] --live-sweep-* 는 형상이 아니라 **진폭**을 정한다. 물결의 세기는 두 끝의 명도
+    // 간격이고, 명도 스케일은 어두운 끝에서 L*가 압축된다 — 다크의 사다리를 그대로 반전만 하면
+    // 라이트의 실측 진폭이 다크의 54%로 죽어 도는 물결이 정지한 줄로 읽힌다. --gauge-* 와 같은
+    // 이유의 분화다(종이 위에서는 극성이 바뀌면 같은 값이 같은 뜻을 지지 못한다).
     for (const block of lightVariantBlocks) {
       expect(block).toContain("color-scheme: light;");
-      const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
+      // 주석은 선언이 아니다 — 위 dark 게이트와 같은 규칙이다. 콜론을 담은 설명 한 줄(예: 대비
+      // 실측 "4.60:1")이 팔레트 이탈로 오독되면, 근거를 적을수록 게이트가 붉어진다.
+      const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass|live-sweep)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -2613,8 +2619,23 @@ describe("Instrument core design contract", () => {
     expect(chatLiveSweepBlock).toContain("from { background-position: 200% 0; }");
     expect(chatLiveSweepBlock).toContain("to { background-position: 0% 0; }");
     // 타일 경계가 보이지 않으려면 그라데이션 양 끝이 같은 잉크여야 한다.
-    expect(chatLiveTextBlock).toContain("var(--text-tertiary) 0%,");
-    expect(chatLiveTextBlock).toContain("var(--text-tertiary) 100%");
+    expect(chatLiveTextBlock).toContain("var(--live-sweep-trough) 0%,");
+    expect(chatLiveTextBlock).toContain("var(--live-sweep-trough) 100%");
+    // 물결의 두 끝은 --text-* 를 직접 물지 않는다. 물결의 세기는 두 끝의 명도 간격인데, 텍스트
+    // 사다리를 그대로 쓰면 그 간격이 테마마다 딸려 가고 라이트에서 실측 진폭이 다크의 54%로
+    // 죽는다(정지한 줄로 읽힘). 판독 계약(--text-*)과 물결 진폭은 다른 역할이므로 갈라 둔다.
+    expect(chatLiveTextBlock).not.toContain("var(--text-tertiary)");
+    expect(chatLiveTextBlock).not.toContain("var(--text-primary)");
+    // 마루는 두 테마 모두 "가장 진한 잉크"다 — 극성이 갈리면 같은 몸짓이 아니게 된다.
+    const themeCssForSweep = source("styles/theme.css");
+    expect(themeCssForSweep).toContain("--live-sweep-trough: var(--text-tertiary);");
+    expect(themeCssForSweep).toContain("--live-sweep-crest: var(--text-primary);");
+    // 라이트만 트러프를 텍스트 사다리에서 한 단 떼어 낸다. 이 값은 패널 면 위에서 본문 AA
+    // (4.5:1)를 넘겨야 한다 — 트러프는 물결의 3분의 2를 차지하는 휴지 잉크다.
+    const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
+    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(55% 0.012 95);");
+    // 라이트가 마루를 따로 잡으면 극성 계약이 조용히 갈린다 — 마루는 기본값을 그대로 받는다.
+    expect(whitesSweepBlock).not.toContain("--live-sweep-crest:");
     // 진행 중 턴 헤드의 시계도 같은 물결을 진다 — 집계 줄과 같은 사실("이 턴이 아직 살아
     // 있다")을 말하는 자리라 어휘가 갈리면 안 된다. 다만 이 자리의 잉크는 tertiary이므로
     // 봉인의 기본 채움(secondary)을 덮어써야 모션을 끈 것이 밝기 변화로 읽히지 않는다.
@@ -2629,6 +2650,17 @@ describe("Instrument core design contract", () => {
     expect(chatLiveSealBlock).toContain("animation: none;");
     expect(chatLiveSealBlock).toContain("background-image: none;");
     expect(chatLiveSealBlock).toContain("color: var(--text-secondary);");
+    // 동사 자리("Thinking")는 `.agent-chat-step-verb`가 같은 특정성으로 뒤에 서서
+    // `color: transparent`를 이긴다 — 불투명 잉크가 클립된 그라데이션을 덮어 물결이 두 테마
+    // 모두에서 죽는다. 두 클래스를 함께 다는 자리에만 못을 박는다.
+    expect(chat).toMatch(
+      /\.agent-chat-step-verb\.agent-chat-live-text \{\s*color: transparent;\s*\}/,
+    );
+    // 그 짝(0,2,0)은 봉인의 기본 채움(0,1,0)도 이기므로 봉인 안에 같은 짝이 서야 한다 —
+    // 빠지면 감속 모션에서 `color: transparent`가 살아남아 동사가 통째로 사라진다.
+    expect(chat).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-step-verb\.agent-chat-live-text \{\s*color: var\(--text-secondary\);\s*\}/,
+    );
     // 원장에 서는 잡은 카드가 아니라 한 줄이다. 카드의 몸(종류·누구·토큰·도구·소요)은 작업 면이
     // 이미 더 자세히 지고 있었고, 원장에서는 읽는 흐름을 두 줄짜리 상자로 끊었다. 남는 것은
     // "여기서 태어났다"와 거기로 가는 문뿐이므로 면도 테두리도 두르지 않는다.
@@ -2894,6 +2926,13 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--apex", "--id-"]) {
       expect(analystWave, signal).not.toContain(signal);
     }
+    // 한 벌이라는 말은 두 면이 같은 두 끝을 문다는 뜻이다 — 원장만 물결 토큰으로 옮기면
+    // 라이트에서 이 면만 진폭이 죽어 같은 사실을 두 면이 다른 세기로 말하게 된다.
+    expect(analystWave).toContain("var(--live-sweep-trough) 0%,");
+    expect(analystWave).toContain("var(--live-sweep-crest) 50%,");
+    expect(analystWave).toContain("var(--live-sweep-trough) 100%");
+    expect(analystWave).not.toContain("var(--text-tertiary)");
+    expect(analystWave).not.toContain("var(--text-primary)");
     // 되풀이는 이음매가 없어야 한다 — 이동량이 타일 한 폭의 정수배여야 마지막 프레임이 첫
     // 프레임과 같다(200% 이미지에 ΔP 200 = 2W = 타일 한 폭).
     expect(terminalAnalysisCss).toMatch(
