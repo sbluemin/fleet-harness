@@ -39,3 +39,22 @@ describe("plugin SSE channel wiring", () => {
     expect(SERVER).toMatch(/pluginSseChannels\.delete\(channel\)/);
   });
 });
+
+/**
+ * Theater 생명주기. 플러그인이 Theater마다 자기 저장소를 열고 닫으려면 이 순간들을
+ * 알아야 한다 — Codex가 워크스페이스를 등록/해제하던 코어 직결 호출을 대체한다.
+ */
+describe("theater lifecycle events", () => {
+  it("announces register, restore, and forget on the plugin event bus", () => {
+    expect(SERVER).toContain('publishTheaterLifecycle("registered"');
+    expect(SERVER).toContain('publishTheaterLifecycle("restored"');
+    expect(SERVER).toContain('publishTheaterLifecycle("forgotten"');
+    expect(SERVER).toMatch(/publishPluginEvent\(`theater:\$\{event\}`/);
+  });
+
+  it("keeps absolute paths out of the payload", () => {
+    // 경로는 호스트 소유다. 필요한 플러그인은 서버 안에서 resolveTheaterPath로 스스로 푼다.
+    const fn = SERVER.slice(SERVER.indexOf("function publishTheaterLifecycle"));
+    expect(fn.slice(0, 300)).not.toMatch(/realpath|cwd/);
+  });
+});

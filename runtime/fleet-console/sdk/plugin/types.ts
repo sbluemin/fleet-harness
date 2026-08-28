@@ -153,6 +153,8 @@ export interface PluginInstallContext {
   readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly composer: ClientComposerCapability;
   readonly surfaces: ClientExpandedSurfacesCapability;
+  readonly consoleState: ClientConsoleStateCapability;
+  readonly navigation: ClientNavigationCapability;
 }
 
 export interface ClientApiCapability {
@@ -212,6 +214,38 @@ export interface ClientOperationsCapability {
  * 확대 표면을 여닫는 능력. 슬롯 목록·기하·포커스는 호스트가 소유하므로 플러그인은
  * "이걸 열어 달라"고 요청할 뿐이고, 어느 슬롯에 어떤 폭으로 서는지는 결정하지 못한다.
  */
+/**
+ * 콘솔 상태 중 플러그인이 알아도 되는 몫.
+ *
+ * 스토어 전체를 넘기지 않는다 — 넘기면 플러그인이 코어의 내부 형태에 결합되고,
+ * 그 형태를 바꿀 때마다 플러그인이 깨진다. Theater 목록과 활성 Theater는 플러그인이
+ * 자기 데이터를 어느 프로젝트 기준으로 읽을지 정하는 데 필요한 최소값이다.
+ */
+export interface ClientConsoleStateCapability {
+  getTheaters(): readonly ConsoleTheaterSummary[];
+  getActiveTheaterId(): string | null;
+  setActiveTheater(theaterId: string): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export interface ConsoleTheaterSummary {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * 주소 표시줄의 쿼리 문자열 중 플러그인 몫.
+ *
+ * 라우터 자체를 넘기지 않는다 — 경로는 코어 화면의 것이고, 플러그인이 그것을 옮기면
+ * 콘솔이 어디 있는지를 플러그인이 정하게 된다. 쿼리 파라미터만 읽고 쓴다.
+ */
+export interface ClientNavigationCapability {
+  getSearchParam(key: string): string | null;
+  /** `null` 값은 그 파라미터를 지운다. `replace`는 뒤로가기 기록을 남기지 않는다. */
+  setSearchParams(next: Readonly<Record<string, string | null>>, options?: { readonly replace?: boolean }): void;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface ClientExpandedSurfacesCapability {
   /** 표면을 연다. 이미 열려 있으면 기본적으로 그 슬롯을 재사용한다. 인스턴스 id를 돌려준다. */
   open(request: ExpandedSurfaceOpenRequest): string;

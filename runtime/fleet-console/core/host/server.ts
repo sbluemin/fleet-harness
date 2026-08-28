@@ -510,6 +510,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let desktopUpdateRequestedAt = 0;
   const pluginSseChannels = new Set<string>();
 
+  /**
+   * Theater 생명주기. 플러그인이 Theater마다 자기 저장소를 열고 닫으려면 이 순간들을
+   * 알아야 한다 — 새 API를 내지 않고 기존 이벤트 채널로 낸다(구독 방식이 이미 있다).
+   * realpath는 싣지 않는다: 절대 경로는 호스트 소유이고, 필요한 플러그인은
+   * `paths.resolveTheaterPath`로 서버 안에서 스스로 푼다.
+   */
+  function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
+    publishPluginEvent(`theater:${event}`, { theaterId });
+  }
+
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
     // 브라우저로 나가는 것은 플러그인이 명시적으로 올린 채널뿐이다. 모든 in-process
@@ -524,7 +534,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     theaters,
     save: saveDurableState,
     publish: publishPluginEvent,
-    unregisterTheaterWorkspaces: (theaterId) => codex.unregisterTheaterWorkspaces(theaterId),
+    unregisterTheaterWorkspaces: (theaterId) => {
+      codex.unregisterTheaterWorkspaces(theaterId);
+      publishTheaterLifecycle("forgotten", theaterId);
+    },
     validateTheaterRestore: async (theater) => {
       try {
         const restoredRealpath = await fs.promises.realpath(theater.path);
@@ -538,6 +551,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     registerTheaterWorkspace: async (theater) => {
       await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
+      publishTheaterLifecycle("restored", theater.id);
     },
   });
   // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
@@ -1769,6 +1783,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const theater = await theaters.register(cwd);
     await codex.registerWorkspace(theater.realpath, undefined, theater.id);
+    publishTheaterLifecycle("registered", theater.id);
     persistDurableState();
     writeJson(res, 200, toTheaterInfo(theater, true));
   }
@@ -2152,6 +2167,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
       await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
+      publishTheaterLifecycle("restored", theater.id);
     }
   }
 

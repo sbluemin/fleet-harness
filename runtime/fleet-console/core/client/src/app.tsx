@@ -25,6 +25,7 @@ import { hydrateUpdateProgress, useUpdateProgress } from "./update-progress-stor
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "./global-shortcuts.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
+import { bindConsoleNavigate, notifyConsoleLocationChanged } from "./console-location.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
@@ -116,6 +117,10 @@ export function App() {
     document.documentElement.dataset.viewMode = mobileLayout ? "mobile" : "desktop";
   }, [mobileLayout]);
   const navigate = useNavigate();
+  // 플러그인과 코어 비-React 코드가 주소를 바꾸는 유일한 창구에 라우터를 맡긴다 —
+  // history를 직접 밀면 popstate가 안 나서 라우터가 이동을 놓친다.
+  useEffect(() => bindConsoleNavigate((to, options) => navigate(to, { replace: options?.replace === true })), [navigate]);
+  useEffect(() => { notifyConsoleLocationChanged(); }, [location]);
   // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /operations에만 마운트되므로
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
   const operationsViewVisibleRef = useRef(operationsViewVisible);
