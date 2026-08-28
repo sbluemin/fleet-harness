@@ -186,7 +186,10 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       // 열린 Theater가 없으면 보여 줄 위키도 없다 — 없는 것을 지어내지 않는다.
       // 화면 요청은 콘솔 SPA가 답한다: 여기서 CODEX_BASE로 되돌리면 이미 그 주소에
       // 있는 요청이 자기 자신으로 무한히 튕긴다.
-      if (isJsonRequest(request)) {
+      // 쓰기는 화면 이동이 아니다 — SPA로 흘려보내면 코어가 "Method not allowed"로
+      // 답해, 호출자는 자기 요청이 어디서 막혔는지 알 수 없다.
+      const navigational = request.method === "GET" || request.method === "HEAD";
+      if (!navigational || isJsonRequest(request)) {
         sendJson(response, 404, { error: "no_workspace_registered" });
         return true;
       }
