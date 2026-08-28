@@ -3157,6 +3157,12 @@ describe("Instrument core design contract", () => {
     // 세기는 설정이 소유한다 — 규칙은 변수를 소비하고, 폴백이 곧 기본값이라 값이 실리기 전
     // 첫 페인트에서도 패널이 제자리를 지킨다. 폴백 없는 참조로 바뀌면 설정 이전 프레임이 비어 버린다.
     expect(recede).toContain("opacity: var(--unfocused-panel-opacity, 0.5);");
+    expect(recede).toContain("transition: opacity var(--duration-base) var(--ease-glide);");
+    const firstFocusSettle = components.match(/\.operations-canvas\.is-focus-fade-settling \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
+    expect(firstFocusSettle).toContain("transition: none;");
+    const reducedMotionTerminal = components.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
+    expect(reducedMotionTerminal).toContain("transition: none;");
+    expect(source("canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
     expect(source("store.ts")).toContain("--unfocused-panel-opacity");
     expect(source("pages/global-settings.tsx")).toContain('className="fleet-slider settings-slider"');
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
@@ -3244,7 +3250,22 @@ describe("Instrument core design contract", () => {
     expect(source("canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
-    expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
+    const canvasZoom = source("canvas/canvas.tsx");
+    expect(canvasZoom).toContain("TITLEBAR_OUTSET_PX * operationZoom");
+    expect(canvasZoom).toContain("const operationZoom = focusLayerHidden");
+    expect(canvasZoom).toContain("? canvas.viewport.zoom");
+    expect(canvasZoom).toContain("formationView || triageActive || operationMaximized || operationCompanion");
+    expect(canvasZoom).not.toContain("const effectiveZoom = panelMaximized");
+    // Cruise·Tactical·War Room 모두 visible 패널이 넷 이상이면 유리를 불투명 panel material로
+    // 축약한다. threshold와 스타일 모두 class 계약으로 고정해 :has() 기반 subtree 재판정을 추가하지 않는다.
+    expect(canvasZoom).toContain("const adaptivePanelMaterial = visiblePanelCount >= 4;");
+    expect(canvasZoom).not.toContain("visiblePanelCount >= 4 && !formationView && !triageActive");
+    expect(canvasZoom).toContain('adaptivePanelMaterial ? "is-panel-density-high" : ""');
+    const adaptiveMaterial = components.match(/\.operations-canvas\.is-panel-density-high \{[^}]*\}/)?.[0] ?? "";
+    expect(adaptiveMaterial).toContain("--glass-tint-panel: var(--surface-panel);");
+    expect(adaptiveMaterial).toContain("--glass-underlay: var(--surface-panel);");
+    expect(adaptiveMaterial).toContain("--glass-pane-light: transparent;");
+    expect(adaptiveMaterial).toContain("--glass-backdrop-panel: none;");
     expect(source("canvas/coordinates.ts")).toContain("y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/coordinates.ts")).toContain("canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");

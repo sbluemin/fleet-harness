@@ -195,6 +195,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
+  // ResizeObserver와 zoom/font 보정이 같은 settle 큐를 쓴다. geometry 전환 중 zoom effect가 별도
+  // fit을 먼저 실행하면 전환 끝의 observer fit까지 두 번 PTY resize/full refresh가 나가므로,
+  // refresh 필요 여부만 OR해 마지막 geometry 알림 뒤 한 번에 처리한다.
+  const scheduleFitAndResizeRef = useRef<((refresh?: boolean) => void) | null>(null);
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
   // 초기값을 zoom으로 두어 이미 확대된 패널이 마운트될 때 첫 렌더부터 올바른 스타일을 갖게 한다.
   const [appliedZoom, setAppliedZoom] = useState(zoom);
@@ -298,6 +302,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let resizeDebounce: ReturnType<typeof setTimeout> | null = null;
+    let refreshAfterFit = false;
     let cleanupMountedTerminal: (() => void) | null = null;
 
     const mountTerminal = async () => {
@@ -440,19 +445,25 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       // 이미 전체 refresh를 예약했고(RenderService가 bufferService.onResize와 handleResize 양쪽에서),
       // 바뀌지 않았으면 다시 그릴 내용이 없다. 어느 쪽이든 이 호출은 같은 rAF로 합쳐지는 낭비이고,
       // WebGL 경로에서는 커서 blink 애니메이션까지 되감는다. 스크롤 복원은 아래 wrapper가 소유한다.
-      const fitAndResize = () => {
+      const fitAndResize = (refresh = false) => {
         scrollFollow.preserveAfterGeometryChange(() => {
           fitAddon.fit();
           connection.resize(terminal.cols, terminal.rows);
+          if (refresh) terminal.refresh(0, terminal.rows - 1);
         });
       };
-      const scheduleFitAndResize = () => {
+      const scheduleFitAndResize = (refresh = false) => {
+        refreshAfterFit ||= refresh;
         if (resizeDebounce) clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(() => {
           resizeDebounce = null;
-          if (!disposed) fitAndResize();
+          if (disposed) return;
+          const shouldRefresh = refreshAfterFit;
+          refreshAfterFit = false;
+          fitAndResize(shouldRefresh);
         }, RESIZE_DEBOUNCE_MS);
       };
+      scheduleFitAndResizeRef.current = scheduleFitAndResize;
 
       const runInitialFit = async () => {
         await document.fonts?.ready;
@@ -471,7 +482,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         if (activeRef.current !== false && !keyPanelOpenRef.current) terminal.focus();
       };
 
-      resizeObserver = new ResizeObserver(scheduleFitAndResize);
+      resizeObserver = new ResizeObserver(() => scheduleFitAndResize());
       resizeObserver.observe(container);
       void runInitialFit();
 
@@ -496,6 +507,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         statusDetailReporterRef.current = null;
         scrollFollowRef.current = null;
         fitAddonRef.current = null;
+        scheduleFitAndResizeRef.current = null;
         // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
         // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
         // useEffect cleanup 밖으로 전파되면 error boundary가 없는 React 트리가 통째로 언마운트되어
@@ -630,7 +642,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.fontFamily = terminalFontSettings.family;
-    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current, scrollFollowRef.current);
+    scheduleFitAndResizeRef.current?.(true);
   }, [terminalFontSettings.family, mountedTerminalEpoch]);
 
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
@@ -656,8 +668,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     // 다른 터미널 화면이 깨진다(특히 마운트·복원 시 effect가 1회 실행되며 발생). 게다가 fontSize가 실제로
     // 바뀌면 xterm이 옵션 변경 핸들러(_handleOptionsChanged→_refreshCharAtlas→acquireTextureAtlas)에서 새
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
-    // fit + refresh로 재배치/재도색한다.
-    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current, scrollFollowRef.current);
+    // fit + refresh로 재배치/재도색한다. geometry observer와 같은 settle 큐를 써 마지막 크기에서
+    // 한 번만 PTY resize/full refresh를 실행한다.
+    scheduleFitAndResizeRef.current?.(true);
   }, [appliedZoom, touchFontScale, terminalFontSettings.size, mountedTerminalEpoch]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
@@ -1063,24 +1076,6 @@ function concatTerminalOutput(chunks: readonly Uint8Array[], totalBytes: number)
     offset += chunk.byteLength;
   }
   return output;
-}
-
-function fitResizeAndRefreshTerminal(
-  terminal: XtermTerminal,
-  fitAddon: FitAddon | null,
-  connection: TerminalConnection | null,
-  scrollFollow: TerminalScrollFollowController | null,
-): void {
-  const fitResizeAndRefresh = () => {
-    fitAddon?.fit();
-    connection?.resize(terminal.cols, terminal.rows);
-    terminal.refresh(0, terminal.rows - 1);
-  };
-  if (scrollFollow) {
-    scrollFollow.preserveAfterGeometryChange(fitResizeAndRefresh);
-    return;
-  }
-  fitResizeAndRefresh();
 }
 
 /** A coarse pointer means fingers, and a finger-sized terminal starts at its smallest step. */
