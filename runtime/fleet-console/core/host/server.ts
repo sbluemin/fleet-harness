@@ -938,6 +938,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handlePairingIdentity(req, res);
       return;
     }
+    // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
+    // SPA 문서로 먼저 답해져, 그 경로를 소유한 플러그인은 영영 호출되지 않는다.
+    // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
+    // SPA 문서로 먼저 답해져, 그 경로를 소유한 플러그인은 영영 호출되지 않는다.
+    if (pathname.startsWith("/console/") && pathname !== "/console" && !pathname.startsWith("/console/assets/")) {
+      runAsyncBooleanHandler(routeRegistry.handle({ req, res, pathname }), res, () => tryServeStaticConsole(req, res, pathname));
+      return;
+    }
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/api/v1/health") {
       handleHealth(req, res);

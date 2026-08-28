@@ -21,7 +21,6 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
     host: options.host ?? "127.0.0.1",
     port: options.port ?? 0,
     version: "0.0.0",
-    codexCwd: options.cwd,
     dataDir: join(lockDir, "fleet-data"),
   });
   const endpoint = await server.start({
@@ -34,6 +33,18 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
     close: (callback) => {
       void server.stop().then(() => callback?.());
     },
-    registerWorkspace: (cwd) => server.registerCodexWorkspace(cwd),
+    /**
+     * 워크스페이스 등록은 이제 Theater 등록의 결과다 — Codex 플러그인이 생명주기
+     * 이벤트를 듣고 스스로 연다. 콘솔에 Codex 전용 진입점은 더 이상 없다.
+     */
+    registerWorkspace: async (cwd) => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1/theaters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${port}` },
+        body: JSON.stringify({ path: cwd }),
+      });
+      const body = await response.json() as { readonly theater?: { readonly id?: string } };
+      return body.theater?.id ?? "";
+    },
   };
 }

@@ -3,8 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import { getT, useConsoleLocale, useT } from "../i18n/index.js";
-import { useConsoleState } from "../hooks/use-store.js";
+import { getT, useT } from "./i18n/index.js";
+import { useConsoleLocale } from "./reader-store.js";
 import {
   consumeRestoredReaderExpanded,
   getCodexReaderHistoryState,
@@ -21,10 +21,10 @@ import {
   subscribeCodexReaderHistory,
   teardownCodex,
   teardownReaderNodes,
-} from "../codex-host.js";
-import { closeCodexReader, expandCodexReader, openCodexReader } from "../store.js";
-import { installCodexLiveRevalidation, revalidateCodexNow } from "../codex/live.js";
-import { loadInitialData } from "../codex/state.js";
+} from "./codex-host.js";
+import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
+import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
+import { loadInitialData } from "./codex/state.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     getCodexReaderHistoryState,
   );
   const locale = useConsoleLocale();
-  const state = useConsoleState();
+  const state = useReaderState();
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);

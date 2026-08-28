@@ -184,17 +184,6 @@ export const canvasEn = {
   "rail.chrome.closePanel": "Close {title}",
   "rail.theater.fallback": "Theater",
 
-  "rail.codex.title": "Codex",
-  "rail.codex.expandAria": "Expand reading sheet",
-  "rail.codex.expand": "⤢ Expand",
-  "rail.codex.closePaneAria": "Close document pane",
-  "rail.codex.emptyEyebrow": "Codex",
-  "rail.codex.addTheater": "Add a Theater",
-  "rail.codex.addTheaterHint": "Use the top bar Theater control to choose a project root before opening Codex.",
-  "rail.codex.unavailable": "Codex unavailable",
-  "rail.codex.thisTheater": "This Theater",
-  "rail.codex.wikiUnavailable": "Fleet Wiki data could not be loaded for this Theater.",
-
 } as const;
 
 export const canvasKo: Record<keyof typeof canvasEn, string> = {
@@ -381,16 +370,5 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "rail.chrome.opacityAria": "패널 불투명도",
   "rail.chrome.closePanel": "{title} 닫기",
   "rail.theater.fallback": "Theater",
-
-  "rail.codex.title": "Codex",
-  "rail.codex.expandAria": "읽기 시트 확대",
-  "rail.codex.expand": "⤢ 확대",
-  "rail.codex.closePaneAria": "문서 창 닫기",
-  "rail.codex.emptyEyebrow": "Codex",
-  "rail.codex.addTheater": "Theater 추가",
-  "rail.codex.addTheaterHint": "Codex를 열기 전에 상단 Theater 컨트롤에서 프로젝트 루트를 선택하세요.",
-  "rail.codex.unavailable": "Codex를 사용할 수 없음",
-  "rail.codex.thisTheater": "이 Theater",
-  "rail.codex.wikiUnavailable": "이 Theater의 Fleet Wiki 데이터를 불러오지 못했습니다.",
 
 };

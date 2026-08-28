@@ -72,6 +72,8 @@ function parseFleetPluginManifest(value: unknown): FleetPluginManifest | null {
     ...(typeof value.client === "string" ? { client: value.client } : {}),
     ...(typeof value.routes === "string" ? { routes: value.routes } : {}),
     ...(Array.isArray(value.sensitiveFields) ? { sensitiveFields: value.sensitiveFields.filter((field): field is string => typeof field === "string") } : {}),
+    // 선언하지 않은 필드는 파서가 버린다 — 콘솔 경로 요청도 여기를 지나야 등록기에 닿는다.
+    ...(typeof value.consoleRoutePrefix === "string" ? { consoleRoutePrefix: value.consoleRoutePrefix } : {}),
   };
 }
 

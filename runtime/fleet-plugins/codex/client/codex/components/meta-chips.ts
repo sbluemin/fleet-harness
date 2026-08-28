@@ -1,17 +1,8 @@
 import type { EntryFrontmatter, SearchEntry } from "../api";
-import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { formatDate, getT } from "../../i18n/index.js";
-import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
+import { resolveActiveLocale } from "../../i18n/index.js";
 import { escapeAttribute, escapeHtml } from "../utils";
 
-function resolveActiveLocale() {
-  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
-  const navigatorLanguage =
-    typeof navigator !== "undefined" && typeof navigator.language === "string"
-      ? navigator.language.toLowerCase()
-      : "";
-  return resolveConsoleLanguage(preference, navigatorLanguage);
-}
 
 export interface EntryStatusBadge {
   label: string;

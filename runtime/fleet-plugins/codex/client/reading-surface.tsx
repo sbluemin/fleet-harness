@@ -1,8 +1,8 @@
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 
-import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
-import { getT } from "../i18n/index.js";
-import { getCodexReaderDocumentState } from "../codex-host.js";
+import { CodexReadingSheet } from "./codex-reading-sheet.js";
+import { getT } from "./i18n/index.js";
+import { getCodexReaderDocumentState } from "./codex-host.js";
 
 /**
  * 코어가 소유한 확대 표면. rail의 `BUILT_IN_RAIL_PANELS`와 같은 자리다 — 플러그인
@@ -24,4 +24,3 @@ export const codexReadingSurface: ExpandedSurfaceDescriptor = {
   render: () => <CodexReadingSheet />,
 };
 
-export const BUILT_IN_EXPANDED_SURFACES: readonly ExpandedSurfaceDescriptor[] = [codexReadingSurface];

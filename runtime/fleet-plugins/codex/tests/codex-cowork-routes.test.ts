@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
-import { handleCoworkRequest } from "../core/host/codex/cowork/routes.js";
+import { handleCoworkRequest } from "../server/codex/cowork/routes.js";
 import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { EventEmitter } from "node:events";
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeGatewayMessage, ClaudeGatewayRun, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
 import type { CoworkAgentClient, CoworkConnectOptions } from "@dotobokuri/fleet-wiki/cowork";
 
-import { createCoworkGatewayConnector } from "../core/host/codex/cowork/gateway-adapter.js";
+import { createCoworkGatewayConnector } from "../server/codex/cowork/gateway-adapter.js";
 
 const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 const TURN_WATCHDOG_MS = 10 * 60 * 1000;

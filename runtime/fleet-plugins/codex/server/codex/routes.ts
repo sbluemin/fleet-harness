@@ -144,7 +144,6 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   return true;
 }
 
-export { isLoopbackRemoteAddress } from "../http-infra.js";
 
 // ─── Route dispatchers ────────────────────────────────────────────────────────
 

@@ -19,6 +19,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
+      "@dotobokuri/core-agent/claude": ["../../../packages/core-agent/dist/claude/index.d.ts"],
+      "@dotobokuri/core-agent": ["../../../packages/core-agent/dist/index.d.ts"],
       "@dotobokuri/core-infra": ["../../../packages/core-infra/dist/index.d.ts"],
       "@dotobokuri/fleet-wiki": ["../../../packages/fleet-wiki/dist/index.d.ts"],
       "@dotobokuri/core-process": ["../../../packages/core-process/dist/index.d.ts"],

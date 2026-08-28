@@ -2,9 +2,8 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import { getGlobalSettingsStoreState } from "../global-settings-store.js";
 import { getT, markdownCopyOptions } from "../i18n/index.js";
-import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { resolveActiveLocale } from "../i18n/index.js";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
   fetchCoworkOptions, peekCoworkEntrySession, promptCowork, subscribeCoworkEvents,
@@ -17,14 +16,6 @@ import { CoworkAgentMenu } from "./cowork-agent-menu.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils.js";
 
-function resolveActiveLocale() {
-  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
-  const navigatorLanguage =
-    typeof navigator !== "undefined" && typeof navigator.language === "string"
-      ? navigator.language.toLowerCase()
-      : "";
-  return resolveConsoleLanguage(preference, navigatorLanguage);
-}
 
 function consoleT() {
   return getT(resolveActiveLocale());

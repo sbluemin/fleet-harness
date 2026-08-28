@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setCommandBandDocked } from "../core/client/src/fullscreen-band-store.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import {
-  buildCodexPaletteEntries,
   buildPaletteCommands,
   commandModeQuery,
   filterPaletteCommands,
@@ -286,23 +285,7 @@ function makeOperation(id: string, payload: Record<string, unknown> = {}, theate
   };
 }
 
-describe("Codex palette entries", () => {
-  it("maps wiki titles to the dedicated open action and keeps fuzzy ranking", () => {
-    const entries = buildCodexPaletteEntries([
-      { id: "release-notes", title: "Release Notes" },
-      { id: "rail-doctrine", title: "Rail Panel Doctrine" },
-    ]);
-
-    expect(entries[0]).toMatchObject({
-      commandId: "open-codex-entry:release-notes",
-      label: "Release Notes",
-      action: { kind: "open-codex-entry", entryId: "release-notes" },
-    });
-    expect(matchPaletteCommands(entries, "rpd").map(({ command }) => command.commandId)).toEqual([
-      "open-codex-entry:rail-doctrine",
-    ]);
-  });
-});
+describe("Codex palette entries", () => {});
 
 describe("filterPaletteCommands", () => {
   it("matches case-insensitive AND tokens against the command label", () => {

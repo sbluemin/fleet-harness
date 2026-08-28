@@ -1,6 +1,6 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { formatAbsoluteDateTime, formatRelativeTime } from "../i18n/format.js";
+import { formatAbsoluteDateTime, formatRelativeTime } from "../i18n/index.js";
 
 // HTML 이스케이프 공용 유틸 — 클라이언트 컴포넌트 전체가 공유하는 단일 구현.
 // escapeHtml은 텍스트 노드 컨텍스트용(&<> 3종), escapeAttribute는 속성 컨텍스트용(+쌍따옴표).

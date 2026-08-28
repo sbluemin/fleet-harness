@@ -1,4 +1,4 @@
-import type { CodexKnowledgeScope, CodexWatchState } from "../../../host/codex/contracts";
+import type { CodexKnowledgeScope, CodexWatchState } from "../../server/codex/contracts.js";
 import { getState, revalidateAll, revalidateScopes, setLiveState, subscribeState } from "./state.js";
 
 /**

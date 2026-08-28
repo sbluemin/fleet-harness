@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,9 +7,8 @@ import { createMemoryPaths } from "@dotobokuri/fleet-wiki";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createCodexGateway } from "../core/host/codex/gateway.js";
-import { createCodexWorkspaceRouter } from "../core/host/codex/workspace-routes.js";
-import { workspaceHash } from "../core/host/theaters/theater-domain.js";
+import { createCodexGateway } from "../server/codex/gateway.js";
+import { createCodexWorkspaceRouter } from "../server/codex/workspace-routes.js";
 
 const WORKSPACE_ID = "0123456789ab";
 
@@ -28,15 +28,26 @@ describe("Codex Theater-root workspace resolution", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  const identityHash = (cwd: string): string => cwd;
+
   function createGateway() {
     const wikiWorkspaceResolver: WikiWorkspaceResolver = { resolve };
-    return createCodexGateway({ cwd: theaterRoot, host: "127.0.0.1", version: "0.0.0", getPort: () => 0, wikiWorkspaceResolver });
+    return createCodexGateway({
+      cwd: theaterRoot,
+      host: "127.0.0.1",
+      version: "0.0.0",
+      getPort: () => 0,
+      wikiWorkspaceResolver,
+      allowedOrigins: () => ["http://127.0.0.1:0"],
+      theaterPaths: { canonicalize: (cwd: string) => realpathSync(cwd), hash: (cwd: string) => cwd },
+      security: { validateHost: () => true, isWriteAdmitted: () => true },
+    });
   }
 
   it("registers and resolves the canonical Theater root", async () => {
     const gateway = createGateway();
     const result = await gateway.resolveWorkspaceForTheater("theater", theaterRoot);
-    expect(result).toEqual({ hasWiki: true, id: workspaceHash(await realpath(theaterRoot)) });
+    expect(result).toEqual({ hasWiki: true, id: identityHash(await realpath(theaterRoot)) });
     expect(resolve).toHaveBeenCalledWith(await realpath(theaterRoot));
   });
 

@@ -160,7 +160,6 @@ async function startServer(fleetDataDir: string, codexCwd: string, root: string,
     host: "127.0.0.1",
     port: 0,
     version: "test",
-    codexCwd,
     dataDir: fleetDataDir,
     release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT },
   });

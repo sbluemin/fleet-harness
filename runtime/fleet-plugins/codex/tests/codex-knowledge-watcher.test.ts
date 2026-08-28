@@ -2,9 +2,9 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createCodexKnowledgeWatcher } from "../core/host/codex/knowledge-watcher.js";
-import type { KnowledgeWatcherFactory, KnowledgeWatcherHandle } from "../core/host/codex/knowledge-watcher.js";
-import type { CodexKnowledgeScope, CodexWatchState } from "../core/host/codex/contracts.js";
+import { createCodexKnowledgeWatcher } from "../server/codex/knowledge-watcher.js";
+import type { KnowledgeWatcherFactory, KnowledgeWatcherHandle } from "../server/codex/knowledge-watcher.js";
+import type { CodexKnowledgeScope, CodexWatchState } from "../server/codex/contracts.js";
 
 interface FakeWatcher extends KnowledgeWatcherHandle {
   readonly watchPath: string;

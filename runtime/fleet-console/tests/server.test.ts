@@ -19,7 +19,7 @@ import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type Conso
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { workspaceHash } from "../core/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
-import { WorkspaceRegistry } from "../core/host/codex/workspaces.js";
+import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
 
@@ -2394,7 +2394,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     try {
       const theaters = new TheaterRegistry();
-      const codexWorkspaces = new WorkspaceRegistry();
+      const codexWorkspaces = new WorkspaceRegistry({ canonicalize: (cwd: string) => cwd, hash: (cwd: string) => cwd });
       const observability = createConsoleObservabilityStore();
       const theater = await theaters.register(variantDir);
       const codexWorkspace = await codexWorkspaces.register(variantDir);

@@ -9,13 +9,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendLog, createMemoryPaths } from "@dotobokuri/fleet-wiki";
-import { handleApiRequest } from "../core/host/codex/routes.js";
+import { handleApiRequest } from "../server/codex/routes.js";
 
 describe("Codex schema API", () => {
   let root = "";

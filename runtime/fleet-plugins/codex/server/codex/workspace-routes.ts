@@ -1,10 +1,10 @@
 import type http from "node:http";
 
-import type { TheaterRegistration } from "../theaters/theater-domain.js";
+import type { TheaterRef } from "./theater-paths.js";
 import type { CodexWorkspaceResolution } from "./gateway.js";
 
 export interface CodexWorkspaceRouteDeps {
-  readonly getTheater: (theaterId: string) => TheaterRegistration | null;
+  readonly getTheater: (theaterId: string) => TheaterRef | null;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly resolveWorkspace: (theaterId: string, theaterRoot: string) => Promise<CodexWorkspaceResolution>;

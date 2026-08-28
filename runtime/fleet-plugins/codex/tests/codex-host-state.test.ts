@@ -22,11 +22,11 @@ const codexMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../core/client/src/codex/main.js", () => ({
+vi.mock("../client/codex/main.js", () => ({
   mountNavigatorApp: vi.fn(() => codexMocks.navigatorController),
 }));
 
-vi.mock("../core/client/src/codex/reading-controller.js", () => ({
+vi.mock("../client/codex/reading-controller.js", () => ({
   mountReadingInto: vi.fn((_container: HTMLElement, options: { onEntryRendered?: (entryId: string) => void }) => {
     codexMocks.readerMountOptions.push(options);
     return codexMocks.readerController;
@@ -43,7 +43,7 @@ import {
   saveReaderScroll,
   setNavigatorTheater,
   teardownCodex,
-} from "../core/client/src/codex-host.js";
+} from "../client/codex-host.js";
 
 let requestAnimationFrameDescriptor: PropertyDescriptor | undefined;
 let resizeObserverCallbacks: ResizeObserverCallback[] = [];

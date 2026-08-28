@@ -28,7 +28,10 @@ export default definePlugin({
     ctx.host.lifecycle.registerCleanup(() => watcher.disposeAll());
 
     const wikiWorkspaceResolver = createWikiWorkspaceResolver({
-      ensureWorkspaceDirectory: (cwd: string) => ctx.host.paths.ensureWorkspaceDirectory(cwd),
+      ensureWorkspace: (cwd: string) => {
+        const workspace = ctx.host.paths.ensureWorkspaceDirectory(cwd);
+        return { id: workspace.id, path: workspace.path, cwd };
+      },
       withMigrationLock: <T,>(workspace: { readonly path: string }, operation: () => T): T =>
         ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
     });
@@ -36,7 +39,11 @@ export default definePlugin({
     const gateway = createCodexGateway({
       cwd: process.cwd(),
       host: "127.0.0.1",
-      version: ctx.manifest.version ?? "0.0.0",
+      version: "1",
+      theaterPaths: {
+        canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),
+        hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),
+      },
       getPort: () => readPort(ctx),
       allowedOrigins: () => {
         const origin = ctx.host.server.origin();
@@ -70,10 +77,14 @@ export default definePlugin({
     );
 
     const workspaceRouter = createCodexWorkspaceRouter({
-      resolveTheaterPath: (theaterId) => ctx.host.paths.resolveTheaterPath(theaterId),
+      getTheater: (theaterId) => {
+        const realpath = ctx.host.paths.resolveTheaterPath(theaterId);
+        return realpath ? { id: theaterId, realpath } : null;
+      },
+      isAuthorized: (req) => ctx.host.security.isWriteAdmitted(req),
+      readJsonBody: ctx.host.http.readJsonBody,
       resolveWorkspace: (theaterId, theaterRoot) => gateway.resolveWorkspaceForTheater(theaterId, theaterRoot),
       writeJson: ctx.host.http.writeJson,
-      validateHost: ctx.host.security.validateHost,
     });
     registerRouter(ctx, "/api/v1/plugins/codex/workspace", async ({ req, res, pathname }) =>
       workspaceRouter({ req, res, pathname }), {

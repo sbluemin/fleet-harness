@@ -1,8 +1,7 @@
-import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
-import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
 import { fetchEntry } from "../api.js";
 import { escapeHtml } from "../utils.js";
+import { resolveActiveLocale } from "../../i18n/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,12 +22,7 @@ const EXCERPT_MAX_LENGTH = 180;
 const CARD_WIDTH = 288;
 
 function consoleT() {
-  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
-  const navigatorLanguage =
-    typeof navigator !== "undefined" && typeof navigator.language === "string"
-      ? navigator.language.toLowerCase()
-      : "";
-  return getT(resolveConsoleLanguage(preference, navigatorLanguage));
+  return getT(resolveActiveLocale());
 }
 
 /**

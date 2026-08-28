@@ -5,9 +5,8 @@ import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 import type { DraftBlock } from "@fleet-console/markdown/diff";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { getGlobalSettingsStoreState } from "../global-settings-store.js";
 import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";
-import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { resolveActiveLocale } from "../i18n/index.js";
 import {
   decideDrydock,
   fetchConflictDetail,
@@ -40,14 +39,6 @@ import { escapeAttribute, escapeHtml } from "./utils.js";
 
 type T = Translate<CoreMessageKey>;
 
-function resolveActiveLocale() {
-  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
-  const navigatorLanguage =
-    typeof navigator !== "undefined" && typeof navigator.language === "string"
-      ? navigator.language.toLowerCase()
-      : "";
-  return resolveConsoleLanguage(preference, navigatorLanguage);
-}
 
 function consoleT(): T {
   return getT(resolveActiveLocale());

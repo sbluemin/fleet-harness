@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
-import { encodeSseData } from "../../http-infra.js";
+import { encodeSseData } from "../contracts.js";
 import { withSecurityHeaders } from "../contracts.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);

@@ -12,13 +12,12 @@ import {
   setNavigatorTagFilter,
   subscribeCodexReaderDocument,
   subscribeCodexReaderHistory,
-} from "../codex-host.js";
-import { useConsoleState } from "../hooks/use-store.js";
-import { useT } from "../i18n/index.js";
-import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "../rail/codex-panel.js";
-import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
-import { getState as getCodexState, loadInitialData, subscribeState as subscribeCodexState } from "../codex/state.js";
-import type { SearchEntry } from "../codex/api.js";
+} from "./codex-host.js";
+import { useT } from "./i18n/index.js";
+import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./codex-panel.js";
+import { collapseCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
+import { getState as getCodexState, loadInitialData, subscribeState as subscribeCodexState } from "./codex/state.js";
+import type { SearchEntry } from "./codex/api.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -50,7 +49,7 @@ export function CodexReadingSheet() {
     codexReader: reader,
     codexReaderExpanded: expanded,
     activeTheaterId: theaterId,
-  } = useConsoleState();
+  } = useReaderState();
   // 공유 링크로 곧장 들어오면 워크스페이스 해석이 아직 끝나지 않았다 — 그 결과를 구독해
   // 해석이 도착한 프레임에 리더를 세운다(그 전에는 세우지 않는다).
   const workspaceId = useSyncExternalStore(

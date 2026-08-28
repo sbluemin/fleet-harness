@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { WorkspaceMetadata } from "./contracts.js";
-import { canonicalizeTheaterPath, workspaceHash } from "../theaters/theater-domain.js";
+import type { TheaterPathResolver } from "./theater-paths.js";
 
 export interface WorkspaceRegistration {
   id: string;
@@ -15,11 +15,16 @@ export interface WorkspaceRegistration {
 export class WorkspaceRegistry {
   readonly #items = new Map<string, WorkspaceRegistration>();
   #mruId: string | null = null;
+  readonly #theaterPaths: TheaterPathResolver;
+
+  constructor(theaterPaths: TheaterPathResolver) {
+    this.#theaterPaths = theaterPaths;
+  }
 
   async register(cwdInput: string, lastOpenedAt?: string): Promise<WorkspaceRegistration> {
     const cwd = path.resolve(cwdInput);
-    const real = await canonicalizeTheaterPath(cwd);
-    const id = workspaceHash(real);
+    const real = await this.#theaterPaths.canonicalize(cwd);
+    const id = this.#theaterPaths.hash(real);
     const now = new Date().toISOString();
     const existing = this.#items.get(id);
     if (existing && existing.realpath !== real) {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { diffDraftLines } from "@fleet-console/markdown/diff";
-import { mountCoworkInline } from "../core/client/src/codex/cowork-controller.js";
+import { mountCoworkInline } from "../client/codex/cowork-controller.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 
 const { renderMarkdownSpy } = vi.hoisted(() => ({ renderMarkdownSpy: vi.fn() }));

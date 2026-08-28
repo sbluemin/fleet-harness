@@ -251,3 +251,7 @@ export function withSecurityHeaders(headers?: Record<string, string>): Record<st
     ...(headers ?? {}),
   };
 }
+
+export function encodeSseData(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}

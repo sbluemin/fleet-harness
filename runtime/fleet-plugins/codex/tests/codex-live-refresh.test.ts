@@ -9,7 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchHealth: vi.fn(async () => ({ lastDrydock: null, conflictCount: 0, pendingCount: 3 })),
 }));
 
-vi.mock("../core/client/src/codex/api.js", () => apiMocks);
+vi.mock("../client/codex/api.js", () => apiMocks);
 
 import {
   CODEX_LIVE_CHANGED_EVENT,
@@ -18,8 +18,8 @@ import {
   installCodexLiveRevalidation,
   resetCodexLiveForTest,
   syncCodexLiveWorkspace,
-} from "../core/client/src/codex/live.js";
-import { getState, setCurrentWorkspaceId } from "../core/client/src/codex/state.js";
+} from "../client/codex/live.js";
+import { getState, setCurrentWorkspaceId } from "../client/codex/state.js";
 
 const WS = "79f37753da01";
 

@@ -475,6 +475,9 @@ importers:
 
   runtime/fleet-plugins/codex:
     dependencies:
+      '@dotobokuri/core-agent':
+        specifier: workspace:*
+        version: link:../../../packages/core-agent
       '@dotobokuri/core-ai-gateway':
         specifier: workspace:*
         version: link:../../../packages/core-ai-gateway
@@ -491,11 +494,11 @@ importers:
         specifier: workspace:*
         version: link:../../fleet-console/sdk
       react:
-        specifier: ^19.2.3
-        version: 19.2.8
+        specifier: 19.2.7
+        version: 19.2.7
       react-dom:
-        specifier: ^19.2.3
-        version: 19.2.7(react@19.2.8)
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -10191,6 +10194,7 @@ snapshots:
     dependencies:
       react: 19.2.8
       scheduler: 0.27.0
+    optional: true
 
   react-is@18.3.1: {}
 

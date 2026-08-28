@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import { EffortGaugeGlyph, EffortTrack, effortLadderPosition } from "../components/effort-track.js";
+import { EffortGaugeGlyph, EffortTrack, effortLadderPosition } from "@fleet-console/sdk/components/effort-track";
 import { useT } from "../i18n/index.js";
 
 const FLYOUT_ID = "cowork-effort-flyout";

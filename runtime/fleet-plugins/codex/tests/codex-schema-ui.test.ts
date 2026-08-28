@@ -18,10 +18,10 @@ const apiMocks = vi.hoisted(() => ({
   decideDrydock: vi.fn(),
 }));
 
-vi.mock("../core/client/src/codex/api.js", () => apiMocks);
+vi.mock("../client/codex/api.js", () => apiMocks);
 vi.mock("@fleet-console/markdown/mermaid", () => ({ installDiagramHydrator: vi.fn() }));
 vi.mock("@fleet-console/markdown/core", () => ({ renderMarkdown: vi.fn(() => ({ html: "", toc: [] })) }));
-vi.mock("../core/client/src/codex/cowork-controller.js", () => ({ mountCoworkInline: vi.fn() }));
+vi.mock("../client/codex/cowork-controller.js", () => ({ mountCoworkInline: vi.fn() }));
 
 afterEach(() => {
   vi.useRealTimers();
@@ -36,9 +36,9 @@ describe("Codex schema UI contract", () => {
   });
   it("offers Entries/Schema navigation and sanitized schema readers", async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const navigator = await readFile(path.join(root, "core/client/src/codex/components/navigator.ts"), "utf8");
-    const reader = await readFile(path.join(root, "core/client/src/codex/reading-controller.ts"), "utf8");
-    const state = await readFile(path.join(root, "core/client/src/codex/state.ts"), "utf8");
+    const navigator = await readFile(path.join(root, "client/codex/components/navigator.ts"), "utf8");
+    const reader = await readFile(path.join(root, "client/codex/reading-controller.ts"), "utf8");
+    const state = await readFile(path.join(root, "client/codex/state.ts"), "utf8");
     expect(navigator).toContain('data-mode="entries"'); expect(navigator).toContain('data-mode="schema"');
     expect(navigator).toContain('t("codex.nav.schema")'); expect(navigator).toContain("data-template-id");
     expect(reader).toContain("renderMarkdown(document.content, markdownCopyOptions(t))");
@@ -57,7 +57,7 @@ describe("Codex schema UI contract", () => {
     apiMocks.fetchSearch.mockImplementation((theaterId: string | null) => theaterId === "old" ? staleSearch.promise : Promise.resolve({ entries: [{ id: "new", title: "New", tags: [], updated: "now" }] }));
     apiMocks.fetchDrydock.mockResolvedValue({ pendingCount: 0 });
     apiMocks.fetchSchemaCatalog.mockImplementation((theaterId: string | null) => theaterId === "old" ? staleCatalog.promise : Promise.resolve({ schema: { ref: "schema/wiki-schema.md", exists: true, summary: "new" }, templates: [] }));
-    const state = await import("../core/client/src/codex/state.js");
+    const state = await import("../client/codex/state.js");
 
     state.setCurrentWorkspaceId("old");
     const oldLoad = state.loadInitialData();
@@ -79,8 +79,8 @@ describe("Codex schema UI contract", () => {
     const remoteSearch = deferred<{ entries: Array<{ id: string; title: string; tags: string[]; updated: string; excerpt?: string }> }>();
     apiMocks.fetchSearch.mockReturnValue(remoteSearch.promise);
     apiMocks.fetchHealth.mockResolvedValue({ lastDrydock: null, conflictCount: 0, pendingCount: 0 });
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), {
       currentWorkspaceId: "workspace-a",
       error: null,
@@ -121,8 +121,8 @@ describe("Codex schema UI contract", () => {
     apiMocks.fetchHealth
       .mockResolvedValueOnce({ lastDrydock: null, conflictCount: 0, pendingCount: 1 })
       .mockResolvedValueOnce({ lastDrydock: null, conflictCount: 0, pendingCount: 0 });
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 1 });
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
@@ -152,8 +152,8 @@ describe("Codex schema UI contract", () => {
       pendingCount: 0,
       logUnreadable: true,
     });
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 0 });
     const root = document.body.appendChild(document.createElement("div"));
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
@@ -182,8 +182,8 @@ describe("Codex schema UI contract", () => {
       conflictCount: 1,
       pendingCount: 2,
     });
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 2 });
     const onRequest = vi.fn();
     const root = document.body.appendChild(document.createElement("div"));
@@ -223,8 +223,8 @@ describe("Codex schema UI contract", () => {
       conflictCount: 1,
       pendingCount: 2,
     });
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 2 });
     const clientWidth = Object.getOwnPropertyDescriptor(document.documentElement, "clientWidth");
     const clientHeight = Object.getOwnPropertyDescriptor(document.documentElement, "clientHeight");
@@ -293,7 +293,7 @@ describe("Codex schema UI contract", () => {
         body: "latest body",
       });
     });
-    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const { mountReadingInto } = await import("../client/codex/reading-controller.js");
     const root = document.body.appendChild(document.createElement("div"));
     const toc = document.body.appendChild(document.createElement("div"));
     const onEntryRendered = vi.fn();
@@ -332,7 +332,7 @@ describe("Codex schema UI contract", () => {
   it("opens conflict detail from a focusable list row", async () => {
     vi.resetModules();
     apiMocks.fetchConflicts.mockResolvedValue([{ id: "conflict-a", title: "Conflict A", status: "open" }]);
-    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const { mountReadingInto } = await import("../client/codex/reading-controller.js");
     const root = document.body.appendChild(document.createElement("div"));
     const toc = document.body.appendChild(document.createElement("div"));
     const onConflictOpen = vi.fn();
@@ -371,7 +371,7 @@ describe("Codex schema UI contract", () => {
       status: "open",
       path: "conflicts/conflict-a.md",
     }]);
-    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const { mountReadingInto } = await import("../client/codex/reading-controller.js");
     const root = document.body.appendChild(document.createElement("div"));
     const toc = document.body.appendChild(document.createElement("div"));
     let controller: ReturnType<typeof mountReadingInto>;
@@ -411,7 +411,7 @@ describe("Codex schema UI contract", () => {
       html: '<pre class="code-block" data-code="fleet copy"><button data-action="copy-code">Copy</button></pre>',
       toc: [],
     });
-    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const { mountReadingInto } = await import("../client/codex/reading-controller.js");
     const root = document.body.appendChild(document.createElement("div"));
     const toc = document.body.appendChild(document.createElement("div"));
     const controller = mountReadingInto(root, {
@@ -432,8 +432,8 @@ describe("Codex schema UI contract", () => {
 
   it("persists sorting, formats relative dates, and filters without opening an entry", async () => {
     vi.resetModules();
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), {
       currentWorkspaceId: "workspace-a",
       error: null,
@@ -469,8 +469,8 @@ describe("Codex schema UI contract", () => {
 
   it("returns to the entries catalog when a document tag action repeats the active tag from schema mode", async () => {
     vi.resetModules();
-    const state = await import("../core/client/src/codex/state.js");
-    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    const state = await import("../client/codex/state.js");
+    const { mountNavigatorInto } = await import("../client/codex/components/navigator.js");
     Object.assign(state.getState(), {
       currentWorkspaceId: "workspace-a",
       error: null,

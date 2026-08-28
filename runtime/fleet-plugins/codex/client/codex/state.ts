@@ -1,6 +1,6 @@
 import { fetchDrydock, fetchHealth, fetchSchemaCatalog, fetchSearch } from "./api.js";
 import type { CodexHealthResponse, ConflictListItem, SchemaCatalogResponse, SearchEntry } from "./api.js";
-import type { CodexKnowledgeScope } from "../../../host/codex/contracts";
+import type { CodexKnowledgeScope } from "../../server/codex/contracts.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -5,16 +5,17 @@ import net from "node:net";
 
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
-import { handleApiRequest, isLoopbackRemoteAddress } from "./routes.js";
+import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
 import type { AllowedAccessSets } from "./contracts.js";
+import type { TheaterPathResolver } from "./theater-paths.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
-import { withSecurityHeaders } from "../http-infra.js";
+import { withSecurityHeaders } from "./contracts.js";
 
 interface CodexGatewayDeps {
   readonly cwd: string;
@@ -32,6 +33,7 @@ interface CodexGatewayDeps {
    */
   /** 쓰기를 허용할 Origin 집합. 호스트의 `server.origin()`이 원본이다. */
   readonly allowedOrigins: () => readonly string[];
+  readonly theaterPaths: TheaterPathResolver;
   readonly security: {
     readonly validateHost: (request: IncomingMessage) => boolean;
     readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
@@ -82,7 +84,7 @@ const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
 const LOOPBACK_HOST = "127.0.0.1";
 
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
-  const workspaces = new WorkspaceRegistry();
+  const workspaces = new WorkspaceRegistry(deps.theaterPaths);
   const workspaceOwners = new Map<string, Set<string>>();
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
@@ -150,7 +152,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       knowledgeRoot: paths.root,
       paths,
       host: deps.host,
-      port: gatePort,
+      port,
       workspaceId: workspace.id,
       // Origin 허용집합은 콘솔 자신의 오리진이다 — 리스너별 집합을 플러그인이 다시 짜면
       // 그 사본이 호스트의 경계와 갈라진다. 쓰기 자격 판정은 호스트가 내린다.

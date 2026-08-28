@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCoworkSession, fetchCoworkOptions, peekCoworkEntrySession, subscribeCoworkEvents } from "../core/client/src/codex/api.js";
+import { createCoworkSession, fetchCoworkOptions, peekCoworkEntrySession, subscribeCoworkEvents } from "../client/codex/api.js";
 
 afterEach(() => vi.unstubAllGlobals());
 

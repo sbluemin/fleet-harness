@@ -20,7 +20,7 @@ import type {
   SearchResponse,
   SchemaCatalogResponse,
   SchemaDocumentResponse,
-} from "../../../host/codex/contracts";
+} from "../../server/codex/contracts.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

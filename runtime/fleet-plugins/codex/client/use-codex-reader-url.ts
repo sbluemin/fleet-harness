@@ -1,10 +1,9 @@
+import { hostCapabilities } from "./host.js";
+import { useReaderState } from "./reader-store.js";
 import { useEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 
-import { prepareReaderSessionScroll, stepReaderHistoryTo } from "../codex-host.js";
-import { useConsoleState } from "./use-store.js";
-import { openRailPanel } from "../rail/rail-store.js";
-import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "../store.js";
+import { prepareReaderSessionScroll, stepReaderHistoryTo } from "./codex-host.js";
+import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "./reader-store.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,14 +36,12 @@ interface ReaderTarget {
  * 목표로 들고 있다가 Theater가 준비된 뒤 적용하고, 그때까지는 주소를 쓰지 않는다.
  */
 export function useCodexReaderUrlSync(): void {
-  const location = useLocation();
-  const navigate = useNavigate();
   const {
     codexReader: reader,
     codexReaderExpanded: expanded,
     activeTheaterId: theaterId,
     theaters,
-  } = useConsoleState();
+  } = useReaderState();
 
   // 주소가 요구한 목표. 리더가 그 상태에 도달할 때까지 살아 있다.
   const targetRef = useRef<ReaderTarget | null>(readTarget(window.location.search));
@@ -96,7 +93,7 @@ export function useCodexReaderUrlSync(): void {
     }
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다.
-    openRailPanel("codex");
+    
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
       // 브라우저 뒤로/앞으로가 리더 기록의 인접 걸음이면 그 걸음으로 옮긴다 — 그래야
       // 그 항목이 들고 있던 읽던 자리와 ←/→ 방향이 함께 따라온다.
@@ -145,11 +142,15 @@ export function useCodexReaderUrlSync(): void {
     else params.delete(THEATER_PARAM);
 
     writtenRef.current = `${nextEntry ?? ""}|${nextView ?? ""}|${nextTheater ?? ""}`;
-    const search = params.toString();
     // 문서가 바뀌면 한 걸음 쌓고(뒤로가기로 돌아올 수 있게), 같은 문서의 표시 모드
     // 변화는 그 자리를 갈아 끼운다.
     const documentChanged = currentEntry !== nextEntry;
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: !documentChanged });
+    // 경로는 건드리지 않는다 — 콘솔이 어느 화면에 있는지는 코어의 결정이다.
+    hostCapabilities().navigation.setSearchParams({
+      [ENTRY_PARAM]: nextEntry ?? null,
+      [VIEW_PARAM]: nextView ?? null,
+      [THEATER_PARAM]: nextTheater ?? null,
+    }, { replace: !documentChanged });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 리더 상태 변화에만 반응한다
   }, [reader, expanded, theaterId]);
 }
