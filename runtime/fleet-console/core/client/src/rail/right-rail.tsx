@@ -416,9 +416,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
           ))}
-          {builtInPanels.length > 0 && (pluginActions.length > 0 || pluginPanels.length > 0) ? (
-            <div className="right-rail-divider" role="separator" aria-hidden="true" />
-          ) : null}
         </div>
         {pluginActions.map((panel) => (
           <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={false} />
