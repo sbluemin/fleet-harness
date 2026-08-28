@@ -13,7 +13,6 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../plugin-registry.js";
 import { getState, subscribe } from "../store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { BUILT_IN_EXPANDED_SURFACES } from "./built-in.js";
 import {
   closeExpandedSurface,
   focusExpandedSurface,
@@ -52,13 +51,7 @@ const KEYBOARD_STEP_PX = 24;
  * 살아 있으므로 focus trap도 inert도 걸지 않는다 — 모달이 아니다.
  */
 export function ExpandedSurfaceLayer() {
-  const pluginDescriptors = useExpandedSurfaceDescriptors();
-  // 코어 소유 표면이 먼저 선다 — 같은 id를 든 플러그인이 코어 표면을 가로채지 못한다.
-  const descriptors = useMemo(() => {
-    const merged = new Map(pluginDescriptors);
-    for (const descriptor of BUILT_IN_EXPANDED_SURFACES) merged.set(descriptor.id, descriptor);
-    return merged;
-  }, [pluginDescriptors]);
+  const descriptors = useExpandedSurfaceDescriptors();
   const { instances, focusedInstanceId } = useExpandedSurfaces();
   const t = useT();
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId, () => null);

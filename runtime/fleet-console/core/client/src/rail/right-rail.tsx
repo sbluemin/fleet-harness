@@ -18,7 +18,6 @@ import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, RAIL_OVERLAY_ALPHA_DEFAULT, RAIL_OVERLAY_ALPHA_MAX, RAIL_OVERLAY_ALPHA_MIN, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
-import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -127,7 +126,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
   const hasPanel = activePanel !== null;
-  const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
+  // 폭 요구는 패널이 스스로 말한다 — 코어가 특정 패널 id를 알아보던 자리를 없앴다.
+  const extraWidth = (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
   const extraWidthRef = useRef(extraWidth);

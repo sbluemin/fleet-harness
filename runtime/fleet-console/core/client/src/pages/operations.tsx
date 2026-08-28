@@ -26,7 +26,6 @@ import { TriageSideBar } from "../sidebar/triage-side-bar.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { ExpandedSurfaceLayer } from "../expanded-surface/layer.js";
-import { useCodexReaderUrlSync } from "../hooks/use-codex-reader-url.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
@@ -59,8 +58,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const t = useT();
-  // 읽고 있는 Codex 문서와 확대 여부를 주소와 양방향으로 맞춘다(새로고침·링크·뒤로가기).
-  useCodexReaderUrlSync();
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [mutationError, setMutationError] = useState<{ readonly retry: () => void } | null>(null);
   const [operationMenu, setOperationMenu] = useState<{

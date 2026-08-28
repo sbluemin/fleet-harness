@@ -1,0 +1,8 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "apiVersion": 1,
+  "routes": "routes.ts",
+  "client": "client/index.tsx",
+  "consoleRoutePrefix": "codex"
+}
