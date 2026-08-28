@@ -521,11 +521,10 @@
   outline-offset: 2px;
 }
 
-/* 불리언 ON = 자리 + 글리프 — 면은 융기 중립(thumb)이고 켬은 라벨의 brass 잉크가 말한다. */
+/* 불리언 ON = 워시 + 글리프 — 면은 극저대비 워시이고 켬은 라벨의 brass 잉크가 말한다. */
 .ai-gateway-host-only.is-on {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
   color: var(--brass-ink);
 }
 
@@ -720,9 +719,8 @@
 }
 
 .ai-gateway-axis-toggle.is-on {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
   color: var(--brass-ink);
 }
 
@@ -920,3 +918,13 @@
   color: var(--warn-ink);
 }
 
+
+/* 고대비(forced-colors) — 워시·잉크 워시가 걷히는 환경에서는 켜짐을 시스템 선택색으로 말한다. */
+@media (forced-colors: active) {
+  .ai-gateway-host-only.is-on,
+  .ai-gateway-axis-toggle.is-on,
+  .ai-gateway-effort-level.is-on {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
+}

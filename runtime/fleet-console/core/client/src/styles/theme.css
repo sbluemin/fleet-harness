@@ -396,23 +396,22 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
 
-  /* 상호작용 컨트롤의 상태 recipe(Quiet Controls) — rest는 각 소비처의 중립 면이 맡고,
-     hover는 예고(brass 워시), focus는 입력 수단의 별도 외곽 링이다. "지속" 상태는 accent가
-     아니라 세 문장으로 갈린다: 배타 선택 = 자리(--control-thumb 융기 중립 면 + 잉크 대비),
-     독립 ON = 잉크(--control-tint-* 저채도 워시), 불리언 ON = 자리 + brass 글리프.
-     열림(aria-expanded·is-open)과 필드 focus-within은 지속이 아니라 순간이므로
-     --control-open-rim이 진다. 선택이 brass 소비를 멈추므로 "brass = 위치·포커스·호버"
-     채널 계약은 이 recipe로 좁아진다(넓어지지 않는다). track/thumb 리터럴은 각 테마
-     블록이 자기 잉크 스케일에서 재조율한다 — thumb은 잉크 사다리의 한 칸이 아니라
-     패널 면에서 한 단 융기한 값이라 별도 채널이다. */
+  /* 상호작용 컨트롤의 상태 recipe(Quiet Controls C′) — rest는 각 소비처의 중립 면이 맡고,
+     focus는 입력 수단의 별도 외곽 링이다. "지속" 상태는 accent가 아니라 세 문장으로 갈린다:
+     배타 선택 = 극저대비 중립 워시(--control-wash) + 잉크 대비 + 2px brass 다텀 한 점,
+     독립 ON = 잉크(--control-tint-* 저채도 워시), 불리언 ON = 워시 + brass 글리프.
+     상자·테두리·그림자는 선택을 말하지 않는다 — 융기(thumb) 문법은 실기 기각으로 퇴역했다.
+     세그먼트의 hover는 같은 워시 계열의 약한 단(--control-wash-hover)이고, 그 밖의 컨트롤
+     hover는 기존 brass 예고를 유지한다. 열림(aria-expanded·is-open)과 필드 focus-within은
+     지속이 아니라 순간이므로 --control-open-rim이 진다. 선택이 brass를 다텀 한 점으로만
+     소비하므로 "brass = 위치·포커스·호버" 채널 계약은 좁아진다. 워시 리터럴은 각 테마
+     블록이 자기 잉크 위에서 재조율한다 — 다크는 화이트 워시, 라이트는 잉크 워시로 극이 뒤집힌다. */
   --control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);
   --control-hover-rim: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
-  --control-track: oklch(10% 0.014 245 / 80%);
-  --control-thumb: oklch(26.5% 0.022 245);
-  --control-thumb-line: transparent;
-  --control-thumb-lift: 0 1px 2px oklch(0% 0 0 / 45%), inset 0 1px 0 oklch(96% 0.01 90 / 8%);
-  --control-tint-fill: color-mix(in oklab, var(--brass) 11%, transparent);
-  --control-tint-ink: color-mix(in oklab, var(--brass-ink) 62%, var(--text-primary));
+  --control-wash: oklch(96% 0.01 90 / 7%);
+  --control-wash-hover: oklch(96% 0.01 90 / 4%);
+  --control-tint-fill: color-mix(in oklab, var(--brass) 9%, transparent);
+  --control-tint-ink: color-mix(in oklab, var(--brass-ink) 55%, var(--text-primary));
   --control-open-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));
   --control-focus-ring: var(--brass);
   --control-disabled-opacity: 0.5;
@@ -537,10 +536,9 @@
   --hairline: oklch(36% 0.035 248);
   --hairline-strong: oklch(48% 0.03 248);
 
-  /* Quiet Controls 융기면 — 감청 잉크의 mid(28%)와 veil(36%) 사이에서 채도를 유지한 채 떠오른다. */
-  --control-track: oklch(13% 0.035 248 / 72%);
-  --control-thumb: oklch(31.5% 0.042 248);
-  --control-thumb-lift: 0 1px 2px oklch(0% 0 0 / 48%), inset 0 1px 0 oklch(96% 0.012 88 / 10%);
+  /* Quiet Controls 워시 — pearl(hue 88) 화이트를 얹어 감청 위에서도 워시가 차갑게 식지 않는다. */
+  --control-wash: oklch(96% 0.012 88 / 8%);
+  --control-wash-hover: oklch(96% 0.012 88 / 4.5%);
 
   --id-crimson: oklch(74% 0.09 25);
   --id-amber: oklch(78% 0.088 70);
@@ -651,10 +649,9 @@
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
 
-  /* Quiet Controls 융기면 — 무채 흑연 한 단. 선택마저 무채가 되고 구리색은 focus·글리프에만 남는다. */
-  --control-track: oklch(11% 0.006 255 / 80%);
-  --control-thumb: oklch(28% 0.008 252);
-  --control-thumb-lift: 0 1px 2px oklch(0% 0 0 / 48%), inset 0 1px 0 oklch(95% 0.003 250 / 8%);
+  /* Quiet Controls 워시 — 무채 화이트 한 겹. 선택마저 무채가 되고 구리색은 다텀·focus·글리프에만 남는다. */
+  --control-wash: oklch(95% 0.003 250 / 7%);
+  --control-wash-hover: oklch(95% 0.003 250 / 4%);
 
   --id-crimson: oklch(72% 0.052 25);
   --id-amber: oklch(76% 0.05 70);
@@ -819,12 +816,10 @@
   --hairline: oklch(86% 0.01 100);
   --hairline-strong: oklch(76% 0.014 100);
 
-  /* Quiet Controls 융기면 — 종이 위 흰 카드. 라이트는 그림자가 부양을 말하므로 thumb-line
-     헤어라인이 단면을 마감하고, lift는 다크의 inset 광원 대신 접촉+대기 두 겹 그늘이다. */
-  --control-track: oklch(91% 0.008 100);
-  --control-thumb: oklch(99.4% 0.003 100);
-  --control-thumb-line: oklch(38% 0.02 95 / 12%);
-  --control-thumb-lift: 0 1px 1px oklch(30% 0.015 95 / 14%), 0 2px 5px -1px oklch(30% 0.015 95 / 26%);
+  /* Quiet Controls 워시 — 종이 위 잉크 극. 다크의 화이트 워시를 그대로 반전하면 백지 위
+     백워시라 지각 불가이므로, 라이트만 어두운 잉크를 낮은 알파로 얹는다. */
+  --control-wash: oklch(30% 0.015 95 / 6.5%);
+  --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
 
   --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
   --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);

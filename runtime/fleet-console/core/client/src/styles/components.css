@@ -317,13 +317,13 @@
   background: var(--control-hover-fill);
 }
 
-/* 현재 섹션은 선택이 아니라 위치다 — 면은 융기 중립(thumb)으로 물러나고,
+/* 현재 섹션은 선택이 아니라 위치다 — 면은 극저대비 워시로 물러나고,
    위치 채널의 brass는 2px 스파인 하나로만 남는다. */
 .global-settings-nav-item.is-active,
 .global-settings-nav-item[aria-pressed="true"] {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: inset 2px 0 0 var(--brass), var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
+  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .global-settings-nav-label {
@@ -555,9 +555,9 @@
 }
 
 .appearance-preview-rail b {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: inset 2px 0 0 var(--brass), var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
+  box-shadow: inset 2px 0 0 var(--brass);
   color: var(--text-primary);
   font-weight: var(--weight-medium);
 }
@@ -1165,9 +1165,8 @@
 }
 
 .host-switcher-panel > button.is-current {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
   color: var(--text-primary);
   cursor: default;
 }
@@ -1769,8 +1768,8 @@
 }
 
 .settings-switch:hover:not(:disabled):not(.is-on) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-/* 불리언 ON = 자리 + 글리프 — 트랙이 융기 중립 면으로 떠오르고 켬을 말하는 accent는 brass 손잡이뿐이다. */
-.settings-switch.is-on { border-color: var(--control-thumb-line); background: var(--control-thumb); box-shadow: var(--control-thumb-lift); }
+/* 불리언 ON = 워시 + 글리프 — 트랙이 은은한 워시로 밝아지고 켬을 말하는 accent는 brass 손잡이뿐이다. */
+.settings-switch.is-on { background: var(--control-wash); }
 .settings-switch.is-on .settings-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
 .settings-switch:active:not(:disabled) { transform: translateY(1px); }
 .settings-switch:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
@@ -1787,7 +1786,7 @@
 .remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 32%, transparent); color: var(--text-secondary); text-align: left; }
 .remote-interface-preset code { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-sm); overflow-wrap: anywhere; }
 .remote-interface-preset:hover:not(:disabled):not(.is-selected) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.remote-interface-preset.is-selected { border-color: var(--control-thumb-line); background: var(--control-thumb); box-shadow: var(--control-thumb-lift); }
+.remote-interface-preset.is-selected { border-color: transparent; background: var(--control-wash); box-shadow: inset 2px 0 0 var(--brass); }
 .remote-interface-preset:active:not(:disabled) { transform: translateY(1px); }
 .remote-interface-preset:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-field input, .remote-port-control input[type="number"] {
@@ -2090,9 +2089,9 @@
 
 .theme-card.is-active {
   color: var(--text-primary);
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift), var(--shadow-soft);
+  border-color: var(--surface-rim);
+  background: var(--control-wash);
+  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .theme-card:active:not(:disabled) {
@@ -2470,8 +2469,9 @@
   font-size: var(--t-sm);
 }
 
-/* 세그먼트 컨트롤 — 배타 선택은 자리(Quiet Controls)로 말한다: 트랙이 한 단 가라앉고
-   활성 세그먼트가 융기 중립 면(thumb)으로 떠오르며, 글자는 잉크 대비(tertiary→primary)가 진다. */
+/* 세그먼트 컨트롤 — 배타 선택은 은은한 자리(Quiet Controls C′)로 말한다: 상자·테두리·그림자
+   없이, 활성 세그먼트만 극저대비 워시 위에 잉크 대비(tertiary→primary)로 떠오르고
+   2px brass 다텀 한 점이 "선택"과 "밝은 글자"를 가른다. */
 .segmented {
   position: relative;
   display: inline-flex;
@@ -2480,29 +2480,37 @@
   /* grid 부모에서는 align-self가 인라인 축을 잡지 못해 트랙 폭만큼 늘어난다 — 두 축 모두에서
      내용 폭을 유지해야 짧은 라벨 두 개가 빈 상자 왼쪽에 몰리지 않는다. */
   justify-self: start;
-  padding: 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: var(--control-track);
+  gap: var(--space-1);
 }
 
-/* 미끄러지는 융기면 — JS 훅(use-segmented-thumb)이 활성 세그먼트의 좌표를 얹는다.
-   훅이 아직 자리를 잡지 못했으면(is-placed 없음) 활성 옵션의 자체 face가 그대로 선다. */
+/* 미끄러지는 워시 — JS 훅(SegmentedThumb)이 활성 세그먼트의 좌표를 얹고, 다텀은 ::after로
+   워시와 한 몸으로 움직인다. 훅이 아직 자리를 잡지 못했으면(is-placed 없음) 활성 옵션의
+   자체 face가 그대로 선다. */
 .segmented-thumb {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 0;
   opacity: 0;
-  border: 1px solid var(--control-thumb-line);
   border-radius: var(--radius-xs);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  background: var(--control-wash);
   pointer-events: none;
   transition:
     transform var(--duration-fast) var(--ease-spring),
     width var(--duration-fast) var(--ease-spring),
     height var(--duration-fast) var(--ease-spring);
+}
+
+.segmented-thumb::after {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  transform: translateX(-50%);
+  content: "";
 }
 
 .segmented-thumb.is-placed { opacity: 1; }
@@ -2531,21 +2539,67 @@
     background var(--duration-fast) var(--ease-spring);
 }
 
+/* 세그먼트의 hover는 brass 예고가 아니라 같은 워시 계열의 약한 단이다 — 선택 워시(잉크 대비
+   + 다텀 동반)와 층만 다르게 서서, 조용한 표면 안에서 색이 갑자기 데워지지 않는다. */
 .segmented-option:hover:not(:disabled):not(.is-active) {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
 }
 
 .segmented-option.is-active {
-  background: var(--control-thumb);
+  position: relative;
+  background: var(--control-wash);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--control-thumb-line), var(--control-thumb-lift);
 }
 
-/* 썸이 자리를 잡으면 활성 옵션의 자체 face는 물러난다 — 이중 도장은 슬라이드 중 두 자리를 만든다. */
+.segmented-option.is-active::after {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  transform: translateX(-50%);
+  content: "";
+}
+
+/* 썸이 자리를 잡으면 활성 옵션의 자체 face·다텀은 물러난다 — 이중 도장은 슬라이드 중 두 자리를 만든다. */
 .segmented:has(> .segmented-thumb.is-placed) .segmented-option.is-active {
   background: transparent;
-  box-shadow: none;
+}
+
+.segmented:has(> .segmented-thumb.is-placed) .segmented-option.is-active::after {
+  content: none;
+}
+
+/* 24px 높이의 좁은 세그먼트(사이드바 축)는 다텀도 한 치수 좁게 선다. */
+.operations-side-bar-axis > .segmented-thumb::after {
+  bottom: 2px;
+  width: 12px;
+}
+
+/* 고대비(forced-colors) — 워시·다텀·그림자가 모두 걷히는 환경에서는 선택을 시스템
+   선택색으로 직접 말한다. 썸 장식은 배경을 잃어 유령이 되므로 감추고, 자체 face 소거
+   규칙(:has)보다 나중에 같은 대상을 다시 세워 폴백 face가 항상 이긴다. */
+@media (forced-colors: active) {
+  .segmented-thumb { display: none; }
+
+  .segmented-option.is-active,
+  .segmented:has(> .segmented-thumb.is-placed) .segmented-option.is-active,
+  .operations-side-bar-axis-seg[aria-pressed="true"],
+  .operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"],
+  .canvas-operation-icon-button.is-active,
+  .fleet-caption-action[aria-pressed="true"],
+  .codex-reader-tool[aria-pressed="true"],
+  .fc-select__option[aria-selected="true"],
+  .global-settings-nav-item.is-active,
+  .global-settings-nav-item[aria-pressed="true"],
+  .settings-switch.is-on,
+  .fc-settings-toggle__input:checked + .settings-switch {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
 }
 
 .segmented-option:active:not(:disabled) {
@@ -5398,18 +5452,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
    .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
-   새 어휘가 아니다. 눌림은 Quiet Controls의 융기 중립 면(thumb)이 말한다. */
+   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다. */
 .operations-side-bar-axis {
   position: relative;
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
   margin: var(--space-1) var(--space-1) 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: var(--control-track);
 }
 
 .operations-side-bar-axis-seg {
@@ -5441,19 +5491,33 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operations-side-bar-axis-seg:hover {
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
 }
 
 .operations-side-bar-axis-seg[aria-pressed="true"] {
-  background: var(--control-thumb);
+  background: var(--control-wash);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--control-thumb-line), var(--control-thumb-lift);
+}
+
+.operations-side-bar-axis-seg[aria-pressed="true"]::after {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  transform: translateX(-50%);
+  content: "";
 }
 
 .operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"] {
   background: transparent;
-  box-shadow: none;
+}
+
+.operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"]::after {
+  content: none;
 }
 
 .operations-side-bar-axis-seg:focus-visible {
@@ -6999,13 +7063,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--control-hover-fill);
 }
 
-/* 불리언 ON = 자리 + 글리프 — 면은 융기 중립(thumb)이고 켬을 말하는 accent는 글리프 색뿐이다. */
+/* 불리언 ON = 워시 + 글리프 — 면은 극저대비 워시이고 켬을 말하는 accent는 글리프 색뿐이다. */
 .canvas-operation-icon-button.is-active,
 .fleet-caption-action[aria-pressed="true"] {
   color: var(--brass-bright);
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
 }
 
 .canvas-operation-icon-button svg,
@@ -12023,9 +12086,7 @@ body[data-codex-side="true"] .command-card {
    aurora로 칠한 iOS형 스위치를 써서, 같은 켬/끔이 코어와 플러그인 사이에서 다른 색과 다른
    크기로 갈렸다. 켜짐은 선택이므로 brass가 칠하고, aurora는 상태 채널로 돌아간다. */
 .fc-settings-toggle__input:checked + .settings-switch {
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  background: var(--control-wash);
 }
 
 .fc-settings-toggle__input:checked + .settings-switch .settings-switch-knob {
@@ -12347,9 +12408,8 @@ body[data-codex-side="true"] .command-card {
 
 .codex-reader-tool[aria-pressed="true"] {
   color: var(--brass-bright);
-  border-color: var(--control-thumb-line);
-  background: var(--control-thumb);
-  box-shadow: var(--control-thumb-lift);
+  border-color: transparent;
+  background: var(--control-wash);
 }
 
 .codex-reader-tool:disabled {
@@ -13286,7 +13346,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   transition: background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"]) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
-.fc-select__option[aria-selected="true"] { border-color: var(--control-thumb-line); background: var(--control-thumb); color: var(--text-primary); box-shadow: var(--control-thumb-lift); }
+.fc-select__option[aria-selected="true"] { border-color: transparent; background: var(--control-wash); color: var(--text-primary); }
 .fc-select__option[aria-selected="true"]::after { content: "✓"; font-size: var(--t-xs); color: var(--brass-bright); }
 .fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: not-allowed; font-style: italic; opacity: var(--control-disabled-opacity); }
 .fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; border-color: transparent; color: var(--text-tertiary); }

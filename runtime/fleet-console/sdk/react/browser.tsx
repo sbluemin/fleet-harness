@@ -446,14 +446,14 @@ export function Select({
 }
 
 /**
- * Quiet Controls의 미끄러지는 융기면(thumb).
+ * Quiet Controls C′의 미끄러지는 워시(+다텀).
  *
  * 세그먼트 컨테이너(position: relative)의 첫 자식으로 넣으면, 활성 옵션
  * (`aria-pressed="true"` 또는 `.is-active`)의 offset 좌표 위에 `.segmented-thumb`
  * 장식을 얹고 선택 이동을 미끄러짐으로 잇는다. 시각과 전환은 전부 CSS 토큰
- * (--control-thumb*)과 CSS transition이 지므로 prefers-reduced-motion 단락도
- * CSS에서 함께 닫힌다. 자리를 잡기 전(is-placed 없음)에는 활성 옵션의 자체
- * face가 그대로 서므로 JS가 늦는 프레임에도 선택 상태는 항상 보인다.
+ * (--control-wash·brass 다텀)과 CSS transition이 지므로 prefers-reduced-motion
+ * 단락도 CSS에서 함께 닫힌다. 자리를 잡기 전(is-placed 없음)에는 활성 옵션의
+ * 자체 face가 그대로 서므로 JS가 늦는 프레임에도 선택 상태는 항상 보인다.
  */
 export function SegmentedThumb({
   activeSelector = '[aria-pressed="true"], .is-active',
