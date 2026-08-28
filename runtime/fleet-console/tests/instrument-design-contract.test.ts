@@ -3675,7 +3675,10 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain('} from "@fleet-console/sdk/composer";');
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
     expect(composer).toContain('${ultracodeArmed ? " is-ultracode" : ""}');
-    expect(composer).toContain('renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")');
+    // 미러는 한 층이고 구간마다 클래스를 싣는다 — `ultracode` 무장과 덱이 완성한 좌표가 같은
+    // textarea 위에 함께 겹치기 때문이다. 층을 둘로 띄우면 스크롤·자동 높이에서 서로 어긋난다.
+    expect(composer).toContain('className: "agent-chat-composer-ultracode-token"');
+    expect(composer).toContain("renderComposerSpans(draft, highlightSpans)");
     expect(composer).toContain('<p className="agent-chat-composer-ultracode-notice" role="status">');
 
     // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
@@ -3692,6 +3695,14 @@ describe("Effort track interaction grammar", () => {
     // 무장 프레임은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치
     // 채널(brass)도 빌리지 않는다. Quick Launch의 도는 conic 링과 달리 여기는 정지한 테두리다
     // (좌표의 is-ultracode가 이 면에서 이미 내린 결정). apex×중립 혼합은 oklab이다(hue 호 관통 방지).
+    // 완성된 좌표는 위치 채널(brass)이고 무장 표식은 apex다. 둘이 한 줄에 함께 설 수 있으므로
+    // 색이 갈라져 있어야 구분된다 — 좌표가 apex를 빌리면 무장한 것으로 읽힌다.
+    const resolved = block(".agent-chat-composer-resolved-token");
+    expect(resolved).toContain("var(--brass)");
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--apex"]) {
+      expect(resolved, signal).not.toContain(signal);
+    }
+
     const frame = block(".agent-chat-composer-frame.is-ultracode");
     expect(frame).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
     for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {

@@ -18,8 +18,8 @@ import {
 
 import { getT } from "../../i18n/index.js";
 import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
-import { ChatComposerDeck } from "./composer-deck-view.js";
-import { applyDeckPick, buildDeckSections, flattenDeckRows, readDeckToken } from "./composer-deck.js";
+import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
+import { applyDeckPick, buildDeckSections, flattenDeckRows, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
 
 /**
@@ -142,6 +142,10 @@ export function AgentChatComposer({
   /** 응답을 기다리는 취소 좌표들 — 같은 칩의 두 번째 활성화를 삼킨다. */
   const cancelsInFlight = React.useRef(new Set<string>());
   const [dragOver, setDragOver] = React.useState(false);
+  // 카탈로그는 덱과 미러가 함께 읽는다 — 미러가 좌표를 칠하려면 이름이 실재하는지
+  // 대조해야 하므로 덱 블록보다 앞에 선다.
+  const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
+  const [catalogTried, setCatalogTried] = React.useState(false);
   const attachmentsRef = React.useRef(attachments);
   attachmentsRef.current = attachments;
   // `ultracode` 무장 — Quick Launch와 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
@@ -150,6 +154,25 @@ export function AgentChatComposer({
   const [ultracodeIgnored, setUltracodeIgnored] = React.useState(false);
   const ultracodeTokens = React.useMemo(() => readUltracodeTokens(draft), [draft]);
   const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
+  /**
+   * 미러 층이 칠할 구간들 — `ultracode` 무장과 **해석된 좌표**(`/이름`·`@이름`)가 한 층을 나눠 쓴다.
+   *
+   * 층을 둘로 두지 않는 이유는 정렬이다: 미러는 textarea 위에 글자 단위로 겹치는 그림이라,
+   * 두 겹을 따로 띄우면 스크롤·자동 높이에서 서로 어긋난다. 한 목록으로 합쳐 한 번만 그린다.
+   */
+  const highlightSpans = React.useMemo(() => {
+    const spans: { start: number; end: number; className: string }[] = [];
+    if (ultracodeArmed) {
+      for (const token of ultracodeTokens) {
+        spans.push({ ...token, className: "agent-chat-composer-ultracode-token" });
+      }
+    }
+    for (const range of readResolvedTokenRanges(draft, catalog)) {
+      spans.push({ ...range, className: "agent-chat-composer-resolved-token" });
+    }
+    return spans.sort((a, b) => a.start - b.start);
+  }, [draft, ultracodeArmed, ultracodeTokens, catalog]);
+
   // 해제는 단어가 문면에서 전부 사라질 때 만료한다 — 프로그램 쓰기(전송 후 초기화)도 같은 경로를
   // 지나야 하므로 입력 핸들러가 아니라 문면 자체에 붙인다.
   React.useEffect(() => {
@@ -161,16 +184,16 @@ export function AgentChatComposer({
   // 문면·자동 높이가 바뀐 프레임에서 바로 맞춘다(그려진 뒤 맞추면 한 프레임 어긋난 채 보인다).
   React.useLayoutEffect(() => {
     syncUltracodeHighlight();
-  }, [draft, syncUltracodeHighlight, ultracodeArmed]);
+  }, [draft, syncUltracodeHighlight, highlightSpans.length]);
   // 프레임 폭은 첨부 트레이·패널 리사이즈로도 바뀐다 — textarea 자신을 관찰하는 것이 유일하게
   // 빠짐없는 기준이다.
   React.useEffect(() => {
     const input = inputRef.current;
-    if (!ultracodeArmed || !input || typeof ResizeObserver === "undefined") return;
+    if (highlightSpans.length === 0 || !input || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => syncUltracodeHighlight());
     observer.observe(input);
     return () => observer.disconnect();
-  }, [syncUltracodeHighlight, ultracodeArmed]);
+  }, [syncUltracodeHighlight, highlightSpans.length]);
   // 업로드가 끝나기 전에 칩이 제거된 key — 완료 콜백이 자신을 발견하면 방금 받은 id를 서버에서
   // 도로 거둔다(Quick Launch 첨부와 같은 회수 계약).
   const canceledKeysRef = React.useRef(new Set<string>());
@@ -178,8 +201,6 @@ export function AgentChatComposer({
   // ── 능력 덱 ────────────────────────────────────────────────────────────────
   // `/`는 세션의 능력(명령·스킬), `@`는 행위자(서브에이전트). 두 글자가 한 덱을 공유한다 —
   // 목록의 출처가 한 요청이고, 동시에 둘이 열릴 일이 없기 때문이다.
-  const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
-  const [catalogTried, setCatalogTried] = React.useState(false);
   const [deckDismissed, setDeckDismissed] = React.useState(false);
   const [focused, setFocused] = React.useState(false);
   const [deckIndex, setDeckIndex] = React.useState(0);
@@ -266,21 +287,17 @@ export function AgentChatComposer({
     if (!deckToken) return;
     const entry = deckRows[index];
     if (!entry) return;
-    const { draft: next, submit } = applyDeckPick(draft, deckToken, entry);
+    const { draft: next, caret: nextCaret } = applyDeckPick(draft, deckToken, entry);
     setDraft(next);
     setDeckDismissed(true);
-    if (submit) {
-      void send(next);
-      return;
-    }
-    // 캐럿을 문면 끝으로 보낸다 — 삽입만 한 경우 사용자가 이어서 인자를 친다.
+    // 보내지 않는다 — 완성일 뿐이다. 캐럿은 넣은 토큰 바로 뒤에 앉아 인자를 이어 치게 한다.
     const input = inputRef.current;
     window.requestAnimationFrame(() => {
       input?.focus();
-      input?.setSelectionRange(next.length, next.length);
-      setCaret(next.length);
+      input?.setSelectionRange(nextCaret, nextCaret);
+      setCaret(nextCaret);
     });
-  }, [deckToken, deckRows, draft, send]);
+  }, [deckToken, deckRows, draft]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
     const images = files.filter((file) => isComposerAttachmentCandidate(file));
@@ -468,9 +485,9 @@ export function AgentChatComposer({
                 onHover={setDeckIndex}
               />
             ) : null}
-            {ultracodeArmed ? (
+            {highlightSpans.length > 0 ? (
               <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
-                {renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")}
+                {renderComposerSpans(draft, highlightSpans)}
               </div>
             ) : null}
             <ComposerInput

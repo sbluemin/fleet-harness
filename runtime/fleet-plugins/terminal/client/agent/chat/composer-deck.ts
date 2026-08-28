@@ -102,18 +102,16 @@ export function flattenDeckRows(sections: readonly ChatDeckSection[]): readonly 
 export interface ChatDeckPick {
   /** 확정 뒤의 초안. */
   readonly draft: string;
-  /**
-   * 이 선택이 곧 전송인가.
-   *
-   * 인자를 받지 않는 명령만 참이다. `argumentHint`가 있는 항목을 바로 보내면 인자 없이 나가고,
-   * 에이전트는 지목만으로 할 일이 정해지지 않으므로 언제나 거짓이다 — 둘 다 사용자가 이어서
-   * 쓸 자리를 남긴다.
-   */
-  readonly submit: boolean;
+  /** 확정 뒤 캐럿이 앉을 자리. 이어서 인자를 치는 자리이므로 언제나 삽입된 토큰의 끝이다. */
+  readonly caret: number;
 }
 
 /**
- * 고른 항목을 초안에 앉힌다.
+ * 고른 항목을 초안에 앉힌다. **보내지 않는다 — 입력을 완성할 뿐이다.**
+ *
+ * 인자 없는 명령을 즉시 보내던 초기 계약을 접었다: 같은 Enter가 어떤 행에서는 완성이고 어떤
+ * 행에서는 전송이면, 사용자는 목록을 고르기 전에 그 행이 어느 쪽인지 먼저 알아야 한다. 완성은
+ * 언제나 완성이고, 보내는 것은 그다음 Enter다 — 자동완성이 지키는 통상 약속과 같다.
  *
  * 슬래시는 입력 전체를 소유하므로 통째로 갈아 끼우고, 멘션은 문장 중간에 있을 수 있어 토큰
  * 구간만 바꾼다 — 뒤에 이미 쓴 문장이 있으면 그대로 살아남는다.
@@ -124,9 +122,34 @@ export function applyDeckPick(
   entry: AgentChatCatalogEntry,
 ): ChatDeckPick {
   if (token.kind === "agent") {
-    const tail = value.slice(token.at + 1 + token.query.length);
-    return { draft: `${value.slice(0, token.at)}@${entry.name} ${tail.replace(/^\s+/, "")}`, submit: false };
+    const head = `${value.slice(0, token.at)}@${entry.name} `;
+    const tail = value.slice(token.at + 1 + token.query.length).replace(/^\s+/, "");
+    return { draft: `${head}${tail}`, caret: head.length };
   }
-  const submit = entry.argumentHint.length === 0;
-  return { draft: submit ? `/${entry.name}` : `/${entry.name} `, submit };
+  const head = `/${entry.name} `;
+  return { draft: head, caret: head.length };
+}
+
+/**
+ * 문면에서 **카탈로그에 실제로 있는** 토큰 구간들을 찾는다. 완성된 좌표에 색을 입히는 자리다.
+ *
+ * 카탈로그와 대조하는 이유는 정직함이다: 모양만 맞으면 칠해 버리면 오타난 `/desing`도 유효한
+ * 좌표처럼 보인다. 이름이 목록에 있을 때만 칠하므로, 색이 곧 "이건 실제로 부를 수 있다"는 뜻이 된다.
+ */
+export function readResolvedTokenRanges(
+  value: string,
+  catalog: AgentChatCatalog | null,
+): readonly { readonly start: number; readonly end: number }[] {
+  if (!catalog) return [];
+  const ranges: { start: number; end: number }[] = [];
+  const slashNames = new Set([...catalog.commands, ...catalog.skills].map((entry) => entry.name));
+  const slash = /^\/([A-Za-z0-9:_-]+)(?=\s|$)/.exec(value);
+  if (slash && slashNames.has(slash[1]!)) ranges.push({ start: 0, end: slash[0].length });
+  const agentNames = new Set(catalog.agents.map((entry) => entry.name));
+  const mention = /(?<=^|\s)@([A-Za-z0-9:._-]+)(?=\s|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = mention.exec(value)) !== null) {
+    if (agentNames.has(match[1]!)) ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges.sort((a, b) => a.start - b.start);
 }

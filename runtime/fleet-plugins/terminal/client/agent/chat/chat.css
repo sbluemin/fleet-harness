@@ -1498,17 +1498,15 @@
   position: sticky;
   top: calc(var(--space-1) * -1);
   z-index: 1;
-  /* 덱의 유리 틴트를 다시 칠하되 **불투명 바닥** 위에 올린다.
-     `/model` 밴드처럼 알파 틴트 + backdrop-filter만 두면 이 표면에서는 가려지지 않는다(실측):
-     덱 자신이 이미 backdrop-filter를 쓰는 탓에 그 안의 밴드는 형제 행을 흐리지 못하고, 두 줄로
-     펼쳐진 활성 행이 머리글 글자 사이로 그대로 읽힌다. 바닥은 리터럴이 아니라 면 토큰이라
-     테마를 따라 함께 움직인다. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
-    ),
-    var(--surface-panel);
+  /* 한 단 올라간 면 토큰 하나로 칠한다.
+     유리 틴트를 섞던 앞선 판은 테마마다 다르게 착지했다(실측): carbon에서는 틴트(L .188)와
+     panel(L .19)이 같아 밴드가 아예 사라지고, maritime에서는 틴트가 panel보다 **어둡고**,
+     instrument에서는 밝았다 — 대비의 크기뿐 아니라 방향까지 갈렸다.
+     `--surface-panel-raised`는 "패널보다 한 단 위"를 테마별로 이미 조율해 둔 토큰이라 네 테마에서
+     같은 뜻으로 읽히고, 라이트 테마에서는 그 한 단이 올바르게 **어두운 쪽**으로 뒤집힌다.
+     불투명이어야 하는 이유는 따로 있다: 덱 자신이 backdrop-filter를 쓰는 탓에 그 안의 밴드는
+     형제 행을 흐리지 못해, 알파만으로는 스크롤하는 행이 머리글 글자 사이로 그대로 읽힌다. */
+  background: var(--surface-panel-raised);
 }
 
 .agent-chat-deck-category-rule {
@@ -1523,6 +1521,11 @@
 }
 
 .agent-chat-deck-row {
+  /* 고정 머리글이 가리는 만큼 미리 비켜 둔다. `scrollIntoView({block:"nearest"})`는 스크롤포트의
+     가장자리만 보고 판단하므로, 이 여백이 없으면 위로 이동한 행이 머리글 **뒤로** 들어가 앉아
+     사용자에게는 포커스가 사라진 것처럼 보인다(실측). */
+  scroll-margin-top: 34px;
+  scroll-margin-bottom: var(--space-1);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -1652,6 +1655,17 @@
 /* 인식된 단어는 좌표 ULTRACODE 티어·강도 트랙과 같은 apex 물결로 흐른다 — 같은 능력이면 같은
    어휘다. 미러 층 위에 겹치므로 자족 폭을 바꾸는 속성(굵기·자간)은 쓰지 않는다: 보이는 글자와
    textarea가 그리는 캐럿·선택이 어긋난다. 신호는 색이 싣는다. */
+/* 덱으로 완성된 좌표 — 이 문면이 실제로 부를 수 있는 것임을 말한다.
+   brass는 이 제품에서 위치·초점 채널이고, 완성된 좌표는 "여기가 어디로 간다"는 위치 정보라
+   같은 채널에 앉는다. 신호색(aurora/warn/coral)을 쓰면 상태를 말하는 것으로 읽힌다.
+   무장 표식(apex)과 색이 갈라져야 둘이 한 줄에 함께 서도 구분된다. */
+.agent-chat-composer-resolved-token {
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--brass) 15%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 26%, transparent);
+  color: var(--brass);
+}
+
 .agent-chat-composer-ultracode-token {
   background-image: linear-gradient(
     105deg,

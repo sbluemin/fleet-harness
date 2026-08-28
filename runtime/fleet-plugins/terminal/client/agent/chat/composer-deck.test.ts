@@ -7,6 +7,7 @@ import {
   flattenDeckRows,
   readAgentToken,
   readDeckToken,
+  readResolvedTokenRanges,
   readSlashToken,
 } from "./composer-deck.js";
 
@@ -103,21 +104,23 @@ describe("buildDeckSections", () => {
 });
 
 describe("applyDeckPick", () => {
-  it("sends immediately when the command takes no arguments", () => {
+  /**
+   * 고르는 것은 언제나 **완성**이지 전송이 아니다. 인자 없는 명령만 즉시 보내던 초기 계약은,
+   * 같은 Enter가 행마다 다른 일을 하게 만들어 사용자가 고르기 전에 결과를 예측할 수 없었다.
+   */
+  it("completes without sending, even for a command that takes no arguments", () => {
     const token = readSlashToken("/cl", 3)!;
-    expect(applyDeckPick("/cl", token, CATALOG.commands[0]!)).toEqual({ draft: "/clear", submit: true });
+    expect(applyDeckPick("/cl", token, CATALOG.commands[0]!)).toEqual({ draft: "/clear ", caret: 7 });
   });
 
-  it("only inserts when an argument hint exists", () => {
-    // 인자를 받는 항목을 바로 보내면 빈손으로 나간다.
+  it("leaves the caret after the inserted token so arguments can follow", () => {
     const token = readSlashToken("/com", 4)!;
-    expect(applyDeckPick("/com", token, CATALOG.commands[1]!)).toEqual({ draft: "/compact ", submit: false });
+    expect(applyDeckPick("/com", token, CATALOG.commands[1]!)).toEqual({ draft: "/compact ", caret: 9 });
   });
 
-  it("never submits an agent mention", () => {
-    // 행위자 지목만으로는 할 일이 정해지지 않는다.
+  it("completes an agent mention the same way", () => {
     const token = readAgentToken("@Exp", 4)!;
-    expect(applyDeckPick("@Exp", token, CATALOG.agents[0]!)).toEqual({ draft: "@Explore ", submit: false });
+    expect(applyDeckPick("@Exp", token, CATALOG.agents[0]!)).toEqual({ draft: "@Explore ", caret: 9 });
   });
 
   it("keeps text written after the mention", () => {
@@ -128,6 +131,26 @@ describe("applyDeckPick", () => {
 
   it("replaces the whole line for a slash pick even mid-word", () => {
     const token = readSlashToken("/pr-", 4)!;
-    expect(applyDeckPick("/pr-", token, CATALOG.skills[1]!).draft).toBe("/pr-workflow");
+    expect(applyDeckPick("/pr-", token, CATALOG.skills[1]!).draft).toBe("/pr-workflow ");
+  });
+});
+
+describe("readResolvedTokenRanges", () => {
+  /** 색은 "이건 실제로 부를 수 있다"는 뜻이어야 한다 — 모양만 맞는 오타를 칠하면 그 뜻이 죽는다. */
+  it("marks a command that exists and ignores one that does not", () => {
+    expect(readResolvedTokenRanges("/clear ", CATALOG)).toEqual([{ start: 0, end: 6 }]);
+    expect(readResolvedTokenRanges("/celar ", CATALOG)).toEqual([]);
+  });
+
+  it("marks an agent mention anywhere in the sentence", () => {
+    expect(readResolvedTokenRanges("ask @Explore to look", CATALOG)).toEqual([{ start: 4, end: 12 }]);
+  });
+
+  it("leaves an email alone", () => {
+    expect(readResolvedTokenRanges("mail me@Explore.com", CATALOG)).toEqual([]);
+  });
+
+  it("marks nothing while the catalog is unknown", () => {
+    expect(readResolvedTokenRanges("/clear", null)).toEqual([]);
   });
 });

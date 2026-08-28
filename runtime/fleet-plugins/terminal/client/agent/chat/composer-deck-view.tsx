@@ -158,3 +158,26 @@ export function ChatComposerDeck({
     </div>
   );
 }
+
+/**
+ * 미러 층의 문면. `renderUltracodeHighlight`와 같은 일을 하되 구간마다 **다른 클래스**를 싣는다 —
+ * 무장 표식과 해석된 좌표는 뜻이 다르므로 색도 달라야 하고, SDK 쪽 렌더러는 클래스를 하나만 받는다.
+ *
+ * 문면은 한 글자도 바꾸지 않는다. 미러는 읽히는 표면이 아니라 textarea 위에 정확히 겹치는
+ * 그림이라, 길이가 달라지면 그 자리부터 두 층이 어긋난다. 끝의 zero-width space도 같은 이유다.
+ */
+export function renderComposerSpans(
+  value: string,
+  spans: readonly { readonly start: number; readonly end: number; readonly className: string }[],
+): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  spans.forEach((span, index) => {
+    if (span.start < at) return;
+    if (span.start > at) parts.push(value.slice(at, span.start));
+    parts.push(<span key={`span-${index}`} className={span.className}>{value.slice(span.start, span.end)}</span>);
+    at = span.end;
+  });
+  parts.push(`${value.slice(at)}\u200b`);
+  return parts;
+}
