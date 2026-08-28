@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.76.1] - 2026-08-28
+
+### fleet-console
+
+#### Fixed
+- Keep the Alt+Arrow panel shortcuts working while a chat composer holds focus, so moving between panels no longer dies exactly where the caret lives.
+- Title a chat background job from the tool call that started it, so non-ASCII titles no longer arrive garbled on Windows.
+- Codex expanded reading now keeps the document title block and the body on one shared center axis, in every reading width and with or without the related-entry rail.
+
 ## [1.76.0] - 2026-08-26
 
 ### fleet-console

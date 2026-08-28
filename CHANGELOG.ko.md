@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.76.1] - 2026-08-28
+
+### fleet-console
+
+#### Fixed
+- 채팅 컴포저에 포커스가 있어도 Alt+방향키 패널 단축키가 살아 있어, 캐럿이 머무는 자리에서 패널 이동이 죽지 않습니다.
+- 채팅 백그라운드 작업 제목을 그 작업을 시작한 도구 호출에서 읽어, Windows에서 한글 제목이 깨져 보이던 문제를 고쳤습니다.
+- Codex 크게 읽기에서 문서 제목 블록과 본문이 모든 읽기 폭에서, 관련 항목 옆단이 있든 없든 하나의 중앙 축에 정렬됩니다.
+
 ## [1.76.0] - 2026-08-26
 
 ### fleet-console
