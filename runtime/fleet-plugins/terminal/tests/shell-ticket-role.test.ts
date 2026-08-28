@@ -92,12 +92,15 @@ async function mount(options: MountOptions): Promise<{
       paths: {
         resolveTheaterPath: () => "/tmp/theater",
         workspaceHash: () => "theater-1",
+        ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
+        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
       },
       storage: { readJson: async () => null, writeJson: async () => {} },
       events: { subscribe: () => () => {}, publish: () => {} },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { responses.push({ status, body }); },
         readJsonBody: async <T,>() => requestBody as T,
+        securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
       },
       security: {
         validateHost: () => true,
