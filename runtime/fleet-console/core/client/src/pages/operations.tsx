@@ -25,7 +25,6 @@ import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { TriageSideBar } from "../sidebar/triage-side-bar.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
-import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { ExpandedSurfaceLayer } from "../expanded-surface/layer.js";
 import { useCodexReaderUrlSync } from "../hooks/use-codex-reader-url.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -800,7 +799,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onClose={closeOperationMenu}
         />
       ) : null}
-      <CodexReadingSheet />
       <ExpandedSurfaceLayer />
     </div>
   );

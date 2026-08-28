@@ -12222,6 +12222,42 @@ body[data-codex-side="true"] .command-card {
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: codex-reading-slot;
+}
+
+/* 좁은 슬롯에서 220px 목차는 본문을 밀어낸다 — 읽을 것이 남아야 정독면이다.
+   목차는 문서로 가는 지름길일 뿐이고, 본문은 그 자체로 목적이다. */
+@container codex-reading-slot (max-width: 620px) {
+  .codex-reading-body .codex-reading-sheet-toc {
+    display: none;
+  }
+}
+
+/* 도구가 줄바꿈하면 40px 머리가 세로로 무너진다 — 넘치면 가로로 흘린다. */
+.codex-reading-body > .codex-reading-sheet-head {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.codex-reading-body > .codex-reading-sheet-head::-webkit-scrollbar {
+  display: none;
+}
+
+.codex-reading-body .codex-reader-tools,
+.codex-reading-body .codex-reader-history {
+  flex: none;
+}
+
+/* 슬롯 머리가 문서 이름과 닫기를 이미 말한다 — 리더의 옛 시트 머리는 그 아래에서
+   도구 줄로만 남는다(제목 중복 금지). */
+.codex-reading-body > .codex-reading-sheet-head {
+  flex: 0 0 40px;
+  height: 40px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
 }
 
 .codex-reading-sheet {
