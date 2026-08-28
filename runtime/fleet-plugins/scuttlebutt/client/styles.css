@@ -4,12 +4,74 @@
   justify-items: start;
 }
 
+.scuttlebutt-settings-sizes {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+}
+
+.scuttlebutt-settings-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-settings-size-name {
+  min-width: 3.5em;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  text-align: right;
+}
+
+.scuttlebutt-settings-size-reset {
+  flex: none;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-settings-size-reset:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-settings-size-reset:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-settings-size-reset:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .scuttlebutt-settings-sizes {
+    justify-items: stretch;
+  }
+
+  .scuttlebutt-settings-size {
+    justify-content: space-between;
+  }
+}
+
 .scuttlebutt-bird {
   position: fixed;
   left: 0;
   top: 0;
-  /* roaming.ts 의 BIRD_WIDTH 와 같은 값이어야 한다 — 엔진이 이 크기로 화면 경계를 계산한다. */
-  width: 84px;
+  /* 폭은 flock.tsx 가 부관별 설정값을 인라인으로 싣는다 — 엔진이 그 크기로 화면 경계·갑판
+     바닥·편대 반발력을 계산하므로, 여기 상수를 두면 물리와 그림이 두 곳에서 갈린다.
+     이 값은 인라인 폭이 붙기 전 한 프레임을 위한 기본값일 뿐이다. */
+  width: var(--scuttlebutt-bird-width, 84px);
   border: 0;
   background: transparent;
   padding: 0;

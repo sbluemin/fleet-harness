@@ -41,6 +41,22 @@ export interface SettingsFieldProps {
   readonly children: React.ReactNode;
 }
 
+export interface SettingsSliderProps {
+  readonly value: number;
+  readonly min: number;
+  readonly max: number;
+  readonly step: number;
+  /** 끌리는 동안 매 틱 호출된다 — 미리보기만 하고 저장하지 않는다. */
+  readonly onPreview: (next: number) => void;
+  /** 손을 뗄 때 한 번 호출된다 — 저장은 여기서만 일어난다. */
+  readonly onCommit: (next: number) => void;
+  readonly label: string;
+  readonly formatValue: (value: number) => string;
+  readonly decreaseLabel: string;
+  readonly increaseLabel: string;
+  readonly disabled?: boolean;
+}
+
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
   return descriptor;
 }
@@ -138,6 +154,99 @@ export function SettingsSelect({ value, options, onChange, label, disabled = fal
     <div className="fc-settings-select">{control}</div>
   );
 }
+
+/**
+ * 연속값을 고르는 하나의 문법. 코어의 터미널·UI 글꼴 크기가 쓰는 −/슬라이더/+ 조합을 그대로
+ * 플러그인에 연다 — 같은 조작이 표면마다 다른 물건으로 보이면 한쪽만 고쳐지는 날이 온다.
+ * 트랙과 손잡이는 코어의 공유 `.fleet-slider`가 그리고, 채움 비율만 `--slider-fill`로 싣는다.
+ *
+ * 저장 시점이 이 컴포넌트의 계약이다. 끌리는 동안에는 onPreview만 부르고 손을 뗄 때(pointerup·
+ * keyup·blur) onCommit을 한 번 부른다. 매 틱 저장하면 플러그인 설정 문서가 통째로 초당 수십 번
+ * 다시 쓰이고, 진행 중인 쓰기끼리 롤백이 엇갈려 앞선 저장을 되돌린다.
+ */
+export function SettingsSlider({
+  value,
+  min,
+  max,
+  step,
+  onPreview,
+  onCommit,
+  label,
+  formatValue,
+  decreaseLabel,
+  increaseLabel,
+  disabled = false,
+}: SettingsSliderProps): React.ReactElement {
+  const clamp = (next: number): number => Math.max(min, Math.min(max, next));
+  const read = (event: React.SyntheticEvent<HTMLInputElement>): number =>
+    clamp(Number(event.currentTarget.value));
+  const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
+
+  // 한 번의 조작이 pointerup·keyup·blur를 잇달아 낸다. 소비처마다 중복을 걸러 내게 두면
+  // 저마다 다르게 걸러 내므로, 같은 값을 두 번 저장하지 않는 책임은 이 컨트롤이 진다.
+  const lastCommittedRef = React.useRef(value);
+  const dirtyRef = React.useRef(false);
+  const commit = (next: number, deliberate = false): void => {
+    if (!deliberate && !dirtyRef.current && next === lastCommittedRef.current) return;
+    lastCommittedRef.current = next;
+    dirtyRef.current = false;
+    onCommit(next);
+  };
+
+  return (
+    <div className="fc-settings-slider">
+      <button
+        type="button"
+        className="fc-settings-slider__stepper"
+        disabled={disabled || value <= min}
+        aria-label={decreaseLabel}
+        onClick={() => commit(clamp(value - step), true)}
+      >
+        −
+      </button>
+      <input
+        className="fleet-slider fc-settings-slider__range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-label={label}
+        aria-valuetext={formatValue(value)}
+        style={{ "--slider-fill": `${fill}%` } as React.CSSProperties}
+        onChange={(event) => {
+          dirtyRef.current = true;
+          onPreview(read(event));
+        }}
+        onPointerUp={(event) => commit(read(event))}
+        // 값을 움직이는 키에서만 저장한다 — Tab·Shift·Escape의 keyup까지 받으면 값이 그대로인
+        // 채로 설정을 다시 쓴다.
+        onKeyUp={(event) => {
+          if (VALUE_KEYS.has(event.key)) commit(read(event));
+        }}
+        onBlur={(event) => commit(read(event))}
+      />
+      <button
+        type="button"
+        className="fc-settings-slider__stepper"
+        disabled={disabled || value >= max}
+        aria-label={increaseLabel}
+        onClick={() => commit(clamp(value + step), true)}
+      >
+        +
+      </button>
+      {/* 값은 range 가 aria-valuetext 로 이미 읽어 준다. output 은 role=status(라이브 영역)라
+          그대로 두면 한 번 움직일 때마다 같은 값을 두 번 말한다 — 눈으로만 읽는 표시로 남긴다. */}
+      <output className="fc-settings-slider__value" aria-hidden="true">{formatValue(value)}</output>
+    </div>
+  );
+}
+
+const VALUE_KEYS = new Set([
+  "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp",
+  "End", "Home", "PageDown", "PageUp",
+]);
 
 export function SettingsField({ label, hint, children }: SettingsFieldProps): React.ReactElement {
   const labelId = React.useId();

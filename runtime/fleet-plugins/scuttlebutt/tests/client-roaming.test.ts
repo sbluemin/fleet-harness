@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BIRD_HALF_HEIGHT,
-  BIRD_HALF_WIDTH,
+  DEFAULT_BIRD_SIZE,
   PERSONAS,
+  birdSize,
+  clampBirdWidth,
   deckY,
+  parkedLayout,
   placeStayPut,
   stayPutFractions,
   stepFlock,
@@ -32,9 +34,13 @@ function bird(overrides: Partial<BirdBody> = {}): BirdBody {
     grab: null,
     anchored: false,
     moored: false,
+    size: DEFAULT_BIRD_SIZE,
     ...overrides,
   };
 }
+
+const BIRD_HALF_WIDTH = DEFAULT_BIRD_SIZE.halfWidth;
+const BIRD_HALF_HEIGHT = DEFAULT_BIRD_SIZE.halfHeight;
 
 function sequence(...values: number[]): () => number {
   let index = 0;
@@ -71,7 +77,7 @@ describe("Scuttlebutt roaming engine", () => {
     if (expected === "deck") {
       expect(body.deckPlan).toBe(true);
       expect(body.tx).toBeCloseTo(400);
-      expect(body.ty).toBeCloseTo(deckY(viewport));
+      expect(body.ty).toBeCloseTo(deckY(bird(), viewport));
     } else if (expected === "preen") {
       expect(body.mode).toBe("preen");
       expect(body.modeUntil).toBeCloseTo(13.2);
@@ -87,11 +93,11 @@ describe("Scuttlebutt roaming engine", () => {
     step(left);
     expect(left.x).toBeCloseTo(BIRD_HALF_WIDTH + 12);
     expect(left.vx).toBeCloseTo(40);
-    expect(left.y).toBeCloseTo(300 + (deckY(viewport) - 300) * 0.4);
+    expect(left.y).toBeCloseTo(300 + (deckY(bird(), viewport) - 300) * 0.4);
 
     const right = bird({
       x: viewport.width - BIRD_HALF_WIDTH - 13,
-      y: deckY(viewport),
+      y: deckY(bird(), viewport),
       vx: 40,
       mode: "walk",
       modeUntil: 20,
@@ -164,7 +170,7 @@ describe("Scuttlebutt roaming engine", () => {
   });
 
   it.each(["walk", "sleep"] as const)("removes bob and tilt exactly while in %s mode", (mode) => {
-    const body = bird({ x: 200, y: deckY(viewport), vx: 30, vy: 15, phase: 1, mode, modeUntil: 20 });
+    const body = bird({ x: 200, y: deckY(bird(), viewport), vx: 30, vy: 15, phase: 1, mode, modeUntil: 20 });
     const frame = step(body);
     expect(frame.left).toBeCloseTo(body.x - BIRD_HALF_WIDTH);
     expect(frame.top).toBeCloseTo(body.y - BIRD_HALF_HEIGHT);
@@ -220,5 +226,120 @@ describe("Scuttlebutt roaming engine", () => {
   it("accepts each persona through the readonly engine contract", () => {
     const personas: readonly BirdPersona[] = [PERSONAS.tori, PERSONAS.bori, PERSONAS.dori];
     expect(personas.map((entry) => entry.max)).toEqual([75, 150, 110]);
+  });
+
+  // ── 부관별 크기 ──────────────────────────────────────────────────────────────
+
+  it("derives height and both half-extents from the width alone", () => {
+    const size = birdSize(84);
+    expect(size.height).toBeCloseTo(96.923, 3);
+    // 종전에는 반높이가 47로 못박혀 있어 시각 중심(48.46)과 1.46px 어긋나 있었다.
+    expect(size.halfHeight).toBeCloseTo(size.height / 2);
+    expect(size.halfWidth).toBeCloseTo(42);
+  });
+
+  it("returns a stored width to the contract grid", () => {
+    expect(clampBirdWidth(84)).toBe(84);
+    expect(clampBirdWidth(4)).toBe(48);
+    expect(clampBirdWidth(9_000)).toBe(112);
+    expect(clampBirdWidth(63)).toBe(64);
+    // 화면을 덮거나 사라진 부관은 설정에 복구 수단이 없으면 되돌릴 길이 없다.
+    expect(clampBirdWidth(undefined)).toBe(84);
+    expect(clampBirdWidth("84")).toBe(84);
+    expect(clampBirdWidth(Number.NaN)).toBe(84);
+  });
+
+  it("clamps each bird to the edge its own size allows", () => {
+    const small = bird({ x: 5_000, y: 5_000, size: birdSize(48), tx: 5_000, ty: 5_000 });
+    const large = bird({ x: 5_000, y: 5_000, size: birdSize(112), tx: 5_000, ty: 5_000 });
+    stepFlock([small], [persona], viewport, 0.05, 10, () => 0);
+    stepFlock([large], [persona], viewport, 0.05, 10, () => 0);
+
+    expect(small.x).toBeCloseTo(viewport.width - 24 - 6);
+    expect(large.x).toBeCloseTo(viewport.width - 56 - 6);
+    // 큰 부관이 더 안쪽에서 멈춰야 화면 밖으로 몸이 걸치지 않는다.
+    expect(large.x).toBeLessThan(small.x);
+  });
+
+  it("stands every walking bird's feet on one deck line whatever its size", () => {
+    const small = bird({ size: birdSize(48) });
+    const large = bird({ size: birdSize(112) });
+    const footLine = (body: BirdBody) => deckY(body, viewport) + body.size.halfHeight;
+    expect(footLine(small)).toBeCloseTo(footLine(large));
+  });
+
+  it("derives the separation threshold from both bodies, not one", () => {
+    // 같은 크기 둘이면 종전의 리터럴 84가 그대로 나온다 — 기존 거동이 보존된다.
+    const a = bird({ x: 300, y: 250, tx: 300, ty: 250 });
+    const b = bird({ x: 300 + 83, y: 250, tx: 383, ty: 250 });
+    stepFlock([a, b], [persona, persona], viewport, 0.1, 5, () => 0.9);
+    expect(a.vx).toBeLessThan(0);
+
+    // 작은 둘은 같은 거리에서 서로를 밀지 않는다: 임계가 두 반폭의 합이기 때문이다.
+    const smallA = bird({ x: 300, y: 250, tx: 300, ty: 250, size: birdSize(48) });
+    const smallB = bird({ x: 383, y: 250, tx: 383, ty: 250, size: birdSize(48) });
+    stepFlock([smallA, smallB], [persona, persona], viewport, 0.1, 5, () => 0.9);
+    expect(smallA.vx).toBeCloseTo(0);
+
+    // 섞인 쌍은 한쪽 반경이 아니라 두 반폭의 합(80)에서 갈린다.
+    const mixedSmall = bird({ x: 300, y: 250, tx: 300, ty: 250, size: birdSize(48) });
+    const mixedLarge = bird({ x: 379, y: 250, tx: 379, ty: 250, size: birdSize(112) });
+    stepFlock([mixedSmall, mixedLarge], [persona, persona], viewport, 0.1, 5, () => 0.9);
+    expect(mixedSmall.vx).toBeLessThan(0);
+    expect(mixedLarge.vx).toBeGreaterThan(0);
+  });
+
+  it("keeps an oversized bird reachable instead of pinning it outside the viewport", () => {
+    const tiny = { width: 60, height: 60 };
+    const body = bird({ x: 0, y: 0, size: birdSize(112) });
+    stepFlock([body], [persona], tiny, 0.05, 10, () => 0);
+    // 화면보다 큰 부관은 하한이 상한을 넘는다 — 그때는 중앙 한 점으로 접어 잡을 수 있게 남긴다.
+    expect(body.x).toBeCloseTo(30);
+    expect(body.y).toBeCloseTo(30);
+    expect(Number.isFinite(body.x)).toBe(true);
+  });
+
+  it("restores a stay-put fraction within the bounds the new size allows", () => {
+    const large = bird({ size: birdSize(112) });
+    placeStayPut(large, viewport, 1, 1);
+    // 오른쪽 끝에 저장돼 있었어도 커진 몸이 화면 밖으로 나가지 않는다.
+    expect(large.x).toBeCloseTo(viewport.width - 56 - 6);
+    expect(large.x + large.size.halfWidth).toBeLessThanOrEqual(viewport.width);
+  });
+
+  it("packs mixed-width parked aides on one foot line with an even gap", () => {
+    const sizes = [birdSize(112), birdSize(84), birdSize(48)];
+    const slots = parkedLayout(sizes, viewport, 8);
+
+    // 간격은 이웃한 두 상자 사이에서 재야 한다 — 보폭 하나로는 폭이 다른 순간 어긋난다.
+    const gaps = slots.slice(1).map((slot, index) =>
+      slot.left - (slots[index]!.left + sizes[index]!.width));
+    expect(gaps.map((gap) => Math.round(gap))).toEqual([8, 8]);
+
+    // 발끝은 크기가 달라도 한 줄에 선다.
+    const feet = slots.map((slot, index) => slot.top + sizes[index]!.height);
+    expect(feet[0]).toBeCloseTo(feet[1]!);
+    expect(feet[1]).toBeCloseTo(feet[2]!);
+
+    // 오른쪽 여백을 지키고 화면 밖으로 나가지 않는다.
+    const last = slots.at(-1)!;
+    expect(last.left + sizes.at(-1)!.width).toBeCloseTo(viewport.width - 16);
+    expect(slots[0]!.left).toBeGreaterThanOrEqual(8);
+  });
+
+  it("compresses the parked gap rather than pushing an aide off screen", () => {
+    const narrow = { width: 200, height: 600 };
+    const sizes = [birdSize(112), birdSize(112), birdSize(112)];
+    const slots = parkedLayout(sizes, narrow, 8);
+
+    expect(slots[0]!.left).toBeGreaterThanOrEqual(8);
+    expect(slots.at(-1)!.left + 112).toBeLessThanOrEqual(narrow.width - 16 + 0.001);
+    // 겹치더라도 화면 안에 남는다 — 밖으로 밀려나면 잡을 수도 되돌릴 수도 없다.
+    const gap = slots[1]!.left - (slots[0]!.left + 112);
+    expect(gap).toBeLessThan(8);
+  });
+
+  it("returns no slots when every aide is off duty", () => {
+    expect(parkedLayout([], viewport, 8)).toEqual([]);
   });
 });
