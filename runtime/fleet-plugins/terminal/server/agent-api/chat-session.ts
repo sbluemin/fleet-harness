@@ -1501,20 +1501,59 @@ class AgentChatSession {
    * `null`(못 물었다)과 빈 배열(물었는데 없다)을 가른다: `null`이면 캐시를 세우지 않아 다음
    * 요청이 다시 시도하고, 빈 배열이면 "이 세션엔 없다"를 캐시한다.
    */
+  /**
+   * 디스크에 스킬로 놓여 있는 이름들. 분류의 **셋째 출처**다.
+   *
+   * SDK의 두 출처가 서로를 포함하지 않고, init은 첫 턴 전에는 오지 않는다 — 그래서 `/`만 눌러
+   * 연 세션에서는 사용자가 자기 손으로 만든 스킬(`~/.claude/skills/<이름>`)마저 명령 칸에 섰다.
+   * 디렉터리 이름이 곧 스킬 이름이라는 규약은 Skills 플러그인이 이미 쓰고 있는 것과 같다.
+   *
+   * 여기서 읽은 이름은 **분류에만** 쓴다 — 목록에 무엇이 있는지는 여전히 SDK가 정한다. 그래서
+   * 디스크에만 있고 세션이 싣지 않은 이름은 애초에 행이 되지 않는다.
+   */
+  private async readSkillDirNames(): Promise<readonly string[]> {
+    const roots = [
+      path.join(this.seed.claudeConfigDir, "skills"),
+      path.join(this.seed.cwd, ".claude", "skills"),
+    ];
+    const names: string[] = [];
+    for (const root of roots) {
+      try {
+        for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+          // 심볼릭 링크도 센다. `Dirent.isDirectory()`는 **링크 자신**을 보고하므로 링크로 걸어 둔
+          // 스킬은 전부 false가 된다 — 실측한 홈에서는 9개 중 8개가 링크였고, 그래서 사용자가
+          // 자기 손으로 만든 스킬이 명령 칸에 섰다. 링크가 가리키는 곳까지 따라가 확인한다.
+          if (entry.isDirectory()) { names.push(entry.name); continue; }
+          if (!entry.isSymbolicLink()) continue;
+          try {
+            if ((await fs.stat(path.join(root, entry.name))).isDirectory()) names.push(entry.name);
+          } catch {
+            // 끊긴 링크는 스킬이 아니다.
+          }
+        }
+      } catch {
+        // 없는 디렉터리는 결함이 아니다 — 그 층에 스킬이 없다는 뜻일 뿐이다.
+      }
+    }
+    return names;
+  }
+
   private primeCatalog(session: ClaudeGatewaySession): void {
     if (this.catalogFlight) return;
     this.catalogFlight = (async () => {
       try {
-        const [commands, agents, skills] = await Promise.all([
+        const [commands, agents, skills, onDisk] = await Promise.all([
           session.supportedCommands(),
           session.supportedAgents(),
           // 스킬 이름의 **주 출처**다. init 메시지의 `skills`는 첫 턴과 함께 오므로(실측),
           // `/`만 눌러 연 세션에서는 오지 않는다 — 그것에 기대면 그 세션 내내 스킬 전부가
           // 명령 칸에 선다. 이 요청은 턴과 무관하게 답한다.
           session.reloadSkills(),
+          this.readSkillDirNames(),
         ]);
         if (commands === null && agents === null) return;
         if (skills !== null) for (const entry of skills) this.skillNames.add(entry.name);
+        for (const name of onDisk) this.skillNames.add(name);
         // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
         // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
         this.rawCatalog = { commands: commands ?? [], agents: agents ?? [] };
