@@ -3280,19 +3280,18 @@
   cursor: crosshair;
 }
 
+/* War Room은 바닥 색만 말하고 그 위에 상시 비네트를 얹지 않는다. 종전의 `::after`
+   (z-index 70, canvas-abyss 46% 방사 비네트)는 덱(z-index 80)·모드 프레임(76) 아래가 아니라
+   패널 세계(.operations-canvas-world, z-index auto) **위**에 놓여 있었다 — 그래서 덱 카드는
+   멀쩡한데 무대에 오른 패널만 네 모서리가 검게 죽었다(실측 1280×577, 무대 918×463:
+   Instrument 모서리 rgb(5,13,21)↔없을 때 (6,16,26), Maritime (6,21,33)↔(9,30,48),
+   Carbon (12,14,19)↔(16,20,26) — 파랑 채널 최대 −15/255. Whites는 abyss가 97.8%라 무변).
+   덱 상태에서 비네트가 실제로 닿는 곳은 캔버스 가장자리 26px 여백뿐이고 거기 바닥은 이미
+   심해라 기여가 ≤1/255였다 — 얻는 것 없이 무대 패널만 어둡게 하던 층이라 통째로 걷었다.
+   모드 진입의 스크림은 커튼(.canvas-mode-curtain)이 계속 소유한다. */
 .operations-canvas.is-triage {
   background: var(--canvas-field-triage);
   cursor: default;
-}
-
-/* 모드 스크림·비네트는 canvas-abyss를 따라 테마 극성에 맞춘다 — 다크=심해, 라이트=백무. */
-.operations-canvas.is-triage::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 70;
-  pointer-events: none;
-  background: radial-gradient(78% 66% at 50% 48%, transparent 55%, color-mix(in oklch, var(--canvas-abyss) 46%, transparent) 100%);
 }
 
 .operations-canvas.is-triage .operations-canvas-sea {

@@ -664,6 +664,12 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-triage {\n  background: var(--canvas-field-triage);");
     expect(components).toContain(".operations-canvas.is-formation-view {\n  background: var(--canvas-field-formation);");
 
+    // 모드 바닥은 색이지 그 위에 덮는 층이 아니다. 캔버스 전면 의사요소는 패널 세계
+    // (.operations-canvas-world, z-index auto) 위에 놓여 무대에 오른 패널을 통째로 어둡게 하므로
+    // 어떤 모드에서도 두지 않는다 — 진입 스크림은 커튼(.canvas-mode-curtain)이 소유한다.
+    expect(components).not.toMatch(/^\.operations-canvas\.is-triage::(after|before) \{/m);
+    expect(components).not.toMatch(/^\.operations-canvas\.is-formation-view::(after|before) \{/m);
+
     // 줌 곱셈은 격자 요소에서 일어나야 한다: :root 커스텀 속성 안에 중첩한 var()는 선언 지점인
     // :root에서 해석돼 컴포넌트가 넘긴 줌을 영원히 보지 못한다.
     // `.operations-canvas-grid`는 위치 선언을 sea와 공유하는 블록에도 등장한다 — 연출 블록만 고른다.
