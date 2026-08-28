@@ -475,6 +475,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         isLockAuthorized: () => true,
         resolveTerminalSocketRole: () => "control" as const,
       },
+      theaterFlags: { register: () => () => undefined },
       lifecycle: {
         registerCleanup: (cleanup: () => void | Promise<void>) => {
           lifecycleCleanups.push(cleanup);

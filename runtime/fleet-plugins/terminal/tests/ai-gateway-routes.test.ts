@@ -18,6 +18,7 @@ describe("AI gateway Console route adapter", () => {
       registerRouter,
       host: {
         paths: { pluginDataDir: () => pluginDataDir },
+        theaterFlags: { register: () => () => undefined },
         lifecycle: {
           registerCleanup: (candidate: () => void | Promise<void>) => {
             cleanup = candidate;

@@ -454,6 +454,7 @@ export interface FleetPluginHostCapabilities {
   readonly http: FleetPluginHttpHost;
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
+  readonly theaterFlags: FleetPluginTheaterFlagsHost;
 }
 
 export interface FleetPluginServerHost {
@@ -473,6 +474,16 @@ export interface FleetPluginOperationsHost {
   registerOperationType(type: string): () => void;
   registerPayloadSanitizer(pluginId: string, fields: readonly string[]): () => void;
   registerLaunchCatalog(pluginId: string, provider: OperationLaunchCatalogProvider): () => void;
+}
+
+/**
+ * Theater DTO에 플러그인이 실을 수 있는 플래그.
+ *
+ * 코어가 `hasWiki` 같은 필드를 직접 계산하면, 그 지식을 소유한 플러그인이 빠져도
+ * 필드는 남아 거짓을 말한다. 소유자가 채우고, 없으면 필드도 없다.
+ */
+export interface FleetPluginTheaterFlagsHost {
+  register(flag: string, resolve: (theaterId: string) => boolean): () => void;
 }
 
 export interface FleetPluginEventsHost {

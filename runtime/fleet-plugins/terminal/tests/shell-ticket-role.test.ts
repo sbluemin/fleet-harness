@@ -108,6 +108,7 @@ async function mount(options: MountOptions): Promise<{
         isLockAuthorized: () => true,
         resolveTerminalSocketRole: () => options.role,
       },
+      theaterFlags: { register: () => () => undefined },
       lifecycle: { registerCleanup: () => () => {} },
     },
   } as unknown as FleetPluginServerContext;

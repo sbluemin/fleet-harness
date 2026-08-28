@@ -122,6 +122,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null } =
         isTerminalAuthorized: () => true,
         resolveTerminalSocketRole: () => "control" as const,
       },
+      theaterFlags: { register: () => () => undefined },
       lifecycle: { registerCleanup: vi.fn() },
     },
   } as unknown as FleetPluginServerContext;

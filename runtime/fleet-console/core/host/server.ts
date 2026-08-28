@@ -509,6 +509,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   let desktopUpdateRequestedAt = 0;
   const pluginSseChannels = new Set<string>();
+  const pluginTheaterFlags = new Map<string, (theaterId: string) => boolean>();
 
   /**
    * Theater 생명주기. 플러그인이 Theater마다 자기 저장소를 열고 닫으려면 이 순간들을
@@ -673,6 +674,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return { path: workspace.path, id: workspaceHash(workspace.cwd) };
       },
       withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
+    },
+    theaterFlags: {
+      register: (flag: string, resolve: (theaterId: string) => boolean) => {
+        pluginTheaterFlags.set(flag, resolve);
+        return () => {
+          if (pluginTheaterFlags.get(flag) === resolve) pluginTheaterFlags.delete(flag);
+        };
+      },
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
@@ -2038,6 +2047,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return theaters.list().map((theater) => toTheaterInfo(theater, true));
   }
 
+  /** 플러그인이 등록한 플래그. 해석이 던지면 그 플래그만 빠진다 — 목록 전체를 잃지 않는다. */
+  function resolveTheaterFlags(theaterId: string): Record<string, boolean> {
+    const flags: Record<string, boolean> = {};
+    for (const [flag, resolve] of pluginTheaterFlags) {
+      try {
+        flags[flag] = resolve(theaterId);
+      } catch {
+        // 소유 플러그인이 답하지 못하면 그 사실을 조용히 참으로 바꾸지 않는다.
+      }
+    }
+    return flags;
+  }
+
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
     return {
       id: theater.id,
@@ -2046,6 +2068,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
       hasWiki,
+      ...resolveTheaterFlags(theater.id),
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === "terminal" && operation.type === "agent").length,
     };
   }
