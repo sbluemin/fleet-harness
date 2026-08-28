@@ -136,4 +136,40 @@ describe("Scuttlebutt size control", () => {
       sizes: { tori: 84, bori: 112, dori: 84 },
     }));
   });
+
+  it("falls back to the last confirmed size when consecutive saves both fail", async () => {
+    const settings = await mount({ tori: true });
+    const range = ranges()[0]!;
+    expect(getScuttlebuttSettings().sizes.tori).toBe(84);
+
+    let failFirst!: (reason: Error) => void;
+    let failSecond!: (reason: Error) => void;
+    const first = new Promise<void>((_r, reject) => { failFirst = reject; });
+    const second = new Promise<void>((_r, reject) => { failSecond = reject; });
+    settings.write = vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second)
+      .mockResolvedValue(undefined);
+
+    await act(async () => {
+      drag(range, 48);
+      range.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    // 두 번째 조작은 첫 번째의 아직 저장되지 않은 값(48)이 보이는 상태에서 시작한다.
+    await act(async () => {
+      drag(range, 96);
+      range.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+
+    await act(async () => {
+      failFirst(new Error("first save failed"));
+      failSecond(new Error("second save failed"));
+      await Promise.resolve();
+    });
+    await settle();
+
+    // 둘 다 실패했으면 화면은 서버가 마지막으로 받아들인 84로 돌아가야 한다. 48은 한 번도
+    // 저장된 적 없는 값이므로 그 자리에 남으면 화면과 저장이 갈린다.
+    expect(getScuttlebuttSettings().sizes.tori).toBe(84);
+  });
 });

@@ -46,6 +46,12 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
 };
 
 let settings = DEFAULT_SETTINGS;
+/**
+ * 서버가 마지막으로 받아들인 값. 저장이 실패했을 때 돌아갈 곳은 "쓰기 직전 스냅숏"이 아니라
+ * 이것이다 — 미리보기는 큐 밖에서 화면 상태를 미리 바꿔 두므로 그 스냅숏에는 아직 저장된 적
+ * 없는 값이 섞여 있고, 쓰기가 겹치면 그 오염이 서로의 롤백을 덮어쓴다.
+ */
+let persisted = DEFAULT_SETTINGS;
 let capability: ClientSettingsCapability | null = null;
 const listeners = new Set<() => void>();
 
@@ -53,7 +59,7 @@ export function connectScuttlebuttSettings(nextCapability: ClientSettingsCapabil
   capability = nextCapability;
   void nextCapability.read("scuttlebutt").then((value) => {
     if (capability !== nextCapability) return;
-    settings = parseSettings(value);
+    settings = persisted = parseSettings(value);
     emit();
   }).catch(() => undefined);
   return () => {
@@ -87,13 +93,14 @@ export async function writeScuttlebuttSettings(
   patch: Partial<ScuttlebuttSettings> | ((current: ScuttlebuttSettings) => Partial<ScuttlebuttSettings>),
 ): Promise<void> {
   const run = writeChain.then(async () => {
-    const previous = settings;
-    settings = { ...settings, ...(typeof patch === "function" ? patch(previous) : patch) };
+    settings = { ...settings, ...(typeof patch === "function" ? patch(settings) : patch) };
     emit();
+    const attempted = settings;
     try {
-      await capability?.write("scuttlebutt", { ...settings });
+      await capability?.write("scuttlebutt", { ...attempted });
+      persisted = attempted;
     } catch (error) {
-      settings = previous;
+      settings = persisted;
       emit();
       throw error;
     }
