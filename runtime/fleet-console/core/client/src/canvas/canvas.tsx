@@ -818,7 +818,6 @@ export function OperationsCanvas({
       ref={canvasRef}
     >
       <CanvasGrid viewport={canvas.viewport} />
-      {triageActive ? <div className="canvas-triage-scan" aria-hidden="true" /> : null}
       <div
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해

@@ -641,6 +641,16 @@ describe("Instrument core design contract", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
 
+  it("keeps the War Room entry sweep without an ambient scan line", () => {
+    const canvas = source("canvas/canvas.tsx");
+    const components = source("styles/components.css");
+
+    expect(canvas).not.toContain("canvas-triage-scan");
+    expect(components).not.toContain("triage-scan-line");
+    expect(canvas).toContain('{triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}');
+    expect(components).toContain("animation: triage-sweep-pass 900ms");
+  });
+
   it("denies the canvas a scroll port so a focused overhanging descendant cannot shift the board", () => {
     const components = source("styles/components.css");
     const canvasBlock = components.match(/\n\.operations-canvas \{[\s\S]*?\n\}/)?.[0] ?? "";
