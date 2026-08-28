@@ -508,8 +508,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 셸이 사용자가 잊은 요청으로 앱을 재시작한다 — 요청은 눌린 그 순간의 것이다.
    */
   let desktopUpdateRequestedAt = 0;
+  const pluginSseChannels = new Set<string>();
+
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
+    // 브라우저로 나가는 것은 플러그인이 명시적으로 올린 채널뿐이다. 모든 in-process
+    // 이벤트를 흘리면 서버 내부 채널이 그대로 브라우저 계약이 되고, 그중 하나는
+    // 언젠가 민감한 필드를 싣는다.
+    if (!pluginSseChannels.has(channel) || operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(channel, payload);
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
   }
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
@@ -621,7 +629,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           if (listeners.size === 0) pluginEventListeners.delete(channel);
         };
       },
-      registerSseChannel: () => () => undefined,
+      /**
+       * 이 채널의 publish를 브라우저 SSE 스트림으로도 내보낸다.
+       *
+       * 코어가 Operation 스트림을 소유하므로 플러그인은 두 번째 EventSource를 열지
+       * 않고 같은 연결에 올라탄다 — 연결이 하나면 재접속·순서·생명주기도 하나다.
+       */
+      registerSseChannel: (channel: string) => {
+        pluginSseChannels.add(channel);
+        return () => {
+          pluginSseChannels.delete(channel);
+        };
+      },
     },
     server: {
       origin: () => {
