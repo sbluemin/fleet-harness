@@ -17,8 +17,10 @@ import {
 } from "@fleet-console/sdk/composer";
 
 import { getT } from "../../i18n/index.js";
-import type { AgentChatQueueEntry } from "./chat-events.js";
-import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } from "../api.js";
+import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
+import { ChatComposerDeck } from "./composer-deck-view.js";
+import { applyDeckPick, buildDeckSections, flattenDeckRows, readDeckToken } from "./composer-deck.js";
+import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
 
 /**
  * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 Quick Launch).
@@ -128,7 +130,8 @@ export function AgentChatComposer({
   /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
   readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
 }) {
-  const t = getT(context.language ?? "en");
+  const language = context.language ?? "en";
+  const t = getT(language);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
@@ -172,8 +175,62 @@ export function AgentChatComposer({
   // 도로 거둔다(Quick Launch 첨부와 같은 회수 계약).
   const canceledKeysRef = React.useRef(new Set<string>());
 
-  const send = React.useCallback(async () => {
-    const text = draft.trim();
+  // ── 능력 덱 ────────────────────────────────────────────────────────────────
+  // `/`는 세션의 능력(명령·스킬), `@`는 행위자(서브에이전트). 두 글자가 한 덱을 공유한다 —
+  // 목록의 출처가 한 요청이고, 동시에 둘이 열릴 일이 없기 때문이다.
+  const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
+  const [catalogTried, setCatalogTried] = React.useState(false);
+  const [deckDismissed, setDeckDismissed] = React.useState(false);
+  const [focused, setFocused] = React.useState(false);
+  const [deckIndex, setDeckIndex] = React.useState(0);
+  const [caret, setCaret] = React.useState(0);
+  const catalogFlight = React.useRef(false);
+
+  // 덱은 캐럿이 이 입력에 있을 때만 선다. 포커스를 해제 상태로 대신하면(blur → dismissed)
+  // 그 표시가 그대로 눌어붙어, 패널 최대화처럼 잠깐 포커스를 가져가는 조작 뒤에 `/`를 다시
+  // 쳐도 덱이 영영 서지 않는다(실측에서 이 경로로 잡혔다).
+  const deckToken = React.useMemo(
+    () => (deckDismissed || !focused ? null : readDeckToken(draft, caret)),
+    [draft, caret, deckDismissed, focused],
+  );
+  const deckSections = React.useMemo(
+    () => (deckToken ? buildDeckSections(catalog, deckToken) : []),
+    [catalog, deckToken],
+  );
+  const deckRows = React.useMemo(() => flattenDeckRows(deckSections), [deckSections]);
+  const deckOpen = deckToken !== null;
+  const deckPending = deckOpen && catalog === null;
+  // 질의가 바뀌면 활성 행을 맨 위로 되돌린다 — 좁혀진 목록에서 옛 인덱스를 붙들면 사용자가
+  // 보고 있지 않은 행이 선택돼 있다.
+  const deckQuery = deckToken?.query ?? null;
+  React.useEffect(() => { setDeckIndex(0); }, [deckQuery, deckToken?.kind]);
+  // Esc 해제는 **그때 그 질의**에만 걸린다. 문면이 바뀌면 만료한다 — 만료시키지 않으면 한 번
+  // 닫은 뒤 계속 타이핑해도 덱이 서지 않아, 사용자는 기능이 죽었다고 읽는다.
+  const rawToken = React.useMemo(() => readDeckToken(draft, caret), [draft, caret]);
+  const rawQuery = rawToken === null ? null : `${rawToken.kind}:${rawToken.query}`;
+  React.useEffect(() => { setDeckDismissed(false); }, [rawQuery]);
+
+  // 덱이 처음 열릴 때 한 번만 읽는다. 이 요청이 자식을 여는 쪽이므로(결정: 첫 `/`에 세션을 연다)
+  // 사용자가 묻지 않았는데 미리 부르지 않는다.
+  React.useEffect(() => {
+    if (!deckOpen || catalog !== null || catalogFlight.current) return;
+    catalogFlight.current = true;
+    void readAgentChatCatalog(context.operationId)
+      .then((value) => { if (value) setCatalog(value); })
+      .catch(() => {})
+      .finally(() => {
+        catalogFlight.current = false;
+        setCatalogTried(true);
+      });
+  }, [context.operationId, deckOpen, catalog]);
+
+  const deckId = `agent-chat-deck-${context.operationId}`;
+  const deckOptionId = React.useCallback((index: number) => `${deckId}-opt-${index}`, [deckId]);
+
+  // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
+  // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
+  const send = React.useCallback(async (override?: string) => {
+    const text = (override ?? draft).trim();
     if (text.length === 0 || sending) return;
     // id 없는 칩은 아직 서버에 없다 — 텍스트만 먼저 나가면 첨부가 조용히 빠진다.
     if (attachmentsRef.current.some((attachment) => attachment.uploading)) return;
@@ -198,6 +255,32 @@ export function AgentChatComposer({
       setSending(false);
     }
   }, [context.operationId, draft, sending]);
+
+  /**
+   * 덱의 행 하나를 확정한다.
+   *
+   * 인자를 받지 않는 명령만 즉시 나간다. `argumentHint`가 있으면 `/이름 ` 까지만 넣고 캐럿을
+   * 뒤에 두며, 에이전트 지목은 그 자체로 할 일이 아니므로 언제나 초안에 남는다.
+   */
+  const pickDeckRow = React.useCallback((index: number) => {
+    if (!deckToken) return;
+    const entry = deckRows[index];
+    if (!entry) return;
+    const { draft: next, submit } = applyDeckPick(draft, deckToken, entry);
+    setDraft(next);
+    setDeckDismissed(true);
+    if (submit) {
+      void send(next);
+      return;
+    }
+    // 캐럿을 문면 끝으로 보낸다 — 삽입만 한 경우 사용자가 이어서 인자를 친다.
+    const input = inputRef.current;
+    window.requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(next.length, next.length);
+      setCaret(next.length);
+    });
+  }, [deckToken, deckRows, draft, send]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
     const images = files.filter((file) => isComposerAttachmentCandidate(file));
@@ -368,6 +451,23 @@ export function AgentChatComposer({
           {/* textarea와 미러를 한 flex 아이템으로 묶는다 — 미러를 field에 직접 붙이면 첨부 칩이 선
               줄에서 시작점이 어긋난다. 묶으면 정렬 기준이 textarea의 박스 하나로 줄어든다. */}
           <span className="agent-chat-composer-input-wrap">
+            {/* 덱은 input-wrap에 걸린다 — 이 요소가 컴포저 안에서 유일하게 position:relative다.
+                패널이 짧으면 `.canvas-operation-terminal`의 overflow:hidden에 잘리는데, 그것은
+                Quick Launch가 fixed 오버레이로 피하는 대가를 이 표면은 치른다는 뜻이다. */}
+            {deckOpen ? (
+              <ChatComposerDeck
+                deckId={deckId}
+                token={deckToken}
+                sections={deckSections}
+                rows={deckRows}
+                activeIndex={deckIndex}
+                pending={deckPending && !catalogTried}
+                language={language}
+                optionId={deckOptionId}
+                onPick={pickDeckRow}
+                onHover={setDeckIndex}
+              />
+            ) : null}
             {ultracodeArmed ? (
               <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
                 {renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")}
@@ -381,8 +481,13 @@ export function AgentChatComposer({
               placeholder={placeholder}
               aria-label={t("terminal.chat.composerInputAria")}
               spellCheck={false}
+              // 덱은 listbox이고 이 입력이 그 소유자다 — 활성 행을 aria로 잇지 않으면
+              // 스크린리더에서 방향키 이동이 아무 말도 하지 않는다(QL 덱과 같은 계약).
+              {...(deckOpen ? { "aria-controls": deckId, "aria-expanded": true } : {})}
+              {...(deckOpen && deckRows.length > 0 ? { "aria-activedescendant": deckOptionId(deckIndex) } : {})}
               onChange={(event) => {
                 setDraft(event.target.value);
+                setCaret(event.target.selectionStart ?? event.target.value.length);
                 setFailed(false);
               }}
               onScroll={syncUltracodeHighlight}
@@ -403,11 +508,45 @@ export function AgentChatComposer({
                   setUltracodeIgnored(true);
                   return;
                 }
+                // 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면 Enter를 잡지
+                // 않는다 — "일치 없으면 쓴 문장이 그대로 나간다"가 두 컴포저 공통 계약이다.
+                if (deckOpen && deckRows.length > 0 && !event.nativeEvent.isComposing) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setDeckIndex((current) => (current + 1 >= deckRows.length ? 0 : current + 1));
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setDeckIndex((current) => (current - 1 < 0 ? deckRows.length - 1 : current - 1));
+                    return;
+                  }
+                  if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+                    event.preventDefault();
+                    pickDeckRow(deckIndex);
+                    return;
+                  }
+                }
+                // 열린 덱을 먼저 닫는다. 프레임의 Esc(도는 턴 중지)까지 올라가지 않도록 전파를
+                // 끊는다 — 열린 표면을 닫는 것이 Esc의 통상 위계이고, 여기서 멈추지 않으면 한
+                // 번의 Esc가 덱을 닫으면서 턴까지 끊는다.
+                if (event.key === "Escape" && deckOpen && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDeckDismissed(true);
+                  return;
+                }
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   void send();
                 }
               }}
+              // 캐럿이 움직이면 `@` 토큰의 유효 구간도 움직인다 — 클릭·방향키 이동까지
+              // 따라잡으려면 입력 이벤트만으로는 부족하다.
+              onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
             />
           </span>
           {attachments.length > 0 ? (

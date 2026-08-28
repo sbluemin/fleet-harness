@@ -58,7 +58,12 @@ type FakeTurn = {
  * 턴 스크립트는 그대로 유지하되 소비 시점이 바뀐다: 세션은 한 번 열리고, `send()`가 불릴 때마다
  * 다음 스크립트의 메시지가 그 스트림으로 흘러든다 — 자식 하나가 여러 턴을 사는 실제 모양이다.
  */
-function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void } = {}) {
+type FakeCatalog = {
+  readonly commands: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
+  readonly agents: readonly { readonly name: string; readonly description: string; readonly model: string | null }[];
+};
+
+function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
   const queue: Record<string, unknown>[] = [];
   let waiting: (() => void) | null = null;
   let closed = false;
@@ -87,6 +92,12 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     interrupt: async (): Promise<void> => { hooks.onInterrupt?.(); },
     stopTask: async (taskId: string): Promise<void> => { hooks.onStopTask?.(taskId); },
     backgroundTasks: async (): Promise<boolean> => true,
+    /**
+     * 카탈로그는 세션이 열린 직후 한 번 읽힌다. `null`은 "못 물었다"이고 빈 배열은 "물었는데
+     * 없다"이므로, 답하지 않는 자식을 재현하려면 `hooks.catalog`를 주지 않으면 된다.
+     */
+    supportedCommands: async () => hooks.catalog?.commands ?? null,
+    supportedAgents: async () => hooks.catalog?.agents ?? null,
     /**
      * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
      * 값이고, 한 번이라도 보낸 뒤에는 방금 소비한 턴의 종료 값이다 — 다음 턴의 시작 값 또한
@@ -119,7 +130,7 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
   };
 }
 
-function createFakeSdkFactory(turns: FakeTurn[]) {
+function createFakeSdkFactory(turns: FakeTurn[], catalog?: FakeCatalog) {
   const configDir = tempDir("chat-sdk-");
   const sends: string[] = [];
   // 실 SDK와 같이 슬롯은 하나다. `close()`가 불려야 자리가 돌아오며, 그전의 openSession은
@@ -129,7 +140,7 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
   const openSession = vi.fn(async (_request: unknown) => {
     if (occupied) throw new Error("A turn or session is already running on this instance.");
     occupied = true;
-    const session = fakeSession(turns, { onSend: (text) => sends.push(text) });
+    const session = fakeSession(turns, { onSend: (text) => sends.push(text), ...(catalog ? { catalog } : {}) });
     live = session;
     return {
       ...session,
@@ -245,6 +256,77 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly AgentChatJournalEvent[] {
   return events.filter((entry) => entry.event.kind !== "snapshot-end");
 }
+
+describe("AgentChatRegistry — composer capability catalog", () => {
+  const CATALOG = {
+    commands: [
+      { name: "clear", description: "Clear the conversation", argumentHint: "", aliases: [] },
+      { name: "compact", description: "Summarize to reclaim context", argumentHint: "[instructions]", aliases: [] },
+      { name: "console-e2e", description: "Drive a headless browser test", argumentHint: "", aliases: [] },
+    ],
+    agents: [
+      { name: "Explore", description: "Read-only search agent", model: null },
+    ],
+  } as const;
+
+  /**
+   * 덱의 두 카테고리를 가르는 유일한 근거는 init이 실어 온 스킬 이름 집합이다 —
+   * `supportedCommands()`는 내장 명령과 스킬을 한 타입으로 주고 카테고리를 말하지 않는다.
+   */
+  it("splits commands from skills using the init skill names", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], CATALOG);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-cat", () => freshSeedFor(home));
+    const catalog = await session.readCatalog();
+    expect(catalog).not.toBeNull();
+    expect(catalog!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
+    // init을 못 받았으므로 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
+    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact", "console-e2e"]);
+    expect(catalog!.skills).toEqual([]);
+    expect(catalog!.commands.find((entry) => entry.name === "compact")!.argumentHint).toBe("[instructions]");
+    await registry.disposeAll();
+  });
+
+  /**
+   * init은 카탈로그 control 왕복과 경쟁한다. 분류를 읽을 때 다시 세지 않고 프라임 시점에
+   * 굳히면, 늦게 도착한 init의 스킬들이 그 세션 내내 명령 칸에 선다.
+   */
+  it("classifies skills even when init lands after the catalog round-trip", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], CATALOG);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-late", () => freshSeedFor(home));
+    // 먼저 읽는다 — 아직 init이 없으므로 전부 명령이다.
+    expect((await session.readCatalog())!.skills).toEqual([]);
+    // 그 뒤에 자식이 init을 흘린다.
+    fake.liveSession()!.emit({ type: "system", subtype: "init", skills: ["console-e2e"], session_id: "s-late" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = await session.readCatalog();
+    expect(after!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(after!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * `null`(못 물었다)과 빈 배열(물었는데 없다)은 다른 상태다. 답하지 않는 자식에서 캐시를
+   * 세우면 화면이 "이 세션엔 아무 능력도 없다"를 영구히 그린다.
+   */
+  it("reports an unreadable catalog as null rather than an empty one", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-null", () => freshSeedFor(home));
+    expect(await session.readCatalog()).toBeNull();
+    await registry.disposeAll();
+  });
+});
 
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {

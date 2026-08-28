@@ -603,6 +603,52 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
   return { kind: "agent", steps, truncated };
 }
 
+/** 컴포저 덱이 세우는 항목 하나. 서버 `AgentChatCatalogEntry`의 브라우저 사본이다. */
+export interface AgentChatCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  /** 인자를 받는다는 표시. 비어 있으면 인자 없이 바로 실행되는 항목이다. */
+  readonly argumentHint: string;
+}
+
+/** `/`와 `@`가 세우는 목록. 출처가 하나이므로 한 응답으로 온다. */
+export interface AgentChatCatalog {
+  readonly commands: readonly AgentChatCatalogEntry[];
+  readonly skills: readonly AgentChatCatalogEntry[];
+  readonly agents: readonly AgentChatCatalogEntry[];
+}
+
+function readCatalogEntries(value: unknown): readonly AgentChatCatalogEntry[] {
+  if (!Array.isArray(value)) return [];
+  const entries: AgentChatCatalogEntry[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const entry = row as Record<string, unknown>;
+    // 이름이 없으면 부를 수 없다 — 고를 수는 있는데 보낼 수는 없는 행을 만들지 않는다.
+    if (typeof entry.name !== "string" || entry.name.length === 0) continue;
+    entries.push({
+      name: entry.name,
+      description: typeof entry.description === "string" ? entry.description : "",
+      argumentHint: typeof entry.argumentHint === "string" ? entry.argumentHint : "",
+    });
+  }
+  return entries;
+}
+
+/**
+ * 서버 payload를 카탈로그로 읽는다. 모양이 어긋나면 `null` — 화면은 빈 목록이 아니라
+ * "아직 모른다"를 그려야 하므로 둘을 가른다.
+ */
+export function readAgentChatCatalogPayload(payload: unknown): AgentChatCatalog | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  return {
+    commands: readCatalogEntries(value.commands),
+    skills: readCatalogEntries(value.skills),
+    agents: readCatalogEntries(value.agents),
+  };
+}
+
 export interface AgentChatLogState {
   readonly turns: readonly AgentChatTurn[];
   readonly replaying: boolean;

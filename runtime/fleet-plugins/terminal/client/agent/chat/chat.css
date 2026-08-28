@@ -1445,6 +1445,166 @@
   display: block;
 }
 
+/* ── 능력 덱 ────────────────────────────────────────────────────────────────
+   컴포저 위에 서는 `/`·`@` 목록. Quick Launch 덱과 **같은 문법**을 쓰되 클래스는 새로 짓는다 —
+   코어의 `.quick-launch-*`는 전역 규칙이라 여기에도 먹지만, 빌려 쓰면 코어 크롬의 CSS가 이
+   번들의 계약이 된다.
+
+   자리: input-wrap이 컴포저 안에서 유일한 position:relative라 그 위에 건다. QL은 fixed
+   오버레이라 패널을 벗어나지만 이 표면은 `.canvas-operation-terminal`의 overflow:hidden에
+   잘린다 — 짧은 패널에서 위로 잘리는 것은 이 자리의 알려진 대가다. */
+.agent-chat-deck {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  /* 이 시트의 지역 사다리를 쓴다 — 코어 `--z-select-popover`는 theme.css가 아니라
+     components.css의 코어 전용 토큰이라, 플러그인이 참조하면 그림자 API가 된다.
+     문맥 계기 팝오버(.agent-chat-ctx-pop)가 6이고, 타이핑으로 연 덱이 그 위에 선다. */
+  z-index: 7;
+  max-height: min(340px, 42vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+/* 카테고리 머리글 — brass는 위치 채널이다(이 덱이 행선지 선택 표면임을 말한다). */
+.agent-chat-deck-category {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 4px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /* 스크롤을 따라 붙는다. 덱 패딩(--space-1)만큼 위로 물려 상단에 빈틈을 없앤다.
+     배경은 **불투명 칠이 아니라** 덱의 유리를 다시 칠하는 것이고, 뒤로 지나가는 행은
+     backdrop-filter가 흐려 덮는다 — 솔리드로 바꾸면 이 밴드만 판이 되어 유리 계약이 깨진다
+     (`/model` 프로바이더 밴드가 같은 레시피를 쓴다). 투명하게 두면 행이 글자 밑으로 비친다. */
+  position: sticky;
+  top: calc(var(--space-1) * -1);
+  z-index: 1;
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+}
+
+.agent-chat-deck-category-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklch, var(--brass) 30%, transparent);
+}
+
+.agent-chat-deck-category-count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-deck-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-chat-deck-row:hover {
+  background: color-mix(in oklch, var(--surface-pillar) 75%, transparent);
+}
+
+/* 키보드 활성 행은 brass 워시가 말한다 — pillar 믹스로는 덱의 pillar 언더레이에 묻힌다. */
+.agent-chat-deck-row.is-active {
+  background: var(--brass-glow);
+}
+
+.agent-chat-deck-row.is-active .agent-chat-deck-name {
+  color: var(--brass);
+}
+
+.agent-chat-deck-glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  line-height: 1;
+}
+
+.agent-chat-deck-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-chat-deck-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* 설명은 **활성 행에서만** 편다. 모든 행에 세우면 같은 높이에 여섯 행밖에 서지 못하고,
+   아무 행에도 없으면 뜻 모를 이름의 벽이 된다 — 눈이 멈춘 자리에서만 값을 치른다.
+   접근성 트리에는 언제나 있다(aria-describedby). */
+.agent-chat-deck-desc {
+  display: none;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.45;
+}
+
+.agent-chat-deck-row.is-active .agent-chat-deck-desc {
+  display: block;
+}
+
+.agent-chat-deck-hint {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.agent-chat-deck-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
 /* 미러 층 — textarea는 자기 글자 일부만 다르게 칠할 수 없어, 무장 중에만 같은 문면을 같은
    메트릭으로 그린 레이어를 뒤에 깔고 textarea의 글자를 투명하게 만든다. 폭·높이는 JS가
    textarea의 client 박스로 맞춘다(syncComposerHighlight). 캐럿·선택·IME는 여전히 textarea의

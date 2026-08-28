@@ -125,6 +125,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
@@ -616,6 +617,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
+    if (action === "chat-catalog") return handleChatCatalog(req, res, sessionId);
     if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -1317,6 +1319,57 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     ctx.host.http.writeJson(res, 200, detail);
+    return true;
+  }
+
+  /**
+   * 컴포저의 `/`·`@` 덱이 세울 목록을 읽는다.
+   *
+   * 이 문은 자식을 **열 수 있다**. 사용자가 `/`를 친 것이 곧 "이 세션은 무엇을 할 수 있나"를
+   * 묻는 행위이고, 첫 전송까지 기다리면 갓 연 채팅의 첫 덱은 반드시 비기 때문이다. 여는 비용은
+   * 어차피 다음 메시지에 치를 비용을 앞당긴 것뿐이다.
+   *
+   * 못 읽었을 때 200에 빈 목록을 싣지 않는다 — 화면이 "이 세션엔 아무것도 없다"와 "아직 모른다"를
+   * 구분해야 하고, 빈 목록은 전자만 뜻해야 한다.
+   */
+  async function handleChatCatalog(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "GET") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    // `get`이 아니라 `ensure`다 — 이 문은 세션을 **열 수 있어야** 한다. 사용자가 `/`를 친 것이
+    // 곧 능력을 묻는 행위이고, 이미 도는 세션만 답하면 갓 연 채팅의 첫 덱은 반드시 빈다.
+    // 잡 상세(`chat-job`)가 `get`을 쓰는 것은 그쪽이 이미 존재하는 잡의 좌표를 받기 때문이다.
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok) {
+      ctx.host.http.writeJson(res, seed.status, { error: seed.error });
+      return true;
+    }
+    // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — 메시지 경로와 같은 재검증이다.
+    if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    let chat;
+    try {
+      chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+    } catch {
+      ctx.host.http.writeJson(res, 503, { error: "chat_unavailable" });
+      return true;
+    }
+    const catalog = await chat.readCatalog();
+    if (!catalog) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_catalog_unavailable" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, catalog);
     return true;
   }
 

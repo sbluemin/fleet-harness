@@ -5,6 +5,8 @@ import {
   createClaudeGatewaySdk,
   type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
+  type ClaudeGatewayAgent,
+  type ClaudeGatewayCommand,
   type ClaudeGatewayMessage,
   type ClaudeGatewaySdk,
   type ClaudeGatewaySdkOptions,
@@ -30,6 +32,8 @@ import {
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
   readJobKind,
+  type AgentChatCatalog,
+  type AgentChatCatalogEntry,
   type AgentChatJobDetail,
   type AgentChatJobKind,
   type AgentChatJournalEvent,
@@ -356,6 +360,25 @@ class AgentChatSession {
    */
   private session: ClaudeGatewaySession | null = null;
   private sessionFlight: Promise<ClaudeGatewaySession> | null = null;
+  /**
+   * 자식이 받아 주는 것들의 목록. 세션이 열린 **직후 한 번만** 읽는다.
+   *
+   * 폴링하지 않는 이유는 두 가지다. 첫째, 이 목록은 자식의 수명 동안 움직이지 않는다 —
+   * 스킬·플러그인이 다시 읽히는 사건은 이 세션을 접고 여는 사건이다. 둘째, 턴이 도는 동안에는
+   * control 채널이 닫혀 물어도 `null`만 온다(`getContextUsage`와 같은 벽). 그래서 채널이 확실히
+   * 열려 있는 유일한 창 — 열자마자, 첫 턴 전 — 에 한 번 읽고 그 값을 계속 쓴다.
+   */
+  private rawCatalog: {
+    readonly commands: readonly ClaudeGatewayCommand[];
+    readonly agents: readonly ClaudeGatewayAgent[];
+  } | null = null;
+  private catalogFlight: Promise<void> | null = null;
+  /**
+   * init 메시지가 실어 온 스킬 이름들. `supportedCommands()`는 내장 명령과 스킬을 한 레코드
+   * 타입으로 섞어 주고 카테고리 필드가 없으므로, 둘을 가르는 유일한 근거가 이 이름 집합이다.
+   * init을 못 받았으면 비어 있고, 그때는 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
+   */
+  private skillNames: ReadonlySet<string> = new Set();
   /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
   private readerDone: Promise<void> | null = null;
   /**
@@ -984,6 +1007,20 @@ class AgentChatSession {
   }
 
   /**
+   * init이 실어 온 스킬 이름을 적어 둔다.
+   *
+   * `supportedCommands()`가 내장 명령과 스킬을 한 타입으로 섞어 주고 카테고리를 말하지 않으므로,
+   * 이 이름 집합이 둘을 가르는 유일한 근거다. init은 세션당 한 번 오고, 못 받으면 집합은 비어
+   * 있다 — 그때 덱은 전부 명령으로 세운다(틀린 카테고리보다 한 카테고리가 낫다).
+   */
+  private rememberSkillNames(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "init") return;
+    const skills = (message as { skills?: unknown }).skills;
+    if (!Array.isArray(skills)) return;
+    this.skillNames = new Set(skills.filter((name): name is string => typeof name === "string"));
+  }
+
+  /**
    * 결말 알림이 알려 준 출력 파일 경로를 적어 둔다.
    *
    * 이 경로를 우리가 재구성하지 않는 이유는 실측이다: 셸 출력은 격리 config dir이 아니라 CLI가
@@ -1440,12 +1477,75 @@ class AgentChatSession {
         }
         this.session = session;
         this.readerDone = this.readSession(session);
+        this.primeCatalog(session);
         return session;
       })().finally(() => {
         this.sessionFlight = null;
       });
     }
     return this.sessionFlight;
+  }
+
+  /**
+   * 컴포저 덱이 세울 목록을 읽어 캐시에 눕힌다. 세션이 열린 직후 한 번만 부른다.
+   *
+   * await하지 않는다 — 여기서 기다리면 첫 디스패치가 control 왕복만큼 늦다. 덱을 여는 쪽이
+   * `readCatalog()`에서 이 비행을 기다리므로, 늦는 것은 덱뿐이고 대화는 늦지 않는다.
+   *
+   * `null`(못 물었다)과 빈 배열(물었는데 없다)을 가른다: `null`이면 캐시를 세우지 않아 다음
+   * 요청이 다시 시도하고, 빈 배열이면 "이 세션엔 없다"를 캐시한다.
+   */
+  private primeCatalog(session: ClaudeGatewaySession): void {
+    if (this.catalogFlight) return;
+    this.catalogFlight = (async () => {
+      try {
+        const [commands, agents] = await Promise.all([
+          session.supportedCommands(),
+          session.supportedAgents(),
+        ]);
+        if (commands === null && agents === null) return;
+        // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
+        // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
+        this.rawCatalog = { commands: commands ?? [], agents: agents ?? [] };
+      } catch {
+        // 카탈로그가 없는 세션도 온전한 세션이다 — 덱만 비고 대화는 그대로 돈다.
+      } finally {
+        this.catalogFlight = null;
+      }
+    })();
+  }
+
+  /**
+   * 덱이 세울 목록. 세션이 아직 없으면 **연다** — 사용자가 `/`나 `@`를 친 것이 곧 이 세션의
+   * 능력을 묻는 행위이므로, 그 순간이 자식을 열 이유로 충분하다(첫 턴을 기다리면 갓 연 채팅의
+   * 첫 덱은 반드시 비어 있다).
+   *
+   * 못 읽었으면 `null`이다. 화면은 그것을 빈 목록이 아니라 "아직 모른다"로 그려야 한다.
+   */
+  async readCatalog(): Promise<AgentChatCatalog | null> {
+    if (this.disposed) return null;
+    if (!this.rawCatalog) {
+      try {
+        await this.ensureSession();
+      } catch {
+        return null;
+      }
+      await this.catalogFlight;
+    }
+    const raw = this.rawCatalog;
+    if (!raw) return null;
+    // 분류는 매 읽기마다 지금의 스킬 이름으로 다시 센다 — init이 카탈로그 왕복보다 늦게
+    // 도착해도 다음 읽기에서 스킬 칸이 제대로 선다.
+    const toEntry = (entry: { readonly name: string; readonly description: string; readonly argumentHint: string }): AgentChatCatalogEntry => ({
+      name: entry.name,
+      description: entry.description,
+      argumentHint: entry.argumentHint,
+    });
+    return {
+      commands: raw.commands.filter((entry) => !this.skillNames.has(entry.name)).map(toEntry),
+      skills: raw.commands.filter((entry) => this.skillNames.has(entry.name)).map(toEntry),
+      agents: raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" })),
+    };
   }
 
   /**
@@ -1463,6 +1563,7 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
+        this.rememberSkillNames(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);
         this.rememberToolTitles(message);

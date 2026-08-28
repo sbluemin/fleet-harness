@@ -17,6 +17,8 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import type {
+  ClaudeGatewayAgent,
+  ClaudeGatewayCommand,
   ClaudeGatewayContextUsage,
   ClaudeGatewayMcpServer,
   ClaudeGatewayMessage,
@@ -323,6 +325,40 @@ function vendorUserMessage(text: string): Record<string, unknown> {
   };
 }
 
+/**
+ * 벤더의 `SlashCommand[]`를 계약 레코드로 옮긴다. `name`이 없는 항목은 부를 수 없으므로
+ * 통째로 버린다 — 이름 없는 행을 목록에 세우면 고를 수는 있는데 보낼 수는 없는 항목이 된다.
+ */
+function readVendorCommands(response: unknown): readonly ClaudeGatewayCommand[] | null {
+  if (!Array.isArray(response)) return null;
+  return response.flatMap((row: unknown) => {
+    const entry = row as { name?: unknown; description?: unknown; argumentHint?: unknown; aliases?: unknown };
+    if (typeof entry?.name !== "string" || entry.name.length === 0) return [];
+    return [{
+      name: entry.name,
+      description: typeof entry.description === "string" ? entry.description : "",
+      argumentHint: typeof entry.argumentHint === "string" ? entry.argumentHint : "",
+      aliases: Array.isArray(entry.aliases)
+        ? entry.aliases.filter((alias: unknown): alias is string => typeof alias === "string")
+        : [],
+    }];
+  });
+}
+
+/** 벤더의 `AgentInfo[]`를 계약 레코드로 옮긴다. 이름 없는 항목을 버리는 이유는 위와 같다. */
+function readVendorAgents(response: unknown): readonly ClaudeGatewayAgent[] | null {
+  if (!Array.isArray(response)) return null;
+  return response.flatMap((row: unknown) => {
+    const entry = row as { name?: unknown; description?: unknown; model?: unknown };
+    if (typeof entry?.name !== "string" || entry.name.length === 0) return [];
+    return [{
+      name: entry.name,
+      description: typeof entry.description === "string" ? entry.description : "",
+      model: typeof entry.model === "string" && entry.model.length > 0 ? entry.model : null,
+    }];
+  });
+}
+
 export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySession {
   const queue = new VendorInputQueue();
   const run = vendorQuery({
@@ -335,6 +371,8 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
     interrupt?: () => Promise<unknown>;
     stopTask?: (taskId: string) => Promise<void>;
     backgroundTasks?: (toolUseId?: string) => Promise<boolean>;
+    supportedCommands?: () => Promise<unknown>;
+    supportedAgents?: () => Promise<unknown>;
   };
 
   let closed = false;
@@ -367,6 +405,23 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
         return readVendorContextUsage(await run.getContextUsage());
       } catch {
         // 턴이 도는 동안 자식은 control 채널을 닫아 둔다 — 정상 경로의 실패다.
+        return null;
+      }
+    },
+    async supportedCommands(): Promise<readonly ClaudeGatewayCommand[] | null> {
+      if (closed || typeof run.supportedCommands !== "function") return null;
+      try {
+        return readVendorCommands(await run.supportedCommands());
+      } catch {
+        // control 채널이 닫혀 있을 뿐이다 — 카탈로그가 비었다는 뜻이 아니므로 null이다.
+        return null;
+      }
+    },
+    async supportedAgents(): Promise<readonly ClaudeGatewayAgent[] | null> {
+      if (closed || typeof run.supportedAgents !== "function") return null;
+      try {
+        return readVendorAgents(await run.supportedAgents());
+      } catch {
         return null;
       }
     },

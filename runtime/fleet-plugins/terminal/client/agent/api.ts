@@ -1,5 +1,10 @@
 import type { OperationGeometry, OperationNode } from "@fleet-console/sdk/operations";
-import { readAgentChatJobDetailPayload, type AgentChatJobDetail } from "./chat/chat-events.js";
+import {
+  readAgentChatCatalogPayload,
+  readAgentChatJobDetailPayload,
+  type AgentChatCatalog,
+  type AgentChatJobDetail,
+} from "./chat/chat-events.js";
 import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
@@ -241,6 +246,28 @@ export async function readAgentChatJobDetail(
   }
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
   return readAgentChatJobDetailPayload(payload);
+}
+
+/**
+ * 컴포저 덱이 세울 목록 — 이 세션의 명령·스킬·에이전트.
+ *
+ * 이 요청은 자식을 **열 수 있다**(서버가 그렇게 한다). 사용자가 `/`를 친 것이 곧 능력을 묻는
+ * 행위이기 때문이며, 첫 전송을 기다리면 갓 연 채팅의 첫 덱은 반드시 빈다.
+ *
+ * 409는 실패가 아니라 "아직 못 읽었다"이므로 `null`이다 — 호출부는 빈 목록과 구분해 그린다.
+ */
+export async function readAgentChatCatalog(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<AgentChatCatalog | null> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-catalog`, { signal });
+  if (response.status === 404 || response.status === 409) return null;
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  return readAgentChatCatalogPayload(payload);
 }
 
 export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {

@@ -240,6 +240,27 @@ describe("chat transcript mapping", () => {
 });
 
 describe("chat sdk message mapping", () => {
+  /**
+   * 컴포저 덱이 `/usage` 같은 로컬 명령을 목록에 세우는 이상, 그 출력이 전사록에 서야 한다.
+   * 버리면 사용자가 보는 것은 "고를 수는 있는데 아무 일도 안 하는 명령"이고, 그것은 덱이
+   * 없는 것보다 나쁘다. 벤더가 이 메시지를 assistant 문면으로 규정하므로 `text`로 싣는다.
+   */
+  it("surfaces local slash-command output as transcript text", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "local_command_output",
+      content: "Session cost: $1.24",
+    })).toEqual([{ kind: "text", text: "Session cost: $1.24" }]);
+  });
+
+  it("drops a local command output that carries nothing to show", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "local_command_output",
+      content: "   ",
+    })).toEqual([]);
+  });
+
   it("maps assistant messages like transcript lines", () => {
     expect(chatEventsFromSdkMessage({
       type: "assistant",

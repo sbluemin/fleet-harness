@@ -451,6 +451,18 @@ export function chatEventsFromSdkMessage(message: {
         return jobEndEvent(message, options);
       case "background_tasks_changed":
         return jobsChangedEvent(message);
+      // 로컬 슬래시 명령(`/usage` 등)이 자식 안에서 만들어 낸 출력. 벤더가 "전사록에
+      // assistant 문면으로 보이는 것"이라 규정하므로 같은 `text` 이벤트로 싣는다.
+      //
+      // 버리면 안 되는 이유는 덱이다: 컴포저가 목록에서 권한 항목을 세워 놓고 그 결과가
+      // 아무 데도 나타나지 않으면, 사용자가 보는 것은 "고를 수는 있는데 아무 일도 안 하는
+      // 명령"이다 — 그것은 덱이 없는 것보다 나쁘다.
+      case "local_command_output": {
+        const content = (message as { readonly content?: unknown }).content;
+        return typeof content === "string" && content.trim().length > 0
+          ? [{ kind: "text", text: capText(content) }]
+          : [];
+      }
       default:
         return [];
     }
@@ -511,6 +523,36 @@ export interface AgentChatJobStep {
 export type AgentChatJobDetail =
   | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
   | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/**
+ * 컴포저 덱이 세우는 항목 하나.
+ *
+ * `kind`는 SDK가 준 필드가 아니라 **우리가 붙인 분류**다. 벤더는 내장 명령과 스킬을 같은
+ * `SlashCommand` 레코드로 주고 카테고리를 말하지 않으므로, init이 실어 온 스킬 이름 집합으로
+ * 여기서 가른다. init을 못 받았으면 전부 `command`로 선다.
+ */
+export interface AgentChatCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  /** 인자를 받는다는 표시. 빈 문자열이면 인자 없이 바로 실행되는 항목이다. */
+  readonly argumentHint: string;
+}
+
+/**
+ * 컴포저의 `/`와 `@`가 세우는 목록.
+ *
+ * 두 글자를 한 응답에 담는 이유는 출처가 하나이기 때문이다 — 같은 자식에게 한 번 물어 둘을
+ * 함께 얻는다. 나누어 두 번 물으면 턴이 시작된 사이에 두 번째가 `null`로 떨어져, 화면이
+ * 반쪽짜리 덱을 그리게 된다.
+ */
+export interface AgentChatCatalog {
+  /** `/` 1단 — 자식의 내장 명령. */
+  readonly commands: readonly AgentChatCatalogEntry[];
+  /** `/` 2단 — 이 Theater가 실어 준 스킬. */
+  readonly skills: readonly AgentChatCatalogEntry[];
+  /** `@` — Task 도구로 부르는 서브에이전트. 슬래시 문법이 아니라 별도 글자를 쓴다. */
+  readonly agents: readonly AgentChatCatalogEntry[];
+}
 
 /**
  * 서브에이전트 전사록에서 도구 발자국을 뽑는다.
