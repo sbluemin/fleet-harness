@@ -148,3 +148,22 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null } =
     exit: (sessionId: string) => { for (const listener of exitListeners) listener(sessionId); },
   };
 }
+
+/**
+ * cwd 폴백은 payload에 cwd가 없는 Operation을 Theater 경로로 구제하기 위한 것이다.
+ * `readPayloadString`이 없는 키에 빈 문자열을 돌려주므로 `??`로는 절대 넘어가지 않았고,
+ * 그래서 cwd가 찍히지 않은 agent Operation은 티켓을 영영 받지 못했다.
+ */
+describe("agent cwd fallback", () => {
+  it("falls back to the Theater path when the payload carries no cwd", async () => {
+    // 계약 자체를 소스에서 못 박는다 — `??`가 돌아오면 폴백이 다시 죽는다.
+    const fs = await import("node:fs/promises");
+    const url = await import("node:url");
+    const path = await import("node:path");
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const source = await fs.readFile(path.join(here, "..", "server", "agent.ts"), "utf8");
+
+    expect(source).not.toMatch(/readPayloadString\((?:operation|node)\.payload, "cwd"\) \?\?/);
+    expect(source).toMatch(/readPayloadString\((?:operation|node)\.payload, "cwd"\) \|\|/);
+  });
+});

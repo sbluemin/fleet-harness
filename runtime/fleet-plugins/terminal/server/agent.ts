@@ -363,7 +363,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           return true;
         }
         ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
-          cwd: readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "",
+          cwd: readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? ""),
           sessionId: operation.id,
           operationId: operation.id,
           operationType: operation.type,
@@ -385,7 +385,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, 409, { error: "operation_chat_mode" });
         return true;
       }
-      const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId);
+      const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId);
       if (!cwd) {
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
@@ -880,7 +880,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const launchEffort = readAgentSession(node.payload)?.effort || undefined;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
     // 복귀를 건너뛰어 세션이 starting에 고착된다.
-    const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
+    const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     resetOscActivity(sessionId);
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
@@ -1817,7 +1817,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {
-    const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "";
+    const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
     const providerTitle = readProviderTitle(operation.payload);
     return observability.injectDormantOperation({
       sessionId: operation.id,
