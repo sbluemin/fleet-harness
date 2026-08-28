@@ -184,9 +184,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     const workspace = selected.workspace ?? await ensureInitialWorkspace();
     if (!workspace) {
       // 열린 Theater가 없으면 보여 줄 위키도 없다 — 없는 것을 지어내지 않는다.
-      if (isJsonRequest(request)) sendJson(response, 404, { error: "no_workspace_registered" });
-      else redirect(response, CODEX_BASE);
-      return true;
+      // 화면 요청은 콘솔 SPA가 답한다: 여기서 CODEX_BASE로 되돌리면 이미 그 주소에
+      // 있는 요청이 자기 자신으로 무한히 튕긴다.
+      if (isJsonRequest(request)) {
+        sendJson(response, 404, { error: "no_workspace_registered" });
+        return true;
+      }
+      return false;
     }
     const originalUrl = request.url;
     if (selected.rewrittenUrl) request.url = selected.rewrittenUrl;

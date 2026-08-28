@@ -45,7 +45,13 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
       body: JSON.stringify({ folderGrantId: grant.id ?? grant.folderGrantId }),
     });
     const body = await response.json() as { readonly theater?: { readonly id?: string } };
-    return body.theater?.id ?? "";
+    if (body.theater?.id) return body.theater.id;
+    // 이미 등록된 Theater는 생성이 아니라 조회로 답한다 — 같은 경로를 두 번 등록해도
+    // 호출자는 같은 id를 받아야 한다.
+    const listed = await fetch(`${origin}/api/v1/theaters`, { headers: { Origin: origin } });
+    const theaters = await listed.json() as { readonly theaters?: readonly { readonly id: string; readonly label: string }[] };
+    const wanted = cwd.split("/").filter(Boolean).at(-1);
+    return theaters.theaters?.find((theater) => theater.label === wanted)?.id ?? "";
   };
 
   // 예전 codexCwd는 콘솔이 기본 워크스페이스를 하나 들고 뜨게 했다. Codex가 플러그인이 된

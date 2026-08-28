@@ -21,13 +21,9 @@ export function createCodexWorkspaceRouter(
   deps: CodexWorkspaceRouteDeps,
 ): (context: CodexWorkspaceRouteContext) => Promise<boolean> {
   return async function handleCodexWorkspaceRoute({ req, res, pathname }: CodexWorkspaceRouteContext): Promise<boolean> {
-    const match = pathname.match(/^\/api\/v1\/theaters\/([^/]+)\/codex-workspace$/u);
-    if (!match) return false;
-    const theater = deps.getTheater(decodeURIComponent(match[1] ?? ""));
-    if (!theater) {
-      deps.writeJson(res, 400, { error: "invalid_theater" });
-      return true;
-    }
+    // 플러그인 라우트는 자기 이름공간에 산다. Theater는 경로가 아니라 본문이 싣는다 —
+    // `/api/v1/theaters/...`는 코어가 소유한 경로이고, 플러그인이 그 밑에 끼어들 수 없다.
+    if (pathname !== "/api/v1/plugins/codex/workspace") return false;
     if (req.method !== "POST") {
       deps.writeJson(res, 405, { error: "method_not_allowed" });
       return true;
@@ -37,8 +33,14 @@ export function createCodexWorkspaceRouter(
       return true;
     }
     const body = await deps.readJsonBody<unknown>(req);
-    if (!isResolveWorkspaceBody(body)) {
-      deps.writeJson(res, 400, { error: "invalid_request" });
+    const theaterId = readTheaterId(body);
+    if (!theaterId) {
+      deps.writeJson(res, 400, { error: "invalid_theater" });
+      return true;
+    }
+    const theater = deps.getTheater(theaterId);
+    if (!theater) {
+      deps.writeJson(res, 400, { error: "invalid_theater" });
       return true;
     }
     try {
@@ -50,9 +52,8 @@ export function createCodexWorkspaceRouter(
   };
 }
 
-function isResolveWorkspaceBody(value: unknown): value is Record<string, never> {
-  return typeof value === "object"
-    && value !== null
-    && !Array.isArray(value)
-    && Object.keys(value).length === 0;
+function readTheaterId(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const value = (body as { readonly theaterId?: unknown }).theaterId;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }

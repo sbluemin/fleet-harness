@@ -93,9 +93,9 @@ export default definePlugin({
         return realpath ? { id: theaterId, realpath } : null;
       },
       isAuthorized: (req) => ctx.host.security.isWriteAdmitted(req),
-      readJsonBody: ctx.host.http.readJsonBody,
+      readJsonBody: (req) => ctx.host.http.readJsonBody(req),
       resolveWorkspace: (theaterId, theaterRoot) => gateway.resolveWorkspaceForTheater(theaterId, theaterRoot),
-      writeJson: ctx.host.http.writeJson,
+      writeJson: (res, status, body) => ctx.host.http.writeJson(res, status, body),
     });
     registerRouter(ctx, "/api/v1/plugins/codex/workspace", async ({ req, res, pathname }) =>
       workspaceRouter({ req, res, pathname }), {
