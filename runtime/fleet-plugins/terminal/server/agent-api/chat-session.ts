@@ -1499,11 +1499,16 @@ class AgentChatSession {
     if (this.catalogFlight) return;
     this.catalogFlight = (async () => {
       try {
-        const [commands, agents] = await Promise.all([
+        const [commands, agents, skills] = await Promise.all([
           session.supportedCommands(),
           session.supportedAgents(),
+          // 스킬 이름의 **주 출처**다. init 메시지의 `skills`는 첫 턴과 함께 오므로(실측),
+          // `/`만 눌러 연 세션에서는 오지 않는다 — 그것에 기대면 그 세션 내내 스킬 전부가
+          // 명령 칸에 선다. 이 요청은 턴과 무관하게 답한다.
+          session.reloadSkills(),
         ]);
         if (commands === null && agents === null) return;
+        if (skills !== null) this.skillNames = new Set(skills.map((entry) => entry.name));
         // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
         // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
         this.rawCatalog = { commands: commands ?? [], agents: agents ?? [] };

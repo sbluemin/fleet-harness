@@ -373,6 +373,7 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
     backgroundTasks?: (toolUseId?: string) => Promise<boolean>;
     supportedCommands?: () => Promise<unknown>;
     supportedAgents?: () => Promise<unknown>;
+    reloadSkills?: () => Promise<unknown>;
   };
 
   let closed = false;
@@ -421,6 +422,16 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
       if (closed || typeof run.supportedAgents !== "function") return null;
       try {
         return readVendorAgents(await run.supportedAgents());
+      } catch {
+        return null;
+      }
+    },
+    async reloadSkills(): Promise<readonly ClaudeGatewayCommand[] | null> {
+      if (closed || typeof run.reloadSkills !== "function") return null;
+      try {
+        const response = await run.reloadSkills();
+        // 응답은 `{ skills: SlashCommand[] }`다 — 명령 목록과 같은 레코드 모양이라 같은 파서를 쓴다.
+        return readVendorCommands((response as { skills?: unknown } | null)?.skills);
       } catch {
         return null;
       }

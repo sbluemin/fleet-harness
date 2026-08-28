@@ -439,6 +439,17 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
   supportedCommands(): Promise<readonly ClaudeGatewayCommand[] | null>;
   /** 자식이 Task 도구로 부를 수 있는 서브에이전트 목록. `null` 규율은 위와 같다. */
   supportedAgents(): Promise<readonly ClaudeGatewayAgent[] | null>;
+  /**
+   * 스킬 목록만 따로 묻는다. `supportedCommands()`가 내장 명령과 스킬을 한 목록으로 주고
+   * 카테고리를 말하지 않으므로, 둘을 가르려면 어느 쪽이 스킬인지 말해 주는 출처가 따로 필요하다.
+   *
+   * init 메시지의 `skills`를 쓰지 않는 이유는 실측이다: 그 메시지는 **첫 턴과 함께** 오므로,
+   * 아직 아무 말도 주고받지 않은 세션에서는 오지 않는다. 그 세션의 목록을 init에 기대어 가르면
+   * 스킬 전부가 명령 칸에 선다. 이 요청은 턴과 무관하게 답한다.
+   *
+   * 이름이 말하는 대로 디스크에서 다시 읽는다 — 세션을 여는 시점에는 사실상 첫 읽기다.
+   */
+  reloadSkills(): Promise<readonly ClaudeGatewayCommand[] | null>;
   /** 세션을 접고 자식 프로세스를 끝낸다. 살아 있던 백그라운드 작업도 함께 거둬진다. */
   close(): void;
 }

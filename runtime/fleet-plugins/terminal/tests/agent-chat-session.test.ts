@@ -61,6 +61,7 @@ type FakeTurn = {
 type FakeCatalog = {
   readonly commands: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
   readonly agents: readonly { readonly name: string; readonly description: string; readonly model: string | null }[];
+  readonly skills?: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
 };
 
 function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
@@ -98,6 +99,9 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
      */
     supportedCommands: async () => hooks.catalog?.commands ?? null,
     supportedAgents: async () => hooks.catalog?.agents ?? null,
+    /** 스킬 이름의 주 출처. 실물은 첫 턴 전에도 답한다 — init을 기다리지 않는다. */
+    supportedSkills: async () => hooks.catalog?.skills ?? null,
+    reloadSkills: async () => hooks.catalog?.skills ?? null,
     /**
      * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
      * 값이고, 한 번이라도 보낸 뒤에는 방금 소비한 턴의 종료 값이다 — 다음 턴의 시작 값 또한
@@ -287,6 +291,28 @@ describe("AgentChatRegistry — composer capability catalog", () => {
     expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact", "console-e2e"]);
     expect(catalog!.skills).toEqual([]);
     expect(catalog!.commands.find((entry) => entry.name === "compact")!.argumentHint).toBe("[instructions]");
+    await registry.disposeAll();
+  });
+
+  /**
+   * 실측에서 잡힌 결함: `/`만 눌러 연 세션은 아직 턴을 돌지 않았고, init 메시지는 **첫 턴과
+   * 함께** 오므로 도착하지 않는다. 스킬 이름을 init에만 기대면 그 세션에서 스킬 전부가 명령
+   * 칸에 서고, 카테고리라는 이 기능의 요점이 통째로 무너진다.
+   */
+  it("splits skills on a session that has never run a turn", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], {
+      ...CATALOG,
+      skills: [{ name: "console-e2e", description: "Drive a headless browser test", argumentHint: "", aliases: [] }],
+    });
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-cold", () => freshSeedFor(home));
+    // 한 글자도 보내지 않았다 — init은 오지 않았다.
+    const catalog = await session.readCatalog();
+    expect(catalog!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
     await registry.disposeAll();
   });
 
