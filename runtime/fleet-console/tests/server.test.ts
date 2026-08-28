@@ -495,7 +495,12 @@ describe("console static and terminal ticket boundary", () => {
     for (const pathname of ["console/", "console/operations"]) {
       const response = await fetch(`${fixture.endpoint}${pathname}`);
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain('data-theme="whites" data-theme-source="server"');
+      const html = await response.text();
+      expect(html).toContain('data-theme="whites" data-theme-source="server"');
+      /* data-glass는 "사용자가 유리를 원하는가"만 말한다 — 라이트에서 유리를 끄는 일은 CSS
+         게이트가 하고, 주입은 극성을 모른다. 여기서 data-glass="off"를 함께 실으면 저장된
+         선호가 화면 상태로 덮여, 다크로 돌아갔을 때 사용자가 고른 값이 사라진다. */
+      expect(html).not.toContain("data-glass");
     }
   });
 
