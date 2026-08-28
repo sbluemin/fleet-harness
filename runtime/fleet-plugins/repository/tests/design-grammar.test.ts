@@ -194,9 +194,11 @@ describe("Repository design grammar", () => {
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 
-    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-view-toggle"]) {
+    for (const selector of [".repository-filter-input", ".history-filter-input"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
     }
+    // 뷰 토글은 세그먼트 트랙이다 — Quiet Controls의 공용 track 채널을 소비해 네 테마가 함께 재조율된다.
+    expect(blockOf(".repository-view-toggle")).toContain("var(--control-track)");
   });
 
   it("keeps the sync button spin animation reducible and omits the status strip", () => {

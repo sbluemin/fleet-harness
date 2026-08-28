@@ -630,12 +630,13 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   color: var(--text-primary);
 }
 
-/* 눌린 아이콘 버튼은 밴드의 다른 토글과 같은 문법으로 말한다 — .command-band-mode-seg·
-   .command-band-mode-tool이 쓰는 brass 채움이며, War Room 스포트라이트처럼 불리언 토글도
-   이미 이 문법을 입고 있다. 이 규칙이 없던 동안 aria-pressed는 접근성 트리에만 존재하고
-   화면에는 아무 흔적도 남기지 않았다. */
+/* 눌린 아이콘 버튼은 밴드의 다른 토글과 같은 문법으로 말한다 — 불리언 ON = 자리 + 글리프.
+   면은 융기 중립(thumb)이고 켬을 말하는 accent는 글리프의 brass뿐이다. 이 규칙이 없던 동안
+   aria-pressed는 접근성 트리에만 존재하고 화면에는 아무 흔적도 남기지 않았다. */
 .command-band-button[aria-pressed="true"] {
-  background: var(--control-selected-fill);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
   color: var(--brass-ink);
 }
 
@@ -660,6 +661,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
    모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다. */
 .command-band-mode-switch {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -667,10 +669,12 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--surface-glass) 62%, transparent);
+  background: var(--control-track);
 }
 
 .command-band-mode-seg {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: none;
   align-items: center;
@@ -686,7 +690,8 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 /* hover는 경계와 낮은 wash로 다음 행동만 예고하고, focus는 전역 외곽 링을 보존한다.
-   활성 모드는 wash 아래 짧은 datum을 더해 인접 도구의 pressed 면과 형상으로 갈린다. */
+   활성 모드는 Quiet Controls의 융기 중립 면(thumb)이다 — 인접 도구의 pressed 면과는
+   글리프 accent 유무(모드는 잉크 대비, 불리언 도구는 brass 글리프)로 갈린다. */
 .command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"]),
 .command-band-mode-seg:focus-visible:not([aria-pressed="true"]) {
   border-color: var(--control-hover-rim);
@@ -695,21 +700,16 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 .command-band-mode-seg[aria-pressed="true"] {
-  position: relative;
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
-  color: var(--brass-ink);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  color: var(--text-primary);
+  box-shadow: var(--control-thumb-lift);
 }
 
-.command-band-mode-seg[aria-pressed="true"]::after {
-  position: absolute;
-  right: var(--space-2);
-  bottom: -3px;
-  left: var(--space-2);
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  content: "";
+.command-band-mode-switch:has(> .segmented-thumb.is-placed) .command-band-mode-seg[aria-pressed="true"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .command-band-mode-seg:active:not(:disabled) { transform: translateY(1px); }
@@ -768,8 +768,9 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 .command-band-mode-tool[aria-pressed="true"] {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
   color: var(--brass-ink);
 }
 
@@ -864,8 +865,8 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 .command-band-segment-trigger.is-open {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: var(--control-open-rim);
+  background: var(--control-tint-fill);
   color: var(--text-primary);
 }
 
@@ -949,7 +950,8 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 
 .command-band-menu-item.is-active {
   color: var(--text-primary);
-  background: var(--control-selected-fill);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
 }
 
 .command-band-menu-item.is-active::before {

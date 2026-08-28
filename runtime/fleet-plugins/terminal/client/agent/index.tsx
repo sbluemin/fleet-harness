@@ -4,7 +4,7 @@ import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
-import { Select } from "@fleet-console/sdk/react/browser";
+import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import {
   CaptionActionButton,
@@ -1080,6 +1080,7 @@ function AiGatewayCompactTimingCard() {
           <p className="global-settings-help">{t("terminal.settings.compactTimingHelp")}</p>
         </div>
         <div className="segmented" role="group" aria-labelledby="compact-timing-label">
+          <SegmentedThumb />
           <button type="button" className={`segmented-option${policy === "auto" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("auto")}>
             {t("terminal.settings.compactTimingAuto")}
           </button>
@@ -1576,6 +1577,7 @@ function AiGatewayXaiEndpointRow({ saving }: { readonly saving: boolean }) {
     <div className="ai-gateway-composer">
       <span className="ai-gateway-field-label" id="xai-endpoint-label">{t("terminal.settings.xaiEndpoint")}</span>
       <div className="segmented" role="group" aria-labelledby="xai-endpoint-label">
+        <SegmentedThumb />
         <button
           type="button"
           className={`segmented-option${endpoint === "cli-proxy" ? " is-active" : ""}`}
@@ -2238,6 +2240,7 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
           <p className="global-settings-help">{t("terminal.settings.terminalRendererHelp")}</p>
         </div>
         <div className="segmented" role="group" aria-label={t("terminal.settings.terminalRendererAria")}>
+          <SegmentedThumb />
           {RENDERER_IDS.map((rendererId) => {
             const isActive = rendererId === terminalRenderer;
             return (
@@ -2260,6 +2263,7 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
           <p className="global-settings-help">{t("terminal.settings.inactiveFlushHelp")}</p>
         </div>
         <div className="segmented" role="group" aria-label={t("terminal.settings.inactiveFlushAria")}>
+          <SegmentedThumb />
           {INACTIVE_FLUSH_IDS.map((inactiveFlushId) => {
             const isActive = inactiveFlushId === terminalInactiveFlush;
             return (

@@ -87,11 +87,12 @@
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
 }
-/* The chosen font stays marked with a soft brass fill (brass = current selection)
+/* The chosen font stays marked as the raised neutral seat (Quiet Controls thumb)
    even when keyboard focus moves elsewhere, so a click highlights it immediately. */
 .fc-font-browser__row[aria-selected="true"] {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
 }
 .fc-font-browser__row.is-unavailable,
 .fc-font-browser[data-disabled="true"] { opacity: var(--control-disabled-opacity); }

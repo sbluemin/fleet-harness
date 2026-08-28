@@ -157,7 +157,7 @@
 }
 
 .agent-cli-path-button.is-primary {
-  border-color: var(--control-selected-rim);
+  border-color: var(--control-open-rim);
 }
 
 .agent-cli-path-button:active:not(:disabled) {
@@ -521,9 +521,11 @@
   outline-offset: 2px;
 }
 
+/* 불리언 ON = 자리 + 글리프 — 면은 융기 중립(thumb)이고 켬은 라벨의 brass 잉크가 말한다. */
 .ai-gateway-host-only.is-on {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
   color: var(--brass-ink);
 }
 
@@ -650,10 +652,11 @@
   outline-offset: 2px;
 }
 
+/* 독립 ON = 잉크 — 사다리의 켜진 단은 저채도 워시와 잉크 대비만으로 말한다.
+   다중 on 칩에 자리(thumb)를 세우면 줄 전체가 키보드처럼 읽힌다. */
 .ai-gateway-effort-level.is-on {
-  background: var(--control-selected-fill);
-  color: var(--brass-ink);
-  box-shadow: inset 0 0 0 1px var(--control-selected-rim);
+  background: var(--control-tint-fill);
+  color: var(--control-tint-ink);
 }
 
 .ai-gateway-effort-level:active:not(:disabled) {
@@ -717,8 +720,9 @@
 }
 
 .ai-gateway-axis-toggle.is-on {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  box-shadow: var(--control-thumb-lift);
   color: var(--brass-ink);
 }
 
@@ -740,9 +744,9 @@
 .ai-gateway-add-button {
   margin-left: auto;
   padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--control-selected-rim);
+  border: 1px solid var(--control-hover-rim);
   border-radius: var(--radius-xs);
-  background: var(--control-selected-fill);
+  background: var(--control-tint-fill);
   color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-xs);

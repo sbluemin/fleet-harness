@@ -407,6 +407,7 @@
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
+  background: var(--control-track);
 }
 
 .fexp-view-mode button {
@@ -436,21 +437,12 @@
   color: var(--text-primary);
 }
 
+/* 배타 선택 = 자리(Quiet Controls) — 활성 뷰는 융기 중립 면과 잉크 대비가 말한다. */
 .fexp-view-mode button[aria-pressed="true"] {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
-  color: var(--brass-ink);
-}
-
-.fexp-view-mode button[aria-pressed="true"]::after {
-  position: absolute;
-  right: var(--space-2);
-  bottom: -3px;
-  left: var(--space-2);
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  content: "";
+  border-color: var(--control-thumb-line);
+  background: var(--control-thumb);
+  color: var(--text-primary);
+  box-shadow: var(--control-thumb-lift);
 }
 
 .fexp-view-mode button:active:not(:disabled) { transform: translateY(1px); }

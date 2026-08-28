@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { Link, useNavigate } from "react-router-dom";
 
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
+import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
@@ -552,6 +553,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </div>
       {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
         <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
+          <SegmentedThumb />
           {CANVAS_MODES.map((mode) => (
             <button
               key={mode.id}
