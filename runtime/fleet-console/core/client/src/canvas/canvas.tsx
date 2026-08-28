@@ -115,6 +115,7 @@ export function OperationsCanvas({
   const minimized = useMinimized();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const activePluginOperationId = state.activeOperationId;
+  const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
   const globalSettings = useGlobalSettingsStore();
@@ -257,6 +258,19 @@ export function OperationsCanvas({
     // 빈 바다 클릭은 패널을 고르지 않은 것이다 — 터미널 키보드와 캡션 포커스(is-active)를 함께 걷는다.
     onClick: clearActiveOperation,
   });
+
+  // 무포커스 → 첫 포커스에서는 곁의 모든 본문이 한꺼번에 220ms opacity 합성을 시작하지 않게
+  // 한 페인트 동안만 전환을 닫는다. A → B 이동은 이미 후퇴한 패널과 새 도착지 두 곳만 바뀌므로
+  // 기존 모션을 유지한다. 포커스가 다시 비면 다음 첫 진입을 위해 재무장한다.
+  useEffect(() => {
+    if (activePluginOperationId === null) {
+      setFocusFadeTransitionReady(false);
+      return;
+    }
+    if (focusFadeTransitionReady) return;
+    const frame = window.requestAnimationFrame(() => setFocusFadeTransitionReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePluginOperationId, focusFadeTransitionReady]);
 
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
   // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
@@ -787,14 +801,19 @@ export function OperationsCanvas({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formationView, formationLayout]);
-  // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
-  const effectiveZoom = panelMaximized || panelCompanion || formationView || triageActive ? 1 : canvas.viewport.zoom;
+  // 캔버스 transform이 제거되는 모드에서 화면에 서는 패널은 net scale 1로 보정한다. 단, focus
+  // layer 뒤의 peer는 기존 world geometry와 줌을 그대로 보존한다 — 숨은 xterm까지 fontSize/fit/PTY
+  // resize를 fan-out하지 않기 위한 핵심 계약이다.
+  const visiblePanelCount = triageActive
+    ? pluginOperations.filter((operation) => !triageMinimizedSet.has(operation.id)).length
+    : theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).length;
+  const adaptivePanelMaterial = visiblePanelCount >= 4;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
   const companionSlotCount = visibleCompanionPanels.length + 1;
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""} ${focusFadeTransitionReady ? "" : "is-focus-fade-settling"} ${adaptivePanelMaterial ? "is-panel-density-high" : ""}`}
       onPointerDown={(event) => {
         // 메뉴 내부 클릭(캔버스 소유 메뉴는 <main> 자손이라 버블로 도달한다)은 실행 항목의
         // click을 살리기 위해 닫기 신호를 본내지 않는다 — data-canvas-blocker는 전파를 멈추지 않는다.
@@ -870,6 +889,11 @@ export function OperationsCanvas({
             ? !operationTriageStage && !deckSlot
             : (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
           const formationSlot = formationSlotByOperationId.get(operation.id);
+          const operationZoom = focusLayerHidden
+            ? canvas.viewport.zoom
+            : formationView || triageActive || operationMaximized || operationCompanion
+              ? 1
+              : canvas.viewport.zoom;
           const glanceHud = resolveGlanceHudModel(triageActive
             ? {
                 mode: "triage",
@@ -903,7 +927,7 @@ export function OperationsCanvas({
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot && !deckSlot
-            && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
+            && canvas.viewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
             unseen: idleArrivalIds.has(operation.id),
@@ -920,7 +944,7 @@ export function OperationsCanvas({
             runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
             theme: state.activeTheme,
             language,
-            viewportZoom: effectiveZoom,
+            viewportZoom: operationZoom,
             // 선별 중 무대 밖 패널은 덱 칸으로 간다 — 자리가 있으면 그 자리에 실물로 서므로
             // 숨기지 않고, 자리가 아직 없을 때만(입장 연출·지도 전환 직전) 접어 둔다.
             minimized: triageActive ? !operationTriageStage && !deckSlot : minimizedSet.has(operation.id),

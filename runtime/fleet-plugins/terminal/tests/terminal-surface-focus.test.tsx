@@ -5,7 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const terminalMocks = vi.hoisted(() => ({
+  fit: vi.fn(),
   focus: vi.fn(),
+  refresh: vi.fn(),
+  resize: vi.fn(),
   resumeFollowing: vi.fn(),
   setActive: vi.fn(),
   start: vi.fn(),
@@ -28,13 +31,13 @@ vi.mock("@xterm/xterm", () => ({
     loadAddon() {}
     onData() { return { dispose() {} }; }
     open() {}
-    refresh() {}
+    refresh = terminalMocks.refresh;
     scrollToBottom() {}
     scrollToLine() {}
     write(_data: Uint8Array, callback?: () => void) { callback?.(); }
   },
 }));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon { fit() {} } }));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon { readonly fit = terminalMocks.fit; } }));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class Unicode11Addon {} }));
 vi.mock("@xterm/addon-webgl", () => ({
   WebglAddon: class WebglAddon {
@@ -53,7 +56,7 @@ vi.mock("../client/shared/ime-shift-enter.js", () => ({
 }));
 vi.mock("../client/shared/terminal-fallback-fonts.js", () => ({ waitForTerminalFallbackFonts: terminalMocks.waitForSymbols }));
 vi.mock("../client/shared/terminal-connection.js", () => ({
-  createTerminalConnection: () => ({ dispose() {}, resize() {}, start: terminalMocks.start }),
+  createTerminalConnection: () => ({ dispose() {}, resize: terminalMocks.resize, start: terminalMocks.start }),
 }));
 vi.mock("../client/shared/terminal-copy-on-select.js", () => ({
   createTerminalCopyOnSelect: () => ({ dispose() {} }),
@@ -80,12 +83,16 @@ import { TerminalSurface } from "../client/shared/terminal-surface.js";
 let container: HTMLDivElement | null = null;
 let fontsDescriptor: PropertyDescriptor | undefined;
 let resizeObserverDescriptor: PropertyDescriptor | undefined;
+let resizeObserverCallback: (() => void) | null = null;
 let root: Root | null = null;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => {
+  terminalMocks.fit.mockClear();
   terminalMocks.focus.mockClear();
+  terminalMocks.refresh.mockClear();
+  terminalMocks.resize.mockClear();
   terminalMocks.resumeFollowing.mockClear();
   terminalMocks.setActive.mockClear();
   terminalMocks.start.mockClear();
@@ -100,7 +107,12 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "ResizeObserver", {
     configurable: true,
     value: class ResizeObserver {
-      disconnect() {}
+      constructor(callback: () => void) {
+        resizeObserverCallback = callback;
+      }
+      disconnect() {
+        resizeObserverCallback = null;
+      }
       observe() {}
     },
   });
@@ -123,6 +135,7 @@ afterEach(() => {
   }
   container?.remove();
   container = null;
+  resizeObserverCallback = null;
   root = null;
 });
 
@@ -173,9 +186,37 @@ describe("TerminalSurface keyboard focus requests", () => {
 
     expect(terminalMocks.focus).not.toHaveBeenCalled();
   });
+
+  it("coalesces zoom correction with the final resize settle", async () => {
+    vi.useFakeTimers();
+    try {
+      await renderSurface(true, 1, 0.75);
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
+      terminalMocks.fit.mockClear();
+      terminalMocks.resize.mockClear();
+      terminalMocks.refresh.mockClear();
+
+      await renderSurface(true, 1, 1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120);
+      });
+      await act(async () => {
+        resizeObserverCallback?.();
+        await vi.advanceTimersByTimeAsync(80);
+      });
+
+      expect(terminalMocks.fit).toHaveBeenCalledTimes(1);
+      expect(terminalMocks.resize).toHaveBeenCalledTimes(1);
+      expect(terminalMocks.refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
-async function renderSurface(active: boolean, keyboardFocusRequestId: number): Promise<void> {
+async function renderSurface(active: boolean, keyboardFocusRequestId: number, zoom = 1): Promise<void> {
   await act(async () => {
     root!.render(createElement(TerminalSurface, {
       operationId: "operation-a",
@@ -183,6 +224,7 @@ async function renderSurface(active: boolean, keyboardFocusRequestId: number): P
       wsPath: "/terminal",
       active,
       keyboardFocusRequestId,
+      zoom,
     }));
     await Promise.resolve();
     await Promise.resolve();

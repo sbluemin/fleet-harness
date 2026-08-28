@@ -4766,6 +4766,16 @@
     visibility 0s linear 0s;
 }
 
+/* Cruise·Tactical·War Room에서 패널이 넷 이상 보이면 각 창의 32px backdrop blur를 불투명
+   panel 토큰으로 축약한다. 포커스·캡션·상태 채널은 그대로이고 재질만 바뀐다. 최대화/companion
+   중에도 hidden peer가 blur surface로 남지 않으며, 대상 창은 같은 불투명 면 위에서 geometry만 전환한다. */
+.operations-canvas.is-panel-density-high {
+  --glass-tint-panel: var(--surface-panel);
+  --glass-underlay: var(--surface-panel);
+  --glass-pane-light: transparent;
+  --glass-backdrop-panel: none;
+}
+
 /* 드래그·리사이즈 조작 중에는 포인터 추적이 즉답해야 한다 — rail.css is-dragging 선례. */
 .canvas-operation.is-dragging {
   transition: none;
@@ -6424,6 +6434,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-terminal {
   opacity: var(--unfocused-panel-opacity, 0.5);
   transition: opacity var(--duration-base) var(--ease-glide);
+}
+
+/* 무포커스 → 첫 포커스는 모든 peer가 동시에 후퇴하는 유일한 fan-out이다. 한 페인트 동안만
+   모션을 끊고 목표 opacity에 바로 놓는다. 이후 A → B 이동은 두 본문만 전환한다. */
+.operations-canvas.is-focus-fade-settling .canvas-operation-terminal {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation-terminal {
+    transition: none;
+  }
 }
 
 /* 캡션 아랫변 = 상태 채널. 포커스는 채움이 말하므로 선은 상태 하나만 소유한다. */
