@@ -53,7 +53,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
 import { RouteRegistry } from "./route-registry/registry.js";
 import { UpgradeRegistry } from "./route-registry/registry.js";
-import { CONSOLE_SECURITY_HEADERS, encodeSseData, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
+import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theaters/theater-domain.js";
 import { createFolderGrantStore } from "./theaters/theater-domain.js";
@@ -697,6 +697,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       isTerminalAuthorized,
       isLockAuthorized,
       resolveTerminalSocketRole,
+      isWriteAdmitted,
     },
     lifecycle: {
       registerCleanup: (cleanup) => {
@@ -1568,6 +1569,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 원격 쪽 요청은 그대로 control이다. full 세션은 하나뿐이고 monitoring은 애초에 업그레이드에
    * 닿지 못하므로, 원격에서 오는 티켓 요청의 주인은 지금 제어를 쥔 그 기기뿐이다.
    */
+  /**
+   * 쓰기 허용 판정. 원격 리스너로 들어온 요청은 이미 세션을 통과했으므로 허용되고,
+   * 로컬 리스너는 루프백에서 온 것만 허용한다.
+   */
+  function isWriteAdmitted(req: http.IncomingMessage): boolean {
+    const listener = listenerForRequest(req);
+    if (listener !== null && listener.audience !== "local") return true;
+    return isLoopbackRemoteAddress(req.socket.remoteAddress);
+  }
+
   function resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer" {
     if (!isLoopbackListener(req)) return "control";
     return access.hasSession("remote", "full") ? "viewer" : "control";

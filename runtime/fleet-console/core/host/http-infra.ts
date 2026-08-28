@@ -44,3 +44,25 @@ export function startSseKeepaliveLifecycle(
   res.on("error", cleanup);
   return cleanup;
 }
+
+/**
+ * 요청이 이 기계 자신에게서 왔는가.
+ *
+ * 쓰기 허용 판정이 이 답에 걸리므로 코어가 소유한다 — 플러그인이 각자 판정하면
+ * 그중 하나는 `::ffff:127.0.0.1`이나 대괄호 IPv6를 놓치고, 놓친 쪽만 문이 넓어진다.
+ */
+export function isLoopbackRemoteAddress(address: string | undefined): boolean {
+  const normalized = normalizeRemoteAddress(address);
+  return normalized === "127.0.0.1" || normalized === "::1";
+}
+
+function normalizeRemoteAddress(address: string | undefined): string | null {
+  if (!address) return null;
+  const normalized = stripIpv6Brackets(address).toLowerCase();
+  if (normalized === "::ffff:127.0.0.1") return "127.0.0.1";
+  return normalized;
+}
+
+function stripIpv6Brackets(host: string): string {
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+}

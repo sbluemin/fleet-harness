@@ -144,10 +144,7 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   return true;
 }
 
-export function isLoopbackRemoteAddress(address: string | undefined): boolean {
-  const normalized = normalizeRemoteAddress(address);
-  return normalized === "127.0.0.1" || normalized === "::1";
-}
+export { isLoopbackRemoteAddress } from "../http-infra.js";
 
 // ─── Route dispatchers ────────────────────────────────────────────────────────
 

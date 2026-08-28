@@ -54,7 +54,9 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   security: {
     validateHost: () => true,
     isTerminalAuthorized: () => true,
-    isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
+    isLockAuthorized: () => true,
+    resolveTerminalSocketRole: () => "control" as const,
+    isWriteAdmitted: () => true,
   },
   theaterFlags: { register: () => () => undefined },
   lifecycle: {

@@ -121,6 +121,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null } =
       security: {
         isTerminalAuthorized: () => true,
         resolveTerminalSocketRole: () => "control" as const,
+        isWriteAdmitted: () => true,
       },
       theaterFlags: { register: () => () => undefined },
       lifecycle: { registerCleanup: vi.fn() },

@@ -237,6 +237,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
         isTerminalAuthorized: () => true,
         isLockAuthorized: () => true,
         resolveTerminalSocketRole: () => "control" as const,
+        isWriteAdmitted: () => true,
       },
       theaterFlags: { register: () => () => undefined },
       lifecycle: {

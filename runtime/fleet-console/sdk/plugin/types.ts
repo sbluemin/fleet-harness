@@ -555,6 +555,14 @@ export interface FleetPluginSecurityHost {
    * 세션이 있는지도 Console만 안다.
    */
   resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer";
+  /**
+   * 이 요청이 쓰기까지 허용되는가.
+   *
+   * 리스너 신원 자체를 넘기지 않는다 — bind 주소와 포트는 플러그인이 알 필요가 없고,
+   * 알면 언젠가 그것으로 자기 경계를 다시 짠다. 판정만 넘긴다: 어느 리스너로 들어왔고
+   * 지금 그 리스너가 무엇을 허용하는지는 Console만 안다.
+   */
+  isWriteAdmitted(req: http.IncomingMessage): boolean;
 }
 
 export interface FleetPluginLifecycleHost {
