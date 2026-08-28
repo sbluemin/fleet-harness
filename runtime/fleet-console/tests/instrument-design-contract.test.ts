@@ -20,9 +20,11 @@ const STANDALONE_CSS_SOURCES = [
   new URL("markdown/styles.css", CONSOLE_ROOT),
   new URL("font-picker/styles.css", CONSOLE_ROOT),
 ] as const;
+const CODEX_COMPONENTS_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/components.css", CONSOLE_ROOT);
+const CODEX_LAYOUT_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
 const CSS_THEME_SOURCES = [
   new URL("core/client/src/styles/theme.css", CONSOLE_ROOT),
-  new URL("core/client/src/codex/styles/theme.css", CONSOLE_ROOT),
+  new URL("../fleet-plugins/codex/client/codex/styles/theme.css", CONSOLE_ROOT),
 ] as const;
 const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
 const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
@@ -480,7 +482,7 @@ function findRawProductSelectsInSourceFile(
 
 describe("Instrument core design contract", () => {
   it("keeps the Codex health popover below blocking modal layers", () => {
-    const codexComponents = source("codex/styles/components.css");
+    const codexComponents = externalSource(CODEX_COMPONENTS_CSS_PATH);
     const popover = codexComponents.match(/\.codex-nav-health-popover \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(popover).toContain("position: fixed;");
     expect(popover).toContain("z-index: 70;");
@@ -2322,7 +2324,7 @@ describe("Instrument core design contract", () => {
 
   it("bounds the Codex navigator host so long Wiki entry lists keep native scrolling", () => {
     const components = source("styles/components.css");
-    const navigatorLayout = source("codex/styles/layout.css");
+    const navigatorLayout = externalSource(CODEX_LAYOUT_CSS_PATH);
     const railHostBlock = components.match(/\.codex-rail-host \{[^}]*\}/)?.[0] ?? "";
     const splitRailHostBlock = components.match(/\.codex-rail-host\.is-split \{[^}]*\}/)?.[0] ?? "";
     const navPaneBlock = components.match(/\.codex-nav-pane \{[^}]*\}/)?.[0] ?? "";

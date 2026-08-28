@@ -34,6 +34,22 @@ interface CodexGatewayDeps {
   /** 쓰기를 허용할 Origin 집합. 호스트의 `server.origin()`이 원본이다. */
   readonly allowedOrigins: () => readonly string[];
   readonly theaterPaths: TheaterPathResolver;
+  /**
+   * 아직 등록되지 않은 워크스페이스를 요청받았을 때 그 뿌리를 찾아 준다.
+   *
+   * 등록을 이벤트에 맡기면 "Theater를 더한 직후의 요청"이 등록을 앞지른다 — 방금 만든
+   * Theater의 위키가 없다고 답하는 창이 생긴다. 순서를 맞추는 대신 순서 의존을 없앤다:
+   * 필요할 때 열고, 이벤트는 미리 데워 두는 역할만 한다.
+   */
+  readonly resolveWorkspaceRoot?: (workspaceId: string) => string | null;
+  /**
+   * 아직 끝나지 않은 등록이 있으면 그것을 기다린다.
+   *
+   * Theater 등록은 이벤트로 도착하고 그 처리는 비동기다. MRU 경로에는 되찾을 id조차
+   * 없으므로, 답하기 전에 진행 중인 등록을 한 번 기다리는 것이 순서 의존을 없애는
+   * 유일한 지점이다.
+   */
+  readonly whenRegistrationsSettle?: () => Promise<void>;
   readonly security: {
     readonly validateHost: (request: IncomingMessage) => boolean;
     readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
@@ -98,10 +114,35 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     },
   });
 
+  /**
+   * 주소가 가리키는 워크스페이스를 지금 연다. 이미 열려 있거나 뿌리를 못 찾으면 false.
+   * 등록은 멱등이므로 이벤트 경로와 겹쳐도 두 벌이 생기지 않는다.
+   */
+  async function openMissingWorkspace(requestUrl: string): Promise<boolean> {
+    const resolveRoot = deps.resolveWorkspaceRoot;
+    if (!resolveRoot) return false;
+    const match = new URL(requestUrl, "http://127.0.0.1").pathname
+      .slice(CODEX_BASE.length)
+      .match(/^\/w\/([^/]+)(?:\/.*)?$/);
+    const workspaceId = match ? decodeURIComponent(match[1] ?? "") : null;
+    if (!workspaceId || workspaces.get(workspaceId)) return false;
+    const root = resolveRoot(workspaceId);
+    if (!root) return false;
+    await registerWorkspace(root, undefined, workspaceId);
+    return workspaces.get(workspaceId) !== null;
+  }
+
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+    await deps.whenRegistrationsSettle?.();
     let selected: WorkspaceSelection;
     try {
       selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd);
+      // 모르는 워크스페이스라면 한 번은 열어 보고 다시 고른다.
+      if (selected.kind === "missing-workspace" || selected.kind === "redirect" || selected.kind === "no-workspace") {
+        if (await openMissingWorkspace(request.url ?? "/")) {
+          selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd);
+        }
+      }
     } catch (error) {
       if (error instanceof URIError) {
         sendJson(response, 400, { error: "bad request" });

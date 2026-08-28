@@ -28,6 +28,21 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
     lockFile: options.lockPath,
   });
   const port = Number(new URL(endpoint).port);
+
+  const registerTheater = async (cwd: string): Promise<string> => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/theaters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${port}` },
+      body: JSON.stringify({ path: cwd }),
+    });
+    const body = await response.json() as { readonly theater?: { readonly id?: string } };
+    return body.theater?.id ?? "";
+  };
+
+  // 예전 codexCwd는 콘솔이 기본 워크스페이스를 하나 들고 뜨게 했다. Codex가 플러그인이 된
+  // 뒤로 그 진입점은 없고, 워크스페이스는 Theater 등록의 결과다 — 픽스처가 그 Theater를 만든다.
+  await registerTheater(options.cwd);
+
   return {
     address: () => ({ port }),
     close: (callback) => {
@@ -37,14 +52,6 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
      * 워크스페이스 등록은 이제 Theater 등록의 결과다 — Codex 플러그인이 생명주기
      * 이벤트를 듣고 스스로 연다. 콘솔에 Codex 전용 진입점은 더 이상 없다.
      */
-    registerWorkspace: async (cwd) => {
-      const response = await fetch(`http://127.0.0.1:${port}/api/v1/theaters`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${port}` },
-        body: JSON.stringify({ path: cwd }),
-      });
-      const body = await response.json() as { readonly theater?: { readonly id?: string } };
-      return body.theater?.id ?? "";
-    },
+    registerWorkspace: registerTheater,
   };
 }

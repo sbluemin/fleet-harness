@@ -36,6 +36,15 @@ export default definePlugin({
         ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
     });
 
+    /**
+     * 진행 중인 등록의 꼬리. 이벤트 처리는 비동기라 요청이 그것을 앞지를 수 있으므로,
+     * 게이트웨이가 답하기 전에 이 꼬리를 한 번 기다린다.
+     */
+    let registrations: Promise<unknown> = Promise.resolve();
+    const track = (work: Promise<unknown>): void => {
+      registrations = registrations.then(() => work).catch(() => undefined);
+    };
+
     const gateway = createCodexGateway({
       cwd: process.cwd(),
       host: "127.0.0.1",
@@ -55,16 +64,19 @@ export default definePlugin({
       },
       wikiWorkspaceResolver,
       dataDir: ctx.host.paths.fleetDataDir,
+      // Theater id와 워크스페이스 id는 같은 해시다 — 모르는 워크스페이스는 Theater로 되찾는다.
+      resolveWorkspaceRoot: (workspaceId) => ctx.host.paths.resolveTheaterPath(workspaceId),
+      whenRegistrationsSettle: () => registrations.then(() => undefined),
       onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => watcher.watch(workspaceId, knowledgeRoot),
       onWorkspaceReleased: (workspaceId) => watcher.unwatch(workspaceId),
     });
 
     // Theater 생명주기는 코어가 이벤트로 알린다 — 예전에는 코어가 이 등록을 직접 불렀다.
     ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:registered", (payload) => {
-      void registerTheaterWorkspace(ctx, gateway, payload);
+      track(registerTheaterWorkspace(ctx, gateway, payload));
     }));
     ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:restored", (payload) => {
-      void registerTheaterWorkspace(ctx, gateway, payload);
+      track(registerTheaterWorkspace(ctx, gateway, payload));
     }));
     ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:forgotten", (payload) => {
       const theaterId = readTheaterId(payload);
