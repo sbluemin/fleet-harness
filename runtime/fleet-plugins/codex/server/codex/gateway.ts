@@ -11,7 +11,6 @@ import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
-import type { ListenerIdentity } from "../auth.js";
 import type { AllowedAccessSets } from "./contracts.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
@@ -27,7 +26,16 @@ interface CodexGatewayDeps {
    * 경계인데, 그 경계는 바인드 호스트가 아니라 리스너마다 다르다. 원격 리스너를 모르는 게이트는
    * 원격에서 연 Wiki를 전부 host_mismatch로 되돌린다.
    */
-  readonly resolveListener?: (request: IncomingMessage) => ListenerIdentity | null;
+  /**
+   * 경계 판정은 호스트가 내린다. 리스너 신원을 받아 스스로 Host/Origin 집합을 짜던 자리다 —
+   * 어느 리스너로 들어왔는지, 그 리스너가 지금 무엇을 허용하는지는 Console만 안다.
+   */
+  /** 쓰기를 허용할 Origin 집합. 호스트의 `server.origin()`이 원본이다. */
+  readonly allowedOrigins: () => readonly string[];
+  readonly security: {
+    readonly validateHost: (request: IncomingMessage) => boolean;
+    readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
+  };
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
   readonly dataDir?: string;
   /**
@@ -76,7 +84,6 @@ const LOOPBACK_HOST = "127.0.0.1";
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   const workspaces = new WorkspaceRegistry();
   const workspaceOwners = new Map<string, Set<string>>();
-  const accessSetsByGate = new Map<string, AllowedAccessSets>();
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
   const coworkServices = new Map<string, CoworkService>();
@@ -106,16 +113,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       return true;
     }
     const port = deps.getPort();
-    const listener = deps.resolveListener?.(request) ?? null;
-    const accessSets = accessSetsFor(listener, port);
-    /**
-     * 이 게이트가 대조할 포트는 요청이 도착한 리스너의 것이다. 콘솔 포트를 쓰면 원격 리스너가
-     * 자기 포트를 쓰는 순간 — 두 리스너가 늘 같은 포트를 쓰던 시절이 끝난 지금 — 올바른 주소를
-     * 실은 원격 요청이 전부 막힌다. 읽기는 Host로, 쓰기는 Origin으로 갈리므로 두 판정이 같은
-     * 값을 봐야 한다: 한쪽만 고치면 원격이 읽기만 되고 결재는 못 하는 상태로 남는다.
-     */
-    const gatePort = listener?.port ?? port;
-    if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, gatePort)) {
+    if (!deps.security.validateHost(request)) {
       sendJson(response, 403, { error: "host_mismatch" });
       return true;
     }
@@ -154,9 +152,11 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       host: deps.host,
       port: gatePort,
       workspaceId: workspace.id,
-      allowedOrigins: accessSets.allowedOrigins,
-      externalMode: accessSets.externalMode,
-      admitted: isRequestAdmitted(listener, request),
+      // Origin 허용집합은 콘솔 자신의 오리진이다 — 리스너별 집합을 플러그인이 다시 짜면
+      // 그 사본이 호스트의 경계와 갈라진다. 쓰기 자격 판정은 호스트가 내린다.
+      allowedOrigins: new Set(deps.allowedOrigins()),
+      externalMode: true,
+      admitted: deps.security.isWriteAdmitted(request),
       coworkService,
     });
     request.url = originalUrl;
@@ -171,20 +171,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
    * wildcard 바인드가 열어 두던 LAN 주소 집합을 좁히지 않기 위해서다. 원격 리스너는 그와 달리
    * 자기 주소 하나만 연다.
    */
-  function accessSetsFor(listener: ListenerIdentity | null, port: number): AllowedAccessSets {
-    if (listener === null || listener.audience === "local") {
-      return cachedAccessSets(`bind|${deps.host}|${port}`, () => buildAllowedAccessSets(deps.host, port));
-    }
-    return cachedAccessSets(`listener|${listener.origin}`, () => buildListenerAccessSets(listener));
-  }
 
-  function cachedAccessSets(key: string, build: () => AllowedAccessSets): AllowedAccessSets {
-    const cached = accessSetsByGate.get(key);
-    if (cached) return cached;
-    const sets = build();
-    accessSetsByGate.set(key, sets);
-    return sets;
-  }
 
   async function ensureInitialWorkspace(): Promise<WorkspaceRegistration> {
     initialWorkspace ??= workspaces.register(deps.cwd);
@@ -282,26 +269,12 @@ export function buildAllowedAccessSets(
  * 원격 리스너의 경계는 그 리스너 하나다. 바인드 호스트에서 파생한 집합은 루프백을 동반하고
  * 스킴이 http로 고정돼 있어, TLS로 뜬 원격 리스너는 자기 주소도 자기 Origin도 통과시키지 못한다.
  */
-export function buildListenerAccessSets(listener: ListenerIdentity): AllowedAccessSets {
-  const canonical = canonicalizeAllowedHost(listener.host);
-  const allowedHosts = new Set<string>();
-  const allowedOrigins = new Set<string>();
-  if (canonical) {
-    allowedHosts.add(canonical);
-    allowedOrigins.add(`${listener.secure ? "https" : "http"}://${formatHostForUrl(canonical)}:${listener.port}`);
-  }
-  return { allowedHosts, allowedOrigins, externalMode: true };
-}
 
 /**
  * 쓰기 자격은 "이 기계에서 왔는가"가 아니라 "어느 리스너를 통과했는가"다. 원격 리스너 요청은
  * 라우팅 이전에 세션 게이트를 통과했고, monitoring 자격은 거기서 이미 읽기로 묶인다 — 여기서
  * 피어 주소를 다시 보면 원격은 세션이 있어도 영원히 읽기 전용이 된다.
  */
-function isRequestAdmitted(listener: ListenerIdentity | null, request: IncomingMessage): boolean {
-  if (listener !== null && listener.audience !== "local") return true;
-  return isLoopbackRemoteAddress(request.socket.remoteAddress);
-}
 
 function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd: string): WorkspaceSelection {
   const url = new URL(requestUrl, "http://127.0.0.1");
