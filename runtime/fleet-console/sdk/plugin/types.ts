@@ -388,6 +388,15 @@ export interface OperationRenderContext extends OperationContext {
 }
 
 export interface FleetPluginManifest {
+  /**
+   * 이 플러그인이 소유할 콘솔 수준 경로 한 칸(`/console/<prefix>`).
+   *
+   * 기본적으로 플러그인 라우트는 `/plugins/<id>` 안에 갇힌다. 사용자가 주고받는
+   * 링크를 가진 표면은 그 안에 살 수 없다 — 주소가 구현 위치를 드러내고, 플러그인을
+   * 옮기는 순간 이미 공유된 링크가 전부 깨진다. 그래서 선언한 플러그인에만 한 칸을
+   * 내주고, 겹치면 등록이 거절된다.
+   */
+  readonly consoleRoutePrefix?: string;
   readonly id: string;
   readonly apiVersion?: number;
   readonly name?: string;
@@ -472,12 +481,32 @@ export interface FleetPluginEventsHost {
   registerSseChannel(channel: string): () => void;
 }
 
+/** 한 프로젝트 경로에 딸린, 플러그인이 쓸 수 있는 데이터 디렉터리. */
+export interface PluginWorkspaceDirectory {
+  /** 이 워크스페이스의 데이터가 사는 절대 경로. */
+  readonly path: string;
+  /** 경로를 정규화해 얻은 안정적인 식별자. 같은 프로젝트는 항상 같은 값이다. */
+  readonly id: string;
+}
+
 export interface FleetPluginPathsHost {
   readonly fleetDataDir: string;
   pluginDataDir(pluginId: string): string;
   resolveTheaterPath(theaterId: string): string | null;
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
+  /**
+   * 한 프로젝트 경로의 워크스페이스 디렉터리를 만들어 준다(있으면 그대로).
+   *
+   * 플러그인이 직접 만들면 이름 규칙과 정체성 파일이 호스트와 갈라져, 같은 프로젝트가
+   * 두 디렉터리로 나뉜다.
+   */
+  ensureWorkspaceDirectory(cwd: string): PluginWorkspaceDirectory;
+  /**
+   * 디렉터리 단위 배타 실행. 같은 저장소를 두 프로세스가 동시에 옮기는 것을 막는다
+   * (마이그레이션·압축처럼 중간 상태가 읽히면 안 되는 작업).
+   */
+  withDirectoryLock<T>(lockDir: string, operation: () => T): T;
 }
 
 export interface FleetPluginStorageHost {

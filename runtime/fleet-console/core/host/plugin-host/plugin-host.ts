@@ -510,6 +510,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
           pendingCatalog,
           `/plugins/${plugin.manifest.id}`,
           `/api/v1/plugins/${plugin.manifest.id}`,
+          consoleRoutePrefixOf(plugin.manifest),
         ),
         registerWsHandler: createScopedUpgradeRegistrar(
           deps.upgrades,
@@ -782,6 +783,7 @@ function createScopedRouteRegistrar(
   pendingCatalog: ApiCatalogEntry[],
   basePath: string,
   apiBasePath: string,
+  consoleBasePath: string | null,
 ): FleetPluginServerContext["registerRouter"] {
   function registerRouter(requestedPath: string, handler: RouteHandler): void;
   function registerRouter(requestedPath: string, handler: RouteHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
@@ -790,7 +792,7 @@ function createScopedRouteRegistrar(
     handler: RouteHandler,
     catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
   ): void {
-    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
+    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath, consoleBasePath);
     const entries = catalog ? resolveCatalogEntries(prefix, catalog) : [];
     assertNoCatalogDuplicates([...apiCatalog, ...pendingCatalog], entries);
     assertNoRouteOverlap(prefix, [
@@ -886,7 +888,18 @@ function catalogIdentity(entry: ApiCatalogEntry): string {
   return `${entry.method}|${entry.path}|${entry.transport}`;
 }
 
-function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePath?: string): string {
+/** `/console/<prefix>` 한 칸을 여는 매니페스트 선언. 경로 조각 하나만 허용한다. */
+export function consoleRoutePrefixOf(manifest: { readonly consoleRoutePrefix?: unknown }): string | null {
+  const declared = manifest.consoleRoutePrefix;
+  if (typeof declared !== "string") return null;
+  const trimmed = declared.trim().replace(/^\/+|\/+$/g, "");
+  // 한 조각만 — 슬래시를 허용하면 플러그인이 `/console/operations` 같은 코어 화면 아래로
+  // 파고들 수 있고, `..`는 접두사 밖으로 나간다.
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(trimmed)) return null;
+  return `/console/${trimmed}`;
+}
+
+function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePath?: string, consoleBasePath?: string | null): string {
   if (requestedPath.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("plugin_route_outside_scope");
   const normalizedBase = normalizePrefix(basePath);
   if (!requestedPath.startsWith("/")) return normalizePrefix(`${normalizedBase}/${requestedPath}`);
@@ -894,6 +907,8 @@ function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePat
   if (normalizedRequest === normalizedBase || normalizedRequest.startsWith(`${normalizedBase}/`)) return normalizedRequest;
   const normalizedApiBase = apiBasePath ? normalizePrefix(apiBasePath) : null;
   if (normalizedApiBase && (normalizedRequest === normalizedApiBase || normalizedRequest.startsWith(`${normalizedApiBase}/`))) return normalizedRequest;
+  const normalizedConsoleBase = consoleBasePath ? normalizePrefix(consoleBasePath) : null;
+  if (normalizedConsoleBase && (normalizedRequest === normalizedConsoleBase || normalizedRequest.startsWith(`${normalizedConsoleBase}/`))) return normalizedRequest;
   if (normalizedRequest === "/") return normalizedBase;
   throw new Error("plugin_route_outside_scope");
 }

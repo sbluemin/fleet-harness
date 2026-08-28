@@ -39,6 +39,8 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),
     workspaceHash: (canonicalCwd) => canonicalCwd,
     resolveTheaterPath: () => null,
+    ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
+    withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
   },
   storage: {
     readJson: async () => null,

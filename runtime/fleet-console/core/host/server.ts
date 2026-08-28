@@ -668,6 +668,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
+      ensureWorkspaceDirectory: (cwd: string) => {
+        const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
+        return { path: workspace.path, id: workspaceHash(workspace.cwd) };
+      },
+      withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
