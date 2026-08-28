@@ -145,11 +145,7 @@ export function ChatComposerDeck({
                   {token.kind === "agent" ? entry.name : `/${entry.name}`}
                 </span>
                 {entry.description.length > 0 ? (
-                  <span className="agent-chat-deck-desc" id={descriptionId}>
-                    {/* 안쪽 한 겹이 필요하다 — flex 아이템은 blockify되어 `-webkit-box`가
-                        `flow-root`로 바뀌고, 그러면 두 줄 자르기가 걸리지 않는다(실측). */}
-                    <span className="agent-chat-deck-desc-clamp">{entry.description}</span>
-                  </span>
+                  <span className="agent-chat-deck-desc" id={descriptionId}>{entry.description}</span>
                 ) : null}
                 {entry.argumentHint.length > 0 ? (
                   <span className="agent-chat-deck-hint">{entry.argumentHint}</span>

@@ -1524,7 +1524,7 @@
 
 .agent-chat-deck-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 9px;
   width: 100%;
   padding: 7px var(--space-2);
@@ -1577,27 +1577,24 @@
 
 /* 설명은 이름 오른쪽 열에 서고 **두 줄에서 잘린다**. 활성 행에서만 보이되, 자라는 높이가
    두 줄로 묶여 있어야 행 하나가 덱의 절반을 먹지 않는다(실측에서 그렇게 됐다). */
+/* 설명은 이름 오른쪽 열에 **한 줄**로 서고 넘치면 말줄임한다.
+   한 줄이어야 하는 이유는 리듬이다: 두 줄을 허용하면 설명이 긴 행만 키가 커져 목록의 간격이
+   들쭉날쭉해진다(숨겨 두어도 자리는 차지하므로 `visibility`로는 해결되지 않는다). 모든 행이
+   정확히 한 줄이면 활성 행이 움직여도 아래 행들이 제자리에 있다. */
 .agent-chat-deck-desc {
-  /* 숨겨도 자리는 지킨다 — `display:none`으로 접으면 인자 힌트가 이름 바로 옆으로 딸려 와
-     행마다 힌트의 x가 달라진다. 보이지 않을 뿐 열은 그대로다. */
   flex: 1;
   min-width: 0;
-  visibility: hidden;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
   line-height: 1.45;
-}
-
-.agent-chat-deck-row.is-active .agent-chat-deck-desc {
-  visibility: visible;
-}
-
-.agent-chat-deck-desc-clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 활성 행에서만 한 단 밝아진다 — 자리를 바꾸지 않고 눈이 멈춘 곳을 말하는 방법이다. */
+.agent-chat-deck-row.is-active .agent-chat-deck-desc {
+  color: var(--text-secondary);
 }
 
 .agent-chat-deck-hint {
