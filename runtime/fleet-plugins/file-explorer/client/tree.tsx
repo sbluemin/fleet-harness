@@ -751,6 +751,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [watchDegraded, setWatchDegraded] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
+  const treeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -991,14 +992,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     };
   }, [contextKey, filterText, searchScope, showHidden, theaterId]);
 
-  useEffect(() => {
-    const el = treeRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setContainerHeight(el.clientHeight));
-    ro.observe(el);
-    setContainerHeight(el.clientHeight);
-    return () => ro.disconnect();
+  const attachTreeRef = useCallback((node: HTMLDivElement | null) => {
+    treeResizeObserverRef.current?.disconnect();
+    treeResizeObserverRef.current = null;
+    treeRef.current = node;
+    if (!node) return;
+    setScrollTop(node.scrollTop);
+    setContainerHeight(node.clientHeight);
+    const observer = new ResizeObserver(() => {
+      if (treeRef.current === node) setContainerHeight(node.clientHeight);
+    });
+    observer.observe(node);
+    treeResizeObserverRef.current = observer;
   }, []);
+
+  useEffect(() => () => treeResizeObserverRef.current?.disconnect(), []);
 
   // SSE 자동 새로고침 — theaterId/files 변경 시 재구독, 언마운트 시 close
   useEffect(() => {
@@ -1699,7 +1707,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         />
       ) : (
         <div
-          ref={treeRef}
+          ref={attachTreeRef}
           className="fexp-tree"
           role="tree"
           tabIndex={-1}
