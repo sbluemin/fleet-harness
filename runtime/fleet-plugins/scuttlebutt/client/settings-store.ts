@@ -45,13 +45,21 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   sizes: DEFAULT_SIZES,
 };
 
+/** 확정된 상태. 아직 저장에 부치지 않은 미리보기는 여기에 섞이지 않는다. */
 let settings = DEFAULT_SETTINGS;
 /**
  * 서버가 마지막으로 받아들인 값. 저장이 실패했을 때 돌아갈 곳은 "쓰기 직전 스냅숏"이 아니라
- * 이것이다 — 미리보기는 큐 밖에서 화면 상태를 미리 바꿔 두므로 그 스냅숏에는 아직 저장된 적
- * 없는 값이 섞여 있고, 쓰기가 겹치면 그 오염이 서로의 롤백을 덮어쓴다.
+ * 이것이다 — 그 스냅숏에는 같은 큐에 선 다른 쓰기의 낙관적 값이 섞여 있다.
  */
 let persisted = DEFAULT_SETTINGS;
+/**
+ * 끌고 있는 중이라 아직 확정되지 않은 부관별 크기. 확정 상태와 **따로** 둔다 — 한 덩어리로
+ * 두면 (1) 한 부관의 저장 실패 롤백이 다른 부관의 진행 중인 드래그를 지워 버리고,
+ * (2) 한 부관을 저장할 때 다른 부관의 아직 확정되지 않은 값까지 함께 저장된다.
+ */
+let previews: Partial<Record<ScuttlebuttAideId, number>> = {};
+/** 병합 결과의 캐시. useSyncExternalStore 계열은 같은 상태에서 같은 참조를 요구한다. */
+let snapshot: ScuttlebuttSettings = DEFAULT_SETTINGS;
 let capability: ClientSettingsCapability | null = null;
 const listeners = new Set<() => void>();
 
@@ -68,7 +76,7 @@ export function connectScuttlebuttSettings(nextCapability: ClientSettingsCapabil
 }
 
 export function getScuttlebuttSettings(): ScuttlebuttSettings {
-  return settings;
+  return snapshot;
 }
 
 export function subscribeScuttlebuttSettings(listener: () => void): () => void {
@@ -173,14 +181,19 @@ function parseAideStayPut(value: unknown): AideStayPut {
  * 커지고 작아져야 한다. 저장은 하지 않는다: 그건 commit(writeAideSize)의 몫이다.
  */
 export function previewAideSize(admiral: ScuttlebuttAideId, width: number): void {
-  settings = { ...settings, sizes: { ...settings.sizes, [admiral]: clampBirdWidth(width) } };
+  previews = { ...previews, [admiral]: clampBirdWidth(width) };
   emit();
 }
 
 export async function writeAideSize(admiral: ScuttlebuttAideId, width: number): Promise<void> {
-  await writeScuttlebuttSettings((current) => ({
-    sizes: { ...current.sizes, [admiral]: clampBirdWidth(width) },
-  }));
+  await writeScuttlebuttSettings((current) => {
+    // 미리보기를 확정으로 올리는 순간은 자기 차례가 왔을 때다. 큐에 서기 전에 걷어내면 앞선
+    // 쓰기가 끝날 때까지 화면이 옛 크기로 잠깐 되돌아간다.
+    const { [admiral]: _promoted, ...rest } = previews;
+    previews = rest;
+    // 나머지 부관은 확정값에서 싣는다 — 남의 진행 중인 드래그를 대신 저장하지 않는다.
+    return { sizes: { ...current.sizes, [admiral]: clampBirdWidth(width) } };
+  });
 }
 
 function parseFraction(value: unknown): number | null {
@@ -189,5 +202,9 @@ function parseFraction(value: unknown): number | null {
 }
 
 function emit(): void {
+  const aides = Object.keys(previews) as ScuttlebuttAideId[];
+  snapshot = aides.length === 0
+    ? settings
+    : { ...settings, sizes: { ...settings.sizes, ...previews } };
   for (const listener of listeners) listener();
 }

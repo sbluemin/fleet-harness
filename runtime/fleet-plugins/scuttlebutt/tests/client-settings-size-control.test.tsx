@@ -172,4 +172,53 @@ describe("Scuttlebutt size control", () => {
     // 저장된 적 없는 값이므로 그 자리에 남으면 화면과 저장이 갈린다.
     expect(getScuttlebuttSettings().sizes.tori).toBe(84);
   });
+
+  it("keeps another aide's in-progress drag when a save fails", async () => {
+    const settings = await mount({ tori: true, bori: true });
+    const [toriRange, boriRange] = ranges() as [HTMLInputElement, HTMLInputElement];
+
+    let failTori!: (reason: Error) => void;
+    const gate = new Promise<void>((_r, reject) => { failTori = reject; });
+    settings.write = vi.fn().mockImplementationOnce(() => gate).mockResolvedValue(undefined);
+
+    await act(async () => {
+      drag(toriRange, 48);
+      toriRange.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    // 토리의 저장이 떠 있는 동안 보리를 끌기 시작한다.
+    await act(async () => { drag(boriRange, 112); });
+    expect(getScuttlebuttSettings().sizes.bori).toBe(112);
+
+    await act(async () => {
+      failTori(new Error("tori save failed"));
+      await Promise.resolve();
+    });
+    await settle();
+
+    // 토리는 확인된 값으로 돌아가되, 보리가 손에 쥐고 있던 조작은 살아 있어야 한다.
+    expect(getScuttlebuttSettings().sizes.tori).toBe(84);
+    expect(getScuttlebuttSettings().sizes.bori).toBe(112);
+    expect(ranges()[1]!.value).toBe("112");
+  });
+
+  it("does not persist another aide's uncommitted preview", async () => {
+    const settings = await mount({ tori: true, bori: true });
+    const [toriRange, boriRange] = ranges() as [HTMLInputElement, HTMLInputElement];
+
+    // 보리는 아직 끌고 있는 중 — 확정되지 않았다.
+    await act(async () => { drag(boriRange, 112); });
+    // 그 사이 토리를 확정한다.
+    await act(async () => {
+      drag(toriRange, 48);
+      toriRange.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    await settle();
+
+    // 저장된 문서에는 토리의 확정값만 들어가고 보리는 확정값 그대로여야 한다.
+    expect(settings.write).toHaveBeenCalledWith("scuttlebutt", expect.objectContaining({
+      sizes: { tori: 48, bori: 84, dori: 84 },
+    }));
+    // 화면에서는 보리의 진행 중인 조작이 그대로 보인다.
+    expect(getScuttlebuttSettings().sizes.bori).toBe(112);
+  });
 });
