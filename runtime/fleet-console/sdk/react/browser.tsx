@@ -444,3 +444,80 @@ export function Select({
     </div>
   );
 }
+
+/**
+ * Quiet Controls C′의 미끄러지는 워시(+다텀).
+ *
+ * 세그먼트 컨테이너(position: relative)의 첫 자식으로 넣으면, 활성 옵션
+ * (`aria-pressed="true"` 또는 `.is-active`)의 offset 좌표 위에 `.segmented-thumb`
+ * 장식을 얹고 선택 이동을 미끄러짐으로 잇는다. 시각과 전환은 전부 CSS 토큰
+ * (--control-wash·brass 다텀)과 CSS transition이 지므로 prefers-reduced-motion
+ * 단락도 CSS에서 함께 닫힌다. 자리를 잡기 전(is-placed 없음)에는 활성 옵션의
+ * 자체 face가 그대로 서므로 JS가 늦는 프레임에도 선택 상태는 항상 보인다.
+ */
+export function SegmentedThumb({
+  activeSelector = '[aria-pressed="true"], .is-active',
+}: {
+  readonly activeSelector?: string;
+} = {}): React.ReactElement {
+  const thumbRef = React.useRef<HTMLSpanElement | null>(null);
+
+  React.useLayoutEffect(() => {
+    const thumb = thumbRef.current;
+    const host = thumb?.parentElement;
+    if (!thumb || !host) return;
+
+    const place = () => {
+      const active = host.querySelector<HTMLElement>(activeSelector);
+      // display:none 조상 아래에서는 offsetWidth가 0이다 — 그 좌표로 자리를 잡으면
+      // 탭 복귀 프레임에 0폭 썸이 미끄러진다. 자리를 걷고 face 폴백에 맡긴다.
+      // classList.add/remove는 값이 그대로여도 class 어트리뷰트를 다시 써서 MutationObserver
+      // 레코드를 만든다 — 무조건 쓰면 아래 관찰과 무한 반향이 된다. 변할 때만 쓴다.
+      if (!active || active.offsetWidth === 0) {
+        if (thumb.classList.contains("is-placed")) thumb.classList.remove("is-placed");
+        return;
+      }
+      // 첫 자리 잡기(또는 숨김 복귀)는 이동이 아니라 등장이다 — 좌상단 원점에서
+      // 미끄러져 들어오는 유령 슬라이드가 보이지 않도록 전환 없이 앉힌다.
+      const firstPlacement = !thumb.classList.contains("is-placed");
+      if (firstPlacement) thumb.style.transition = "none";
+      thumb.style.width = `${active.offsetWidth}px`;
+      thumb.style.height = `${active.offsetHeight}px`;
+      thumb.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+      if (firstPlacement) {
+        thumb.classList.add("is-placed");
+        void thumb.offsetWidth;
+        thumb.style.transition = "";
+      }
+    };
+
+    place();
+    // 크기 변화(RO)와 활성 표식 변화(MO)를 함께 듣는다 — aria-pressed 토글은
+    // 컨테이너의 어떤 크기도 바꾸지 않으므로 ResizeObserver만으로는 놓친다.
+    // jsdom에는 ResizeObserver가 없다 — 관찰만 건너뛰고 place()는 항상 달린다
+    // (조기 반환으로 훅 전체를 잠그면 테스트 환경이 배치 로직까지 잃는다).
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    if (resizeObserver) {
+      resizeObserver.observe(host);
+      for (const child of host.children) {
+        if (child !== thumb) resizeObserver.observe(child);
+      }
+    }
+    const mutationObserver = new MutationObserver((records) => {
+      // thumb 자신의 표식 변화는 place()의 메아리다 — 되울리면 무한 루프로 렌더러가 잠긴다.
+      if (records.every((record) => record.target === thumb)) return;
+      place();
+    });
+    mutationObserver.observe(host, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-pressed", "class"],
+    });
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [activeSelector]);
+
+  return <span ref={thumbRef} className="segmented-thumb" aria-hidden="true" />;
+}

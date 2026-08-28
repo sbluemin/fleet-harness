@@ -194,9 +194,12 @@ describe("Repository design grammar", () => {
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 
-    for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-view-toggle"]) {
+    for (const selector of [".repository-filter-input", ".history-filter-input"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
     }
+    // 뷰 토글은 상자 없는 세그먼트다(Quiet Controls C′) — 선택은 워시+다텀이 말하고 그룹 경계는 간격이 진다.
+    expect(blockOf(".repository-view-toggle")).not.toContain("background");
+    expect(blockOf(".repository-toggle-btn.is-active")).toContain("var(--control-wash)");
   });
 
   it("keeps the sync button spin animation reducible and omits the status strip", () => {

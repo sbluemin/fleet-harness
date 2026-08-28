@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import { ExperimentalBadge, SettingsScope as SettingsScopeChip, type SettingsScopeKind } from "@fleet-console/sdk/settings/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import "@fleet-console/font-picker/styles.css";
@@ -781,6 +781,7 @@ export function LanguageCard({
           <p className="global-settings-help">{t("settings.language.help")}</p>
         </div>
         <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
+          <SegmentedThumb />
           {languages.map((language) => {
             const isActive = state.language === language.id;
             return (
@@ -1749,6 +1750,7 @@ function ConsolePortSettings({
       </div>
       <div className="console-port-control">
         <div className="segmented" role="group" aria-label={t("settings.port.modeAria")}>
+          <SegmentedThumb />
           {portModes.map((mode) => {
             const isActive = state.consolePortMode === mode.id;
             return (

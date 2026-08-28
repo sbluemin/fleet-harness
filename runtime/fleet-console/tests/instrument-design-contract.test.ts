@@ -501,17 +501,40 @@ describe("Instrument core design contract", () => {
   it("keeps the interaction control recipe theme-owned", () => {
     const theme = source("styles/theme.css");
     const root = theme.match(/^:root \{[\s\S]*?^\}/m)?.[0] ?? "";
+    // Quiet Controls C′: 지속 상태는 accent가 아니라 세 문장으로 갈린다 — 배타 선택 =
+    // 극저대비 워시(wash) + 잉크 대비 + 2px brass 다텀, 독립 ON = 잉크(tint),
+    // 불리언 ON = 워시 + brass 글리프. 열림·focus-within은 open-rim이 진다.
     for (const token of [
       "--control-hover-fill",
       "--control-hover-rim",
-      "--control-selected-fill",
-      "--control-selected-rim",
+      "--control-wash",
+      "--control-wash-hover",
+      "--control-tint-fill",
+      "--control-tint-ink",
+      "--control-open-rim",
       "--control-focus-ring",
       "--control-disabled-opacity",
     ]) expect(root).toContain(`${token}:`);
     expect(root).toContain("--control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);");
-    expect(root).toContain("--control-selected-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));");
+    expect(root).toContain("--control-tint-fill: color-mix(in oklab, var(--brass) 9%, transparent);");
+    expect(root).toContain("--control-open-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));");
+    // 워시는 잉크 사다리의 한 칸이 아니라 테마별 리터럴이다 — 네 테마가 각자 재조율한다
+    // (다크는 화이트 워시, 라이트는 잉크 워시로 극이 뒤집힌다).
+    // carbon 셀렉터는 공유 legacy 블록에도 서므로, 개별 블록 중 하나가 재조율을 실으면 된다.
+    for (const name of ["maritime", "carbon", "whites"]) {
+      const blocks = theme.match(new RegExp(`^:root\\[data-theme="${name}"\\] \\{[\\s\\S]*?\\n\\}`, "gm")) ?? [];
+      expect(blocks.some((block) => block.includes("--control-wash:") && block.includes("--control-wash-hover:"))).toBe(true);
+    }
+    // 옛 selected recipe(테두리+채움+brass 글자 동시 발화)와 융기(thumb) recipe는 퇴역했다 — 부활 금지.
+    expect(theme).not.toContain("--control-selected-fill");
+    expect(theme).not.toContain("--control-selected-rim");
+    expect(theme).not.toContain("--control-thumb");
     expect(theme).toMatch(/:focus-visible \{[^}]*outline: 2px solid var\(--control-focus-ring\);/);
+    // 고대비 환경에서는 워시가 걷히므로 선택을 시스템 선택색으로 직접 말한다(리뷰 확인 사항).
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    expect(components).toContain("background: SelectedItem;");
+    expect(layout).toContain("background: SelectedItem;");
   });
 
   it("keeps selected controls stronger than hover and preserves forced-color form state", () => {
@@ -551,8 +574,7 @@ describe("Instrument core design contract", () => {
     for (const token of [
       "var(--control-hover-fill)",
       "var(--control-hover-rim)",
-      "var(--control-selected-fill)",
-      "var(--control-selected-rim)",
+      "var(--control-wash)",
       "var(--control-focus-ring)",
       "var(--control-disabled-opacity)",
     ]) {
@@ -560,6 +582,9 @@ describe("Instrument core design contract", () => {
       expect(terminalSettings).toContain(token);
       expect(fontPicker).toContain(token);
     }
+    // 독립 ON 칩(EFFORT 사다리)은 잉크 문법을 소비한다 — 자리(thumb)를 세우면 줄이 키보드가 된다.
+    expect(terminalSettings).toContain("var(--control-tint-fill)");
+    expect(terminalSettings).toContain("var(--control-tint-ink)");
     expect(fontPicker).toContain('.fc-font-browser__row:hover:not(:disabled):not(.is-active):not([aria-selected="true"])');
     expect(fontPicker).toContain('@media (forced-colors: active)');
     expect(components).toContain('.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible)');
@@ -579,12 +604,14 @@ describe("Instrument core design contract", () => {
     const svgSize = components.match(/\.canvas-operation-icon-button svg,\n\.fleet-caption-action svg \{[^}]*\}/)?.[0] ?? "";
     expect(svgSize).toContain("width: 14px;");
 
-    // 선택·hover는 theme.css의 oklab control recipe 하나를 소비한다. hover와 focus를 한
+    // 선택·hover는 theme.css의 control recipe 하나를 소비한다. hover와 focus를 한
     // 선택자로 합치면 마우스를 스칠 때도 외곽 focus ring이 떠 입력 수단의 신호가 사라진다.
+    // 불리언 ON = 워시 + 글리프: 면은 극저대비 워시이고 켬은 글리프의 brass가 말한다.
     const pressed = components.match(/\.canvas-operation-icon-button\.is-active,\n\.fleet-caption-action\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(pressed).toContain("border-color: var(--control-selected-rim);");
-    expect(pressed).toContain("background: var(--control-selected-fill);");
-    expect(pressed).toContain("box-shadow: inset 0 -2px 0 var(--brass);");
+    expect(pressed).toContain("border-color: transparent;");
+    expect(pressed).toContain("background: var(--control-wash);");
+    expect(pressed).not.toContain("box-shadow");
+    expect(pressed).toContain("color: var(--brass-bright);");
     const hover = components.match(/\.canvas-operation-icon-button:hover:not\(\.is-active\),\n\.fleet-caption-action:hover:not\(:disabled\):not\(\[aria-pressed="true"\]\) \{[^}]*\}/)?.[0] ?? "";
     expect(hover).toContain("border-color: var(--control-hover-rim);");
     expect(hover).toContain("background: var(--control-hover-fill);");
@@ -1497,11 +1524,12 @@ describe("Instrument core design contract", () => {
     expect(shell).not.toContain("overflow: hidden;");
 
     // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
-    // 활동 축과 충돌하므로, 코어 segmented와 같은 brass 워시+brass ink+inset 링만 쓴다.
+    // 활동 축과 충돌한다. 독립 ON은 잉크 문법이다: 저채도 tint 워시+잉크 대비만 쓰고,
+    // 테두리 링·자리(thumb)는 두지 않는다(다중 on 칩 줄에 자리를 세우면 키보드가 된다).
     const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
-    expect(on).toContain("background: var(--control-selected-fill);");
-    expect(on).toContain("color: var(--brass-ink);");
-    expect(on).toContain("box-shadow: inset 0 0 0 1px var(--control-selected-rim);");
+    expect(on).toContain("background: var(--control-tint-fill);");
+    expect(on).toContain("color: var(--control-tint-ink);");
+    expect(on).not.toContain("box-shadow");
     for (const [, , body] of css.matchAll(/([^{}]*\.ai-gateway-effort[^{}]*)\{([^}]*)\}/g)) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive)[a-z-]*\)/);
     }
@@ -2269,19 +2297,21 @@ describe("Instrument core design contract", () => {
     expect(whatsNewOverlayBlock).toContain("z-index: 35;");
     // 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — 도킹된 밴드에 걸면 44px 빈 띠만 남는다.
     expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
-    // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 밴드 토글의 눌림은 brass 채움이다.
+    // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 불리언 토글의 눌림은
+    // 워시 + brass 글리프다.
     const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(pressedBandButtonBlock).toContain("background: var(--control-selected-fill);");
+    expect(pressedBandButtonBlock).toContain("background: var(--control-wash);");
     expect(pressedBandButtonBlock).toContain("color: var(--brass-ink);");
-    // 캔버스 모드는 선택 datum을 가져 인접 도구의 pressed 면과 형상으로 갈린다.
+    // 캔버스 모드는 배타 선택 = 은은한 자리다 — 워시 + 잉크 대비에 2px brass 다텀이 붙어
+    // 인접 불리언 도구(글리프 accent)와 형상으로 갈린다.
     const modePressedBlock = layout.match(/\.command-band-mode-seg\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(modePressedBlock).toContain("border-color: var(--control-selected-rim);");
-    expect(modePressedBlock).toContain("background: var(--control-selected-fill);");
+    expect(modePressedBlock).toContain("background: var(--control-wash);");
+    expect(modePressedBlock).toContain("color: var(--text-primary);");
     expect(layout).toMatch(/\.command-band-mode-seg\[aria-pressed="true"\]::after \{[^}]*background: var\(--brass\);/);
     expect(layout).toContain('.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])');
-    // 열린 스위처는 hover보다 지속적인 selected 면을 갖고 caret이 방향을 바꾼다.
+    // 열린 스위처는 hover보다 지속적인 open 면(잉크 워시)을 갖고 caret이 방향을 바꾼다.
     const openTriggerBlock = layout.match(/\.command-band-segment-trigger\.is-open \{[^}]*\}/)?.[0] ?? "";
-    expect(openTriggerBlock).toContain("border-color: var(--control-selected-rim);");
+    expect(openTriggerBlock).toContain("border-color: var(--control-open-rim);");
     expect(layout).toContain(".command-band-segment-trigger.is-open .command-band-trigger-caret { transform: rotate(180deg); }");
   });
 
@@ -2397,7 +2427,8 @@ describe("Instrument core design contract", () => {
       const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass)[a-z-]*:$/);
+        // control-wash는 형상이 아니라 팔레트다 — 워시의 명도·알파를 테마 잉크 위에서 재조율한다.
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
@@ -2418,7 +2449,7 @@ describe("Instrument core design contract", () => {
       const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass|live-sweep)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass|live-sweep|control)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -3417,8 +3448,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
-    expect(selectBlock).toContain("border-color: var(--control-selected-rim);");
-    expect(selectBlock).toContain("background: var(--control-selected-fill);");
+    expect(selectBlock).toContain("background: var(--control-wash);");
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");

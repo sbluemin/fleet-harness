@@ -403,10 +403,7 @@
 .fexp-view-mode {
   flex-shrink: 0;
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
+  gap: var(--space-1);
 }
 
 .fexp-view-mode button {
@@ -431,29 +428,36 @@
 
 .fexp-view-mode button:hover:not(:disabled):not([aria-pressed="true"]),
 .fexp-view-mode button:focus-visible:not([aria-pressed="true"]) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
 }
 
+/* 배타 선택 = 은은한 자리(Quiet Controls C′) — 워시 + 잉크 대비 + 2px 다텀이 말한다. */
 .fexp-view-mode button[aria-pressed="true"] {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
-  color: var(--brass-ink);
+  background: var(--control-wash);
+  color: var(--text-primary);
 }
 
 .fexp-view-mode button[aria-pressed="true"]::after {
   position: absolute;
-  right: var(--space-2);
-  bottom: -3px;
-  left: var(--space-2);
+  bottom: 2px;
+  left: 50%;
+  width: 12px;
   height: 2px;
   border-radius: var(--radius-pill);
   background: var(--brass);
+  transform: translateX(-50%);
   content: "";
 }
 
 .fexp-view-mode button:active:not(:disabled) { transform: translateY(1px); }
+
+@media (forced-colors: active) {
+  .fexp-view-mode button[aria-pressed="true"] {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
+}
 .fexp-view-mode button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .fexp-viewer-meta {

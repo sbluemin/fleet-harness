@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
@@ -919,6 +920,7 @@ export function OperationsSideBar({
           목록도 없으므로 스트립도 서지 않는다. */}
       {theaters.length > 0 ? (
         <div className="operations-side-bar-axis" role="group" aria-label={t("sidebar.axis.aria")}>
+          <SegmentedThumb />
           <button
             type="button"
             className="operations-side-bar-axis-seg"

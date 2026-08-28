@@ -87,11 +87,18 @@
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
 }
-/* The chosen font stays marked with a soft brass fill (brass = current selection)
+/* The chosen font stays marked as the quiet neutral wash (Quiet Controls C')
    even when keyboard focus moves elsewhere, so a click highlights it immediately. */
 .fc-font-browser__row[aria-selected="true"] {
-  border-color: var(--control-selected-rim);
-  background: var(--control-selected-fill);
+  border-color: transparent;
+  background: var(--control-wash);
+}
+
+@media (forced-colors: active) {
+  .fc-font-browser__row[aria-selected="true"] {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
 }
 .fc-font-browser__row.is-unavailable,
 .fc-font-browser[data-disabled="true"] { opacity: var(--control-disabled-opacity); }
