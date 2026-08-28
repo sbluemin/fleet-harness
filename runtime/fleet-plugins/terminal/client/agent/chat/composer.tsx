@@ -397,7 +397,7 @@ export function AgentChatComposer({
   return (
     <div className="agent-chat-composer">
       <div
-        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}`}
+        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
         onKeyDown={(event) => {
           // 도는 턴을 끊는 키. 프레임 안에서만 듣는다 — 문서 전역에 걸면 한 화면에 열린 다른

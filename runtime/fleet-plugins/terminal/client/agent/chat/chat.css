@@ -1645,7 +1645,10 @@
   tab-size: 8;
 }
 
-.agent-chat-composer-frame.is-ultracode .agent-chat-composer-input {
+/* 미러가 서 있는 동안에는 textarea의 글자를 비운다 — 비우지 않으면 불투명한 실제 글자가 미러
+   위에 그대로 겹쳐, 미러가 칠한 색은 배경 칩만 남기고 사라진다(실측: 좌표가 회색 상자로 보였다).
+   무장뿐 아니라 해석된 좌표만 있을 때도 미러가 서므로 조건은 `is-mirrored`다. */
+.agent-chat-composer-frame.is-mirrored .agent-chat-composer-input {
   position: relative;
   z-index: 1;
   color: transparent;
