@@ -46,7 +46,6 @@ export default definePlugin({
     };
 
     const gateway = createCodexGateway({
-      cwd: process.cwd(),
       host: "127.0.0.1",
       version: "1",
       theaterPaths: {

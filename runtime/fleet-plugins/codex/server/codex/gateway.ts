@@ -18,7 +18,12 @@ import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "./contracts.js";
 
 interface CodexGatewayDeps {
-  readonly cwd: string;
+  /**
+   * 등록된 워크스페이스가 하나도 없을 때 쓸 기본 프로젝트. 플러그인에는 그런 것이
+   * 없으므로 생략한다 — 프로세스의 cwd를 기본값으로 삼으면 콘솔 패키지 자신이
+   * 워크스페이스가 되어, 사용자가 연 적 없는 빈 위키를 MRU로 돌려준다.
+   */
+  readonly cwd?: string;
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
@@ -136,11 +141,11 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     await deps.whenRegistrationsSettle?.();
     let selected: WorkspaceSelection;
     try {
-      selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd);
+      selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd ?? "");
       // 모르는 워크스페이스라면 한 번은 열어 보고 다시 고른다.
       if (selected.kind === "missing-workspace" || selected.kind === "redirect" || selected.kind === "no-workspace") {
         if (await openMissingWorkspace(request.url ?? "/")) {
-          selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd);
+          selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd ?? "");
         }
       }
     } catch (error) {
@@ -177,6 +182,12 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       return true;
     }
     const workspace = selected.workspace ?? await ensureInitialWorkspace();
+    if (!workspace) {
+      // 열린 Theater가 없으면 보여 줄 위키도 없다 — 없는 것을 지어내지 않는다.
+      if (isJsonRequest(request)) sendJson(response, 404, { error: "no_workspace_registered" });
+      else redirect(response, CODEX_BASE);
+      return true;
+    }
     const originalUrl = request.url;
     if (selected.rewrittenUrl) request.url = selected.rewrittenUrl;
     let paths: MemoryPaths;
@@ -216,7 +227,8 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
    */
 
 
-  async function ensureInitialWorkspace(): Promise<WorkspaceRegistration> {
+  async function ensureInitialWorkspace(): Promise<WorkspaceRegistration | null> {
+    if (!deps.cwd) return null;
     initialWorkspace ??= workspaces.register(deps.cwd);
     const workspace = await initialWorkspace;
     initialWorkspaceId = workspace.id;

@@ -211,14 +211,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
-    path: "/api/v1/theaters/:theaterId/codex-workspace",
-    summary: "Resolve the Codex workspace for a Theater.",
-    category: "Observer",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "POST",
     path: "/api/v1/theaters/folder-listings",
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",

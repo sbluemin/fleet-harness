@@ -111,11 +111,11 @@ POST|/api/v1/deletions/:deletionId/restore|http
 POST|/api/v1/desktop/handoff|http
 POST|/api/v1/join|http
 POST|/api/v1/operations/groups|http
+POST|/api/v1/plugins/codex/workspace|http
 POST|/api/v1/operations|http
 POST|/api/v1/remote-hosts/:hostId/probes|http
 POST|/api/v1/remote-hosts|http
 POST|/api/v1/remote-identity/rotations|http
-POST|/api/v1/theaters/:theaterId/codex-workspace|http
 POST|/api/v1/theaters/folder-grants|http
 POST|/api/v1/theaters/folder-listings|http
 POST|/api/v1/theaters|http

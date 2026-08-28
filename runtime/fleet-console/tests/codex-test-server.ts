@@ -29,11 +29,20 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
   });
   const port = Number(new URL(endpoint).port);
 
+  // Theater 등록은 폴더 grant를 먼저 받는다 — 경로만 실어 보내면 조용히 거절되고,
+  // 워크스페이스가 없는 채로 테스트가 시작된다.
   const registerTheater = async (cwd: string): Promise<string> => {
-    const response = await fetch(`http://127.0.0.1:${port}/api/v1/theaters`, {
+    const origin = `http://127.0.0.1:${port}`;
+    const grantResponse = await fetch(`${origin}/api/v1/theaters/folder-grants`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${port}` },
+      headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify({ path: cwd }),
+    });
+    const grant = await grantResponse.json() as { readonly id?: string; readonly folderGrantId?: string };
+    const response = await fetch(`${origin}/api/v1/theaters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ folderGrantId: grant.id ?? grant.folderGrantId }),
     });
     const body = await response.json() as { readonly theater?: { readonly id?: string } };
     return body.theater?.id ?? "";
