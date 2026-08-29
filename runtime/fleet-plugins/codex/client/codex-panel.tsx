@@ -378,10 +378,12 @@ function CodexEmpty({
 }
 
 async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorkspaceState, "contextKey">> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/codex-workspace`, {
+  // 플러그인 라우트는 자기 이름공간에 산다 — `/api/v1/theaters/...`는 코어가 소유한 경로라
+  // 플러그인이 그 밑에 끼어들 수 없다. Theater는 경로가 아니라 본문이 싣는다(workspace-routes).
+  const response = await fetch("/api/v1/plugins/codex/workspace", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ theaterId }),
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   return assertCodexWorkspace(await response.json());

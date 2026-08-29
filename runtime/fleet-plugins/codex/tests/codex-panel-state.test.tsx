@@ -85,8 +85,11 @@ beforeEach(() => {
   panelMocks.consoleState.activeTheaterId = "theater-a";
   panelMocks.consoleState.codexReader = null;
   panelMocks.consoleState.codexReaderExpanded = false;
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-    const theaterId = String(input).includes("theater-b") ? "b" : "a";
+  // Theater는 경로가 아니라 본문이 싣는다 — 플러그인 라우트는 코어 소유 경로 밑에
+  // 끼어들 수 없다. URL로 Theater를 가려내던 예전 스텁은 두 Theater를 구별하지 못한다.
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const requested = readRequestedTheaterId(init);
+    const theaterId = requested === "theater-b" ? "b" : "a";
     return new Response(JSON.stringify({ hasWiki: true, id: `00000000000${theaterId}` }), {
       headers: { "Content-Type": "application/json" },
       status: 200,
@@ -101,6 +104,37 @@ afterEach(() => {
   act(() => root.unmount());
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+});
+
+function readRequestedTheaterId(init?: RequestInit): string | null {
+  if (typeof init?.body !== "string") return null;
+  try {
+    const parsed = JSON.parse(init.body) as { readonly theaterId?: unknown };
+    return typeof parsed.theaterId === "string" ? parsed.theaterId : null;
+  } catch {
+    return null;
+  }
+}
+
+describe("Codex rail panel workspace request", () => {
+  // Codex가 플러그인이 되며 서버 라우트는 이름공간으로 옮겼는데 클라이언트가 따라오지
+  // 않아, 모든 Theater에서 패널이 "Fleet Wiki data could not be loaded"만 띄웠다.
+  // 서버 라우트만 검사하면 이 갈라짐이 보이지 않는다 — 부르는 쪽을 못 박는다.
+  it("asks the plugin's own route and carries the Theater in the body", async () => {
+    await act(async () => {
+      root.render(codexPanel.render?.({ theaterId: "theater-a" } as never) ?? null);
+    });
+
+    const calls = vi.mocked(globalThis.fetch).mock.calls;
+    const workspaceCall = calls.find(([input]) => String(input).includes("workspace"));
+    expect(workspaceCall, "the panel never requested a Codex workspace").toBeDefined();
+
+    const [url, init] = workspaceCall!;
+    expect(String(url)).toBe("/api/v1/plugins/codex/workspace");
+    expect(String(url)).not.toMatch(/^\/api\/v1\/theaters\//);
+    expect(init?.method).toBe("POST");
+    expect(readRequestedTheaterId(init)).toBe("theater-a");
+  });
 });
 
 describe("Codex rail panel in-memory state", () => {
