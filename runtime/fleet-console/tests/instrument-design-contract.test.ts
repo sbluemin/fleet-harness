@@ -3217,8 +3217,12 @@ describe("Instrument core design contract", () => {
     expect(focusWash).toContain("background-clip: padding-box;");
     // 후퇴는 본문이 진다 — 캡션은 어느 패널인지를 말하는 자리라 흐려지면 목록을 훑는 일이 함께
     // 흐려진다. 상태 레일은 캡션 소속이라 자동으로 남는다. 무대에 포커스가 설 때만 일어나며
-    // (:has() 게이트), 덱 타일은 대상에서도 게이트에서도 빠진다.
-    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
+    // (:has() 게이트), 덱 타일은 대상에서도 게이트에서도 빠진다. companion 프레임도 같이 빠진다 —
+    // 활성 표식을 받을 경로가 없어(호스트가 is-active를 붙이지 않는다) 구조적으로 영원한
+    // 비포커스이고, 그래서 부모 세션이 포커스인 동안 늘 물러나 있었다.
+    const recede = components.match(/\.operations-canvas:has\(\.canvas-operation\.is-active:not\(\.is-deck-tile\)\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\):not\(\.canvas-companion-frame\) > \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
+    // 옛 셀렉터(= companion 제외 없음)가 되살아나면 Session Analyst가 다시 흐려진다.
+    expect(components).not.toMatch(/^\.operations-canvas:has\([^{]*\) \.canvas-operation:not\(\.is-active\):not\(\.is-deck-tile\) > \.canvas-operation-terminal \{/m);
     // 세기는 설정이 소유한다 — 규칙은 변수를 소비하고, 폴백이 곧 기본값이라 값이 실리기 전
     // 첫 페인트에서도 패널이 제자리를 지킨다. 폴백 없는 참조로 바뀌면 설정 이전 프레임이 비어 버린다.
     expect(recede).toContain("opacity: var(--unfocused-panel-opacity, 0.5);");
