@@ -94,6 +94,9 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       setSearchParams: () => undefined,
       subscribe: () => () => undefined,
     },
+    rail: {
+      open: () => undefined,
+    },
     surfaces: {
       open: () => "",
       close: () => undefined,

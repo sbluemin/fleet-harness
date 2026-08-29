@@ -14,12 +14,18 @@ import type {
  * 호스트가 프레임·슬롯 기하·포커스·주소를 전부 소유하고, 플러그인은 슬롯 하나의
  * 본문만 그린다. rail·floating과 같은 계약 형태이며 런타임 값을 싣지 않는다.
  *
+ * 표면은 세션 안에서 산다 — 새로고침으로 돌아오게 하려면 그 주소는 플러그인이 스스로
+ * 소유한다(호스트는 표면을 위한 쿼리스트링 왕복을 제공하지 않는다).
+ *
  * 슬롯은 세로로 분할되고 개수 상한이 없다. 폭은 사용자가 분할선으로 조절하며,
  * 호스트가 가중치로 보관한다 — 플러그인은 자기 폭을 지시하지 못하고, 실제로 놓인
  * 폭은 `slotWidth`로 통보만 받는다(컨테이너 쿼리로 스스로 열화하라는 뜻이다).
  */
 export interface ExpandedSurfaceDescriptor {
-  /** 플러그인 안에서만 유일하면 된다 — 호스트가 `${pluginId}:${id}`로 승격한다. */
+  /**
+   * 콘솔 전체에서 유일해야 한다. 호스트는 접두를 붙이지 않고 이 값을 그대로 주소로 쓰며,
+   * 먼저 등록된 표면이 이깁니다 — 같은 id를 든 뒤의 기여는 경고와 함께 버려진다.
+   */
   readonly id: string;
   /**
    * 슬롯 머리에 설 이름. 표면 종류가 아니라 **지금 그 슬롯이 담은 것**을 말하므로
@@ -44,33 +50,14 @@ export interface ExpandedSurfaceDescriptor {
   /** 슬롯 안쪽 좌측 열(문서 목차 등). 폭은 호스트가 정한다. */
   readonly aside?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
-   * URL 왕복 규칙. 선언하면 이 표면의 인스턴스가 주소를 갖고 새로고침·공유 링크로
-   * 복원된다. 선언하지 않으면 세션 안에서만 산다.
-   */
-  readonly address?: ExpandedSurfaceAddress;
-  /**
    * 슬롯이 이 폭보다 좁아지지 않도록 분할선 드래그를 막는다(px). 생략하면
    * 호스트 기본값을 쓴다. 상한은 없다 — 좁아지는 쪽만 막는다.
    */
   readonly minSlotWidth?: number;
 }
 
-/**
- * 주소화 계약. 호스트가 쿼리스트링을 소유하고, 표면은 자기 파라미터의 부호화만 안다.
- * `params`는 표면이 정의하는 자유 사전이며 호스트는 내용을 해석하지 않는다.
- */
-export interface ExpandedSurfaceAddress {
-  /**
-   * 이 표면의 인스턴스를 URL에서 식별하는 토큰. `?surface=<token>:<encoded>` 형태로
-   * 실린다. 표면 id와 달라도 되지만 콘솔 전체에서 유일해야 한다.
-   */
-  readonly token: string;
-  readonly encode: (params: Readonly<Record<string, string>>) => string;
-  readonly decode: (encoded: string) => Record<string, string> | null;
-}
-
 export interface ExpandedSurfaceContext {
-  /** `${pluginId}:${descriptorId}` — 호스트가 승격한 전역 유일 id. */
+  /** 서술자가 선언한 id 그대로. */
   readonly surfaceId: string;
   /** 같은 표면을 두 슬롯에 띄웠을 때 둘을 가르는 id. */
   readonly instanceId: string;

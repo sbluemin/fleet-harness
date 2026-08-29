@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(),
-  usePluginRegistry: () => ({ plugins: [], failures: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] , expandedSurfaces: []}),
+  usePluginRegistry: () => ({ plugins: [], failures: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] , expandedSurfaces: [], persistentComponents: []}),
 }));
 
 import { useGlanceHold } from "../core/client/src/canvas/canvas.js";

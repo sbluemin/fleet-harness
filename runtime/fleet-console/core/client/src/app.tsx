@@ -20,6 +20,7 @@ import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion 
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { LiquidGlassWelcome } from "./components/liquid-glass-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
+import { PersistentPluginComponents } from "./persistent-components.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "./update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "./global-shortcuts.js";
@@ -341,6 +342,10 @@ export function App() {
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
+        {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다.
+            밴드와 라우트 사이(흐름 바 자리)에 두지 않는다: 그 구간은 언더플로 게이트가
+            지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
+        <PersistentPluginComponents />
         {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는

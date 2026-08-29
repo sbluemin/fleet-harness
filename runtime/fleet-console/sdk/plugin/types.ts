@@ -93,6 +93,17 @@ export interface FleetClientPlugin {
    * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.
    */
   readonly expandedSurfaces?: readonly ExpandedSurfaceDescriptor[];
+  /**
+   * 콘솔이 살아 있는 동안 호스트가 계속 마운트해 두는 화면 없는 기여.
+   *
+   * rail 패널도 확대 표면도 열려 있을 때만 마운트되므로, 주소 동기화처럼 "열려 있지
+   * 않아도 돌아야 하는" React 로직은 설 자리가 없다. 그런 로직을 어느 화면 안에 얹으면
+   * 그 화면이 닫히는 순간 조용히 멈춘다.
+   *
+   * 호스트는 이 기여를 라우팅 위에서 마운트하므로 훅이 주소 변화에 반응할 수 있고,
+   * 아무것도 그리지 않는 것이 정상이다(`null` 반환).
+   */
+  readonly persistentComponents?: readonly PersistentComponentDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;
@@ -155,6 +166,18 @@ export interface PluginInstallContext {
   readonly surfaces: ClientExpandedSurfacesCapability;
   readonly consoleState: ClientConsoleStateCapability;
   readonly navigation: ClientNavigationCapability;
+  readonly rail: ClientRailCapability;
+}
+
+/** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
+export interface PersistentComponentDescriptor {
+  readonly id: string;
+  readonly render: () => ReactNode;
+}
+
+export interface ClientRailCapability {
+  /** rail 패널을 펼친다. 공유 링크로 들어온 플러그인이 자기 패널을 세울 때 쓴다. */
+  open(panelId: string): void;
 }
 
 export interface ClientApiCapability {

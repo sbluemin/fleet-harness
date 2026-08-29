@@ -3,6 +3,7 @@ import { useReaderState } from "./reader-store.js";
 import { useEffect, useRef } from "react";
 
 import { prepareReaderSessionScroll, stepReaderHistoryTo } from "./codex-host.js";
+import { openCodexRailPanel } from "./host.js";
 import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "./reader-store.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -92,8 +93,9 @@ export function useCodexReaderUrlSync(): void {
       return;
     }
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
-    // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다.
-    
+    // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다. 이 한 줄이 빠지면 링크는
+    // 축소 화면에서 아무것도 못 보여주고, 확대 링크는 null workspace로 영영 기다린다.
+    openCodexRailPanel();
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
       // 브라우저 뒤로/앞으로가 리더 기록의 인접 걸음이면 그 걸음으로 옮긴다 — 그래야
       // 그 항목이 들고 있던 읽던 자리와 ←/→ 방향이 함께 따라온다.

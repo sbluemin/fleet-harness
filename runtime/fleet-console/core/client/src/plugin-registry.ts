@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo } from "react";
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
-import type { OperationKindDescriptor, FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { OperationKindDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
@@ -22,6 +22,7 @@ export interface PluginRegistry {
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
+  readonly persistentComponents: readonly PersistentComponentDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
 }
@@ -116,9 +117,10 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
-  // 표면 id는 URL(`?surface=<id>`)과 슬롯 저장소가 함께 쓰는 주소다. rail 패널과 같은
-  // 규칙으로 접두 없이 두고 선착순 중복 제거한다 — 주소가 플러그인 id를 끌고 다니면
-  // 공유 링크가 구현 세부를 노출하고, 플러그인을 옮기는 순간 링크가 깨진다.
+  // 표면 id는 슬롯 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
+  // 선착순 중복 제거한다 — 접두를 붙이면 플러그인이 자기 지역 id로 부르는 open/close가
+  // 승격된 id와 어긋나고, 능력이 플러그인별로 만들어지지 않는 한 그 간극을 메울 수 없다.
+  // 대신 계약이 "콘솔 전체에서 유일"을 요구하고, 어긴 기여는 아래 경고로 드러난다.
   const expandedSurfaceIds = new Set<string>();
   const expandedSurfaces: ExpandedSurfaceDescriptor[] = [];
   for (const plugin of plugins) {
@@ -144,6 +146,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   return {
     plugins,
     failures,
+    persistentComponents: plugins.flatMap((plugin) => plugin.persistentComponents ?? []),
     operationKinds: plugins.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),

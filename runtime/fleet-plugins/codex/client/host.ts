@@ -2,6 +2,7 @@ import type {
   ClientConsoleStateCapability,
   ClientExpandedSurfacesCapability,
   ClientNavigationCapability,
+  ClientRailCapability,
   ConsoleTheme,
 } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -18,6 +19,7 @@ interface CodexHostCapabilities {
   readonly consoleState: ClientConsoleStateCapability;
   readonly navigation: ClientNavigationCapability;
   readonly surfaces: ClientExpandedSurfacesCapability;
+  readonly rail: ClientRailCapability;
 }
 
 let capabilities: CodexHostCapabilities | null = null;
@@ -54,6 +56,11 @@ export function activeTheaterId(): string | null {
 
 export function setActiveTheater(theaterId: string): void {
   capabilities?.consoleState.setActiveTheater(theaterId);
+}
+
+/** 공유 링크로 들어오면 Codex 패널이 아직 서 있지 않다 — 그 자리를 세운다. */
+export function openCodexRailPanel(): void {
+  capabilities?.rail.open("codex");
 }
 
 export function subscribeConsoleState(listener: () => void): () => void {
