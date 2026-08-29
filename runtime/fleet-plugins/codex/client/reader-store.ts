@@ -111,8 +111,9 @@ export function closeCodexReader(): void {
 }
 
 function closeSurfaceSlots(): void {
-  const surfaces = hostCapabilities().surfaces;
-  if (surfaces.isOpen(SURFACE_ID)) surfaces.close(SURFACE_ID);
+  // 표면 id로 닫는다 — `close`는 인스턴스 id를 받으므로(`codex#1`) 표면 id를 넘기면
+  // 일치하는 슬롯이 없어 조용히 아무 일도 일어나지 않고, 빈 슬롯만 캔버스에 남는다.
+  hostCapabilities().surfaces.closeSurface(SURFACE_ID);
 }
 
 export function setActiveTheater(theaterId: string): void {

@@ -166,6 +166,15 @@ export function closeExpandedSurface(instanceId: string): void {
   if (closed) announceClosed([closed]);
 }
 
+export function closeExpandedSurfacesOf(surfaceId: string): void {
+  const closed = state.instances.filter((instance) => instance.surfaceId === surfaceId);
+  if (closed.length === 0) return;
+  const instances = state.instances.filter((instance) => instance.surfaceId !== surfaceId);
+  const stillOpen = instances.some((instance) => instance.instanceId === state.focusedInstanceId);
+  setState({ instances, focusedInstanceId: stillOpen ? state.focusedInstanceId : instances[0]?.instanceId ?? null });
+  announceClosed(closed);
+}
+
 export function closeAllExpandedSurfaces(): void {
   if (state.instances.length === 0) return;
   const closed = state.instances;

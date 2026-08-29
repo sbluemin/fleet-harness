@@ -2,7 +2,7 @@ import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import { applySearchParams, subscribeConsoleLocation } from "./console-location.js";
-import { closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
+import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-marks.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -38,6 +38,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     surfaces: {
       open: (request) => openExpandedSurface(request),
       close: (instanceId) => closeExpandedSurface(instanceId),
+      closeSurface: (surfaceId) => closeExpandedSurfacesOf(surfaceId),
       isOpen: (surfaceId) => getExpandedSurfaceState().instances.some((i) => i.surfaceId === surfaceId),
     },
     composer: {

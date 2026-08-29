@@ -21,6 +21,7 @@ import { codexReadingSurface } from "../client/reading-surface.js";
 const surfaces = {
   open: vi.fn(() => "codex#1"),
   close: vi.fn(),
+  closeSurface: vi.fn(),
   isOpen: vi.fn(() => true),
 };
 
@@ -59,10 +60,12 @@ describe("returning from an expanded Codex document", () => {
     openCodexReader({ kind: "entry", entryId: "tide-model" });
     expandCodexReader();
     surfaces.close.mockClear();
+    surfaces.closeSurface.mockClear();
 
     codexReadingSurface.onClose?.({ surfaceId: "codex", instanceId: "codex#1", params: {} });
 
     expect(surfaces.close).not.toHaveBeenCalled();
+    expect(surfaces.closeSurface).not.toHaveBeenCalled();
   });
 
   it("clears the session flag so a refresh does not revive the closed expansion", () => {
@@ -92,7 +95,10 @@ describe("returning from an expanded Codex document", () => {
 
     collapseCodexReader();
 
-    expect(surfaces.close).toHaveBeenCalledWith("codex");
+    // 표면 id는 `closeSurface`로 간다 — `close`는 인스턴스 id를 받으므로 표면 id를
+    // 넘기면 일치하는 슬롯이 없어 조용히 아무 일도 일어나지 않는다.
+    expect(surfaces.closeSurface).toHaveBeenCalledWith("codex");
+    expect(surfaces.close).not.toHaveBeenCalled();
     expect(getReaderState().codexReaderExpanded).toBe(false);
   });
 });

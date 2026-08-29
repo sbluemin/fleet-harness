@@ -17,29 +17,21 @@ const SHELL_WS_PATH = "/plugins/terminal/ws";
 /** 80열이 서지 않는 폭에서는 셸이 셸 노릇을 못 한다. */
 const SHELL_MIN_SLOT_WIDTH = 360;
 
-const SHELL_SESSION_PATH = "shell/session";
-
+/**
+ * 슬롯을 닫는 것은 셸을 **치우는** 것이지 끝내는 것이 아니다. PTY는 서버에 살아 있고
+ * 못 박아 둔 cwd도 그대로라, 다시 열면 하던 자리로 돌아온다 — 레일 아이콘 토글이
+ * 곧 이 숨김이다.
+ *
+ * 셸을 실제로 끝내는 것은 사용자가 셸 안에서 `exit`을 치는 일이고, 그때 PTY가 죽으면
+ * 서버가 스스로 고정을 푼다(server/shell.ts의 onExit). 닫기가 세션을 죽이면 잠깐
+ * 치워 두는 것과 끝내는 것을 구별할 수 없게 된다.
+ */
 export const shellSurface: ExpandedSurfaceDescriptor = {
   id: SHELL_SURFACE_ID,
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
   minSlotWidth: SHELL_MIN_SLOT_WIDTH,
   render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
-  // 슬롯을 닫는 것이 곧 "셸을 종료한다"이다 — 못 박아 둔 cwd는 그때 풀린다. 이 통보가
-  // 없으면 세션이 살아남아, Theater를 옮긴 뒤 셸을 다시 열어도 옛 Theater에 서 있다.
-  onClose: () => { void terminateShellSession(); },
 };
-
-async function terminateShellSession(): Promise<void> {
-  try {
-    await fetch(`/plugins/terminal/${SHELL_SESSION_PATH}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    // 종료 통보는 최선 노력이다 — 실패해도 화면은 이미 닫혔고, 서버는 다음 티켓에서
-    // 죽은 세션을 스스로 걷어낸다.
-  }
-}
 
 function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   return (

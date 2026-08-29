@@ -5,16 +5,21 @@ import { getT } from "../i18n/index.js";
 const SHELL_SURFACE_ID = "shell";
 
 /**
- * 레일 아이콘은 패널을 펼치지 않고 곧장 확대 표면을 연다. 이미 열려 있으면 스토어의
- * reuse 규칙이 새 슬롯을 만들지 않고 그 슬롯으로 포커스만 옮긴다 — 아이콘을 두 번
- * 눌렀다고 셸이 둘이 되지 않는다.
+ * 레일 아이콘은 패널을 펼치지 않고 확대 표면을 직접 여닫는다 — 켜고 끄는 한 자리다.
+ *
+ * 다시 누르면 슬롯을 치운다. 치우는 것은 끝내는 것이 아니라서 PTY도 못 박은 cwd도
+ * 서버에 남고, 또 누르면 하던 자리로 돌아온다. 셸을 실제로 끝내는 것은 셸 안에서
+ * `exit`을 치는 일이다.
  */
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
   activate: (ctx: RailPanelContext) => {
-    ctx.surfaces?.open({ surfaceId: SHELL_SURFACE_ID });
+    const surfaces = ctx.surfaces;
+    if (!surfaces) return;
+    if (surfaces.isOpen(SHELL_SURFACE_ID)) surfaces.closeSurface(SHELL_SURFACE_ID);
+    else surfaces.open({ surfaceId: SHELL_SURFACE_ID });
   },
 };
 

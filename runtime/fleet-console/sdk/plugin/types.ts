@@ -249,7 +249,14 @@ export interface ClientNavigationCapability {
 export interface ClientExpandedSurfacesCapability {
   /** 표면을 연다. 이미 열려 있으면 기본적으로 그 슬롯을 재사용한다. 인스턴스 id를 돌려준다. */
   open(request: ExpandedSurfaceOpenRequest): string;
+  /** 슬롯 하나를 닫는다. `open`이 돌려준 **인스턴스** id를 넘길 것 — 표면 id가 아니다. */
   close(instanceId: string): void;
+  /**
+   * 이 표면의 슬롯을 전부 닫는다. 플러그인은 대개 자기 인스턴스 id를 들고 있지 않고
+   * "내 표면을 닫는다"만 원하므로, 표면 id로 닫는 길을 따로 둔다 — 표면 id를 `close`에
+   * 넘기면 일치하는 인스턴스가 없어 조용히 아무 일도 일어나지 않는다.
+   */
+  closeSurface(surfaceId: string): void;
   /** 이 표면이 지금 슬롯을 차지하고 있는지. */
   isOpen(surfaceId: string): boolean;
 }

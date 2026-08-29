@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   bindExpandedSurfaceCloseNotifier,
   closeAllExpandedSurfaces,
+  closeExpandedSurfacesOf,
   closeExpandedSurface,
   focusExpandedSurface,
   focusExpandedSurfaceByIndex,
@@ -245,6 +246,53 @@ describe("expanded surface close notification", () => {
 
     closeExpandedSurface("codex#404");
 
+    expect(closed).not.toHaveBeenCalled();
+  });
+});
+
+describe("closing a surface by its own id", () => {
+  // 플러그인은 자기 인스턴스 id를 들고 있지 않다. 표면 id를 `closeExpandedSurface`에
+  // 넘기면 인스턴스 id(`codex#1`)와 맞지 않아 조용히 아무 일도 일어나지 않아, 빈 슬롯이
+  // 캔버스에 남는다 — Codex의 접기가 실제로 이 함정에 빠져 있었다.
+  it("closes the slot that the instance-keyed door leaves standing", () => {
+    openExpandedSurface({ surfaceId: "codex", params: { entryId: "tide-model" } });
+
+    closeExpandedSurface("codex");
+    expect(getExpandedSurfaceState().instances).toHaveLength(1);
+
+    closeExpandedSurfacesOf("codex");
+    expect(getExpandedSurfaceState().instances).toHaveLength(0);
+  });
+
+  it("leaves every other surface where it stands", () => {
+    openExpandedSurface({ surfaceId: "codex" });
+    const shell = openExpandedSurface({ surfaceId: "shell" });
+
+    closeExpandedSurfacesOf("codex");
+
+    expect(getExpandedSurfaceState().instances.map((instance) => instance.instanceId)).toEqual([shell]);
+    expect(getExpandedSurfaceState().focusedInstanceId).toBe(shell);
+  });
+
+  it("announces each slot it closed", () => {
+    const closed = vi.fn();
+    bindExpandedSurfaceCloseNotifier(closed);
+    openExpandedSurface({ surfaceId: "codex", params: { entryId: "a" } });
+    openExpandedSurface({ surfaceId: "codex", params: { entryId: "b" }, mode: "split" });
+
+    closeExpandedSurfacesOf("codex");
+
+    expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays quiet when that surface has no slot", () => {
+    const closed = vi.fn();
+    bindExpandedSurfaceCloseNotifier(closed);
+    const shell = openExpandedSurface({ surfaceId: "shell" });
+
+    closeExpandedSurfacesOf("codex");
+
+    expect(getExpandedSurfaceState().instances.map((instance) => instance.instanceId)).toEqual([shell]);
     expect(closed).not.toHaveBeenCalled();
   });
 });

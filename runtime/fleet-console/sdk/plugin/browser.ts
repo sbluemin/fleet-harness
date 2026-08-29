@@ -97,6 +97,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     surfaces: {
       open: () => "",
       close: () => undefined,
+      closeSurface: () => undefined,
       isOpen: () => false,
     },
     composer: {
