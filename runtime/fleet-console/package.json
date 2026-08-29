@@ -44,7 +44,7 @@
   },
   "scripts": {
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
-    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
+    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/generate-plugin-dist-manifests.mjs && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
     "dev": "vite --config core/client/vite.config.ts",
     "generate:admiral-assets": "node ../../scripts/generate-fleet-admiral-assets.mjs",
     "generate:desktop-protocol-declaration": "tsup core/host/desktop-protocol.ts --dts --dts-resolve --dts-only --out-dir dist --format esm --no-config",
