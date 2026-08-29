@@ -525,6 +525,45 @@ describe("AgentChatRegistry — maintenance command lane", () => {
     await registry.disposeAll();
   });
 
+  /**
+   * 리뷰(#941 3차 P2)가 지목한 경로. 원장을 통째로 비우면 아직 도는 잡의 시작 프레임까지 사라져,
+   * 재접속한 브라우저가 그 작업을 잃거나 `kind: "other"`·제목=id인 스텁으로 되살린다.
+   */
+  it("keeps a still-running job across a clear so a reconnect can rebuild it", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "t1", task_type: "local_workflow", description: "audit the ledger" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "started" },
+        ],
+      },
+      {
+        messages: [
+          { type: "conversation_reset" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-jobclear", () => freshSeedFor(home));
+    session.send("kick off a workflow");
+    await drainTurn(registry, "op-jobclear");
+    session.send("/clear");
+    await drainTurn(registry, "op-jobclear");
+
+    // 새로 붙은 브라우저가 받는 것이 곧 그 화면의 전부다.
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    const state = replayed.reduce((acc, entry) => reduceAgentChatLog(acc, entry.event), initialAgentChatLogState);
+
+    // 대화는 사라지고, 아직 도는 작업은 자기 이름을 달고 남는다.
+    expect(state.turns).toEqual([]);
+    expect(state.jobs.map((job) => ({ id: job.id, title: job.title, open: job.open })))
+      .toEqual([{ id: "t1", title: "audit the ledger", open: true }]);
+    await registry.disposeAll();
+  });
+
   it("keeps an unsupported command on the ordinary turn path", async () => {
     // 덱이 세우지 않을 뿐, 손으로 친 것을 막지는 않는다. 그때는 평범한 턴이다 — 우리가 그
     // 결말을 정비 줄로 그릴 근거가 없다.

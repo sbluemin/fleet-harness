@@ -1789,7 +1789,15 @@ class AgentChatSession {
    * 그 좌표로 중복을 거르므로 되돌리면 이미 받은 이벤트가 다시 그려진다.
    */
   private clearJournal(): void {
-    this.journal = [];
+    // 살아 있는 잡의 좌표는 대화가 아니다. 통째로 지우면 재접속한 브라우저가 그 잡의 시작을 못 본
+    // 채로 남는다 — 리듀서는 좌표만 든 맥박·결말에서 `kind: "other"`·제목=id인 스텁을 세우므로,
+    // 아직 도는 작업이 Work 면에서 사라지거나 이름 없는 조각으로 되살아난다. `liveJobs`가 서버에
+    // 그대로 남는 것과 화면이 그것을 되찾을 수 있는 것은 다른 문제다.
+    //
+    // 끝난 잡의 자취는 함께 지운다. 그쪽은 되찾을 진행이 없고, 남기면 비운 원장에 지나간 작업만
+    // 떠 있게 된다.
+    this.journal = this.journal.filter(({ event }) =>
+      (event.kind === "job" || event.kind === "job-progress") && this.liveJobs.has(event.id));
     this.push({ kind: "cleared", at: Date.now() });
   }
 
