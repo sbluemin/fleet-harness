@@ -14,6 +14,7 @@ import { useExpandedSurfaceDescriptors } from "../plugin-registry.js";
 import { getState, subscribe } from "../store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
+  bindExpandedSurfaceCloseNotifier,
   closeExpandedSurface,
   focusExpandedSurface,
   focusedExpandedSurfaceIndex,
@@ -59,6 +60,15 @@ export function ExpandedSurfaceLayer() {
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const capabilities = useMemo(() => createHostCapabilities(), []);
+
+  // 닫힘 통보의 배달부. 스토어는 서술자를 모르고 레이어만 안다 — 슬롯이 어느 경로로
+  // 닫히든 통보가 한 번 나가도록, 렌더가 아니라 스토어의 닫기 지점에 묶는다.
+  useEffect(() => {
+    bindExpandedSurfaceCloseNotifier((closed) => {
+      descriptors.get(closed.surfaceId)?.onClose?.(closed);
+    });
+    return () => bindExpandedSurfaceCloseNotifier(() => undefined);
+  }, [descriptors]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [slotWidths, setSlotWidths] = useState<readonly number[]>([]);

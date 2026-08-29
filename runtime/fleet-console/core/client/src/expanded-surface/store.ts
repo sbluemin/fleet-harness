@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
 
 /**
  * 확대 표면 스토어 — 열린 슬롯의 순서 있는 목록과 폭 가중치를 소유한다.
@@ -32,6 +32,30 @@ const EMPTY: ExpandedSurfaceState = { instances: [], focusedInstanceId: null };
 const listeners = new Set<Listener>();
 let state: ExpandedSurfaceState = EMPTY;
 let instanceSeq = 0;
+
+/**
+ * 닫힘 통보를 배달할 곳. 스토어는 서술자를 모르므로(레이어가 레지스트리에서 조회한다)
+ * 호스트가 한 번 묶어 준다. 닫기 경로는 여럿인데 통보는 하나여야 하기 때문에, 레이어의
+ * 렌더 주기가 아니라 스토어의 닫기 지점에서 부른다.
+ */
+type CloseNotifier = (ctx: ExpandedSurfaceCloseContext) => void;
+
+let notifyClosed: CloseNotifier = () => undefined;
+
+export function bindExpandedSurfaceCloseNotifier(notifier: CloseNotifier): void {
+  notifyClosed = notifier;
+}
+
+function announceClosed(instances: readonly ExpandedSurfaceInstance[]): void {
+  for (const instance of instances) {
+    // 한 표면의 실패가 나머지 슬롯의 통보를 삼키지 않게 한다.
+    try {
+      notifyClosed({ surfaceId: instance.surfaceId, instanceId: instance.instanceId, params: instance.params });
+    } catch (error) {
+      console.error(`Expanded surface onClose failed: ${instance.surfaceId}`, error);
+    }
+  }
+}
 
 export function subscribeExpandedSurfaces(listener: Listener): () => void {
   listeners.add(listener);
@@ -136,12 +160,17 @@ export function closeExpandedSurface(instanceId: string): void {
     focusedInstanceId = heir?.instanceId ?? null;
   }
 
+  const closed = state.instances[index];
   setState({ instances, focusedInstanceId });
+  // 상태를 먼저 확정하고 통보한다 — 통보를 받은 쪽이 스토어를 다시 읽어도 이미 닫힌 뒤다.
+  if (closed) announceClosed([closed]);
 }
 
 export function closeAllExpandedSurfaces(): void {
   if (state.instances.length === 0) return;
+  const closed = state.instances;
   setState(EMPTY);
+  announceClosed(closed);
 }
 
 export function focusExpandedSurface(instanceId: string): void {
@@ -208,4 +237,6 @@ export function resetExpandedSurfacesForTest(): void {
   state = EMPTY;
   instanceSeq = 0;
   listeners.clear();
+  // 배달부도 함께 푼다 — 남겨 두면 앞 테스트의 표면이 뒤 테스트의 닫기를 받는다.
+  notifyClosed = () => undefined;
 }

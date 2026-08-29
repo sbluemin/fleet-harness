@@ -32,6 +32,15 @@ export interface ExpandedSurfaceDescriptor {
   readonly render: (ctx: ExpandedSurfaceContext) => ReactNode;
   /** 슬롯 머리 우측 도구 무리. 닫기 버튼은 호스트가 소유하므로 넣지 않는다. */
   readonly tools?: (ctx: ExpandedSurfaceContext) => ReactNode;
+  /**
+   * 이 슬롯이 닫혔다는 통보. 닫기 버튼·Esc·다른 표면의 요청 등 **호스트가 닫는 모든 경로**에서
+   * 인스턴스가 목록에서 빠진 뒤 불린다.
+   *
+   * 닫기는 호스트가 소유하지만, "내가 확대되어 있다"를 함께 들고 있는 플러그인은 그 사실을
+   * 되돌릴 기회가 필요하다 — 통보가 없으면 슬롯은 사라졌는데 플러그인은 여전히 확대 중이라
+   * 믿어, 축소 화면도 슬롯도 없는 막다른 골목이 된다. 여기서 다시 닫기를 부르지 말 것.
+   */
+  readonly onClose?: (ctx: ExpandedSurfaceCloseContext) => void;
   /** 슬롯 안쪽 좌측 열(문서 목차 등). 폭은 호스트가 정한다. */
   readonly aside?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
@@ -84,6 +93,16 @@ export interface ExpandedSurfaceContext {
   readonly focus: () => void;
   /** 같은 슬롯에서 다른 문서로 갈아탄다(주소도 함께 바뀐다). */
   readonly replaceParams: (next: Readonly<Record<string, string>>) => void;
+}
+
+/**
+ * 닫힘 통보가 싣는 것. 슬롯은 이미 사라졌으므로 기하·포커스는 말할 수 없고, 어느
+ * 인스턴스가 무엇을 담고 있었는지만 남는다.
+ */
+export interface ExpandedSurfaceCloseContext {
+  readonly surfaceId: string;
+  readonly instanceId: string;
+  readonly params: Readonly<Record<string, string>>;
 }
 
 /** 호스트가 표면을 여는 요청. 플러그인은 `openExpandedSurface`로 이 값을 넘긴다. */

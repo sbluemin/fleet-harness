@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  bindExpandedSurfaceCloseNotifier,
   closeAllExpandedSurfaces,
   closeExpandedSurface,
   focusExpandedSurface,
@@ -178,5 +179,72 @@ describe("expanded surface store", () => {
 
     expect(getExpandedSurfaceState().instances).toEqual([]);
     expect(getExpandedSurfaceState().focusedInstanceId).toBeNull();
+  });
+});
+
+describe("expanded surface close notification", () => {
+  // 닫기는 호스트가 소유하지만, "내가 확대되어 있다"를 함께 들고 있는 표면은 그 사실을
+  // 되돌릴 기회가 필요하다. 통보가 없으면 슬롯은 사라졌는데 표면은 확대 중이라 믿어,
+  // 축소 화면도 슬롯도 없는 막다른 골목이 된다(Codex Expand 복귀 불가).
+  it("tells the surface which instance the host closed", () => {
+    const closed = vi.fn();
+    bindExpandedSurfaceCloseNotifier(closed);
+    const instanceId = openExpandedSurface({ surfaceId: "codex", params: { entryId: "tide-model" } });
+
+    closeExpandedSurface(instanceId);
+
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(closed).toHaveBeenCalledWith({
+      surfaceId: "codex",
+      instanceId,
+      params: { entryId: "tide-model" },
+    });
+  });
+
+  it("has already removed the slot by the time the surface hears about it", () => {
+    let openAtNotice: number | null = null;
+    bindExpandedSurfaceCloseNotifier(() => {
+      openAtNotice = getExpandedSurfaceState().instances.length;
+    });
+    const instanceId = openExpandedSurface({ surfaceId: "codex" });
+
+    closeExpandedSurface(instanceId);
+
+    expect(openAtNotice).toBe(0);
+  });
+
+  it("announces every slot when the host closes them all", () => {
+    const closed = vi.fn();
+    bindExpandedSurfaceCloseNotifier(closed);
+    openExpandedSurface({ surfaceId: "codex" });
+    openExpandedSurface({ surfaceId: "shell" });
+
+    closeAllExpandedSurfaces();
+
+    expect(closed.mock.calls.map(([ctx]) => ctx.surfaceId).sort()).toEqual(["codex", "shell"]);
+  });
+
+  it("keeps one surface's failure from swallowing the next slot's notice", () => {
+    const seen: string[] = [];
+    bindExpandedSurfaceCloseNotifier((ctx) => {
+      seen.push(ctx.surfaceId);
+      if (ctx.surfaceId === "codex") throw new Error("surface blew up");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    openExpandedSurface({ surfaceId: "codex" });
+    openExpandedSurface({ surfaceId: "shell" });
+
+    closeAllExpandedSurfaces();
+
+    expect(seen).toEqual(["codex", "shell"]);
+  });
+
+  it("stays quiet when the instance was already gone", () => {
+    const closed = vi.fn();
+    bindExpandedSurfaceCloseNotifier(closed);
+
+    closeExpandedSurface("codex#404");
+
+    expect(closed).not.toHaveBeenCalled();
   });
 });

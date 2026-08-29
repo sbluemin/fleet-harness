@@ -1,6 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { useSyncExternalStore } from "react";
 
+import { setCodexReaderExpandedForSession } from "./codex-host.js";
 import { hostCapabilities, resolveActiveLocaleFromHost } from "./host.js";
 
 /**
@@ -84,6 +85,22 @@ export function collapseCodexReader(): void {
   expanded = false;
   publish();
   closeSurfaceSlots();
+}
+
+/**
+ * 호스트가 이미 슬롯을 닫았다는 통보를 받았을 때. 확대만 내려놓고 슬롯은 건드리지
+ * 않는다 — 여기서 다시 닫으면 통보가 닫기를 부르고 닫기가 통보를 부른다.
+ *
+ * 이걸 놓치면 슬롯은 사라졌는데 `expanded`는 참으로 남아, 패널이 축소 리더를 그리지
+ * 않는다. 사용자에겐 확대에서 돌아올 길이 사라진다.
+ */
+export function releaseCodexExpansion(): void {
+  if (!expanded) return;
+  expanded = false;
+  // 세션 기록도 함께 내린다 — 시트는 곧 언마운트되므로 자기 effect로 이걸 남길
+  // 기회가 없고, 남겨 두면 새로고침이 닫은 적 없는 확대를 되살린다.
+  setCodexReaderExpandedForSession(false);
+  publish();
 }
 
 export function closeCodexReader(): void {
