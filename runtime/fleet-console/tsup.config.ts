@@ -7,13 +7,18 @@ import { defineConfig } from "tsup";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, "../..");
 
-// Vite 산출물과 다른 플러그인은 보존하되, 이름이 바뀐 diff 라우트만 빌드 전에 제거한다.
-fs.rmSync(path.join(__dirname, "dist", "fleet-plugins", "diff"), { recursive: true, force: true });
+// 빌트인 플러그인 산출물은 매 빌드마다 통째로 다시 만든다.
+//
+// 낡은 산출물이 남으면 "그 파일이 있는가"라는 검사가 거짓말을 한다 — 엔트리를 빼도 지난
+// 빌드의 routes.mjs가 그대로 남아 검사를 통과시키고, 게이트가 결함을 승인한 기록이 된다.
+// 이름이 바뀐(diff→codex 등) 플러그인의 유령 디렉터리가 남는 문제도 같은 뿌리다.
+// dist/client(vite 산출물)과 dist/cli.*는 건드리지 않는다.
+fs.rmSync(path.join(__dirname, "dist", "fleet-plugins"), { recursive: true, force: true });
 
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/cli.ts", "access-protocol": "core/host/access-link.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts" },
+    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/cli.ts", "access-protocol": "core/host/access-link.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts", "fleet-plugins/codex/routes": "../fleet-plugins/codex/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
     // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli·access-protocol 엔트리에만 생성한다.
