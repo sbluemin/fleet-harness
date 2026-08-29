@@ -4,7 +4,7 @@ import { createTerminalSessionManager } from "../../fleet-plugins/terminal/serve
 import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
 interface MockPty extends TerminalPtyHandle {
-  readonly writes: string[];
+  readonly writes: Array<string | Buffer>;
   readonly resizes: Array<{ readonly cols: number; readonly rows: number }>;
   readonly killed: () => boolean;
   readonly killCount: () => number;
@@ -364,11 +364,13 @@ describe("terminal session manager", () => {
     await manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
 
     expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_state", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
       "alpha",
-      JSON.stringify({ type: "replay_end" }),
+      JSON.stringify({ type: "replay_end", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
     ]);
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
-      JSON.stringify({ type: "replay_end" }),
+      JSON.stringify({ type: "replay_state", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
+      JSON.stringify({ type: "replay_end", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
       "beta",
     ]);
   });
@@ -392,7 +394,8 @@ describe("terminal session manager", () => {
     ptys.get("session-a")?.emitData(queryOutput);
     expect(ptys.get("session-a")?.writes).toEqual([]);
     expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
-      JSON.stringify({ type: "replay_end" }),
+      JSON.stringify({ type: "replay_state", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
+      JSON.stringify({ type: "replay_end", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
       queryOutput,
     ]);
 
@@ -400,7 +403,8 @@ describe("terminal session manager", () => {
     ptys.get("session-a")?.emitData(queryOutput);
     expect(ptys.get("session-a")?.writes).toEqual(responses);
     expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
-      JSON.stringify({ type: "replay_end" }),
+      JSON.stringify({ type: "replay_state", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
+      JSON.stringify({ type: "replay_end", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
       queryOutput,
     ]);
   });
@@ -525,8 +529,9 @@ describe("terminal session manager", () => {
     // 재연결하면 같은 세션에 다시 붙어 scrollback을 그대로 재생한다.
     await manager.attach(second, { sessionId: "session-a", cwd: "/a" });
     expect(second.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_state", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
       "before-detach",
-      JSON.stringify({ type: "replay_end" }),
+      JSON.stringify({ type: "replay_end", alternateScreenActive: false, mouseProtocol: "none", mouseEncoding: "default" }),
     ]);
     expect(ptys.get("session-a")?.killed()).toBe(false);
   });
