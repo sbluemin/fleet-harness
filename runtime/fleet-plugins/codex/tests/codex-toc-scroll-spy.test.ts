@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 
-import { installTocScrollSpy, renderTocSheet } from "../core/client/src/codex/components/toc-sheet.js";
+import { installTocScrollSpy, renderTocSheet } from "../client/codex/components/toc-sheet.js";
 
 // 스크롤포트는 화면 맨 위에서 시작하고 600px 높이다 — 읽는 줄은 0.35 * 600 = 210px.
 const PORT_TOP = 0;
