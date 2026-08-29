@@ -8,7 +8,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding-top: var(--space-1);
+  /* 터미널 격자는 본문 가장자리까지 쓰되, 손가락 키는 바깥 슬롯에 닿지 않게 자기 거터를 진다.
+     focus outline은 버튼 밖으로 3px 나가므로 space-1이 네 변에서 잘림 없이 감싼다. */
+  padding: var(--space-1);
 }
 
 /* Equal columns, explicitly floored at 0: an auto-sized track lets one wide label (F10, PgDn)
