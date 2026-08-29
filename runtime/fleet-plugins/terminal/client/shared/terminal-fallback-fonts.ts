@@ -34,6 +34,19 @@ export async function waitForTerminalFallbackFonts(): Promise<void> {
   await withTimeout(preloadTerminalFallbackFonts(), TERMINAL_FALLBACK_FONT_LOAD_TIMEOUT_MS);
 }
 
+/* 번들 CJK 서체가 지금 이 순간 실제로 그릴 수 있는지. 위의 대기는 터미널 부팅을 볼모로 잡지 않으려고
+   시간 상한을 두므로, 상한이 먼저 끝나면 서체가 없는데도 resolve한다. 그 상태를 "준비됨"으로 읽는
+   호출자는 기준선 없이 판정을 내리게 되므로, 대기와 준비 여부는 별개의 질문으로 남는다. */
+export function cjkFallbackBaselineReady(): boolean {
+  const fonts = typeof document === "undefined" ? undefined : document.fonts;
+  if (!fonts?.check) return false;
+  try {
+    return fonts.check(`1em "${KOREAN_MONO_FALLBACK_FAMILY}"`, KOREAN_MONO_PROBE_TEXT);
+  } catch {
+    return false;
+  }
+}
+
 async function loadTerminalFallbackFonts(): Promise<void> {
   const fonts = typeof document === "undefined" ? undefined : document.fonts;
   if (!fonts?.load) return;

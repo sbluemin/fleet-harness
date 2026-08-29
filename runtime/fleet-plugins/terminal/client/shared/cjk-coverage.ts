@@ -1,6 +1,6 @@
 import { fontDrawsText } from "@fleet-console/font-picker/resolve";
 
-import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
+import { cjkFallbackBaselineReady, preloadTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
 import { BUNDLED_CJK_FALLBACK_FAMILY } from "./terminal-preferences.js";
 
 /* 폴백 후보가 실제로 그릴 수 있는 문자 계열. 하나의 "CJK" 플래그로 뭉치지 않는 이유는 커버리지가
@@ -22,8 +22,14 @@ const CJK_SCRIPT_PROBES: Readonly<Record<CjkScript, string>> = {
 
    번들 서체 로드를 이 함수 안에서 기다리는 이유는, 그 대기를 호출자의 규율로 두면 한 번의 실수가
    영구히 남기 때문이다 — 기준선이 아직 없는 순간에 물으면 기준선이 OS 폴백으로 주저앉아 판정이
-   통째로 뒤집히고, 그 오답이 탐침 캐시에 굳어 이후 올바른 호출까지 같은 답을 받는다. */
+   통째로 뒤집히고, 그 오답이 탐침 캐시에 굳어 이후 올바른 호출까지 같은 답을 받는다.
+
+   기다리는 대상이 터미널의 시간 상한 붙은 대기가 아니라 실제 로드 완료인 것도 같은 이유다. 그 상한은
+   서체 하나가 터미널 부팅을 붙잡지 못하게 하려고 있고, 설정 화면의 훑기에는 그런 마감이 없다. 그래도
+   로드가 끝내 실패할 수 있으므로, 기준선이 정말 준비되었을 때만 판정을 기억한다 — 준비되지 않은 채
+   내린 답은 이번 한 번만 쓰이고 다음 호출이 스스로 바로잡는다. */
 export async function fontCjkScripts(familyName: string): Promise<readonly CjkScript[]> {
-  await waitForTerminalFallbackFonts();
-  return CJK_SCRIPTS.filter((script) => fontDrawsText(familyName, CJK_SCRIPT_PROBES[script], { baselineFamily: BUNDLED_CJK_FALLBACK_FAMILY }));
+  await preloadTerminalFallbackFonts();
+  const cache = cjkFallbackBaselineReady();
+  return CJK_SCRIPTS.filter((script) => fontDrawsText(familyName, CJK_SCRIPT_PROBES[script], { baselineFamily: BUNDLED_CJK_FALLBACK_FAMILY, cache }));
 }

@@ -116,3 +116,51 @@ describe("glyph coverage probe", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("coverage probe caching", () => {
+  /* 기준선 서체가 준비되지 않은 채 내린 판정은 기준선이 OS 폴백으로 주저앉은 상태의 답이다. 판정도
+     기준선 래스터도 남기지 않아야 다음 호출이 스스로 바로잡는다 — 래스터만 남겨도 오염은 그대로 번진다. */
+  it("leaves neither the verdict nor the baseline raster behind when caching is refused", () => {
+    clearFontResolutionCache();
+    const { document, reads } = createCoverageDocument({ "Nanum Gothic Coding": [PROBE], "D2Coding": [PROBE] });
+    const options = { document, baselineFamily: "Nanum Gothic Coding", cache: false } as const;
+
+    expect(fontDrawsText("D2Coding", PROBE, options)).toBe(true);
+    const afterFirst = reads();
+    expect(fontDrawsText("D2Coding", PROBE, options)).toBe(true);
+
+    // 기억한 것이 없으므로 두 번째 호출이 기준선과 후보를 다시 그린다.
+    expect(afterFirst).toBe(2);
+    expect(reads()).toBe(4);
+  });
+
+  it("still reads a verdict an earlier trusted call remembered", () => {
+    clearFontResolutionCache();
+    const { document, reads } = createCoverageDocument({ "Nanum Gothic Coding": [PROBE], "D2Coding": [PROBE] });
+
+    expect(fontDrawsText("D2Coding", PROBE, { document, baselineFamily: "Nanum Gothic Coding" })).toBe(true);
+    const afterTrusted = reads();
+    expect(fontDrawsText("D2Coding", PROBE, { document, baselineFamily: "Nanum Gothic Coding", cache: false })).toBe(true);
+
+    expect(reads()).toBe(afterTrusted);
+  });
+});
+
+/* 캐시 키 구분자를 소스에 그대로 박으면 git이 이 파일을 바이너리로 분류해 diff가 `Binary files differ`
+   로만 나온다. 리뷰도 병합도 불가능해지는데 화면상으로는 아무 흔적이 없어, 바이트로 잡는다. */
+describe("source hygiene", () => {
+  it("keeps every font-picker source file free of raw control bytes", async () => {
+    const { readFileSync, readdirSync } = await import("node:fs");
+    // jsdom에서는 import.meta.url이 file: 스킴이 아니다. vitest는 패키지 루트를 cwd로 잡는다.
+    const directory = `${process.cwd()}/`;
+    const sources = readdirSync(directory).filter((name) => name.endsWith(".ts") || name.endsWith(".tsx"));
+
+    // 잘못된 디렉터리를 훑어 통과가 공허해지는 것을 막는다.
+    expect(sources).toContain("resolve.ts");
+    for (const name of sources) {
+      const bytes = readFileSync(`${directory}${name}`);
+      const control = [...bytes].filter((byte) => byte < 9 || (byte > 13 && byte < 32));
+      expect({ name, control }).toEqual({ name, control: [] });
+    }
+  });
+});
