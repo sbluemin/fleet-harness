@@ -181,9 +181,11 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     });
     const body = bodiesRef.current?.[index];
     const fractions = body ? stayPutFractions(body, viewportRef.current) : { nx: null, ny: null };
-    void writeAideStayPut(admiral, next
+    // 저장 실패의 화면 복구는 스토어가 진다. 거절을 여기서 받아 두지 않으면 실패한 저장이
+    // unhandled rejection으로 새어 나간다.
+    writeAideStayPut(admiral, next
       ? { enabled: true, nx: fractions.nx, ny: fractions.ny }
-      : { enabled: false, nx: null, ny: null });
+      : { enabled: false, nx: null, ny: null }).catch(() => undefined);
   }, [applyMoored]);
 
   /**
@@ -581,7 +583,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const admiral = MORPHS[index]!;
     if (body.moored && !mentionMooredRef.current.has(admiral) && moved >= 7) {
       const { nx, ny } = stayPutFractions(body, viewportRef.current);
-      void writeAideStayPut(admiral, { enabled: true, nx, ny });
+      writeAideStayPut(admiral, { enabled: true, nx, ny }).catch(() => undefined);
     }
   }, [clearTimer, clickAction]);
 

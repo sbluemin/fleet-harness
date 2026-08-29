@@ -51,6 +51,9 @@ function ScuttlebuttSettingsSection() {
     setSaving(true);
     try {
       await writeScuttlebuttSettings(patch);
+    } catch {
+      // 실패한 저장의 화면 복구는 스토어가 진다. 여기서 받아 두지 않으면 호출부가 fire-and-forget
+      // 이라 거절이 unhandled rejection으로 새어 나간다.
     } finally {
       setSaving(false);
     }
@@ -72,7 +75,7 @@ function ScuttlebuttSettingsSection() {
     // 한 번의 드래그가 내는 pointerup·blur 중복은 SettingsSlider가 이미 걸러 낸다.
     // 실패 시 화면 복구도 스토어가 진다 — 미리보기가 섞인 값을 이 자리에서 되돌리려 하면
     // 아직 저장된 적 없는 값을 "저장된 값"으로 착각해 화면과 저장이 갈린다.
-    void writeAideSize(aide, width);
+    writeAideSize(aide, width).catch(() => undefined);
   };
 
   const onDuty = AIDES.filter((aide) => settings[aide]);

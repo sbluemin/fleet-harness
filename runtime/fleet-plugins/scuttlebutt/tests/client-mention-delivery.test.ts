@@ -43,7 +43,7 @@ describe("mention delivery ownership", () => {
   });
 
   it("persists a user stay-put switch and never persists a mention moor", () => {
-    expect(flock).toMatch(/void writeAideStayPut\(/u);
+    expect(flock).toMatch(/writeAideStayPut\(/u);
     const mention = flock.match(/const askFromMention = React\.useCallback\(async \(admiral: AdmiralId, text: string\) => \{[\s\S]*?\}, \[applyMoored, sessions\]\);/u);
     expect(mention?.[0]).toBeTruthy();
     expect(mention?.[0]).not.toMatch(/writeAideStayPut/u);
