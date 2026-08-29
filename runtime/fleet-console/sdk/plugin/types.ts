@@ -1,8 +1,9 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
+import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
-import type { LocalizedText } from "../i18n/types.js";
+import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
 import type { RailPanelDescriptor } from "../rail/types.js";
@@ -87,6 +88,22 @@ export interface FleetClientPlugin {
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
   readonly railPanels?: readonly RailPanelDescriptor[];
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
+  /**
+   * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은
+   * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.
+   */
+  readonly expandedSurfaces?: readonly ExpandedSurfaceDescriptor[];
+  /**
+   * 콘솔이 살아 있는 동안 호스트가 계속 마운트해 두는 화면 없는 기여.
+   *
+   * rail 패널도 확대 표면도 열려 있을 때만 마운트되므로, 주소 동기화처럼 "열려 있지
+   * 않아도 돌아야 하는" React 로직은 설 자리가 없다. 그런 로직을 어느 화면 안에 얹으면
+   * 그 화면이 닫히는 순간 조용히 멈춘다.
+   *
+   * 호스트는 이 기여를 라우팅 위에서 마운트하므로 훅이 주소 변화에 반응할 수 있고,
+   * 아무것도 그리지 않는 것이 정상이다(`null` 반환).
+   */
+  readonly persistentComponents?: readonly PersistentComponentDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;
@@ -146,6 +163,40 @@ export interface PluginInstallContext {
   readonly runtime: ClientOperationRuntimeCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly composer: ClientComposerCapability;
+  readonly surfaces: ClientExpandedSurfacesCapability;
+  readonly consoleState: ClientConsoleStateCapability;
+  readonly navigation: ClientNavigationCapability;
+  readonly rail: ClientRailCapability;
+  readonly consoleEvents: ClientConsoleEventsCapability;
+}
+
+/**
+ * 상주 기여가 받는 콘솔 전역 사실. 패널이 하나도 열려 있지 않아도 참이어야 하는 것들이다 —
+ * 로케일·테마는 열린 화면의 속성이 아니라 콘솔의 속성이므로, 화면을 통해서만 전해지면
+ * 아무 화면도 없을 때 플러그인은 기본값에 갇힌다.
+ */
+export interface PersistentComponentContext {
+  readonly language?: ConsoleLocale;
+  readonly theme?: ConsoleTheme;
+}
+
+/** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
+export interface PersistentComponentDescriptor {
+  readonly id: string;
+  readonly render: (ctx: PersistentComponentContext) => ReactNode;
+}
+
+export interface ClientConsoleEventsCapability {
+  /**
+   * 콘솔 공용 스트림에서 이 채널의 프레임을 받는다. 서버 쪽 `registerSseChannel`의 짝이며,
+   * 올린 채널만 브라우저까지 온다. 받는 쪽이 없으면 프레임은 조용히 버려진다.
+   */
+  subscribe(channel: string, onEvent: (payload: unknown) => void): () => void;
+}
+
+export interface ClientRailCapability {
+  /** rail 패널을 펼친다. 공유 링크로 들어온 플러그인이 자기 패널을 세울 때 쓴다. */
+  open(panelId: string): void;
 }
 
 export interface ClientApiCapability {
@@ -199,6 +250,57 @@ export interface ClientOperationsCapability {
   create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
+}
+
+/**
+ * 확대 표면을 여닫는 능력. 슬롯 목록·기하·포커스는 호스트가 소유하므로 플러그인은
+ * "이걸 열어 달라"고 요청할 뿐이고, 어느 슬롯에 어떤 폭으로 서는지는 결정하지 못한다.
+ */
+/**
+ * 콘솔 상태 중 플러그인이 알아도 되는 몫.
+ *
+ * 스토어 전체를 넘기지 않는다 — 넘기면 플러그인이 코어의 내부 형태에 결합되고,
+ * 그 형태를 바꿀 때마다 플러그인이 깨진다. Theater 목록과 활성 Theater는 플러그인이
+ * 자기 데이터를 어느 프로젝트 기준으로 읽을지 정하는 데 필요한 최소값이다.
+ */
+export interface ClientConsoleStateCapability {
+  getTheaters(): readonly ConsoleTheaterSummary[];
+  getActiveTheaterId(): string | null;
+  setActiveTheater(theaterId: string): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export interface ConsoleTheaterSummary {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * 주소 표시줄의 쿼리 문자열 중 플러그인 몫.
+ *
+ * 라우터 자체를 넘기지 않는다 — 경로는 코어 화면의 것이고, 플러그인이 그것을 옮기면
+ * 콘솔이 어디 있는지를 플러그인이 정하게 된다. 쿼리 파라미터만 읽고 쓴다.
+ */
+export interface ClientNavigationCapability {
+  getSearchParam(key: string): string | null;
+  /** `null` 값은 그 파라미터를 지운다. `replace`는 뒤로가기 기록을 남기지 않는다. */
+  setSearchParams(next: Readonly<Record<string, string | null>>, options?: { readonly replace?: boolean }): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export interface ClientExpandedSurfacesCapability {
+  /** 표면을 연다. 이미 열려 있으면 기본적으로 그 슬롯을 재사용한다. 인스턴스 id를 돌려준다. */
+  open(request: ExpandedSurfaceOpenRequest): string;
+  /** 슬롯 하나를 닫는다. `open`이 돌려준 **인스턴스** id를 넘길 것 — 표면 id가 아니다. */
+  close(instanceId: string): void;
+  /**
+   * 이 표면의 슬롯을 전부 닫는다. 플러그인은 대개 자기 인스턴스 id를 들고 있지 않고
+   * "내 표면을 닫는다"만 원하므로, 표면 id로 닫는 길을 따로 둔다 — 표면 id를 `close`에
+   * 넘기면 일치하는 인스턴스가 없어 조용히 아무 일도 일어나지 않는다.
+   */
+  closeSurface(surfaceId: string): void;
+  /** 이 표면이 지금 슬롯을 차지하고 있는지. */
+  isOpen(surfaceId: string): boolean;
 }
 
 export interface ClientPreferencesCapability {
@@ -335,6 +437,15 @@ export interface OperationRenderContext extends OperationContext {
 }
 
 export interface FleetPluginManifest {
+  /**
+   * 이 플러그인이 소유할 콘솔 수준 경로 한 칸(`/console/<prefix>`).
+   *
+   * 기본적으로 플러그인 라우트는 `/plugins/<id>` 안에 갇힌다. 사용자가 주고받는
+   * 링크를 가진 표면은 그 안에 살 수 없다 — 주소가 구현 위치를 드러내고, 플러그인을
+   * 옮기는 순간 이미 공유된 링크가 전부 깨진다. 그래서 선언한 플러그인에만 한 칸을
+   * 내주고, 겹치면 등록이 거절된다.
+   */
+  readonly consoleRoutePrefix?: string;
   readonly id: string;
   readonly apiVersion?: number;
   readonly name?: string;
@@ -392,6 +503,7 @@ export interface FleetPluginHostCapabilities {
   readonly http: FleetPluginHttpHost;
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
+  readonly theaterFlags: FleetPluginTheaterFlagsHost;
 }
 
 export interface FleetPluginServerHost {
@@ -413,10 +525,28 @@ export interface FleetPluginOperationsHost {
   registerLaunchCatalog(pluginId: string, provider: OperationLaunchCatalogProvider): () => void;
 }
 
+/**
+ * Theater DTO에 플러그인이 실을 수 있는 플래그.
+ *
+ * 코어가 `hasWiki` 같은 필드를 직접 계산하면, 그 지식을 소유한 플러그인이 빠져도
+ * 필드는 남아 거짓을 말한다. 소유자가 채우고, 없으면 필드도 없다.
+ */
+export interface FleetPluginTheaterFlagsHost {
+  register(flag: string, resolve: (theaterId: string) => boolean): () => void;
+}
+
 export interface FleetPluginEventsHost {
   publish(channel: string, payload: unknown): void;
   subscribe(channel: string, listener: (payload: unknown) => void): () => void;
   registerSseChannel(channel: string): () => void;
+}
+
+/** 한 프로젝트 경로에 딸린, 플러그인이 쓸 수 있는 데이터 디렉터리. */
+export interface PluginWorkspaceDirectory {
+  /** 이 워크스페이스의 데이터가 사는 절대 경로. */
+  readonly path: string;
+  /** 경로를 정규화해 얻은 안정적인 식별자. 같은 프로젝트는 항상 같은 값이다. */
+  readonly id: string;
 }
 
 export interface FleetPluginPathsHost {
@@ -425,6 +555,18 @@ export interface FleetPluginPathsHost {
   resolveTheaterPath(theaterId: string): string | null;
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
+  /**
+   * 한 프로젝트 경로의 워크스페이스 디렉터리를 만들어 준다(있으면 그대로).
+   *
+   * 플러그인이 직접 만들면 이름 규칙과 정체성 파일이 호스트와 갈라져, 같은 프로젝트가
+   * 두 디렉터리로 나뉜다.
+   */
+  ensureWorkspaceDirectory(cwd: string): PluginWorkspaceDirectory;
+  /**
+   * 디렉터리 단위 배타 실행. 같은 저장소를 두 프로세스가 동시에 옮기는 것을 막는다
+   * (마이그레이션·압축처럼 중간 상태가 읽히면 안 되는 작업).
+   */
+  withDirectoryLock<T>(lockDir: string, operation: () => T): T;
 }
 
 export interface FleetPluginStorageHost {
@@ -435,6 +577,13 @@ export interface FleetPluginStorageHost {
 export interface FleetPluginHttpHost {
   writeJson(res: http.ServerResponse, status: number, payload: unknown): void;
   readJsonBody<T>(req: http.IncomingMessage): Promise<T | null>;
+  /**
+   * 플러그인이 HTML이나 자산을 직접 쓸 때 얹는 보안 헤더.
+   *
+   * 목록을 플러그인이 각자 적으면 언젠가 하나가 빠지고, 그 하나가 빠진 응답만
+   * 스크립트를 실행할 수 있게 된다. 호스트가 한 벌로 소유한다.
+   */
+  securityHeaders(extra?: Readonly<Record<string, string>>): Record<string, string>;
 }
 
 export interface FleetPluginSecurityHost {
@@ -455,6 +604,19 @@ export interface FleetPluginSecurityHost {
    * 세션이 있는지도 Console만 안다.
    */
   resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer";
+  /**
+   * 이 요청이 쓰기까지 허용되는가.
+   *
+   * 리스너 신원 자체를 넘기지 않는다 — bind 주소와 포트는 플러그인이 알 필요가 없고,
+   * 알면 언젠가 그것으로 자기 경계를 다시 짠다. 판정만 넘긴다: 어느 리스너로 들어왔고
+   * 지금 그 리스너가 무엇을 허용하는지는 Console만 안다.
+   */
+  isWriteAdmitted(req: http.IncomingMessage): boolean;
+  /**
+   * 이 요청을 받은 리스너가 인정하는 Origin. 허용 집합은 리스너마다 다르므로 호스트가
+   * 알려 주고, 대조는 플러그인이 자기 실패 어휘로 한다.
+   */
+  expectedOrigin(req: http.IncomingMessage): string | null;
 }
 
 export interface FleetPluginLifecycleHost {

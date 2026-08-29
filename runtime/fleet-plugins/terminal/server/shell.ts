@@ -4,128 +4,128 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import { readSocketRole } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
-type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown };
+type TicketBody = {
+  readonly theaterId?: unknown;
+  readonly colorScheme?: unknown;
+  readonly role?: unknown;
+};
 
-const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
-const RESTORED_DORMANT_PAYLOAD_KEY = "restoredDormant";
+/**
+ * Shell은 Operation이 아니다 — 콘솔 하나에 하나뿐인 전역 표면이다.
+ *
+ * 그래서 세션 키는 Operation id가 아니라 이 상수다. 티켓·소켓·write·terminate가
+ * 전부 이 하나를 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도 죽고,
+ * 복원할 휴면 상태라는 것 자체가 없다.
+ */
+/**
+ * `shell:` 접두를 쓰지 않는다. 세션 매니저는 그 접두를 "상태 미유지 theater-shell"의 표식으로
+ * 읽어, 마지막 소켓이 떨어지고 4초 뒤 PTY를 정리한다. 전역 셸은 정반대 약속을 지고 있다 —
+ * 레일에서 잠깐 치워 둔 셸은 돌아왔을 때 그 자리에 있어야 하고, cwd 고정도 함께 살아 있어야
+ * 한다. 접두 하나가 그 약속을 4초짜리로 만든다.
+ */
+const GLOBAL_SHELL_SESSION_ID = "console-shell";
+const GLOBAL_SHELL_OPERATION_TYPE = "shell";
 
 export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {
-    markRestoredShellOperations(ctx);
-    const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
-      if (!isRestoredShellEvent(payload, ctx.pluginId)) return;
-      const operation = ctx.host.operations.get(payload.operationId);
-      if (!operation) return;
-      // 복구된 Shell은 durable 메타데이터만 되살리고, Relaunch 전에는 ticket/PTY 경로를 열지 않는다.
-      ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, [RESTORED_DORMANT_PAYLOAD_KEY]: true } });
-    });
-    ctx.host.lifecycle.registerCleanup(unsubscribeRestore);
-    registerRouter(ctx, "shell/ticket", async ({ req, res }) => {
-      if (req.method !== "POST") {
-        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+  /**
+   * cwd는 첫 기동 때 활성 Theater 경로로 한 번 못 박고, 사용자가 셸을 명시적으로
+   * 끝낼 때까지 유지한다. Theater를 옮겨 다닌다고 발밑이 바뀌면 반쯤 친 명령이
+   * 다른 저장소에서 실행된다 — 셸의 현재 위치는 사용자만 바꿀 수 있어야 한다.
+   */
+  let pinnedCwd: string | null = null;
+  let pinnedTheaterId: string | null = null;
+
+  const release = () => {
+    pinnedCwd = null;
+    pinnedTheaterId = null;
+  };
+
+  // PTY가 스스로 끝나면(exit, 사용자가 `exit` 입력) 고정도 함께 풀린다 —
+  // 다음 기동은 그때의 활성 Theater에서 새로 시작한다.
+  const unsubscribeExit = runtime.onExit((sessionId) => {
+    if (sessionId === GLOBAL_SHELL_SESSION_ID) release();
+  });
+  ctx.host.lifecycle.registerCleanup(unsubscribeExit);
+
+  registerRouter(ctx, "shell/ticket", async ({ req, res }) => {
+    if (req.method !== "POST") {
+      ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (!ctx.host.security.isTerminalAuthorized(req)) {
+      ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<TicketBody>(req);
+
+    if (pinnedCwd === null) {
+      const theaterId = typeof body?.theaterId === "string" ? body.theaterId : null;
+      if (!theaterId) {
+        ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
         return true;
       }
-      if (!ctx.host.security.isTerminalAuthorized(req)) {
-        ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
-        return true;
-      }
-      const body = await ctx.host.http.readJsonBody<TicketBody>(req);
-      const operationId = typeof body?.operationId === "string" ? body.operationId : typeof body?.sessionId === "string" ? body.sessionId : null;
-      if (!operationId) {
-        ctx.host.http.writeJson(res, 400, { error: "operation_id_required" });
-        return true;
-      }
-      const operation = ctx.host.operations.get(operationId);
-      if (!operation) {
-        ctx.host.http.writeJson(res, 404, { error: "operation_not_found" });
-        return true;
-      }
-      if (operation.type !== "shell" || operation.pluginId !== ctx.pluginId) {
-        ctx.host.http.writeJson(res, 409, { error: "invalid_shell_operation" });
-        return true;
-      }
-      if (operation.payload[RESTORED_DORMANT_PAYLOAD_KEY] === true) {
-        ctx.host.http.writeJson(res, 409, { error: "operation_dormant" });
-        return true;
-      }
-      const theaterPath = ctx.host.paths.resolveTheaterPath(operation.theaterId);
+      const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
       if (!theaterPath) {
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
       }
-      if (!runtime.canAttach(operationId)) {
-        ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
-        return true;
-      }
-      const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
-      // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다 —
-      // 새로고침 한 번이 조용히 제어를 되가져가는 경합을 클라이언트에 맡기지 않는다.
-      const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
-      ctx.host.http.writeJson(res, 200, runtime.issueTicket({
-        cwd: theaterPath,
-        sessionId: operationId,
-        operationId,
-        operationType: operation.type,
-        pluginId: operation.pluginId,
-        theaterId: operation.theaterId,
-        kind: "shell",
-        ...(colorScheme ? { colorScheme } : {}),
-        ...(role ? { role } : {}),
-      }));
+      pinnedCwd = theaterPath;
+      pinnedTheaterId = theaterId;
+    }
+
+    if (!runtime.canAttach(GLOBAL_SHELL_SESSION_ID)) {
+      ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return true;
-    }, { method: "POST", path: "", summary: "Issue a Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
-    registerRouter(ctx, "shell/sessions", ({ req, res, pathname }) => {
-      const suffix = pathname.slice(`${ctx.basePath}/shell/sessions/`.length);
-      const match = suffix.match(/^([^/]+)(?:\/(relaunch))?$/);
-      if (!match) return false;
-      const operationId = decodeURIComponent(match[1] ?? "");
-      if (match[2] === "relaunch") {
-        if (req.method !== "POST") {
-          ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
-          return true;
-        }
-        if (!ctx.host.security.isTerminalAuthorized(req)) {
-          ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
-          return true;
-        }
-        const operation = ctx.host.operations.get(operationId);
-        if (!operation || operation.type !== "shell" || operation.pluginId !== ctx.pluginId) {
-          ctx.host.http.writeJson(res, 404, { error: "operation_not_found" });
-          return true;
-        }
-        const { [RESTORED_DORMANT_PAYLOAD_KEY]: _dormant, ...payload } = operation.payload;
-        ctx.host.operations.patch(operationId, { payload });
-        ctx.host.http.writeJson(res, 200, { ok: true });
-        return true;
-      }
-      if (req.method !== "DELETE") {
-        ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
-        return true;
-      }
-      if (!ctx.host.security.isTerminalAuthorized(req)) {
-        ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
-        return true;
-      }
-      runtime.terminate(operationId);
-      ctx.host.operations.delete(operationId);
-      ctx.host.http.writeJson(res, 200, { ok: true });
+    }
+
+    const colorScheme =
+      body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
+    // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다.
+    const role =
+      ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
+
+    ctx.host.http.writeJson(res, 200, runtime.issueTicket({
+      cwd: pinnedCwd,
+      sessionId: GLOBAL_SHELL_SESSION_ID,
+      operationId: GLOBAL_SHELL_SESSION_ID,
+      operationType: GLOBAL_SHELL_OPERATION_TYPE,
+      pluginId: ctx.pluginId,
+      ...(pinnedTheaterId ? { theaterId: pinnedTheaterId } : {}),
+      kind: "shell",
+      ...(colorScheme ? { colorScheme } : {}),
+      ...(role ? { role } : {}),
+    }));
+    return true;
+  }, {
+    method: "POST",
+    path: "",
+    summary: "Issue a ticket for the console-global Shell.",
+    category: "Terminal Plugin",
+    gate: "origin-write",
+    transport: "http",
+  });
+
+  registerRouter(ctx, "shell/session", ({ req, res }) => {
+    if (req.method !== "DELETE") {
+      ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
       return true;
-    }, [
-      { method: "DELETE", path: "/:operationId", summary: "Terminate a Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-      { method: "POST", path: "/:operationId/relaunch", summary: "Relaunch a dormant Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-    ]);
+    }
+    if (!ctx.host.security.isTerminalAuthorized(req)) {
+      ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    runtime.terminate(GLOBAL_SHELL_SESSION_ID);
+    release();
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }, {
+    method: "DELETE",
+    path: "",
+    summary: "Terminate the console-global Shell session.",
+    category: "Terminal Plugin",
+    gate: "origin-write",
+    transport: "http",
+  });
 }
 
-function markRestoredShellOperations(ctx: FleetPluginServerContext): void {
-  // 플러그인 등록은 이 프로세스의 PTY보다 앞선다. durable Shell은 프로세스가 없다.
-  for (const operation of ctx.host.operations.list()) {
-    if (operation.pluginId !== ctx.pluginId || operation.type !== "shell") continue;
-    if (operation.payload[RESTORED_DORMANT_PAYLOAD_KEY] === true) continue;
-    ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, [RESTORED_DORMANT_PAYLOAD_KEY]: true } });
-  }
-}
-
-function isRestoredShellEvent(value: unknown, pluginId: string): value is { readonly operationId: string } {
-  if (!value || typeof value !== "object") return false;
-  const event = value as { readonly operationId?: unknown; readonly pluginId?: unknown; readonly type?: unknown };
-  return typeof event.operationId === "string" && event.pluginId === pluginId && event.type === "shell";
-}
+export { GLOBAL_SHELL_SESSION_ID };

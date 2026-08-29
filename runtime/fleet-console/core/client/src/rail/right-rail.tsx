@@ -6,6 +6,8 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { useExpandedSurfaces } from "../expanded-surface/store.js";
+import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
@@ -17,7 +19,6 @@ import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, RAIL_OVERLAY_ALPHA_DEFAULT, RAIL_OVERLAY_ALPHA_MAX, RAIL_OVERLAY_ALPHA_MIN, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
-import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -25,6 +26,8 @@ interface RightRailProps {
   readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
 }
 
+/** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
+const STABLE_RAIL_SURFACES = createHostCapabilities().surfaces;
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 // 호버-리빌 헤더 입력 계약: 진입은 pointermove로만 판정하고(스크롤-언더-포인터 오발화 방지)
@@ -120,11 +123,18 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const pluginPanels = pluginContributions.filter((panel) => panel.render !== undefined);
   const pluginActions = pluginContributions.filter((panel) => panel.activate !== undefined && panel.render === undefined);
+  // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
+  const { instances: openSurfaces } = useExpandedSurfaces();
+  const openSurfaceIds = useMemo(
+    () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
+    [openSurfaces],
+  );
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
   const hasPanel = activePanel !== null;
-  const extraWidth = useCodexSplitExtraWidth(activeId) + (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
+  // 폭 요구는 패널이 스스로 말한다 — 코어가 특정 패널 id를 알아보던 자리를 없앴다.
+  const extraWidth = (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
   const extraWidthRef = useRef(extraWidth);
@@ -349,6 +359,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     api,
     language,
     theme,
+    surfaces: STABLE_RAIL_SURFACES,
     launchOperation: onLaunchOperation,
   }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
   const ctx: RailPanelContext = useMemo(() => ({
@@ -412,12 +423,17 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           {builtInPanels.map((panel) => (
             <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
           ))}
-          {builtInPanels.length > 0 && (pluginActions.length > 0 || pluginPanels.length > 0) ? (
-            <div className="right-rail-divider" role="separator" aria-hidden="true" />
-          ) : null}
         </div>
         {pluginActions.map((panel) => (
-          <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={false} />
+          <RailIcon
+            key={panel.id}
+            panel={panel}
+            context={baseCtx}
+            language={language}
+            // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
+            // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
+            isActive={panel.surfaceId !== undefined && openSurfaceIds.has(panel.surfaceId)}
+          />
         ))}
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {pluginPanels.map((panel) => (
@@ -612,6 +628,8 @@ function RailIcon({ panel, context, language, isActive }: RailIconProps) {
       type="button"
       role={panel.activate ? "button" : "tab"}
       aria-selected={panel.activate ? undefined : isActive}
+      // 표면을 여닫는 동작은 탭이 아니라 토글 버튼이다 — 켜짐은 pressed로 말한다.
+      aria-pressed={panel.activate && panel.surfaceId !== undefined ? isActive : undefined}
       aria-label={title}
       disabled={panel.activate !== undefined && context.theaterId === null}
       title={title}

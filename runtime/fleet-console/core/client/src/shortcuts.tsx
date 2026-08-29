@@ -92,18 +92,6 @@ export function buildShortcutGroups(
         { combos: [["Click"]], description: t("shortcuts.map.clearFocus") },
       ],
     },
-    {
-      title: t("shortcuts.group.codex"),
-      entries: [
-        { combos: [["Mod", "K"]], description: t("shortcuts.codex.togglePalette") },
-        { combos: [["↑"], ["↓"]], description: t("shortcuts.codex.moveResults") },
-        { combos: [["Enter"]], description: t("shortcuts.codex.openResult") },
-        { combos: [["Tab"]], description: t("shortcuts.codex.tabFocus") },
-        { combos: [["Esc"]], description: t("shortcuts.codex.closePalette") },
-        { combos: [["+"], ["−"], ["0"]], description: t("shortcuts.codex.zoomLightbox") },
-        { combos: [["F"]], description: t("shortcuts.codex.fitLightbox") },
-      ],
-    },
   ];
 }
 

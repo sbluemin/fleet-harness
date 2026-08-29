@@ -152,7 +152,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         kinds: [
           { id: "codex", type: "agent", title: "Codex" },
           { id: "claude", type: "agent", title: "Claude" },
-          { id: "shell", type: "shell", title: "Shell" },
         ],
       },
     ]);
@@ -187,13 +186,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
   });
 
-  it("omits role and plugin chrome together with Terminal Shell", () => {
+  it("omits role and plugin chrome", () => {
     const terminal: OperationCatalogPlugin = {
       id: "terminal",
       title: "Terminal",
       kinds: [
         { id: "codex", type: "agent", title: "Codex" },
-        { id: "shell", type: "shell", title: "Shell" },
       ],
     };
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [terminal]);
@@ -207,7 +205,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const order = Array.from(document.querySelectorAll("[data-operation-launch-kind]"))
       .map((node) => node.getAttribute("data-operation-launch-kind"));
     expect(order).toEqual(["codex"]);
-    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
     expect(document.querySelectorAll(".theater-menu-divider")).toHaveLength(0);
   });
 
@@ -247,7 +244,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         kinds: [
           { id: "claude", type: "agent", title: "Claude" },
           { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Not installed" },
-          { id: "shell", type: "shell", title: "Shell" },
         ],
       },
     ]);
@@ -331,7 +327,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+        kinds: [{ id: "codex", type: "agent", title: "Codex" }],
       },
     ], onClose);
 
@@ -382,7 +378,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "shell", type: "shell", title: "Shell" },
           { id: "claude", type: "agent", title: "Claude" },
         ],
       },
@@ -406,7 +401,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       <CanvasContextMenu
         anchor={{ x: 520, y: 156 }}
         viewportBounds={{ width: 1116, height: 856 }}
-        catalog={[{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }]}
+        catalog={[{ id: "terminal", title: "Terminal", kinds: [{ id: "codex", type: "agent", title: "Codex" }] }]}
         canLaunch
         renderKindIcon={() => null}
         onLaunchKind={vi.fn()}
@@ -417,7 +412,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const menu = document.querySelector(".canvas-context-menu")!;
     expect(menu.getAttribute("aria-label")).toBe("Operation launcher");
     expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
-    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
     expect(document.querySelector(".operation-launch-provider-glyph--etc")).toBeNull();
   });
 
@@ -426,7 +420,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+        kinds: [{ id: "codex", type: "agent", title: "Codex" }],
       },
     ]);
 
@@ -550,11 +544,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
   });
 
-  it("removes Terminal Shell while preserving model bands", () => {
+  it("preserves model bands", () => {
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
       ...gateway!,
-      kinds: [...gateway!.kinds, { id: "shell", type: "shell", title: "Shell" }],
+      kinds: [...gateway!.kinds],
     }]);
 
     const order = Array.from(document
@@ -563,7 +557,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
       .map((element) => element.getAttribute("data-launch-variant-row")
         ?? `caption:${element.textContent?.trim()}`);
     expect(order).toEqual(["caption:Claude", "fable"]);
-    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
   });
 
   it("keeps a locked menu on one direct row per kind instead of an unusable model band", () => {
@@ -706,11 +699,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
     }
   });
 
-  it("keeps model rows in the arrow-key set after removing Shell", () => {
+  it("keeps model rows in the arrow-key set", () => {
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
       ...gateway!,
-      kinds: [...gateway!.kinds, { id: "shell", type: "shell", title: "Shell" }],
+      kinds: [...gateway!.kinds],
     }]);
 
     const menu = document.querySelector<HTMLElement>(".canvas-context-menu")!;
@@ -720,7 +713,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.activeElement).toBe(model);
     pressFlyoutKey("ArrowDown");
     expect(document.activeElement).toBe(model);
-    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
   });
 
   it("opens the effort submenu from a model row with ArrowRight, then restores focus with Escape", async () => {

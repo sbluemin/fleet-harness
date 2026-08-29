@@ -39,6 +39,8 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),
     workspaceHash: (canonicalCwd) => canonicalCwd,
     resolveTheaterPath: () => null,
+    ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
+    withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
   },
   storage: {
     readJson: async () => null,
@@ -47,12 +49,17 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   http: {
     writeJson: () => {},
     readJsonBody: async () => null,
+    securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
   },
   security: {
     validateHost: () => true,
     isTerminalAuthorized: () => true,
-    isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
+    isLockAuthorized: () => true,
+    resolveTerminalSocketRole: () => "control" as const,
+    isWriteAdmitted: () => true,
+    expectedOrigin: () => "http://127.0.0.1:1",
   },
+  theaterFlags: { register: () => () => undefined },
   lifecycle: {
     registerCleanup: () => () => {},
   },

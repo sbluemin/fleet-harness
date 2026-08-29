@@ -20,9 +20,11 @@ const STANDALONE_CSS_SOURCES = [
   new URL("markdown/styles.css", CONSOLE_ROOT),
   new URL("font-picker/styles.css", CONSOLE_ROOT),
 ] as const;
+const CODEX_COMPONENTS_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/components.css", CONSOLE_ROOT);
+const CODEX_LAYOUT_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
 const CSS_THEME_SOURCES = [
   new URL("core/client/src/styles/theme.css", CONSOLE_ROOT),
-  new URL("core/client/src/codex/styles/theme.css", CONSOLE_ROOT),
+  new URL("../fleet-plugins/codex/client/codex/styles/theme.css", CONSOLE_ROOT),
 ] as const;
 const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
 const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
@@ -480,7 +482,7 @@ function findRawProductSelectsInSourceFile(
 
 describe("Instrument core design contract", () => {
   it("keeps the Codex health popover below blocking modal layers", () => {
-    const codexComponents = source("codex/styles/components.css");
+    const codexComponents = externalSource(CODEX_COMPONENTS_CSS_PATH);
     const popover = codexComponents.match(/\.codex-nav-health-popover \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(popover).toContain("position: fixed;");
     expect(popover).toContain("z-index: 70;");
@@ -1380,24 +1382,14 @@ describe("Instrument core design contract", () => {
     expect(reducedMotion).toContain(".canvas-operation-group-label,");
   });
 
-  it("pins the Shell caption Theater label — neutral meta, no colour mark, yields before the title", () => {
-    const frame = source("canvas/operation-frame.tsx");
+  it("keeps no Operation caption owned by a surface that is no longer an Operation", () => {
+    // Shell이 확대 표면으로 옮겨 가면서 캡션의 Theater 라벨은 채울 주체를 잃었다.
+    // 규칙만 남으면 다음 사람이 "무엇이 이걸 그리나"를 코드에서 되짚어야 한다.
     const canvas = source("canvas/canvas.tsx");
-    const components = source("styles/components.css");
-    const labelBlock = components.match(/\.canvas-operation-theater-label \{[^}]*\}/)?.[0] ?? "";
+    const nameMark = source("components/operation-name-mark.tsx");
 
-    expect(canvas).toContain("operation.type === \"shell\"");
-    expect(frame).toContain('className="canvas-operation-theater-label"');
-    expect(labelBlock).not.toMatch(/border|background/);
-    expect(labelBlock).toContain("color: var(--text-tertiary);");
-    expect(labelBlock).toContain("flex: 0 8 auto;");
-    expect(labelBlock).toContain("max-width: min(40%, 18ch);");
-    expect(labelBlock).toContain("min-width: 0;");
-    expect(labelBlock).toContain("text-overflow: ellipsis;");
-    expect(labelBlock).not.toMatch(/animation/);
-    expect(components).toMatch(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-theater-label \{\s*color: var\(--text-secondary\);/);
-    const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reducedMotion).toContain(".canvas-operation-theater-label,");
+    expect(canvas).not.toContain('operation.type === "shell"');
+    expect(nameMark).not.toContain("ShellKindMark");
   });
 
   it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {
@@ -2332,7 +2324,7 @@ describe("Instrument core design contract", () => {
 
   it("bounds the Codex navigator host so long Wiki entry lists keep native scrolling", () => {
     const components = source("styles/components.css");
-    const navigatorLayout = source("codex/styles/layout.css");
+    const navigatorLayout = externalSource(CODEX_LAYOUT_CSS_PATH);
     const railHostBlock = components.match(/\.codex-rail-host \{[^}]*\}/)?.[0] ?? "";
     const splitRailHostBlock = components.match(/\.codex-rail-host\.is-split \{[^}]*\}/)?.[0] ?? "";
     const navPaneBlock = components.match(/\.codex-nav-pane \{[^}]*\}/)?.[0] ?? "";
@@ -3149,17 +3141,11 @@ describe("Instrument core design contract", () => {
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면
     // 같은 사실이 표면 수만큼의 조형으로 갈라진다. 칩·밴드·모바일이 모두 이 문을 지난다.
     expect(chip).toContain('import { OperationNameMark } from "../components/operation-name-mark.js"');
-    expect(nameMark).toContain('import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph"');
-    expect(nameMark).toContain("if (isShellOperation(operation)) return <ShellKindMark");
     expect(nameMark).toContain('return <OperationStatusIcon status={status}');
     // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
     expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
     expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
-    // 종류 마크는 신호 채널도 위치 채널도 빌리지 않는다 — 활동 토큰 묶음 밖에 선다.
-    expect(components).toMatch(/\.shell-kind-mark \{[^}]*width:\s*14px;[^}]*height:\s*14px;[^}]*color:\s*var\(--text-secondary\)/);
-    expect(components).not.toMatch(/\.shell-kind-mark \{[^}]*(box-shadow|animation)/);
-    expect(components).toMatch(/\.canvas-triage-map-dot\.is-shell \{[^}]*background:\s*none;[^}]*opacity:\s*1;[^}]*color:\s*var\(--text-secondary\)/);
-    // 활동 토큰 묶음에 종류를 끼워 넣으면 Shell이 다시 상태 축의 한 값으로 읽힌다.
+    // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
     expect(components).not.toContain(".canvas-triage-map-dot.is-shell,");
     expect(components).not.toContain(".tenant-beacon.is-shell");
     expect(chip).not.toContain("is-attention");
@@ -3206,8 +3192,9 @@ describe("Instrument core design contract", () => {
     expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: -32px;");
     expect(components).toContain("background-clip: padding-box;");
-    const shellCaptionBlock = components.match(/\.canvas-operation--shell \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
-    expect(shellCaptionBlock).toContain("background-clip: padding-box;");
+    // Shell 전용 캡션 틴트는 폐기됐다 — 규칙을 방출하는 코드가 없었고, 이제 Shell 자체가
+    // Operation이 아니다.
+    expect(components).not.toContain(".canvas-operation--shell");
     const captionSeamBlock = components.match(/\.canvas-operation:has\(> \.canvas-operation-titlebar\) \{[^}]*\}/)?.[0] ?? "";
     expect(captionSeamBlock).toContain("border-top-width: 0;");
     expect(captionSeamBlock).toContain("border-top-style: none;");

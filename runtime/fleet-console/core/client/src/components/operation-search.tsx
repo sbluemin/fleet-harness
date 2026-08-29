@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
-import { fetchSearch } from "../codex/api.js";
 import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { OperationNameMark } from "./operation-name-mark.js";
 import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
@@ -22,7 +21,6 @@ import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import {
-  buildCodexPaletteEntries,
   buildPaletteCommands,
   commandModeQuery,
   isCommandModeInput,
@@ -48,7 +46,6 @@ import {
   requestSideBarAddTheater,
   setActiveTheater,
   setActiveTheme,
-  openCodexReader,
 } from "../store.js";
 import { useT } from "../i18n/index.js";
 import type { ConsoleState } from "../types.js";
@@ -68,7 +65,6 @@ const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled
 const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
-const CODEX_GROUP_HEADING_ID = "operation-search-heading-codex";
 
 export function OperationSearch({
   state,
@@ -84,14 +80,12 @@ export function OperationSearch({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [railSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
-  const [codexCommands, setCodexCommands] = useState<readonly PaletteCommandEntry[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const operationSearchWasOpenRef = useRef(false);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
   const searchGenerationRef = useRef(0);
-  const codexCacheRef = useRef(new Map<string, readonly PaletteCommandEntry[]>());
   const commandMode = isCommandModeInput(query);
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Operation이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
@@ -108,10 +102,6 @@ export function OperationSearch({
     () => (commandMode ? matchPaletteCommands(commands, commandModeQuery(query)) : []),
     [commandMode, commands, query],
   );
-  const matchedCodexCommands = useMemo(
-    () => matchPaletteCommands(codexCommands, commandMode ? commandModeQuery(query) : query),
-    [codexCommands, commandMode, query],
-  );
   const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
   const railSearchEntries = useMemo(
     // info 행(상한 표식 등)은 표시만 하고 키보드 이동·활성화 대상에서는 뺀다.
@@ -121,7 +111,7 @@ export function OperationSearch({
   const primaryResultCount = commandMode
     ? matchedCommands.length + railSearchEntries.length
     : filteredEntries.length + railSearchEntries.length;
-  const resultCount = primaryResultCount + matchedCodexCommands.length;
+  const resultCount = primaryResultCount;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
   const selectedResultKey = commandMode
     ? matchedCommands[clampedSelectedIndex]
@@ -131,9 +121,7 @@ export function OperationSearch({
           railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.group.panelId,
           railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.result.id,
         )
-        : matchedCodexCommands[clampedSelectedIndex - primaryResultCount]
-          ? commandResultKey(matchedCodexCommands[clampedSelectedIndex - primaryResultCount]!.command.commandId)
-          : undefined
+        : undefined
     : filteredEntries[clampedSelectedIndex]
       ? operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId)
       : railSearchEntries[clampedSelectedIndex - filteredEntries.length]
@@ -141,39 +129,11 @@ export function OperationSearch({
           railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.group.panelId,
           railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.result.id,
         )
-        : matchedCodexCommands[clampedSelectedIndex - primaryResultCount]
-          ? commandResultKey(matchedCodexCommands[clampedSelectedIndex - primaryResultCount]!.command.commandId)
-          : undefined;
+        : undefined;
   const activeOptionId = selectedResultKey === undefined
     ? undefined
     : resultOptionId(selectedResultKey);
 
-  useEffect(() => {
-    if (!state.operationSearchOpen) {
-      codexCacheRef.current.clear();
-      setCodexCommands([]);
-      return;
-    }
-    const theaterId = state.activeTheaterId;
-    if (!theaterId || !activeTheaterHasWiki) {
-      setCodexCommands([]);
-      return;
-    }
-    const cached = codexCacheRef.current.get(theaterId);
-    if (cached) {
-      setCodexCommands(cached);
-      return;
-    }
-    setCodexCommands([]);
-    const controller = new AbortController();
-    void fetchSearch(theaterId, { signal: controller.signal }).then((result) => {
-      if (controller.signal.aborted) return;
-      const entries = buildCodexPaletteEntries(result.entries);
-      codexCacheRef.current.set(theaterId, entries);
-      setCodexCommands(entries);
-    }).catch(() => {});
-    return () => controller.abort();
-  }, [activeTheaterHasWiki, state.activeTheaterId, state.operationSearchOpen]);
 
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
@@ -247,7 +207,10 @@ export function OperationSearch({
     } catch {
       return;
     }
-    navigate("/operations");
+    // 경로만 옮기고 주소는 그대로 둔다. `navigate("/operations")`는 쿼리를 함께 버리는데,
+    // activate가 방금 기록한 것이 바로 그 쿼리다 — 주소로 문서를 여는 플러그인은 자기가
+    // 세운 주소가 이 한 줄에 지워져 아무 일도 일어나지 않는다(실측: 팔레트로 연 Codex 항목).
+    navigate({ pathname: "/operations", search: window.location.search });
     openRailPanel(panelId);
     setRailChromeExpanded(true);
     closeOperationSearch();
@@ -375,14 +338,6 @@ export function OperationSearch({
         setRailChromeExpanded(true);
         break;
       }
-      case "open-codex-entry": {
-        previousFocusRef.current = null;
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        openRailPanel("codex");
-        setRailChromeExpanded(true);
-        openCodexReader({ kind: "entry", entryId: action.entryId });
-        break;
-      }
       case "toggle-rail": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 닫힘 cleanup의 포커스 복원 타깃을 command-band의 rail 토글로 재지정한다(미발견 시 복원 억제).
@@ -475,10 +430,6 @@ export function OperationSearch({
           void selectRailResult(panelEntry.group.panelId, panelEntry.result);
           return;
         }
-        const codexEntry = matchedCodexCommands[clampedSelectedIndex - primaryResultCount];
-        if (!codexEntry) return;
-        event.preventDefault();
-        runCommand(codexEntry.command);
         return;
       }
       const selected = filteredEntries[clampedSelectedIndex];
@@ -493,47 +444,11 @@ export function OperationSearch({
         void selectRailResult(panelEntry.group.panelId, panelEntry.result);
         return;
       }
-      const codexEntry = matchedCodexCommands[clampedSelectedIndex - primaryResultCount];
-      if (!codexEntry) return;
-      event.preventDefault();
-      runCommand(codexEntry.command);
       return;
     }
     if (event.key === "Tab") trapFocus(event, cardRef.current);
   };
 
-  const renderCodexSection = () => matchedCodexCommands.length > 0 ? (
-    <section className="operation-search-section operation-search-codex-section" role="group" aria-labelledby={CODEX_GROUP_HEADING_ID}>
-      <h2 id={CODEX_GROUP_HEADING_ID} className="operation-search-section-heading">{t("palette.codexEntries")}</h2>
-      {matchedCodexCommands.map((scored, offset) => {
-        const { command } = scored;
-        const index = primaryResultCount + offset;
-        const active = index === clampedSelectedIndex;
-        const resultKey = commandResultKey(command.commandId);
-        return (
-          <button
-            id={commandOptionId(command.commandId)}
-            key={command.commandId}
-            ref={(node) => {
-              if (node) resultRefs.current.set(resultKey, node);
-              else resultRefs.current.delete(resultKey);
-            }}
-            type="button"
-            className={`operation-search-result operation-search-codex-result ${active ? "is-active" : ""}`}
-            role="option"
-            aria-selected={active}
-            onMouseEnter={() => setSelectedIndex(index)}
-            onClick={() => runCommand(command)}
-          >
-            <span className="operation-search-result-text">
-              <strong>{highlightIndices(command.label, scored.matchedIndices)}</strong>
-            </span>
-            <span className="operation-search-source-badge">CDX</span>
-          </button>
-        );
-      })}
-    </section>
-  ) : null;
 
   return (
     <div className="operation-search-overlay" onMouseDown={(event) => {
@@ -569,7 +484,7 @@ export function OperationSearch({
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
           {commandMode ? (
-            matchedCommands.length > 0 || railSearchGroups.length > 0 || matchedCodexCommands.length > 0 ? <>
+            matchedCommands.length > 0 || railSearchGroups.length > 0 ? <>
               {matchedCommands.length > 0 ? (
                 <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
                   <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
@@ -651,10 +566,9 @@ export function OperationSearch({
                   </section>
                 );
               })}
-              {renderCodexSection()}
             </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatchingCommands")}</p>
           ) : (
-            groups.length > 0 || railSearchGroups.length > 0 || matchedCodexCommands.length > 0 ? <>
+            groups.length > 0 || railSearchGroups.length > 0 ? <>
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId);
                 return (
@@ -748,7 +662,6 @@ export function OperationSearch({
                   </section>
                 );
               })}
-              {renderCodexSection()}
             </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatching")}</p>
           )}
         </div>

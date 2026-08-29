@@ -220,6 +220,8 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
         resolveTheaterPath: (theaterId: string) => theaterId === "theater-1" ? path.join(fleetDataDir, "theater") : null,
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
+        ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
+        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
       },
       storage: {
         readJson: async () => null,
@@ -228,13 +230,17 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
         readJsonBody: async <T,>(req: http.IncomingMessage) => ((req as TestRequest).__body ?? { theaterId: "theater-1", cliId: "claude" }) as T,
+        securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
       },
       security: {
         validateHost: () => true,
         isTerminalAuthorized: () => true,
         isLockAuthorized: () => true,
         resolveTerminalSocketRole: () => "control" as const,
+        isWriteAdmitted: () => true,
+        expectedOrigin: () => "http://127.0.0.1:1",
       },
+      theaterFlags: { register: () => () => undefined },
       lifecycle: {
         registerCleanup: (cleanup: () => void | Promise<void>) => {
           lifecycleCleanups.push(cleanup);

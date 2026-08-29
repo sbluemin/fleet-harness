@@ -43,6 +43,7 @@ function fleetPluginsVirtualModule(): Plugin {
       const ledgerClientEntry = path.resolve(__dirname, "../../../fleet-plugins/ledger/client/index.tsx");
       const quotaClientEntry = path.resolve(__dirname, "../../../fleet-plugins/quota/client/index.tsx");
       const scuttlebuttClientEntry = path.resolve(__dirname, "../../../fleet-plugins/scuttlebutt/client/index.tsx");
+      const codexClientEntry = path.resolve(__dirname, "../../../fleet-plugins/codex/client/index.tsx");
       return [
         `import { plugins as terminalPlugins } from ${JSON.stringify(terminalClientEntry)};`,
         `import { plugins as fileExplorerPlugins } from ${JSON.stringify(fileExplorerClientEntry)};`,
@@ -51,7 +52,10 @@ function fleetPluginsVirtualModule(): Plugin {
         `import { plugins as ledgerPlugins } from ${JSON.stringify(ledgerClientEntry)};`,
         `import { plugins as quotaPlugins } from ${JSON.stringify(quotaClientEntry)};`,
         `import { plugins as scuttlebuttPlugins } from ${JSON.stringify(scuttlebuttClientEntry)};`,
-        `export const plugins = [...terminalPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...skillsPlugins, ...ledgerPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
+        `import { plugins as codexPlugins } from ${JSON.stringify(codexClientEntry)};`,
+        // 합성 순서가 곧 rail 순서다(코어는 정렬 필드를 두지 않는다). Codex는 코어 내장
+        // 패널이던 시절 rail 최상위였고, 플러그인이 되어도 그 자리를 지킨다.
+        `export const plugins = [...codexPlugins, ...terminalPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...skillsPlugins, ...ledgerPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
       ].join("\n");
     },
   };

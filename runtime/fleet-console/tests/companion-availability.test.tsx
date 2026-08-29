@@ -26,7 +26,7 @@ function body(context: OperationRenderContext) {
   });
 }
 
-vi.mock("../core/client/src/plugin-registry.js", () => ({
+vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(),
   usePluginRegistry: () => ({
     plugins: [],
     operationKinds: [
@@ -39,7 +39,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
           {
             id: GATED_COMPANION_ID,
             title: "Gated",
-            available: (operation: { readonly payload: Record<string, unknown> }) =>
+            available: (operation: { readonly payload: Record<string, unknown> , expandedSurfaces: [], persistentComponents: []}) =>
               (operation.payload.session as { readonly model?: string } | undefined)?.model !== "codex--gpt-5.6-sol",
             render: () => createElement("div", { "data-testid": GATED_COMPANION_ID }),
           },

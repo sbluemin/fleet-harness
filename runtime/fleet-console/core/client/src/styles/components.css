@@ -3196,26 +3196,6 @@
   }
 }
 
-/* 종류 마크 — 신호가 아니라 잉크다. Shell은 활동 축을 발행하지 않아 활동 비콘이 늘 같은 값으로
-   굳는다(초록 유휴 / 중공 종료). 그 자리를 이 마크가 대신하며, 살아있든 종료됐든 같은 그림이다:
-   상태 채널(aurora·warn·positive·coral)도, 위치 채널(brass)도 빌리지 않는다.
-   목록 슬롯의 표준 치수는 14px 하나다 — 표면마다 다른 크기를 두면 같은 사실이 표면 수만큼의
-   무게로 읽힌다. 지도 점은 점 자체가 마크라 여기가 아니라 .canvas-triage-map-dot.is-shell이 맡는다. */
-.shell-kind-mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--text-secondary);
-}
-
-.shell-kind-mark svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
 .status-dot--lg {
   width: 10px;
   height: 10px;
@@ -3885,23 +3865,6 @@
     opacity var(--duration-fast) var(--ease-glide);
 }
 
-/* Shell 점 — 활동 is-* 를 아예 달지 않으므로 --activity-color 채움과 발광·링이 성립하지 않는다.
-   남는 것은 기본 규칙의 채움과 유휴 감쇠뿐이라 여기서 그 둘만 되돌린다. box-shadow는 건드리지
-   않는다: hover/focus의 brass 링(.canvas-triage-map-dot:hover, 0,2,1)이 계속 이겨야 한다. */
-.canvas-triage-map-dot.is-shell {
-  display: grid;
-  place-items: center;
-  background: none;
-  opacity: 1;
-  color: var(--text-secondary);
-}
-
-.canvas-triage-map-dot.is-shell svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .canvas-triage-map-dot.is-awaiting {
   box-shadow: 0 0 14px var(--activity-glow);
   opacity: 1;
@@ -4410,15 +4373,6 @@
   .canvas-triage-map-dot-label {
     transition: none;
   }
-}
-
-/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다.
-   포커스·정체성 워시와 같은 문법이다: 패널 면 위에 얹는 틴트이지 다른 면이 아니므로
-   베이스는 반드시 --surface-panel이다(반투명 잉크 티어를 깔면 셸 패널만 이음새가 되살아난다).
-   background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
-.canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, var(--glass-tint-caption));
-  background-clip: padding-box;
 }
 
 .canvas-context-menu {
@@ -12262,6 +12216,50 @@ body[data-codex-side="true"] .command-card {
 
 /* 리딩 덱 — 중앙 모달 시트의 후신. 캔버스 영역 전체를 문서 작업면으로 쓴다(캔버스
    안에 정박: 사이드바·레일 폭을 침범하지 않고, 리사이즈를 그대로 따라간다). */
+/* 슬롯 안에 서는 리더 본문. 자리와 유리 표면은 슬롯이 소유하므로 여기서는 채우기만 한다. */
+.codex-reading-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: codex-reading-slot;
+}
+
+/* 좁은 슬롯에서 220px 목차는 본문을 밀어낸다 — 읽을 것이 남아야 정독면이다.
+   목차는 문서로 가는 지름길일 뿐이고, 본문은 그 자체로 목적이다. */
+@container codex-reading-slot (max-width: 620px) {
+  .codex-reading-body .codex-reading-sheet-toc {
+    display: none;
+  }
+}
+
+/* 도구가 줄바꿈하면 40px 머리가 세로로 무너진다 — 넘치면 가로로 흘린다. */
+.codex-reading-body > .codex-reading-sheet-head {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.codex-reading-body > .codex-reading-sheet-head::-webkit-scrollbar {
+  display: none;
+}
+
+.codex-reading-body .codex-reader-tools,
+.codex-reading-body .codex-reader-history {
+  flex: none;
+}
+
+/* 슬롯 머리가 문서 이름과 닫기를 이미 말한다 — 리더의 옛 시트 머리는 그 아래에서
+   도구 줄로만 남는다(제목 중복 금지). */
+.codex-reading-body > .codex-reading-sheet-head {
+  flex: 0 0 40px;
+  height: 40px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
 .codex-reading-sheet {
   position: absolute;
   z-index: var(--z-codex-reading-sheet);
@@ -12740,17 +12738,18 @@ body[data-codex-side="true"] .command-card {
    풀려, 같은 72ch가 헤더(UI 활자)와 본문(리딩 활자)에서 다른 픽셀 폭이 되어 중앙
    정렬 축이 갈라진다(실측 615px vs 747px). 본문 활자 토큰 한 기준으로 환산해 모든
    자식이 같은 캡을 받게 한다(0.611 = 본문 서체 "0"의 em 폭 ≈ 1ch). */
-.codex-reading-sheet {
+.codex-reading-sheet,
+.codex-reading-body {
   --codex-reading-ch: calc(0.611 * var(--font-size-body) * var(--codex-reading-scale));
   --codex-reading-measure: calc(72 * var(--codex-reading-ch));
   --codex-reading-scale: 1;
 }
 
-.codex-reading-sheet[data-reading-size="wide"] {
+.codex-reading-sheet[data-reading-size="wide"], .codex-reading-body[data-reading-size="wide"] {
   --codex-reading-measure: calc(96 * var(--codex-reading-ch));
 }
 
-.codex-reading-sheet[data-reading-size="large"] {
+.codex-reading-sheet[data-reading-size="large"], .codex-reading-body[data-reading-size="large"] {
   --codex-reading-measure: calc(80 * var(--codex-reading-ch));
   --codex-reading-scale: 1.14;
 }
@@ -12909,6 +12908,208 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .operations-center-stage {
   min-width: 0;
   min-height: 0;
+}
+
+/* ─── Expanded Surface ───────────────────────────────────────────────────────
+   캔버스 좌표 상자 안에 정박하는 비모달 작업면. Codex 확대 읽기의 후신이며,
+   콘텐츠를 모르는 프레임이다 — 슬롯 본문은 표면 기여자가 그린다. */
+
+:root {
+  /* 캔버스(자체 스택 컨텍스트) 안에서만 경쟁한다 — Operation 패널의 zIndex는
+     상호 승격으로 상한 없이 자라므로, 정수 최대치 근방으로 항상 위를 보장한다. */
+  --z-expanded-surface: 2147480000;
+}
+
+.expanded-surface {
+  position: absolute;
+  z-index: var(--z-expanded-surface);
+  inset: var(--space-3);
+  display: grid;
+  /* 열 템플릿은 슬롯 가중치에서 인라인으로 들어온다(레이어 소유). */
+  gap: 0;
+  /* 캔버스가 끄는 텍스트 선택·터치 제스처를 작업면에서 복원한다. */
+  user-select: text;
+  touch-action: auto;
+  cursor: auto;
+}
+
+.expanded-surface-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이
+     (canonical 주석은 components.css의 .whatsnew-card 참조). */
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
+  transition: border-color var(--duration-fast);
+}
+
+/* 포커스는 위치 신호다 — brass 채널. 상태(aurora/warn/coral)와 섞지 않는다. */
+.expanded-surface-slot.is-focused {
+  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim-strong));
+}
+
+.expanded-surface-slot-head {
+  flex: 0 0 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.expanded-surface-slot-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
+}
+
+.expanded-surface-slot-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* 닫기는 호스트 소유다 — 표면이 tools를 안 내도 항상 오른쪽 끝에 선다.
+   tools가 있으면 auto 여백은 tools가 가져가고, 둘 사이는 head의 gap이 벌린다. */
+.expanded-surface-slot-close {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.expanded-surface-slot-tools ~ .expanded-surface-slot-close {
+  margin-left: 0;
+}
+
+.expanded-surface-slot-close:hover,
+.expanded-surface-slot-close:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.expanded-surface-slot-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.expanded-surface-slot-aside {
+  flex: none;
+  width: 220px;
+  min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--surface-rim);
+}
+
+.expanded-surface-slot-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 분할선 ─────────────────────────────────────────────────────────────────
+   콘솔 최초의 드래그 분할선. 히트 영역은 gap보다 넓게 잡고(포인터 정확도),
+   보이는 획은 가늘게 남긴다. */
+.expanded-surface-divider {
+  position: relative;
+  /* 자기 트랙을 가득 채운다 — 폭은 그리드 트랙(var(--space-2))이 정한다. */
+  width: 100%;
+  cursor: col-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  touch-action: none;
+}
+
+.expanded-surface-divider-grip {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--surface-rim);
+  transition: background var(--duration-fast), width var(--duration-fast);
+}
+
+.expanded-surface-divider:hover .expanded-surface-divider-grip,
+.expanded-surface-divider:focus-visible .expanded-surface-divider-grip,
+.expanded-surface-divider.is-dragging .expanded-surface-divider-grip {
+  width: 2px;
+  background: var(--brass);
+}
+
+.expanded-surface-divider:focus-visible {
+  outline: none;
+}
+
+/* 드래그 중에는 슬롯 본문이 텍스트를 집어가지 않게 한다. */
+body[data-expanded-surface-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.expanded-surface-missing {
+  margin: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* 작업면이 서 있는 동안 캔버스만 입력을 잃는다 — 사이드바·레일은 계속 살아 있다.
+   모달이 아니므로 inert도 focus trap도 걸지 않는다. */
+body[data-expanded-surface="true"] .operations-canvas {
+  pointer-events: none;
+  cursor: default;
+}
+
+body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expanded-surface-slot,
+  .expanded-surface-divider-grip {
+    transition: none;
+  }
 }
 
 /* ─── Codex Rail v2 — 2-pane split shell (W1) ───────────────────────────────── */

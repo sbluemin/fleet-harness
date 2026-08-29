@@ -81,6 +81,31 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       emit: () => undefined,
       dismiss: () => undefined,
     },
+    // 콘솔 상태·주소·확대 슬롯은 전부 호스트 클라이언트 상태다 — SDK 사본은 무해한
+    // no-op으로 두고, Console이 실제 구현으로 덮는다.
+    consoleState: {
+      getTheaters: () => [],
+      getActiveTheaterId: () => null,
+      setActiveTheater: () => undefined,
+      subscribe: () => () => undefined,
+    },
+    navigation: {
+      getSearchParam: () => null,
+      setSearchParams: () => undefined,
+      subscribe: () => () => undefined,
+    },
+    rail: {
+      open: () => undefined,
+    },
+    consoleEvents: {
+      subscribe: () => () => undefined,
+    },
+    surfaces: {
+      open: () => "",
+      close: () => undefined,
+      closeSurface: () => undefined,
+      isOpen: () => false,
+    },
     composer: {
       open: () => undefined,
     },

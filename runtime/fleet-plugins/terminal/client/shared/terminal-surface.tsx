@@ -33,6 +33,8 @@ type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
 export interface TerminalSurfaceProps {
   readonly operationId: string;
   readonly ticketPath: string;
+  /** 티켓 요청 본문에 얹을 추가 필드(전역 Shell의 첫 기동 Theater 등). */
+  readonly ticketFields?: Readonly<Record<string, string>>;
   readonly wsPath: string;
   readonly theme?: TerminalThemeId;
   readonly onExit?: () => void;
@@ -181,7 +183,11 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
+  // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
+  // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
+  const ticketFieldsRef = useRef(ticketFields);
+  ticketFieldsRef.current = ticketFields;
   const activeTheme = theme;
   const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings } = useTerminalPrefs();
   const inactiveFlushMs = terminalInactiveFlushMs(terminalInactiveFlush);
@@ -409,6 +415,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
+        ...(ticketFieldsRef.current ? { ticketFields: ticketFieldsRef.current } : {}),
         wsPath,
         // spawn env COLORFGBG 힌트 — 연결 생성 시점의 최신 극성으로 고정된다(PTY는 최초 spawn 시 env 확정).
         colorScheme: colorSchemeRef.current,

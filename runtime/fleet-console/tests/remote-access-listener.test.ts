@@ -560,10 +560,15 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     });
 
     /**
-     * Origin 게이트를 지나 본문 판정까지 갔다는 것이 여기서 볼 것의 전부다. 포트가 어긋나면
-     * 이 자리에 닿기 전에 `403 origin_mismatch`로 끝난다.
+     * Origin 게이트를 지나 워크스페이스 판정까지 갔다는 것이 여기서 볼 것의 전부다.
+     * 포트가 어긋나면 이 자리에 닿기 전에 `403 origin_mismatch`로 끝난다.
+     *
+     * 예전에는 콘솔이 `codexCwd`로 Theater 없는 기본 워크스페이스를 하나 들고 떠서 본문
+     * 판정까지 갔다. Codex가 플러그인이 된 뒤로 워크스페이스는 Theater 등록의 결과이고,
+     * 이 픽스처에는 Theater가 없다 — 그래서 판정은 "열린 워크스페이스가 없다"이다.
      */
-    expect({ status: decided.status, body: decided.body }).toEqual({ status: 400, body: JSON.stringify({ error: "invalid_action" }) });
+    expect({ status: decided.status, body: decided.body })
+      .toEqual({ status: 404, body: JSON.stringify({ error: "no_workspace_registered" }) });
   });
 
   /**

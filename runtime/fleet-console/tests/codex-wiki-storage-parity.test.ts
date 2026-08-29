@@ -44,10 +44,10 @@ describe("Console and injected Wiki tools share Theater-root storage", () => {
     fixture.server = restarted.server;
     await expect(access(workspace.path)).rejects.toMatchObject({ code: "ENOENT" });
 
-    const response = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/codex-workspace`, {
+    const response = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ theaterId: theater.id }),
     });
     expect(response.status).toBe(200);
     const dto = await response.json() as Record<string, unknown>;
@@ -128,11 +128,11 @@ describe("Console and injected Wiki tools share Theater-root storage", () => {
     expect(await readFile(path.join(workspaceB.path, "knowledge.migrated.json"), "utf8")).toContain('"outcome":"copied"');
     const restoredB = await fetch(`${fixture.endpoint}api/v1/deletions/${encodeURIComponent(forgottenBody.deletion.deletionId)}/restore`, { method: "POST" });
     expect(restoredB.status).toBe(200);
-    const empty = await fetch(`${fixture.endpoint}api/v1/theaters/${theaterB.id}/codex-workspace`, {
+    const empty = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
-    });
+      body: JSON.stringify({ theaterId: theaterB.id }),
+      });
     expect(empty.status).toBe(200);
     expect(await empty.json()).toEqual({ hasWiki: true, id: theaterB.id });
     await expect(access(path.join(workspaceB.path, "knowledge", "wiki", "theater-b-entry.md"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -160,7 +160,6 @@ async function startServer(fleetDataDir: string, codexCwd: string, root: string,
     host: "127.0.0.1",
     port: 0,
     version: "test",
-    codexCwd,
     dataDir: fleetDataDir,
     release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT },
   });

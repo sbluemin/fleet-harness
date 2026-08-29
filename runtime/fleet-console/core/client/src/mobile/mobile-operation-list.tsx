@@ -1,7 +1,6 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { ShellKindMark } from "../components/operation-name-mark.js";
 import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../i18n/index.js";
 import { operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
@@ -64,11 +63,7 @@ export function MobileOperationList({ operations, operationRuntime, notification
                 const harnessLabel = session?.harness === "claude-code" ? "Claude Code" : null;
                 return (
                   <button type="button" className="mobile-operation-card" key={operation.id} onClick={() => onOpen(operation.id)}>
-                    {/* Shell은 활동 축을 발행하지 않는다 — 늘 같은 값으로 굳는 비콘 대신 종류 글리프가 선다.
-                        칸(섹션)은 그대로이고, 유휴/종료라는 사실은 섹션 머리글이 이미 말한다. */}
-                    {operation.type === "shell"
-                      ? <ShellKindMark decorative />
-                      : <span className={beaconClass(status)} aria-hidden="true" />}
+                    <span className={beaconClass(status)} aria-hidden="true" />
                     <span className="mobile-operation-card-copy">
                       <strong>{operation.title}</strong>
                       {harnessLabel ? <span>{harnessLabel}</span> : null}

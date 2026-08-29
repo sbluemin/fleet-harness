@@ -280,6 +280,14 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   const title = readNonEmptyString(value.title);
   const ts = sanitizeOperationTimestamps(value.ts);
   if (!id || !theaterId || !type || !pluginId || !title || !ts) return null;
+  // Shell은 콘솔 전역 확대 표면으로 옮겨 갔고 더 이상 Operation이 아니다. 예전 상태 파일이
+  // 실어 온 Shell 노드는 그릴 종류가 없으므로 복원하지 않고 흘려보낸다 — 남겨 두면 캔버스에
+  // 렌더러 없는 패널로 서고, 사용자는 그것을 고장으로 읽는다.
+  //
+  // 종류 이름은 플러그인마다 독립이므로 plugin까지 함께 본다. `type`만 보면 "shell"이라는
+  // 흔한 이름을 쓴 남의 플러그인의 Operation이 재시작마다 조용히 지워진다. 예전 `shell`
+  // 플러그인 id는 remapTerminalPluginId가 이미 terminal로 옮겨 주므로 옛 상태도 걸린다.
+  if (type === "shell" && pluginId === "terminal") return null;
   const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
   return {

@@ -2265,40 +2265,6 @@ describe("triage fleet map markers", () => {
     expect(dot?.classList.contains("is-idle")).toBe(false);
   });
 
-  it("draws a shell dot as the kind glyph with no activity class, even on an idle arrival", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const shell = operation("shell-map", 1, THEATER_ID, "shell");
-    // 도착 표식까지 걸어 둔다 — 미확인 점등(is-unseen)마저 Shell에는 실리지 않아야 한다.
-    markIdleArrival(shell.id);
-
-    act(() => {
-      triagePlateRoot?.render(createElement(TriageWatchDeck, {
-        active: true,
-        entering: false,
-        theaters: THEATERS,
-        operations: [shell],
-        operationRuntime: {},
-        operationAccent: {},
-      }));
-    });
-    act(() => {
-      setTriageDeckMapModeLive(true);
-    });
-
-    // Shell은 활동 축을 발행하지 않는다 — 활동 is-*를 아예 달지 않아야 채움·발광·링이 성립하지 않고,
-    // 그 자리를 종류 글리프가 채운다. CSS override로 끄는 방식이면 새 상태가 늘 때마다 다시 꺼야 한다.
-    const dot = container.querySelector<HTMLElement>('[data-triage-map-dot="shell-map"]');
-    expect(dot?.classList.contains("is-shell")).toBe(true);
-    expect(dot?.classList.contains("is-unseen")).toBe(false);
-    expect(dot?.classList.contains("is-idle")).toBe(false);
-    expect(dot?.classList.contains("is-awaiting")).toBe(false);
-    expect(dot?.querySelector("svg")).not.toBeNull();
-    // 점의 나머지 문법(유영·집기·이름표)은 그대로다 — 바뀐 것은 마크뿐이다.
-    expect(dot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
-    expect(dot?.querySelector(".canvas-triage-map-dot-label")?.textContent).toBe("shell-map");
-  });
 
   it("resets the card grid scroll when the deck enters map mode", () => {
     const container = document.createElement("div");

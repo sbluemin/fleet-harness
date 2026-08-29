@@ -17,9 +17,9 @@ import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
-import { workspaceHash } from "../core/host/theaters/theater-domain.js";
+import { canonicalizeTheaterPathSync, workspaceHash } from "../core/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
-import { WorkspaceRegistry } from "../core/host/codex/workspaces.js";
+import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
 
@@ -104,7 +104,8 @@ afterEach(async () => {
 describe("console terminal observability", () => {
   it("publishes only the Theater-root Codex route and no path-context catalog surface", () => {
     const paths = SERVER_API_CATALOG.map((entry) => entry.path);
-    expect(paths).toContain("/api/v1/theaters/:theaterId/codex-workspace");
+    // Codex 워크스페이스 경로는 플러그인 이름공간으로 옮겨 갔다 — 코어 카탈로그에는 없다.
+    expect(paths).not.toContain("/api/v1/theaters/:theaterId/codex-workspace");
     expect(paths.some((entry) => entry.includes("path-context"))).toBe(false);
   });
 
@@ -570,44 +571,33 @@ describe("console static and terminal ticket boundary", () => {
     expect(shellBody).toEqual({ error: "operation_id_required" });
   });
 
-  it("issues shell tickets for existing shell OperationNodes only", async () => {
+  it("issues a console-global shell ticket keyed on a Theater rather than an Operation", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-shell-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
       terminalStartShell: () => createMockPty(),
     });
     const theater = await createTheater(fixture, dir);
-    const shellOperation = await createShellOperation(fixture, theater.id);
-    const agentOperation = await createOperation(fixture, theater.id, { type: "agent", pluginId: "terminal" });
 
     const issued = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operationId: shellOperation.id, kind: "shell" }),
+      body: JSON.stringify({ theaterId: theater.id }),
     });
     const issuedBody = await issued.json() as { readonly ticket?: unknown; readonly cwd?: unknown };
 
-    const missing = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
+    const noTheater = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operationId: "missing-shell", kind: "shell" }),
+      body: JSON.stringify({}),
     });
-    const missingBody = await missing.json();
-    const wrongKind = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operationId: agentOperation.id, kind: "shell" }),
-    });
-    const wrongKindBody = await wrongKind.json();
 
     expect(issued.status).toBe(200);
     expect(typeof issuedBody.ticket).toBe("string");
     // shell ticket도 raw Theater 경로를 응답에 노출하지 않는다(cwd는 서버 측에서만 해석).
     expect(issuedBody.cwd).toBeUndefined();
-    expect(missing.status).toBe(404);
-    expect(missingBody).toEqual({ error: "operation_not_found" });
-    expect(wrongKind.status).toBe(409);
-    expect(wrongKindBody).toEqual({ error: "invalid_shell_operation" });
+    // cwd가 이미 못 박혔으므로 두 번째 요청부터는 Theater 없이도 발급된다.
+    expect(noTheater.status).toBe(200);
   });
 
   it("loads plugin routes without exposing host terminal runtime capabilities", async () => {
@@ -781,7 +771,6 @@ describe("console static and terminal ticket boundary", () => {
       body: JSON.stringify({ groupId: groupBody.group.id }),
     });
     expect(grouped.status).toBe(200);
-    const restoredShell = await createShellOperation(fixture, theater.id);
 
     const theaterDeleted = await fetch(`${fixture.endpoint}api/v1/theaters/${theater.id}`, { method: "DELETE" });
     const theaterDeletedBody = await theaterDeleted.json() as { readonly deletion: { readonly deletionId: string } };
@@ -803,21 +792,6 @@ describe("console static and terminal ticket boundary", () => {
     const groupsAfterRestore = await getJson<{ readonly groups: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}api/v1/operations/groups`);
     expect(operationsAfterRestore.operations).toContainEqual(expect.objectContaining({ id: operationId, groupId: groupBody.group.id }));
     expect(groupsAfterRestore.groups).toContainEqual(expect.objectContaining({ id: groupBody.group.id }));
-    const dormantShellTicket = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operationId: restoredShell.id }),
-    });
-    expect(dormantShellTicket.status).toBe(409);
-    await expect(dormantShellTicket.json()).resolves.toEqual({ error: "operation_dormant" });
-    const relaunchedShell = await fetch(`${fixture.endpoint}plugins/terminal/shell/sessions/${encodeURIComponent(restoredShell.id)}/relaunch`, { method: "POST" });
-    expect(relaunchedShell.status).toBe(200);
-    const relaunchedShellTicket = await fetch(`${fixture.endpoint}plugins/terminal/shell/ticket`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operationId: restoredShell.id }),
-    });
-    expect(relaunchedShellTicket.status).toBe(200);
   });
 
   it("serves plugin runtime manifest and shims through core routes", async () => {
@@ -1351,10 +1325,10 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const fixture = await startFixture();
     const theater = await createTheater(fixture, dir);
-    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(theater.id)}/codex-workspace`, {
+    const resolved = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ theaterId: theater.id }),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true });
@@ -1377,10 +1351,10 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture();
     const parentTheater = await createTheater(fixture, parentDir);
     const nestedTheater = await createTheater(fixture, nestedDir);
-    const resolved = await fetch(`${fixture.endpoint}api/v1/theaters/${encodeURIComponent(nestedTheater.id)}/codex-workspace`, {
+    const resolved = await fetch(`${fixture.endpoint}api/v1/plugins/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ theaterId: nestedTheater.id }),
     });
     const workspace = await resolved.json() as { readonly id: string | null; readonly hasWiki: boolean };
     expect(workspace).toMatchObject({ hasWiki: true, id: nestedTheater.id });
@@ -2421,7 +2395,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     try {
       const theaters = new TheaterRegistry();
-      const codexWorkspaces = new WorkspaceRegistry();
+      const codexWorkspaces = new WorkspaceRegistry({ canonicalize: canonicalizeTheaterPathSync, hash: workspaceHash });
       const observability = createConsoleObservabilityStore();
       const theater = await theaters.register(variantDir);
       const codexWorkspace = await codexWorkspaces.register(variantDir);
@@ -2892,9 +2866,6 @@ async function createOperation(fixture: ServerFixture, theaterId: string, input:
   return { id: operationId as string };
 }
 
-async function createShellOperation(fixture: ServerFixture, theaterId: string): Promise<{ readonly id: string }> {
-  return createOperation(fixture, theaterId, { type: "shell", pluginId: "terminal" });
-}
 
 async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
   const response = await fetch(`${fixture.endpoint}api/v1/theaters/folder-grants`, {

@@ -100,7 +100,7 @@ describe("durable console state", () => {
     ]);
   });
 
-  it("remaps persisted terminal plugin ids without changing operation type or id", () => {
+  it("remaps persisted terminal plugin ids and drops Shell nodes that are no longer Operations", () => {
     const sanitized = sanitizeDurableConsoleState({
       version: 2,
       theaters: [],
@@ -108,6 +108,9 @@ describe("durable console state", () => {
         makeOperationNode({ id: "agent-op", pluginId: "agent", type: "agent" }),
         makeOperationNode({ id: "shell-op", pluginId: "shell", type: "shell" }),
         makeOperationNode({ id: "demo-op", pluginId: "demo", type: "demo" }),
+        // 종류 이름은 플러그인마다 독립이다 — 남의 플러그인이 "shell"이라는 흔한 이름을
+        // 써도 그건 우리가 폐지한 Shell이 아니므로 살아남아야 한다.
+        makeOperationNode({ id: "guest-shell", pluginId: "guest", type: "shell" }),
       ],
     });
 
@@ -117,8 +120,10 @@ describe("durable console state", () => {
       type: operation.type,
     }))).toEqual([
       { id: "agent-op", pluginId: "terminal", type: "agent" },
-      { id: "shell-op", pluginId: "terminal", type: "shell" },
+      // Shell은 확대 표면으로 옮겨 갔다 — 옛 상태 파일의 Shell 노드는 그릴 종류가 없어
+      // 복원되지 않는다(남기면 렌더러 없는 패널이 캔버스에 선다).
       { id: "demo-op", pluginId: "demo", type: "demo" },
+      { id: "guest-shell", pluginId: "guest", type: "shell" },
     ]);
   });
 

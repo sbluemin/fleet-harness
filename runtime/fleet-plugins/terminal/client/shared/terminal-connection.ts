@@ -15,6 +15,11 @@ export interface TerminalConnectionOptions {
   readonly operationId: string;
   readonly terminal: TerminalLike;
   readonly ticketPath: string;
+  /**
+   * 티켓 요청 본문에 얹을 추가 필드. 전역 Shell이 첫 기동에서 cwd를 못 박을 Theater를
+   * 알리는 통로다 — 세션 식별자가 아니므로 소켓 URL에는 실리지 않는다.
+   */
+  readonly ticketFields?: Readonly<Record<string, string>>;
   readonly wsPath: string;
   /** 콘솔 테마 극성 — ticket 요청에 실려 spawn env COLORFGBG 힌트가 된다(최초 spawn 시점 고정). */
   readonly colorScheme?: "light" | "dark";
@@ -133,7 +138,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       if (consecutiveFailures === 0) options.onStatus?.("connecting");
       try {
         const requested = role;
-        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested);
+        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested, options.ticketFields);
         if (abort.signal.aborted) return;
         // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
         role = granted;
@@ -265,12 +270,12 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, string>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // control은 서버 기본값이라 싣지 않는다 — 옛 서버에 붙어도 같은 요청이 된다.
-    body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
+    body: JSON.stringify({ operationId, ...(ticketFields ?? {}), ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
   if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);

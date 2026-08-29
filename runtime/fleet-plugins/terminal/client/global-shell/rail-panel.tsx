@@ -1,15 +1,28 @@
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { getT } from "../i18n/index.js";
 
-const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
+const SHELL_SURFACE_ID = "shell";
 
+/**
+ * 레일 아이콘은 패널을 펼치지 않고 확대 표면을 직접 여닫는다 — 켜고 끄는 한 자리다.
+ *
+ * 다시 누르면 슬롯을 치운다. 치우는 것은 끝내는 것이 아니라서 PTY도 못 박은 cwd도
+ * 서버에 남고, 또 누르면 하던 자리로 돌아온다. 셸을 실제로 끝내는 것은 셸 안에서
+ * `exit`을 치는 일이다.
+ */
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
-  activate: (ctx: RailPanelContext) => ctx.launchOperation?.("terminal", SHELL_LAUNCH_KIND),
+  // 셸이 서 있는 동안 아이콘이 켜져 있다 — 어느 표면을 여는지 호스트에게 말해 둔다.
+  surfaceId: SHELL_SURFACE_ID,
+  activate: (ctx: RailPanelContext) => {
+    const surfaces = ctx.surfaces;
+    if (!surfaces) return;
+    if (surfaces.isOpen(SHELL_SURFACE_ID)) surfaces.closeSurface(SHELL_SURFACE_ID);
+    else surfaces.open({ surfaceId: SHELL_SURFACE_ID });
+  },
 };
 
 function TerminalGlyphIcon() {

@@ -16,11 +16,6 @@ import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCook
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces, probeRemoteIdentity } from "./remote-discovery.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
-import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
-import { createCodexGateway } from "./codex/gateway.js";
-import { createCodexKnowledgeWatcher } from "./codex/knowledge-watcher.js";
-import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./codex/contracts.js";
-import type { CodexKnowledgeScope, CodexWatchState } from "./codex/contracts.js";
 import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
@@ -53,7 +48,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
 import { RouteRegistry } from "./route-registry/registry.js";
 import { UpgradeRegistry } from "./route-registry/registry.js";
-import { encodeSseData, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
+import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theaters/theater-domain.js";
 import { createFolderGrantStore } from "./theaters/theater-domain.js";
@@ -68,7 +63,6 @@ export interface ConsoleServerDeps {
   readonly host?: string;
   readonly port?: number;
   readonly version?: string;
-  readonly codexCwd?: string;
   readonly dataDir?: string;
   readonly pluginHomeDir?: string;
   readonly agentRuntime?: unknown;
@@ -86,7 +80,6 @@ export interface ConsoleServer {
   readonly port: number;
   start(lockPaths: { readonly dir: string; readonly lockFile: string }): Promise<string>;
   stop(): Promise<void>;
-  registerCodexWorkspace(cwd: string): Promise<string>;
 }
 
 type TheaterFolderListBody = { readonly path?: unknown };
@@ -212,14 +205,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/deletions/:deletionId/restore",
     summary: "유예 중인 Operation 또는 Theater 삭제를 복구합니다.",
-    category: "Observer",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "POST",
-    path: "/api/v1/theaters/:theaterId/codex-workspace",
-    summary: "Resolve the Codex workspace for a Theater.",
     category: "Observer",
     gate: "origin-write",
     transport: "http",
@@ -441,21 +426,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lockDir: path.join(workspace.path, "knowledge.migration.lock"),
     }, operation),
   });
-  const codexKnowledgeWatcher = createCodexKnowledgeWatcher({
-    onChange: (workspaceId, scopes) => broadcastCodexChanged(workspaceId, scopes),
-    onState: (workspaceId, state) => broadcastCodexWatchState(workspaceId, state),
-  });
-  const codex = createCodexGateway({
-    cwd: deps.codexCwd ?? process.cwd(),
-    host,
-    version,
-    getPort: () => lockHandle?.payload.port ?? port,
-    resolveListener: (request) => listenerForRequest(request),
-    wikiWorkspaceResolver,
-    dataDir: durablePaths.dir,
-    onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => codexKnowledgeWatcher.watch(workspaceId, knowledgeRoot),
-    onWorkspaceReleased: (workspaceId) => codexKnowledgeWatcher.unwatch(workspaceId),
-  });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
   // 리스너는 바인드 시점에 확정된다. 요청은 소켓의 로컬 주소로 자기 리스너를 찾고, 그
@@ -508,15 +478,36 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 셸이 사용자가 잊은 요청으로 앱을 재시작한다 — 요청은 눌린 그 순간의 것이다.
    */
   let desktopUpdateRequestedAt = 0;
+  const pluginSseChannels = new Set<string>();
+  const pluginTheaterFlags = new Map<string, (theaterId: string) => boolean>();
+
+  /**
+   * Theater 생명주기. 플러그인이 Theater마다 자기 저장소를 열고 닫으려면 이 순간들을
+   * 알아야 한다 — 새 API를 내지 않고 기존 이벤트 채널로 낸다(구독 방식이 이미 있다).
+   * realpath는 싣지 않는다: 절대 경로는 호스트 소유이고, 필요한 플러그인은
+   * `paths.resolveTheaterPath`로 서버 안에서 스스로 푼다.
+   */
+  function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
+    publishPluginEvent(`theater:${event}`, { theaterId });
+  }
+
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
+    // 브라우저로 나가는 것은 플러그인이 명시적으로 올린 채널뿐이다. 모든 in-process
+    // 이벤트를 흘리면 서버 내부 채널이 그대로 브라우저 계약이 되고, 그중 하나는
+    // 언젠가 민감한 필드를 싣는다.
+    if (!pluginSseChannels.has(channel) || operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(channel, payload);
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
   }
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
     theaters,
     save: saveDurableState,
     publish: publishPluginEvent,
-    unregisterTheaterWorkspaces: (theaterId) => codex.unregisterTheaterWorkspaces(theaterId),
+    unregisterTheaterWorkspaces: (theaterId) => {
+      publishTheaterLifecycle("forgotten", theaterId);
+    },
     validateTheaterRestore: async (theater) => {
       try {
         const restoredRealpath = await fs.promises.realpath(theater.path);
@@ -529,7 +520,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     },
     registerTheaterWorkspace: async (theater) => {
-      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
+      publishTheaterLifecycle("restored", theater.id);
     },
   });
   // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
@@ -621,7 +612,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           if (listeners.size === 0) pluginEventListeners.delete(channel);
         };
       },
-      registerSseChannel: () => () => undefined,
+      /**
+       * 이 채널의 publish를 브라우저 SSE 스트림으로도 내보낸다.
+       *
+       * 코어가 Operation 스트림을 소유하므로 플러그인은 두 번째 EventSource를 열지
+       * 않고 같은 연결에 올라탄다 — 연결이 하나면 재접속·순서·생명주기도 하나다.
+       */
+      registerSseChannel: (channel: string) => {
+        pluginSseChannels.add(channel);
+        return () => {
+          pluginSseChannels.delete(channel);
+        };
+      },
     },
     server: {
       origin: () => {
@@ -635,6 +637,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
+      ensureWorkspaceDirectory: (cwd: string) => {
+        const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
+        return { path: workspace.path, id: workspaceHash(workspace.cwd) };
+      },
+      withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
+    },
+    theaterFlags: {
+      register: (flag: string, resolve: (theaterId: string) => boolean) => {
+        pluginTheaterFlags.set(flag, resolve);
+        return () => {
+          if (pluginTheaterFlags.get(flag) === resolve) pluginTheaterFlags.delete(flag);
+        };
+      },
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
@@ -643,12 +658,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     http: {
       writeJson,
       readJsonBody,
+      securityHeaders: (extra) => ({ ...CONSOLE_SECURITY_HEADERS, ...(extra ?? {}) }),
     },
     security: {
       validateHost: isRequestHostAllowed,
       isTerminalAuthorized,
       isLockAuthorized,
       resolveTerminalSocketRole,
+      isWriteAdmitted,
+      expectedOrigin: expectedOriginFor,
     },
     lifecycle: {
       registerCleanup: (cleanup) => {
@@ -794,13 +812,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     systemFonts: deps.systemFonts ?? createSystemFontsService(),
     writeJson,
   });
-  const codexWorkspaceRouter = createCodexWorkspaceRouter({
-    getTheater: (theaterId) => theaters.get(theaterId),
-    isAuthorized: isTerminalAuthorized,
-    readJsonBody,
-    resolveWorkspace: (theaterId, theaterRoot) => codex.resolveWorkspaceForTheater(theaterId, theaterRoot),
-    writeJson,
-  });
   const operationsRouter = createOperationsRouter({
     store: operations,
     isAuthorized: isTerminalAuthorized,
@@ -835,9 +846,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
       // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
-      for (const entry of codexKnowledgeWatcher.snapshot()) {
-        res.write(encodeSseData(CODEX_WATCH_EVENT, entry));
-      }
       const subscriber: OperationSseSubscriber = { res, audience, sessionHandle };
       operationSseSubscribers.add(subscriber);
       startSseKeepaliveLifecycle(res, () => {
@@ -847,7 +855,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/operations", operationsRouter);
   routeRegistry.register("/api/v1/theaters", async (context) => {
-    return codexWorkspaceRouter(context);
+    return false;
   });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
@@ -912,10 +920,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
-      runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
-      return;
-    }
     // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
     // 자기 게이트를 그대로 유지한다. 대신 같은 리스너 판정을 주입받아, 원격 리스너의 Host·Origin도
     // 그 게이트가 알고 있다.
@@ -925,6 +929,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
       handlePairingIdentity(req, res);
+      return;
+    }
+    // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
+    // SPA 문서로 먼저 답해져, 그 경로를 소유한 플러그인은 영영 호출되지 않는다.
+    // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
+    // SPA 문서로 먼저 답해져, 그 경로를 소유한 플러그인은 영영 호출되지 않는다.
+    if (pathname.startsWith("/console/") && pathname !== "/console" && !pathname.startsWith("/console/assets/")) {
+      runAsyncBooleanHandler(routeRegistry.handle({ req, res, pathname }), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
     if (tryServeStaticConsole(req, res, pathname)) return;
@@ -1520,6 +1532,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 원격 쪽 요청은 그대로 control이다. full 세션은 하나뿐이고 monitoring은 애초에 업그레이드에
    * 닿지 못하므로, 원격에서 오는 티켓 요청의 주인은 지금 제어를 쥔 그 기기뿐이다.
    */
+  /**
+   * 쓰기 허용 판정. 원격 리스너로 들어온 요청은 이미 세션을 통과했으므로 허용되고,
+   * 로컬 리스너는 루프백에서 온 것만 허용한다.
+   */
+  function isWriteAdmitted(req: http.IncomingMessage): boolean {
+    const listener = listenerForRequest(req);
+    if (listener === null) return false;
+    // Origin 판정도 여기서 끝낸다 — 허용 집합은 리스너마다 다르고, 플러그인이 그것을
+    // 다시 짜면 원격 리스너로 들어온 쓰기가 자기 주소를 실었는데도 거절된다.
+    if (listener.audience !== "local") return true;
+    return isLoopbackRemoteAddress(req.socket.remoteAddress);
+  }
+
+  /**
+   * 이 요청을 받은 리스너가 인정하는 Origin. 허용 집합은 리스너마다 다르고 그 사실은
+   * 호스트만 안다 — 플러그인은 판정을 스스로 하되, 무엇과 대조할지는 여기서 받는다.
+   */
+  function expectedOriginFor(req: http.IncomingMessage): string | null {
+    const listener = listenerForRequest(req);
+    if (listener === null) return null;
+    return `${listener.secure ? "https" : "http"}://${listenerAuthority(listener.host, listener.port, listener.secure)}`;
+  }
+
   function resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer" {
     if (!isLoopbackListener(req)) return "control";
     return access.hasSession("remote", "full") ? "viewer" : "control";
@@ -1749,7 +1784,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     const theater = await theaters.register(cwd);
-    await codex.registerWorkspace(theater.realpath, undefined, theater.id);
+    publishTheaterLifecycle("registered", theater.id);
     persistDurableState();
     writeJson(res, 200, toTheaterInfo(theater, true));
   }
@@ -1998,6 +2033,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return theaters.list().map((theater) => toTheaterInfo(theater, true));
   }
 
+  /** 플러그인이 등록한 플래그. 해석이 던지면 그 플래그만 빠진다 — 목록 전체를 잃지 않는다. */
+  function resolveTheaterFlags(theaterId: string): Record<string, boolean> {
+    const flags: Record<string, boolean> = {};
+    for (const [flag, resolve] of pluginTheaterFlags) {
+      try {
+        flags[flag] = resolve(theaterId);
+      } catch {
+        // 소유 플러그인이 답하지 못하면 그 사실을 조용히 참으로 바꾸지 않는다.
+      }
+    }
+    return flags;
+  }
+
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
     return {
       id: theater.id,
@@ -2005,15 +2053,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
-      hasWiki,
+      ...resolveTheaterFlags(theater.id),
+      hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === "terminal" && operation.type === "agent").length,
     };
   }
 
+  /**
+   * 지식 서버 상태는 그것을 소유한 플러그인이 말한다. 소유자가 없으면 "unknown"이다 —
+   * 코어가 대신 "unavailable"이라고 답하면, 아무도 모른다는 사실이 없다는 주장으로 바뀐다.
+   */
   function resolveWikiServerStatus(theaterId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
     if (!theaterId) return "unknown";
     if (!theaters.get(theaterId)) return "unknown";
-    return codex.getWorkspace(theaterId) ? "available" : "unavailable";
+    const resolve = pluginTheaterFlags.get("hasWiki");
+    if (!resolve) return "unknown";
+    try {
+      return resolve(theaterId) ? "available" : "unavailable";
+    } catch {
+      return "unknown";
+    }
   }
 
   async function stopAfterAcceptedUpdateApply(): Promise<void> {
@@ -2064,10 +2123,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
-    codexKnowledgeWatcher.disposeAll();
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
+  }
+
+  /**
+   * durable Theater들을 플러그인에게 알린다.
+   *
+   * 가장 최근에 연 Theater를 마지막에 알린다 — 이 순서를 재현해야 재시작 뒤에도
+   * "마지막에 보던 것"이 그대로 앞에 선다.
+   */
+  function announceRestoredTheaters(): void {
+    const ordered = [...theaters.list()].sort((left, right) =>
+      String(left.lastOpenedAt ?? "").localeCompare(String(right.lastOpenedAt ?? "")));
+    for (const theater of ordered) publishTheaterLifecycle("restored", theater.id);
   }
 
   async function rehydrateDurableState(): Promise<void> {
@@ -2108,7 +2178,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       console.warn(`[fleet-console] Expired deletion sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
     }
     // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
-    await restoreCodexWorkspaces();
   }
 
   function migrateLegacyCaptureState(): void {
@@ -2123,18 +2192,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
   }
 
-  async function restoreCodexWorkspaces(): Promise<void> {
-    // durable lastOpenedAt 오름차순으로 순차 등록하면서 durable 타임스탬프를 그대로 보존한다.
-    // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
-    // MRU가 되고, durable 타임스탬프 보존으로 listRegistrations()의 동순위(같은 밀리초) 모호성
-    // 없이 getMru() 기반 라우트가 재시작 후에도 durable 최근성 순서를 유지한다.
-    // 등록은 durable realpath로 한다. theater.path(심볼릭일 수 있음)를 다시 정규화하면 정지 중
-    // 심볼릭 타깃이 바뀐 경우 theater.id와 다른 workspaceHash로 등록되어 hasWiki 판정이 깨진다.
-    const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
-    for (const theater of ordered) {
-      await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
-    }
-  }
 
   // patch 브로드캐스트 게이트가 쓰는 "브라우저가 보는 모양" — broadcastOperationChanged와 같은
   // 새니타이즈 규칙을 공유해야 민감 필드 전용 patch가 조용히 남는다. ts는 모든 patch가 건드리는
@@ -2165,21 +2222,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 이벤트는 힌트다 — 변한 범위만 싣고 내용은 싣지 않는다. 원격 세션도 이 채널을 받으므로
    * 경로·본문이 실리면 안 되고, workspaceId(12-hex 해시)와 범위 이름만 나간다.
    */
-  function broadcastCodexChanged(workspaceId: string, scopes: readonly CodexKnowledgeScope[]): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CODEX_CHANGED_EVENT, { workspaceId, scopes });
-    for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
-    }
-  }
 
-  function broadcastCodexWatchState(workspaceId: string, state: CodexWatchState): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CODEX_WATCH_EVENT, { workspaceId, state });
-    for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
-    }
-  }
 
   function broadcastUpdateAvailable(): void {
     if (operationSseSubscribers.size === 0) return;
@@ -2343,6 +2386,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         await rehydrateDurableState();
         await pluginHost.boot();
+        // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
+        // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
+        announceRestoredTheaters();
         await pluginClientAssets.prepare();
         const listenPlan = resolveConsolePortListenPlan();
         const result = await listenConsolePort(listenPlan);
@@ -2368,10 +2414,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     async stop() {
       await stopServer();
-    },
-    async registerCodexWorkspace(cwd: string) {
-      const workspace = await codex.registerWorkspace(cwd);
-      return workspace.id;
     },
   };
 

@@ -1,8 +1,6 @@
 import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
-import type { CodexKnowledgeScope } from "../../host/codex/contracts";
-import { applyCodexChanged, applyCodexWatchState } from "./codex/live.js";
 import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
@@ -26,6 +24,62 @@ let statusRefreshPending = false;
  */
 let sessionResumeRefused = false;
 
+/**
+ * 플러그인 채널 다리.
+ *
+ * 서버는 플러그인이 명시적으로 올린 채널만 이 스트림으로 흘려보낸다(server의
+ * publishPluginEvent). 받는 쪽이 없으면 그 프레임은 그대로 버려진다 — Codex의 실시간
+ * 갱신이 실제로 그렇게 죽어 있었다: 서버는 계속 보내고, 코어는 자기 이벤트만 듣고,
+ * 플러그인은 들을 방법이 없었다.
+ *
+ * 코어가 채널 이름을 알아보지 않는다는 것이 요점이다. 이름은 구독하는 쪽이 가져온다.
+ */
+const channelListeners = new Map<string, Set<(payload: unknown) => void>>();
+let attachedChannels = new Set<string>();
+
+export function subscribeConsoleChannel(channel: string, listener: (payload: unknown) => void): () => void {
+  let listeners = channelListeners.get(channel);
+  if (!listeners) {
+    listeners = new Set();
+    channelListeners.set(channel, listeners);
+  }
+  listeners.add(listener);
+  // 스트림이 이미 열려 있으면 지금 붙인다 — 구독이 연결보다 늦게 오는 것이 보통이다.
+  if (activeSource) attachChannel(activeSource, channel);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function attachChannel(source: EventSource, channel: string): void {
+  if (attachedChannels.has(channel)) return;
+  attachedChannels.add(channel);
+  source.addEventListener(channel, (event) => {
+    // 프레임은 지금 살아 있는 스트림의 것만 받는다.
+    if (activeSource !== source) return;
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse((event as MessageEvent<string>).data);
+    } catch {
+      return;
+    }
+    // 한 구독자의 실패가 같은 프레임의 다른 구독자를 삼키지 않게 한다.
+    for (const listener of channelListeners.get(channel) ?? []) {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.error(`Console channel listener failed: ${channel}`, error);
+      }
+    }
+  });
+}
+
+/** 테스트 전용 — 모듈 전역 구독을 비운다. */
+export function resetConsoleChannelsForTest(): void {
+  channelListeners.clear();
+  attachedChannels = new Set();
+}
+
 export function connectOperationsSse(): void {
   if (reconnectHandle !== null) {
     clearTimeout(reconnectHandle);
@@ -36,6 +90,10 @@ export function connectOperationsSse(): void {
   const source = new EventSource("/api/v1/operations/events");
   activeSource = source;
   const isCurrentSource = () => generation === connectionGeneration && activeSource === source;
+
+  // 재연결마다 새 EventSource가 서므로 채널도 다시 붙인다 — 구독자는 그대로 남는다.
+  attachedChannels = new Set();
+  for (const channel of channelListeners.keys()) attachChannel(source, channel);
 
   source.addEventListener("operation:changed", (e) => {
     if (!isCurrentSource()) return;
@@ -63,33 +121,6 @@ export function connectOperationsSse(): void {
     }
   });
 
-  // Codex(wiki) 지식 루트 변화 — 이벤트는 "여기가 변했다"만 싣고, 화면이 정식 API로 다시 읽는다.
-  source.addEventListener("codex:changed", (e) => {
-    if (!isCurrentSource()) return;
-    const msg = e as MessageEvent<string>;
-    try {
-      const data = JSON.parse(msg.data) as { readonly workspaceId?: unknown; readonly scopes?: unknown };
-      if (typeof data.workspaceId !== "string" || !Array.isArray(data.scopes)) return;
-      const scopes = data.scopes.filter((scope): scope is CodexKnowledgeScope => isCodexScope(scope));
-      if (scopes.length === 0) return;
-      applyCodexChanged(data.workspaceId, scopes);
-    } catch {
-      // ignore malformed SSE event
-    }
-  });
-
-  source.addEventListener("codex:watch", (e) => {
-    if (!isCurrentSource()) return;
-    const msg = e as MessageEvent<string>;
-    try {
-      const data = JSON.parse(msg.data) as { readonly workspaceId?: unknown; readonly state?: unknown };
-      if (typeof data.workspaceId !== "string") return;
-      if (data.state !== "watching" && data.state !== "degraded") return;
-      applyCodexWatchState(data.workspaceId, data.state);
-    } catch {
-      // ignore malformed SSE event
-    }
-  });
 
   source.addEventListener("control:changed", (e) => {
     if (!isCurrentSource()) return;
@@ -214,12 +245,6 @@ export function refreshObserverStatus(): void {
       statusRefreshPending = false;
       refreshObserverStatus();
     });
-}
-
-const CODEX_SCOPES: ReadonlySet<string> = new Set(["queue", "wiki", "conflicts", "schema", "index"]);
-
-function isCodexScope(value: unknown): value is CodexKnowledgeScope {
-  return typeof value === "string" && CODEX_SCOPES.has(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

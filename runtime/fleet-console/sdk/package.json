@@ -85,10 +85,20 @@
       "import": "./rail/types.ts",
       "default": "./rail/types.ts"
     },
+    "./expanded-surface": {
+      "types": "./expanded-surface/types.ts",
+      "import": "./expanded-surface/types.ts",
+      "default": "./expanded-surface/types.ts"
+    },
     "./i18n": {
       "types": "./i18n/types.ts",
       "import": "./i18n/types.ts",
       "default": "./i18n/types.ts"
+    },
+    "./i18n/format": {
+      "types": "./i18n/format.ts",
+      "import": "./i18n/format.ts",
+      "default": "./i18n/format.ts"
     },
     "./i18n/translate": {
       "types": "./i18n/translate.ts",

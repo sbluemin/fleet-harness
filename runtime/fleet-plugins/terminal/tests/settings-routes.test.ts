@@ -608,7 +608,10 @@ function createRouteHarness(options: HarnessOptions = {}) {
       security: {
         validateHost: () => true,
         isTerminalAuthorized: () => options.terminalAuthorized ?? true,
-        isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
+        isLockAuthorized: () => true,
+        resolveTerminalSocketRole: () => "control" as const,
+        isWriteAdmitted: () => true,
+        expectedOrigin: () => "http://127.0.0.1:1",
       },
     },
   } as unknown as FleetPluginServerContext;

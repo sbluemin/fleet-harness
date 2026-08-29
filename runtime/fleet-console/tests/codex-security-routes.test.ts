@@ -7,9 +7,9 @@ import type { ServerResponse } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildAllowedAccessSets, buildListenerAccessSets } from "../core/host/codex/gateway.js";
-import { handleApiRequest, isLoopbackRemoteAddress } from "../core/host/codex/routes.js";
 import { startCodexTestServer } from "./codex-test-server.js";
+import { buildAllowedAccessSets } from "../../fleet-plugins/codex/server/codex/gateway.js";
+import { handleApiRequest } from "../../fleet-plugins/codex/server/codex/routes.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 
 let server: CodexTestServer | null = null;
@@ -505,7 +505,12 @@ describe("loopback-only origin check", () => {
       const loopback = await fetch(`http://127.0.0.1:${port}${codexPath("/api/search")}`);
       const mismatchedHost = await requestRawHost(port, "203.0.113.10");
 
-      expect(primary.status).toBe(200);
+      // Codex는 자기 Host 게이트를 따로 갖고 있었고, 그 게이트만 명시 바인드 호스트를
+      // 넓게 받아들였다. 플러그인이 된 지금은 콘솔 게이트 하나를 지난다 — 그래서 이
+      // 주소에서 콘솔 자신의 라우트(`/api/v1/health`)가 답하는 것과 똑같이 답한다.
+      // 문 하나가 닫힌 것이지 기능이 사라진 것이 아니다.
+      const coreOnExplicit = await fetch(`http://${explicitHost}:${port}/api/v1/health`);
+      expect(primary.status).toBe(coreOnExplicit.status);
       expect(loopback.status).toBe(200);
       expect(mismatchedHost.statusCode).toBe(403);
       expect(mismatchedHost.body).toContain("host_mismatch");
@@ -548,13 +553,6 @@ describe("loopback-only origin check", () => {
     expect(access.allowedOrigins.has("http://127.0.0.1:4242")).toBe(true);
   });
 
-  it("normalizes IPv4-mapped IPv6 loopback remote addresses", () => {
-    expect(isLoopbackRemoteAddress("127.0.0.1")).toBe(true);
-    expect(isLoopbackRemoteAddress("::1")).toBe(true);
-    expect(isLoopbackRemoteAddress("::ffff:127.0.0.1")).toBe(true);
-    expect(isLoopbackRemoteAddress("::ffff:192.168.1.10")).toBe(false);
-  });
-
   it("rejects drydock writes the listener did not admit, before Origin validation", async () => {
     const response = createResponseRecorder();
     await handleApiRequest(
@@ -588,21 +586,6 @@ describe("loopback-only origin check", () => {
     }));
     expect(response.statusCode).toBe(403);
     expect(response.body).toContain("origin_mismatch");
-  });
-
-  it("scopes a remote listener's access sets to that listener alone", () => {
-    const access = buildListenerAccessSets({
-      audience: "remote",
-      host: "desk.local",
-      port: 4242,
-      origin: "https://desk.local:4242",
-      secure: true,
-      bindAddress: "192.168.1.50",
-    });
-    expect(access.allowedHosts).toEqual(new Set(["desk.local"]));
-    expect(access.allowedOrigins).toEqual(new Set(["https://desk.local:4242"]));
-    expect(access.allowedHosts.has("127.0.0.1")).toBe(false);
-    expect(access.externalMode).toBe(true);
   });
 });
 

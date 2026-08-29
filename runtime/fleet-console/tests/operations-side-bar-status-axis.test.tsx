@@ -136,24 +136,6 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });
 
-  it("keeps a shell in its status bucket while drawing the kind glyph instead of the activity beacon", () => {
-    setConsoleState({ operationRuntime: { agent: { lifecycle: "live", activity: "running" } } });
-    setSideBarStatusAxis(true);
-    renderSideBar([makeOperation("agent", null), makeOperation("shell", null, undefined, THEATER.id, "shell")]);
-
-    // 칸은 그대로다 — 마크가 바뀐다고 Shell이 목록에서 사라지거나 다른 칸으로 옮겨 가면 안 된다.
-    const idle = required<HTMLElement>(".side-bar-status-section--idle");
-    expect(idle.querySelector(".side-bar-status-header__count")?.textContent).toBe("1");
-    expect(idle.querySelector('[data-side-bar-chip-id="shell"]')).not.toBeNull();
-
-    const shellMark = required<HTMLElement>('[data-side-bar-chip-id="shell"] .side-bar-chip-status');
-    expect(shellMark.className).toContain("shell-kind-mark");
-    expect(shellMark.className).not.toContain("tenant-beacon");
-    expect(shellMark.getAttribute("aria-label")).toBe("Shell");
-    // 같은 목록의 에이전트 행은 활동 축을 그대로 쓴다 — 이 변경은 Shell 하나에만 닿는다.
-    expect(required<HTMLElement>('[data-side-bar-chip-id="agent"] .side-bar-chip-status').className)
-      .toContain("tenant-beacon is-turn-running");
-  });
 
   it("pins three live sections plus both recovery shelves, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
     setConsoleState({ operationRuntime: { only: { lifecycle: "live", activity: "running" } } });

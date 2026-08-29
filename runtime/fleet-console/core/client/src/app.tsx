@@ -20,12 +20,15 @@ import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion 
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { LiquidGlassWelcome } from "./components/liquid-glass-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
+import { PersistentPluginComponents } from "./persistent-components.js";
+import { bindExpandedSurfaceCloseNotifier } from "./expanded-surface/store.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "./update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "./global-shortcuts.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
-import { usePluginRegistry } from "./plugin-registry.js";
+import { bindConsoleNavigate, notifyConsoleLocationChanged } from "./console-location.js";
+import { usePluginRegistry, useExpandedSurfaceDescriptors } from "./plugin-registry.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
@@ -55,6 +58,7 @@ export function App() {
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
+  const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingDeletions, setPendingDeletions] = useState<readonly DeferredDeletionReceipt[]>([]);
   const [undoClock, setUndoClock] = useState(Date.now());
@@ -116,6 +120,10 @@ export function App() {
     document.documentElement.dataset.viewMode = mobileLayout ? "mobile" : "desktop";
   }, [mobileLayout]);
   const navigate = useNavigate();
+  // 플러그인과 코어 비-React 코드가 주소를 바꾸는 유일한 창구에 라우터를 맡긴다 —
+  // history를 직접 밀면 popstate가 안 나서 라우터가 이동을 놓친다.
+  useEffect(() => bindConsoleNavigate((to, options) => navigate(to, { replace: options?.replace === true })), [navigate]);
+  useEffect(() => { notifyConsoleLocationChanged(); }, [location]);
   // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /operations에만 마운트되므로
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
   const operationsViewVisibleRef = useRef(operationsViewVisible);
@@ -151,6 +159,17 @@ export function App() {
     if (!claimTheaterBootMinimization(theaterId)) return null;
     return bootOperationIdsRef.current;
   }, []);
+
+  // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /operations 라우트에만
+  // 서지만 스토어와 surfaces 능력은 어느 화면에서든 살아 있다 — 레이어에 묶어 두면
+  // 설정 화면에서 닫힌 슬롯의 onClose가 조용히 건너뛰어지고, 플러그인은 자기가 아직
+  // 열려 있다고 믿은 채로 남는다.
+  useEffect(() => {
+    bindExpandedSurfaceCloseNotifier((closed) => {
+      surfaceDescriptors.get(closed.surfaceId)?.onClose?.(closed);
+    });
+    return () => bindExpandedSurfaceCloseNotifier(() => undefined);
+  }, [surfaceDescriptors]);
 
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
@@ -336,6 +355,10 @@ export function App() {
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
+        {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다.
+            밴드와 라우트 사이(흐름 바 자리)에 두지 않는다: 그 구간은 언더플로 게이트가
+            지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
+        <PersistentPluginComponents />
         {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는

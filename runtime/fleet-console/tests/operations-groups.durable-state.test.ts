@@ -5,7 +5,7 @@ import { sanitizeDurableConsoleState } from "../core/host/durable-state.js";
 const BASE_NODE = {
   id: "op-1",
   theaterId: "theater-1",
-  type: "shell",
+  type: "agent",
   pluginId: "terminal",
   title: "Test",
   payload: {},

@@ -28,7 +28,6 @@ export type PaletteCommandAction =
   | { readonly kind: "toggle-station-keeping" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string }
-  | { readonly kind: "open-codex-entry"; readonly entryId: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "toggle-command-band-dock" }
@@ -345,16 +344,6 @@ export function matchPaletteCommands(
     .map(({ command, score, exactTokens, matchedIndices }) => ({ command, score, exactTokens, matchedIndices }));
 }
 
-export function buildCodexPaletteEntries(
-  entries: readonly { readonly id: string; readonly title: string }[],
-): readonly PaletteCommandEntry[] {
-  return entries.map((entry) => ({
-    commandId: `open-codex-entry:${entry.id}`,
-    label: entry.title,
-    current: false,
-    action: { kind: "open-codex-entry", entryId: entry.id },
-  }));
-}
 
 export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], query: string): readonly PaletteCommandEntry[] {
   if (searchTokens(query).length === 0) return commands;

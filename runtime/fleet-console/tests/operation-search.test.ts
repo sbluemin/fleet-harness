@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -171,5 +175,25 @@ describe("operation search", () => {
       ["theater-beta", "Beta Dock", ["Cargo Sweep"]],
       ["theater-gamma", "Alpha Harbor", ["Night Watch"]],
     ]);
+  });
+});
+
+describe("activating a rail search result", () => {
+  // 팔레트는 activate 뒤에 Operations로 옮긴다. 그 이동이 쿼리를 함께 버리면, activate가
+  // 방금 기록한 주소가 지워져 아무 일도 일어나지 않는다 — 실측에서 팔레트로 연 Codex
+  // 항목이 그렇게 사라졌다. 경로만 옮기고 주소는 그대로 둬야 한다.
+  it("moves to Operations without discarding the address activate just wrote", () => {
+    const source = readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../core/client/src/components/operation-search.tsx"),
+      "utf8",
+    );
+    const activation = source.slice(source.indexOf("const selectRailResult"), source.indexOf("const runCommand"));
+
+    expect(activation).toContain("await result.activate()");
+    expect(activation).toContain('pathname: "/operations"');
+    expect(activation).toContain("search: window.location.search");
+    // 쿼리를 버리는 옛 형태로 되돌아가지 않게 막는다. 부정 정규식은 행 시작에 앵커한다 —
+    // 그러지 않으면 이 계약을 설명하는 주석 자신이 걸린다.
+    expect(activation).not.toMatch(/^\s*navigate\("\/operations"\);/m);
   });
 });

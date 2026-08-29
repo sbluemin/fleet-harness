@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { centerSearchExcerpt } from "../core/host/codex/routes.js";
+import { centerSearchExcerpt } from "../../fleet-plugins/codex/server/codex/routes.js";
 import { startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 
