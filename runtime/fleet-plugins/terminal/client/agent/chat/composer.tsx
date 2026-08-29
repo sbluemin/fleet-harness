@@ -262,9 +262,15 @@ export function AgentChatComposer({
     // 캐시를 버리는 것만으로는 여기까지 오지 않는다.
     if (catalog !== null && fetchedEpoch.current === catalogEpoch) return;
     catalogFlight.current = true;
-    fetchedEpoch.current = catalogEpoch;
+    // 판본은 **받아 낸 사본에만** 붙인다. 요청 전에 적으면, 그 요청이 빈손으로 돌아왔을 때
+    // (404·409는 이 API의 정상 응답이다) 옛 사본이 새 판본의 것으로 둔갑해 다시 물어볼 길이 없다.
+    const requestedEpoch = catalogEpoch;
     void readAgentChatCatalog(context.operationId)
-      .then((value) => { if (value) setCatalog(value); })
+      .then((value) => {
+        if (!value) return;
+        setCatalog(value);
+        fetchedEpoch.current = requestedEpoch;
+      })
       .catch(() => {})
       .finally(() => {
         catalogFlight.current = false;

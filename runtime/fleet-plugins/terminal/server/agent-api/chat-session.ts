@@ -370,10 +370,18 @@ class AgentChatSession {
    * control 채널이 닫혀 물어도 `null`만 온다(`getContextUsage`와 같은 벽). 그래서 채널이 확실히
    * 열려 있는 유일한 창 — 열자마자, 첫 턴 전 — 에 한 번 읽고 그 값을 계속 쓴다.
    */
-  private rawCatalog: {
-    readonly commands: readonly ClaudeGatewayCommand[];
-    readonly agents: readonly ClaudeGatewayAgent[];
-  } | null = null;
+  /**
+   * 두 축을 **따로** 들고 있는다. `null`은 "아직 읽지 못했다"이고, 빈 배열은 "물어봤는데 없다"다.
+   *
+   * 한 객체로 합쳐 두 축을 함께 세우면 한쪽의 일시적 실패가 다른 쪽까지 끌고 들어간다: 계약상
+   * `null`인 응답을 `[]`로 접어 캐시하면 그 세션 내내 덱이 빈 채로 굳고 다시 물어볼 계기도 없다.
+   * 따로 들면 실패한 축만 다음 읽기에서 재시도되고, 성공한 축은 그동안에도 제 몫을 한다.
+   *
+   * 둘 다 채워질 때까지 기다리지 않는 이유도 계약이다: `supportedAgents`가 없는 SDK 빌드는
+   * 그 축이 **영구히** `null`이라, 둘을 요구하면 그런 빌드에서 덱이 영영 서지 않는다.
+   */
+  private rawCommands: readonly ClaudeGatewayCommand[] | null = null;
+  private rawAgents: readonly ClaudeGatewayAgent[] | null = null;
   private catalogFlight: Promise<void> | null = null;
   /**
    * 지금까지 스킬로 확인된 이름들. `supportedCommands()`는 내장 명령과 스킬을 한 레코드 타입으로
@@ -1053,13 +1061,14 @@ class AgentChatSession {
    * 읽기가 다시 묻게 한다.
    *
    * 이 신호를 놓치면 덱은 세션이 접힐 때까지 낡은 목록을 세운다 — 방금 추가한 스킬이 보이지
-   * 않는데 화면은 아무 말도 하지 않는 상태다. `rawCatalog`만 비우고 `skillNames`는 남기는 이유는
+   * 않는데 화면은 아무 말도 하지 않는 상태다. 원본 두 축만 비우고 `skillNames`는 남기는 이유는
    * 그 집합이 세 출처의 합집합이고, 사라진 스킬을 명령 칸으로 되돌리는 것이 낡은 채로 두는 것보다
    * 나쁘기 때문이다(잘못된 칸에 서면 정책표가 그것을 내장 명령으로 재단한다).
    */
   private invalidateCatalog(message: ClaudeGatewayMessage): void {
     if (message.type !== "system" || message.subtype !== "commands_changed") return;
-    this.rawCatalog = null;
+    this.rawCommands = null;
+    this.rawAgents = null;
   }
 
   /**
@@ -1587,12 +1596,15 @@ class AgentChatSession {
           session.reloadSkills(),
           this.readSkillDirNames(),
         ]);
-        if (commands === null && agents === null) return;
         if (skills !== null) for (const entry of skills) this.skillNames.add(entry.name);
         for (const name of onDisk) this.skillNames.add(name);
+        // 답한 축만 굳힌다. `null`을 `[]`로 접으면 "못 물었다"가 "없다"로 바뀌어, 일시적 실패
+        // 하나가 그 세션의 덱을 영구히 비운다.
+        //
         // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
         // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
-        this.rawCatalog = { commands: commands ?? [], agents: agents ?? [] };
+        if (commands !== null) this.rawCommands = commands;
+        if (agents !== null) this.rawAgents = agents;
       } catch {
         // 카탈로그가 없는 세션도 온전한 세션이다 — 덱만 비고 대화는 그대로 돈다.
       } finally {
@@ -1610,20 +1622,22 @@ class AgentChatSession {
    */
   async readCatalog(): Promise<AgentChatCatalog | null> {
     if (this.disposed) return null;
-    if (!this.rawCatalog) {
+    // 아직 못 읽은 축이 하나라도 있으면 다시 묻는다. 그 자리는 셋이고 대응은 같다: 세션을 갓
+    // 열었을 때, `commands_changed`가 캐시를 버린 뒤, 그리고 한 축만 실패했을 때 — 마지막이
+    // 재시도의 유일한 통로다.
+    if (this.rawCommands === null || this.rawAgents === null) {
       let session: ClaudeGatewaySession;
       try {
         session = await this.ensureSession();
       } catch {
         return null;
       }
-      // 캐시가 빈 자리는 둘이고 대응은 같다: 세션을 갓 열었을 때와, `commands_changed`가 캐시를
-      // 버린 뒤. 다시 묻지 않으면 후자에서 덱이 세션 내내 "아직 모른다"로 굳는다.
       this.primeCatalog(session);
       await this.catalogFlight;
     }
-    const raw = this.rawCatalog;
-    if (!raw) return null;
+    // 둘 다 못 읽었으면 "아직 모른다"다 — 빈 덱과 구별되어야 화면이 그 둘을 다르게 그린다.
+    if (this.rawCommands === null && this.rawAgents === null) return null;
+    const raw = { commands: this.rawCommands ?? [], agents: this.rawAgents ?? [] };
     // 분류는 매 읽기마다 지금의 스킬 이름으로 다시 센다 — init이 카탈로그 왕복보다 늦게
     // 도착해도 다음 읽기에서 스킬 칸이 제대로 선다.
     const toEntry = (entry: { readonly name: string; readonly description: string; readonly argumentHint: string }): AgentChatCatalogEntry => ({

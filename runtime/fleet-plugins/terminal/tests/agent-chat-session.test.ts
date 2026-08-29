@@ -62,6 +62,8 @@ type FakeCatalog = {
   readonly commands: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
   readonly agents: readonly { readonly name: string; readonly description: string; readonly model: string | null }[];
   readonly skills?: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
+  /** 이 축이 몇 번째 요청까지 "못 물었다"(`null`)로 답하는가. 일시적 실패를 재현한다. */
+  readonly failCommandsFor?: number;
 };
 
 function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
@@ -75,6 +77,7 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     resume?.();
   };
   let lastConsumed: FakeTurn | null = null;
+  let commandAttempts = 0;
   return {
     send(text: string): void {
       hooks.onSend?.(text);
@@ -97,7 +100,11 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
      * 카탈로그는 세션이 열린 직후 한 번 읽힌다. `null`은 "못 물었다"이고 빈 배열은 "물었는데
      * 없다"이므로, 답하지 않는 자식을 재현하려면 `hooks.catalog`를 주지 않으면 된다.
      */
-    supportedCommands: async () => hooks.catalog?.commands ?? null,
+    supportedCommands: async () => {
+      // 계약상 `null`은 "못 물었다"다. 그 응답이 몇 번 이어지는지를 대본이 정한다.
+      if (hooks.catalog?.failCommandsFor !== undefined && commandAttempts++ < hooks.catalog.failCommandsFor) return null;
+      return hooks.catalog?.commands ?? null;
+    },
     supportedAgents: async () => hooks.catalog?.agents ?? null,
     /** 스킬 이름의 주 출처. 실물은 첫 턴 전에도 답한다 — init을 기다리지 않는다. */
     supportedSkills: async () => hooks.catalog?.skills ?? null,
@@ -341,6 +348,30 @@ describe("AgentChatRegistry — composer capability catalog", () => {
     expect(after!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
     expect(after!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
     expect(after!.unclassified).toEqual([]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 2차 P2)가 지목한 경로. 한 축만 `null`로 돌아왔을 때 그것을 `[]`로 접어 캐시하면
+   * "못 물었다"가 "없다"로 바뀌어, 일시적 실패 하나가 그 세션의 덱을 영구히 비운다.
+   */
+  it("retries the axis that failed instead of caching it as empty", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], { ...CATALOG, failCommandsFor: 1 });
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-partial", () => freshSeedFor(home));
+
+    // 첫 읽기: 명령 축이 답하지 않았고 에이전트 축만 왔다. 없는 것으로 굳히면 안 된다.
+    const first = await session.readCatalog();
+    expect(first!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
+    expect(first!.commands).toEqual([]);
+
+    // 두 번째 읽기가 실패한 축만 다시 묻는다.
+    const second = await session.readCatalog();
+    expect(second!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(second!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
     await registry.disposeAll();
   });
 

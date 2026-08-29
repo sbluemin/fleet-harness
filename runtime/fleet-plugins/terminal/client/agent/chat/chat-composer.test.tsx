@@ -503,5 +503,32 @@ describe("chat panel composer", () => {
       await act(async () => {});
       expect(catalogFetches).toBe(2);
     });
+
+    /**
+     * 리뷰(#941 2차 P2)가 지목한 경로. 판본을 요청 **전에** 적으면, 그 요청이 빈손으로 돌아왔을
+     * 때(404·409는 이 API의 정상 응답이다) 옛 사본이 새 판본의 것으로 둔갑해 다시 물어볼 길이
+     * 사라진다.
+     */
+    it("keeps retrying when the refresh comes back empty", async () => {
+      catalogPayload = CATALOG2;
+      mount();
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      // 재읽기가 빈손으로 돌아온다 — 서버가 아직 세션을 세우는 중이거나 접는 중이다.
+      catalogPayload = null;
+      rerender({ catalogEpoch: 1 });
+      await act(async () => {});
+      expect(catalogFetches).toBe(2);
+
+      // 덱을 닫았다 다시 열면 또 물어야 한다. 판본이 옛 사본에 붙어 버렸다면 여기서 멈춘다.
+      catalogPayload = CATALOG2;
+      await act(async () => { type(""); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(3);
+    });
   });
 });
