@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.77.0] - 2026-08-29
+
+### fleet-console
+
+#### Added
+- Chat Mode composer opens a capability deck: `/` lists the session's commands and skills, `@` lists its subagents, each row carrying the description and argument hint the session itself reports. Category headers stay pinned while the list scrolls, arrow keys move across categories, and choosing a row completes your input rather than sending it. A name you have finished typing is highlighted once it matches something the session can actually run.
+- The deck stands up four commands, chosen because this surface can carry them end to end: `/clear`, `/compact`, `/context`, and `/reload-skills`. Everything else the agent advertises is built for a terminal that has a prompt bar, a model picker, and a session title this surface does not.
+- A command runs as its own line in the transcript instead of as a conversation turn. There is no thinking node, no elapsed clock, and no streaming text, because two of these never reach the model at all. `/compact` carries a gauge: it sweeps while the agent is compacting, because the agent reports no progress figure, and then fills to the share of context actually reclaimed, with the before and after in the numbers the agent itself measured.
+- `/clear` asks once, then empties the chat view along with the agent's memory. A conversation the agent cannot read is not a record you can trust, so both sides forget the same thing.
+- `/context` opens the context meter that already reads the same numbers, instead of asking the agent to print them.
+- Terminal settings now carry a CJK fallback font, so Korean, Japanese and Chinese text in terminal panels and the chat view is drawn by a font you choose whenever the terminal typeface has no glyph for it. The list offers only installed fonts that actually draw CJK and labels each one with the scripts it covers, and Console keeps using its bundled Korean face when you pick nothing.
+- Set each Quaker aide's size from Settings, with a slider that previews the aide on screen while you drag and a one-click return to the standard size.
+- Open documents and terminals side by side on an expanded work surface over the canvas, splitting it into as many vertical slots as you need and dragging the dividers to give each one the width it deserves.
+- Let plugins contribute their own expanded surfaces, so any plugin can present a full-size work surface instead of only a rail panel.
+
+#### Changed
+- Typing a full command name now puts that command first in the deck. Previously another row whose description happened to mention the same word could sit above it.
+- Chat view now follows your Terminal Font for everything except markdown-rendered answers, so switching an Operation between the CLI view and the chat view keeps one typeface.
+- Keep multi-panel terminal input responsive by avoiding hidden peer refits during focus-layer changes and reducing compositor work at high panel density across Cruise, Tactical, and War Room.
+- The light theme no longer uses liquid glass. On paper there is no light behind the glass to bend, so floating menus, panels and console chrome return to their solid material, and the Liquid glass switch in Settings reads off and cannot be changed while the light theme is active. Your choice is kept for the dark themes and comes back when you return to one.
+- Aides now roam by their own size: screen edges, the deck they walk on, how far they keep from each other, and the row they park in when motion is reduced all follow each aide's figure instead of one fixed measurement.
+- Selected controls across all four themes now speak quietly: segmented switches drop their boxes and mark the active option with a sliding low-contrast wash, ink contrast, and a tiny brass underline, independent chips such as effort levels keep a soft tint, and boolean toggles mark "on" with the wash plus a brass glyph, replacing the loud brass outline pill everywhere; forced-colors mode renders selection with system selection colors.
+- Open Shell as one console-wide terminal on the expanded surface rather than as a separate Operation per Theater, so it no longer takes a canvas panel, a caption, a sidebar row, or a War Room card. Shell starts in the Theater that was active when you opened it and stays there until you close it.
+- Press the rail Shell icon again to put the Shell away, and see that icon lit while the Shell is showing. Putting it away is not ending it: the session and its working directory wait where you left them, so pressing once more lands you back in the same place.
+- Move Codex out of the Console's core and into a plugin of its own, so the knowledge surface is installed and updated like every other panel rather than being welded into the Console itself.
+- Keep the War Room Map still after its entry sequence instead of repeating a vertical scan line.
+
+#### Fixed
+- Restore the streaming wave in the light theme, where the chat and analyst live lines read as static because the sweep lost almost half its contrast against pale paper.
+- Restore the streaming wave on the chat "Thinking" line, which was painted over by opaque ink in every theme.
+- Skills bundled with the agent, such as `/doctor` and `/batch`, were listed under Commands until the session had run a turn. They now appear under Skills from the first `/`.
+- Reloading skills mid-session left the deck showing the old list until the session was reopened.
+- Korean text in the chat log and in terminal panels now renders in a bundled monospace face instead of dropping to a system fallback, so Hangul no longer sits at a different weight and width from the Latin text beside it.
+- Keep the Console answering requests while a chat view starts, instead of freezing every session behind a repeated Claude binary lookup.
+- Keep the Codex outline on the section you are actually reading, including the last one when you scroll a document to its end.
+- Keep long File Explorer lists filled while scrolling in tall panels.
+- Stop War Room from casting a dark vignette over the panel it raises onto the stage, so a staged panel reads at full contrast to its corners.
+
+#### Removed
+- Retire the saved Shell panels that reopened dormant after a restart, along with their Relaunch card. A Shell now lives only as long as the console it runs in.
+
 ## [1.76.1] - 2026-08-28
 
 ### fleet-console

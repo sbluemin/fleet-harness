@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-console",
-  "version": "1.76.1",
+  "version": "1.77.0",
   "description": "Fleet Console — sole owner of the fleet and fleet-console bins, Console web surface, and thin Claude Code launcher.",
   "repository": {
     "type": "git",
