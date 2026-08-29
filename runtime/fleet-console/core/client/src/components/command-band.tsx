@@ -8,7 +8,7 @@ import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../ap
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
@@ -175,17 +175,14 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
-  // 정렬 앵커는 실제 스테이지 경계다 — 접힌 사이드바는 폭 0, 접힌 레일 크롬은 스트립 0.
-  const stageLeftWidth = sideBar.collapsed ? 0 : sideBar.width;
-  const stageRightWidth = railChromeExpanded ? COMMAND_BAND_RAIL_STRIP_PX : 0;
-  // 맵 컨트롤 앵커도 같은 원칙을 따른다: 펼침 = 사이드바 경계선, 접힘 = 좌측 컨트롤군 끝(도킹).
-  // 옛 사이드바 폭에 남겨두면 경계 없는 밴드 한가운데에 떠 보이고, 넓힌 뒤 접으면 그만큼 더 밀린다.
+  // 맵 컨트롤 앵커는 펼침 = 사이드바 경계선, 접힘 = 좌측 컨트롤군 끝(도킹)이다.
+  // 브레드크럼은 Console 전체 정중앙에 고정하므로 여백 하한도 같은 viewport 좌표계로 잰다.
   const mapControlsAnchor = commandBandMapControlsAnchor(sideBar.collapsed, sideBar.width, leftContentEnd);
-  const centerGutter = commandBandCenterGutter(mapControlsAnchor - stageLeftWidth, mapControlsWidth);
-  const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth - stageLeftWidth - stageRightWidth, centerGutter);
-  // 접힌 뒤에는 여백 트랙이 지킬 대상이 없다. 하한을 그대로 두면 고정 트랙 합이 밴드 폭을 넘어
-  // 우측 컨트롤이 화면 밖으로 밀린다 — 사이드바를 넓게 늘린 뒤 접으면 하한이 캡 폭만큼 커져
-  // 1280px 창에서도 터진다. 판정용 centerGutter는 그대로 두어 되돌아오는 폭이 흔들리지 않게 한다.
+  const centerGutter = commandBandCenterGutter(mapControlsAnchor, mapControlsWidth);
+  const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth, centerGutter);
+  // 브레드크럼을 접은 뒤에는 지킬 중앙 트랙이 없다. 하한을 그대로 두면 고정 트랙 합이 밴드 폭을
+  // 넘어 우측 컨트롤이 화면 밖으로 밀린다. 판정용 centerGutter는 그대로 두어 되돌아오는 폭이
+  // 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
   const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;
   // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
   // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
@@ -517,8 +514,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         style={{
           "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`,
           "--command-band-map-anchor": `${mapControlsAnchor}px`,
-          "--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,
-          "--command-band-stage-right": `${stageRightWidth}px`,
           "--command-band-center-gutter": `${injectedCenterGutter}px`,
         } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}

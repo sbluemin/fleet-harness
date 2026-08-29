@@ -144,9 +144,11 @@ describe("Command Band center visibility measurements", () => {
     expect(commandBandCenterGutter(0, 1)).toBe(44);
   });
 
-  it("derives the gutter from the measured map control width", () => {
+  it("derives the gutter from the map controls' viewport edge", () => {
     expect(commandBandCenterGutter(0, 163)).toBe(8 + 163 + 12);
-    // 접힘 시 lead는 도킹 앵커(좌측 컨트롤군 끝 기준) 그대로다 — 스테이지 원점이 0이므로.
+    // 펼친 사이드바 경계도 viewport 좌표 그대로 포함한다 — 브레드크럼 중심은 Console 중앙이다.
+    expect(commandBandCenterGutter(280, 163)).toBe(280 + 8 + 163 + 12);
+    // 접힘 시에는 좌측 컨트롤군 끝으로 도킹한 앵커가 같은 좌표계에서 하한을 정한다.
     expect(commandBandCenterGutter(185, 163)).toBe(185 + 8 + 163 + 12);
   });
 
