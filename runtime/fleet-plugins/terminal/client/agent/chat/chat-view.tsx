@@ -607,8 +607,10 @@ function formatCompactTokens(tokens: number): string {
 /**
  * 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
  *
- * 진행 표시는 상태 채널(aurora)이 지고 모션은 두지 않는다 — 흐르는 물결은 이 원장에서 "모델이
- * 말하고 있다"는 뜻이라, 모델을 부르지 않는 동작에 붙이면 그 어휘가 거짓이 된다.
+ * 계기가 채우는 것은 **되찾은 문맥**이다. 진척률이 아닌 이유는 그 값이 존재하지 않기 때문이다 —
+ * 자식은 압축 중이라는 사실만 말하고 얼마나 남았는지는 말하지 않는다(실측). 그래서 도는 동안은
+ * 끝을 모른다는 뜻의 왕복 띠이고, 끝난 뒤에야 실제 비율이 선다. 지어낸 퍼센트를 그리면 그 숫자가
+ * 처음 몇 초 동안 유일하게 확신에 찬 거짓말이 된다.
  */
 function ChatCommandRow({
   command,
@@ -623,17 +625,23 @@ function ChatCommandRow({
   const running = state === "working";
   const failed = state === "error";
   const compact = command.compact;
+  // 되찾은 비율은 자식이 잰 두 수에서만 나온다. `after`가 없으면 비율도 없다 — 그때는 계기를
+  // 세우지 않고 앞의 크기만 말한다.
+  const reclaimed = compact?.after === undefined
+    ? null
+    : Math.max(0, Math.min(100, Math.round(((compact.before - compact.after) / Math.max(1, compact.before)) * 100)));
+  const gauge = running || reclaimed !== null;
   const detail = running
     ? command.phase === "compacting"
       ? t("terminal.chat.commandCompacting")
       : t("terminal.chat.commandRunning")
     : compact
-      // 되찾은 문맥은 자식이 센 수 그대로다. 우리가 앞뒤를 따로 재면 계기와 다른 값을 말한다.
       ? compact.after === undefined
         ? t("terminal.chat.commandCompactedFrom", { before: formatCompactTokens(compact.before) })
         : t("terminal.chat.commandCompacted", {
           before: formatCompactTokens(compact.before),
           after: formatCompactTokens(compact.after),
+          percent: String(reclaimed),
         })
       : command.summary ?? (failed ? t("terminal.chat.commandFailed") : t("terminal.chat.commandDone"));
   return (
@@ -644,6 +652,21 @@ function ChatCommandRow({
       <span className="agent-chat-command-dot" aria-hidden="true" />
       <span className="agent-chat-command-name">/{command.name}</span>
       <span className="agent-chat-command-detail">{detail}</span>
+      {gauge ? (
+        <span
+          className="agent-chat-command-gauge"
+          role="progressbar"
+          aria-label={t("terminal.chat.commandGaugeLabel")}
+          // 도는 동안은 `aria-valuenow`를 싣지 않는다 — 없는 값을 실으면 보조기술이 그것을
+          // 진척률로 읽어 주고, 그 낭독은 화면보다 더 확신에 차 있다.
+          {...(reclaimed === null ? {} : { "aria-valuenow": reclaimed, "aria-valuemin": 0, "aria-valuemax": 100 })}
+        >
+          <span
+            className="agent-chat-command-gauge-fill"
+            style={reclaimed === null ? undefined : { "--agent-chat-gauge-fill": `${reclaimed}%` } as React.CSSProperties}
+          />
+        </span>
+      ) : null}
       {compact?.durationMs !== undefined ? (
         <span className="agent-chat-command-elapsed">{(compact.durationMs / 1000).toFixed(1)}s</span>
       ) : null}

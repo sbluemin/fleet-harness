@@ -120,9 +120,12 @@
    않는다 — 대신 사용자 디스패치와 같은 축(왼쪽 정렬 한 줄)에 조용히 앉는다. */
 .agent-chat-command-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
-  margin: 0;
+  /* 가로 여백은 **auto여야 한다** — 원장의 `.agent-chat-log > *`가 그 auto로 모든 항목을 한
+     컬럼에 세운다. `margin: 0`으로 쓰면 그 규칙을 통째로 덮어(같은 특정성, 더 늦은 선언) 이
+     줄만 패널 왼쪽 끝에 붙는다(실측). */
+  margin: 0 auto;
   padding: 2px 0;
   font-family: var(--agent-chat-font);
   font-size: var(--t-xs);
@@ -138,7 +141,42 @@
   height: 5px;
   border-radius: var(--radius-pill);
   background: var(--hairline-strong);
-  transform: translateY(-1px);
+}
+
+/* 압축의 계기. 채워진 몫은 **되찾은 문맥**이다 — 많이 찰수록 좋은 결과이므로 눈이 길이를
+   그대로 읽으면 된다. 끝난 계기에 positive를 쓰는 것은 그것이 상태(성공)이기 때문이고,
+   도는 동안 aurora인 것도 같은 규율(작업 중)이다. */
+.agent-chat-command-gauge {
+  flex: none;
+  position: relative;
+  width: 72px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.agent-chat-command-gauge-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--agent-chat-gauge-fill, 0%);
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+  transition: width var(--duration-slow) var(--ease-glide);
+}
+
+/* 도는 동안은 **얼마나 남았는지 알 수 없다** — 자식은 압축 중이라는 사실만 말하고 진척을
+   말하지 않는다(실측). 그래서 채우는 척하지 않고, 길이를 모른다는 뜻의 왕복 띠를 둔다.
+   턴의 맥동과 다른 어휘다: 저쪽은 "모델이 생각하고 있다"이고 이쪽은 "끝을 모르는 진행"이다. */
+.agent-chat-command-row.is-running .agent-chat-command-gauge-fill {
+  width: 38%;
+  background: var(--aurora);
+  animation: agent-chat-command-sweep 1.4s var(--ease-glide) infinite;
+}
+
+@keyframes agent-chat-command-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(264%); }
 }
 
 .agent-chat-command-row.is-running .agent-chat-command-dot { background: var(--aurora); }
@@ -2185,6 +2223,14 @@
   .agent-chat-ask-dot,
   .agent-chat-step-orbit {
     animation: none;
+  }
+
+  /* 압축 계기의 왕복 봉인 — 모션만 죽이고 "진행 중"은 남긴다. 띠를 통째로 눕히면 계기가 빈
+     트랙이 되어, 끝을 모르는 진행과 아무 일도 없음이 같은 그림이 된다. */
+  .agent-chat-command-row.is-running .agent-chat-command-gauge-fill {
+    animation: none;
+    width: 100%;
+    background: color-mix(in oklab, var(--aurora) 45%, var(--hairline));
   }
 
   .agent-chat-fold-chev {

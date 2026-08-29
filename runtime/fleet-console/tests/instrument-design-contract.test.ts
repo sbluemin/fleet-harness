@@ -3758,6 +3758,19 @@ describe("Effort track interaction grammar", () => {
     // 되찾은 문맥은 여러 줄을 나란히 놓고 읽는 수다.
     expect(block(".agent-chat-command-elapsed")).toContain("font-variant-numeric: tabular-nums;");
 
+    // 이 줄도 원장의 한 컬럼에 선다. `margin: 0`으로 쓰면 `.agent-chat-log > *`의 auto를 덮어
+    // (같은 특정성, 더 늦은 선언) 이 줄만 패널 왼쪽 끝에 붙는다.
+    expect(row).toContain("margin: 0 auto;");
+
+    // 계기는 되찾은 몫을 채운다: 도는 동안 aurora(작업 중), 끝나면 positive(성공).
+    expect(block(".agent-chat-command-gauge-fill")).toContain("background: var(--positive);");
+    const runningFill = chat.slice(chat.indexOf(".agent-chat-command-row.is-running .agent-chat-command-gauge-fill {"));
+    expect(runningFill.slice(0, runningFill.indexOf("}"))).toContain("background: var(--aurora);");
+
+    // 감속 모션에서 왕복은 서되 계기는 남는다 — 띠를 통째로 눕히면 "끝을 모르는 진행"과
+    // "아무 일도 없음"이 같은 그림이 된다.
+    expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-chat-command-row\.is-running \.agent-chat-command-gauge-fill \{\s*animation: none;/);
+
     // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다.
     const hint = block(".agent-chat-deck-hint.is-console");
     expect(hint).toContain("var(--brass-ink)");
