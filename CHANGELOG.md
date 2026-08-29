@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.77.1] - 2026-08-29
+
+### fleet-console
+
+#### Fixed
+- Load Codex again in installed builds. The Codex panel reported that it could not read a Theater's Fleet Wiki data, because the plugin's server routes were left out of the packaged build when Codex moved out of the console core.
+- Hide the terminal's provider title from browser payloads in installed builds, which had kept it visible because a plugin's redaction list did not survive packaging.
+
 ## [1.77.0] - 2026-08-29
 
 ### fleet-console

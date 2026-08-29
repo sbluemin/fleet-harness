@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.77.1] - 2026-08-29
+
+### fleet-console
+
+#### Fixed
+- 설치본에서 Codex가 다시 열립니다. Codex가 콘솔 코어에서 플러그인으로 옮겨 갈 때 서버 라우트가 패키지에 담기지 않아, 패널이 Theater의 Fleet Wiki 데이터를 불러오지 못한다고 알렸습니다.
+- 설치본에서 터미널의 공급자 제목이 브라우저 페이로드에 그대로 나가던 것을 가립니다. 플러그인이 선언한 가림 목록이 패키징 과정에서 사라진 탓이었습니다.
+
 ## [1.77.0] - 2026-08-29
 
 ### fleet-console

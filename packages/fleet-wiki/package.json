@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-wiki",
-  "version": "1.77.0",
+  "version": "1.77.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
