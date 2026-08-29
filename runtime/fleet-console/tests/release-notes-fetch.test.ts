@@ -39,8 +39,65 @@ describe("release notes fetch coordination", () => {
 
     expect(getState()).toMatchObject({
       releaseNotes: [{ version: "2.0.0" }],
+      releaseNotesLocale: "ko",
       releaseNotesFetchedAt: 2,
       releaseNotesLoading: false,
+    });
+  });
+
+  it("remaps the selected duplicate release when a same-locale fetch shifts positions", async () => {
+    const { applyReleaseNotes, getState, setState } = await import("../core/client/src/store.js");
+    const previousNotes = [
+      { version: "2.0.0", date: "2026-08-30", sections: [], localizationFallback: false },
+      { version: "1.0.0", date: "2026-07-10", sections: [], localizationFallback: false },
+      { version: "1.0.0", date: "2026-07-09", sections: [], localizationFallback: false },
+    ];
+    const nextNotes = [
+      { version: "3.0.0", date: "2026-08-31", sections: [], localizationFallback: false },
+      ...previousNotes,
+    ];
+    setState({
+      version: "2.0.0",
+      bootstrapped: false,
+      whatsNewOpen: true,
+      automaticWhatsNewVersion: null,
+      releaseNotes: previousNotes,
+      releaseNotesLocale: "en",
+      selectedReleaseNoteKey: "1.0.0:2",
+    });
+
+    applyReleaseNotes({ notes: nextNotes, sourceRef: "main", fetchedAt: 2, stale: false }, "en");
+
+    expect(getState()).toMatchObject({
+      whatsNewOpen: true,
+      automaticWhatsNewVersion: null,
+      releaseNotesLocale: "en",
+      selectedReleaseNoteKey: "1.0.0:3",
+    });
+  });
+
+  it("does not re-run automatic selection while What's New is already open", async () => {
+    const { applyReleaseNotes, getState, setState } = await import("../core/client/src/store.js");
+    const notes = [
+      { version: "2.0.0", date: "2026-08-30", sections: [], localizationFallback: false },
+      { version: "1.0.0", date: "2026-07-10", sections: [], localizationFallback: false },
+    ];
+    setState({
+      version: "2.0.0",
+      bootstrapped: false,
+      whatsNewOpen: true,
+      automaticWhatsNewVersion: "2.0.0",
+      releaseNotes: notes,
+      releaseNotesLocale: "ko",
+      selectedReleaseNoteKey: "1.0.0:1",
+    });
+
+    applyReleaseNotes({ notes, sourceRef: "main", fetchedAt: 2, stale: false }, "ko");
+
+    expect(getState()).toMatchObject({
+      whatsNewOpen: true,
+      automaticWhatsNewVersion: "2.0.0",
+      selectedReleaseNoteKey: "1.0.0:1",
     });
   });
 });

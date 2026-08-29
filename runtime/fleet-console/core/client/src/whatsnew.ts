@@ -29,7 +29,7 @@ export function requestReleaseNotes(options: ReleaseNotesRequestOptions): Promis
   beginReleaseNotesFetch();
   return fetchReleaseNotes({ ...options, signal: controller.signal })
     .then((response) => {
-      if (generation === requestGeneration) applyReleaseNotes(response);
+      if (generation === requestGeneration) applyReleaseNotes(response, options.locale);
     })
     .catch((error: unknown) => {
       if (controller.signal.aborted || generation !== requestGeneration) return;

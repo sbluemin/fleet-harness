@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopyFor } from "../core/client/src/components/command-band-system-cluster.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
-import { applyObserverStatus } from "../core/client/src/store.js";
+import { applyObserverStatus, setState } from "../core/client/src/store.js";
 import { resolveStepIndex } from "../core/client/src/components/update-curtain.js";
 import { getT } from "../core/client/src/i18n/index.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
@@ -42,6 +42,13 @@ beforeEach(() => {
     return 1;
   };
   hydrateGlobalSettings(SETTINGS);
+  setState({
+    releaseNotes: [],
+    releaseNotesLocale: null,
+    releaseNotesLoading: false,
+    releaseNotesError: null,
+    releaseNotesStale: false,
+  });
 });
 
 afterEach(() => {
@@ -241,6 +248,21 @@ describe("CommandBandSystemCluster", () => {
     expect(document.activeElement).toBe(items[4]);
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
     expect(document.activeElement).toBe(items[1]);
+  });
+
+  it("keeps retained release notes reachable after a refresh error", () => {
+    setState({
+      releaseNotes: [{ version: "1.0.0", date: "2026-08-30", sections: [], localizationFallback: false }],
+      releaseNotesLocale: "ko",
+      releaseNotesError: "unavailable",
+      releaseNotesStale: false,
+    });
+    mountCluster();
+    act(() => document.querySelector<HTMLButtonElement>(".command-band-help")?.click());
+
+    const whatsNew = menuItems()[0] as HTMLButtonElement;
+    expect(whatsNew.textContent).toContain("What's New");
+    expect(whatsNew.disabled).toBe(false);
   });
 
   it("enables the screen guide entry once any onboarding has been seen", () => {

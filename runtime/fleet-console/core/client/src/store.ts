@@ -20,6 +20,7 @@ import type {
   ObserverStatus,
   QuickLaunchDraftAttachment,
   QuickLaunchRequest,
+  ReleaseNotesLocale,
   ReleaseNotesResponse,
   ThemeId,
   TheaterBootstrap,
@@ -101,6 +102,7 @@ let state: ConsoleState = {
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
+  releaseNotesLocale: null,
   releaseNotesLoading: false,
   releaseNotesError: null,
   releaseNotesSourceRef: null,
@@ -231,28 +233,33 @@ export function beginReleaseNotesFetch(): void {
   setState({ releaseNotesLoading: true, releaseNotesError: null });
 }
 
-export function applyReleaseNotes(response: ReleaseNotesResponse): void {
+export function applyReleaseNotes(response: ReleaseNotesResponse, locale: ReleaseNotesLocale): void {
+  const localeChanged = state.releaseNotesLocale !== null && state.releaseNotesLocale !== locale;
   const next = {
     ...state,
     releaseNotes: response.notes,
+    releaseNotesLocale: locale,
     releaseNotesLoading: false,
     releaseNotesError: null,
     releaseNotesSourceRef: response.sourceRef,
     releaseNotesFetchedAt: response.fetchedAt,
     releaseNotesStale: response.stale,
-    selectedReleaseNoteKey: state.selectedReleaseNoteKey && releaseNoteKeyExists(response.notes, state.selectedReleaseNoteKey)
-      ? state.selectedReleaseNoteKey
-      : firstReleaseNoteKey(response.notes),
+    // key에는 배열 위치가 들어가므로 refresh가 앞에 릴리스를 추가해도 같은 버전·중복 순번을 다시 찾는다.
+    selectedReleaseNoteKey: remapReleaseNoteKey(state.releaseNotes, state.selectedReleaseNoteKey, response.notes),
   };
   setState({
     releaseNotes: next.releaseNotes,
+    releaseNotesLocale: next.releaseNotesLocale,
     releaseNotesLoading: next.releaseNotesLoading,
     releaseNotesError: next.releaseNotesError,
     releaseNotesSourceRef: next.releaseNotesSourceRef,
     releaseNotesFetchedAt: next.releaseNotesFetchedAt,
     releaseNotesStale: next.releaseNotesStale,
-    // selectedReleaseNoteKey는 evaluateAutomaticWhatsNew(next)가 함께 산출하므로 여기서 따로 지정하지 않는다(중복 지정 방지).
-    ...evaluateAutomaticWhatsNew(next),
+    // 본문 언어 전환이나 이미 열린 모달의 refresh는 사용자가 보고 있던 버전과 열림 원인을 보존한다.
+    // 자동 열림 평가는 닫힌 상태에서 받은 첫 로드·동일 언어의 새 데이터에만 필요하다.
+    ...(localeChanged || state.whatsNewOpen
+      ? { selectedReleaseNoteKey: next.selectedReleaseNoteKey }
+      : evaluateAutomaticWhatsNew(next)),
   });
 }
 
@@ -975,6 +982,26 @@ function evaluateAutomaticWhatsNew(current: ConsoleState): Pick<ConsoleState, "w
     automaticWhatsNewVersion: firstReal.version,
     selectedReleaseNoteKey: releaseNoteKey(firstReal.version, firstRealIndex),
   };
+}
+
+function remapReleaseNoteKey(
+  previousNotes: readonly { readonly version: string }[],
+  previousKey: string | null,
+  nextNotes: readonly { readonly version: string }[],
+): string | null {
+  if (previousKey === null) return firstReleaseNoteKey(nextNotes);
+  const previousIndex = previousNotes.findIndex((note, index) => releaseNoteKey(note.version, index) === previousKey);
+  const selected = previousNotes[previousIndex];
+  if (!selected) return firstReleaseNoteKey(nextNotes);
+
+  const occurrence = previousNotes.slice(0, previousIndex + 1).filter((note) => note.version === selected.version).length;
+  let seen = 0;
+  for (let index = 0; index < nextNotes.length; index += 1) {
+    if (nextNotes[index]?.version !== selected.version) continue;
+    seen += 1;
+    if (seen === occurrence) return releaseNoteKey(selected.version, index);
+  }
+  return firstReleaseNoteKey(nextNotes);
 }
 
 function firstReleaseNoteKey(notes: readonly { readonly version: string }[]): string | null {

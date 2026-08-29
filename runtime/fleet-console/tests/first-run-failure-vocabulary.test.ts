@@ -123,7 +123,7 @@ describe("first-run failure vocabulary", () => {
         sourceRef: "main",
         fetchedAt: 0,
         stale: false,
-      });
+      }, "en");
       return store;
     }
 
