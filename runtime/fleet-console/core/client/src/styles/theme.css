@@ -207,7 +207,7 @@
 
   /* ── 리퀴드 글래스 채널 ──────────────────────────────────────────────
      부유층(팝업·메뉴·오버레이 슬롯)의 최하층·틴트·블러와 상주 크롬의 블러·림은
-     이 여섯 채널만 소비한다. 기본값은 현행 판독 계약 그대로다 — 불투명 언더레이,
+     아래 역할 채널만 소비한다. 기본값은 현행 판독 계약 그대로다 — 불투명 언더레이,
      현행 틴트, 무블러. 유리는 파일 하단의 data-glass 게이트 블록에서만 켜지므로,
      게이트가 닫히면(@supports 미달·prefers-reduced-transparency·설정 해제) 모든
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
@@ -256,6 +256,7 @@
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
   --glass-backdrop-panel: none;
+  --glass-backdrop-terminal: none;
   --glass-backdrop-scrim: none;
   --glass-rim: transparent;
   /* 아래쪽 어두운 베벨. 밝은 바탕에서는 흰 하이라이트에 여유가 없어(라이트 유리 본체 L*94.7,
@@ -279,23 +280,23 @@
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
   --glass-on-tint-chrome: oklch(19% 0.018 245 / 50%);
-  /* 다크 유리의 밀도 문법 — 뒤에 비칠 빛이 없는 유리에서 투과는 재질감을 만들지 못하고 명도를
-     빼기만 한다(실측: 필드가 패널 면보다 3.1~6.1 L 아래로 내려앉아 사이드바·레일보다 어두워졌고,
-     ANSI black이 필드와 같거나 오히려 밝아졌다). 그래서 틴트는 원 면보다 살짝 위(+2 L)에 서고
-     밀도를 0.83으로 모은다. 명도만 올리면 잿빛 워시가 되므로 채도를 함께 1.7배로 싣고, 재질은
-     명도가 아니라 pane-light의 기울기가 말한다. 알파·명도를 다시 만지면 ANSI black과의 부호
-     (필드보다 어두울 것)를 반드시 재실측할 것. */
-  --glass-on-tint-panel: oklch(18.5% 0.028 245 / 83%);
+  /* 다크 유리의 smoked-glass 문법 — Operation·War Room 카드는 blur 없이 60% 틴트와
+     22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
+     않아 모든 모드가 같은 투과도를 유지한다. Shell은 같은 60% terminal tint 위에서만 20px blur를
+     사용해 글자 밀도가 높은 단일 작업면의 판독성을 지킨다. 알파·명도를 다시 만지면 ANSI black과의
+     부호(필드보다 어두울 것)와 dim 셀 floor를 반드시 재실측할 것. */
+  --glass-on-tint-panel: oklch(18.5% 0.028 245 / 60%);
   --glass-on-tint-field: transparent;
-  --glass-on-pane-light: oklch(25% 0.032 245);
+  --glass-on-pane-light: oklch(25% 0.032 245 / 22%);
   --canvas-on-ambience: oklch(16% 0.022 245);
-  --glass-on-tint-caption: oklch(17% 0.018 245 / 82%);
-  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / 83%);
-  --glass-on-tint-terminal-floor: oklch(18.1% 0.027 245);
+  --glass-on-tint-caption: oklch(17% 0.018 245 / 64%);
+  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / 60%);
+  --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
   --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
-  --glass-on-backdrop-panel: blur(32px) saturate(1.45);
+  --glass-on-backdrop-panel: none;
+  --glass-on-backdrop-terminal: blur(20px) saturate(1.45);
   --glass-on-backdrop-scrim: blur(3px);
   --glass-on-rim: oklch(96% 0.01 90 / 16%);
   /* 유리 광택(sheen) — 대각 하이라이트 한 겹. 무채색 리터럴만 쓰는 독트린 예외 채널이며,
@@ -523,13 +524,13 @@
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
   --glass-on-tint-chrome: oklch(27% 0.04 248 / 45%);
-  --glass-on-tint-panel: oklch(25% 0.05 248 / 83%);
+  --glass-on-tint-panel: oklch(25% 0.05 248 / 60%);
   --glass-on-tint-field: transparent;
-  --glass-on-pane-light: oklch(32% 0.055 248);
+  --glass-on-pane-light: oklch(32% 0.055 248 / 22%);
   --canvas-on-ambience: oklch(18% 0.035 235);
-  --glass-on-tint-caption: oklch(21% 0.03 248 / 82%);
-  --glass-on-tint-terminal: oklch(25% 0.05 248 / 83%);
-  --glass-on-tint-terminal-floor: oklch(23.9% 0.047 247);
+  --glass-on-tint-caption: oklch(21% 0.03 248 / 64%);
+  --glass-on-tint-terminal: oklch(25% 0.05 248 / 60%);
+  --glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);
   --glass-on-tint-band: oklch(19% 0.045 248 / 50%);
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
@@ -636,13 +637,13 @@
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
   --glass-on-tint-chrome: oklch(24% 0.006 252 / 45%);
-  --glass-on-tint-panel: oklch(21% 0.013 252 / 83%);
+  --glass-on-tint-panel: oklch(21% 0.013 252 / 60%);
   --glass-on-tint-field: transparent;
-  --glass-on-pane-light: oklch(28% 0.014 252);
+  --glass-on-pane-light: oklch(28% 0.014 252 / 22%);
   --canvas-on-ambience: oklch(18% 0.014 250);
-  --glass-on-tint-caption: oklch(19% 0.008 252 / 84%);
-  --glass-on-tint-terminal: oklch(21% 0.013 252 / 83%);
-  --glass-on-tint-terminal-floor: oklch(20.5% 0.013 252);
+  --glass-on-tint-caption: oklch(19% 0.008 252 / 64%);
+  --glass-on-tint-terminal: oklch(21% 0.013 252 / 60%);
+  --glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);
   --glass-on-tint-band: oklch(17% 0.007 255 / 50%);
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
@@ -869,6 +870,7 @@
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
     --glass-backdrop-soft: var(--glass-on-backdrop-soft);
     --glass-backdrop-panel: var(--glass-on-backdrop-panel);
+    --glass-backdrop-terminal: var(--glass-on-backdrop-terminal);
     --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
     --glass-rim: var(--glass-on-rim);
     /* 베벨·부양·워시·블룸 채널은 여기서 싣지 않는다 — 재료를 가진 테마가 라이트뿐이었고,
@@ -900,6 +902,7 @@
       --glass-backdrop-strong: none;
       --glass-backdrop-soft: none;
       --glass-backdrop-panel: none;
+      --glass-backdrop-terminal: none;
       --glass-backdrop-scrim: none;
       --glass-rim: transparent;
       --glass-sheen: linear-gradient(transparent, transparent);

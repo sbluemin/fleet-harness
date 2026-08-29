@@ -876,11 +876,12 @@ describe("Instrument core design contract", () => {
     expect(css).not.toMatch(/--op-accent|--chip-accent/);
     // 리퀴드 글래스 계약: backdrop-filter는 theme.css의 glass 채널(var(--glass-backdrop-*))만
     // 소비한다. raw blur를 표면에 직접 들면 세 게이트(@supports 미달·prefers-reduced-transparency·
-    // 설정 data-glass="off")가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다.
+    // 설정 data-glass="off")가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다. 중첩 Shell·Operation
+    // 자식의 명시적 none은 조상 blur가 이중 적용되지 않게 닫는 유일한 예외다.
     const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
     expect(backdropDeclarations.length).toBeGreaterThan(0);
     for (const declaration of backdropDeclarations) {
-      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: var\(--glass-backdrop-(?:strong|soft|panel|scrim)\);$/);
+      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: (?:var\(--glass-backdrop-(?:strong|soft|panel|terminal|scrim)\)|none);$/);
     }
     // 게이트와 폴백 기본값은 theme.css에 존재해야 한다 — 채널 기본값이 곧 구 불투명 계약이다.
     const theme = source("styles/theme.css");
@@ -1014,11 +1015,18 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
     expect(theme).toContain("--glass-pane-light: transparent;");
     expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
-    // 다크 3종의 유리 재료는 밀도 문법이다 — 틴트가 원 면보다 어두우면 필드가 캔버스로 가라앉고
-    // ANSI black이 필드보다 밝아진다(실측 maritime +1.2 L·carbon +1.1 L 역전).
-    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / 83%);");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / 83%);");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / 83%);");
+    // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
+    // pane-light는 22%만 얹고 Operation·War Room 카드는 blur하지 않는다. Shell은 같은 60%
+    // terminal tint 위에 20px blur만 더해 글자 밀도가 높은 작업면의 판독성을 보존한다.
+    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / 60%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / 60%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / 60%);");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(18.5% 0.028 245 / 60%);");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(25% 0.05 248 / 60%);");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(21% 0.013 252 / 60%);");
+    expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
+    expect(theme).toContain("--glass-on-backdrop-panel: none;");
+    expect(theme).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
     // 유리를 받는 테마는 다크 3종뿐이고, 그 셋은 전부 필드를 루트 유리에 넘긴다.
     // 라이트는 게이트 밖이라 재료 자체가 없다(별칭 한 줄도 남기지 않는다).
     expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
@@ -1035,14 +1043,14 @@ describe("Instrument core design contract", () => {
     // 닫힌 게이트의 기본값은 곧 현행 불투명 계약이다 — floor가 따로 놀면 게이트를 닫아도 색이 갈린다.
     expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-tint-terminal);");
     expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);");
-    // 다크 3종은 틴트(83%)를 캔버스 대기광 위에 합성한 불투명 근사를 재료로 둔다.
-    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(18.1% 0.027 245);");
-    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(23.9% 0.047 247);");
-    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(20.5% 0.013 252);");
+    // Operation 패널용 floor는 60% panel tint를 캔버스 대기광 위에 sRGB alpha 합성한 불투명 근사다.
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);");
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);");
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);");
 
-    // 필드를 비우는 경로는 floor 계산값을 읽어 알파만 0으로 눕힌다.
-    expect(surface).toContain('getPropertyValue("--glass-tint-terminal-floor")');
-    expect(surface).toContain("readLiquidGlassPaneActive()) return glassFieldClearColor();");
+    // Operation은 floor, 독립 Shell은 terminal tint 계산값을 읽어 알파만 0으로 눕힌다.
+    expect(surface).toContain('surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor"');
+    expect(surface).toContain("return glassFieldClearColor(");
     // 검정 리터럴을 그대로 돌려주면 dim 셀 회귀가 재발한다 — 반환은 폴백 두 곳뿐이다.
     expect((surface.match(/return "rgba\(0, 0, 0, 0\)";/g) ?? []).length).toBe(2);
   });
@@ -2211,14 +2219,15 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
+    // Operation과 War Room 카드는 개수와 무관하게 blur하지 않고 같은 투명 면을 공유한다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
     expect(operationBlock).toContain("linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),");
     expect(operationBlock).toContain("var(--glass-underlay);");
-    // 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없다 — 재질은 명도가 아니라
-    // 창 위쪽 광원의 기울기가 말한다. 기하는 절대 좌표라 떠 있는 캡션을 가진 패널은 원점을
-    // 캡션 높이만큼 위로 밀어 창 전체가 한 줄기 빛을 나눠 받는다.
+    // 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 재질은 blur가 아니라 창 위쪽 광원의 기울기가
+    // 말한다. 기하는 절대 좌표라 떠 있는 캡션을 가진 패널은 원점을 캡션 높이만큼 위로 밀어
+    // 창 전체가 한 줄기 빛을 나눠 받는다.
     expect(operationBlock).toContain("radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),");
-    expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
+    expect(operationBlock).not.toContain("backdrop-filter:");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--glass-tint-caption);");
@@ -2234,13 +2243,27 @@ describe("Instrument core design contract", () => {
     // 터미널 필드·거터는 field 채널 하나로 만난다 — 다크+열림에서는 비어(transparent) 루트 유리
     // 한 장이 둘 다 칠하고, 라이트·닫힘에서는 xterm이 받는 불투명 실색을 그대로 칠한다.
     expect(panelBodyBlock).toContain("background: var(--glass-tint-field);");
-    // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
-    // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
+    // 레일 Shell 카드는 xterm과 같은 terminal tint를 칠하고 전용 blur를 항상 소비한다. Operation
+    // 안의 terminal-shell은 더 구체적인 규칙이 transparent/none으로 덮어 패널에 blur가 새지 않는다.
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
     expect(terminalShellBlock).toContain("padding: 0;");
     expect(terminalShellBlock).toContain("background: var(--glass-tint-terminal);");
+    expect(terminalShellBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
     const operationTerminalShellBlocks = components.match(/^\.canvas-operation-terminal \.terminal-shell \{[^}]*\}/gm) ?? [];
     expect(operationTerminalShellBlocks.some((block) => block.includes("padding: 0;"))).toBe(true);
+    const operationTerminalShellBlock = operationTerminalShellBlocks.find((block) => block.includes("background:")) ?? "";
+    expect(operationTerminalShellBlock).toContain("background: transparent;");
+    expect(operationTerminalShellBlock).toContain("backdrop-filter: none;");
+    // 확대 Shell도 slot 루트에서 terminal tint와 전용 blur를 한 번만 합성한다. Codex 등
+    // 다른 확대 표면은 공통 팝업 재질을 유지하고, 안쪽 terminal-shell은 투명·무블러다.
+    const expandedShellSlotBlock = components.match(/^\.expanded-surface-slot:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
+    expect(expandedShellSlotBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
+    expect(expandedShellSlotBlock).toContain("var(--glass-underlay);");
+    expect(expandedShellSlotBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
+    const expandedTerminalBlock = components.match(/^\.expanded-surface-slot \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
+    expect(expandedTerminalBlock).toContain("background: transparent;");
+    expect(expandedTerminalBlock).toContain("backdrop-filter: none;");
+    expect(expandedTerminalBlock).toContain("box-shadow: none;");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
@@ -2493,7 +2516,8 @@ describe("Instrument core design contract", () => {
 
     // xterm은 CSS 변수를 못 받으므로 계산값을 읽어 넘긴다 — 이 경로가 사라지면 터미널 필드가
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
-    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal")');
+    expect(surface).toContain("const rootStyle = getComputedStyle(document.documentElement);");
+    expect(surface).toContain('rootStyle.getPropertyValue("--glass-tint-terminal")');
     expect(surface).toContain("...base, background: resolvePanelSurface(");
 
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
@@ -3326,16 +3350,12 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).toContain("? canvas.viewport.zoom");
     expect(canvasZoom).toContain("formationView || triageActive || operationMaximized || operationCompanion");
     expect(canvasZoom).not.toContain("const effectiveZoom = panelMaximized");
-    // Cruise·Tactical·War Room 모두 visible 패널이 넷 이상이면 유리를 불투명 panel material로
-    // 축약한다. threshold와 스타일 모두 class 계약으로 고정해 :has() 기반 subtree 재판정을 추가하지 않는다.
-    expect(canvasZoom).toContain("const adaptivePanelMaterial = visiblePanelCount >= 4;");
-    expect(canvasZoom).not.toContain("visiblePanelCount >= 4 && !formationView && !triageActive");
-    expect(canvasZoom).toContain('adaptivePanelMaterial ? "is-panel-density-high" : ""');
-    const adaptiveMaterial = components.match(/\.operations-canvas\.is-panel-density-high \{[^}]*\}/)?.[0] ?? "";
-    expect(adaptiveMaterial).toContain("--glass-tint-panel: var(--surface-panel);");
-    expect(adaptiveMaterial).toContain("--glass-underlay: var(--surface-panel);");
-    expect(adaptiveMaterial).toContain("--glass-pane-light: transparent;");
-    expect(adaptiveMaterial).toContain("--glass-backdrop-panel: none;");
+    // Operation 재질은 visible 패널 수에 반응하지 않는다. Cruise·Tactical·War Room 카드가 모두
+    // 같은 60% 투명 면과 무블러 계약을 공유하며, 다패널 War Room의 LOD는 Map 전환만 맡는다.
+    expect(canvasZoom).not.toContain("visiblePanelCount");
+    expect(canvasZoom).not.toContain("adaptivePanelMaterial");
+    expect(canvasZoom).not.toContain("is-panel-density-high");
+    expect(components).not.toContain(".operations-canvas.is-panel-density-high");
     expect(source("canvas/coordinates.ts")).toContain("y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/coordinates.ts")).toContain("canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");

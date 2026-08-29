@@ -59,6 +59,16 @@ describe("resolved terminal field drives allowTransparency", () => {
     expect(terminalFieldIsTranslucent(cleared)).toBe(true);
   });
 
+  /* 독립 Shell은 blur가 선명한 terminal tint를 실제 배경으로 삼으므로, 투명 필드의 RGB도 그 tint를
+     써야 dim 셀만 panel floor 색으로 내려앉지 않는다. */
+  it("clears the shell field to the terminal tint while its blur is active", () => {
+    openGlassGate();
+    setTerminalTint("rgb(17, 24, 33)");
+    setTerminalFloor("rgb(7, 19, 29)");
+    expect(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)", "shell"))
+      .toBe("rgba(17, 24, 33, 0)");
+  });
+
   /* floor를 못 읽는 환경(토큰 부재·프로브 없음)은 완전 투명으로 물러난다 — 알파가 살아 있어야
      필드가 유리를 통과시키고, 색을 지어내지 않는다. */
   it("falls back to a fully transparent field when the floor token is missing", () => {

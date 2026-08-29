@@ -804,16 +804,12 @@ export function OperationsCanvas({
   // 캔버스 transform이 제거되는 모드에서 화면에 서는 패널은 net scale 1로 보정한다. 단, focus
   // layer 뒤의 peer는 기존 world geometry와 줌을 그대로 보존한다 — 숨은 xterm까지 fontSize/fit/PTY
   // resize를 fan-out하지 않기 위한 핵심 계약이다.
-  const visiblePanelCount = triageActive
-    ? pluginOperations.filter((operation) => !triageMinimizedSet.has(operation.id)).length
-    : theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).length;
-  const adaptivePanelMaterial = visiblePanelCount >= 4;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
   const companionSlotCount = visibleCompanionPanels.length + 1;
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""} ${focusFadeTransitionReady ? "" : "is-focus-fade-settling"} ${adaptivePanelMaterial ? "is-panel-density-high" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""} ${focusFadeTransitionReady ? "" : "is-focus-fade-settling"}`}
       onPointerDown={(event) => {
         // 메뉴 내부 클릭(캔버스 소유 메뉴는 <main> 자손이라 버블로 도달한다)은 실행 항목의
         // click을 살리기 위해 닫기 신호를 본내지 않는다 — data-canvas-blocker는 전파를 멈추지 않는다.

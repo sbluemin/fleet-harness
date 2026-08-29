@@ -1,3 +1,14 @@
+export const TERMINAL_TERM = "xterm-256color";
+
+export function withTerminalCapabilities(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    // xterm.js의 24-bit SGR 렌더링을 알리되, TERM은 널리 호환되는 terminfo 항목을 유지한다.
+    COLORTERM: "truecolor",
+    TERM: TERMINAL_TERM,
+  };
+}
+
 const CONSOLE_INTERNAL_ENV_KEYS = [
   "FLEET_CONSOLE_OWNER_ID",
   "FLEET_CONSOLE_OWNER_KIND",

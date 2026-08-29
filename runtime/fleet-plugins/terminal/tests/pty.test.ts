@@ -3,12 +3,29 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ensureNodePtySpawnHelpersExecutable } from "../server/shared/pty.js";
+import { createShellTerminalLaunchResolver, ensureNodePtySpawnHelpersExecutable } from "../server/shared/pty.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+describe("createShellTerminalLaunchResolver", () => {
+  it("advertises truecolor without replacing the compatible TERM entry", async () => {
+    const resolve = createShellTerminalLaunchResolver({
+      cwd: "/work",
+      env: { COLORTERM: "256color", SHELL: "/bin/sh" } as NodeJS.ProcessEnv,
+      platform: "linux",
+    });
+
+    const spec = await resolve();
+
+    expect(spec.env).toMatchObject({
+      COLORTERM: "truecolor",
+      TERM: "xterm-256color",
+    });
+  });
 });
 
 describe("ensureNodePtySpawnHelpersExecutable", () => {

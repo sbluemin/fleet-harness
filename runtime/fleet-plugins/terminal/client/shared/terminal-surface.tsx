@@ -36,6 +36,8 @@ export interface TerminalSurfaceProps {
   /** 티켓 요청 본문에 얹을 추가 필드(전역 Shell의 첫 기동 Theater 등). */
   readonly ticketFields?: Readonly<Record<string, string>>;
   readonly wsPath: string;
+  /** 독립 Shell은 terminal tint를, Operation 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
+  readonly surface?: "panel" | "shell";
   readonly theme?: TerminalThemeId;
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
@@ -183,7 +185,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -316,7 +318,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       await waitForTerminalFallbackFonts();
       if (disposed) return;
 
-      const terminalTheme = terminalThemeFor(activeTheme);
+      const terminalTheme = terminalThemeFor(activeTheme, surface);
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
@@ -538,7 +540,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       resizeObserver?.disconnect();
       cleanupMountedTerminal?.();
     };
-  }, [operationId, ticketPath, wsPath]);
+  }, [operationId, surface, ticketPath, wsPath]);
 
   // 활성 전환 시 이미 마운트된 xterm에 포커스를 다시 주고 기존 contract대로 bottom following을 재개한다.
   // keyboard request는 동일 Operation 재선택 시 active 불변을, input-ready epoch는 비동기 마운트 갭을 대응한다.
@@ -631,7 +633,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     const container = containerRef.current;
     if (!terminal || !container) return;
     const applyTerminalTheme = () => {
-      const terminalTheme = terminalThemeFor(activeTheme);
+      const terminalTheme = terminalThemeFor(activeTheme, surface);
       // 뷰포트 인라인 배경이 allowTransparency보다 먼저 자리를 잡아야 한다 — 이 옵션이 꺼지면
       // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
       // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
@@ -643,7 +645,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     applyTerminalTheme();
     // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
     // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
-  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane]);
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -762,8 +764,9 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
 /* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
    필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
    - 다크 + 게이트 열림: xterm 배경은 알파 0으로 비우고(RGB는 아래 glassFieldClearColor 참조),
-     필드·거터를 컨테이너(.canvas-operation-terminal/.terminal-shell)의 --glass-tint-terminal
-     한 겹이 칠한다. 다크는 minimumContrastRatio=1이라 투명 배경이 대비 보정에 관여하지 않는다.
+     Agent Operation은 .canvas-operation 루트의 panel tint를, 독립 Shell은 .terminal-shell/expanded
+     slot의 terminal tint와 blur를 필드·거터 한 겹으로 공유한다. 다크는 minimumContrastRatio=1이라
+     투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
      라이트(Whites)는 언제나 이쪽이다. 테마 극성 자체가 유리 게이트의 넷째 닫힘 조건이라
@@ -775,10 +778,17 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
    xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
    생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
-export function resolvePanelSurface(theme: TerminalThemeId, fallback: string): string {
+export function resolvePanelSurface(
+  theme: TerminalThemeId,
+  fallback: string,
+  surface: "panel" | "shell" = "panel",
+): string {
   if (typeof document === "undefined") return fallback;
-  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) return glassFieldClearColor();
-  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
+  const rootStyle = getComputedStyle(document.documentElement);
+  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) {
+    return glassFieldClearColor(surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor", rootStyle);
+  }
+  const resolved = rootStyle.getPropertyValue("--glass-tint-terminal").trim();
   if (!resolved) return fallback;
   return normalizeCssColorToRgba(resolved) ?? fallback;
 }
@@ -790,11 +800,15 @@ export function resolvePanelSurface(theme: TerminalThemeId, fallback: string): s
    화면 전체를 지우는 뷰포트 사각형만 알파를 보존하므로, 필드는 투명한데 dim 셀만 불투명해진다.
    `rgba(0,0,0,0)`을 넘기면 그 셀이 순수 검정으로 칠해진다 — Claude Code가 diff 거터를 dim으로
    찍는 것이 실측으로 확인됐고(PTY 원시 바이트), 유리 위에 검정 블록으로 드러났다.
-   그래서 RGB에는 유리 유효색의 불투명 근사(--glass-tint-terminal-floor)를 싣는다: 알파 0이라
-   필드 자체는 그대로 유리를 통과시키고, 알파가 1로 강제되는 dim 사각형만 필드와 같은 색이 된다.
-   유리는 뒤에 오는 것에 따라 유효색이 흔들리므로 이 값은 일치가 아니라 근사다. */
-function glassFieldClearColor(): string {
-  const floor = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal-floor").trim();
+   그래서 Operation은 유리 유효색의 불투명 근사(--glass-tint-terminal-floor)를, 독립 Shell은
+   실제 terminal tint를 RGB에 싣는다: 알파 0이라 필드 자체는 뒤의 면과 blur를 통과시키고,
+   알파가 1로 강제되는 dim 사각형만 각 면과 가까운 색이 된다. 유리는 뒤에 오는 것에 따라
+   유효색이 흔들리므로 이 값은 일치가 아니라 근사다. */
+function glassFieldClearColor(
+  token: "--glass-tint-terminal-floor" | "--glass-tint-terminal",
+  rootStyle: CSSStyleDeclaration = getComputedStyle(document.documentElement),
+): string {
+  const floor = rootStyle.getPropertyValue(token).trim();
   // 빈 값을 프로브에 넘기면 fillStyle 할당이 무시되어 직전 색이 그대로 읽힌다 — 여기서 끊는다.
   if (!floor) return "rgba(0, 0, 0, 0)";
   const channels = /^rgba?\(([^)]+)\)$/i.exec(normalizeCssColorToRgba(floor) ?? "")?.[1]?.split(",");
@@ -859,9 +873,9 @@ export function readLiquidGlassPaneActive(): boolean {
   return backdrop !== "" && backdrop !== "none";
 }
 
-function terminalThemeFor(theme: TerminalThemeId): ITheme {
+function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell"): ITheme {
   const base = baseTerminalThemeFor(theme);
-  return { ...base, background: resolvePanelSurface(theme, base.background ?? "") };
+  return { ...base, background: resolvePanelSurface(theme, base.background ?? "", surface) };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

@@ -39,6 +39,7 @@ function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
       operationId={SHELL_SURFACE_ID}
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}
+      surface="shell"
       theme={ctx.theme ?? "instrument"}
       active={ctx.focused}
       zoom={1}

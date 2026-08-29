@@ -33,7 +33,7 @@ import { resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
-import { stripConsoleInternalEnv } from "../shared/launch-env.js";
+import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
@@ -106,7 +106,6 @@ export function isGatewayLaunchEffortAllowed(
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
-const TERMINAL_TERM = "xterm-256color";
 const CONSOLE_ENTRY_PATH = fileURLToPath(import.meta.url);
 const HOOK_ENTRY_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".mjs", ".mts", ".ts", ".tsx"]);
 const require = createRequire(import.meta.url);
@@ -435,13 +434,12 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
 }
 
 function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
-  return {
+  return withTerminalCapabilities({
     ...stripConsoleInternalEnv(env),
     ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
-    TERM: TERMINAL_TERM,
     // 배경을 질의하지 않는 agent CLI를 위한 고전적 테마 극성 힌트 — spawn 시점 값에 고정된다.
     ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),
-  };
+  });
 }
 
 function resolveOptionalPackage(id: string): string | undefined {

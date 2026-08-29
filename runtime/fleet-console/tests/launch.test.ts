@@ -101,6 +101,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
         FLEET_CONSOLE_SESSION_ID: "session-a",
         INIT_CWD: "/work/project",
         PWD: "/work/project",
+        COLORTERM: "truecolor",
         TERM: "xterm-256color",
       }),
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
@@ -589,6 +590,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       FLEET_CONSOLE_SESSION_ID: "session-a",
       INIT_CWD: "/work/project",
       PWD: "/work/project",
+      COLORTERM: "truecolor",
       TERM: "xterm-256color",
     });
   });
@@ -607,7 +609,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       args: [],
       cwd: "/work",
     });
-    expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
+    expect(spec.env).toMatchObject({ COLORTERM: "truecolor", TERM: "xterm-256color" });
     expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
     expect(spec.env.INIT_CWD).toBeUndefined();
   });
@@ -630,7 +632,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       args: [],
       cwd: "/work",
     });
-    expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
+    expect(spec.env).toMatchObject({ COLORTERM: "truecolor", TERM: "xterm-256color" });
     expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
     expect(spec.env.INIT_CWD).toBeUndefined();
   });
