@@ -360,6 +360,92 @@ describe("AgentChatRegistry — composer capability catalog", () => {
   });
 });
 
+describe("AgentChatRegistry — maintenance command lane", () => {
+  /**
+   * 정비 명령은 턴이 아니다. 턴 문법(회전하는 노드·경과 시계·흐르는 글)이 전부 "모델이 생각하고
+   * 있다"를 말하는데, 이 셋은 세션 상태를 즉시 바꾸는 동작이고 둘은 모델을 아예 부르지 않는다.
+   */
+  it("draws /compact as a ledger row with the child's own numbers, never as a turn", async () => {
+    const home = tempDir("chat-home-");
+    const { factory, sends } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "status", status: "compacting" },
+          { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 62400, post_tokens: 18100, duration_ms: 3200 } },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 3300, result: "Compacted." },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-compact", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    await drainTurn(registry, "op-compact");
+
+    expect(sends).toEqual(["/compact"]);
+    const seen = kinds(events);
+    // 말풍선도 턴도 서지 않는다.
+    expect(seen).not.toContain("dispatch");
+    expect(seen).not.toContain("turn-start");
+    expect(seen).not.toContain("turn-end");
+    expect(seen).toContain("command");
+    expect(seen).toContain("command-progress");
+    const end = events.map((entry) => entry.event).find((event) => event.kind === "command-end");
+    expect(end).toEqual({ kind: "command-end", ok: true, compact: { before: 62400, after: 18100, durationMs: 3200 } });
+    await registry.disposeAll();
+  });
+
+  it("empties the ledger when the child confirms the context is gone", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "OK" }] },
+      {
+        messages: [
+          { type: "conversation_reset" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-clear", () => freshSeedFor(home));
+    session.send("say something worth remembering");
+    await drainTurn(registry, "op-clear");
+
+    session.send("/clear");
+    await drainTurn(registry, "op-clear");
+
+    // 재접속한 브라우저가 받는 것이 곧 화면의 기록이다. 자식이 잊은 대화가 여기 남아 있으면
+    // 그것을 읽고 이어 묻는 사람에게 화면이 거짓말을 한다.
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    expect(kinds(replayed).filter((kind) => kind === "dispatch")).toEqual([]);
+    expect(kinds(replayed)).toContain("cleared");
+    await registry.disposeAll();
+  });
+
+  it("keeps an unsupported command on the ordinary turn path", async () => {
+    // 덱이 세우지 않을 뿐, 손으로 친 것을 막지는 않는다. 그때는 평범한 턴이다 — 우리가 그
+    // 결말을 정비 줄로 그릴 근거가 없다.
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "usage" }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-usage", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/usage");
+    await drainTurn(registry, "op-usage");
+
+    expect(kinds(events)).toContain("dispatch");
+    expect(kinds(events)).not.toContain("command");
+    await registry.disposeAll();
+  });
+});
+
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");

@@ -3727,7 +3727,7 @@ describe("Effort track interaction grammar", () => {
     expect(chat).toMatch(/\.agent-chat-composer-ultracode-token \{\s*animation: none;\s*background-image: none;\s*color: var\(--apex-ink\);\s*-webkit-text-fill-color: var\(--apex-ink\);/);
   });
 
-  it("pins the chat command-provenance grammar — a locally run command is not an Answer", () => {
+  it("pins the chat maintenance-lane grammar - a command is not a turn", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const block = (selector: string): string => {
       const start = chat.indexOf(`${selector} {`);
@@ -3735,35 +3735,37 @@ describe("Effort track interaction grammar", () => {
       return chat.slice(start, chat.indexOf("}", start));
     };
 
-    // 슬래시 명령의 출력은 모델의 문장이 아니다. 그 사실은 상태도 위치도 사용자 식별도 아닌
-    // **출처**이므로 새 색 채널을 만들지 않고 시스템 줄 계열에 얹는다 — 신호 토큰은 턴 상태가,
-    // --id-cerulean은 사용자 디스패치가 이미 점유하고 있다.
-    const result = block(".agent-chat-command-result");
-    for (const owned of ["--aurora", "--coral", "--positive", "--warn", "--id-cerulean", "--apex"]) {
-      expect(result, owned).not.toContain(owned);
+    // 정비 명령은 턴 문법을 하나도 빌리지 않는다. 그 문법 전체가 "모델이 생각하고 있다"를
+    // 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예 부르지 않는다.
+    const row = block(".agent-chat-command-row");
+    expect(row).toContain("color: var(--text-tertiary);");
+    for (const turnish of ["animation", "--id-cerulean", "--apex"]) {
+      expect(row, turnish).not.toContain(turnish);
     }
 
-    // 명령 이름만 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻
-    // (부를 수 있는 좌표). 몸통은 잉크 3티어에 남아 brass가 채움으로 번지지 않는다.
-    const mark = block(".agent-chat-command-mark");
-    expect(mark).toContain("color: var(--brass-ink);");
-    const output = block(".agent-chat-command-output");
-    expect(output).toContain("color: var(--text-secondary);");
-    expect(output).not.toContain("--brass");
+    // 상태는 점 하나가 지고 **모션이 없다** — 맥동은 이 원장에서 "모델이 살아 있다"는 뜻이다.
+    const dot = block(".agent-chat-command-dot");
+    expect(dot).not.toContain("animation");
+    expect(chat).toContain(".agent-chat-command-row.is-running .agent-chat-command-dot { background: var(--aurora); }");
+    expect(chat).toContain(".agent-chat-command-row.is-failed .agent-chat-command-dot { background: var(--coral); }");
 
-    // 초기화 이음매는 경계다 — 색이 아니라 두 hairline 규칙이 그것을 말한다.
-    const seam = block(".agent-chat-reset-seam");
-    expect(seam).toContain("color: var(--text-tertiary);");
-    for (const signal of ["--aurora", "--coral", "--positive", "--warn", "--apex", "--brass"]) {
-      expect(seam, signal).not.toContain(signal);
-    }
-    expect(chat).toMatch(/\.agent-chat-reset-seam::before,\s*\n\.agent-chat-reset-seam::after \{/);
+    // 이름만 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻.
+    expect(block(".agent-chat-command-name")).toContain("color: var(--brass-ink);");
+    const detail = block(".agent-chat-command-detail");
+    expect(detail).toContain("color: var(--text-tertiary);");
+    expect(detail).not.toContain("--brass");
 
-    // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다 —
-    // 지금 눈이 멈춘 자리가 목록에서 가장 또렷해야 한다는 규칙이 이 행에서도 지켜져야 한다.
+    // 되찾은 문맥은 여러 줄을 나란히 놓고 읽는 수다.
+    expect(block(".agent-chat-command-elapsed")).toContain("font-variant-numeric: tabular-nums;");
+
+    // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다.
     const hint = block(".agent-chat-deck-hint.is-console");
     expect(hint).toContain("var(--brass-ink)");
     expect(chat).toContain(".agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {");
+
+    // 퇴역한 표면이 되살아나지 않게 못박는다 — 명령 결과는 Answer 옆이 아니라 자기 줄에 선다.
+    expect(chat).not.toMatch(/^\.agent-chat-command-result \{/m);
+    expect(chat).not.toMatch(/^\.agent-chat-reset-seam \{/m);
   });
 
   it("pins the chat start-view arming grammar", () => {

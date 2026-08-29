@@ -272,36 +272,16 @@ export function AgentChatComposer({
    * 자식만 할 수 있다). Console이 하는 일은 확인을 끼우고 화면 기록에 이음매를 긋는 쪽이며,
    * 그 이음매는 자식이 보내 주는 `conversation_reset`이 그린다.
    */
-  const runConsoleCommand = React.useCallback(async (command: ChatConsoleCommand): Promise<string> => {
+  const runConsoleCommand = React.useCallback((command: ChatConsoleCommand): string => {
     switch (command.target) {
       case "context":
         onOpenContextMeter();
         return t("terminal.chat.consoleContextOpened");
-      case "rename": {
-        const title = command.argument;
-        if (title.length === 0) return t("terminal.chat.consoleRenameNeedsName");
-        try {
-          await context.operations.rename(context.operationId, title);
-          return t("terminal.chat.consoleRenamed", { title });
-        } catch {
-          return t("terminal.chat.consoleRenameFailed");
-        }
-      }
-      case "model":
-        return t("terminal.chat.consoleCoordinateFixed", {
-          axis: t("terminal.chat.consoleAxisModel"),
-          value: coordinates.model ?? t("terminal.chat.consoleCoordinateUnknown"),
-        });
-      case "effort":
-        return t("terminal.chat.consoleCoordinateFixed", {
-          axis: t("terminal.chat.consoleAxisEffort"),
-          value: coordinates.effort ?? t("terminal.chat.consoleCoordinateUnknown"),
-        });
       // `clear`는 send()가 확인을 거쳐 자식에게 직접 보낸다.
       default:
         return "";
     }
-  }, [context.operationId, context.operations, coordinates.model, coordinates.effort, onOpenContextMeter, t]);
+  }, [onOpenContextMeter, t]);
 
   // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
@@ -313,7 +293,7 @@ export function AgentChatComposer({
     const routed = readConsoleCommand(text, catalog);
     if (routed && routed.target !== "clear") {
       setFailed(false);
-      setConsoleNotice(await runConsoleCommand(routed));
+      setConsoleNotice(runConsoleCommand(routed));
       setDraft("");
       inputRef.current?.focus();
       return;

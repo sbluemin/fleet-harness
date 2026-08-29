@@ -158,20 +158,13 @@ describe("readResolvedTokenRanges", () => {
 });
 
 describe("readConsoleCommand", () => {
-  // 인자를 받는 Console 항목. 공유 픽스처의 행 수는 다른 검사의 기대치라 여기서만 늘린다.
-  const WITH_RENAME: AgentChatCatalog = {
-    ...CATALOG,
-    commands: [
-      ...CATALOG.commands,
-      { name: "rename", description: "Rename the current conversation", argumentHint: "[name]", console: "rename" },
-    ],
-  };
-
   it("routes a Console-owned command with its argument", () => {
-    expect(readConsoleCommand("/rename ledger audit", WITH_RENAME)).toEqual({
-      target: "rename",
-      argument: "ledger audit",
-      name: "rename",
+    // 오늘 지원 목록에 인자를 받는 Console 명령은 없지만, 인자를 실어 나르는 것은 이 함수의
+    // 계약이다 — 되면 안 되는 것은 인자가 있다는 이유로 판정이 흔들리는 것이다.
+    expect(readConsoleCommand("/clear everything", CATALOG)).toEqual({
+      target: "clear",
+      argument: "everything",
+      name: "clear",
     });
   });
 
@@ -191,12 +184,12 @@ describe("readConsoleCommand", () => {
   it("says nothing before the catalog arrives", () => {
     // 카탈로그를 모르는 동안 지시를 가로채면, 아직 분류를 모르는 명령이 자식에게 닿지 못한 채
     // 조용히 삼켜진다. 모를 때는 평소대로 자식에게 보낸다.
-    expect(readConsoleCommand("/rename x", null)).toBeNull();
+    expect(readConsoleCommand("/clear", null)).toBeNull();
   });
 
   it("ignores prose and paths", () => {
-    expect(readConsoleCommand("rename the operation", WITH_RENAME)).toBeNull();
-    expect(readConsoleCommand("/Users/sbluemin/notes.md", WITH_RENAME)).toBeNull();
+    expect(readConsoleCommand("clear the log", CATALOG)).toBeNull();
+    expect(readConsoleCommand("/Users/sbluemin/notes.md", CATALOG)).toBeNull();
   });
 });
 

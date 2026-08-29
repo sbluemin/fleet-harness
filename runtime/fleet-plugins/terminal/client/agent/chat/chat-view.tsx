@@ -599,10 +599,56 @@ function SessionCoordinate({
   );
 }
 
-/** 이 턴을 연 명령의 이름. 문면이 곧 출처이므로 같은 문면에서 다시 읽는다. */
-function commandName(turn: AgentChatTurn): string {
-  const match = /^\/([A-Za-z0-9:_-]+)/.exec(turn.dispatch?.text ?? "");
-  return match ? `/${match[1]}` : "/";
+/** 토큰 수를 계기와 같은 자로 접는다 — 두 표면이 다른 자를 쓰면 같은 압축이 다른 크기로 읽힌다. */
+function formatCompactTokens(tokens: number): string {
+  return tokens >= 1_000_000 ? `${(tokens / 1_000_000).toFixed(1)}M` : `${Math.round(tokens / 1000)}k`;
+}
+
+/**
+ * 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
+ *
+ * 진행 표시는 상태 채널(aurora)이 지고 모션은 두지 않는다 — 흐르는 물결은 이 원장에서 "모델이
+ * 말하고 있다"는 뜻이라, 모델을 부르지 않는 동작에 붙이면 그 어휘가 거짓이 된다.
+ */
+function ChatCommandRow({
+  command,
+  state,
+  language,
+}: {
+  readonly command: NonNullable<AgentChatTurn["command"]>;
+  readonly state: AgentChatTurn["state"];
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const running = state === "working";
+  const failed = state === "error";
+  const compact = command.compact;
+  const detail = running
+    ? command.phase === "compacting"
+      ? t("terminal.chat.commandCompacting")
+      : t("terminal.chat.commandRunning")
+    : compact
+      // 되찾은 문맥은 자식이 센 수 그대로다. 우리가 앞뒤를 따로 재면 계기와 다른 값을 말한다.
+      ? compact.after === undefined
+        ? t("terminal.chat.commandCompactedFrom", { before: formatCompactTokens(compact.before) })
+        : t("terminal.chat.commandCompacted", {
+          before: formatCompactTokens(compact.before),
+          after: formatCompactTokens(compact.after),
+        })
+      : command.summary ?? (failed ? t("terminal.chat.commandFailed") : t("terminal.chat.commandDone"));
+  return (
+    <p
+      className={`agent-chat-command-row${running ? " is-running" : ""}${failed ? " is-failed" : ""}`}
+      {...(running ? { role: "status" } : {})}
+    >
+      <span className="agent-chat-command-dot" aria-hidden="true" />
+      <span className="agent-chat-command-name">/{command.name}</span>
+      <span className="agent-chat-command-detail">{detail}</span>
+      {compact?.durationMs !== undefined ? (
+        <span className="agent-chat-command-elapsed">{(compact.durationMs / 1000).toFixed(1)}s</span>
+      ) : null}
+    </p>
+  );
 }
 
 function ChatTurn({
@@ -643,6 +689,10 @@ function ChatTurn({
     ? nextContextBefore - turn.contextBefore
     : undefined;
   const hasSettledWork = !working && (view.ledger.length > 0 || view.changes.length > 0);
+  // 정비 명령은 대화가 아니다. 말풍선도 턴 노드도 경과 시계도 세우지 않는다 — 그 문법 전체가
+  // "모델이 생각하고 있다"를 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예
+  // 부르지 않는다. 한 줄이 지시와 진행과 결말을 함께 진다.
+  if (turn.command) return <ChatCommandRow command={turn.command} state={turn.state} language={language} />;
   return (
     <>
       {turn.dispatch ? (
@@ -711,38 +761,18 @@ function ChatTurn({
                 language={language}
               />
             ) : null}
-            {/* 명령 턴의 결말은 Answer가 아니다. 자식이 그것을 로컬에서 실행하고 결과를 평범한
-                assistant 메시지로 돌려주므로 도착한 조각만으로는 모델의 문장과 구별되지 않는데,
-                Answer 문법으로 그리면 화면이 "모델이 이렇게 답했다"고 말하게 된다. 색 채널을 새로
-                만들지 않는다 — 신호 토큰은 턴 상태가, brass는 위치가, --id-cerulean은 사용자
-                식별이 이미 점유했다. "로컬에서 실행됨"은 상태도 위치도 식별도 아닌 **출처**이고,
-                그 자리는 이미 있다(.agent-chat-sys). */}
             {!working && view.answer !== null ? (
-              turn.origin === "command" ? (
-                <div className="agent-chat-sys agent-chat-command-result">
-                  <span className="agent-chat-command-mark">
-                    {t("terminal.chat.commandRanLocally", { name: commandName(turn) })}
-                  </span>
-                  <span className="agent-chat-command-output">{view.answer}</span>
-                </div>
-              ) : (
-                <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
-                  {hasSettledWork
-                    ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
-                    : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
-                  <StreamedMarkdown
-                    className="agent-chat-answer-body markdown-body"
-                    text={view.answer}
-                    streaming={false}
-                    language={language}
-                  />
-                </div>
-              )
-            ) : null}
-            {/* 문맥이 끊긴 자리. 문장이 아니라 기록의 단절이므로 이음매로 긋는다 — 위쪽 대화는
-                화면에 남지만 자식은 그것을 더 이상 읽지 않는다. */}
-            {turn.reset === true ? (
-              <p className="agent-chat-reset-seam">{t("terminal.chat.contextResetSeam")}</p>
+              <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
+                {hasSettledWork
+                  ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
+                  : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
+                <StreamedMarkdown
+                  className="agent-chat-answer-body markdown-body"
+                  text={view.answer}
+                  streaming={false}
+                  language={language}
+                />
+              </div>
             ) : null}
           </div>
         </div>

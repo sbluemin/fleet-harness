@@ -31,7 +31,7 @@ import {
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
-  isChatCommandDispatch,
+  readChatCommandLaneName,
   readJobKind,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
@@ -396,6 +396,11 @@ class AgentChatSession {
    * 하나이고, 중지도 여기를 닫는다.
    */
   private turnOpen = false;
+  /**
+   * 지금 도는 정비 명령. 값이 있으면 이 왕복은 턴이 아니라 원장의 정비 줄로 그려지고,
+   * 자식이 흘리는 조각들은 턴 내용이 아니라 그 줄의 진행·결말로 읽힌다.
+   */
+  private commandLane: { readonly name: string } | null = null;
   /** 이 세션이 연 누적 턴 수. 저널이 앞을 버려도 재접속 receipt가 비교할 단조 좌표다. */
   private observedTurns = 0;
   /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
@@ -1698,7 +1703,70 @@ class AgentChatSession {
    * 다시 흐르기 시작한 내용이 새 턴을 연다. 후자가 백그라운드 작업이 끝나 자식이 모델을 다시
    * 깨운 자리이며, 그것을 앞 턴에 이어 붙이면 사용자가 읽은 답이 갈아치워진다.
    */
+  /**
+   * 정비 줄이 도는 동안의 조각들.
+   *
+   * 무엇을 취하는지가 곧 이 레인의 계약이다: 진행(압축)과 결말만 취하고, 자식이 함께 흘리는
+   * 대화 조각(text·tool·ask)은 버린다. 그것들이 이 줄에 실려도 그릴 자리가 없고, 턴으로
+   * 새어 나가면 정비 동작 하나가 대화 한 턴으로 둔갑한다.
+   */
+  private ingestCommandLane(event: AgentChatStreamEvent): void {
+    // 잡 축은 레인과 무관하게 산다 — 백그라운드 작업은 문맥이 아니라 프로세스라, 정비 중에
+    // 끝난 잡의 결말이 사라지면 그 작업은 영영 도는 것으로 남는다.
+    this.trackJob(event);
+    if (event.kind === "job" || event.kind === "job-progress" || event.kind === "job-end" || event.kind === "jobs") {
+      this.push(event);
+      return;
+    }
+    if (event.kind === "command-progress") {
+      this.push(event);
+      return;
+    }
+    if (event.kind === "command-end") {
+      // 자식이 스스로 낸 결말(압축 경계·압축 실패). `result`보다 먼저 오며 숫자를 싣는다.
+      this.endCommandLane({
+        ok: event.ok,
+        ...(event.summary === undefined ? {} : { summary: event.summary }),
+        ...(event.compact === undefined ? {} : { compact: event.compact }),
+      });
+      return;
+    }
+    if (event.kind === "reset") {
+      this.clearJournal();
+      return;
+    }
+    if (event.kind === "turn-end") {
+      // 숫자 있는 결말이 앞서 왔다면 이 줄은 이미 닫혔다 — `endCommandLane`이 멱등이라
+      // 여기서 다시 불러도 두 번 그리지 않는다.
+      this.endCommandLane({
+        ok: event.ok,
+        ...(event.answer === undefined ? {} : { summary: event.answer }),
+      });
+      return;
+    }
+    if (event.kind === "error") this.push(event);
+  }
+
+  /**
+   * 이 세션의 기록을 통째로 비운다. `/clear`가 자식의 문맥을 끊었을 때만 불린다.
+   *
+   * 저널을 남기고 이음매만 긋는 선택지도 있었지만, 그러면 자식이 기억하지 못하는 대화가 화면에
+   * 계속 남아 그것을 읽고 이어 묻는 사람에게 거짓말을 한다. `seq`는 계속 자란다 — 브라우저가
+   * 그 좌표로 중복을 거르므로 되돌리면 이미 받은 이벤트가 다시 그려진다.
+   */
+  private clearJournal(): void {
+    this.journal = [];
+    this.push({ kind: "cleared", at: Date.now() });
+  }
+
   private ingest(event: AgentChatStreamEvent): void {
+    // 정비 줄이 도는 동안 자식이 흘리는 것은 대화가 아니라 그 명령의 진행이다. 여기서 갈라
+    // 두지 않으면 `text` 하나가 턴을 열어(opensChatTurn), 사고하지 않는 동작이 사고하는
+    // 것처럼 그려진다 — 이 레인이 존재하는 이유가 바로 그 그림을 없애는 것이다.
+    if (this.commandLane) {
+      this.ingestCommandLane(event);
+      return;
+    }
     if (event.kind === "turn-end") {
       // 중지가 표시해 둔 결말은 여기서 소진된다. 열린 턴이 있으면 그 턴이 이 결말의 주인이고,
       // 없으면 이미 닫은 턴의 것이므로 그리지 않고 줄 서 있던 디스패치만 깨운다.
@@ -1903,25 +1971,29 @@ class AgentChatSession {
     await this.awaitTurnClose();
     // 기다리는 동안 세션이 접혔거나 중지가 눌렸다면 이 턴은 시작하지 않는다.
     if (this.disposed || stopped()) return;
-    this.push({
-      kind: "dispatch",
-      text,
-      at: Date.now(),
-      ...(isChatCommandDispatch(text) ? { origin: "command" as const } : {}),
-    });
+    // 정비 명령은 말풍선도 턴도 세우지 않는다 — 자기 줄 하나가 지시와 진행과 결말을 함께 진다.
+    const lane = readChatCommandLaneName(text);
+    if (lane === null) {
+      this.push({ kind: "dispatch", text, at: Date.now() });
+    } else {
+      this.commandLane = { name: lane };
+      this.push({ kind: "command", name: lane, at: Date.now() });
+    }
     // 활동 보고가 먼저다. 실패하면 자식을 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
     // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.
     if (!this.seed.reportActivity(true)) {
       this.push({ kind: "error", code: "chat_activity_unavailable" });
-      this.push({ kind: "turn-end", ok: false });
+      this.endCommandLane({ ok: false });
+      if (lane === null) this.push({ kind: "turn-end", ok: false });
       return;
     }
-    this.openTurn({ dispatched: true });
+    if (lane === null) this.openTurn({ dispatched: true });
     try {
       const session = await this.ensureSession();
       // 세션을 여는 동안 중지가 눌렸다면 이 턴은 이미 아무도 기다리지 않는다. 자식은 그대로 두고
       // 턴만 접는다 — 세션은 다음 메시지의 것이다.
       if (stopped()) {
+        this.endCommandLane({ ok: false });
         this.closeTurn({ stopped: true });
         return;
       }
@@ -1929,6 +2001,7 @@ class AgentChatSession {
       // 끝낸다). 폐기된 세션의 `send()`는 조용히 버려지므로 기다릴 결말도 생기지 않는다 —
       // 그 자리에 대기를 걸면 이 세션의 큐 전체가 영영 풀리지 않는다.
       if (this.session !== session) {
+        this.endCommandLane({ ok: false });
         this.closeTurn({ ok: false });
         return;
       }
@@ -1936,19 +2009,51 @@ class AgentChatSession {
         this.awaitingTurn = resolve;
       });
       // 문맥 내역은 보내기 **직전**에 묻는다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
-      this.requestContextSnapshot(session, "start");
+      // 정비 명령은 이 스냅숏을 건너뛴다 — 그 셋은 문맥을 **바꾸는** 쪽이라 시작 시점의 값이
+      // 남을 자리가 없고, 끝난 뒤에 다시 묻는 것이 유일하게 뜻이 있는 측정이다.
+      if (lane === null) this.requestContextSnapshot(session, "start");
       session.send(text);
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
       this.turnReachedChild = true;
       await settled;
+      // 문맥을 바꾼 명령의 결과는 계기에 곧바로 실린다 — 압축이 얼마를 되찾았는지, 초기화 뒤
+      // 창이 얼마나 비었는지는 지금 물어야 알 수 있다.
+      if (lane !== null && this.session === session) this.requestContextSnapshot(session, "end");
     } catch {
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
+      this.endCommandLane({ ok: !stopped() ? false : true });
       if (stopped()) this.closeTurn({ stopped: true });
       else {
         this.push({ kind: "error", code: "chat_turn_failed" });
         this.closeTurn({ ok: false });
       }
     }
+  }
+
+  /**
+   * 도는 정비 줄을 닫는다. 이미 닫혔으면 아무 일도 하지 않는다.
+   *
+   * 이 자리가 `closeTurn`과 나란히 불리는 이유: 두 레인은 배타적이라 어느 한쪽만 열려 있고,
+   * 실패 경로는 둘 중 무엇이 열려 있었는지 알 필요 없이 양쪽을 닫으면 된다.
+   */
+  private endCommandLane(end: {
+    readonly ok: boolean;
+    readonly summary?: string;
+    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+  }): void {
+    if (!this.commandLane) return;
+    this.commandLane = null;
+    this.push({
+      kind: "command-end",
+      ok: end.ok,
+      ...(end.summary === undefined ? {} : { summary: end.summary }),
+      ...(end.compact === undefined ? {} : { compact: end.compact }),
+    });
+    this.seed.reportActivity(false);
+    const waiting = this.awaitingTurn;
+    this.awaitingTurn = null;
+    waiting?.();
+    this.releaseTurnCloseWaiters();
   }
 
   /**

@@ -5,7 +5,7 @@ import {
   chatEventsFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
-  isChatCommandDispatch,
+  readChatCommandLaneName,
   summarizeToolInput,
   summarizeToolResult,
   type AgentChatStreamEvent,
@@ -891,48 +891,61 @@ describe("chat job detail", () => {
   });
 })
 
-describe("locally executed slash commands", () => {
-  it("maps conversation_reset — the vendor sends it as its own type, not a system subtype", () => {
+describe("maintenance commands", () => {
+  it("maps conversation_reset - the vendor sends it as its own type, not a system subtype", () => {
     // system 아래 두면 subtype switch의 default로 떨어져 조용히 사라진다. 그 침묵이 곧
     // "화면은 대화를 보여 주는데 자식은 그것을 잊은" 상태다.
     const events = chatEventsFromSdkMessage({ type: "conversation_reset", session_id: "s1" });
-    expect(events).toHaveLength(1);
-    expect(events[0]?.kind).toBe("reset");
+    expect(events).toEqual([{ kind: "reset", at: expect.any(Number) }]);
   });
 
-  it("marks a slash dispatch as command origin", () => {
-    expect(isChatCommandDispatch("/rename ledger audit")).toBe(true);
-    expect(isChatCommandDispatch("/clear")).toBe(true);
-    expect(isChatCommandDispatch("/__remote-workflow")).toBe(true);
+  it("reads the compacting status as progress, not as a turn", () => {
+    const events = chatEventsFromSdkMessage({ type: "system", subtype: "status", status: "compacting", session_id: "s1" });
+    expect(events).toEqual([{ kind: "command-progress", phase: "compacting" }]);
   });
 
-  it("does not mistake a path or prose for a command", () => {
-    // 두 번째 `/`가 나오면 명령이 아니다 — 덱이 `/`를 깨우는 규칙과 같은 모양이라, 경로를 친
-    // 지시가 "실행됨" 문법으로 그려지지 않는다.
-    expect(isChatCommandDispatch("/Users/sbluemin/notes.md is stale")).toBe(false);
-    expect(isChatCommandDispatch("look at /tmp")).toBe(false);
-    expect(isChatCommandDispatch("/")).toBe(false);
-    expect(isChatCommandDispatch("")).toBe(false);
+  it("ignores the status message that only says the child left a phase", () => {
+    // `status: null`은 압축이 끝났다는 뜻이 아니라 단계가 없다는 뜻이다. 결말은 경계가 말한다.
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "status", status: null, session_id: "s1" })).toEqual([]);
   });
 
-  it("carries the origin through transcript replay too", () => {
-    // 재생과 라이브가 갈리면 같은 턴이 새로고침 전후로 다른 문법으로 그려진다.
-    const line = JSON.stringify({
-      type: "user",
-      timestamp: "2026-08-29T00:00:00.000Z",
-      message: { role: "user", content: [{ type: "text", text: "/usage" }] },
+  it("carries the compaction numbers the child measured", () => {
+    // 되찾은 문맥은 자식이 센 수 그대로다 - 앞뒤를 우리가 따로 재면 계기와 다른 값을 말한다.
+    const events = chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      session_id: "s1",
+      compact_metadata: { trigger: "manual", pre_tokens: 62400, post_tokens: 18100, duration_ms: 3200 },
     });
-    const events = chatEventsFromTranscriptLine(line);
-    expect(events).toEqual([expect.objectContaining({ kind: "dispatch", text: "/usage", origin: "command" })]);
+    expect(events).toEqual([{
+      kind: "command-end",
+      ok: true,
+      compact: { before: 62400, after: 18100, durationMs: 3200 },
+    }]);
   });
 
-  it("leaves an ordinary prompt without an origin", () => {
-    const line = JSON.stringify({
-      type: "user",
-      timestamp: "2026-08-29T00:00:00.000Z",
-      message: { role: "user", content: [{ type: "text", text: "summarize the ledger" }] },
+  it("reports a failed compaction with the child's own reason", () => {
+    const events = chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "failed",
+      compact_error: "Not enough messages to compact.",
+      session_id: "s1",
     });
-    const events = chatEventsFromTranscriptLine(line);
-    expect(events[0]).not.toHaveProperty("origin");
+    expect(events).toEqual([{ kind: "command-end", ok: false, summary: "Not enough messages to compact." }]);
+  });
+
+  it("routes only the supported commands into the ledger lane", () => {
+    // 지원 목록이 선별이라, 이 판정은 정책표 하나에서만 나와야 한다.
+    expect(readChatCommandLaneName("/compact")).toBe("compact");
+    expect(readChatCommandLaneName("/clear")).toBe("clear");
+    expect(readChatCommandLaneName("/reload-skills")).toBe("reload-skills");
+    // Console이 답하므로 자식에게 가지 않는다 - 원장에 줄을 갖지 않는다.
+    expect(readChatCommandLaneName("/context")).toBeNull();
+    // 지원하지 않는 것과 평범한 문장은 모두 평범한 턴이다.
+    expect(readChatCommandLaneName("/usage")).toBeNull();
+    expect(readChatCommandLaneName("/Users/sbluemin/notes.md is stale")).toBeNull();
+    expect(readChatCommandLaneName("compact the ledger")).toBeNull();
   });
 });

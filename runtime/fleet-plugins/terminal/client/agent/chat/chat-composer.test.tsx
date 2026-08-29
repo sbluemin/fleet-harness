@@ -372,11 +372,10 @@ describe("chat panel composer", () => {
   describe("Console-owned slash commands", () => {
     const CATALOG: AgentChatCatalog = {
       commands: [
-        { name: "rename", description: "Rename the current conversation", argumentHint: "[name]", console: "rename" },
         { name: "clear", description: "Start a new session with empty context", argumentHint: "", console: "clear" },
+        { name: "compact", description: "Free up context by summarizing", argumentHint: "" },
         { name: "context", description: "Show current context usage", argumentHint: "", console: "context" },
-        { name: "model", description: "Set the AI model", argumentHint: "<model>", console: "model" },
-        { name: "compact", description: "Summarize to reclaim context", argumentHint: "" },
+        { name: "reload-skills", description: "Pick up skills changed on disk", argumentHint: "" },
       ],
       skills: [],
       agents: [],
@@ -412,34 +411,8 @@ describe("chat panel composer", () => {
       await act(async () => { submit(); });
     }
 
-    it("renames the Operation instead of sending /rename to the child", async () => {
-      mount();
-      await primeCatalog();
-      await act(async () => { type("/rename ledger audit"); });
-      await act(async () => { submit(); });
-      expect(renames).toEqual(["ledger audit"]);
-      // 자식은 이 문면을 본 적이 없어야 한다 — 보내면 자식의 세션 제목만 바뀌고 Console 제목은 그대로다.
-      expect(messages).toEqual([]);
-    });
 
-    it("says what is missing when /rename carries no name", async () => {
-      mount();
-      await primeCatalog();
-      await act(async () => { type("/rename"); });
-      await completeThenSubmit();
-      expect(renames).toEqual([]);
-      expect(messages).toEqual([]);
-      expect(container?.textContent).toContain("Type a name after /rename");
-    });
 
-    it("reports a rename that did not take", async () => {
-      renameFails = true;
-      mount();
-      await primeCatalog();
-      await act(async () => { type("/rename x"); });
-      await act(async () => { submit(); });
-      expect(container?.textContent).toContain("Could not rename");
-    });
 
     it("opens the context meter instead of asking the child", async () => {
       mount();
@@ -450,14 +423,6 @@ describe("chat panel composer", () => {
       expect(messages).toEqual([]);
     });
 
-    it("answers /model from the Operation coordinate rather than the child", async () => {
-      mount();
-      await primeCatalog();
-      await act(async () => { type("/model opus"); });
-      await act(async () => { submit(); });
-      expect(messages).toEqual([]);
-      expect(container?.textContent).toContain("fixed when this Operation opened");
-    });
 
     it("arms /clear once and only sends on the second press", async () => {
       mount();
@@ -494,10 +459,10 @@ describe("chat panel composer", () => {
       // 카탈로그를 모르는 동안 가로채면, 분류를 아직 모르는 지시가 자식에게 닿지 못한 채 삼켜진다.
       catalogPayload = null;
       mount();
-      await act(async () => { type("/rename ledger audit"); });
+      await act(async () => { type("/context"); });
       await act(async () => { submit(); });
-      expect(renames).toEqual([]);
-      expect(messages).toEqual(["/rename ledger audit"]);
+      expect(meterOpens).toBe(0);
+      expect(messages).toEqual(["/context"]);
     });
   });
 });

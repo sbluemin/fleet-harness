@@ -114,55 +114,58 @@
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
 
-/* 로컬에서 실행된 슬래시 명령의 출력. 시스템 줄 계열을 그대로 쓴다 — "모델의 문장이 아니다"는
-   상태도 위치도 사용자 식별도 아닌 **출처**이고, 이 원장에서 출처를 지는 자리가 여기다.
-   가운데 정렬 구분선(::before/::after)은 물린다: 이 줄은 경계가 아니라 내용을 싣는다. */
-.agent-chat-command-result {
+/* 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
+   턴 문법(회전하는 노드·경과 시계·흐르는 글)은 전부 "모델이 생각하고 있다"를 말한다. 이 셋은
+   세션 상태를 즉시 바꾸는 동작이고 둘은 모델을 아예 부르지 않으므로, 그 어휘를 하나도 빌리지
+   않는다 — 대신 사용자 디스패치와 같은 축(왼쪽 정렬 한 줄)에 조용히 앉는다. */
+.agent-chat-command-row {
+  display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  text-align: left;
+  margin: 0;
+  padding: 2px 0;
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
 }
 
-.agent-chat-command-result::before { content: none; }
+/* 상태는 점 하나가 진다. 도는 동안 aurora(작업 중), 끝나면 중립, 실패는 coral —
+   원장의 턴 노드가 쓰는 것과 같은 신호 어휘이되 **모션이 없다**: 맥동은 이 표면에서
+   "모델이 살아 있다"는 뜻이라, 모델을 부르지 않는 동작에 붙이면 그 어휘가 거짓이 된다. */
+.agent-chat-command-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+  transform: translateY(-1px);
+}
 
-/* 명령 이름은 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻이다
+.agent-chat-command-row.is-running .agent-chat-command-dot { background: var(--aurora); }
+.agent-chat-command-row.is-failed .agent-chat-command-dot { background: var(--coral); }
+
+/* 이름은 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻
    (부를 수 있는 좌표). 상태나 몸통 채움에는 쓰지 않는다. */
-.agent-chat-command-mark {
+.agent-chat-command-name {
   flex: none;
   color: var(--brass-ink);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 
-.agent-chat-command-output {
+.agent-chat-command-detail {
   min-width: 0;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
+  color: var(--text-tertiary);
   overflow-wrap: anywhere;
 }
 
-/* 문맥이 끊긴 자리. 시스템 줄과 같은 이음매 문법이되 자기 이름을 갖는다 — 이 줄은 알림이
-   아니라 원장의 **경계**이고, 위쪽이 더 이상 문맥이 아님을 말하는 유일한 표시다. */
-.agent-chat-reset-seam {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: var(--space-2) 0 0;
-  color: var(--text-tertiary);
-  font-family: var(--agent-chat-font);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+.agent-chat-command-row.is-failed .agent-chat-command-detail { color: var(--coral-ink); }
 
-.agent-chat-reset-seam::before,
-.agent-chat-reset-seam::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--hairline-strong);
+/* 소요 시간은 오른쪽 끝에 붙어 자릿수가 흔들리지 않는다 — 압축이 얼마나 걸렸는지는 여러 줄을
+   나란히 놓고 비교하게 되는 값이다. */
+.agent-chat-command-elapsed {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.

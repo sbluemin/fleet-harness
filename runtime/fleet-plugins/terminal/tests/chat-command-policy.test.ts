@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_COMMAND_POLICY,
   classifyChatCommand,
+  isChatCommandLane,
   isClassifiedChatCommand,
 } from "../server/agent-api/chat-command-policy.js";
 
@@ -59,18 +60,29 @@ describe("chat command policy", () => {
     expect(stale).toEqual([]);
   });
 
+  it("supports exactly four commands and hides the rest", () => {
+    // 지원 목록은 선별이다. 늘어나면 이 줄이 red가 되고, 그때 늘어난 이름이 이 표면에서 무슨
+    // 뜻인지·끝까지 책임질 수 있는지를 사람이 한 번 답해야 한다.
+    const supported = Object.entries(CHAT_COMMAND_POLICY)
+      .filter(([, rule]) => rule.disposition !== "hidden")
+      .map(([name]) => name)
+      .sort();
+    expect(supported).toEqual(["clear", "compact", "context", "reload-skills"]);
+  });
+
   it("gives a Console target to exactly the commands Console answers", () => {
     const routed = Object.entries(CHAT_COMMAND_POLICY)
       .filter(([, rule]) => rule.disposition === "console")
       .map(([name, rule]) => [name, rule.target] as const)
       .sort(([a], [b]) => a.localeCompare(b));
-    expect(routed).toEqual([
-      ["clear", "clear"],
-      ["context", "context"],
-      ["effort", "effort"],
-      ["model", "model"],
-      ["rename", "rename"],
-    ]);
+    expect(routed).toEqual([["clear", "clear"], ["context", "context"]]);
+  });
+
+  it("puts a ledger lane on exactly the commands that reach the child", () => {
+    // `/context`는 지원되지만 자식에게 가지 않으므로 원장에 줄을 갖지 않는다. `/clear`는
+    // Console이 중개하지만 문맥을 비우는 것은 자식뿐이라 간다 — 두 축은 직교한다.
+    const lane = Object.keys(CHAT_COMMAND_POLICY).filter((name) => isChatCommandLane(name)).sort();
+    expect(lane).toEqual(["clear", "compact", "reload-skills"]);
   });
 
   it("keeps a target off every command that is not Console's", () => {
@@ -80,26 +92,12 @@ describe("chat command policy", () => {
     }
   });
 
-  it("hides only what cannot work here, and says so for each", () => {
-    const hidden = Object.entries(CHAT_COMMAND_POLICY)
-      .filter(([, rule]) => rule.disposition === "hidden")
-      .map(([name]) => name)
-      .sort();
-    expect(hidden).toEqual([
-      "__remote-workflow",
-      "agents",
-      "color",
-      "config",
-      "extra-usage",
-      "fast",
-      "heapdump",
-    ]);
-  });
-
-  it("falls open for a name it has never seen", () => {
-    // fail-open이 계약이다. 모르는 것을 숨기면 자식이 새로 얻은 기능이 아무 신호 없이 사라지고,
-    // 그 침묵은 잘못 통과시키는 것보다 알아채기 어렵다.
-    expect(classifyChatCommand("some-future-command")).toEqual({ disposition: "passthrough" });
+  it("does not stand up a name it has never seen", () => {
+    // 지원 목록이 선별이므로 모르는 내장 명령은 세우지 않는다. 이것이 카탈로그의 fail-open과
+    // 모순되지 않는 이유: 표에 없는 이름은 카탈로그가 내장 명령이 아니라 **스킬**로 읽어 그대로
+    // 세운다. 사라지는 것은 우리가 아는 내장 명령 중 고르지 않은 것뿐이다.
+    expect(classifyChatCommand("some-future-command")).toEqual({ disposition: "hidden" });
     expect(isClassifiedChatCommand("some-future-command")).toBe(false);
+    expect(isChatCommandLane("some-future-command")).toBe(false);
   });
 });

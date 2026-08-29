@@ -30,12 +30,6 @@ export type ChatCommandDisposition =
  * 한 가지다. 서버가 문장을 실으면 i18n이 서버로 새고, 화면이 그 문장을 다시 해석해야 한다.
  */
 export type ChatCommandConsoleTarget =
-  /** 이 Operation의 모델 좌표. 세션을 열 때 한 번 정해지고 채팅 중에는 움직이지 않는다. */
-  | "model"
-  /** 이 Operation의 추론 강도 좌표. 모델과 같은 규율. */
-  | "effort"
-  /** Operation 제목. Console이 소유하며 캔버스 제목·사이드바가 그 값을 그린다. */
-  | "rename"
   /** 컴포저 바의 문맥 계기. 같은 `getContextUsage()` 값을 이미 그리고 있다. */
   | "context"
   /** 문맥 초기화. 자식과 화면 기록을 **함께** 끊어야 하므로 Console이 중개한다. */
@@ -45,17 +39,45 @@ export interface ChatCommandRule {
   readonly disposition: ChatCommandDisposition;
   /** `disposition === "console"`일 때만 있다. */
   readonly target?: ChatCommandConsoleTarget;
+  /**
+   * 이 명령은 자식에게 닿고, 그 왕복이 **턴이 아니라 정비 줄**로 그려진다.
+   *
+   * `disposition`과 직교한다: `/clear`는 Console이 중개하지만(확인·기록 삭제) 문맥을 실제로
+   * 비우는 것은 자식뿐이라 여전히 닿고, `/context`는 통과처럼 보여도 자식에게 가지 않는다
+   * (같은 수를 Console이 이미 들고 있다). 그래서 "누가 소유하는가"와 "자식에게 가는가"를
+   * 한 필드로 합칠 수 없다.
+   */
+  readonly lane?: true;
 }
 
 /**
- * 내장 명령 24개의 처분.
+ * 내장 명령 24개의 처분. 지원하는 것은 넷뿐이다.
  *
- * 표에 없는 내장 명령은 `passthrough`로 떨어진다 — fail-open이다. 모르는 것을 숨기면 자식이 새로
- * 얻은 기능이 아무 신호 없이 사라지는데, 그 침묵은 잘못 통과시키는 것보다 고치기 어렵다.
- * 대신 분류되지 않았다는 사실 자체를 카탈로그가 실어 보내 눈에 보이게 한다.
+ * 지원 목록이 **선별**이므로 표에 없는 이름은 세우지 않는다(`classifyChatCommand`의 기본값이
+ * `hidden`이다). 그것이 카탈로그의 fail-open과 모순되지 않는 이유: 카탈로그는 표에 없는 이름을
+ * 내장 명령이 아니라 **스킬**로 읽어 그대로 세운다. 즉 사라지는 것은 "우리가 아는 내장 명령 중
+ * 고르지 않은 것"뿐이고, 자식이 새로 얻은 것은 스킬 칸에서 살아남는다.
  */
 export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Object.freeze({
-  // ── 숨김 ──────────────────────────────────────────────────────────────────
+  // ── 지원 ──────────────────────────────────────────────────────────────────
+  // 이 넷만 Console 채팅의 어휘다. 고른 기준은 "여기서 뜻이 있고, 여기서 끝까지 책임질 수 있는가"다 —
+  // 셋은 이 세션의 상태(문맥·기록·능력 목록)를 다루고, 그 상태는 Console도 함께 그리고 있다.
+  /** 문맥을 비운다. 자식의 기억과 화면의 기록을 **함께** 끊어야 하므로 Console이 중개한다. */
+  clear: { disposition: "console", target: "clear", lane: true },
+  /** 대화를 요약해 문맥을 되찾는다. 자식이 수행하고, 그 진행을 Console이 원장에 그린다. */
+  compact: { disposition: "passthrough", lane: true },
+  /** 문맥 내역. 같은 `getContextUsage()` 값을 컴포저 바의 계기가 이미 그린다. */
+  context: { disposition: "console", target: "context" },
+  /** 디스크의 스킬을 다시 읽는다. 함께 오는 `commands_changed`가 덱의 카탈로그를 무효화한다. */
+  "reload-skills": { disposition: "passthrough", lane: true },
+
+  // ── 그 외 전부 ────────────────────────────────────────────────────────────
+  // 나머지는 세우지 않는다. 하나씩 나쁜 이유가 있어서가 아니라, 이 표면이 그것들을 끝까지
+  // 책임지지 못하기 때문이다: Console이 겹쳐 쥔 축을 뒤에서 바꾸거나(model·effort), 여기 없는
+  // 것을 조작하거나(color·fast), 계정·브라우저로 나가거나(usage-credits·design*), 자식의
+  // 진단 도구이거나(heapdump·doctor류), 답하려고만 존재한다(agents·extra-usage).
+  // 각 줄의 주석은 2026-08-29 실측에서 자식이 실제로 한 말이다.
+
   /** 이중 언더스코어 내부 명령 — 세션 환경이 실어 준 워크플로 스크립트를 돌린다. */
   "__remote-workflow": { disposition: "hidden" },
   /** 자식이 직접 거절한다: "Fast mode is not available in the Agent SDK". */
@@ -70,51 +92,46 @@ export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Ob
   config: { disposition: "hidden" },
   /** 자식의 JS 힙을 ~/Desktop에 쓴다. 진단 도구이지 채팅 동작이 아니다. */
   heapdump: { disposition: "hidden" },
-
-  // ── Console이 소유 ────────────────────────────────────────────────────────
-  /**
-   * 자식이 제시하는 후보에 게이트웨이 모델이 하나도 없고(실측: sonnet·opus·haiku·fable·…),
-   * Console의 모델 표시는 payload에서 읽는 읽기 전용 라벨이다. 자식에게 현재 모델을 되묻는 API가
-   * 계약에 없으므로 바꿔도 라벨은 옛 값을 계속 말한다.
-   */
-  model: { disposition: "console", target: "model" },
+  /** 후보에 게이트웨이 모델이 없고, Console의 모델 라벨은 payload에서 읽는 읽기 전용이다. */
+  model: { disposition: "hidden" },
   /** "Set effort level to high (this session only)" — 강도 라벨도 같은 payload에서 읽는다. */
-  effort: { disposition: "console", target: "effort" },
-  /** 자식은 정말 잊는다. 화면 기록이 그대로 남으면 그 기록이 거짓말을 한다. */
-  clear: { disposition: "console", target: "clear" },
-  /** 실행되지만 채팅 Operation 제목으로 갈 길이 없다 — provider 제목 반영은 PTY 경로 전용이다. */
-  rename: { disposition: "console", target: "rename" },
-  /** 같은 `getContextUsage()` 값을 컴포저 바의 문맥 계기가 이미 그린다. */
-  context: { disposition: "console", target: "context" },
-
-  // ── 통과 ──────────────────────────────────────────────────────────────────
-  /** 자식이 소유한 정당한 동작. 문맥 계기가 compactAt을 이미 알고 있어 결과가 화면에 반영된다. */
-  compact: { disposition: "passthrough" },
-  /** 디스크의 스킬을 다시 읽는다. 함께 오는 `commands_changed`가 덱의 카탈로그를 무효화한다. */
-  "reload-skills": { disposition: "passthrough" },
-  /** 실제 쿼터 텍스트. 우현 레일의 Quota 패널과 겹치지만 읽기 전용이라 어긋날 상태가 없다. */
-  usage: { disposition: "passthrough" },
-  /** 대화 내용에 대한 자식의 요약. */
-  recap: { disposition: "passthrough" },
-  /** 자식의 작업 방식을 정한다 — Console이 겹쳐 쥔 축이 없다. */
-  goal: { disposition: "passthrough" },
-  /** 세션 기록을 분석해 보고서를 만든다. */
-  insights: { disposition: "passthrough" },
-  /** 자식이 붙은 MCP 서버를 말한다. */
-  mcp: { disposition: "passthrough" },
-  /** 계정 크레딧 관리. 브라우저를 여는 부작용은 자식의 것이고 Console 상태와 겹치지 않는다. */
-  "usage-credits": { disposition: "passthrough" },
-  /** Design 프로젝트 접근 동의 — 계정 축. */
-  design: { disposition: "passthrough" },
-  "design-consent": { disposition: "passthrough" },
-  "design-revoke": { disposition: "passthrough" },
-  /** 사용 기록으로 팀 온보딩 가이드를 만든다. 자식이 소유한 생성 작업. */
-  "team-onboarding": { disposition: "passthrough" },
+  effort: { disposition: "hidden" },
+  /** 실행은 되지만 채팅 Operation 제목으로 갈 길이 없다. Console에는 이름 바꾸기가 이미 세 곳 있다. */
+  rename: { disposition: "hidden" },
+  /** 쿼터 보고. 우현 레일의 Quota 패널이 같은 것을 상시로 그린다. */
+  usage: { disposition: "hidden" },
+  /** 계정 크레딧 관리 — 브라우저를 연다. */
+  "usage-credits": { disposition: "hidden" },
+  /** 세션 기록 분석 보고서. 비용이 크고 Console에 세울 자리가 없다. */
+  insights: { disposition: "hidden" },
+  /** 자식이 붙은 MCP 서버 관리 — TUI의 대화형 흐름이다. */
+  mcp: { disposition: "hidden" },
+  /** 한 줄 요약 생성. */
+  recap: { disposition: "hidden" },
+  /** 조건이 찰 때까지 계속 일하게 하는 지시 — 평문 프롬프트로 말하는 것이 이 표면의 문법이다. */
+  goal: { disposition: "hidden" },
+  /** Design 프로젝트 접근 동의 — 계정 축이고 브라우저로 나간다. */
+  design: { disposition: "hidden" },
+  "design-consent": { disposition: "hidden" },
+  "design-revoke": { disposition: "hidden" },
+  /** 사용 기록으로 팀 온보딩 가이드를 만든다. */
+  "team-onboarding": { disposition: "hidden" },
 });
 
-/** 표에 없으면 통과다. 이유는 `CHAT_COMMAND_POLICY`의 fail-open 주석에 있다. */
+/**
+ * 이 명령이 **원장에 자기 줄을 갖는가.** 자식에게 가서 무언가를 하고 오는 것들이다.
+ *
+ * 이 줄들은 턴이 아니다. 턴 문법(회전하는 노드·경과 시계·흐르는 글)은 "모델이 생각하고 있다"를
+ * 말하는데, 이것들은 세션의 상태를 즉시 바꾸는 정비 동작이라 그 말이 거짓이 된다. 그래서 원장에
+ * 서되 자기 어휘로 선다.
+ */
+export function isChatCommandLane(name: string): boolean {
+  return CHAT_COMMAND_POLICY[name]?.lane === true;
+}
+
+/** 표에 없으면 숨긴다. 지원 목록이 선별이라, 모르는 이름은 지원하지 않는 것과 같다. */
 export function classifyChatCommand(name: string): ChatCommandRule {
-  return CHAT_COMMAND_POLICY[name] ?? { disposition: "passthrough" };
+  return CHAT_COMMAND_POLICY[name] ?? { disposition: "hidden" };
 }
 
 /** 이 판본이 분류를 알고 있는 이름인가. 카탈로그가 미분류를 세어 보고할 때 쓴다. */

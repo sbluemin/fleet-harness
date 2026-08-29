@@ -91,15 +91,20 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | {
-      readonly kind: "dispatch";
-      readonly text: string;
-      readonly at?: number;
-      /** 슬래시 명령이었다 — 자식이 로컬 실행했고 결과는 모델의 문장이 아니다. */
-      readonly origin?: "command";
-    }
-  /** 자식이 문맥을 비웠다. 원장에 이음매로 서서 위쪽이 더 이상 문맥이 아님을 말한다. */
+  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
+  /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
+  | { readonly kind: "cleared"; readonly at?: number }
+  /** 정비 명령 하나가 시작했다. 턴이 아니므로 사고를 그리지 않는다. */
+  | { readonly kind: "command"; readonly name: string; readonly at?: number }
+  | { readonly kind: "command-progress"; readonly phase: "compacting" }
+  | {
+      readonly kind: "command-end";
+      readonly ok: boolean;
+      readonly summary?: string;
+      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 실리지 않으며, 완성 text 이벤트가 정정 앵커다. */
@@ -221,17 +226,40 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       return { seq: entry.seq, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
     case "dispatch":
       if (typeof event.text !== "string") return null;
+      return { seq: entry.seq, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
+    case "reset":
+      return { seq: entry.seq, event: { kind: "reset", ...atField(event.at) } };
+    case "cleared":
+      return { seq: entry.seq, event: { kind: "cleared", ...atField(event.at) } };
+    case "command":
+      if (typeof event.name !== "string" || event.name.length === 0) return null;
+      return { seq: entry.seq, event: { kind: "command", name: event.name, ...atField(event.at) } };
+    case "command-progress":
+      if (event.phase !== "compacting") return null;
+      return { seq: entry.seq, event: { kind: "command-progress", phase: "compacting" } };
+    case "command-end": {
+      const compact = event.compact;
+      const readCompact = (): { before: number; after?: number; durationMs?: number } | null => {
+        if (!compact || typeof compact !== "object") return null;
+        const row = compact as Record<string, unknown>;
+        if (typeof row.before !== "number") return null;
+        return {
+          before: row.before,
+          ...(typeof row.after === "number" ? { after: row.after } : {}),
+          ...(typeof row.durationMs === "number" ? { durationMs: row.durationMs } : {}),
+        };
+      };
+      const numbers = readCompact();
       return {
         seq: entry.seq,
         event: {
-          kind: "dispatch",
-          text: event.text,
-          ...atField(event.at),
-          ...(event.origin === "command" ? { origin: "command" as const } : {}),
+          kind: "command-end",
+          ok: event.ok !== false,
+          ...(typeof event.summary === "string" && event.summary.length > 0 ? { summary: event.summary } : {}),
+          ...(numbers ? { compact: numbers } : {}),
         },
       };
-    case "reset":
-      return { seq: entry.seq, event: { kind: "reset", ...atField(event.at) } };
+    }
     case "turn-start":
       return { seq: entry.seq, event: { kind: "turn-start", ...atField(event.at) } };
     case "text":
@@ -529,12 +557,20 @@ export interface AgentChatTurn {
    */
   readonly contextBefore?: number;
   /**
-   * 이 턴을 연 문면이 슬래시 명령이었다. 자식은 그것을 모델에게 넘기지 않고 로컬에서 실행하므로,
-   * 이 턴의 결말은 **모델의 답변이 아니라 명령의 출력**이고 그렇게 그려져야 한다.
+   * 이 항목은 대화의 턴이 아니라 **정비 명령**이다. 있으면 원장은 턴 문법을 통째로 쓰지 않는다.
+   *
+   * 별도 목록이 아니라 턴 목록에 함께 사는 이유는 순서다 — 명령과 대화는 한 시간축 위에서
+   * 일어나고, 두 목록으로 나누면 그 순서를 화면이 다시 맞춰야 한다.
    */
-  readonly origin?: "command";
-  /** 이 턴에서 자식이 문맥을 비웠다. 원장은 이 턴 뒤에 이음매를 긋는다. */
-  readonly reset?: true;
+  readonly command?: {
+    readonly name: string;
+    /** 지금 지나는 단계. 압축만이 시간이 걸린다. */
+    readonly phase?: "compacting";
+    /** 자식이 돌려준 한 줄. */
+    readonly summary?: string;
+    /** 압축이 실제로 되찾은 문맥. */
+    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+  };
 }
 
 /** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
@@ -634,9 +670,9 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
  * 값을 좁혀 두는 이유는 화면이 이 값으로 **행동**을 고르기 때문이다 — 서버가 새 좌표를 늘렸는데
  * 화면이 그것을 모르면, 열린 문 없이 이름만 있는 행이 선다. 파서가 아는 값만 통과시킨다.
  */
-export type ChatCommandConsoleTarget = "model" | "effort" | "rename" | "context" | "clear";
+export type ChatCommandConsoleTarget = "context" | "clear";
 
-const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["model", "effort", "rename", "context", "clear"];
+const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["context", "clear"];
 
 /** 컴포저 덱이 세우는 항목 하나. 서버 `AgentChatCatalogEntry`의 브라우저 사본이다. */
 export interface AgentChatCatalogEntry {
@@ -791,19 +827,51 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         state: "working",
         toolCount: 0,
         draft: "",
-        // 출처는 턴이 진다. 명령의 출력은 자식이 평범한 assistant 메시지로 돌려주므로 도착한
-        // 조각만으로는 가릴 수 없고, 이 턴을 연 문면이 그것을 아는 유일한 자리다.
-        ...(event.origin === "command" ? { origin: "command" as const } : {}),
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
-    case "reset": {
-      // 이음매는 **문맥을 비운 그 턴**에 붙는다. 다음 턴에 붙이면 아직 오지 않은 지시가 초기화를
-      // 예고하게 되고, 별도 항목으로 세우면 재생에서 순서가 흔들린다.
-      const turns = state.turns;
-      const last = turns.at(-1);
-      if (!last) return state;
-      return { ...state, turns: [...turns.slice(0, -1), { ...last, reset: true as const }] };
+    // 자식의 초기화 신호 자체는 화면이 그리지 않는다 — 서버가 그것을 받아 저널을 비우고
+    // `cleared`를 내며, 화면은 그 결과만 따른다. 두 곳에서 각자 지우면 재생과 라이브가 갈린다.
+    case "reset":
+      return state;
+    case "cleared":
+      // 자식이 잊은 대화를 화면이 계속 보여 주면 그 위쪽을 읽는 사람에게 거짓말이 된다.
+      // 잡은 남긴다 — 백그라운드 작업은 문맥이 아니라 살아 있는 프로세스다.
+      return { ...state, turns: [], context: null };
+    case "command": {
+      const turn: AgentChatTurn = {
+        dispatch: { text: `/${event.name}`, ...(event.at !== undefined ? { at: event.at } : {}) },
+        items: [],
+        state: "working",
+        toolCount: 0,
+        draft: "",
+        command: { name: event.name },
+      };
+      return { ...state, turns: [...settleLastTurn(state), turn] };
+    }
+    case "command-progress": {
+      const last = state.turns.at(-1);
+      if (!last?.command) return state;
+      return {
+        ...state,
+        turns: [...state.turns.slice(0, -1), { ...last, command: { ...last.command, phase: event.phase } }],
+      };
+    }
+    case "command-end": {
+      const last = state.turns.at(-1);
+      if (!last?.command) return state;
+      return {
+        ...state,
+        turns: [...state.turns.slice(0, -1), {
+          ...last,
+          state: event.ok ? "done" : "error",
+          command: {
+            name: last.command.name,
+            ...(event.summary === undefined ? {} : { summary: event.summary }),
+            ...(event.compact === undefined ? {} : { compact: event.compact }),
+          },
+        }],
+      };
     }
     case "turn-start": {
       // 백그라운드 작업이 끝나면 SDK가 모델을 다시 깨워 두 번째 응답을 낸다(실측: 하나의
