@@ -24,6 +24,8 @@ import {
 } from "./codex-host.js";
 import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
+import { fetchSearch } from "./codex/api.js";
+import { openCodexRailPanel } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
 
@@ -79,6 +81,26 @@ export const codexPanel: RailPanelDescriptor = {
   defaultWidth: 420,
   icon: () => <CodexIcon />,
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} requestExtraWidth={ctx.requestExtraWidth} />,
+  /**
+   * 팔레트에서 위키 항목을 찾는 길. 예전에는 코어 팔레트가 Codex를 알아보고 자기 손으로
+   * 항목을 받아 왔다 — 그 자리를 지우면서 이 provider로 내려왔다. 선언하지 않으면 팔레트에
+   * Codex 항목이 아예 나오지 않는다(코어는 이제 Codex를 이름으로 알지 못한다).
+   */
+  search: async ({ query, theaterId, limit, signal, language }) => {
+    if (!theaterId) return [];
+    const response = await fetchSearch(theaterId, { q: query, limit, signal });
+    const t = getT(language);
+    return response.entries.map((entry) => ({
+      id: entry.id,
+      title: entry.title || entry.id,
+      subtitle: entry.tags.length > 0 ? entry.tags.join(" · ") : t("rail.codex.title"),
+      activate: () => {
+        // 팔레트에서 열면 패널이 아직 서 있지 않을 수 있다 — 공유 링크와 같은 자리다.
+        openCodexRailPanel();
+        openCodexReader({ kind: "entry", entryId: entry.id });
+      },
+    }));
+  },
 };
 
 // ─── Components ───────────────────────────────────────────────────────────────

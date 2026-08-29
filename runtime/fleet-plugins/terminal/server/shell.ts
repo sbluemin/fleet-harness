@@ -17,7 +17,13 @@ type TicketBody = {
  * 전부 이 하나를 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도 죽고,
  * 복원할 휴면 상태라는 것 자체가 없다.
  */
-const GLOBAL_SHELL_SESSION_ID = "shell:console";
+/**
+ * `shell:` 접두를 쓰지 않는다. 세션 매니저는 그 접두를 "상태 미유지 theater-shell"의 표식으로
+ * 읽어, 마지막 소켓이 떨어지고 4초 뒤 PTY를 정리한다. 전역 셸은 정반대 약속을 지고 있다 —
+ * 레일에서 잠깐 치워 둔 셸은 돌아왔을 때 그 자리에 있어야 하고, cwd 고정도 함께 살아 있어야
+ * 한다. 접두 하나가 그 약속을 4초짜리로 만든다.
+ */
+const GLOBAL_SHELL_SESSION_ID = "console-shell";
 const GLOBAL_SHELL_OPERATION_TYPE = "shell";
 
 export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {

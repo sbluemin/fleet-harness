@@ -1,9 +1,12 @@
-import type { ReactNode } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 
+import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
+import { useConsoleLocale } from "./i18n/index.js";
 import { usePluginRegistry } from "./plugin-registry.js";
+import { getState, subscribe } from "./store.js";
 
 /**
  * 플러그인의 화면 없는 상주 기여를 마운트해 두는 자리.
@@ -20,6 +23,9 @@ export function PersistentPluginComponents() {
   const { persistentComponents } = usePluginRegistry();
   // 값은 쓰지 않는다 — 주소 변화로 이 층을 다시 그리게 하는 것이 목적이다.
   useLocation();
+  const language = useConsoleLocale();
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
+  const context = useMemo<PersistentComponentContext>(() => ({ language, theme }), [language, theme]);
 
   if (persistentComponents.length === 0) return null;
 
@@ -27,13 +33,19 @@ export function PersistentPluginComponents() {
     <>
       {persistentComponents.map((descriptor) => (
         <PluginErrorBoundary key={descriptor.id}>
-          <PersistentComponent render={descriptor.render} />
+          <PersistentComponent render={descriptor.render} context={context} />
         </PluginErrorBoundary>
       ))}
     </>
   );
 }
 
-function PersistentComponent({ render }: { readonly render: () => ReactNode }) {
-  return <>{render()}</>;
+function PersistentComponent({
+  render,
+  context,
+}: {
+  readonly render: (ctx: PersistentComponentContext) => ReactNode;
+  readonly context: PersistentComponentContext;
+}) {
+  return <>{render(context)}</>;
 }

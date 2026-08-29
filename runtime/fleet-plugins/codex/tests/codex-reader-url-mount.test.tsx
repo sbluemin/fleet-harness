@@ -13,14 +13,14 @@ describe("Codex reader addressing", () => {
     expect(codex, "the codex plugin is missing").toBeDefined();
 
     const persistent = codex!.persistentComponents ?? [];
-    expect(persistent.map((entry) => entry.id)).toContain("codex-reader-url");
+    expect(persistent.map((entry) => entry.id)).toContain("codex-console-facts");
   });
 
   it("renders nothing, because it exists to run effects and not to paint", () => {
     const codex = plugins.find((plugin) => plugin.id === "codex")!;
-    const descriptor = (codex.persistentComponents ?? []).find((entry) => entry.id === "codex-reader-url")!;
+    const descriptor = (codex.persistentComponents ?? []).find((entry) => entry.id === "codex-console-facts")!;
 
     // 요소를 만들되 실행하지는 않는다 — 훅은 호스트가 마운트할 때 돈다.
-    expect(descriptor.render()).not.toBeNull();
+    expect(descriptor.render({ language: "ko", theme: "instrument" })).not.toBeNull();
   });
 });

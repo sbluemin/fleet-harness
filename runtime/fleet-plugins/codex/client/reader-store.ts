@@ -2,7 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { useSyncExternalStore } from "react";
 
 import { setCodexReaderExpandedForSession } from "./codex-host.js";
-import { hostCapabilities, resolveActiveLocaleFromHost } from "./host.js";
+import { hostCapabilities, onCodexHostBound, resolveActiveLocaleFromHost } from "./host.js";
 
 /**
  * 무엇을 읽고 있는가. 예전에는 코어 콘솔 스토어의 필드였다 — Codex가 나가면서 그 지식도
@@ -54,11 +54,26 @@ function publish(): void {
 
 
 
+/**
+ * Theater 사실은 호스트가 바꾼다 — 그 변화도 이 스냅샷에 실려야 화면이 따라간다.
+ *
+ * 그 구독은 구독자 수와 무관하게 **바인딩 시점에** 선다. 예전에는 `subscribeReader` 안에서
+ * 능력을 한 번 읽었는데, 상주 기여는 install보다 먼저 마운트되므로 그때는 아직 빈손이었다.
+ * 결과로 Theater가 붙어도 스냅샷의 activeTheaterId가 null로 굳어, 공유 링크가 가리킨 문서가
+ * 영영 열리지 않았다.
+ */
+let hostRelease: (() => void) | null = null;
+
+onCodexHostBound(() => {
+  hostRelease?.();
+  hostRelease = hostCapabilities.bound()?.consoleState.subscribe(publish) ?? null;
+  // 묶인 순간의 사실을 스냅샷에 싣는다 — 바인딩 자체가 변화다.
+  publish();
+});
+
 export function subscribeReader(listener: () => void): () => void {
   listeners.add(listener);
-  // Theater 사실은 호스트가 바꾼다 — 그 변화도 이 스냅샷에 실려야 화면이 따라간다.
-  const release = hostCapabilities.bound()?.consoleState.subscribe(publish) ?? (() => undefined);
-  return () => { listeners.delete(listener); release(); };
+  return () => { listeners.delete(listener); };
 }
 
 export function getReaderState(): ReaderState {

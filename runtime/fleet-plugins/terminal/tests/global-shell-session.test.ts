@@ -55,6 +55,13 @@ describe("console-global Shell session", () => {
     expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/b"]);
   });
 
+  // 세션 매니저는 `shell:` 접두를 "상태 미유지"의 표식으로 읽어 소켓이 떨어지면 짧은 유예
+  // 뒤 PTY를 정리한다. 전역 셸은 정반대 약속이다 — 레일에서 잠깐 치워 둔 셸은 돌아왔을 때
+  // 그 자리에 있어야 한다. 접두 하나가 그 약속을 4초짜리로 만들었다.
+  it("keeps its id outside the transient theater-shell prefix", () => {
+    expect(GLOBAL_SHELL_SESSION_ID.startsWith("shell:")).toBe(false);
+  });
+
   it("releases the pin when the shell exits on its own", async () => {
     const paths: Record<string, string> = { "theater-a": "/repos/a", "theater-b": "/repos/b" };
     const { call, exit, issued } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });

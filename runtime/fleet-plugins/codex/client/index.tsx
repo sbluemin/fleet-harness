@@ -1,6 +1,10 @@
+import { useEffect } from "react";
+
+import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { bindCodexHost, setConsoleLocale, setConsoleTheme } from "./host.js";
+import { refreshCodexLocale } from "./codex-host.js";
 import { codexPanel } from "./codex-panel.js";
 import { codexReadingSurface } from "./reading-surface.js";
 import { useCodexReaderUrlSync } from "./use-codex-reader-url.js";
@@ -16,7 +20,7 @@ const codexPlugin = definePlugin({
   expandedSurfaces: [codexReadingSurface],
   // 리더 주소는 패널이 닫혀 있어도 살아 있어야 한다 — 새로고침·공유 링크·뒤로가기가
   // 패널을 여는 쪽이지, 패널이 열려 있어야 도는 것이 아니다.
-  persistentComponents: [{ id: "codex-reader-url", render: () => <CodexReaderUrlSync /> }],
+  persistentComponents: [{ id: "codex-console-facts", render: (ctx) => <CodexConsoleFacts ctx={ctx} /> }],
   install: (ctx) => {
     // 명령형 DOM 컨트롤러들이 렌더 밖에서 호스트 사실을 읽는다 — 코어 스토어를 직접
     // import하던 자리를, 호스트가 건네준 능력 하나로 대체한다.
@@ -57,8 +61,24 @@ function readWatchFrame(payload: unknown): { workspaceId: string; state: CodexWa
   return state === "watching" || state === "degraded" ? { workspaceId, state } : null;
 }
 
-function CodexReaderUrlSync(): null {
+/**
+ * 콘솔 수명 동안 서 있는 조각. 두 가지를 진다.
+ *
+ * 하나는 리더 주소 — 패널이 닫혀 있어도 새로고침·공유 링크·뒤로가기가 살아 있어야 한다.
+ * 다른 하나는 로케일과 테마 — 명령형 컨트롤러들이 렌더 밖에서 읽는 모듈 값이라, 화면을 통해
+ * 전해지면 아무 화면도 열려 있지 않을 때 기본값(en)에 갇힌다. 실제로 그래서 한국어 콘솔에서
+ * Codex만 영어로 남아 있었다.
+ */
+function CodexConsoleFacts({ ctx }: { readonly ctx: PersistentComponentContext }): null {
   useCodexReaderUrlSync();
+  const language = ctx.language;
+  const theme = ctx.theme;
+  useEffect(() => {
+    setConsoleLocale(language);
+    // 이미 그려진 navigator·reader 문구는 스스로 다시 읽지 않는다 — 다시 그리라고 말한다.
+    refreshCodexLocale();
+  }, [language]);
+  useEffect(() => { setConsoleTheme(theme); }, [theme]);
   return null;
 }
 

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
-import type { LocalizedText } from "../i18n/types.js";
+import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
 import type { RailPanelDescriptor } from "../rail/types.js";
@@ -170,10 +170,20 @@ export interface PluginInstallContext {
   readonly consoleEvents: ClientConsoleEventsCapability;
 }
 
+/**
+ * 상주 기여가 받는 콘솔 전역 사실. 패널이 하나도 열려 있지 않아도 참이어야 하는 것들이다 —
+ * 로케일·테마는 열린 화면의 속성이 아니라 콘솔의 속성이므로, 화면을 통해서만 전해지면
+ * 아무 화면도 없을 때 플러그인은 기본값에 갇힌다.
+ */
+export interface PersistentComponentContext {
+  readonly language?: ConsoleLocale;
+  readonly theme?: ConsoleTheme;
+}
+
 /** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
 export interface PersistentComponentDescriptor {
   readonly id: string;
-  readonly render: () => ReactNode;
+  readonly render: (ctx: PersistentComponentContext) => ReactNode;
 }
 
 export interface ClientConsoleEventsCapability {

@@ -25,8 +25,23 @@ interface CodexHostCapabilities {
 let capabilities: CodexHostCapabilities | null = null;
 let theme: ConsoleTheme = "instrument";
 
+/**
+ * 바인딩을 기다리는 쪽. 상주 기여는 App의 install effect보다 **먼저** 마운트된다(자식
+ * effect가 부모보다 먼저 돈다). 그때 능력을 한 번 읽고 마는 코드는 영영 빈손을 쥐게 되므로,
+ * 바인딩이 일어난 뒤 스스로 다시 붙을 기회를 준다.
+ */
+const bindListeners = new Set<() => void>();
+
+export function onCodexHostBound(listener: () => void): () => void {
+  bindListeners.add(listener);
+  // 이미 묶인 뒤에 등록했다면 지금 한 번 돌려준다 — 순서에 기대지 않기 위한 계약이다.
+  if (capabilities) listener();
+  return () => { bindListeners.delete(listener); };
+}
+
 export function bindCodexHost(next: CodexHostCapabilities): void {
   capabilities = next;
+  for (const listener of bindListeners) listener();
 }
 
 export function hostCapabilities(): CodexHostCapabilities {
