@@ -221,6 +221,9 @@ export async function createClaudeGatewaySdk(
           stopTask: (taskId) => session.stopTask(taskId),
           backgroundTasks: (toolUseId) => session.backgroundTasks(toolUseId),
           getContextUsage: () => session.getContextUsage(),
+          supportedCommands: () => session.supportedCommands(),
+          supportedAgents: () => session.supportedAgents(),
+          reloadSkills: () => session.reloadSkills(),
           [Symbol.asyncIterator]: () => session[Symbol.asyncIterator](),
           close(): void {
             try {

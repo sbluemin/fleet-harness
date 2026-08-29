@@ -248,6 +248,9 @@ export function AgentChatView({
     [context.operation.payload],
   );
 
+  /** `/context`가 컴포저에서 문맥 계기를 여는 신호. 값이 바뀐 사실만 뜻이 있다. */
+  const [meterOpenSignal, setMeterOpenSignal] = React.useState(0);
+
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
   const jobsByToolUse = React.useMemo(() => {
@@ -488,7 +491,10 @@ export function AgentChatView({
           <AgentChatComposer
             context={context}
             coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
-            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} />}
+            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
+            coordinates={coordinates}
+            onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
+            catalogEpoch={state.catalogEpoch}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
@@ -594,6 +600,81 @@ function SessionCoordinate({
   );
 }
 
+/** 토큰 수를 계기와 같은 자로 접는다 — 두 표면이 다른 자를 쓰면 같은 압축이 다른 크기로 읽힌다. */
+function formatCompactTokens(tokens: number): string {
+  return tokens >= 1_000_000 ? `${(tokens / 1_000_000).toFixed(1)}M` : `${Math.round(tokens / 1000)}k`;
+}
+
+/**
+ * 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
+ *
+ * 계기가 채우는 것은 **되찾은 문맥**이다. 진척률이 아닌 이유는 그 값이 존재하지 않기 때문이다 —
+ * 자식은 압축 중이라는 사실만 말하고 얼마나 남았는지는 말하지 않는다(실측). 그래서 도는 동안은
+ * 끝을 모른다는 뜻의 왕복 띠이고, 끝난 뒤에야 실제 비율이 선다. 지어낸 퍼센트를 그리면 그 숫자가
+ * 처음 몇 초 동안 유일하게 확신에 찬 거짓말이 된다.
+ */
+function ChatCommandRow({
+  command,
+  state,
+  language,
+}: {
+  readonly command: NonNullable<AgentChatTurn["command"]>;
+  readonly state: AgentChatTurn["state"];
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const running = state === "working";
+  const failed = state === "error";
+  const compact = command.compact;
+  // 되찾은 비율은 자식이 잰 두 수에서만 나온다. `after`가 없으면 비율도 없다 — 그때는 계기를
+  // 세우지 않고 앞의 크기만 말한다.
+  const reclaimed = compact?.after === undefined
+    ? null
+    : Math.max(0, Math.min(100, Math.round(((compact.before - compact.after) / Math.max(1, compact.before)) * 100)));
+  const gauge = running || reclaimed !== null;
+  const detail = running
+    ? command.phase === "compacting"
+      ? t("terminal.chat.commandCompacting")
+      : t("terminal.chat.commandRunning")
+    : compact
+      ? compact.after === undefined
+        ? t("terminal.chat.commandCompactedFrom", { before: formatCompactTokens(compact.before) })
+        : t("terminal.chat.commandCompacted", {
+          before: formatCompactTokens(compact.before),
+          after: formatCompactTokens(compact.after),
+          percent: String(reclaimed),
+        })
+      : command.summary ?? (failed ? t("terminal.chat.commandFailed") : t("terminal.chat.commandDone"));
+  return (
+    <p
+      className={`agent-chat-command-row${running ? " is-running" : ""}${failed ? " is-failed" : ""}`}
+      {...(running ? { role: "status" } : {})}
+    >
+      <span className="agent-chat-command-dot" aria-hidden="true" />
+      <span className="agent-chat-command-name">/{command.name}</span>
+      <span className="agent-chat-command-detail">{detail}</span>
+      {gauge ? (
+        <span
+          className="agent-chat-command-gauge"
+          role="progressbar"
+          aria-label={t("terminal.chat.commandGaugeLabel")}
+          // 도는 동안은 `aria-valuenow`를 싣지 않는다 — 없는 값을 실으면 보조기술이 그것을
+          // 진척률로 읽어 주고, 그 낭독은 화면보다 더 확신에 차 있다.
+          {...(reclaimed === null ? {} : { "aria-valuenow": reclaimed, "aria-valuemin": 0, "aria-valuemax": 100 })}
+        >
+          <span
+            className="agent-chat-command-gauge-fill"
+            style={reclaimed === null ? undefined : { "--agent-chat-gauge-fill": `${reclaimed}%` } as React.CSSProperties}
+          />
+        </span>
+      ) : null}
+      {compact?.durationMs !== undefined ? (
+        <span className="agent-chat-command-elapsed">{(compact.durationMs / 1000).toFixed(1)}s</span>
+      ) : null}
+    </p>
+  );
+}
+
 function ChatTurn({
   operationId,
   turn,
@@ -632,6 +713,10 @@ function ChatTurn({
     ? nextContextBefore - turn.contextBefore
     : undefined;
   const hasSettledWork = !working && (view.ledger.length > 0 || view.changes.length > 0);
+  // 정비 명령은 대화가 아니다. 말풍선도 턴 노드도 경과 시계도 세우지 않는다 — 그 문법 전체가
+  // "모델이 생각하고 있다"를 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예
+  // 부르지 않는다. 한 줄이 지시와 진행과 결말을 함께 진다.
+  if (turn.command) return <ChatCommandRow command={turn.command} state={turn.state} language={language} />;
   return (
     <>
       {turn.dispatch ? (
@@ -1999,15 +2084,28 @@ function ContextMeterChip({
   context,
   working,
   language,
+  openSignal,
 }: {
   readonly context: AgentChatContext | null;
   /** 턴이 도는 중인가. 라이브 값이 아직 없을 때만 낡음을 주장할 근거가 된다. */
   readonly working: boolean;
   readonly language: "en" | "ko";
+  /**
+   * 밖에서 이 팝오버를 열어 달라는 요청. **값이 바뀌었다는 사실만** 신호이고 크기는 뜻이 없다 —
+   * 열림/닫힘을 밖으로 끌어올리면 칩이 자기 바깥 클릭·Esc를 스스로 닫지 못하게 된다.
+   */
+  readonly openSignal: number;
 }) {
   const t = getT(language);
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const seenSignal = React.useRef(openSignal);
+
+  React.useEffect(() => {
+    if (openSignal === seenSignal.current) return;
+    seenSignal.current = openSignal;
+    setOpen(true);
+  }, [openSignal]);
 
   // 열려 있는 동안에만 문서에 손을 댄다. 채팅 패널은 한 화면에 여럿 살 수 있어, 닫힌 칩까지
   // 리스너를 걸면 패널 수만큼 같은 핸들러가 매 클릭을 받는다.

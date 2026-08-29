@@ -92,6 +92,19 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
+  | { readonly kind: "reset"; readonly at?: number }
+  /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
+  | { readonly kind: "cleared"; readonly at?: number }
+  /** 정비 명령 하나가 시작했다. 턴이 아니므로 사고를 그리지 않는다. */
+  | { readonly kind: "command"; readonly name: string; readonly at?: number }
+  | { readonly kind: "command-progress"; readonly phase: "compacting" }
+  | {
+      readonly kind: "command-end";
+      readonly ok: boolean;
+      readonly summary?: string;
+      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 실리지 않으며, 완성 text 이벤트가 정정 앵커다. */
@@ -214,6 +227,39 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "dispatch":
       if (typeof event.text !== "string") return null;
       return { seq: entry.seq, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
+    case "reset":
+      return { seq: entry.seq, event: { kind: "reset", ...atField(event.at) } };
+    case "cleared":
+      return { seq: entry.seq, event: { kind: "cleared", ...atField(event.at) } };
+    case "command":
+      if (typeof event.name !== "string" || event.name.length === 0) return null;
+      return { seq: entry.seq, event: { kind: "command", name: event.name, ...atField(event.at) } };
+    case "command-progress":
+      if (event.phase !== "compacting") return null;
+      return { seq: entry.seq, event: { kind: "command-progress", phase: "compacting" } };
+    case "command-end": {
+      const compact = event.compact;
+      const readCompact = (): { before: number; after?: number; durationMs?: number } | null => {
+        if (!compact || typeof compact !== "object") return null;
+        const row = compact as Record<string, unknown>;
+        if (typeof row.before !== "number") return null;
+        return {
+          before: row.before,
+          ...(typeof row.after === "number" ? { after: row.after } : {}),
+          ...(typeof row.durationMs === "number" ? { durationMs: row.durationMs } : {}),
+        };
+      };
+      const numbers = readCompact();
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "command-end",
+          ok: event.ok !== false,
+          ...(typeof event.summary === "string" && event.summary.length > 0 ? { summary: event.summary } : {}),
+          ...(numbers ? { compact: numbers } : {}),
+        },
+      };
+    }
     case "turn-start":
       return { seq: entry.seq, event: { kind: "turn-start", ...atField(event.at) } };
     case "text":
@@ -510,6 +556,21 @@ export interface AgentChatTurn {
    * 지어내지 않고 빈칸으로 둔다.
    */
   readonly contextBefore?: number;
+  /**
+   * 이 항목은 대화의 턴이 아니라 **정비 명령**이다. 있으면 원장은 턴 문법을 통째로 쓰지 않는다.
+   *
+   * 별도 목록이 아니라 턴 목록에 함께 사는 이유는 순서다 — 명령과 대화는 한 시간축 위에서
+   * 일어나고, 두 목록으로 나누면 그 순서를 화면이 다시 맞춰야 한다.
+   */
+  readonly command?: {
+    readonly name: string;
+    /** 지금 지나는 단계. 압축만이 시간이 걸린다. */
+    readonly phase?: "compacting";
+    /** 자식이 돌려준 한 줄. */
+    readonly summary?: string;
+    /** 압축이 실제로 되찾은 문맥. */
+    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+  };
 }
 
 /** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
@@ -603,6 +664,71 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
   return { kind: "agent", steps, truncated };
 }
 
+/**
+ * Console이 자식 대신 답하는 축. 서버 `ChatCommandConsoleTarget`의 브라우저 사본이다.
+ *
+ * 값을 좁혀 두는 이유는 화면이 이 값으로 **행동**을 고르기 때문이다 — 서버가 새 좌표를 늘렸는데
+ * 화면이 그것을 모르면, 열린 문 없이 이름만 있는 행이 선다. 파서가 아는 값만 통과시킨다.
+ */
+export type ChatCommandConsoleTarget = "context" | "clear";
+
+const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["context", "clear"];
+
+/** 컴포저 덱이 세우는 항목 하나. 서버 `AgentChatCatalogEntry`의 브라우저 사본이다. */
+export interface AgentChatCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  /** 인자를 받는다는 표시. 비어 있으면 인자 없이 바로 실행되는 항목이다. */
+  readonly argumentHint: string;
+  /** 자식이 아니라 Console이 받는 항목이다. 없으면 평범한 통과 항목. */
+  readonly console?: ChatCommandConsoleTarget;
+}
+
+/** `/`와 `@`가 세우는 목록. 출처가 하나이므로 한 응답으로 온다. */
+export interface AgentChatCatalog {
+  readonly commands: readonly AgentChatCatalogEntry[];
+  readonly skills: readonly AgentChatCatalogEntry[];
+  readonly agents: readonly AgentChatCatalogEntry[];
+  /** 서버의 정책표가 모르는 내장 명령. 비어 있지 않다는 것 자체가 표를 갱신하라는 신호다. */
+  readonly unclassified: readonly string[];
+}
+
+function readCatalogEntries(value: unknown): readonly AgentChatCatalogEntry[] {
+  if (!Array.isArray(value)) return [];
+  const entries: AgentChatCatalogEntry[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const entry = row as Record<string, unknown>;
+    // 이름이 없으면 부를 수 없다 — 고를 수는 있는데 보낼 수는 없는 행을 만들지 않는다.
+    if (typeof entry.name !== "string" || entry.name.length === 0) continue;
+    const target = CONSOLE_TARGETS.find((known) => known === entry.console);
+    entries.push({
+      name: entry.name,
+      description: typeof entry.description === "string" ? entry.description : "",
+      argumentHint: typeof entry.argumentHint === "string" ? entry.argumentHint : "",
+      ...(target ? { console: target } : {}),
+    });
+  }
+  return entries;
+}
+
+/**
+ * 서버 payload를 카탈로그로 읽는다. 모양이 어긋나면 `null` — 화면은 빈 목록이 아니라
+ * "아직 모른다"를 그려야 하므로 둘을 가른다.
+ */
+export function readAgentChatCatalogPayload(payload: unknown): AgentChatCatalog | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  return {
+    commands: readCatalogEntries(value.commands),
+    skills: readCatalogEntries(value.skills),
+    agents: readCatalogEntries(value.agents),
+    unclassified: Array.isArray(value.unclassified)
+      ? value.unclassified.filter((name): name is string => typeof name === "string" && name.length > 0)
+      : [],
+  };
+}
+
 export interface AgentChatLogState {
   readonly turns: readonly AgentChatTurn[];
   readonly replaying: boolean;
@@ -617,6 +743,14 @@ export interface AgentChatLogState {
   readonly context: AgentChatContext | null;
   /** 서버가 접수했으나 아직 시작하지 않은 지시들. 서버가 권위이고 화면은 그대로 그린다. */
   readonly queue: readonly AgentChatQueueEntry[];
+  /**
+   * 자식의 능력 목록이 바뀐 횟수. `/reload-skills`가 끝날 때마다 오른다.
+   *
+   * 서버가 자기 캐시를 버리는 것만으로는 화면이 따라오지 않는다 — 컴포저는 덱을 처음 열 때 한 번만
+   * 카탈로그를 읽고 그 사본을 마운트 내내 들고 있으므로, 갱신 신호가 없으면 방금 추가한 스킬이
+   * 패널을 다시 세울 때까지 보이지 않는다. 이 좌표가 그 사본의 만료를 말한다.
+   */
+  readonly catalogEpoch: number;
 }
 
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
@@ -631,6 +765,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   jobs: [],
   context: null,
   queue: [],
+  catalogEpoch: 0,
 };
 
 /**
@@ -703,6 +838,54 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         draft: "",
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
+    }
+    // 자식의 초기화 신호 자체는 화면이 그리지 않는다 — 서버가 그것을 받아 저널을 비우고
+    // `cleared`를 내며, 화면은 그 결과만 따른다. 두 곳에서 각자 지우면 재생과 라이브가 갈린다.
+    case "reset":
+      return state;
+    case "cleared":
+      // 자식이 잊은 대화를 화면이 계속 보여 주면 그 위쪽을 읽는 사람에게 거짓말이 된다.
+      // 잡은 남긴다 — 백그라운드 작업은 문맥이 아니라 살아 있는 프로세스다.
+      return { ...state, turns: [], context: null };
+    case "command": {
+      const turn: AgentChatTurn = {
+        dispatch: { text: `/${event.name}`, ...(event.at !== undefined ? { at: event.at } : {}) },
+        items: [],
+        state: "working",
+        toolCount: 0,
+        draft: "",
+        command: { name: event.name },
+      };
+      return { ...state, turns: [...settleLastTurn(state), turn] };
+    }
+    case "command-progress": {
+      const last = state.turns.at(-1);
+      if (!last?.command) return state;
+      return {
+        ...state,
+        turns: [...state.turns.slice(0, -1), { ...last, command: { ...last.command, phase: event.phase } }],
+      };
+    }
+    case "command-end": {
+      const last = state.turns.at(-1);
+      if (!last?.command) return state;
+      // 스킬을 다시 읽은 명령이 끝났다 — 컴포저가 들고 있는 카탈로그 사본은 이 시점부터 낡았다.
+      const catalogEpoch = last.command.name === "reload-skills" && event.ok
+        ? state.catalogEpoch + 1
+        : state.catalogEpoch;
+      return {
+        ...state,
+        catalogEpoch,
+        turns: [...state.turns.slice(0, -1), {
+          ...last,
+          state: event.ok ? "done" : "error",
+          command: {
+            name: last.command.name,
+            ...(event.summary === undefined ? {} : { summary: event.summary }),
+            ...(event.compact === undefined ? {} : { compact: event.compact }),
+          },
+        }],
+      };
     }
     case "turn-start": {
       // 백그라운드 작업이 끝나면 SDK가 모델을 다시 깨워 두 번째 응답을 낸다(실측: 하나의

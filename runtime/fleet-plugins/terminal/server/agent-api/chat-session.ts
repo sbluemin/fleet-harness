@@ -5,6 +5,8 @@ import {
   createClaudeGatewaySdk,
   type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
+  type ClaudeGatewayAgent,
+  type ClaudeGatewayCommand,
   type ClaudeGatewayMessage,
   type ClaudeGatewaySdk,
   type ClaudeGatewaySdkOptions,
@@ -29,7 +31,10 @@ import {
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
+  readChatCommandLaneName,
   readJobKind,
+  type AgentChatCatalog,
+  type AgentChatCatalogEntry,
   type AgentChatJobDetail,
   type AgentChatJobKind,
   type AgentChatJournalEvent,
@@ -39,6 +44,7 @@ import {
 } from "./chat-events.js";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
+import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { chatChildEnv } from "../shared/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 
@@ -356,6 +362,38 @@ class AgentChatSession {
    */
   private session: ClaudeGatewaySession | null = null;
   private sessionFlight: Promise<ClaudeGatewaySession> | null = null;
+  /**
+   * 자식이 받아 주는 것들의 목록. 세션이 열린 **직후 한 번만** 읽는다.
+   *
+   * 폴링하지 않는 이유는 두 가지다. 첫째, 이 목록은 자식의 수명 동안 움직이지 않는다 —
+   * 스킬·플러그인이 다시 읽히는 사건은 이 세션을 접고 여는 사건이다. 둘째, 턴이 도는 동안에는
+   * control 채널이 닫혀 물어도 `null`만 온다(`getContextUsage`와 같은 벽). 그래서 채널이 확실히
+   * 열려 있는 유일한 창 — 열자마자, 첫 턴 전 — 에 한 번 읽고 그 값을 계속 쓴다.
+   */
+  /**
+   * 두 축을 **따로** 들고 있는다. `null`은 "아직 읽지 못했다"이고, 빈 배열은 "물어봤는데 없다"다.
+   *
+   * 한 객체로 합쳐 두 축을 함께 세우면 한쪽의 일시적 실패가 다른 쪽까지 끌고 들어간다: 계약상
+   * `null`인 응답을 `[]`로 접어 캐시하면 그 세션 내내 덱이 빈 채로 굳고 다시 물어볼 계기도 없다.
+   * 따로 들면 실패한 축만 다음 읽기에서 재시도되고, 성공한 축은 그동안에도 제 몫을 한다.
+   *
+   * 둘 다 채워질 때까지 기다리지 않는 이유도 계약이다: `supportedAgents`가 없는 SDK 빌드는
+   * 그 축이 **영구히** `null`이라, 둘을 요구하면 그런 빌드에서 덱이 영영 서지 않는다.
+   */
+  private rawCommands: readonly ClaudeGatewayCommand[] | null = null;
+  private rawAgents: readonly ClaudeGatewayAgent[] | null = null;
+  private catalogFlight: Promise<void> | null = null;
+  /**
+   * 지금까지 스킬로 확인된 이름들. `supportedCommands()`는 내장 명령과 스킬을 한 레코드 타입으로
+   * 섞어 주고 카테고리 필드가 없으므로, 이 집합이 둘을 가르는 유일한 근거다.
+   *
+   * **두 출처의 합집합**이며 덮어쓰지 않고 쌓는다 — 실측(2026-08-29)에서 둘은 서로를 포함하지
+   * 않았다: `reloadSkills()`는 grill-me·doctor·debug를 빼먹고, init은 delegation·eli5·review를
+   * 빼먹는다. 어느 한쪽만 믿으면 그쪽이 놓친 스킬이 명령 칸에 선다.
+   *
+   * 비어 있으면 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
+   */
+  private skillNames: Set<string> = new Set();
   /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
   private readerDone: Promise<void> | null = null;
   /**
@@ -366,6 +404,26 @@ class AgentChatSession {
    * 하나이고, 중지도 여기를 닫는다.
    */
   private turnOpen = false;
+  /**
+   * 지금 도는 정비 명령. 값이 있으면 이 왕복은 턴이 아니라 원장의 정비 줄로 그려지고,
+   * 자식이 흘리는 조각들은 턴 내용이 아니라 그 줄의 진행·결말로 읽힌다.
+   */
+  private commandLane: {
+    readonly name: string;
+    /**
+     * 자식이 먼저 말한 결말(압축 경계·압축 실패). **여기 보관하고 즉시 닫지 않는다.**
+     *
+     * 닫으면 `awaitingTurn`이 풀려 다음 디스패치가 곧바로 시작하는데, 이 명령의 `result`는
+     * 그 뒤에 온다(실측: 경계가 result보다 앞선다). 그러면 늦은 result가 `commandLane === null`
+     * 상태로 들어와 **방금 열린 사용자 턴**을 닫아, 그 턴의 진짜 답이 떨어져 나가거나 남의
+     * 턴에 붙는다. 턴이 자기 result를 기다리는 것과 같은 규율을 이 레인도 진다.
+     */
+    pendingEnd?: {
+      readonly ok: boolean;
+      readonly summary?: string;
+      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    };
+  } | null = null;
   /** 이 세션이 연 누적 턴 수. 저널이 앞을 버려도 재접속 receipt가 비교할 단조 좌표다. */
   private observedTurns = 0;
   /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
@@ -984,6 +1042,36 @@ class AgentChatSession {
   }
 
   /**
+   * init이 실어 온 스킬 이름을 적어 둔다.
+   *
+   * `supportedCommands()`가 내장 명령과 스킬을 한 타입으로 섞어 주고 카테고리를 말하지 않으므로,
+   * 이 이름 집합이 둘을 가르는 유일한 근거다. init은 세션당 한 번 오고, 못 받으면 집합은 비어
+   * 있다 — 그때 덱은 전부 명령으로 세운다(틀린 카테고리보다 한 카테고리가 낫다).
+   */
+  private rememberSkillNames(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "init") return;
+    const skills = (message as { skills?: unknown }).skills;
+    if (!Array.isArray(skills)) return;
+    // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
+    for (const name of skills) if (typeof name === "string") this.skillNames.add(name);
+  }
+
+  /**
+   * 자식이 "받아 주는 목록이 바뀌었다"고 알려 왔다(`/reload-skills` 실측). 캐시를 버려 다음
+   * 읽기가 다시 묻게 한다.
+   *
+   * 이 신호를 놓치면 덱은 세션이 접힐 때까지 낡은 목록을 세운다 — 방금 추가한 스킬이 보이지
+   * 않는데 화면은 아무 말도 하지 않는 상태다. 원본 두 축만 비우고 `skillNames`는 남기는 이유는
+   * 그 집합이 세 출처의 합집합이고, 사라진 스킬을 명령 칸으로 되돌리는 것이 낡은 채로 두는 것보다
+   * 나쁘기 때문이다(잘못된 칸에 서면 정책표가 그것을 내장 명령으로 재단한다).
+   */
+  private invalidateCatalog(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "commands_changed") return;
+    this.rawCommands = null;
+    this.rawAgents = null;
+  }
+
+  /**
    * 결말 알림이 알려 준 출력 파일 경로를 적어 둔다.
    *
    * 이 경로를 우리가 재구성하지 않는 이유는 실측이다: 셸 출력은 격리 config dir이 아니라 CLI가
@@ -1440,12 +1528,164 @@ class AgentChatSession {
         }
         this.session = session;
         this.readerDone = this.readSession(session);
+        this.primeCatalog(session);
         return session;
       })().finally(() => {
         this.sessionFlight = null;
       });
     }
     return this.sessionFlight;
+  }
+
+  /**
+   * 컴포저 덱이 세울 목록을 읽어 캐시에 눕힌다. 세션이 열린 직후 한 번만 부른다.
+   *
+   * await하지 않는다 — 여기서 기다리면 첫 디스패치가 control 왕복만큼 늦다. 덱을 여는 쪽이
+   * `readCatalog()`에서 이 비행을 기다리므로, 늦는 것은 덱뿐이고 대화는 늦지 않는다.
+   *
+   * `null`(못 물었다)과 빈 배열(물었는데 없다)을 가른다: `null`이면 캐시를 세우지 않아 다음
+   * 요청이 다시 시도하고, 빈 배열이면 "이 세션엔 없다"를 캐시한다.
+   */
+  /**
+   * 디스크에 스킬로 놓여 있는 이름들. 분류의 **셋째 출처**다.
+   *
+   * SDK의 두 출처가 서로를 포함하지 않고, init은 첫 턴 전에는 오지 않는다 — 그래서 `/`만 눌러
+   * 연 세션에서는 사용자가 자기 손으로 만든 스킬(`~/.claude/skills/<이름>`)마저 명령 칸에 섰다.
+   * 디렉터리 이름이 곧 스킬 이름이라는 규약은 Skills 플러그인이 이미 쓰고 있는 것과 같다.
+   *
+   * 여기서 읽은 이름은 **분류에만** 쓴다 — 목록에 무엇이 있는지는 여전히 SDK가 정한다. 그래서
+   * 디스크에만 있고 세션이 싣지 않은 이름은 애초에 행이 되지 않는다.
+   */
+  private async readSkillDirNames(): Promise<readonly string[]> {
+    const roots = [
+      path.join(this.seed.claudeConfigDir, "skills"),
+      path.join(this.seed.cwd, ".claude", "skills"),
+    ];
+    const names: string[] = [];
+    for (const root of roots) {
+      try {
+        for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+          // 심볼릭 링크도 센다. `Dirent.isDirectory()`는 **링크 자신**을 보고하므로 링크로 걸어 둔
+          // 스킬은 전부 false가 된다 — 실측한 홈에서는 9개 중 8개가 링크였고, 그래서 사용자가
+          // 자기 손으로 만든 스킬이 명령 칸에 섰다. 링크가 가리키는 곳까지 따라가 확인한다.
+          if (entry.isDirectory()) { names.push(entry.name); continue; }
+          if (!entry.isSymbolicLink()) continue;
+          try {
+            if ((await fs.stat(path.join(root, entry.name))).isDirectory()) names.push(entry.name);
+          } catch {
+            // 끊긴 링크는 스킬이 아니다.
+          }
+        }
+      } catch {
+        // 없는 디렉터리는 결함이 아니다 — 그 층에 스킬이 없다는 뜻일 뿐이다.
+      }
+    }
+    return names;
+  }
+
+  private primeCatalog(session: ClaudeGatewaySession): void {
+    if (this.catalogFlight) return;
+    this.catalogFlight = (async () => {
+      try {
+        const [commands, agents, skills, onDisk] = await Promise.all([
+          session.supportedCommands(),
+          session.supportedAgents(),
+          // 스킬 이름의 **주 출처**다. init 메시지의 `skills`는 첫 턴과 함께 오므로(실측),
+          // `/`만 눌러 연 세션에서는 오지 않는다 — 그것에 기대면 그 세션 내내 스킬 전부가
+          // 명령 칸에 선다. 이 요청은 턴과 무관하게 답한다.
+          session.reloadSkills(),
+          this.readSkillDirNames(),
+        ]);
+        if (skills !== null) for (const entry of skills) this.skillNames.add(entry.name);
+        for (const name of onDisk) this.skillNames.add(name);
+        // 답한 축만 굳힌다. `null`을 `[]`로 접으면 "못 물었다"가 "없다"로 바뀌어, 일시적 실패
+        // 하나가 그 세션의 덱을 영구히 비운다.
+        //
+        // 분류는 여기서 굳히지 않는다 — init은 control 왕복과 경쟁하므로 이 시점에 스킬 이름이
+        // 아직 없을 수 있고, 그러면 스킬이 영영 명령 칸에 선다. 원본만 들고 읽을 때 가른다.
+        if (commands !== null) this.rawCommands = commands;
+        if (agents !== null) this.rawAgents = agents;
+      } catch {
+        // 카탈로그가 없는 세션도 온전한 세션이다 — 덱만 비고 대화는 그대로 돈다.
+      } finally {
+        this.catalogFlight = null;
+      }
+    })();
+  }
+
+  /**
+   * 덱이 세울 목록. 세션이 아직 없으면 **연다** — 사용자가 `/`나 `@`를 친 것이 곧 이 세션의
+   * 능력을 묻는 행위이므로, 그 순간이 자식을 열 이유로 충분하다(첫 턴을 기다리면 갓 연 채팅의
+   * 첫 덱은 반드시 비어 있다).
+   *
+   * 못 읽었으면 `null`이다. 화면은 그것을 빈 목록이 아니라 "아직 모른다"로 그려야 한다.
+   */
+  async readCatalog(): Promise<AgentChatCatalog | null> {
+    if (this.disposed) return null;
+    // 아직 못 읽은 축이 하나라도 있으면 다시 묻는다. 그 자리는 셋이고 대응은 같다: 세션을 갓
+    // 열었을 때, `commands_changed`가 캐시를 버린 뒤, 그리고 한 축만 실패했을 때 — 마지막이
+    // 재시도의 유일한 통로다.
+    if (this.rawCommands === null || this.rawAgents === null) {
+      let session: ClaudeGatewaySession;
+      try {
+        session = await this.ensureSession();
+      } catch {
+        return null;
+      }
+      this.primeCatalog(session);
+      await this.catalogFlight;
+    }
+    // 둘 다 못 읽었으면 "아직 모른다"다 — 빈 덱과 구별되어야 화면이 그 둘을 다르게 그린다.
+    if (this.rawCommands === null && this.rawAgents === null) return null;
+    const raw = { commands: this.rawCommands ?? [], agents: this.rawAgents ?? [] };
+    // 분류는 매 읽기마다 지금의 스킬 이름으로 다시 센다 — init이 카탈로그 왕복보다 늦게
+    // 도착해도 다음 읽기에서 스킬 칸이 제대로 선다.
+    const toEntry = (entry: { readonly name: string; readonly description: string; readonly argumentHint: string }): AgentChatCatalogEntry => ({
+      name: entry.name,
+      description: entry.description,
+      argumentHint: entry.argumentHint,
+    });
+    // 같은 이름이 둘 이상 올 수 있다(실측: 플러그인 스킬과 평범한 스킬이 같은 `frontend-design`
+    // 으로 왔다). 두 행은 **같은 텍스트를 보내므로** 사용자에게는 고를 수 없는 중복이고, 설명이
+    // 덜 꾸며진 쪽을 남긴다(플러그인 쪽은 `(이름) `이 앞에 붙는다).
+    const dedupe = (entries: readonly AgentChatCatalogEntry[]): readonly AgentChatCatalogEntry[] => {
+      const byName = new Map<string, AgentChatCatalogEntry>();
+      for (const entry of entries) {
+        const seen = byName.get(entry.name);
+        if (!seen) { byName.set(entry.name, entry); continue; }
+        if (seen.description.startsWith("(") && !entry.description.startsWith("(")) byName.set(entry.name, entry);
+      }
+      return [...byName.values()];
+    };
+    // 내장 명령에만 정책을 건다. 스킬·에이전트는 사용자·프로젝트가 놓은 것이라 Console이 그
+    // 의미를 판단할 근거가 없다 — 표에 올리면 남의 물건을 우리 기준으로 지우게 된다.
+    //
+    // 그 "내장 명령"의 판정에 정책표가 **네 번째 출처**로 들어온다. 스킬 이름의 세 출처(init·
+    // reloadSkills·디스크)는 전부 긍정 증거이고 셋 다 놓치는 부류가 있다 — CLI 번들에 실려 오는
+    // 스킬(`/doctor`·`/batch`·`/debug`·`/design-sync`…)은 디스크에 없고 reloadSkills도 세지
+    // 않아, 첫 턴이 init을 실어 오기 전까지 명령 칸에 섰다(실측 6건). 정책표는 실재하는 내장
+    // 명령의 전량이므로 "표에 없다"가 곧 "내장 명령이 아니다"이고, 그 부정 증거가 셋이 놓친
+    // 자리를 메운다. 새 판본의 진짜 내장 명령이 잠시 스킬 칸에 서는 것이 대가인데, 그것은
+    // 머리글 하나가 틀리는 일이고 통과 여부는 바뀌지 않는다 — 반대 방향(스킬이 명령으로 서서
+    // 정책표의 재단을 받는 것)보다 훨씬 가볍다.
+    const isBuiltIn = (name: string): boolean => !this.skillNames.has(name) && isClassifiedChatCommand(name);
+    const commands: AgentChatCatalogEntry[] = [];
+    for (const entry of dedupe(raw.commands.filter((row) => isBuiltIn(row.name)).map(toEntry))) {
+      const rule = classifyChatCommand(entry.name);
+      if (rule.disposition === "hidden") continue;
+      commands.push(rule.target === undefined ? entry : { ...entry, console: rule.target });
+    }
+    // 어느 출처도 스킬이라 말하지 않았고 정책표도 모르는 이름. 스킬 칸에 세워 두되 이름을 함께
+    // 실어 보낸다 — 표를 갱신할 사람이 그 목록을 봐야 이 추정이 사실로 굳는다.
+    const unclassified = raw.commands
+      .filter((row) => !this.skillNames.has(row.name) && !isClassifiedChatCommand(row.name))
+      .map((row) => row.name);
+    return {
+      commands,
+      skills: dedupe(raw.commands.filter((row) => !isBuiltIn(row.name)).map(toEntry)),
+      agents: dedupe(raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" }))),
+      unclassified: [...new Set(unclassified)],
+    };
   }
 
   /**
@@ -1463,6 +1703,8 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
+        this.rememberSkillNames(message);
+        this.invalidateCatalog(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);
         this.rememberToolTitles(message);
@@ -1490,7 +1732,83 @@ class AgentChatSession {
    * 다시 흐르기 시작한 내용이 새 턴을 연다. 후자가 백그라운드 작업이 끝나 자식이 모델을 다시
    * 깨운 자리이며, 그것을 앞 턴에 이어 붙이면 사용자가 읽은 답이 갈아치워진다.
    */
+  /**
+   * 정비 줄이 도는 동안의 조각들.
+   *
+   * 무엇을 취하는지가 곧 이 레인의 계약이다: 진행(압축)과 결말만 취하고, 자식이 함께 흘리는
+   * 대화 조각(text·tool·ask)은 버린다. 그것들이 이 줄에 실려도 그릴 자리가 없고, 턴으로
+   * 새어 나가면 정비 동작 하나가 대화 한 턴으로 둔갑한다.
+   */
+  private ingestCommandLane(lane: NonNullable<AgentChatSession["commandLane"]>, event: AgentChatStreamEvent): void {
+    // 잡 축은 레인과 무관하게 산다 — 백그라운드 작업은 문맥이 아니라 프로세스라, 정비 중에
+    // 끝난 잡의 결말이 사라지면 그 작업은 영영 도는 것으로 남는다.
+    this.trackJob(event);
+    if (event.kind === "job" || event.kind === "job-progress" || event.kind === "job-end" || event.kind === "jobs") {
+      this.push(event);
+      return;
+    }
+    if (event.kind === "command-progress") {
+      this.push(event);
+      return;
+    }
+    if (event.kind === "command-end") {
+      // 자식이 스스로 낸 결말(압축 경계·압축 실패)은 `result`보다 먼저 오며 숫자를 싣는다.
+      // 보관만 하고 닫지 않는 이유는 `commandLane.pendingEnd`에 적혀 있다.
+      this.commandLane = {
+        name: lane.name,
+        pendingEnd: {
+          ok: event.ok,
+          ...(event.summary === undefined ? {} : { summary: event.summary }),
+          ...(event.compact === undefined ? {} : { compact: event.compact }),
+        },
+      };
+      return;
+    }
+    if (event.kind === "reset") {
+      this.clearJournal();
+      return;
+    }
+    if (event.kind === "turn-end") {
+      // 이 레인의 유일한 종점이다. 자식이 숫자 있는 결말을 먼저 냈으면 그것이 이기고,
+      // 아니면 result가 실어 온 한 줄이 결말이 된다.
+      const pending = lane.pendingEnd;
+      this.endCommandLane(pending ?? {
+        ok: event.ok,
+        ...(event.answer === undefined ? {} : { summary: event.answer }),
+      });
+      return;
+    }
+    if (event.kind === "error") this.push(event);
+  }
+
+  /**
+   * 이 세션의 기록을 통째로 비운다. `/clear`가 자식의 문맥을 끊었을 때만 불린다.
+   *
+   * 저널을 남기고 이음매만 긋는 선택지도 있었지만, 그러면 자식이 기억하지 못하는 대화가 화면에
+   * 계속 남아 그것을 읽고 이어 묻는 사람에게 거짓말을 한다. `seq`는 계속 자란다 — 브라우저가
+   * 그 좌표로 중복을 거르므로 되돌리면 이미 받은 이벤트가 다시 그려진다.
+   */
+  private clearJournal(): void {
+    // 살아 있는 잡의 좌표는 대화가 아니다. 통째로 지우면 재접속한 브라우저가 그 잡의 시작을 못 본
+    // 채로 남는다 — 리듀서는 좌표만 든 맥박·결말에서 `kind: "other"`·제목=id인 스텁을 세우므로,
+    // 아직 도는 작업이 Work 면에서 사라지거나 이름 없는 조각으로 되살아난다. `liveJobs`가 서버에
+    // 그대로 남는 것과 화면이 그것을 되찾을 수 있는 것은 다른 문제다.
+    //
+    // 끝난 잡의 자취는 함께 지운다. 그쪽은 되찾을 진행이 없고, 남기면 비운 원장에 지나간 작업만
+    // 떠 있게 된다.
+    this.journal = this.journal.filter(({ event }) =>
+      (event.kind === "job" || event.kind === "job-progress") && this.liveJobs.has(event.id));
+    this.push({ kind: "cleared", at: Date.now() });
+  }
+
   private ingest(event: AgentChatStreamEvent): void {
+    // 정비 줄이 도는 동안 자식이 흘리는 것은 대화가 아니라 그 명령의 진행이다. 여기서 갈라
+    // 두지 않으면 `text` 하나가 턴을 열어(opensChatTurn), 사고하지 않는 동작이 사고하는
+    // 것처럼 그려진다 — 이 레인이 존재하는 이유가 바로 그 그림을 없애는 것이다.
+    if (this.commandLane) {
+      this.ingestCommandLane(this.commandLane, event);
+      return;
+    }
     if (event.kind === "turn-end") {
       // 중지가 표시해 둔 결말은 여기서 소진된다. 열린 턴이 있으면 그 턴이 이 결말의 주인이고,
       // 없으면 이미 닫은 턴의 것이므로 그리지 않고 줄 서 있던 디스패치만 깨운다.
@@ -1673,7 +1991,12 @@ class AgentChatSession {
     this.syncBackgroundPending();
     // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
     // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
+    //
+    // 정비 줄도 여기서 함께 정산해야 한다: 그 줄은 `turnOpen`을 세우지 않으므로 `closeTurn`이
+    // 곧바로 되돌아가고, 그러면 `awaitingTurn`이 영영 풀리지 않아 `turnFlight`가 멈춘 채 이
+    // 세션의 다음 메시지가 전부 대기열에 갇힌다.
     this.settlingStoppedTurn = false;
+    this.endCommandLane({ ok: false });
     this.closeTurn({ ok: false });
     this.releaseTurnCloseWaiters();
   }
@@ -1695,20 +2018,29 @@ class AgentChatSession {
     await this.awaitTurnClose();
     // 기다리는 동안 세션이 접혔거나 중지가 눌렸다면 이 턴은 시작하지 않는다.
     if (this.disposed || stopped()) return;
-    this.push({ kind: "dispatch", text, at: Date.now() });
+    // 정비 명령은 말풍선도 턴도 세우지 않는다 — 자기 줄 하나가 지시와 진행과 결말을 함께 진다.
+    const lane = readChatCommandLaneName(text);
+    if (lane === null) {
+      this.push({ kind: "dispatch", text, at: Date.now() });
+    } else {
+      this.commandLane = { name: lane };
+      this.push({ kind: "command", name: lane, at: Date.now() });
+    }
     // 활동 보고가 먼저다. 실패하면 자식을 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
     // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.
     if (!this.seed.reportActivity(true)) {
       this.push({ kind: "error", code: "chat_activity_unavailable" });
-      this.push({ kind: "turn-end", ok: false });
+      this.endCommandLane({ ok: false });
+      if (lane === null) this.push({ kind: "turn-end", ok: false });
       return;
     }
-    this.openTurn({ dispatched: true });
+    if (lane === null) this.openTurn({ dispatched: true });
     try {
       const session = await this.ensureSession();
       // 세션을 여는 동안 중지가 눌렸다면 이 턴은 이미 아무도 기다리지 않는다. 자식은 그대로 두고
       // 턴만 접는다 — 세션은 다음 메시지의 것이다.
       if (stopped()) {
+        this.endCommandLane({ ok: false });
         this.closeTurn({ stopped: true });
         return;
       }
@@ -1716,6 +2048,7 @@ class AgentChatSession {
       // 끝낸다). 폐기된 세션의 `send()`는 조용히 버려지므로 기다릴 결말도 생기지 않는다 —
       // 그 자리에 대기를 걸면 이 세션의 큐 전체가 영영 풀리지 않는다.
       if (this.session !== session) {
+        this.endCommandLane({ ok: false });
         this.closeTurn({ ok: false });
         return;
       }
@@ -1723,19 +2056,51 @@ class AgentChatSession {
         this.awaitingTurn = resolve;
       });
       // 문맥 내역은 보내기 **직전**에 묻는다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
-      this.requestContextSnapshot(session, "start");
+      // 정비 명령은 이 스냅숏을 건너뛴다 — 그 셋은 문맥을 **바꾸는** 쪽이라 시작 시점의 값이
+      // 남을 자리가 없고, 끝난 뒤에 다시 묻는 것이 유일하게 뜻이 있는 측정이다.
+      if (lane === null) this.requestContextSnapshot(session, "start");
       session.send(text);
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
       this.turnReachedChild = true;
       await settled;
+      // 문맥을 바꾼 명령의 결과는 계기에 곧바로 실린다 — 압축이 얼마를 되찾았는지, 초기화 뒤
+      // 창이 얼마나 비었는지는 지금 물어야 알 수 있다.
+      if (lane !== null && this.session === session) this.requestContextSnapshot(session, "end");
     } catch {
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
+      this.endCommandLane({ ok: !stopped() ? false : true });
       if (stopped()) this.closeTurn({ stopped: true });
       else {
         this.push({ kind: "error", code: "chat_turn_failed" });
         this.closeTurn({ ok: false });
       }
     }
+  }
+
+  /**
+   * 도는 정비 줄을 닫는다. 이미 닫혔으면 아무 일도 하지 않는다.
+   *
+   * 이 자리가 `closeTurn`과 나란히 불리는 이유: 두 레인은 배타적이라 어느 한쪽만 열려 있고,
+   * 실패 경로는 둘 중 무엇이 열려 있었는지 알 필요 없이 양쪽을 닫으면 된다.
+   */
+  private endCommandLane(end: {
+    readonly ok: boolean;
+    readonly summary?: string;
+    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+  }): void {
+    if (!this.commandLane) return;
+    this.commandLane = null;
+    this.push({
+      kind: "command-end",
+      ok: end.ok,
+      ...(end.summary === undefined ? {} : { summary: end.summary }),
+      ...(end.compact === undefined ? {} : { compact: end.compact }),
+    });
+    this.seed.reportActivity(false);
+    const waiting = this.awaitingTurn;
+    this.awaitingTurn = null;
+    waiting?.();
+    this.releaseTurnCloseWaiters();
   }
 
   /**

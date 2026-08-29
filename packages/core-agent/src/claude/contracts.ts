@@ -346,6 +346,32 @@ export interface ClaudeGatewayContextUsage {
   readonly mcpTools: readonly { readonly name: string; readonly server: string; readonly tokens: number }[];
 }
 
+/**
+ * 자식이 `/이름`으로 받아 주는 것 하나. 내장 명령과 스킬이 벤더 쪽에서 같은 레코드로 오므로
+ * 여기서도 가르지 않는다 — 무엇을 명령이라 부르고 무엇을 스킬이라 부를지는 이 계약이 아니라
+ * 소비처의 분류 규칙이다.
+ *
+ * `argumentHint`는 인자를 받는다는 사실 자체를 말한다. 빈 문자열은 "힌트가 없다"가 아니라
+ * "인자를 받지 않는다"로 읽어도 되는 신호다(벤더가 인자 있는 항목에만 채운다).
+ */
+export interface ClaudeGatewayCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly argumentHint: string;
+  readonly aliases: readonly string[];
+}
+
+/**
+ * 자식이 Task 도구로 부를 수 있는 서브에이전트 하나. `/이름` 문법이 아니라는 점이 명령과
+ * 다르다 — 이 레코드를 슬래시 목록에 섞으면 없는 문법을 가르치게 된다.
+ */
+export interface ClaudeGatewayAgent {
+  readonly name: string;
+  readonly description: string;
+  /** 이 에이전트가 고정으로 쓰는 모델. 부모를 따르면 `null`이다. */
+  readonly model: string | null;
+}
+
 export interface ClaudeGatewayRun extends AsyncIterable<ClaudeGatewayMessage> {
   /** 진행 중인 턴을 끊는다. 이미 끝난 턴에 호출해도 안전하다. */
   close(): void;
@@ -403,6 +429,27 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
    * 정상 응답이다(`ClaudeGatewayRun.getContextUsage`와 같은 규율).
    */
   getContextUsage(): Promise<ClaudeGatewayContextUsage | null>;
+  /**
+   * 자식이 지금 받아 주는 `/이름` 목록. 내장 명령과 스킬이 함께 온다.
+   *
+   * `null`과 빈 배열은 다른 뜻이다: `null`은 **묻지 못했다**(턴이 도는 동안 자식이 control
+   * 채널을 닫아 둔다 — `getContextUsage`와 같은 규율)이고, 빈 배열은 묻고서 하나도 없다는
+   * 답이다. 둘을 같게 다루면 "카탈로그가 비었다"와 "카탈로그를 못 읽었다"가 한 화면이 된다.
+   */
+  supportedCommands(): Promise<readonly ClaudeGatewayCommand[] | null>;
+  /** 자식이 Task 도구로 부를 수 있는 서브에이전트 목록. `null` 규율은 위와 같다. */
+  supportedAgents(): Promise<readonly ClaudeGatewayAgent[] | null>;
+  /**
+   * 스킬 목록만 따로 묻는다. `supportedCommands()`가 내장 명령과 스킬을 한 목록으로 주고
+   * 카테고리를 말하지 않으므로, 둘을 가르려면 어느 쪽이 스킬인지 말해 주는 출처가 따로 필요하다.
+   *
+   * init 메시지의 `skills`를 쓰지 않는 이유는 실측이다: 그 메시지는 **첫 턴과 함께** 오므로,
+   * 아직 아무 말도 주고받지 않은 세션에서는 오지 않는다. 그 세션의 목록을 init에 기대어 가르면
+   * 스킬 전부가 명령 칸에 선다. 이 요청은 턴과 무관하게 답한다.
+   *
+   * 이름이 말하는 대로 디스크에서 다시 읽는다 — 세션을 여는 시점에는 사실상 첫 읽기다.
+   */
+  reloadSkills(): Promise<readonly ClaudeGatewayCommand[] | null>;
   /** 세션을 접고 자식 프로세스를 끝낸다. 살아 있던 백그라운드 작업도 함께 거둬진다. */
   close(): void;
 }

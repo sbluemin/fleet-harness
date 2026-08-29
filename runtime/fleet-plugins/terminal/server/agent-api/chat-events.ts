@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
 
+import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command-policy.js";
+
 /**
  * Chat Mode의 브라우저行 이벤트 어휘와, 두 원천(트랜스크립트 JSONL·SDK 메시지 스트림)을
  * 같은 어휘로 옮기는 매퍼.
@@ -119,6 +121,38 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  /**
+   * 자식이 문맥을 비웠다(`/clear`). 서버가 이 신호를 받아 저널을 비우고 `cleared`를 낸다 —
+   * 이 이벤트 자체는 원장에 남지 않는다.
+   */
+  | { readonly kind: "reset"; readonly at?: number }
+  /**
+   * 이 세션의 기록을 비웠다. 화면의 원장도 함께 비운다.
+   *
+   * 이음매 한 줄로 끝내지 않는 이유: 자식이 잊은 대화를 화면이 계속 보여 주면, 그 위쪽을 읽고
+   * 이어서 묻는 사람에게 화면이 거짓말을 한다. 문맥이 사라진 대화는 **읽을 수 있는 기록**이
+   * 아니라 오해의 원천이므로, 자식과 화면이 같은 것을 잊는다.
+   */
+  | { readonly kind: "cleared"; readonly at?: number }
+  /**
+   * 정비 명령 하나가 시작했다. **턴이 아니다.**
+   *
+   * 턴 문법(회전하는 노드·경과 시계·흐르는 글)은 "모델이 생각하고 있다"를 말한다. 이 명령들은
+   * 세션의 상태를 바꾸는 즉시 동작이고 그 중 둘은 모델을 아예 부르지 않으므로, 턴으로 그리면
+   * 화면이 없는 사고를 그린다.
+   */
+  | { readonly kind: "command"; readonly name: string; readonly at?: number }
+  /** 그 명령이 지나는 단계. 지금은 압축 하나뿐이며, 자식의 `status` 메시지가 실어 온다. */
+  | { readonly kind: "command-progress"; readonly phase: "compacting" }
+  /** 그 명령의 결말. `compact`는 실제로 되찾은 문맥을 함께 싣는다. */
+  | {
+      readonly kind: "command-end";
+      readonly ok: boolean;
+      /** 자식이 돌려준 한 줄. 압축처럼 숫자가 있는 결말에서는 생략된다. */
+      readonly summary?: string;
+      /** 압축 전후의 토큰과 소요 시간 — 자식의 `compact_boundary`가 말한 값이다. */
+      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
@@ -372,6 +406,22 @@ export function chatReplayFromTranscriptLine(
   return Number.isFinite(parsedAt) ? { at: parsedAt, events } : { events };
 }
 
+/**
+ * 이 문면이 **정비 줄로 그려질** 명령인가. 그 이름을, 아니면 `null`.
+ *
+ * 판정이 정책표 하나에 모여 있어야 하는 이유: 어느 명령이 턴을 열지 말아야 하는가는 그 명령이
+ * 무엇인지의 성질이지 문면의 성질이 아니다. 문면만 보고 가르면 새 명령을 지원할 때 두 곳을
+ * 고쳐야 하고, 한쪽만 고친 판본은 그 명령을 사고하는 턴으로 그린다.
+ */
+export function readChatCommandLaneName(text: string): string | null {
+  // 두 번째 `/`가 나오면 명령이 아니다 — `/Users/…` 같은 경로가 명령으로 읽히지 않게 하는 규칙이며,
+  // 컴포저 덱이 `/`를 깨울 때 쓰는 규칙(`readSlashToken`)과 같은 모양이다.
+  const match = /^\/([A-Za-z0-9:_-]+)(\s|$)/.exec(text);
+  if (!match) return null;
+  const name = match[1]!;
+  return isChatCommandLane(name) ? name : null;
+}
+
 function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   // auto-compact가 남긴 이어짐 요약은 런타임 메타다 — 사람이 친 지시처럼 재생하면
   // "전환이 세션을 summarize했다"로 읽힌다. isMeta가 없는 별도 플래그라 따로 거른다.
@@ -451,9 +501,56 @@ export function chatEventsFromSdkMessage(message: {
         return jobEndEvent(message, options);
       case "background_tasks_changed":
         return jobsChangedEvent(message);
+      // 로컬 슬래시 명령(`/usage` 등)이 자식 안에서 만들어 낸 출력. 벤더가 "전사록에
+      // assistant 문면으로 보이는 것"이라 규정하므로 같은 `text` 이벤트로 싣는다.
+      //
+      // 버리면 안 되는 이유는 덱이다: 컴포저가 목록에서 권한 항목을 세워 놓고 그 결과가
+      // 아무 데도 나타나지 않으면, 사용자가 보는 것은 "고를 수는 있는데 아무 일도 안 하는
+      // 명령"이다 — 그것은 덱이 없는 것보다 나쁘다.
+      // 압축 진행. `status`는 `compacting` → `null`로 오가고, 실패는 `compact_result`가 말한다.
+      case "status": {
+        const status = (message as { readonly status?: unknown }).status;
+        if (status === "compacting") return [{ kind: "command-progress", phase: "compacting" }];
+        const failed = (message as { readonly compact_result?: unknown }).compact_result === "failed";
+        if (!failed) return [];
+        const error = (message as { readonly compact_error?: unknown }).compact_error;
+        return [{
+          kind: "command-end",
+          ok: false,
+          ...(typeof error === "string" && error.trim().length > 0 ? { summary: capText(error) } : {}),
+        }];
+      }
+      // 압축이 실제로 그은 경계. 되찾은 문맥의 유일한 권위다 — 우리가 앞뒤 총량을 따로 재면
+      // 자식이 센 것과 다른 수를 말하게 된다.
+      case "compact_boundary": {
+        const meta = (message as { readonly compact_metadata?: unknown }).compact_metadata;
+        if (!meta || typeof meta !== "object") return [];
+        const row = meta as { readonly pre_tokens?: unknown; readonly post_tokens?: unknown; readonly duration_ms?: unknown };
+        if (typeof row.pre_tokens !== "number") return [];
+        return [{
+          kind: "command-end",
+          ok: true,
+          compact: {
+            before: row.pre_tokens,
+            ...(typeof row.post_tokens === "number" ? { after: row.post_tokens } : {}),
+            ...(typeof row.duration_ms === "number" ? { durationMs: row.duration_ms } : {}),
+          },
+        }];
+      }
+      case "local_command_output": {
+        const content = (message as { readonly content?: unknown }).content;
+        return typeof content === "string" && content.trim().length > 0
+          ? [{ kind: "text", text: capText(content) }]
+          : [];
+      }
       default:
         return [];
     }
+  }
+  // 자식이 문맥을 비웠다. 벤더는 이것을 system subtype이 아니라 **자기 타입**으로 낸다
+  // (SDK 0.3.212 `SDKConversationResetMessage`) — 위 switch 밑에 두면 닿지 않는다.
+  if (message.type === "conversation_reset") {
+    return [{ kind: "reset", at: Date.now() }];
   }
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
@@ -511,6 +608,50 @@ export interface AgentChatJobStep {
 export type AgentChatJobDetail =
   | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
   | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/**
+ * 컴포저 덱이 세우는 항목 하나.
+ *
+ * `kind`는 SDK가 준 필드가 아니라 **우리가 붙인 분류**다. 벤더는 내장 명령과 스킬을 같은
+ * `SlashCommand` 레코드로 주고 카테고리를 말하지 않으므로, init이 실어 온 스킬 이름 집합으로
+ * 여기서 가른다. init을 못 받았으면 전부 `command`로 선다.
+ */
+export interface AgentChatCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  /** 인자를 받는다는 표시. 빈 문자열이면 인자 없이 바로 실행되는 항목이다. */
+  readonly argumentHint: string;
+  /**
+   * 이 항목이 **자식이 아니라 Console로** 가는 좌표. 없으면 평범한 통과 항목이다.
+   *
+   * 서버가 문구가 아니라 좌표를 싣는 이유는 `chat-command-policy.ts`에 적혀 있다.
+   */
+  readonly console?: ChatCommandConsoleTarget;
+}
+
+/**
+ * 컴포저의 `/`와 `@`가 세우는 목록.
+ *
+ * 두 글자를 한 응답에 담는 이유는 출처가 하나이기 때문이다 — 같은 자식에게 한 번 물어 둘을
+ * 함께 얻는다. 나누어 두 번 물으면 턴이 시작된 사이에 두 번째가 `null`로 떨어져, 화면이
+ * 반쪽짜리 덱을 그리게 된다.
+ */
+export interface AgentChatCatalog {
+  /** `/` 1단 — 자식의 내장 명령. */
+  readonly commands: readonly AgentChatCatalogEntry[];
+  /** `/` 2단 — 이 Theater가 실어 준 스킬. */
+  readonly skills: readonly AgentChatCatalogEntry[];
+  /** `@` — Task 도구로 부르는 서브에이전트. 슬래시 문법이 아니라 별도 글자를 쓴다. */
+  readonly agents: readonly AgentChatCatalogEntry[];
+  /**
+   * 정책표가 모르는 내장 명령의 이름들. 자식이 새로 얻은 기능이 여기 실린다.
+   *
+   * 숨기지 않고 세는 이유는 fail-open이기 때문이다 — 모르는 것을 조용히 지우면 자식의 새 기능이
+   * 아무 신호 없이 사라지고, 그 침묵은 잘못 통과시키는 것보다 알아채기 어렵다. 이 목록이 비어
+   * 있지 않다는 사실 자체가 정책표를 갱신하라는 신호다.
+   */
+  readonly unclassified: readonly string[];
+}
 
 /**
  * 서브에이전트 전사록에서 도구 발자국을 뽑는다.

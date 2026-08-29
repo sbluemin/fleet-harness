@@ -3675,7 +3675,10 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain('} from "@fleet-console/sdk/composer";');
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
     expect(composer).toContain('${ultracodeArmed ? " is-ultracode" : ""}');
-    expect(composer).toContain('renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")');
+    // 미러는 한 층이고 구간마다 클래스를 싣는다 — `ultracode` 무장과 덱이 완성한 좌표가 같은
+    // textarea 위에 함께 겹치기 때문이다. 층을 둘로 띄우면 스크롤·자동 높이에서 서로 어긋난다.
+    expect(composer).toContain('className: "agent-chat-composer-ultracode-token"');
+    expect(composer).toContain("renderComposerSpans(draft, highlightSpans)");
     expect(composer).toContain('<p className="agent-chat-composer-ultracode-notice" role="status">');
 
     // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
@@ -3692,6 +3695,14 @@ describe("Effort track interaction grammar", () => {
     // 무장 프레임은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치
     // 채널(brass)도 빌리지 않는다. Quick Launch의 도는 conic 링과 달리 여기는 정지한 테두리다
     // (좌표의 is-ultracode가 이 면에서 이미 내린 결정). apex×중립 혼합은 oklab이다(hue 호 관통 방지).
+    // 완성된 좌표는 위치 채널(brass)이고 무장 표식은 apex다. 둘이 한 줄에 함께 설 수 있으므로
+    // 색이 갈라져 있어야 구분된다 — 좌표가 apex를 빌리면 무장한 것으로 읽힌다.
+    const resolved = block(".agent-chat-composer-resolved-token");
+    expect(resolved).toContain("var(--brass)");
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--apex"]) {
+      expect(resolved, signal).not.toContain(signal);
+    }
+
     const frame = block(".agent-chat-composer-frame.is-ultracode");
     expect(frame).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
     for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
@@ -3714,6 +3725,60 @@ describe("Effort track interaction grammar", () => {
     // 두 규칙 모두 봉인 블록에서만 이 형태를 띤다(무장 블록은 테두리·글로우를 더 얹는다).
     expect(chat).toMatch(/\.agent-chat-composer-frame\.is-ultracode \{\s*animation: none;\s*\}/);
     expect(chat).toMatch(/\.agent-chat-composer-ultracode-token \{\s*animation: none;\s*background-image: none;\s*color: var\(--apex-ink\);\s*-webkit-text-fill-color: var\(--apex-ink\);/);
+  });
+
+  it("pins the chat maintenance-lane grammar - a command is not a turn", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 정비 명령은 턴 문법을 하나도 빌리지 않는다. 그 문법 전체가 "모델이 생각하고 있다"를
+    // 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예 부르지 않는다.
+    const row = block(".agent-chat-command-row");
+    expect(row).toContain("color: var(--text-tertiary);");
+    for (const turnish of ["animation", "--id-cerulean", "--apex"]) {
+      expect(row, turnish).not.toContain(turnish);
+    }
+
+    // 상태는 점 하나가 지고 **모션이 없다** — 맥동은 이 원장에서 "모델이 살아 있다"는 뜻이다.
+    const dot = block(".agent-chat-command-dot");
+    expect(dot).not.toContain("animation");
+    expect(chat).toContain(".agent-chat-command-row.is-running .agent-chat-command-dot { background: var(--aurora); }");
+    expect(chat).toContain(".agent-chat-command-row.is-failed .agent-chat-command-dot { background: var(--coral); }");
+
+    // 이름만 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻.
+    expect(block(".agent-chat-command-name")).toContain("color: var(--brass-ink);");
+    const detail = block(".agent-chat-command-detail");
+    expect(detail).toContain("color: var(--text-tertiary);");
+    expect(detail).not.toContain("--brass");
+
+    // 되찾은 문맥은 여러 줄을 나란히 놓고 읽는 수다.
+    expect(block(".agent-chat-command-elapsed")).toContain("font-variant-numeric: tabular-nums;");
+
+    // 이 줄도 원장의 한 컬럼에 선다. `margin: 0`으로 쓰면 `.agent-chat-log > *`의 auto를 덮어
+    // (같은 특정성, 더 늦은 선언) 이 줄만 패널 왼쪽 끝에 붙는다.
+    expect(row).toContain("margin: 0 auto;");
+
+    // 계기는 되찾은 몫을 채운다: 도는 동안 aurora(작업 중), 끝나면 positive(성공).
+    expect(block(".agent-chat-command-gauge-fill")).toContain("background: var(--positive);");
+    const runningFill = chat.slice(chat.indexOf(".agent-chat-command-row.is-running .agent-chat-command-gauge-fill {"));
+    expect(runningFill.slice(0, runningFill.indexOf("}"))).toContain("background: var(--aurora);");
+
+    // 감속 모션에서 왕복은 서되 계기는 남는다 — 띠를 통째로 눕히면 "끝을 모르는 진행"과
+    // "아무 일도 없음"이 같은 그림이 된다.
+    expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-chat-command-row\.is-running \.agent-chat-command-gauge-fill \{\s*animation: none;/);
+
+    // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다.
+    const hint = block(".agent-chat-deck-hint.is-console");
+    expect(hint).toContain("var(--brass-ink)");
+    expect(chat).toContain(".agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {");
+
+    // 퇴역한 표면이 되살아나지 않게 못박는다 — 명령 결과는 Answer 옆이 아니라 자기 줄에 선다.
+    expect(chat).not.toMatch(/^\.agent-chat-command-result \{/m);
+    expect(chat).not.toMatch(/^\.agent-chat-reset-seam \{/m);
   });
 
   it("pins the chat start-view arming grammar", () => {

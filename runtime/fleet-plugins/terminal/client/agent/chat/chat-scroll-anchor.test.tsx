@@ -18,6 +18,7 @@ function makeLogState(): AgentChatLogState {
     jobs: [],
     context: null,
     queue: [],
+    catalogEpoch: 0,
   };
 }
 

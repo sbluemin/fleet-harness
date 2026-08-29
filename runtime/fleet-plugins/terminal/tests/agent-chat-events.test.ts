@@ -5,6 +5,7 @@ import {
   chatEventsFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
+  readChatCommandLaneName,
   summarizeToolInput,
   summarizeToolResult,
   type AgentChatStreamEvent,
@@ -240,6 +241,27 @@ describe("chat transcript mapping", () => {
 });
 
 describe("chat sdk message mapping", () => {
+  /**
+   * 컴포저 덱이 `/usage` 같은 로컬 명령을 목록에 세우는 이상, 그 출력이 전사록에 서야 한다.
+   * 버리면 사용자가 보는 것은 "고를 수는 있는데 아무 일도 안 하는 명령"이고, 그것은 덱이
+   * 없는 것보다 나쁘다. 벤더가 이 메시지를 assistant 문면으로 규정하므로 `text`로 싣는다.
+   */
+  it("surfaces local slash-command output as transcript text", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "local_command_output",
+      content: "Session cost: $1.24",
+    })).toEqual([{ kind: "text", text: "Session cost: $1.24" }]);
+  });
+
+  it("drops a local command output that carries nothing to show", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "local_command_output",
+      content: "   ",
+    })).toEqual([]);
+  });
+
   it("maps assistant messages like transcript lines", () => {
     expect(chatEventsFromSdkMessage({
       type: "assistant",
@@ -866,5 +888,64 @@ describe("chat job detail", () => {
     expect(tail.tail).toContain("Bearer sk-…");
     expect(tail.tail).toContain("./src/app.ts");
     expect(tail.tail.split("\n")).toHaveLength(2);
+  });
+})
+
+describe("maintenance commands", () => {
+  it("maps conversation_reset - the vendor sends it as its own type, not a system subtype", () => {
+    // system 아래 두면 subtype switch의 default로 떨어져 조용히 사라진다. 그 침묵이 곧
+    // "화면은 대화를 보여 주는데 자식은 그것을 잊은" 상태다.
+    const events = chatEventsFromSdkMessage({ type: "conversation_reset", session_id: "s1" });
+    expect(events).toEqual([{ kind: "reset", at: expect.any(Number) }]);
+  });
+
+  it("reads the compacting status as progress, not as a turn", () => {
+    const events = chatEventsFromSdkMessage({ type: "system", subtype: "status", status: "compacting", session_id: "s1" });
+    expect(events).toEqual([{ kind: "command-progress", phase: "compacting" }]);
+  });
+
+  it("ignores the status message that only says the child left a phase", () => {
+    // `status: null`은 압축이 끝났다는 뜻이 아니라 단계가 없다는 뜻이다. 결말은 경계가 말한다.
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "status", status: null, session_id: "s1" })).toEqual([]);
+  });
+
+  it("carries the compaction numbers the child measured", () => {
+    // 되찾은 문맥은 자식이 센 수 그대로다 - 앞뒤를 우리가 따로 재면 계기와 다른 값을 말한다.
+    const events = chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      session_id: "s1",
+      compact_metadata: { trigger: "manual", pre_tokens: 62400, post_tokens: 18100, duration_ms: 3200 },
+    });
+    expect(events).toEqual([{
+      kind: "command-end",
+      ok: true,
+      compact: { before: 62400, after: 18100, durationMs: 3200 },
+    }]);
+  });
+
+  it("reports a failed compaction with the child's own reason", () => {
+    const events = chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "failed",
+      compact_error: "Not enough messages to compact.",
+      session_id: "s1",
+    });
+    expect(events).toEqual([{ kind: "command-end", ok: false, summary: "Not enough messages to compact." }]);
+  });
+
+  it("routes only the supported commands into the ledger lane", () => {
+    // 지원 목록이 선별이라, 이 판정은 정책표 하나에서만 나와야 한다.
+    expect(readChatCommandLaneName("/compact")).toBe("compact");
+    expect(readChatCommandLaneName("/clear")).toBe("clear");
+    expect(readChatCommandLaneName("/reload-skills")).toBe("reload-skills");
+    // Console이 답하므로 자식에게 가지 않는다 - 원장에 줄을 갖지 않는다.
+    expect(readChatCommandLaneName("/context")).toBeNull();
+    // 지원하지 않는 것과 평범한 문장은 모두 평범한 턴이다.
+    expect(readChatCommandLaneName("/usage")).toBeNull();
+    expect(readChatCommandLaneName("/Users/sbluemin/notes.md is stale")).toBeNull();
+    expect(readChatCommandLaneName("compact the ledger")).toBeNull();
   });
 });

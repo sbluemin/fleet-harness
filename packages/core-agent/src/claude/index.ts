@@ -10,7 +10,9 @@ export { createClaudeExecutionEventDecoder } from "./execution-events.js";
 export { createClaudeExecutionLoop } from "./execution-loop.js";
 export { defineTool, createEmbeddedMcpServer } from "../mcp/embedded/server.js";
 export type {
+  ClaudeGatewayAgent,
   ClaudeGatewayCanUseTool,
+  ClaudeGatewayCommand,
   ClaudeGatewayContextCategory,
   ClaudeGatewayContextUsage,
   ClaudeGatewayEffort,

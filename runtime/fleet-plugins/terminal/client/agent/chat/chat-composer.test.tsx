@@ -6,10 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { AgentChatComposer } from "./composer.js";
+import type { AgentChatCatalog } from "./chat-events.js";
 
 const uploads: File[] = [];
 const messages: string[] = [];
 let stops = 0;
+let meterOpens = 0;
+let renames: string[] = [];
+let renameFails = false;
+/** 덱과 Console 라우팅이 함께 읽는 카탈로그. `null`이면 "아직 모른다"이고 라우팅은 쉰다. */
+let catalogPayload: AgentChatCatalog | null = null;
+let catalogFetches = 0;
 let canceled: string[] = [];
 let cancelOutcome: "canceled" | "started" | "unreachable" = "canceled";
 let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
@@ -25,6 +32,7 @@ vi.mock("../api.js", () => ({
     return { id: `att-${uploads.length}` };
   },
   discardLaunchAttachment: async () => {},
+  readAgentChatCatalog: async () => { catalogFetches += 1; return catalogPayload; },
 }));
 
 let root: Root | null = null;
@@ -38,6 +46,15 @@ beforeEach(() => {
   cancelOutcome = "canceled";
   messageDelivery = "resolve";
   releaseMessage = null;
+  meterOpens = 0;
+  renames = [];
+  renameFails = false;
+  catalogPayload = null;
+  catalogFetches = 0;
+  // jsdom에는 scrollIntoView가 없다 — 덱이 활성 행을 따라가며 부른다.
+  if (!(Element.prototype as { scrollIntoView?: unknown }).scrollIntoView) {
+    (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+  }
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: () => "blob:preview",
@@ -56,6 +73,7 @@ afterEach(() => {
 interface MountOptions {
   readonly turnRunning?: boolean;
   readonly queue?: readonly { readonly id: string; readonly text: string }[];
+  readonly catalogEpoch?: number;
 }
 
 function composerProps(options: MountOptions = {}) {
@@ -63,6 +81,13 @@ function composerProps(options: MountOptions = {}) {
     operationId: "op-1",
     language: "en",
     operation: { id: "op-1", title: "Fresh chat", payload: {} },
+    operations: {
+      rename: async (_id: string, title: string) => {
+        if (renameFails) throw new Error("rename failed");
+        renames.push(title);
+        return {};
+      },
+    },
   } as unknown as OperationRenderContext;
   return {
     context,
@@ -85,6 +110,9 @@ function composerProps(options: MountOptions = {}) {
       canceled.push(queueId);
       return cancelOutcome;
     },
+    coordinates: { model: null, effort: null },
+    onOpenContextMeter: () => { meterOpens += 1; },
+    catalogEpoch: options.catalogEpoch ?? 0,
   };
 }
 
@@ -286,6 +314,11 @@ describe("chat panel composer", () => {
 
   // Quick Launch와 같은 `ultracode` 무장을 이 컴포저도 진다 — 같은 부품(sdk/composer)이
   // 인식·미러 문법을 소유하고, 표식만 이 조립이 싣는다.
+  /** 같은 트리에 프롭만 갈아 끼운다. 다시 마운트하면 어차피 새로 읽으므로 검사가 무의미해진다. */
+  function rerender(options: MountOptions): void {
+    act(() => { root?.render(createElement(AgentChatComposer, composerProps(options))); });
+  }
+
   function type(value: string, caret = value.length): void {
     const field = input();
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
@@ -343,5 +376,159 @@ describe("chat panel composer", () => {
     // 이미지가 아니므로 조용히 지나간다 — 사유를 말하지 않는다.
     expect(uploads).toHaveLength(0);
     expect(container?.querySelector(".agent-chat-composer-error")).toBeNull();
+  });
+
+  describe("Console-owned slash commands", () => {
+    const CATALOG: AgentChatCatalog = {
+      commands: [
+        { name: "clear", description: "Start a new session with empty context", argumentHint: "", console: "clear" },
+        { name: "compact", description: "Free up context by summarizing", argumentHint: "" },
+        { name: "context", description: "Show current context usage", argumentHint: "", console: "context" },
+        { name: "reload-skills", description: "Pick up skills changed on disk", argumentHint: "" },
+      ],
+      skills: [],
+      agents: [],
+      unclassified: [],
+    };
+
+    /**
+     * 덱을 한 번 열어 카탈로그를 받아 둔다 — 라우팅은 카탈로그를 알아야 깨어난다.
+     * 덱은 포커스가 있을 때만 서므로(다른 표면이 포커스를 가져간 뒤 눌어붙지 않게 한 규칙)
+     * 실제 사용자처럼 먼저 필드에 들어간다.
+     */
+    async function primeCatalog(): Promise<void> {
+      catalogPayload = CATALOG;
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      if (container?.querySelector(".agent-chat-deck") === null) throw new Error("deck never opened");
+    }
+
+    function submit(): void {
+      const field = input();
+      field?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    }
+
+    /**
+     * 이름을 정확히 친 직후에는 덱이 그 행을 세우고 있고, 그때의 Enter는 **완성**이다(승인된
+     * 계약: 같은 Enter가 행마다 다른 일을 하지 않는다). 완성이 끝나면 문면 뒤에 공백이 붙어
+     * 덱이 눕고, 그다음 Enter가 비로소 보내기다. 사용자가 실제로 밟는 순서를 그대로 밟는다.
+     */
+    async function completeThenSubmit(): Promise<void> {
+      await act(async () => { submit(); });
+      expect(container?.querySelector(".agent-chat-deck")).toBeNull();
+      await act(async () => { submit(); });
+    }
+
+
+
+
+    it("opens the context meter instead of asking the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/context"); });
+      await completeThenSubmit();
+      expect(meterOpens).toBe(1);
+      expect(messages).toEqual([]);
+    });
+
+
+    it("arms /clear once and only sends on the second press", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/clear"); });
+      await completeThenSubmit();
+      // 되돌릴 수 없는 절단이다 — 완성 뒤 첫 Enter는 확인이지 실행이 아니다.
+      expect(messages).toEqual([]);
+      expect(container?.textContent).toContain("Press Enter again");
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/clear"]);
+    });
+
+    it("disarms /clear when the draft changes", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/clear"); });
+      await completeThenSubmit();
+      // 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
+      await act(async () => { type("/compact tighten"); });
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/compact tighten"]);
+    });
+
+    it("still sends a passthrough command to the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/compact tighten it"); });
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/compact tighten it"]);
+    });
+
+    it("sends everything while the catalog is unknown", async () => {
+      // 카탈로그를 모르는 동안 가로채면, 분류를 아직 모르는 지시가 자식에게 닿지 못한 채 삼켜진다.
+      catalogPayload = null;
+      mount();
+      await act(async () => { type("/context"); });
+      await act(async () => { submit(); });
+      expect(meterOpens).toBe(0);
+      expect(messages).toEqual(["/context"]);
+    });
+  });
+
+  describe("catalog freshness", () => {
+    const CATALOG2: AgentChatCatalog = {
+      commands: [{ name: "reload-skills", description: "Pick up skills changed on disk", argumentHint: "" }],
+      skills: [],
+      agents: [],
+      unclassified: [],
+    };
+
+    it("re-reads the catalog after a skill reload advances the epoch", async () => {
+      // 서버가 자기 캐시를 버려도 이 사본은 마운트 내내 살아 있다 — 만료 좌표가 없으면 방금
+      // 추가한 스킬이 패널을 다시 세울 때까지 보이지 않는다.
+      catalogPayload = CATALOG2;
+      mount();
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      // 같은 판본에서 덱을 닫았다 열어도 다시 읽지 않는다.
+      await act(async () => { type(""); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      rerender({ catalogEpoch: 1 });
+      await act(async () => {});
+      expect(catalogFetches).toBe(2);
+    });
+
+    /**
+     * 리뷰(#941 2차 P2)가 지목한 경로. 판본을 요청 **전에** 적으면, 그 요청이 빈손으로 돌아왔을
+     * 때(404·409는 이 API의 정상 응답이다) 옛 사본이 새 판본의 것으로 둔갑해 다시 물어볼 길이
+     * 사라진다.
+     */
+    it("keeps retrying when the refresh comes back empty", async () => {
+      catalogPayload = CATALOG2;
+      mount();
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      // 재읽기가 빈손으로 돌아온다 — 서버가 아직 세션을 세우는 중이거나 접는 중이다.
+      catalogPayload = null;
+      rerender({ catalogEpoch: 1 });
+      await act(async () => {});
+      expect(catalogFetches).toBe(2);
+
+      // 덱을 닫았다 다시 열면 또 물어야 한다. 판본이 옛 사본에 붙어 버렸다면 여기서 멈춘다.
+      catalogPayload = CATALOG2;
+      await act(async () => { type(""); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(3);
+    });
   });
 });

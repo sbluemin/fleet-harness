@@ -114,6 +114,98 @@
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
 
+/* 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
+   턴 문법(회전하는 노드·경과 시계·흐르는 글)은 전부 "모델이 생각하고 있다"를 말한다. 이 셋은
+   세션 상태를 즉시 바꾸는 동작이고 둘은 모델을 아예 부르지 않으므로, 그 어휘를 하나도 빌리지
+   않는다 — 대신 사용자 디스패치와 같은 축(왼쪽 정렬 한 줄)에 조용히 앉는다. */
+.agent-chat-command-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* 가로 여백은 **auto여야 한다** — 원장의 `.agent-chat-log > *`가 그 auto로 모든 항목을 한
+     컬럼에 세운다. `margin: 0`으로 쓰면 그 규칙을 통째로 덮어(같은 특정성, 더 늦은 선언) 이
+     줄만 패널 왼쪽 끝에 붙는다(실측). */
+  margin: 0 auto;
+  padding: 2px 0;
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+/* 상태는 점 하나가 진다. 도는 동안 aurora(작업 중), 끝나면 중립, 실패는 coral —
+   원장의 턴 노드가 쓰는 것과 같은 신호 어휘이되 **모션이 없다**: 맥동은 이 표면에서
+   "모델이 살아 있다"는 뜻이라, 모델을 부르지 않는 동작에 붙이면 그 어휘가 거짓이 된다. */
+.agent-chat-command-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+}
+
+/* 압축의 계기. 채워진 몫은 **되찾은 문맥**이다 — 많이 찰수록 좋은 결과이므로 눈이 길이를
+   그대로 읽으면 된다. 끝난 계기에 positive를 쓰는 것은 그것이 상태(성공)이기 때문이고,
+   도는 동안 aurora인 것도 같은 규율(작업 중)이다. */
+.agent-chat-command-gauge {
+  flex: none;
+  position: relative;
+  width: 72px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.agent-chat-command-gauge-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--agent-chat-gauge-fill, 0%);
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+  transition: width var(--duration-slow) var(--ease-glide);
+}
+
+/* 도는 동안은 **얼마나 남았는지 알 수 없다** — 자식은 압축 중이라는 사실만 말하고 진척을
+   말하지 않는다(실측). 그래서 채우는 척하지 않고, 길이를 모른다는 뜻의 왕복 띠를 둔다.
+   턴의 맥동과 다른 어휘다: 저쪽은 "모델이 생각하고 있다"이고 이쪽은 "끝을 모르는 진행"이다. */
+.agent-chat-command-row.is-running .agent-chat-command-gauge-fill {
+  width: 38%;
+  background: var(--aurora);
+  animation: agent-chat-command-sweep 1.4s var(--ease-glide) infinite;
+}
+
+@keyframes agent-chat-command-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(264%); }
+}
+
+.agent-chat-command-row.is-running .agent-chat-command-dot { background: var(--aurora); }
+.agent-chat-command-row.is-failed .agent-chat-command-dot { background: var(--coral); }
+
+/* 이름은 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻
+   (부를 수 있는 좌표). 상태나 몸통 채움에는 쓰지 않는다. */
+.agent-chat-command-name {
+  flex: none;
+  color: var(--brass-ink);
+}
+
+.agent-chat-command-detail {
+  min-width: 0;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-command-row.is-failed .agent-chat-command-detail { color: var(--coral-ink); }
+
+/* 소요 시간은 오른쪽 끝에 붙어 자릿수가 흔들리지 않는다 — 압축이 얼마나 걸렸는지는 여러 줄을
+   나란히 놓고 비교하게 되는 값이다. */
+.agent-chat-command-elapsed {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
@@ -1445,6 +1537,194 @@
   display: block;
 }
 
+/* ── 능력 덱 ────────────────────────────────────────────────────────────────
+   컴포저 위에 서는 `/`·`@` 목록. Quick Launch 덱과 **같은 문법**을 쓰되 클래스는 새로 짓는다 —
+   코어의 `.quick-launch-*`는 전역 규칙이라 여기에도 먹지만, 빌려 쓰면 코어 크롬의 CSS가 이
+   번들의 계약이 된다.
+
+   자리: input-wrap이 컴포저 안에서 유일한 position:relative라 그 위에 건다. QL은 fixed
+   오버레이라 패널을 벗어나지만 이 표면은 `.canvas-operation-terminal`의 overflow:hidden에
+   잘린다 — 짧은 패널에서 위로 잘리는 것은 이 자리의 알려진 대가다. */
+.agent-chat-deck {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  /* 이 시트의 지역 사다리를 쓴다 — 코어 `--z-select-popover`는 theme.css가 아니라
+     components.css의 코어 전용 토큰이라, 플러그인이 참조하면 그림자 API가 된다.
+     문맥 계기 팝오버(.agent-chat-ctx-pop)가 6이고, 타이핑으로 연 덱이 그 위에 선다. */
+  z-index: 7;
+  max-height: min(340px, 42vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+/* 카테고리 머리글 — brass는 위치 채널이다(이 덱이 행선지 선택 표면임을 말한다). */
+.agent-chat-deck-category {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 4px;
+  color: var(--brass);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /* 스크롤을 따라 붙는다. 덱 패딩(--space-1)만큼 위로 물려 상단에 빈틈을 없앤다.
+     배경은 **불투명 칠이 아니라** 덱의 유리를 다시 칠하는 것이고, 뒤로 지나가는 행은
+     backdrop-filter가 흐려 덮는다 — 솔리드로 바꾸면 이 밴드만 판이 되어 유리 계약이 깨진다
+     (`/model` 프로바이더 밴드가 같은 레시피를 쓴다). 투명하게 두면 행이 글자 밑으로 비친다. */
+  position: sticky;
+  top: calc(var(--space-1) * -1);
+  z-index: 1;
+  /* 한 단 올라간 면 토큰 하나로 칠한다.
+     유리 틴트를 섞던 앞선 판은 테마마다 다르게 착지했다(실측): carbon에서는 틴트(L .188)와
+     panel(L .19)이 같아 밴드가 아예 사라지고, maritime에서는 틴트가 panel보다 **어둡고**,
+     instrument에서는 밝았다 — 대비의 크기뿐 아니라 방향까지 갈렸다.
+     `--surface-panel-raised`는 "패널보다 한 단 위"를 테마별로 이미 조율해 둔 토큰이라 네 테마에서
+     같은 뜻으로 읽히고, 라이트 테마에서는 그 한 단이 올바르게 **어두운 쪽**으로 뒤집힌다.
+     불투명이어야 하는 이유는 따로 있다: 덱 자신이 backdrop-filter를 쓰는 탓에 그 안의 밴드는
+     형제 행을 흐리지 못해, 알파만으로는 스크롤하는 행이 머리글 글자 사이로 그대로 읽힌다. */
+  background: var(--surface-panel-raised);
+}
+
+.agent-chat-deck-category-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklch, var(--brass) 30%, transparent);
+}
+
+.agent-chat-deck-category-count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-deck-row {
+  /* 고정 머리글이 가리는 만큼 미리 비켜 둔다. `scrollIntoView({block:"nearest"})`는 스크롤포트의
+     가장자리만 보고 판단하므로, 이 여백이 없으면 위로 이동한 행이 머리글 **뒤로** 들어가 앉아
+     사용자에게는 포커스가 사라진 것처럼 보인다(실측). */
+  scroll-margin-top: 34px;
+  scroll-margin-bottom: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-chat-deck-row:hover {
+  background: color-mix(in oklch, var(--surface-pillar) 75%, transparent);
+}
+
+/* 키보드 활성 행은 brass 워시가 말한다 — pillar 믹스로는 덱의 pillar 언더레이에 묻힌다. */
+.agent-chat-deck-row.is-active {
+  background: var(--brass-glow);
+}
+
+.agent-chat-deck-row.is-active .agent-chat-deck-name {
+  color: var(--brass);
+}
+
+.agent-chat-deck-glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--brass);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-sm);
+  line-height: 1;
+}
+
+/* 이름은 자기 열을 갖는다 — 설명이 붙어도 이름 기둥이 흔들리지 않아야 목록이 훑힌다
+   (Claude Code 자신의 슬래시 목록과 같은 배치). */
+.agent-chat-deck-name {
+  flex: none;
+  width: 15rem;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* 설명은 이름 오른쪽 열에 **한 줄**로 서고 넘치면 말줄임한다.
+   한 줄이어야 하는 이유는 리듬이다: 두 줄을 허용하면 설명이 긴 행만 키가 커져 목록의 간격이
+   들쭉날쭉해진다(숨겨 두어도 자리는 차지하므로 `visibility`로는 해결되지 않는다). 모든 행이
+   정확히 한 줄이면 활성 행이 움직여도 아래 행들이 제자리에 있다. */
+.agent-chat-deck-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 활성 행에서만 한 단 밝아진다 — 자리를 바꾸지 않고 눈이 멈춘 곳을 말하는 방법이다. */
+.agent-chat-deck-row.is-active .agent-chat-deck-desc {
+  color: var(--text-secondary);
+}
+
+.agent-chat-deck-hint {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-2xs);
+}
+
+/* 이 행의 Enter는 자식이 아니라 Console로 간다. 행선지는 위치이므로 brass가 그것을 말한다 —
+   고르기 **전에** 읽혀야 하는 사실이라 인자 힌트 자리를 이 칩이 가져간다. */
+.agent-chat-deck-hint.is-console {
+  /* 혼합 공간이 oklab인 이유는 실측이다: brass(hue 62)와 중립 hairline(hue ~252)은 색상환에서
+     거의 대척이라 oklch 보간이 어느 호로 갈지가 정해지지 않고, carbon에서 hue 320 — 보라색
+     테두리로 풀렸다. oklab은 호를 관통하지 않는다(무장 프레임의 apex×중립 혼합과 같은 규율). */
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
+  color: var(--brass-ink);
+}
+
+/* 이름은 한 단 물러난다 — 자식의 능력 목록 안에서 이 행만 다른 곳으로 가므로, 활성 행이
+   아닐 때는 통과 항목보다 조용해야 목록의 기본 뜻(자식에게 보낸다)이 유지된다.
+   활성 행에서는 물러나지 않는다: 지금 눈이 멈춘 자리는 언제나 가장 또렷해야 한다. */
+.agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {
+  color: var(--text-secondary);
+}
+
+.agent-chat-deck-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
 /* 미러 층 — textarea는 자기 글자 일부만 다르게 칠할 수 없어, 무장 중에만 같은 문면을 같은
    메트릭으로 그린 레이어를 뒤에 깔고 textarea의 글자를 투명하게 만든다. 폭·높이는 JS가
    textarea의 client 박스로 맞춘다(syncComposerHighlight). 캐럿·선택·IME는 여전히 textarea의
@@ -1472,7 +1752,10 @@
   tab-size: 8;
 }
 
-.agent-chat-composer-frame.is-ultracode .agent-chat-composer-input {
+/* 미러가 서 있는 동안에는 textarea의 글자를 비운다 — 비우지 않으면 불투명한 실제 글자가 미러
+   위에 그대로 겹쳐, 미러가 칠한 색은 배경 칩만 남기고 사라진다(실측: 좌표가 회색 상자로 보였다).
+   무장뿐 아니라 해석된 좌표만 있을 때도 미러가 서므로 조건은 `is-mirrored`다. */
+.agent-chat-composer-frame.is-mirrored .agent-chat-composer-input {
   position: relative;
   z-index: 1;
   color: transparent;
@@ -1482,6 +1765,17 @@
 /* 인식된 단어는 좌표 ULTRACODE 티어·강도 트랙과 같은 apex 물결로 흐른다 — 같은 능력이면 같은
    어휘다. 미러 층 위에 겹치므로 자족 폭을 바꾸는 속성(굵기·자간)은 쓰지 않는다: 보이는 글자와
    textarea가 그리는 캐럿·선택이 어긋난다. 신호는 색이 싣는다. */
+/* 덱으로 완성된 좌표 — 이 문면이 실제로 부를 수 있는 것임을 말한다.
+   brass는 이 제품에서 위치·초점 채널이고, 완성된 좌표는 "여기가 어디로 간다"는 위치 정보라
+   같은 채널에 앉는다. 신호색(aurora/warn/coral)을 쓰면 상태를 말하는 것으로 읽힌다.
+   무장 표식(apex)과 색이 갈라져야 둘이 한 줄에 함께 서도 구분된다. */
+.agent-chat-composer-resolved-token {
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--brass) 15%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 26%, transparent);
+  color: var(--brass);
+}
+
 .agent-chat-composer-ultracode-token {
   background-image: linear-gradient(
     105deg,
@@ -1929,6 +2223,14 @@
   .agent-chat-ask-dot,
   .agent-chat-step-orbit {
     animation: none;
+  }
+
+  /* 압축 계기의 왕복 봉인 — 모션만 죽이고 "진행 중"은 남긴다. 띠를 통째로 눕히면 계기가 빈
+     트랙이 되어, 끝을 모르는 진행과 아무 일도 없음이 같은 그림이 된다. */
+  .agent-chat-command-row.is-running .agent-chat-command-gauge-fill {
+    animation: none;
+    width: 100%;
+    background: color-mix(in oklab, var(--aurora) 45%, var(--hairline));
   }
 
   .agent-chat-fold-chev {
@@ -2382,7 +2684,9 @@
 
 .agent-chat-detail-back:hover {
   color: var(--brass);
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  /* 위 덱 힌트와 같은 결함이었다: brass×중립을 oklch로 섞으면 색상 호가 정해지지 않아
+     carbon에서 보라(hue 320)로 풀린다(실측). 같은 자리에 같은 규율을 둔다. */
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
 }
 
 .agent-chat-detail-back:focus-visible {

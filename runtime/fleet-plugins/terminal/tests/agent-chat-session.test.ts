@@ -8,7 +8,7 @@ import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../server/agent-api/chat-session.js";
 import { initialAgentChatLogState, reduceAgentChatLog } from "../client/agent/chat/chat-events.js";
-import type { AgentChatJournalEvent } from "../server/agent-api/chat-events.js";
+import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../server/agent-api/chat-events.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -58,7 +58,15 @@ type FakeTurn = {
  * 턴 스크립트는 그대로 유지하되 소비 시점이 바뀐다: 세션은 한 번 열리고, `send()`가 불릴 때마다
  * 다음 스크립트의 메시지가 그 스트림으로 흘러든다 — 자식 하나가 여러 턴을 사는 실제 모양이다.
  */
-function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void } = {}) {
+type FakeCatalog = {
+  readonly commands: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
+  readonly agents: readonly { readonly name: string; readonly description: string; readonly model: string | null }[];
+  readonly skills?: readonly { readonly name: string; readonly description: string; readonly argumentHint: string; readonly aliases: readonly string[] }[];
+  /** 이 축이 몇 번째 요청까지 "못 물었다"(`null`)로 답하는가. 일시적 실패를 재현한다. */
+  readonly failCommandsFor?: number;
+};
+
+function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
   const queue: Record<string, unknown>[] = [];
   let waiting: (() => void) | null = null;
   let closed = false;
@@ -69,6 +77,7 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     resume?.();
   };
   let lastConsumed: FakeTurn | null = null;
+  let commandAttempts = 0;
   return {
     send(text: string): void {
       hooks.onSend?.(text);
@@ -87,6 +96,19 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     interrupt: async (): Promise<void> => { hooks.onInterrupt?.(); },
     stopTask: async (taskId: string): Promise<void> => { hooks.onStopTask?.(taskId); },
     backgroundTasks: async (): Promise<boolean> => true,
+    /**
+     * 카탈로그는 세션이 열린 직후 한 번 읽힌다. `null`은 "못 물었다"이고 빈 배열은 "물었는데
+     * 없다"이므로, 답하지 않는 자식을 재현하려면 `hooks.catalog`를 주지 않으면 된다.
+     */
+    supportedCommands: async () => {
+      // 계약상 `null`은 "못 물었다"다. 그 응답이 몇 번 이어지는지를 대본이 정한다.
+      if (hooks.catalog?.failCommandsFor !== undefined && commandAttempts++ < hooks.catalog.failCommandsFor) return null;
+      return hooks.catalog?.commands ?? null;
+    },
+    supportedAgents: async () => hooks.catalog?.agents ?? null,
+    /** 스킬 이름의 주 출처. 실물은 첫 턴 전에도 답한다 — init을 기다리지 않는다. */
+    supportedSkills: async () => hooks.catalog?.skills ?? null,
+    reloadSkills: async () => hooks.catalog?.skills ?? null,
     /**
      * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
      * 값이고, 한 번이라도 보낸 뒤에는 방금 소비한 턴의 종료 값이다 — 다음 턴의 시작 값 또한
@@ -119,7 +141,7 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
   };
 }
 
-function createFakeSdkFactory(turns: FakeTurn[]) {
+function createFakeSdkFactory(turns: FakeTurn[], catalog?: FakeCatalog) {
   const configDir = tempDir("chat-sdk-");
   const sends: string[] = [];
   // 실 SDK와 같이 슬롯은 하나다. `close()`가 불려야 자리가 돌아오며, 그전의 openSession은
@@ -129,7 +151,7 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
   const openSession = vi.fn(async (_request: unknown) => {
     if (occupied) throw new Error("A turn or session is already running on this instance.");
     occupied = true;
-    const session = fakeSession(turns, { onSend: (text) => sends.push(text) });
+    const session = fakeSession(turns, { onSend: (text) => sends.push(text), ...(catalog ? { catalog } : {}) });
     live = session;
     return {
       ...session,
@@ -245,6 +267,323 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly AgentChatJournalEvent[] {
   return events.filter((entry) => entry.event.kind !== "snapshot-end");
 }
+
+describe("AgentChatRegistry — composer capability catalog", () => {
+  const CATALOG = {
+    commands: [
+      { name: "clear", description: "Clear the conversation", argumentHint: "", aliases: [] },
+      { name: "compact", description: "Summarize to reclaim context", argumentHint: "[instructions]", aliases: [] },
+      { name: "console-e2e", description: "Drive a headless browser test", argumentHint: "", aliases: [] },
+    ],
+    agents: [
+      { name: "Explore", description: "Read-only search agent", model: null },
+    ],
+  } as const;
+
+  /**
+   * 덱의 두 카테고리를 가르는 유일한 근거는 init이 실어 온 스킬 이름 집합이다 —
+   * `supportedCommands()`는 내장 명령과 스킬을 한 타입으로 주고 카테고리를 말하지 않는다.
+   */
+  it("splits commands from skills using the init skill names", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], CATALOG);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-cat", () => freshSeedFor(home));
+    const catalog = await session.readCatalog();
+    expect(catalog).not.toBeNull();
+    expect(catalog!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
+    // init이 없어도 정책표가 부정 증거로 답한다: 표는 실재하는 내장 명령의 전량이므로 "표에
+    // 없다"가 곧 "내장 명령이 아니다"다. 스킬 이름의 세 긍정 출처가 전부 침묵해도 카테고리가 선다.
+    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(catalog!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    // 추정으로 스킬 칸에 세운 이름은 함께 실어 보낸다 — 표를 갱신할 사람이 그것을 봐야 한다.
+    expect(catalog!.unclassified).toEqual(["console-e2e"]);
+    expect(catalog!.commands.find((entry) => entry.name === "compact")!.argumentHint).toBe("[instructions]");
+    await registry.disposeAll();
+  });
+
+  /**
+   * 실측에서 잡힌 결함: `/`만 눌러 연 세션은 아직 턴을 돌지 않았고, init 메시지는 **첫 턴과
+   * 함께** 오므로 도착하지 않는다. 스킬 이름을 init에만 기대면 그 세션에서 스킬 전부가 명령
+   * 칸에 서고, 카테고리라는 이 기능의 요점이 통째로 무너진다.
+   */
+  it("splits skills on a session that has never run a turn", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], {
+      ...CATALOG,
+      skills: [{ name: "console-e2e", description: "Drive a headless browser test", argumentHint: "", aliases: [] }],
+    });
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-cold", () => freshSeedFor(home));
+    // 한 글자도 보내지 않았다 — init은 오지 않았다.
+    const catalog = await session.readCatalog();
+    expect(catalog!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * init은 카탈로그 control 왕복과 경쟁한다. 분류를 읽을 때 다시 세지 않고 프라임 시점에
+   * 굳히면, 늦게 도착한 init의 스킬들이 그 세션 내내 명령 칸에 선다.
+   */
+  it("classifies skills even when init lands after the catalog round-trip", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], CATALOG);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-late", () => freshSeedFor(home));
+    // 먼저 읽는다 — init은 아직 없고 정책표의 부정 증거만으로 스킬 칸이 선다.
+    const before = await session.readCatalog();
+    expect(before!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(before!.unclassified).toEqual(["console-e2e"]);
+    // 그 뒤에 자식이 init을 흘린다. 긍정 증거가 도착하면 추정이 사실로 굳고 미분류에서 빠진다.
+    fake.liveSession()!.emit({ type: "system", subtype: "init", skills: ["console-e2e"], session_id: "s-late" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = await session.readCatalog();
+    expect(after!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(after!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(after!.unclassified).toEqual([]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 2차 P2)가 지목한 경로. 한 축만 `null`로 돌아왔을 때 그것을 `[]`로 접어 캐시하면
+   * "못 물었다"가 "없다"로 바뀌어, 일시적 실패 하나가 그 세션의 덱을 영구히 비운다.
+   */
+  it("retries the axis that failed instead of caching it as empty", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ], { ...CATALOG, failCommandsFor: 1 });
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-partial", () => freshSeedFor(home));
+
+    // 첫 읽기: 명령 축이 답하지 않았고 에이전트 축만 왔다. 없는 것으로 굳히면 안 된다.
+    const first = await session.readCatalog();
+    expect(first!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
+    expect(first!.commands).toEqual([]);
+
+    // 두 번째 읽기가 실패한 축만 다시 묻는다.
+    const second = await session.readCatalog();
+    expect(second!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(second!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * `null`(못 물었다)과 빈 배열(물었는데 없다)은 다른 상태다. 답하지 않는 자식에서 캐시를
+   * 세우면 화면이 "이 세션엔 아무 능력도 없다"를 영구히 그린다.
+   */
+  it("reports an unreadable catalog as null rather than an empty one", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-null", () => freshSeedFor(home));
+    expect(await session.readCatalog()).toBeNull();
+    await registry.disposeAll();
+  });
+});
+
+describe("AgentChatRegistry — maintenance command lane", () => {
+  /**
+   * 정비 명령은 턴이 아니다. 턴 문법(회전하는 노드·경과 시계·흐르는 글)이 전부 "모델이 생각하고
+   * 있다"를 말하는데, 이 셋은 세션 상태를 즉시 바꾸는 동작이고 둘은 모델을 아예 부르지 않는다.
+   */
+  it("draws /compact as a ledger row with the child's own numbers, never as a turn", async () => {
+    const home = tempDir("chat-home-");
+    const { factory, sends } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "status", status: "compacting" },
+          { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 62400, post_tokens: 18100, duration_ms: 3200 } },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 3300, result: "Compacted." },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-compact", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    await drainTurn(registry, "op-compact");
+
+    expect(sends).toEqual(["/compact"]);
+    const seen = kinds(events);
+    // 말풍선도 턴도 서지 않는다.
+    expect(seen).not.toContain("dispatch");
+    expect(seen).not.toContain("turn-start");
+    expect(seen).not.toContain("turn-end");
+    expect(seen).toContain("command");
+    expect(seen).toContain("command-progress");
+    const end = events.map((entry) => entry.event).find((event) => event.kind === "command-end");
+    expect(end).toEqual({ kind: "command-end", ok: true, compact: { before: 62400, after: 18100, durationMs: 3200 } });
+    await registry.disposeAll();
+  });
+
+  it("empties the ledger when the child confirms the context is gone", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "OK" }] },
+      {
+        messages: [
+          { type: "conversation_reset" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-clear", () => freshSeedFor(home));
+    session.send("say something worth remembering");
+    await drainTurn(registry, "op-clear");
+
+    session.send("/clear");
+    await drainTurn(registry, "op-clear");
+
+    // 재접속한 브라우저가 받는 것이 곧 화면의 기록이다. 자식이 잊은 대화가 여기 남아 있으면
+    // 그것을 읽고 이어 묻는 사람에게 화면이 거짓말을 한다.
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    expect(kinds(replayed).filter((kind) => kind === "dispatch")).toEqual([]);
+    expect(kinds(replayed)).toContain("cleared");
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 P1)가 지목한 경로. 자식은 압축 경계를 `result`보다 **먼저** 낸다. 경계에서 레인을
+   * 닫으면 대기 중이던 다음 지시가 곧바로 시작하고, 그 뒤에 도착한 옛 result가 방금 열린 사용자
+   * 턴을 닫아 그 턴의 진짜 답을 떨어뜨린다.
+   *
+   * 재현하려면 두 프레임 **사이가 벌어져야** 한다. 가짜 세션의 `send`는 한 턴의 메시지를 통째로
+   * 큐에 넣어 리더가 연달아 소진하므로 그 틈이 생기지 않는다 — 그래서 경계까지만 대본에 두고,
+   * 늦은 result는 `emit`으로 따로 흘린다.
+   */
+  it("holds the lane until the command's own result lands", async () => {
+    const home = tempDir("chat-home-");
+    // 대본은 두 지시 모두 **아무 프레임도 내지 않게** 두고, 순서가 중요한 프레임만 아래에서
+    // 손으로 흘린다. 대본에 실으면 한 턴의 메시지가 통째로 큐에 들어가 사이가 벌어지지 않는다.
+    const fake = createFakeSdkFactory([
+      { messages: [{ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 900, post_tokens: 300 } }] },
+      { messages: [] },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-hold", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    session.send("and now a real question");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // `/compact`의 늦은 result. 레인을 경계에서 닫아 버렸다면 이 시점에 두 번째 턴이 이미 열려
+    // 있고, 이 프레임이 그 턴을 답 없이 닫는다.
+    fake.liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // 두 번째 지시의 진짜 결말.
+    fake.liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "the real answer" });
+    await drainTurn(registry, "op-hold");
+
+    const answers = events
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<AgentChatStreamEvent, { kind: "turn-end" }> => event.kind === "turn-end")
+      .map((event) => event.answer);
+    expect(answers).toEqual(["the real answer"]);
+    const ends = events.map((entry) => entry.event).filter((event) => event.kind === "command-end");
+    expect(ends).toEqual([{ kind: "command-end", ok: true, compact: { before: 900, after: 300 } }]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 P2)가 지목한 경로. 정비 줄은 `turnOpen`을 세우지 않으므로 `closeTurn`이 곧바로
+   * 되돌아간다 — 자식이 result 없이 죽으면 `awaitingTurn`이 풀리지 않아 이 세션의 다음 메시지가
+   * 전부 대기열에 갇힌다.
+   */
+  it("settles a running command lane when the child dies without a result", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      // 압축 중이라는 프레임 하나만 흘리고 스트림이 터진다 — result는 오지 않는다.
+      { messages: [{ type: "system", subtype: "status", status: "compacting" }], failAfter: 1 },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-dead", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    // 멈추면 이 await가 영영 돌아오지 않는다.
+    await drainTurn(registry, "op-dead");
+
+    const ends = events.map((entry) => entry.event).filter((event) => event.kind === "command-end");
+    expect(ends).toEqual([{ kind: "command-end", ok: false }]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 3차 P2)가 지목한 경로. 원장을 통째로 비우면 아직 도는 잡의 시작 프레임까지 사라져,
+   * 재접속한 브라우저가 그 작업을 잃거나 `kind: "other"`·제목=id인 스텁으로 되살린다.
+   */
+  it("keeps a still-running job across a clear so a reconnect can rebuild it", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "t1", task_type: "local_workflow", description: "audit the ledger" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "started" },
+        ],
+      },
+      {
+        messages: [
+          { type: "conversation_reset" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-jobclear", () => freshSeedFor(home));
+    session.send("kick off a workflow");
+    await drainTurn(registry, "op-jobclear");
+    session.send("/clear");
+    await drainTurn(registry, "op-jobclear");
+
+    // 새로 붙은 브라우저가 받는 것이 곧 그 화면의 전부다.
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    const state = replayed.reduce((acc, entry) => reduceAgentChatLog(acc, entry.event), initialAgentChatLogState);
+
+    // 대화는 사라지고, 아직 도는 작업은 자기 이름을 달고 남는다.
+    expect(state.turns).toEqual([]);
+    expect(state.jobs.map((job) => ({ id: job.id, title: job.title, open: job.open })))
+      .toEqual([{ id: "t1", title: "audit the ledger", open: true }]);
+    await registry.disposeAll();
+  });
+
+  it("keeps an unsupported command on the ordinary turn path", async () => {
+    // 덱이 세우지 않을 뿐, 손으로 친 것을 막지는 않는다. 그때는 평범한 턴이다 — 우리가 그
+    // 결말을 정비 줄로 그릴 근거가 없다.
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "usage" }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-usage", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/usage");
+    await drainTurn(registry, "op-usage");
+
+    expect(kinds(events)).toContain("dispatch");
+    expect(kinds(events)).not.toContain("command");
+    await registry.disposeAll();
+  });
+});
 
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
