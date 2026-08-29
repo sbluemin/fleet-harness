@@ -6496,6 +6496,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
    무대만 어두워진다: 대기 큐가 비어 있지 않으면 enterTriage가 활성 id를 카드에 남기고
    (triage-store.ts), 무대의 자동 포커스는 모달·투어가 떠 있던 프레임에서 한 번 걸러지면
    캐시 때문에 다시 시도되지 않는다(canvas.tsx). 게이트와 표식은 같은 것을 가리켜야 한다.
+   companion 프레임(Session Analyst)도 같은 이유로 빠진다 — 호스트가 프레임 껍데기를 재사용해
+   .canvas-operation을 쓸 뿐, 활성 Operation과 겨루는 이웃이 아니라 그 Operation에 딸린 두 번째
+   면이다. companion은 활성 id를 받는 경로가 아예 없어(CompanionFrame은 is-active를 붙이지 않는다)
+   구조적으로 영원한 비포커스였고, 그래서 부모 세션에 포커스가 서는 순간 언제나 물러나 있었다 —
+   후퇴가 곁을 가려 주는 대신 지금 보려고 연 패널을 가렸다. 여기서도 표식·게이트·제외는 한 벌이다:
+   표식을 받을 수 없는 것은 남을 물러서게 하지도, 스스로 물러서지도 않는다.
    세기는 사람마다 다르므로 설정이 소유한다(겉모습 > 비포커스 패널 흐리기). 여기 적힌 0.5는
    그 값이 아직 실리지 않은 첫 페인트의 폴백이자 기본값이다 — 규칙은 그대로 두고 세기만 바뀐다.
    이 값이 곁의 본문에서 읽기 편함을 얼마나 떼어 포커스에 줄지를 정한다: 실측(다크, 터미널
@@ -6503,7 +6509,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    기본값 0.5는 본문 대비 기준(4.5:1) 아래이고 큰 글자 기준(3:1)은 넘는 자리다: 물러난 패널은
    지금 읽는 자리가 아니라 곁눈으로 훑는 자리이며, 포커스를 주는 순간 9.22:1로 돌아온다.
    상한(0.3)을 그보다 낮추지 않는 이유도 같다 — 곁을 훑는 일까지 끊기면 후퇴가 아니라 소거다. */
-.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile) > .canvas-operation-terminal {
+.operations-canvas:has(.canvas-operation.is-active:not(.is-deck-tile)) .canvas-operation:not(.is-active):not(.is-deck-tile):not(.canvas-companion-frame) > .canvas-operation-terminal {
   opacity: var(--unfocused-panel-opacity, 0.5);
   transition: opacity var(--duration-base) var(--ease-glide);
 }
