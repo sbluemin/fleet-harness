@@ -19,7 +19,8 @@ import {
 import { getT } from "../../i18n/index.js";
 import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
-import { applyDeckPick, buildDeckSections, flattenDeckRows, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
+import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
+import type { ChatConsoleCommand } from "./composer-deck.js";
 import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
 
 /**
@@ -96,6 +97,8 @@ export function AgentChatComposer({
   work,
   onStop,
   onCancelQueued,
+  coordinates,
+  onOpenContextMeter,
 }: {
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
@@ -129,6 +132,13 @@ export function AgentChatComposer({
   readonly onStop: () => Promise<boolean>;
   /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
   readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
+  /**
+   * 세션 좌표의 **값**. `coordinate`가 그 표시라면 이쪽은 그것을 말로 되돌려 줄 때 쓰는 원료다 —
+   * `/model`·`/effort`는 자식으로 가지 않고 이 값을 사실대로 되읽어 주는 것으로 답한다.
+   */
+  readonly coordinates: { readonly model: string | null; readonly effort: string | null };
+  /** `/context`가 가는 자리 — 같은 수를 이미 그리고 있는 컴포저 바의 문맥 계기를 연다. */
+  readonly onOpenContextMeter: () => void;
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
@@ -139,6 +149,13 @@ export function AgentChatComposer({
   const [failed, setFailed] = React.useState(false);
   const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
+  /**
+   * Console이 자식 대신 답한 결과 한 줄. 그 명령들은 자식에게 가지 않으므로 원장에 남을 결말이
+   * 없고, 아무 말도 하지 않으면 사용자에게는 Enter가 삼켜진 것으로 보인다.
+   */
+  const [consoleNotice, setConsoleNotice] = React.useState<string | null>(null);
+  /** `/clear`가 무장된 상태 — 한 번 더 눌러야 나간다. 되돌릴 수 없는 절단이라 확인을 끼운다. */
+  const [clearArmed, setClearArmed] = React.useState(false);
   /** 응답을 기다리는 취소 좌표들 — 같은 칩의 두 번째 활성화를 삼킨다. */
   const cancelsInFlight = React.useRef(new Set<string>());
   const [dragOver, setDragOver] = React.useState(false);
@@ -248,11 +265,66 @@ export function AgentChatComposer({
   const deckId = `agent-chat-deck-${context.operationId}`;
   const deckOptionId = React.useCallback((index: number) => `${deckId}-opt-${index}`, [deckId]);
 
+  /**
+   * Console이 자식 대신 하나를 수행하고, 사용자에게 되돌려 줄 한 줄을 낸다.
+   *
+   * `/clear`는 여기 없다 — 그것만은 자식에게 실제로 가야 하기 때문이다(문맥을 비우는 것은
+   * 자식만 할 수 있다). Console이 하는 일은 확인을 끼우고 화면 기록에 이음매를 긋는 쪽이며,
+   * 그 이음매는 자식이 보내 주는 `conversation_reset`이 그린다.
+   */
+  const runConsoleCommand = React.useCallback(async (command: ChatConsoleCommand): Promise<string> => {
+    switch (command.target) {
+      case "context":
+        onOpenContextMeter();
+        return t("terminal.chat.consoleContextOpened");
+      case "rename": {
+        const title = command.argument;
+        if (title.length === 0) return t("terminal.chat.consoleRenameNeedsName");
+        try {
+          await context.operations.rename(context.operationId, title);
+          return t("terminal.chat.consoleRenamed", { title });
+        } catch {
+          return t("terminal.chat.consoleRenameFailed");
+        }
+      }
+      case "model":
+        return t("terminal.chat.consoleCoordinateFixed", {
+          axis: t("terminal.chat.consoleAxisModel"),
+          value: coordinates.model ?? t("terminal.chat.consoleCoordinateUnknown"),
+        });
+      case "effort":
+        return t("terminal.chat.consoleCoordinateFixed", {
+          axis: t("terminal.chat.consoleAxisEffort"),
+          value: coordinates.effort ?? t("terminal.chat.consoleCoordinateUnknown"),
+        });
+      // `clear`는 send()가 확인을 거쳐 자식에게 직접 보낸다.
+      default:
+        return "";
+    }
+  }, [context.operationId, context.operations, coordinates.model, coordinates.effort, onOpenContextMeter, t]);
+
   // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
   const send = React.useCallback(async (override?: string) => {
     const text = (override ?? draft).trim();
     if (text.length === 0 || sending) return;
+    // Console이 소유한 축은 여기서 갈라진다. 판정을 보내기 직전에 두는 이유는 `readConsoleCommand`에
+    // 적혀 있다 — 덱으로 고르든 손으로 치든 같은 문면은 같은 곳으로 가야 한다.
+    const routed = readConsoleCommand(text, catalog);
+    if (routed && routed.target !== "clear") {
+      setFailed(false);
+      setConsoleNotice(await runConsoleCommand(routed));
+      setDraft("");
+      inputRef.current?.focus();
+      return;
+    }
+    if (routed?.target === "clear" && !clearArmed) {
+      // 되돌릴 수 없다 — 자식의 기억과 화면의 기록을 함께 끊는다. 한 번 더 누르면 나간다.
+      setFailed(false);
+      setClearArmed(true);
+      setConsoleNotice(t("terminal.chat.consoleClearArm"));
+      return;
+    }
     // id 없는 칩은 아직 서버에 없다 — 텍스트만 먼저 나가면 첨부가 조용히 빠진다.
     if (attachmentsRef.current.some((attachment) => attachment.uploading)) return;
     const ids = attachmentsRef.current
@@ -268,6 +340,8 @@ export function AgentChatComposer({
       for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
       setAttachments([]);
       setDraft("");
+      setClearArmed(false);
+      setConsoleNotice(null);
       inputRef.current?.focus();
     } catch {
       // 실패는 초안을 지키고 이 바에서 말한다 — 문면이 사라진 채 침묵하면 회복 보장이 깨진다.
@@ -275,7 +349,7 @@ export function AgentChatComposer({
     } finally {
       setSending(false);
     }
-  }, [context.operationId, draft, sending]);
+  }, [context.operationId, draft, sending, catalog, clearArmed, runConsoleCommand, t]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -380,7 +454,9 @@ export function AgentChatComposer({
   const uploading = attachments.some((attachment) => attachment.uploading);
   const canSend = draft.trim().length > 0 && !sending && !uploading;
   const placeholder = t("terminal.chat.composerPlaceholder", { name: context.operation.title });
-  const notice = failed
+  const notice = consoleNotice !== null
+    ? consoleNotice
+    : failed
     ? t("terminal.chat.composerSendFailed")
     : queueRejection !== null
       ? t(queueRejection.kind === "started"
@@ -506,6 +582,10 @@ export function AgentChatComposer({
                 setDraft(event.target.value);
                 setCaret(event.target.selectionStart ?? event.target.value.length);
                 setFailed(false);
+                // 친 글자가 곧 다음 지시다 — 앞 지시의 답과 무장은 여기서 함께 만료한다.
+                // 특히 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
+                setConsoleNotice(null);
+                setClearArmed(false);
               }}
               onScroll={syncUltracodeHighlight}
               onPaste={(event) => {

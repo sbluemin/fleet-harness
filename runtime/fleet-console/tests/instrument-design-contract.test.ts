@@ -3727,6 +3727,45 @@ describe("Effort track interaction grammar", () => {
     expect(chat).toMatch(/\.agent-chat-composer-ultracode-token \{\s*animation: none;\s*background-image: none;\s*color: var\(--apex-ink\);\s*-webkit-text-fill-color: var\(--apex-ink\);/);
   });
 
+  it("pins the chat command-provenance grammar — a locally run command is not an Answer", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 슬래시 명령의 출력은 모델의 문장이 아니다. 그 사실은 상태도 위치도 사용자 식별도 아닌
+    // **출처**이므로 새 색 채널을 만들지 않고 시스템 줄 계열에 얹는다 — 신호 토큰은 턴 상태가,
+    // --id-cerulean은 사용자 디스패치가 이미 점유하고 있다.
+    const result = block(".agent-chat-command-result");
+    for (const owned of ["--aurora", "--coral", "--positive", "--warn", "--id-cerulean", "--apex"]) {
+      expect(result, owned).not.toContain(owned);
+    }
+
+    // 명령 이름만 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻
+    // (부를 수 있는 좌표). 몸통은 잉크 3티어에 남아 brass가 채움으로 번지지 않는다.
+    const mark = block(".agent-chat-command-mark");
+    expect(mark).toContain("color: var(--brass-ink);");
+    const output = block(".agent-chat-command-output");
+    expect(output).toContain("color: var(--text-secondary);");
+    expect(output).not.toContain("--brass");
+
+    // 초기화 이음매는 경계다 — 색이 아니라 두 hairline 규칙이 그것을 말한다.
+    const seam = block(".agent-chat-reset-seam");
+    expect(seam).toContain("color: var(--text-tertiary);");
+    for (const signal of ["--aurora", "--coral", "--positive", "--warn", "--apex", "--brass"]) {
+      expect(seam, signal).not.toContain(signal);
+    }
+    expect(chat).toMatch(/\.agent-chat-reset-seam::before,\s*\n\.agent-chat-reset-seam::after \{/);
+
+    // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다 —
+    // 지금 눈이 멈춘 자리가 목록에서 가장 또렷해야 한다는 규칙이 이 행에서도 지켜져야 한다.
+    const hint = block(".agent-chat-deck-hint.is-console");
+    expect(hint).toContain("var(--brass-ink)");
+    expect(chat).toContain(".agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {");
+  });
+
   it("pins the chat start-view arming grammar", () => {
     const components = source("styles/components.css");
     const composer = source("components/quick-launch.tsx");

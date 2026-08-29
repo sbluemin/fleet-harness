@@ -5,6 +5,7 @@ import {
   chatEventsFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
+  isChatCommandDispatch,
   summarizeToolInput,
   summarizeToolResult,
   type AgentChatStreamEvent,
@@ -887,5 +888,51 @@ describe("chat job detail", () => {
     expect(tail.tail).toContain("Bearer sk-…");
     expect(tail.tail).toContain("./src/app.ts");
     expect(tail.tail.split("\n")).toHaveLength(2);
+  });
+})
+
+describe("locally executed slash commands", () => {
+  it("maps conversation_reset — the vendor sends it as its own type, not a system subtype", () => {
+    // system 아래 두면 subtype switch의 default로 떨어져 조용히 사라진다. 그 침묵이 곧
+    // "화면은 대화를 보여 주는데 자식은 그것을 잊은" 상태다.
+    const events = chatEventsFromSdkMessage({ type: "conversation_reset", session_id: "s1" });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe("reset");
+  });
+
+  it("marks a slash dispatch as command origin", () => {
+    expect(isChatCommandDispatch("/rename ledger audit")).toBe(true);
+    expect(isChatCommandDispatch("/clear")).toBe(true);
+    expect(isChatCommandDispatch("/__remote-workflow")).toBe(true);
+  });
+
+  it("does not mistake a path or prose for a command", () => {
+    // 두 번째 `/`가 나오면 명령이 아니다 — 덱이 `/`를 깨우는 규칙과 같은 모양이라, 경로를 친
+    // 지시가 "실행됨" 문법으로 그려지지 않는다.
+    expect(isChatCommandDispatch("/Users/sbluemin/notes.md is stale")).toBe(false);
+    expect(isChatCommandDispatch("look at /tmp")).toBe(false);
+    expect(isChatCommandDispatch("/")).toBe(false);
+    expect(isChatCommandDispatch("")).toBe(false);
+  });
+
+  it("carries the origin through transcript replay too", () => {
+    // 재생과 라이브가 갈리면 같은 턴이 새로고침 전후로 다른 문법으로 그려진다.
+    const line = JSON.stringify({
+      type: "user",
+      timestamp: "2026-08-29T00:00:00.000Z",
+      message: { role: "user", content: [{ type: "text", text: "/usage" }] },
+    });
+    const events = chatEventsFromTranscriptLine(line);
+    expect(events).toEqual([expect.objectContaining({ kind: "dispatch", text: "/usage", origin: "command" })]);
+  });
+
+  it("leaves an ordinary prompt without an origin", () => {
+    const line = JSON.stringify({
+      type: "user",
+      timestamp: "2026-08-29T00:00:00.000Z",
+      message: { role: "user", content: [{ type: "text", text: "summarize the ledger" }] },
+    });
+    const events = chatEventsFromTranscriptLine(line);
+    expect(events[0]).not.toHaveProperty("origin");
   });
 });

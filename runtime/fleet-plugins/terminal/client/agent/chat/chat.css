@@ -114,6 +114,57 @@
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
 
+/* 로컬에서 실행된 슬래시 명령의 출력. 시스템 줄 계열을 그대로 쓴다 — "모델의 문장이 아니다"는
+   상태도 위치도 사용자 식별도 아닌 **출처**이고, 이 원장에서 출처를 지는 자리가 여기다.
+   가운데 정렬 구분선(::before/::after)은 물린다: 이 줄은 경계가 아니라 내용을 싣는다. */
+.agent-chat-command-result {
+  align-items: baseline;
+  gap: var(--space-2);
+  text-align: left;
+}
+
+.agent-chat-command-result::before { content: none; }
+
+/* 명령 이름은 brass다 — 컴포저 미러가 해석된 `/이름`을 칠하는 것과 같은 토큰, 같은 뜻이다
+   (부를 수 있는 좌표). 상태나 몸통 채움에는 쓰지 않는다. */
+.agent-chat-command-mark {
+  flex: none;
+  color: var(--brass-ink);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.agent-chat-command-output {
+  min-width: 0;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 문맥이 끊긴 자리. 시스템 줄과 같은 이음매 문법이되 자기 이름을 갖는다 — 이 줄은 알림이
+   아니라 원장의 **경계**이고, 위쪽이 더 이상 문맥이 아님을 말하는 유일한 표시다. */
+.agent-chat-reset-seam {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-chat-reset-seam::before,
+.agent-chat-reset-seam::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
@@ -1609,6 +1660,23 @@
   font-size: var(--t-2xs);
 }
 
+/* 이 행의 Enter는 자식이 아니라 Console로 간다. 행선지는 위치이므로 brass가 그것을 말한다 —
+   고르기 **전에** 읽혀야 하는 사실이라 인자 힌트 자리를 이 칩이 가져간다. */
+.agent-chat-deck-hint.is-console {
+  /* 혼합 공간이 oklab인 이유는 실측이다: brass(hue 62)와 중립 hairline(hue ~252)은 색상환에서
+     거의 대척이라 oklch 보간이 어느 호로 갈지가 정해지지 않고, carbon에서 hue 320 — 보라색
+     테두리로 풀렸다. oklab은 호를 관통하지 않는다(무장 프레임의 apex×중립 혼합과 같은 규율). */
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
+  color: var(--brass-ink);
+}
+
+/* 이름은 한 단 물러난다 — 자식의 능력 목록 안에서 이 행만 다른 곳으로 가므로, 활성 행이
+   아닐 때는 통과 항목보다 조용해야 목록의 기본 뜻(자식에게 보낸다)이 유지된다.
+   활성 행에서는 물러나지 않는다: 지금 눈이 멈춘 자리는 언제나 가장 또렷해야 한다. */
+.agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {
+  color: var(--text-secondary);
+}
+
 .agent-chat-deck-empty {
   margin: 0;
   padding: var(--space-3) var(--space-2);
@@ -2567,7 +2635,9 @@
 
 .agent-chat-detail-back:hover {
   color: var(--brass);
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  /* 위 덱 힌트와 같은 결함이었다: brass×중립을 oklch로 섞으면 색상 호가 정해지지 않아
+     carbon에서 보라(hue 320)로 풀린다(실측). 같은 자리에 같은 규율을 둔다. */
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
 }
 
 .agent-chat-detail-back:focus-visible {

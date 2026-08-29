@@ -1,4 +1,4 @@
-import type { AgentChatCatalog, AgentChatCatalogEntry } from "./chat-events.js";
+import type { AgentChatCatalog, AgentChatCatalogEntry, ChatCommandConsoleTarget } from "./chat-events.js";
 
 /**
  * 채팅 컴포저의 두 덱이 쓰는 순수 판정.
@@ -70,11 +70,23 @@ export interface ChatDeckSection {
   readonly entries: readonly AgentChatCatalogEntry[];
 }
 
-/** 이름과 설명 모두에서 찾는다 — 스킬 이름은 자명하지 않아 설명이 유일한 실마리일 때가 많다. */
-function matches(entry: AgentChatCatalogEntry, query: string): boolean {
-  if (query.length === 0) return true;
+/**
+ * 이 항목이 질의에 얼마나 가까운가. 작을수록 위에 선다. 맞지 않으면 `null`.
+ *
+ * 이름과 설명을 **함께** 보는 것은 그대로 둔다 — 스킬 이름은 자명하지 않아 설명이 유일한
+ * 실마리일 때가 많다. 다만 둘을 같은 무게로 두면 이름을 정확히 친 사람이 다른 행을 받는다:
+ * `/context`를 끝까지 쳐도 설명에 "context"가 든 `/clear`·`/compact`가 함께 서고, 목록 순서상
+ * `/clear`가 첫 행이 되어 그 Enter가 **문맥을 지우는 명령**을 완성한다(실측에서 그렇게 됐다).
+ * 정확한 이름은 언제나 첫 행이어야 한다.
+ */
+function rank(entry: AgentChatCatalogEntry, query: string): number | null {
+  if (query.length === 0) return 0;
   const needle = query.toLowerCase();
-  return entry.name.toLowerCase().includes(needle) || entry.description.toLowerCase().includes(needle);
+  const name = entry.name.toLowerCase();
+  if (name === needle) return 0;
+  if (name.startsWith(needle)) return 1;
+  if (name.includes(needle)) return 2;
+  return entry.description.toLowerCase().includes(needle) ? 3 : null;
 }
 
 /**
@@ -87,7 +99,15 @@ export function buildDeckSections(
 ): readonly ChatDeckSection[] {
   if (!catalog) return [];
   const pick = (id: ChatDeckSection["id"], entries: readonly AgentChatCatalogEntry[]): readonly ChatDeckSection[] => {
-    const hits = entries.filter((entry) => matches(entry, token.query));
+    const hits = entries
+      .flatMap((entry) => {
+        const score = rank(entry, token.query);
+        return score === null ? [] : [{ entry, score }];
+      })
+      // 같은 근접도 안에서는 카탈로그 순서를 지킨다 — 이름순으로 다시 세우면 자식이 준
+      // 순서(내장 명령의 관용적 배열)가 사라지고 목록이 매 판본 흔들린다.
+      .sort((a, b) => a.score - b.score)
+      .map((hit) => hit.entry);
     return hits.length > 0 ? [{ id, entries: hits }] : [];
   };
   if (token.kind === "agent") return pick("agents", catalog.agents);
@@ -128,6 +148,39 @@ export function applyDeckPick(
   }
   const head = `/${entry.name} `;
   return { draft: head, caret: head.length };
+}
+
+/** Console이 자식 대신 받는 지시 하나. */
+export interface ChatConsoleCommand {
+  readonly target: ChatCommandConsoleTarget;
+  /** 명령 이름 뒤에 남은 문면. 없으면 빈 문자열이다. */
+  readonly argument: string;
+  /** 사용자가 실제로 친 이름 — 되돌려 줄 안내 문구가 이 이름을 부른다. */
+  readonly name: string;
+}
+
+/**
+ * 이 초안이 **Console이 받아야 하는** 명령인가. 보내기 직전에 묻는다.
+ *
+ * 덱에서 고른 순간이 아니라 보내는 순간에 판정하는 이유가 두 가지다. 첫째, 인자를 받는 명령
+ * (`/rename 새 이름`)은 고른 뒤에도 계속 쓰이므로 확정 시점에는 아직 지시가 완성되지 않았다.
+ * 둘째, 덱을 거치지 않고 손으로 친 `/rename`도 같은 판정을 받아야 한다 — 두 입구가 다른 곳으로
+ * 가면 사용자는 어느 쪽으로 쳤는지에 따라 다른 제품을 쓰게 된다.
+ *
+ * 그래서 Enter의 뜻은 하나로 남는다: **보낸다.** 그 "보냄"이 자식에게 가는지 Console이 받는지는
+ * 정책이 정하고, 덱의 행이 그것을 미리 말한다.
+ */
+export function readConsoleCommand(
+  value: string,
+  catalog: AgentChatCatalog | null,
+): ChatConsoleCommand | null {
+  if (!catalog) return null;
+  const match = /^\/([A-Za-z0-9:_-]+)(?:\s+([\s\S]*))?$/.exec(value.trim());
+  if (!match) return null;
+  const name = match[1]!;
+  const entry = catalog.commands.find((candidate) => candidate.name === name);
+  if (!entry?.console) return null;
+  return { target: entry.console, argument: (match[2] ?? "").trim(), name };
 }
 
 /**

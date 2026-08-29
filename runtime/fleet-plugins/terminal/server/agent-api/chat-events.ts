@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
 
+import type { ChatCommandConsoleTarget } from "./chat-command-policy.js";
+
 /**
  * Chat Mode의 브라우저行 이벤트 어휘와, 두 원천(트랜스크립트 JSONL·SDK 메시지 스트림)을
  * 같은 어휘로 옮기는 매퍼.
@@ -118,7 +120,24 @@ export type AgentChatStreamEvent =
    */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  | {
+      readonly kind: "dispatch";
+      readonly text: string;
+      readonly at?: number;
+      /**
+       * 이 지시가 슬래시 명령이었다. 자식은 그것을 모델에게 넘기지 않고 **로컬에서 실행**한 뒤
+       * 결과를 평범한 `assistant` 메시지로 돌려주므로(실측), 메시지만 봐서는 모델의 문장과
+       * 구별할 방법이 없다. 구별되는 유일한 자리가 보낸 쪽이라 여기서 표시한다.
+       */
+      readonly origin?: "command";
+    }
+  /**
+   * 자식이 문맥을 비웠다(`/clear`). 문장이 아니라 기록의 **단절**이므로 원장에 이음매로 선다.
+   *
+   * 이 이벤트가 없으면 화면은 여전히 대화 전체를 보여 주는데 자식은 그 중 아무것도 기억하지
+   * 못한다 — 보이는 기록이 거짓말을 하는 상태이고, 그것을 사용자가 알아챌 방법이 없다.
+   */
+  | { readonly kind: "reset"; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
@@ -372,6 +391,20 @@ export function chatReplayFromTranscriptLine(
   return Number.isFinite(parsedAt) ? { at: parsedAt, events } : { events };
 }
 
+/**
+ * 이 지시가 슬래시 명령인가. **보낸 문면 하나로 판정한다.**
+ *
+ * 도착한 메시지로는 가를 수 없기 때문이다: 자식은 명령을 로컬에서 실행한 뒤 그 결과를 평범한
+ * `assistant` 메시지로 돌려주고(실측), 벤더가 선언한 `local_command_output`은 오늘 이 경로로
+ * 도착하지 않는다. 구별이 남아 있는 유일한 자리가 보낸 쪽이다.
+ *
+ * 두 번째 `/`가 나오면 명령이 아니다 — `/Users/…` 같은 경로가 명령으로 읽히지 않게 하는 규칙이며,
+ * 컴포저 덱이 `/`를 깨울 때 쓰는 규칙(`readSlashToken`)과 같은 모양이다.
+ */
+export function isChatCommandDispatch(text: string): boolean {
+  return /^\/[A-Za-z0-9:_-]+(\s|$)/.test(text);
+}
+
 function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   // auto-compact가 남긴 이어짐 요약은 런타임 메타다 — 사람이 친 지시처럼 재생하면
   // "전환이 세션을 summarize했다"로 읽힌다. isMeta가 없는 별도 플래그라 따로 거른다.
@@ -388,7 +421,7 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     // 경계까지 지우면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 갈아치우므로, 말풍선 없는
     // 여는 이벤트만 남긴다. 그 이벤트가 실제로 턴이 될지는 재생 루프가 정한다(지연 발행).
     if (isInjectedCarrier(line, text)) return [{ kind: "turn-start", ...atField }];
-    return [{ kind: "dispatch", text, ...atField }];
+    return [{ kind: "dispatch", text, ...atField, ...(isChatCommandDispatch(text) ? { origin: "command" as const } : {}) }];
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);
@@ -467,6 +500,11 @@ export function chatEventsFromSdkMessage(message: {
         return [];
     }
   }
+  // 자식이 문맥을 비웠다. 벤더는 이것을 system subtype이 아니라 **자기 타입**으로 낸다
+  // (SDK 0.3.212 `SDKConversationResetMessage`) — 위 switch 밑에 두면 닿지 않는다.
+  if (message.type === "conversation_reset") {
+    return [{ kind: "reset", at: Date.now() }];
+  }
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
     return eventsFromAssistantContent(body?.content, options);
@@ -536,6 +574,12 @@ export interface AgentChatCatalogEntry {
   readonly description: string;
   /** 인자를 받는다는 표시. 빈 문자열이면 인자 없이 바로 실행되는 항목이다. */
   readonly argumentHint: string;
+  /**
+   * 이 항목이 **자식이 아니라 Console로** 가는 좌표. 없으면 평범한 통과 항목이다.
+   *
+   * 서버가 문구가 아니라 좌표를 싣는 이유는 `chat-command-policy.ts`에 적혀 있다.
+   */
+  readonly console?: ChatCommandConsoleTarget;
 }
 
 /**
@@ -552,6 +596,14 @@ export interface AgentChatCatalog {
   readonly skills: readonly AgentChatCatalogEntry[];
   /** `@` — Task 도구로 부르는 서브에이전트. 슬래시 문법이 아니라 별도 글자를 쓴다. */
   readonly agents: readonly AgentChatCatalogEntry[];
+  /**
+   * 정책표가 모르는 내장 명령의 이름들. 자식이 새로 얻은 기능이 여기 실린다.
+   *
+   * 숨기지 않고 세는 이유는 fail-open이기 때문이다 — 모르는 것을 조용히 지우면 자식의 새 기능이
+   * 아무 신호 없이 사라지고, 그 침묵은 잘못 통과시키는 것보다 알아채기 어렵다. 이 목록이 비어
+   * 있지 않다는 사실 자체가 정책표를 갱신하라는 신호다.
+   */
+  readonly unclassified: readonly string[];
 }
 
 /**

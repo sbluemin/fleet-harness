@@ -287,9 +287,12 @@ describe("AgentChatRegistry — composer capability catalog", () => {
     const catalog = await session.readCatalog();
     expect(catalog).not.toBeNull();
     expect(catalog!.agents.map((entry) => entry.name)).toEqual(["Explore"]);
-    // init을 못 받았으므로 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
-    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact", "console-e2e"]);
-    expect(catalog!.skills).toEqual([]);
+    // init이 없어도 정책표가 부정 증거로 답한다: 표는 실재하는 내장 명령의 전량이므로 "표에
+    // 없다"가 곧 "내장 명령이 아니다"다. 스킬 이름의 세 긍정 출처가 전부 침묵해도 카테고리가 선다.
+    expect(catalog!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(catalog!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    // 추정으로 스킬 칸에 세운 이름은 함께 실어 보낸다 — 표를 갱신할 사람이 그것을 봐야 한다.
+    expect(catalog!.unclassified).toEqual(["console-e2e"]);
     expect(catalog!.commands.find((entry) => entry.name === "compact")!.argumentHint).toBe("[instructions]");
     await registry.disposeAll();
   });
@@ -327,14 +330,17 @@ describe("AgentChatRegistry — composer capability catalog", () => {
     ], CATALOG);
     const registry = new AgentChatRegistry(fake.factory);
     const session = await registry.ensure("op-late", () => freshSeedFor(home));
-    // 먼저 읽는다 — 아직 init이 없으므로 전부 명령이다.
-    expect((await session.readCatalog())!.skills).toEqual([]);
-    // 그 뒤에 자식이 init을 흘린다.
+    // 먼저 읽는다 — init은 아직 없고 정책표의 부정 증거만으로 스킬 칸이 선다.
+    const before = await session.readCatalog();
+    expect(before!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
+    expect(before!.unclassified).toEqual(["console-e2e"]);
+    // 그 뒤에 자식이 init을 흘린다. 긍정 증거가 도착하면 추정이 사실로 굳고 미분류에서 빠진다.
     fake.liveSession()!.emit({ type: "system", subtype: "init", skills: ["console-e2e"], session_id: "s-late" });
     await new Promise((resolve) => setTimeout(resolve, 20));
     const after = await session.readCatalog();
     expect(after!.skills.map((entry) => entry.name)).toEqual(["console-e2e"]);
     expect(after!.commands.map((entry) => entry.name)).toEqual(["clear", "compact"]);
+    expect(after!.unclassified).toEqual([]);
     await registry.disposeAll();
   });
 

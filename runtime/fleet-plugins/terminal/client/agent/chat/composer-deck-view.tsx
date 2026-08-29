@@ -127,7 +127,7 @@ export function ChatComposerDeck({
                 type="button"
                 id={optionId(rowIndex)}
                 ref={active ? activeRef : undefined}
-                className={`agent-chat-deck-row${active ? " is-active" : ""}`}
+                className={`agent-chat-deck-row${active ? " is-active" : ""}${entry.console ? " is-console" : ""}`}
                 role="option"
                 aria-selected={active}
                 {...(descriptionId ? { "aria-describedby": descriptionId } : {})}
@@ -147,7 +147,11 @@ export function ChatComposerDeck({
                 {entry.description.length > 0 ? (
                   <span className="agent-chat-deck-desc" id={descriptionId}>{entry.description}</span>
                 ) : null}
-                {entry.argumentHint.length > 0 ? (
+                {entry.console ? (
+                  // 행선지가 인자보다 먼저 알아야 할 사실이다 — 이 행의 Enter는 자식이 아니라
+                  // Console로 간다. 인자 힌트는 그 뒤의 이야기라 이 행에서는 자리를 내준다.
+                  <span className="agent-chat-deck-hint is-console">{t("terminal.chat.deckConsoleHint")}</span>
+                ) : entry.argumentHint.length > 0 ? (
                   <span className="agent-chat-deck-hint">{entry.argumentHint}</span>
                 ) : null}
               </button>

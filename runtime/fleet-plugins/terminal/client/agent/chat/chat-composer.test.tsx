@@ -6,10 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { AgentChatComposer } from "./composer.js";
+import type { AgentChatCatalog } from "./chat-events.js";
 
 const uploads: File[] = [];
 const messages: string[] = [];
 let stops = 0;
+let meterOpens = 0;
+let renames: string[] = [];
+let renameFails = false;
+/** 덱과 Console 라우팅이 함께 읽는 카탈로그. `null`이면 "아직 모른다"이고 라우팅은 쉰다. */
+let catalogPayload: AgentChatCatalog | null = null;
 let canceled: string[] = [];
 let cancelOutcome: "canceled" | "started" | "unreachable" = "canceled";
 let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
@@ -25,6 +31,7 @@ vi.mock("../api.js", () => ({
     return { id: `att-${uploads.length}` };
   },
   discardLaunchAttachment: async () => {},
+  readAgentChatCatalog: async () => catalogPayload,
 }));
 
 let root: Root | null = null;
@@ -38,6 +45,14 @@ beforeEach(() => {
   cancelOutcome = "canceled";
   messageDelivery = "resolve";
   releaseMessage = null;
+  meterOpens = 0;
+  renames = [];
+  renameFails = false;
+  catalogPayload = null;
+  // jsdom에는 scrollIntoView가 없다 — 덱이 활성 행을 따라가며 부른다.
+  if (!(Element.prototype as { scrollIntoView?: unknown }).scrollIntoView) {
+    (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+  }
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: () => "blob:preview",
@@ -63,6 +78,13 @@ function composerProps(options: MountOptions = {}) {
     operationId: "op-1",
     language: "en",
     operation: { id: "op-1", title: "Fresh chat", payload: {} },
+    operations: {
+      rename: async (_id: string, title: string) => {
+        if (renameFails) throw new Error("rename failed");
+        renames.push(title);
+        return {};
+      },
+    },
   } as unknown as OperationRenderContext;
   return {
     context,
@@ -85,6 +107,8 @@ function composerProps(options: MountOptions = {}) {
       canceled.push(queueId);
       return cancelOutcome;
     },
+    coordinates: { model: null, effort: null },
+    onOpenContextMeter: () => { meterOpens += 1; },
   };
 }
 
@@ -344,4 +368,138 @@ describe("chat panel composer", () => {
     expect(uploads).toHaveLength(0);
     expect(container?.querySelector(".agent-chat-composer-error")).toBeNull();
   });
+
+  describe("Console-owned slash commands", () => {
+    const CATALOG: AgentChatCatalog = {
+      commands: [
+        { name: "rename", description: "Rename the current conversation", argumentHint: "[name]", console: "rename" },
+        { name: "clear", description: "Start a new session with empty context", argumentHint: "", console: "clear" },
+        { name: "context", description: "Show current context usage", argumentHint: "", console: "context" },
+        { name: "model", description: "Set the AI model", argumentHint: "<model>", console: "model" },
+        { name: "compact", description: "Summarize to reclaim context", argumentHint: "" },
+      ],
+      skills: [],
+      agents: [],
+      unclassified: [],
+    };
+
+    /**
+     * 덱을 한 번 열어 카탈로그를 받아 둔다 — 라우팅은 카탈로그를 알아야 깨어난다.
+     * 덱은 포커스가 있을 때만 서므로(다른 표면이 포커스를 가져간 뒤 눌어붙지 않게 한 규칙)
+     * 실제 사용자처럼 먼저 필드에 들어간다.
+     */
+    async function primeCatalog(): Promise<void> {
+      catalogPayload = CATALOG;
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      if (container?.querySelector(".agent-chat-deck") === null) throw new Error("deck never opened");
+    }
+
+    function submit(): void {
+      const field = input();
+      field?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    }
+
+    /**
+     * 이름을 정확히 친 직후에는 덱이 그 행을 세우고 있고, 그때의 Enter는 **완성**이다(승인된
+     * 계약: 같은 Enter가 행마다 다른 일을 하지 않는다). 완성이 끝나면 문면 뒤에 공백이 붙어
+     * 덱이 눕고, 그다음 Enter가 비로소 보내기다. 사용자가 실제로 밟는 순서를 그대로 밟는다.
+     */
+    async function completeThenSubmit(): Promise<void> {
+      await act(async () => { submit(); });
+      expect(container?.querySelector(".agent-chat-deck")).toBeNull();
+      await act(async () => { submit(); });
+    }
+
+    it("renames the Operation instead of sending /rename to the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/rename ledger audit"); });
+      await act(async () => { submit(); });
+      expect(renames).toEqual(["ledger audit"]);
+      // 자식은 이 문면을 본 적이 없어야 한다 — 보내면 자식의 세션 제목만 바뀌고 Console 제목은 그대로다.
+      expect(messages).toEqual([]);
+    });
+
+    it("says what is missing when /rename carries no name", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/rename"); });
+      await completeThenSubmit();
+      expect(renames).toEqual([]);
+      expect(messages).toEqual([]);
+      expect(container?.textContent).toContain("Type a name after /rename");
+    });
+
+    it("reports a rename that did not take", async () => {
+      renameFails = true;
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/rename x"); });
+      await act(async () => { submit(); });
+      expect(container?.textContent).toContain("Could not rename");
+    });
+
+    it("opens the context meter instead of asking the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/context"); });
+      await completeThenSubmit();
+      expect(meterOpens).toBe(1);
+      expect(messages).toEqual([]);
+    });
+
+    it("answers /model from the Operation coordinate rather than the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/model opus"); });
+      await act(async () => { submit(); });
+      expect(messages).toEqual([]);
+      expect(container?.textContent).toContain("fixed when this Operation opened");
+    });
+
+    it("arms /clear once and only sends on the second press", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/clear"); });
+      await completeThenSubmit();
+      // 되돌릴 수 없는 절단이다 — 완성 뒤 첫 Enter는 확인이지 실행이 아니다.
+      expect(messages).toEqual([]);
+      expect(container?.textContent).toContain("Press Enter again");
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/clear"]);
+    });
+
+    it("disarms /clear when the draft changes", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/clear"); });
+      await completeThenSubmit();
+      // 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
+      await act(async () => { type("/compact tighten"); });
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/compact tighten"]);
+    });
+
+    it("still sends a passthrough command to the child", async () => {
+      mount();
+      await primeCatalog();
+      await act(async () => { type("/compact tighten it"); });
+      await act(async () => { submit(); });
+      expect(messages).toEqual(["/compact tighten it"]);
+    });
+
+    it("sends everything while the catalog is unknown", async () => {
+      // 카탈로그를 모르는 동안 가로채면, 분류를 아직 모르는 지시가 자식에게 닿지 못한 채 삼켜진다.
+      catalogPayload = null;
+      mount();
+      await act(async () => { type("/rename ledger audit"); });
+      await act(async () => { submit(); });
+      expect(renames).toEqual([]);
+      expect(messages).toEqual(["/rename ledger audit"]);
+    });
+  });
 });
+
+

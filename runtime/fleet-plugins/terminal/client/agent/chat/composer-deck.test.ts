@@ -6,6 +6,7 @@ import {
   buildDeckSections,
   flattenDeckRows,
   readAgentToken,
+  readConsoleCommand,
   readDeckToken,
   readResolvedTokenRanges,
   readSlashToken,
@@ -13,7 +14,7 @@ import {
 
 const CATALOG: AgentChatCatalog = {
   commands: [
-    { name: "clear", description: "Clear the conversation", argumentHint: "" },
+    { name: "clear", description: "Clear the conversation", argumentHint: "", console: "clear" },
     { name: "compact", description: "Summarize to reclaim context", argumentHint: "[instructions]" },
   ],
   skills: [
@@ -23,6 +24,7 @@ const CATALOG: AgentChatCatalog = {
   agents: [
     { name: "Explore", description: "Read-only search agent", argumentHint: "" },
   ],
+  unclassified: [],
 };
 
 describe("readSlashToken", () => {
@@ -152,5 +154,84 @@ describe("readResolvedTokenRanges", () => {
 
   it("marks nothing while the catalog is unknown", () => {
     expect(readResolvedTokenRanges("/clear", null)).toEqual([]);
+  });
+});
+
+describe("readConsoleCommand", () => {
+  // 인자를 받는 Console 항목. 공유 픽스처의 행 수는 다른 검사의 기대치라 여기서만 늘린다.
+  const WITH_RENAME: AgentChatCatalog = {
+    ...CATALOG,
+    commands: [
+      ...CATALOG.commands,
+      { name: "rename", description: "Rename the current conversation", argumentHint: "[name]", console: "rename" },
+    ],
+  };
+
+  it("routes a Console-owned command with its argument", () => {
+    expect(readConsoleCommand("/rename ledger audit", WITH_RENAME)).toEqual({
+      target: "rename",
+      argument: "ledger audit",
+      name: "rename",
+    });
+  });
+
+  it("routes one with no argument", () => {
+    expect(readConsoleCommand("/clear", CATALOG)).toEqual({ target: "clear", argument: "", name: "clear" });
+  });
+
+  it("leaves a passthrough command to the child", () => {
+    expect(readConsoleCommand("/compact tighten it", CATALOG)).toBeNull();
+  });
+
+  it("leaves a skill to the child even when its name looks built-in", () => {
+    // 정책은 내장 명령에만 걸린다. 스킬 칸의 같은 이름이 Console로 새면 남의 물건이 실행되지 않는다.
+    expect(readConsoleCommand("/pr-workflow", CATALOG)).toBeNull();
+  });
+
+  it("says nothing before the catalog arrives", () => {
+    // 카탈로그를 모르는 동안 지시를 가로채면, 아직 분류를 모르는 명령이 자식에게 닿지 못한 채
+    // 조용히 삼켜진다. 모를 때는 평소대로 자식에게 보낸다.
+    expect(readConsoleCommand("/rename x", null)).toBeNull();
+  });
+
+  it("ignores prose and paths", () => {
+    expect(readConsoleCommand("rename the operation", WITH_RENAME)).toBeNull();
+    expect(readConsoleCommand("/Users/sbluemin/notes.md", WITH_RENAME)).toBeNull();
+  });
+});
+
+describe("deck ranking", () => {
+  const RANKED: AgentChatCatalog = {
+    commands: [
+      // 카탈로그 순서상 `clear`가 먼저다 — 설명에 "context"가 들어 있다.
+      { name: "clear", description: "Start a new session with empty context", argumentHint: "", console: "clear" },
+      { name: "compact", description: "Free up context by summarizing", argumentHint: "" },
+      { name: "context", description: "Show current context usage", argumentHint: "", console: "context" },
+    ],
+    skills: [],
+    agents: [],
+    unclassified: [],
+  };
+
+  it("puts the exact name first even when other descriptions match", () => {
+    // 이름을 끝까지 친 사람이 다른 행을 받으면, 그 Enter가 문맥을 지우는 명령을 완성한다.
+    const rows = flattenDeckRows(buildDeckSections(RANKED, { kind: "slash", at: 0, query: "context" }));
+    expect(rows.map((row) => row.name)).toEqual(["context", "clear", "compact"]);
+  });
+
+  it("prefers a name prefix over a description hit", () => {
+    const rows = flattenDeckRows(buildDeckSections(RANKED, { kind: "slash", at: 0, query: "c" }));
+    expect(rows.map((row) => row.name)).toEqual(["clear", "compact", "context"]);
+  });
+
+  it("keeps catalog order inside one closeness tier", () => {
+    // 이름순으로 다시 세우면 자식이 준 관용적 배열이 사라지고 목록이 판본마다 흔들린다.
+    const rows = flattenDeckRows(buildDeckSections(RANKED, { kind: "slash", at: 0, query: "" }));
+    expect(rows.map((row) => row.name)).toEqual(["clear", "compact", "context"]);
+  });
+
+  it("still finds a skill by its description alone", () => {
+    const rows = flattenDeckRows(buildDeckSections(CATALOG, { kind: "slash", at: 0, query: "headless" }));
+    expect(rows.map((row) => row.name)).toEqual(["console-e2e"]);
   });
 });

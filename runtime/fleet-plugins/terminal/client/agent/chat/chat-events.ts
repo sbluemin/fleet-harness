@@ -91,7 +91,15 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  | {
+      readonly kind: "dispatch";
+      readonly text: string;
+      readonly at?: number;
+      /** 슬래시 명령이었다 — 자식이 로컬 실행했고 결과는 모델의 문장이 아니다. */
+      readonly origin?: "command";
+    }
+  /** 자식이 문맥을 비웠다. 원장에 이음매로 서서 위쪽이 더 이상 문맥이 아님을 말한다. */
+  | { readonly kind: "reset"; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 실리지 않으며, 완성 text 이벤트가 정정 앵커다. */
@@ -213,7 +221,17 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       return { seq: entry.seq, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
     case "dispatch":
       if (typeof event.text !== "string") return null;
-      return { seq: entry.seq, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "dispatch",
+          text: event.text,
+          ...atField(event.at),
+          ...(event.origin === "command" ? { origin: "command" as const } : {}),
+        },
+      };
+    case "reset":
+      return { seq: entry.seq, event: { kind: "reset", ...atField(event.at) } };
     case "turn-start":
       return { seq: entry.seq, event: { kind: "turn-start", ...atField(event.at) } };
     case "text":
@@ -510,6 +528,13 @@ export interface AgentChatTurn {
    * 지어내지 않고 빈칸으로 둔다.
    */
   readonly contextBefore?: number;
+  /**
+   * 이 턴을 연 문면이 슬래시 명령이었다. 자식은 그것을 모델에게 넘기지 않고 로컬에서 실행하므로,
+   * 이 턴의 결말은 **모델의 답변이 아니라 명령의 출력**이고 그렇게 그려져야 한다.
+   */
+  readonly origin?: "command";
+  /** 이 턴에서 자식이 문맥을 비웠다. 원장은 이 턴 뒤에 이음매를 긋는다. */
+  readonly reset?: true;
 }
 
 /** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
@@ -603,12 +628,24 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
   return { kind: "agent", steps, truncated };
 }
 
+/**
+ * Console이 자식 대신 답하는 축. 서버 `ChatCommandConsoleTarget`의 브라우저 사본이다.
+ *
+ * 값을 좁혀 두는 이유는 화면이 이 값으로 **행동**을 고르기 때문이다 — 서버가 새 좌표를 늘렸는데
+ * 화면이 그것을 모르면, 열린 문 없이 이름만 있는 행이 선다. 파서가 아는 값만 통과시킨다.
+ */
+export type ChatCommandConsoleTarget = "model" | "effort" | "rename" | "context" | "clear";
+
+const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["model", "effort", "rename", "context", "clear"];
+
 /** 컴포저 덱이 세우는 항목 하나. 서버 `AgentChatCatalogEntry`의 브라우저 사본이다. */
 export interface AgentChatCatalogEntry {
   readonly name: string;
   readonly description: string;
   /** 인자를 받는다는 표시. 비어 있으면 인자 없이 바로 실행되는 항목이다. */
   readonly argumentHint: string;
+  /** 자식이 아니라 Console이 받는 항목이다. 없으면 평범한 통과 항목. */
+  readonly console?: ChatCommandConsoleTarget;
 }
 
 /** `/`와 `@`가 세우는 목록. 출처가 하나이므로 한 응답으로 온다. */
@@ -616,6 +653,8 @@ export interface AgentChatCatalog {
   readonly commands: readonly AgentChatCatalogEntry[];
   readonly skills: readonly AgentChatCatalogEntry[];
   readonly agents: readonly AgentChatCatalogEntry[];
+  /** 서버의 정책표가 모르는 내장 명령. 비어 있지 않다는 것 자체가 표를 갱신하라는 신호다. */
+  readonly unclassified: readonly string[];
 }
 
 function readCatalogEntries(value: unknown): readonly AgentChatCatalogEntry[] {
@@ -626,10 +665,12 @@ function readCatalogEntries(value: unknown): readonly AgentChatCatalogEntry[] {
     const entry = row as Record<string, unknown>;
     // 이름이 없으면 부를 수 없다 — 고를 수는 있는데 보낼 수는 없는 행을 만들지 않는다.
     if (typeof entry.name !== "string" || entry.name.length === 0) continue;
+    const target = CONSOLE_TARGETS.find((known) => known === entry.console);
     entries.push({
       name: entry.name,
       description: typeof entry.description === "string" ? entry.description : "",
       argumentHint: typeof entry.argumentHint === "string" ? entry.argumentHint : "",
+      ...(target ? { console: target } : {}),
     });
   }
   return entries;
@@ -646,6 +687,9 @@ export function readAgentChatCatalogPayload(payload: unknown): AgentChatCatalog 
     commands: readCatalogEntries(value.commands),
     skills: readCatalogEntries(value.skills),
     agents: readCatalogEntries(value.agents),
+    unclassified: Array.isArray(value.unclassified)
+      ? value.unclassified.filter((name): name is string => typeof name === "string" && name.length > 0)
+      : [],
   };
 }
 
@@ -747,8 +791,19 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         state: "working",
         toolCount: 0,
         draft: "",
+        // 출처는 턴이 진다. 명령의 출력은 자식이 평범한 assistant 메시지로 돌려주므로 도착한
+        // 조각만으로는 가릴 수 없고, 이 턴을 연 문면이 그것을 아는 유일한 자리다.
+        ...(event.origin === "command" ? { origin: "command" as const } : {}),
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
+    }
+    case "reset": {
+      // 이음매는 **문맥을 비운 그 턴**에 붙는다. 다음 턴에 붙이면 아직 오지 않은 지시가 초기화를
+      // 예고하게 되고, 별도 항목으로 세우면 재생에서 순서가 흔들린다.
+      const turns = state.turns;
+      const last = turns.at(-1);
+      if (!last) return state;
+      return { ...state, turns: [...turns.slice(0, -1), { ...last, reset: true as const }] };
     }
     case "turn-start": {
       // 백그라운드 작업이 끝나면 SDK가 모델을 다시 깨워 두 번째 응답을 낸다(실측: 하나의

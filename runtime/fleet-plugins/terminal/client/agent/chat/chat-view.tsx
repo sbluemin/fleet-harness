@@ -248,6 +248,9 @@ export function AgentChatView({
     [context.operation.payload],
   );
 
+  /** `/context`가 컴포저에서 문맥 계기를 여는 신호. 값이 바뀐 사실만 뜻이 있다. */
+  const [meterOpenSignal, setMeterOpenSignal] = React.useState(0);
+
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
   const jobsByToolUse = React.useMemo(() => {
@@ -488,7 +491,9 @@ export function AgentChatView({
           <AgentChatComposer
             context={context}
             coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
-            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} />}
+            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
+            coordinates={coordinates}
+            onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
@@ -592,6 +597,12 @@ function SessionCoordinate({
       <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
     </span>
   );
+}
+
+/** 이 턴을 연 명령의 이름. 문면이 곧 출처이므로 같은 문면에서 다시 읽는다. */
+function commandName(turn: AgentChatTurn): string {
+  const match = /^\/([A-Za-z0-9:_-]+)/.exec(turn.dispatch?.text ?? "");
+  return match ? `/${match[1]}` : "/";
 }
 
 function ChatTurn({
@@ -700,18 +711,38 @@ function ChatTurn({
                 language={language}
               />
             ) : null}
+            {/* 명령 턴의 결말은 Answer가 아니다. 자식이 그것을 로컬에서 실행하고 결과를 평범한
+                assistant 메시지로 돌려주므로 도착한 조각만으로는 모델의 문장과 구별되지 않는데,
+                Answer 문법으로 그리면 화면이 "모델이 이렇게 답했다"고 말하게 된다. 색 채널을 새로
+                만들지 않는다 — 신호 토큰은 턴 상태가, brass는 위치가, --id-cerulean은 사용자
+                식별이 이미 점유했다. "로컬에서 실행됨"은 상태도 위치도 식별도 아닌 **출처**이고,
+                그 자리는 이미 있다(.agent-chat-sys). */}
             {!working && view.answer !== null ? (
-              <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
-                {hasSettledWork
-                  ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
-                  : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
-                <StreamedMarkdown
-                  className="agent-chat-answer-body markdown-body"
-                  text={view.answer}
-                  streaming={false}
-                  language={language}
-                />
-              </div>
+              turn.origin === "command" ? (
+                <div className="agent-chat-sys agent-chat-command-result">
+                  <span className="agent-chat-command-mark">
+                    {t("terminal.chat.commandRanLocally", { name: commandName(turn) })}
+                  </span>
+                  <span className="agent-chat-command-output">{view.answer}</span>
+                </div>
+              ) : (
+                <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
+                  {hasSettledWork
+                    ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
+                    : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
+                  <StreamedMarkdown
+                    className="agent-chat-answer-body markdown-body"
+                    text={view.answer}
+                    streaming={false}
+                    language={language}
+                  />
+                </div>
+              )
+            ) : null}
+            {/* 문맥이 끊긴 자리. 문장이 아니라 기록의 단절이므로 이음매로 긋는다 — 위쪽 대화는
+                화면에 남지만 자식은 그것을 더 이상 읽지 않는다. */}
+            {turn.reset === true ? (
+              <p className="agent-chat-reset-seam">{t("terminal.chat.contextResetSeam")}</p>
             ) : null}
           </div>
         </div>
@@ -1999,15 +2030,28 @@ function ContextMeterChip({
   context,
   working,
   language,
+  openSignal,
 }: {
   readonly context: AgentChatContext | null;
   /** 턴이 도는 중인가. 라이브 값이 아직 없을 때만 낡음을 주장할 근거가 된다. */
   readonly working: boolean;
   readonly language: "en" | "ko";
+  /**
+   * 밖에서 이 팝오버를 열어 달라는 요청. **값이 바뀌었다는 사실만** 신호이고 크기는 뜻이 없다 —
+   * 열림/닫힘을 밖으로 끌어올리면 칩이 자기 바깥 클릭·Esc를 스스로 닫지 못하게 된다.
+   */
+  readonly openSignal: number;
 }) {
   const t = getT(language);
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const seenSignal = React.useRef(openSignal);
+
+  React.useEffect(() => {
+    if (openSignal === seenSignal.current) return;
+    seenSignal.current = openSignal;
+    setOpen(true);
+  }, [openSignal]);
 
   // 열려 있는 동안에만 문서에 손을 댄다. 채팅 패널은 한 화면에 여럿 살 수 있어, 닫힌 칩까지
   // 리스너를 걸면 패널 수만큼 같은 핸들러가 매 클릭을 받는다.

@@ -31,6 +31,7 @@ import {
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
+  isChatCommandDispatch,
   readJobKind,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
@@ -43,6 +44,7 @@ import {
 } from "./chat-events.js";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
+import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { chatChildEnv } from "../shared/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 
@@ -1027,6 +1029,20 @@ class AgentChatSession {
   }
 
   /**
+   * 자식이 "받아 주는 목록이 바뀌었다"고 알려 왔다(`/reload-skills` 실측). 캐시를 버려 다음
+   * 읽기가 다시 묻게 한다.
+   *
+   * 이 신호를 놓치면 덱은 세션이 접힐 때까지 낡은 목록을 세운다 — 방금 추가한 스킬이 보이지
+   * 않는데 화면은 아무 말도 하지 않는 상태다. `rawCatalog`만 비우고 `skillNames`는 남기는 이유는
+   * 그 집합이 세 출처의 합집합이고, 사라진 스킬을 명령 칸으로 되돌리는 것이 낡은 채로 두는 것보다
+   * 나쁘기 때문이다(잘못된 칸에 서면 정책표가 그것을 내장 명령으로 재단한다).
+   */
+  private invalidateCatalog(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "commands_changed") return;
+    this.rawCatalog = null;
+  }
+
+  /**
    * 결말 알림이 알려 준 출력 파일 경로를 적어 둔다.
    *
    * 이 경로를 우리가 재구성하지 않는 이유는 실측이다: 셸 출력은 격리 config dir이 아니라 CLI가
@@ -1575,11 +1591,15 @@ class AgentChatSession {
   async readCatalog(): Promise<AgentChatCatalog | null> {
     if (this.disposed) return null;
     if (!this.rawCatalog) {
+      let session: ClaudeGatewaySession;
       try {
-        await this.ensureSession();
+        session = await this.ensureSession();
       } catch {
         return null;
       }
+      // 캐시가 빈 자리는 둘이고 대응은 같다: 세션을 갓 열었을 때와, `commands_changed`가 캐시를
+      // 버린 뒤. 다시 묻지 않으면 후자에서 덱이 세션 내내 "아직 모른다"로 굳는다.
+      this.primeCatalog(session);
       await this.catalogFlight;
     }
     const raw = this.rawCatalog;
@@ -1603,10 +1623,34 @@ class AgentChatSession {
       }
       return [...byName.values()];
     };
+    // 내장 명령에만 정책을 건다. 스킬·에이전트는 사용자·프로젝트가 놓은 것이라 Console이 그
+    // 의미를 판단할 근거가 없다 — 표에 올리면 남의 물건을 우리 기준으로 지우게 된다.
+    //
+    // 그 "내장 명령"의 판정에 정책표가 **네 번째 출처**로 들어온다. 스킬 이름의 세 출처(init·
+    // reloadSkills·디스크)는 전부 긍정 증거이고 셋 다 놓치는 부류가 있다 — CLI 번들에 실려 오는
+    // 스킬(`/doctor`·`/batch`·`/debug`·`/design-sync`…)은 디스크에 없고 reloadSkills도 세지
+    // 않아, 첫 턴이 init을 실어 오기 전까지 명령 칸에 섰다(실측 6건). 정책표는 실재하는 내장
+    // 명령의 전량이므로 "표에 없다"가 곧 "내장 명령이 아니다"이고, 그 부정 증거가 셋이 놓친
+    // 자리를 메운다. 새 판본의 진짜 내장 명령이 잠시 스킬 칸에 서는 것이 대가인데, 그것은
+    // 머리글 하나가 틀리는 일이고 통과 여부는 바뀌지 않는다 — 반대 방향(스킬이 명령으로 서서
+    // 정책표의 재단을 받는 것)보다 훨씬 가볍다.
+    const isBuiltIn = (name: string): boolean => !this.skillNames.has(name) && isClassifiedChatCommand(name);
+    const commands: AgentChatCatalogEntry[] = [];
+    for (const entry of dedupe(raw.commands.filter((row) => isBuiltIn(row.name)).map(toEntry))) {
+      const rule = classifyChatCommand(entry.name);
+      if (rule.disposition === "hidden") continue;
+      commands.push(rule.target === undefined ? entry : { ...entry, console: rule.target });
+    }
+    // 어느 출처도 스킬이라 말하지 않았고 정책표도 모르는 이름. 스킬 칸에 세워 두되 이름을 함께
+    // 실어 보낸다 — 표를 갱신할 사람이 그 목록을 봐야 이 추정이 사실로 굳는다.
+    const unclassified = raw.commands
+      .filter((row) => !this.skillNames.has(row.name) && !isClassifiedChatCommand(row.name))
+      .map((row) => row.name);
     return {
-      commands: dedupe(raw.commands.filter((entry) => !this.skillNames.has(entry.name)).map(toEntry)),
-      skills: dedupe(raw.commands.filter((entry) => this.skillNames.has(entry.name)).map(toEntry)),
+      commands,
+      skills: dedupe(raw.commands.filter((row) => !isBuiltIn(row.name)).map(toEntry)),
       agents: dedupe(raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" }))),
+      unclassified: [...new Set(unclassified)],
     };
   }
 
@@ -1626,6 +1670,7 @@ class AgentChatSession {
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
         this.rememberSkillNames(message);
+        this.invalidateCatalog(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);
         this.rememberToolTitles(message);
@@ -1858,7 +1903,12 @@ class AgentChatSession {
     await this.awaitTurnClose();
     // 기다리는 동안 세션이 접혔거나 중지가 눌렸다면 이 턴은 시작하지 않는다.
     if (this.disposed || stopped()) return;
-    this.push({ kind: "dispatch", text, at: Date.now() });
+    this.push({
+      kind: "dispatch",
+      text,
+      at: Date.now(),
+      ...(isChatCommandDispatch(text) ? { origin: "command" as const } : {}),
+    });
     // 활동 보고가 먼저다. 실패하면 자식을 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
     // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.
     if (!this.seed.reportActivity(true)) {
