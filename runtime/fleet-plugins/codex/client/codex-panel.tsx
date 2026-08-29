@@ -23,6 +23,7 @@ import {
   teardownReaderNodes,
 } from "./codex-host.js";
 import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
+import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
 
@@ -77,12 +78,18 @@ export const codexPanel: RailPanelDescriptor = {
   title: (locale: ConsoleLocale) => getT(locale)("rail.codex.title"),
   defaultWidth: 420,
   icon: () => <CodexIcon />,
-  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} />,
+  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} requestExtraWidth={ctx.requestExtraWidth} />,
 };
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
+function CodexRailPanel({
+  theaterId,
+  requestExtraWidth,
+}: {
+  readonly theaterId: string | null;
+  readonly requestExtraWidth?: (px: number | null) => void;
+}) {
   const t = useT();
   const history = useSyncExternalStore(
     subscribeCodexReaderHistory,
@@ -114,6 +121,15 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const hasTheaters = state.theaters.length > 0;
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
+
+  // 축소 리더가 서면 레일에 문서 열 폭을 더 달라고 한다 — 예전에는 코어가 Codex를
+  // 알아보고 더해 주던 값이다. 요구하지 않으면 문서가 172px로 눌린다.
+  const splitExtraWidth = useCodexSplitExtraWidth();
+  useEffect(() => {
+    requestExtraWidth?.(splitExtraWidth);
+    // 패널이 사라지면 요구도 거둔다 — 남겨 두면 레일이 넓어진 채로 굳는다.
+    return () => requestExtraWidth?.(null);
+  }, [requestExtraWidth, splitExtraWidth]);
 
   const readerKey = reader
     ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`

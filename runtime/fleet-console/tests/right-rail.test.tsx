@@ -65,10 +65,6 @@ vi.mock("../core/client/src/rail/rail-registry.js", () => ({
   ],
 }));
 
-vi.mock("../core/client/src/rail/use-codex-split-extra-width.js", () => ({
-  useCodexSplitExtraWidth: () => 0,
-}));
-
 import { RightRail } from "../core/client/src/rail/right-rail.js";
 import {
   getRailStoreSnapshot,

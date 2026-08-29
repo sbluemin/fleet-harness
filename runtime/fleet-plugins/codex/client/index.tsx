@@ -4,6 +4,8 @@ import { bindCodexHost, setConsoleLocale, setConsoleTheme } from "./host.js";
 import { codexPanel } from "./codex-panel.js";
 import { codexReadingSurface } from "./reading-surface.js";
 import { useCodexReaderUrlSync } from "./use-codex-reader-url.js";
+import { applyCodexChanged, applyCodexWatchState } from "./codex/live.js";
+import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT, type CodexKnowledgeScope, type CodexWatchState } from "../server/codex/contracts.js";
 import "./codex/styles/theme.css";
 import "./codex/styles/layout.css";
 import "./codex/styles/components.css";
@@ -24,9 +26,36 @@ const codexPlugin = definePlugin({
       surfaces: ctx.surfaces,
       rail: ctx.rail,
     });
-    return undefined;
+    // 서버는 감시 결과를 콘솔 공용 스트림으로 계속 밀어 보낸다 — 받는 쪽이 없으면 그
+    // 프레임은 버려지고, 화면은 파일이 바뀌어도 낡은 채로 남는다. 감시가 끊겼다는 통보
+    // 역시 여기로 오므로, 이 구독이 없으면 폴링 폴백도 영영 켜지지 않는다.
+    const stopChanged = ctx.consoleEvents.subscribe(CODEX_CHANGED_EVENT, (payload) => {
+      const frame = readChangedFrame(payload);
+      if (frame) applyCodexChanged(frame.workspaceId, frame.scopes);
+    });
+    const stopWatch = ctx.consoleEvents.subscribe(CODEX_WATCH_EVENT, (payload) => {
+      const frame = readWatchFrame(payload);
+      if (frame) applyCodexWatchState(frame.workspaceId, frame.state);
+    });
+    return () => { stopChanged(); stopWatch(); };
   },
 });
+
+// 프레임은 네트워크에서 온다 — 모양을 믿지 않고 확인한 것만 통과시킨다.
+function readChangedFrame(payload: unknown): { workspaceId: string; scopes: readonly CodexKnowledgeScope[] } | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const { workspaceId, scopes } = payload as { workspaceId?: unknown; scopes?: unknown };
+  if (typeof workspaceId !== "string" || !Array.isArray(scopes)) return null;
+  const known = scopes.filter((scope): scope is CodexKnowledgeScope => typeof scope === "string");
+  return known.length > 0 ? { workspaceId, scopes: known } : null;
+}
+
+function readWatchFrame(payload: unknown): { workspaceId: string; state: CodexWatchState } | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const { workspaceId, state } = payload as { workspaceId?: unknown; state?: unknown };
+  if (typeof workspaceId !== "string") return null;
+  return state === "watching" || state === "degraded" ? { workspaceId, state } : null;
+}
 
 function CodexReaderUrlSync(): null {
   useCodexReaderUrlSync();

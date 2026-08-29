@@ -97,6 +97,9 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     rail: {
       open: () => undefined,
     },
+    consoleEvents: {
+      subscribe: () => () => undefined,
+    },
     surfaces: {
       open: () => "",
       close: () => undefined,

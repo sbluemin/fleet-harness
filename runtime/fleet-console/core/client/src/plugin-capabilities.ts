@@ -4,6 +4,7 @@ import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { applySearchParams, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-marks.js";
+import { subscribeConsoleChannel } from "./operations-sse.js";
 import { openRailPanel } from "./rail/rail-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -44,6 +45,9 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     rail: {
       open: (panelId) => openRailPanel(panelId),
+    },
+    consoleEvents: {
+      subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
     },
     composer: {
       open: (options) => {

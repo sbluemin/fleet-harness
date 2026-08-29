@@ -167,12 +167,21 @@ export interface PluginInstallContext {
   readonly consoleState: ClientConsoleStateCapability;
   readonly navigation: ClientNavigationCapability;
   readonly rail: ClientRailCapability;
+  readonly consoleEvents: ClientConsoleEventsCapability;
 }
 
 /** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
 export interface PersistentComponentDescriptor {
   readonly id: string;
   readonly render: () => ReactNode;
+}
+
+export interface ClientConsoleEventsCapability {
+  /**
+   * 콘솔 공용 스트림에서 이 채널의 프레임을 받는다. 서버 쪽 `registerSseChannel`의 짝이며,
+   * 올린 채널만 브라우저까지 온다. 받는 쪽이 없으면 프레임은 조용히 버려진다.
+   */
+  subscribe(channel: string, onEvent: (payload: unknown) => void): () => void;
 }
 
 export interface ClientRailCapability {

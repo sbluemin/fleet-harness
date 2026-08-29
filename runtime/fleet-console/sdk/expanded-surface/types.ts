@@ -34,7 +34,6 @@ export interface ExpandedSurfaceDescriptor {
    * 유니온으로 두면 런타임에 두 함수를 구분할 수 없다.)
    */
   readonly title: (ctx: ExpandedSurfaceContext) => LocalizedText;
-  readonly icon?: ReactNode | (() => ReactNode);
   readonly render: (ctx: ExpandedSurfaceContext) => ReactNode;
   /** 슬롯 머리 우측 도구 무리. 닫기 버튼은 호스트가 소유하므로 넣지 않는다. */
   readonly tools?: (ctx: ExpandedSurfaceContext) => ReactNode;
