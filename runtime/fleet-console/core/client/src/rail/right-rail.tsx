@@ -6,6 +6,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
@@ -122,6 +123,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const builtInPanels = BUILT_IN_RAIL_PANELS;
   const pluginPanels = pluginContributions.filter((panel) => panel.render !== undefined);
   const pluginActions = pluginContributions.filter((panel) => panel.activate !== undefined && panel.render === undefined);
+  // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
+  const { instances: openSurfaces } = useExpandedSurfaces();
+  const openSurfaceIds = useMemo(
+    () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
+    [openSurfaces],
+  );
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
@@ -418,7 +425,15 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           ))}
         </div>
         {pluginActions.map((panel) => (
-          <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={false} />
+          <RailIcon
+            key={panel.id}
+            panel={panel}
+            context={baseCtx}
+            language={language}
+            // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
+            // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
+            isActive={panel.surfaceId !== undefined && openSurfaceIds.has(panel.surfaceId)}
+          />
         ))}
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {pluginPanels.map((panel) => (
@@ -613,6 +628,8 @@ function RailIcon({ panel, context, language, isActive }: RailIconProps) {
       type="button"
       role={panel.activate ? "button" : "tab"}
       aria-selected={panel.activate ? undefined : isActive}
+      // 표면을 여닫는 동작은 탭이 아니라 토글 버튼이다 — 켜짐은 pressed로 말한다.
+      aria-pressed={panel.activate && panel.surfaceId !== undefined ? isActive : undefined}
       aria-label={title}
       disabled={panel.activate !== undefined && context.theaterId === null}
       title={title}

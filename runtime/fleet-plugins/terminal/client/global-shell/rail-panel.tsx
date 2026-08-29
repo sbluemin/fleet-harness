@@ -15,6 +15,8 @@ export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
+  // 셸이 서 있는 동안 아이콘이 켜져 있다 — 어느 표면을 여는지 호스트에게 말해 둔다.
+  surfaceId: SHELL_SURFACE_ID,
   activate: (ctx: RailPanelContext) => {
     const surfaces = ctx.surfaces;
     if (!surfaces) return;

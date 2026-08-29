@@ -47,7 +47,14 @@ vi.mock("../core/client/src/rail/rail-registry.js", () => ({
       id: "shell-action",
       title: "SHELL",
       icon: "H",
+      surfaceId: "shell",
       activate: railPanelContextMock.activate,
+    },
+    {
+      id: "plain-action",
+      title: "PLAIN",
+      icon: "N",
+      activate: () => undefined,
     },
     {
       id: "file-explorer",
@@ -70,6 +77,11 @@ import {
   setRailOverlayAlpha,
   setRailPanelBehavior,
 } from "../core/client/src/rail/rail-store.js";
+import {
+  closeExpandedSurfacesOf,
+  openExpandedSurface,
+  resetExpandedSurfacesForTest,
+} from "../core/client/src/expanded-surface/store.js";
 import { setState } from "../core/client/src/store.js";
 
 let container: HTMLDivElement;
@@ -88,6 +100,7 @@ beforeEach(() => {
   railPanelContextMock.renderCount = 0;
   railPanelContextMock.activate.mockClear();
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
+  resetExpandedSurfacesForTest();
   container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
@@ -606,4 +619,60 @@ function dispatchResizeKey(handle: HTMLElement, key: string, shiftKey = false): 
 
 function storedPanelWidths(): Record<string, number> {
   return JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths") ?? "{}") as Record<string, number>;
+}
+
+describe("Right Rail icons for surface-opening actions", () => {
+  // 셸은 패널이 아니라 확대 표면이라, 예전에는 rail 아이콘이 켜질 자리가 없었다(항상
+  // isActive=false). 열려 있는데 아이콘이 꺼져 있으면 지금 어디에 서 있는지 알 수 없다.
+  it("lights the icon while its surface holds a slot", () => {
+    renderRail("theater-a");
+    expect(actionIcon("SHELL").classList.contains("is-active")).toBe(false);
+
+    act(() => { openExpandedSurface({ surfaceId: "shell" }); });
+
+    expect(actionIcon("SHELL").classList.contains("is-active")).toBe(true);
+  });
+
+  it("puts the icon out again when the surface closes", () => {
+    renderRail("theater-a");
+    act(() => { openExpandedSurface({ surfaceId: "shell" }); });
+    expect(actionIcon("SHELL").classList.contains("is-active")).toBe(true);
+
+    act(() => { closeExpandedSurfacesOf("shell"); });
+
+    expect(actionIcon("SHELL").classList.contains("is-active")).toBe(false);
+  });
+
+  // 탭이 아니라 토글 버튼이므로 켜짐은 pressed로 말한다.
+  it("says pressed rather than selected", () => {
+    renderRail("theater-a");
+    act(() => { openExpandedSurface({ surfaceId: "shell" }); });
+
+    const icon = actionIcon("SHELL");
+    expect(icon.getAttribute("aria-pressed")).toBe("true");
+    expect(icon.getAttribute("aria-selected")).toBeNull();
+  });
+
+  it("leaves an action that opens no surface unlit", () => {
+    renderRail("theater-a");
+
+    act(() => { openExpandedSurface({ surfaceId: "shell" }); });
+
+    expect(actionIcon("PLAIN").classList.contains("is-active")).toBe(false);
+    expect(actionIcon("PLAIN").getAttribute("aria-pressed")).toBeNull();
+  });
+
+  it("ignores a different surface standing in a slot", () => {
+    renderRail("theater-a");
+
+    act(() => { openExpandedSurface({ surfaceId: "codex" }); });
+
+    expect(actionIcon("SHELL").classList.contains("is-active")).toBe(false);
+  });
+});
+
+function actionIcon(label: string): HTMLButtonElement {
+  const icon = container.querySelector<HTMLButtonElement>(`.right-rail-ico[aria-label="${label}"]`);
+  expect(icon, `no rail icon labelled ${label}`).not.toBeNull();
+  return icon!;
 }
