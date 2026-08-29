@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -158,6 +160,14 @@ afterEach(() => {
 });
 
 describe("TerminalKeyBar on a touch terminal", () => {
+  it("keeps its focus outline inside an edge-to-edge terminal shell", () => {
+    const css = readFileSync("client/shared/terminal-key-bar.css", "utf8");
+    const keyBarBlock = css.match(/^\.terminal-key-bar \{[^}]*\}/m)?.[0] ?? "";
+
+    expect(keyBarBlock).toContain("padding: var(--space-1);");
+    expect(keyBarBlock).not.toContain("padding-top:");
+  });
+
   it("carries the keys a soft keyboard has no room for", async () => {
     await renderSurface();
 
