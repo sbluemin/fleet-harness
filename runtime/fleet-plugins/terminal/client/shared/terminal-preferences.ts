@@ -42,18 +42,21 @@ export interface TerminalFontSettings {
   readonly source: TerminalFontSource;
   readonly id: TerminalFontId | null;
   readonly customName: string;
+  /* 선택 서체에 없는 CJK 글리프를 그릴 서체. 빈 문자열이면 번들 서체만 쓴다. 주 서체와 다른 축인
+     이유는 커버리지가 겹치지 않기 때문이다 — 라틴 등폭 서체 중 CJK를 가진 것은 사실상 없고, 그
+     둘을 한 선택지로 묶으면 라틴 취향과 CJK 가독성 중 하나를 포기해야 한다. */
+  readonly cjkFallbackName: string;
   readonly family: string;
   readonly size: number;
 }
 
-import { fontResolves, sanitizeFontFamilyName, withFontFallback } from "@fleet-console/font-picker/resolve";
+import { fontResolves, quoteFontFamily, sanitizeFontFamilyName, withFontFallback } from "@fleet-console/font-picker/resolve";
 
 
 export interface CuratedTerminalFont {
   readonly id: TerminalFontId;
   readonly name: string;
   readonly familyName: string;
-  readonly family: string;
   readonly meta: string;
 }
 
@@ -66,17 +69,40 @@ interface StoredTerminalFontSettings {
   readonly source?: unknown;
   readonly id?: unknown;
   readonly customName?: unknown;
+  readonly cjkFallbackName?: unknown;
   readonly size?: unknown;
 }
 
 const SYMBOLS_NERD_FONT_MONO_FAMILY = "Symbols Nerd Font Mono";
-/* 한글 등폭 폴백 — 큐레이트 4종도, ui-monospace/SF Mono/Menlo도 한글 글리프가 없다. 이 서체가
+/* 번들 CJK 폴백 — 큐레이트 4종도, ui-monospace/SF Mono/Menlo도 CJK 글리프가 없다. 이 서체가
    없으면 한글만 체인을 전부 빠져나가 OS 기본 폴백(비례폭 고딕)이 그리고, 같은 줄의 라틴과 굵기·
-   폭이 어긋나 "폰트가 깨진" 것처럼 읽힌다. 선택 서체 바로 뒤에 두는 이유는 커버리지가 겹치지 않기
-   때문이다 — 라틴은 앞의 선택 서체가 이미 소화하므로 이 서체는 한글에서만 깨어난다. 뒤쪽(ui-
-   monospace 다음)에 두면 그 제네릭이 플랫폼마다 무엇으로 풀리는지에 한글 렌더가 의존하게 된다. */
-const KOREAN_MONO_FALLBACK_FAMILY = "Nanum Gothic Coding";
-const TERMINAL_FONT_FALLBACK_STACK = `"${KOREAN_MONO_FALLBACK_FAMILY}", ui-monospace, "SF Mono", Menlo, "${SYMBOLS_NERD_FONT_MONO_FAMILY}", monospace`;
+   폭이 어긋나 "폰트가 깨진" 것처럼 읽힌다. 번들인 이유는 이것뿐이 아니다: 통짜 CJK 웹폰트는 굵기당
+   수 MB고, unicode-range로 쪼갠 서브셋은 첫 CJK 글자에 반응해 반드시 늦게 도착하는데 xterm의
+   WebGL 글리프 아틀라스는 터미널 간 모듈 공유라 한 터미널이 비울 수 없어 폴백 글리프가 영구히
+   구워진다. 그래서 선대기 가능한 한글 통짜 서브셋 하나만 싣고, 가나·한자는 사용자가 고른 설치
+   서체(로드가 없어 아틀라스 경합도 없다)에 맡긴다. */
+export const BUNDLED_CJK_FALLBACK_FAMILY = "Nanum Gothic Coding";
+const BASE_MONO_FALLBACK_STACK = `ui-monospace, "SF Mono", Menlo, "${SYMBOLS_NERD_FONT_MONO_FAMILY}", monospace`;
+
+/* 사용자가 고른 CJK 폴백이 번들 서체보다 앞에 서고, 번들 서체는 그 뒤에 남는다 — 지우지 않는
+   이유는 커버리지가 스크립트마다 갈리기 때문이다. 가나·한자만 있고 한글이 없는 일본어 서체를
+   골랐을 때 번들을 치우면 한글이 다시 OS 폴백으로 샌다. 선택 서체 바로 뒤에 두는 이유는 뒤쪽
+   (ui-monospace 다음)에 두면 그 제네릭이 플랫폼마다 무엇으로 풀리는지에 CJK 렌더가 의존하기
+   때문이다. */
+export function terminalFontFallbackStack(cjkFallbackName: string): string {
+  const chosen = sanitizeFontFamilyName(cjkFallbackName);
+  const head = chosen && chosen !== BUNDLED_CJK_FALLBACK_FAMILY ? `${quoteFontFamily(chosen)}, ` : "";
+  return `${head}${quoteFontFamily(BUNDLED_CJK_FALLBACK_FAMILY)}, ${BASE_MONO_FALLBACK_STACK}`;
+}
+
+export function curatedTerminalFontFamily(id: TerminalFontId | null, cjkFallbackName: string): string {
+  return `${quoteFontFamily(curatedTerminalFontById(id).familyName)}, ${terminalFontFallbackStack(cjkFallbackName)}`;
+}
+
+export function defaultTerminalFontFamily(cjkFallbackName: string): string {
+  return curatedTerminalFontFamily(DEFAULT_TERMINAL_FONT_ID, cjkFallbackName);
+}
+
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
@@ -89,34 +115,10 @@ export const TERMINAL_FONT_SIZE_RANGE = {
 export const DEFAULT_TERMINAL_FONT_ID: TerminalFontId = "cascadia";
 
 export const CURATED_TERMINAL_FONTS: readonly CuratedTerminalFont[] = [
-  {
-    id: "cascadia",
-    name: "Cascadia Code",
-    familyName: "Cascadia Code Variable",
-    family: `"Cascadia Code Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
-    meta: "Variable · terminal tuned",
-  },
-  {
-    id: "jetbrains",
-    name: "JetBrains Mono",
-    familyName: "JetBrains Mono Variable",
-    family: `"JetBrains Mono Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
-    meta: "Variable · console mono",
-  },
-  {
-    id: "fira-code",
-    name: "Fira Code",
-    familyName: "Fira Code Variable",
-    family: `"Fira Code Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
-    meta: "Variable · ligatures",
-  },
-  {
-    id: "source-code-pro",
-    name: "Source Code Pro",
-    familyName: "Source Code Pro Variable",
-    family: `"Source Code Pro Variable", ${TERMINAL_FONT_FALLBACK_STACK}`,
-    meta: "Variable · Adobe mono",
-  },
+  { id: "cascadia", name: "Cascadia Code", familyName: "Cascadia Code Variable", meta: "Variable · terminal tuned" },
+  { id: "jetbrains", name: "JetBrains Mono", familyName: "JetBrains Mono Variable", meta: "Variable · console mono" },
+  { id: "fira-code", name: "Fira Code", familyName: "Fira Code Variable", meta: "Variable · ligatures" },
+  { id: "source-code-pro", name: "Source Code Pro", familyName: "Source Code Pro Variable", meta: "Variable · Adobe mono" },
 ];
 
 export const DEFAULT_TERMINAL_FONT = CURATED_TERMINAL_FONTS[0] as CuratedTerminalFont;
@@ -126,46 +128,52 @@ export function curatedTerminalFontById(id: TerminalFontId | null): CuratedTermi
 }
 
 export function createDefaultTerminalFontSettings(): TerminalFontSettings {
-  return {
-    source: "curated",
-    id: DEFAULT_TERMINAL_FONT_ID,
-    customName: "",
-    family: DEFAULT_TERMINAL_FONT.family,
-    size: DEFAULT_TERMINAL_FONT_SIZE,
-  };
+  return createCuratedTerminalFontSettings(DEFAULT_TERMINAL_FONT_ID, DEFAULT_TERMINAL_FONT_SIZE, "");
 }
 
-export function createCuratedTerminalFontSettings(id: TerminalFontId | null, size: number): TerminalFontSettings {
+export function createCuratedTerminalFontSettings(id: TerminalFontId | null, size: number, cjkFallbackName = ""): TerminalFontSettings {
   const font = curatedTerminalFontById(id);
+  const cjk = sanitizeCustomFontFamilyName(cjkFallbackName);
   return {
     source: "curated",
     id: font.id,
     customName: "",
-    family: font.family,
+    cjkFallbackName: cjk,
+    family: curatedTerminalFontFamily(font.id, cjk),
     size: clampTerminalFontSize(size),
   };
 }
 
-export function createCustomTerminalFontSettings(customName: string, size: number): TerminalFontSettings {
+export function createCustomTerminalFontSettings(customName: string, size: number, cjkFallbackName = ""): TerminalFontSettings {
   const sanitizedName = sanitizeCustomFontFamilyName(customName);
+  const cjk = sanitizeCustomFontFamilyName(cjkFallbackName);
   return {
     source: "custom",
     id: null,
     customName: sanitizedName,
-    family: withFontFallback(sanitizedName, DEFAULT_TERMINAL_FONT.family),
+    cjkFallbackName: cjk,
+    family: withFontFallback(sanitizedName, defaultTerminalFontFamily(cjk)),
     size: clampTerminalFontSize(size),
   };
+}
+
+export function createTerminalFontSettings(settings: TerminalFontSettings, cjkFallbackName: string): TerminalFontSettings {
+  return settings.source === "custom"
+    ? createCustomTerminalFontSettings(settings.customName, settings.size, cjkFallbackName)
+    : createCuratedTerminalFontSettings(settings.id, settings.size, cjkFallbackName);
 }
 
 export function parseTerminalFontSettingsValue(value: unknown): TerminalFontSettings | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const stored = value as StoredTerminalFontSettings;
   const size = clampTerminalFontSize(typeof stored.size === "number" ? stored.size : DEFAULT_TERMINAL_FONT_SIZE);
+  // 필드가 없는 옛 저장본은 번들 폴백만 쓰던 상태 그대로 읽힌다 — 값 부재가 곧 기본값이라 판본이 필요없다.
+  const cjk = typeof stored.cjkFallbackName === "string" ? stored.cjkFallbackName : "";
   if (stored.source === "custom" && typeof stored.customName === "string") {
-    return createCustomTerminalFontSettings(stored.customName, size);
+    return createCustomTerminalFontSettings(stored.customName, size, cjk);
   }
   if (typeof stored.id === "string" && isTerminalFontId(stored.id)) {
-    return createCuratedTerminalFontSettings(stored.id, size);
+    return createCuratedTerminalFontSettings(stored.id, size, cjk);
   }
   return null;
 }
@@ -186,6 +194,7 @@ export function serializeTerminalFontSettings(settings: TerminalFontSettings): s
     source: settings.source,
     id: settings.id,
     customName: settings.customName,
+    cjkFallbackName: settings.cjkFallbackName,
     size: settings.size,
   });
 }
@@ -303,7 +312,7 @@ export function setTerminalInactiveFlush(inactiveFlush: TerminalInactiveFlush): 
 }
 
 export function setTerminalFont(fontId: TerminalFontId): void {
-  const font = createCuratedTerminalFontSettings(fontId, state.font.size);
+  const font = createCuratedTerminalFontSettings(fontId, state.font.size, state.font.cjkFallbackName);
   fontWriteEpoch += 1;
   patchState({ font });
   void pushFontToServer(font);
@@ -311,7 +320,15 @@ export function setTerminalFont(fontId: TerminalFontId): void {
 
 export function setInstalledTerminalFont(familyName: string): void {
   // 설치 폰트도 legacy custom wire shape로 직렬화해 저장 포맷 호환성을 유지한다.
-  const font = createCustomTerminalFontSettings(familyName, state.font.size);
+  const font = createCustomTerminalFontSettings(familyName, state.font.size, state.font.cjkFallbackName);
+  fontWriteEpoch += 1;
+  patchState({ font });
+  void pushFontToServer(font);
+}
+
+// 빈 이름은 "번들 서체만"을 뜻한다 — 폴백 해제가 아니라 사용자 지정 항목만 체인에서 빠진다.
+export function setTerminalCjkFallbackFont(familyName: string): void {
+  const font = createTerminalFontSettings(state.font, familyName);
   fontWriteEpoch += 1;
   patchState({ font });
   void pushFontToServer(font);
@@ -319,8 +336,8 @@ export function setInstalledTerminalFont(familyName: string): void {
 
 export function setTerminalFontSize(size: number): void {
   const font = state.font.source === "custom"
-    ? createCustomTerminalFontSettings(state.font.customName, size)
-    : createCuratedTerminalFontSettings(state.font.id, size);
+    ? createCustomTerminalFontSettings(state.font.customName, size, state.font.cjkFallbackName)
+    : createCuratedTerminalFontSettings(state.font.id, size, state.font.cjkFallbackName);
   fontWriteEpoch += 1;
   patchState({ font });
   void pushFontToServer(font);
@@ -376,7 +393,7 @@ async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
   if (!settings) return;
   try {
     await mergeTerminalSettingsRecord(settings, {
-      font: { source: font.source, id: font.id, customName: font.customName, size: font.size },
+      font: { source: font.source, id: font.id, customName: font.customName, cjkFallbackName: font.cjkFallbackName, size: font.size },
     });
   } catch {
     // best-effort — write 실패 시 조용히 무시한다.

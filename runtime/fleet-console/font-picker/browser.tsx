@@ -13,6 +13,11 @@ export interface FontPickerBuiltIn {
 export interface FontPickerInstalledFont {
   readonly family: string;
   readonly monospace: boolean;
+  /** 소비자가 아는 사실을 행에 싣는다(예: 이 서체가 덮는 문자 계열). 없으면 등폭 여부로 대체된다. */
+  readonly description?: string;
+  /* 소비자가 이미 이 서체의 존재를 확인했을 때 내부 폭 탐침을 건너뛴다. 폭 탐침은 라틴 글자로
+     묻기 때문에 라틴이 없는 서체를 없는 것으로 오판하고, 그러면 유효한 선택지가 비활성 행이 된다. */
+  readonly available?: boolean;
 }
 
 export type FontPickerSelection =
@@ -75,14 +80,24 @@ export interface FontPickerProps {
   readonly selectedSystemFont?: string | null;
   readonly fallbackStack: string;
   readonly previewText: string;
-  readonly size: number;
-  readonly sizeRange: { readonly min: number; readonly max: number; readonly step: number; readonly defaultValue: number };
+  /* 크기 축은 선택적이다 — 주 서체를 고르는 브라우저는 크기까지 함께 정하지만, 다른 선택을 보조하는
+     브라우저(예: 폴백 서체)는 주 서체의 메트릭을 그대로 따라야 해서 독립 크기를 가질 수 없다. 셋 중
+     하나라도 빠지면 크기 컨트롤 전체가 사라진다. */
+  readonly size?: number;
+  readonly sizeRange?: FontPickerSizeRange;
   readonly loading?: boolean;
   readonly error?: string | null;
   readonly disabled?: boolean;
   readonly labels?: FontPickerLabels;
   readonly onSelectionChange: (selection: FontPickerSelection) => void;
-  readonly onSizeCommit: (size: number) => void | Promise<void>;
+  readonly onSizeCommit?: (size: number) => void | Promise<void>;
+}
+
+export interface FontPickerSizeRange {
+  readonly min: number;
+  readonly max: number;
+  readonly step: number;
+  readonly defaultValue: number;
 }
 
 interface FontPickerRow {
@@ -106,10 +121,10 @@ function resolveLabels(labels?: FontPickerLabels): ResolvedFontPickerLabels {
 }
 
 export function FontPicker(props: FontPickerProps): React.ReactElement {
-  const { sizeRange } = props;
+  const sizeRange = props.size !== undefined && props.onSizeCommit ? props.sizeRange ?? null : null;
   const labels = resolveLabels(props.labels);
   const [query, setQuery] = React.useState("");
-  const [draftSize, setDraftSize] = React.useState(props.size);
+  const [draftSize, setDraftSize] = React.useState(props.size ?? 0);
   const commitQueue = React.useRef(Promise.resolve());
   const listboxId = React.useId();
   const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
@@ -122,7 +137,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const installedGroupId = `${listboxId}-installed`;
 
   React.useEffect(() => {
-    setDraftSize(props.size);
+    if (props.size !== undefined) setDraftSize(props.size);
   }, [props.size]);
 
   React.useEffect(() => {
@@ -130,9 +145,11 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   }, [activeIndex, indexedRows.length]);
 
   const commitSize = React.useCallback((nextSize: number) => {
+    const commit = props.onSizeCommit;
+    if (!sizeRange || !commit) return;
     const clamped = clampSize(nextSize, sizeRange);
     setDraftSize(clamped);
-    commitQueue.current = commitQueue.current.catch(() => undefined).then(() => props.onSizeCommit(clamped));
+    commitQueue.current = commitQueue.current.catch(() => undefined).then(() => commit(clamped));
   }, [props.onSizeCommit, sizeRange]);
 
   const moveActive = React.useCallback((direction: 1 | -1) => {
@@ -207,27 +224,31 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
             {selectedRow?.unavailable ? labels.unavailable : labels.available}
           </span>
         </div>
-        <p className="fc-font-browser__preview-copy" style={{ fontFamily: selectedRow?.previewFamily ?? props.fallbackStack, fontSize: `${draftSize}px` }}>
+        <p className="fc-font-browser__preview-copy" style={{ fontFamily: selectedRow?.previewFamily ?? props.fallbackStack, fontSize: sizeRange ? `${draftSize}px` : undefined }}>
           {props.previewText}
         </p>
-        <div className="fc-font-browser__size-control" role="group" aria-label={labels.fontSizeAria}>
-          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize <= sizeRange.min} onClick={() => commitSize(draftSize - sizeRange.step)} aria-label={labels.decreaseSizeAria}>−</button>
-          <output className="fc-font-browser__size-value" aria-label={labels.sizeValueAria}>{draftSize}px</output>
-          <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize >= sizeRange.max} onClick={() => commitSize(draftSize + sizeRange.step)} aria-label={labels.increaseSizeAria}>+</button>
-        </div>
-        <input
-          className="fc-font-browser__range"
-          type="range"
-          min={sizeRange.min}
-          max={sizeRange.max}
-          step={sizeRange.step}
-          value={draftSize}
-          disabled={props.disabled}
-          aria-label={labels.sizeSliderAria}
-          onChange={(event) => setDraftSize(clampSize(Number(event.currentTarget.value), sizeRange))}
-          onPointerUp={(event) => commitSize(Number(event.currentTarget.value))}
-          onKeyUp={(event) => { if (["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp"].includes(event.key)) commitSize(Number(event.currentTarget.value)); }}
-        />
+        {sizeRange ? (
+          <>
+            <div className="fc-font-browser__size-control" role="group" aria-label={labels.fontSizeAria}>
+              <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize <= sizeRange.min} onClick={() => commitSize(draftSize - sizeRange.step)} aria-label={labels.decreaseSizeAria}>−</button>
+              <output className="fc-font-browser__size-value" aria-label={labels.sizeValueAria}>{draftSize}px</output>
+              <button type="button" className="fc-font-browser__stepper" disabled={props.disabled || draftSize >= sizeRange.max} onClick={() => commitSize(draftSize + sizeRange.step)} aria-label={labels.increaseSizeAria}>+</button>
+            </div>
+            <input
+              className="fc-font-browser__range"
+              type="range"
+              min={sizeRange.min}
+              max={sizeRange.max}
+              step={sizeRange.step}
+              value={draftSize}
+              disabled={props.disabled}
+              aria-label={labels.sizeSliderAria}
+              onChange={(event) => setDraftSize(clampSize(Number(event.currentTarget.value), sizeRange))}
+              onPointerUp={(event) => commitSize(Number(event.currentTarget.value))}
+              onKeyUp={(event) => { if (["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp"].includes(event.key)) commitSize(Number(event.currentTarget.value)); }}
+            />
+          </>
+        ) : null}
       </aside>
       </div>
     </section>
@@ -267,7 +288,7 @@ function createRows(props: FontPickerProps, labels: ResolvedFontPickerLabels): r
     keys.forEach((key) => builtInAliases.add(key));
     return [{ id: `builtin-${font.id}`, label: font.label, family: font.family, previewFamily: font.family, source: "builtin" as const, selection: { source: "builtin" as const, id: font.id }, description: font.description, unavailable: false }];
   });
-  const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.monospace ? labels.monospace : labels.systemFont, unavailable: !fontResolves(font.family) }));
+  const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.description ?? (font.monospace ? labels.monospace : labels.systemFont), unavailable: !(font.available ?? fontResolves(font.family)) }));
   const persistedSystemName = props.selected.source === "system" ? props.selected.familyName : null;
   if (persistedSystemName !== null && !installed.some((font) => font.family === persistedSystemName)) {
     installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: true });
@@ -299,7 +320,7 @@ function isSelected(left: FontPickerSelection, right: FontPickerSelection | null
   return right.source === "system" && left.familyName === right.familyName;
 }
 
-function clampSize(size: number, range: FontPickerProps["sizeRange"]): number {
+function clampSize(size: number, range: FontPickerSizeRange): number {
   if (!Number.isFinite(size)) return range.defaultValue;
   const rounded = Math.round((size - range.min) / range.step) * range.step + range.min;
   return Math.min(range.max, Math.max(range.min, rounded));
