@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolvePathBinary } from "@dotobokuri/core-process";
 
 import { resolveConsolePackageRequire } from "./console-require.js";
-import { stripConsoleInternalEnv } from "./launch-env.js";
+import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "./launch-env.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./terminal-types.js";
 
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
@@ -27,7 +27,6 @@ type NodePtyModule = {
 type NodeRequire = ReturnType<typeof createRequire>;
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
-const TERMINAL_TERM = "xterm-256color";
 const require = createRequire(import.meta.url);
 
 export function createShellTerminalLaunchResolver(deps: {
@@ -124,11 +123,10 @@ function resolveWindowsLaunchBinary(
 }
 
 function buildShellLaunchEnv(env: NodeJS.ProcessEnv, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
-  return {
+  return withTerminalCapabilities({
     ...stripConsoleInternalEnv(env),
-    TERM: TERMINAL_TERM,
     // COLORFGBG는 배경을 질의하지 않는 CLI/TUI를 위한 고전적 극성 힌트다("fg;bg" ANSI 인덱스).
     // 값이 없으면 변수 자체를 싣지 않아 사용자 셸 환경의 기존 값을 훼손하지 않는다.
     ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),
-  };
+  });
 }

@@ -39,6 +39,27 @@ function createFakeRuntime() {
   };
 }
 
+describe("createAgentTerminalLaunchResolver launch environment", () => {
+  it("advertises truecolor without replacing the compatible TERM entry", async () => {
+    const resolve = createAgentTerminalLaunchResolver({
+      cwd: "/work",
+      env: {
+        COLORTERM: "256color",
+        FLEET_TERMINAL_CMD: "/bin/sh",
+        PATH: "/bin",
+      } as NodeJS.ProcessEnv,
+      platform: "linux",
+    });
+
+    const spec = await resolve("/work/project", { sessionId: "session-a" });
+
+    expect(spec.env).toMatchObject({
+      COLORTERM: "truecolor",
+      TERM: "xterm-256color",
+    });
+  });
+});
+
 describe("createAgentTerminalLaunchResolver prompt threading", () => {
   afterEach(() => {
     vi.restoreAllMocks();

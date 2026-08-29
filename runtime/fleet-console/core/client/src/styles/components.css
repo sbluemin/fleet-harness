@@ -4801,8 +4801,6 @@
     linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),
     radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-panel);
-  backdrop-filter: var(--glass-backdrop-panel);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
@@ -4816,16 +4814,6 @@
     opacity var(--duration-base) var(--ease-glide),
     transform var(--duration-base) var(--ease-glide),
     visibility 0s linear 0s;
-}
-
-/* Cruise·Tactical·War Room에서 패널이 넷 이상 보이면 각 창의 32px backdrop blur를 불투명
-   panel 토큰으로 축약한다. 포커스·캡션·상태 채널은 그대로이고 재질만 바뀐다. 최대화/companion
-   중에도 hidden peer가 blur surface로 남지 않으며, 대상 창은 같은 불투명 면 위에서 geometry만 전환한다. */
-.operations-canvas.is-panel-density-high {
-  --glass-tint-panel: var(--surface-panel);
-  --glass-underlay: var(--surface-panel);
-  --glass-pane-light: transparent;
-  --glass-backdrop-panel: none;
 }
 
 /* 드래그·리사이즈 조작 중에는 포인터 추적이 즉답해야 한다 — rail.css is-dragging 선례. */
@@ -7359,6 +7347,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: none;
 }
 
@@ -9460,12 +9450,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding: 0;
   /* 이 기본 규칙의 소비처는 레일 Shell 하나다(캔버스 Operation은 아래에서 transparent로 덮는다).
      슬롯 머리·테두리가 이미 Shell 크롬을 소유하므로 xterm 둘레에 두 번째 내부 여백을 만들지 않는다.
-     카드 면은 그 안의 xterm과 같은 --surface-panel이어야 한다 — 유리(--surface-glass)는 뒤에
-     오는 것에 따라 유효색이 흔들리는데 xterm 배경은 불투명 한 값이라 맞출 수가 없고, Maritime
-     5.3%p·Carbon 6.6%p의 계단으로 남는다. 카드의 정체는 테두리가 지고 면은 터미널에 넘긴다. */
+     Shell은 패널과 달리 항상 뒤를 흐리는 단일 유리 면이다. 게이트가 열리면 terminal tint와 전용
+     blur를 함께 쓰고, 닫히면 불투명 terminal tint와 none으로 복원된다. xterm도 같은 terminal
+     채널을 읽으므로 카드와 필드 사이에 색 계단을 만들지 않는다. */
   background: var(--glass-tint-terminal);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
+  -webkit-backdrop-filter: var(--glass-backdrop-terminal);
+  backdrop-filter: var(--glass-backdrop-terminal);
   box-shadow: var(--shadow-soft);
 }
 
@@ -12965,6 +12957,26 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 /* 포커스는 위치 신호다 — brass 채널. 상태(aurora/warn/coral)와 섞지 않는다. */
 .expanded-surface-slot.is-focused {
   border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim-strong));
+}
+
+/* 확대 Shell도 전용 terminal 재질 한 장을 slot 루트에서 칠한다. Codex 등 다른 확대 표면은 위의
+   강한 팝업 재질을 유지하고, Shell은 terminal tint와 항상 켜지는 전용 blur를 쓴다.
+   terminal-shell을 비워 xterm까지 같은 pane을 공유하며, 게이트가 닫히면 불투명 terminal 토큰과
+   무블러로 자동 복원된다. */
+.expanded-surface-slot:has(.terminal-shell) {
+  background:
+    linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
+    radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-terminal);
+  backdrop-filter: var(--glass-backdrop-terminal);
+}
+
+.expanded-surface-slot .terminal-shell {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
 .expanded-surface-slot-head {
