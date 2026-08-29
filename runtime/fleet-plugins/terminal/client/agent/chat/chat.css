@@ -1487,7 +1487,7 @@
   margin: 0;
   padding: var(--space-2) var(--space-2) 4px;
   color: var(--brass);
-  font-family: var(--font-mono);
+  font-family: var(--agent-chat-font);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1561,7 +1561,7 @@
   width: 18px;
   height: 18px;
   color: var(--brass);
-  font-family: var(--font-mono);
+  font-family: var(--agent-chat-font);
   font-size: var(--t-sm);
   line-height: 1;
 }
@@ -1578,8 +1578,6 @@
   color: var(--text-primary);
 }
 
-/* 설명은 이름 오른쪽 열에 서고 **두 줄에서 잘린다**. 활성 행에서만 보이되, 자라는 높이가
-   두 줄로 묶여 있어야 행 하나가 덱의 절반을 먹지 않는다(실측에서 그렇게 됐다). */
 /* 설명은 이름 오른쪽 열에 **한 줄**로 서고 넘치면 말줄임한다.
    한 줄이어야 하는 이유는 리듬이다: 두 줄을 허용하면 설명이 긴 행만 키가 커져 목록의 간격이
    들쭉날쭉해진다(숨겨 두어도 자리는 차지하므로 `visibility`로는 해결되지 않는다). 모든 행이
@@ -1607,7 +1605,7 @@
   border: 1px solid var(--hairline);
   border-radius: 4px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--agent-chat-font);
   font-size: var(--t-2xs);
 }
 
