@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
   ExpandedSurfaceContext,
   ExpandedSurfaceDescriptor,
 } from "@fleet-console/sdk/expanded-surface";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -14,7 +15,6 @@ import { useExpandedSurfaceDescriptors } from "../plugin-registry.js";
 import { getState, subscribe } from "../store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
-  bindExpandedSurfaceCloseNotifier,
   closeExpandedSurface,
   focusExpandedSurface,
   focusedExpandedSurfaceIndex,
@@ -61,14 +61,6 @@ export function ExpandedSurfaceLayer() {
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const capabilities = useMemo(() => createHostCapabilities(), []);
 
-  // 닫힘 통보의 배달부. 스토어는 서술자를 모르고 레이어만 안다 — 슬롯이 어느 경로로
-  // 닫히든 통보가 한 번 나가도록, 렌더가 아니라 스토어의 닫기 지점에 묶는다.
-  useEffect(() => {
-    bindExpandedSurfaceCloseNotifier((closed) => {
-      descriptors.get(closed.surfaceId)?.onClose?.(closed);
-    });
-    return () => bindExpandedSurfaceCloseNotifier(() => undefined);
-  }, [descriptors]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [slotWidths, setSlotWidths] = useState<readonly number[]>([]);
@@ -305,9 +297,9 @@ function SurfaceSlot({
     replaceParams: (next) => replaceExpandedSurfaceParams(instance.instanceId, next),
   }), [capabilities, focused, index, instance, language, slotCount, slotWidth, theaterId, theme]);
 
-  const title = descriptor
-    ? resolveLocalizedText(descriptor.title(context), language)
-    : instance.surfaceId;
+  // 제목은 aria-label이라 문자열이어야 하고, 그래서 자식 컴포넌트로 미룰 수 없다 —
+  // 경계가 잡아 줄 수 없는 유일한 콜백이므로 여기서 직접 막는다.
+  const title = safeTitle(descriptor, context, language, instance.surfaceId);
 
   return (
     <>
@@ -321,7 +313,7 @@ function SurfaceSlot({
           <span className="expanded-surface-slot-title">{title}</span>
           {descriptor?.tools ? (
             <div className="expanded-surface-slot-tools">
-              <PluginErrorBoundary>{descriptor.tools(context)}</PluginErrorBoundary>
+              <PluginErrorBoundary><SurfaceSlotPart render={descriptor.tools} context={context} /></PluginErrorBoundary>
             </div>
           ) : null}
           <button
@@ -336,12 +328,14 @@ function SurfaceSlot({
         <div className="expanded-surface-slot-body">
           {descriptor?.aside ? (
             <aside className="expanded-surface-slot-aside">
-              <PluginErrorBoundary>{descriptor.aside(context)}</PluginErrorBoundary>
+              <PluginErrorBoundary><SurfaceSlotPart render={descriptor.aside} context={context} /></PluginErrorBoundary>
             </aside>
           ) : null}
           <div className="expanded-surface-slot-main">
             <PluginErrorBoundary>
-              {descriptor ? descriptor.render(context) : <MissingSurface surfaceId={instance.surfaceId} />}
+              {descriptor
+                ? <SurfaceSlotPart render={descriptor.render} context={context} />
+                : <MissingSurface surfaceId={instance.surfaceId} />}
             </PluginErrorBoundary>
           </div>
         </div>
@@ -383,4 +377,36 @@ function MissingSurface({ surfaceId }: { readonly surfaceId: string }) {
       <code>{surfaceId}</code>
     </div>
   );
+}
+
+/**
+ * 플러그인 콜백은 경계 **아래에서** 불려야 한다.
+ *
+ * `<PluginErrorBoundary>{descriptor.render(ctx)}</PluginErrorBoundary>`는 그렇지 않다 —
+ * 자식은 부모의 렌더 중에 평가되므로, 던지는 순간 경계는 아직 트리에 없고 예외는 그대로
+ * 위로 올라가 Operations 화면을 통째로 무너뜨린다. 한 칸 아래 컴포넌트로 미뤄야 잡힌다.
+ */
+function SurfaceSlotPart({
+  render,
+  context,
+}: {
+  readonly render: (ctx: ExpandedSurfaceContext) => ReactNode;
+  readonly context: ExpandedSurfaceContext;
+}) {
+  return <>{render(context)}</>;
+}
+
+function safeTitle(
+  descriptor: ExpandedSurfaceDescriptor | undefined,
+  context: ExpandedSurfaceContext,
+  language: ConsoleLocale,
+  fallback: string,
+): string {
+  if (!descriptor) return fallback;
+  try {
+    return resolveLocalizedText(descriptor.title(context), language);
+  } catch {
+    // 이름을 못 대는 표면이라도 슬롯은 서 있어야 한다 — 사용자는 닫기라도 누를 수 있어야 한다.
+    return fallback;
+  }
 }
