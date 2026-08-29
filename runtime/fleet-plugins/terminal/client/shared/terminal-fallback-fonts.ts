@@ -4,8 +4,10 @@
    처음 그릴 때 래스터화하고 그 결과를 같은 설정의 터미널들이 모듈 레벨에서 공유하므로, 늦게 도착한
    서체 때문에 잘못 구워진 글리프를 한 터미널이 되돌릴 수 없다. */
 
+import { BUNDLED_CJK_FALLBACK_FAMILY } from "./terminal-preferences.js";
+
 const SYMBOLS_NERD_FONT_MONO_FAMILY = "Symbols Nerd Font Mono";
-const KOREAN_MONO_FALLBACK_FAMILY = "Nanum Gothic Coding";
+const KOREAN_MONO_FALLBACK_FAMILY = BUNDLED_CJK_FALLBACK_FAMILY;
 
 /* 한글 서브셋은 unicode-range가 없는 통짜 @font-face다. load()에 텍스트를 주지 않으면 브라우저가
    기본 텍스트(공백)만으로 매칭을 끝내 정작 한글 글리프를 받지 않는 판본이 있어, 대표 음절을

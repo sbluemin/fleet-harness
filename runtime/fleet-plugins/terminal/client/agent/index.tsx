@@ -1,6 +1,6 @@
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import "@fleet-console/font-picker/styles.css";
-import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
+import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
 import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
@@ -16,8 +16,9 @@ import {
 import { SettingsScope, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
-import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
-import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
+import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
+import { fontCjkScripts, type CjkScript } from "../shared/cjk-coverage.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
 import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
@@ -124,13 +125,14 @@ export const generalSettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.claudeSystemPromptTitle"),
       getT(locale)("terminal.settings.idleAgent"),
       getT(locale)("terminal.settings.terminalFont"),
+      getT(locale)("terminal.settings.cjkFallback"),
       getT(locale)("terminal.settings.chatReadingWidthTitle"),
       getT(locale)("terminal.settings.terminalRenderer"),
       getT(locale)("terminal.settings.inactiveFlush"),
       getT(locale)("terminal.settings.compactTiming"),
     ].join(" "),
-    "terminal font typeface monospace dormant idle session timeout system prompt claude renderer webgl canvas reading width compact",
-    "터미널 글꼴 서체 고정폭 휴면 유휴 세션 시간 시스템 프롬프트 렌더러 읽기 폭 압축",
+    "terminal font typeface monospace dormant idle session timeout system prompt claude renderer webgl canvas reading width compact cjk fallback korean japanese chinese hangul kana han glyph coverage",
+    "터미널 글꼴 서체 고정폭 휴면 유휴 세션 시간 시스템 프롬프트 렌더러 읽기 폭 압축 폴백 한글 일본어 중국어 가나 한자 글리프 커버리지",
   ],
   render: () => <GeneralSection />,
 });
@@ -2131,12 +2133,22 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
 
 function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
   const t = getT(useTerminalLocale());
-  const [installedFonts, setInstalledFonts] = React.useState<readonly FontPickerInstalledFont[]>([]);
+  const [systemFonts, setSystemFonts] = React.useState<readonly SystemFontRecord[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = React.useState(true);
   const [fontLoadFailed, setFontLoadFailed] = React.useState(false);
+  const [cjkCandidates, setCjkCandidates] = React.useState<readonly FontPickerInstalledFont[]>([]);
+  const [isScanningCjk, setIsScanningCjk] = React.useState(true);
+  const [primaryCjkScripts, setPrimaryCjkScripts] = React.useState<readonly CjkScript[] | null>(null);
+  const installedFonts = React.useMemo(
+    () => systemFonts.filter((font) => font.monospace).map((font) => ({ family: font.family, monospace: font.monospace })),
+    [systemFonts],
+  );
   const selected = terminalFont.source === "curated" || !terminalFont.customName
     ? { source: "builtin" as const, id: terminalFont.source === "curated" ? terminalFont.id ?? DEFAULT_TERMINAL_FONT.id : DEFAULT_TERMINAL_FONT.id }
     : { source: "system" as const, familyName: terminalFont.customName };
+  const cjkSelected = terminalFont.cjkFallbackName
+    ? { source: "system" as const, familyName: terminalFont.cjkFallbackName }
+    : { source: "builtin" as const, id: CJK_FALLBACK_BUILT_IN_ID };
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -2145,11 +2157,11 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     void fetchSystemFonts({ signal: controller.signal })
       .then((response) => {
         if (controller.signal.aborted) return;
-        setInstalledFonts(response.fonts.filter((font) => font.monospace).map((font) => ({ family: font.family, monospace: font.monospace })));
+        setSystemFonts(response.fonts);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || isAbortError(error)) return;
-        setInstalledFonts([]);
+        setSystemFonts([]);
         setFontLoadFailed(true);
       })
       .finally(() => {
@@ -2158,6 +2170,55 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     return () => controller.abort();
   }, []);
 
+  /* 설치 서체 전량을 훑어 CJK를 그릴 수 있는 것만 남긴다. 등폭 필터를 걸지 않는 이유는 폴백이 라틴을
+     그리지 않기 때문이다 — 격자를 정하는 것은 앞선 주 서체이고, CJK 글리프는 어차피 두 칸을 쓴다.
+     조각내어 양보하는 것은 서체가 수백 종인 기기에서 이 루프가 한 프레임을 통째로 잡아먹기 때문이다. */
+  React.useEffect(() => {
+    let cancelled = false;
+    setIsScanningCjk(true);
+    setCjkCandidates([]);
+    if (!systemFonts.length) {
+      setIsScanningCjk(false);
+      return () => { cancelled = true; };
+    }
+    void (async () => {
+      const found: FontPickerInstalledFont[] = [];
+      for (let index = 0; index < systemFonts.length; index += CJK_SCAN_CHUNK_SIZE) {
+        if (cancelled) return;
+        for (const font of systemFonts.slice(index, index + CJK_SCAN_CHUNK_SIZE)) {
+          const scripts = await fontCjkScripts(font.family);
+          if (!scripts.length) continue;
+          found.push({
+            family: font.family,
+            monospace: font.monospace,
+            available: true,
+            description: scripts.map((script) => t(CJK_SCRIPT_LABEL_KEYS[script])).join(" · "),
+          });
+        }
+        await yieldToPaint();
+      }
+      if (cancelled) return;
+      setCjkCandidates(found);
+      setIsScanningCjk(false);
+    })();
+    return () => { cancelled = true; };
+  }, [systemFonts, t]);
+
+  /* 큐레이트 4종은 측정하지 않는다 — 넷 다 라틴 전용 등폭이라 CJK 글리프가 없는 것이 서체의 사실이다. */
+  React.useEffect(() => {
+    let cancelled = false;
+    setPrimaryCjkScripts(null);
+    const familyName = terminalFont.source === "custom" ? terminalFont.customName : "";
+    if (!familyName) {
+      setPrimaryCjkScripts([]);
+      return () => { cancelled = true; };
+    }
+    void fontCjkScripts(familyName).then((scripts) => {
+      if (!cancelled) setPrimaryCjkScripts(scripts);
+    });
+    return () => { cancelled = true; };
+  }, [terminalFont.source, terminalFont.customName]);
+
   const handleSelectionChange = (next: FontPickerSelection) => {
     if (next.source === "system") {
       setInstalledTerminalFont(next.familyName);
@@ -2165,6 +2226,27 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     }
     const font = CURATED_TERMINAL_FONTS.find((candidate) => candidate.id === next.id);
     if (font) setTerminalFont(font.id);
+  };
+
+  const handleCjkSelectionChange = (next: FontPickerSelection) => {
+    setTerminalCjkFallbackFont(next.source === "system" ? next.familyName : "");
+  };
+
+  const cjkPickerLabels = {
+    browserAria: t("terminal.settings.cjkFallbackBrowserAria"),
+    searchLabel: t("terminal.settings.cjkFallbackSearchLabel"),
+    searchPlaceholder: t("terminal.settings.cjkFallbackSearchPlaceholder"),
+    loading: t("terminal.settings.cjkFallbackScanning"),
+    choicesAria: t("terminal.settings.cjkFallbackChoicesAria"),
+    builtInGroup: t("terminal.settings.fontPicker.builtInGroup"),
+    installedGroup: t("terminal.settings.cjkFallbackInstalledGroup"),
+    noMatch: t("terminal.settings.cjkFallbackNoMatch"),
+    preview: t("terminal.settings.fontPicker.preview"),
+    available: t("terminal.settings.fontPicker.available"),
+    unavailable: t("terminal.settings.fontPicker.unavailable"),
+    monospace: t("terminal.settings.fontPicker.monospace"),
+    systemFont: t("terminal.settings.fontPicker.systemFont"),
+    savedSystemFont: t("terminal.settings.fontPicker.savedSystemFont"),
   };
 
   return (
@@ -2180,11 +2262,11 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
       </div>
       <div aria-describedby="terminal-font-help">
           <FontPicker
-            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: t(FONT_META_KEYS[font.id]) }))}
+            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: curatedTerminalFontFamily(font.id, terminalFont.cjkFallbackName), aliases: [font.familyName], description: t(FONT_META_KEYS[font.id]) }))}
             installedFonts={installedFonts}
             selected={selected}
             selectedSystemFont={terminalFont.source === "custom" ? terminalFont.customName : null}
-            fallbackStack={DEFAULT_TERMINAL_FONT.family}
+            fallbackStack={defaultTerminalFontFamily(terminalFont.cjkFallbackName)}
             previewText={t("terminal.settings.terminalFontPreview")}
             size={terminalFont.size}
             sizeRange={TERMINAL_FONT_PICKER_SIZE_RANGE}
@@ -2215,8 +2297,47 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
             onSizeCommit={setTerminalFontSize}
           />
       </div>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">{t("terminal.settings.cjkFallback")}</p>
+          <p className="global-settings-help" id="terminal-cjk-fallback-help">{t("terminal.settings.cjkFallbackHelp")}</p>
+          {/* 조건부로 나타나는 컨트롤 대신, 조건부인 것은 이 한 줄이다 — 선택지가 사라지면 정작
+              필요할 때 찾을 수 없고, 판정이 틀리면 설정이 통째로 증발한다. */}
+          {primaryCjkScripts === null ? null : (
+            <p className="global-settings-help" role="status">
+              {primaryCjkScripts.length ? t("terminal.settings.cjkPrimaryCovered") : t("terminal.settings.cjkPrimaryUncovered")}
+            </p>
+          )}
+        </div>
+      </div>
+      <div aria-describedby="terminal-cjk-fallback-help">
+          <FontPicker
+            builtIns={[{ id: CJK_FALLBACK_BUILT_IN_ID, label: t("terminal.settings.cjkFallbackAuto"), family: terminalFontFallbackStack(""), description: t("terminal.settings.cjkFallbackAutoMeta") }]}
+            installedFonts={cjkCandidates}
+            selected={cjkSelected}
+            selectedSystemFont={terminalFont.cjkFallbackName || null}
+            fallbackStack={terminalFontFallbackStack(terminalFont.cjkFallbackName)}
+            previewText={t("terminal.settings.cjkFallbackPreview")}
+            loading={isLoadingFonts || isScanningCjk}
+            error={fontLoadFailed ? t("terminal.settings.fontLoadError") : null}
+            labels={cjkPickerLabels}
+            onSelectionChange={handleCjkSelectionChange}
+          />
+      </div>
     </section>
   );
+}
+
+const CJK_FALLBACK_BUILT_IN_ID = "bundled";
+const CJK_SCAN_CHUNK_SIZE = 24;
+const CJK_SCRIPT_LABEL_KEYS: Readonly<Record<CjkScript, "terminal.settings.cjkScriptHangul" | "terminal.settings.cjkScriptKana" | "terminal.settings.cjkScriptHan">> = {
+  hangul: "terminal.settings.cjkScriptHangul",
+  kana: "terminal.settings.cjkScriptKana",
+  han: "terminal.settings.cjkScriptHan",
+};
+
+function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 
 // 렌더러와 갱신 주기는 같은 축이다 — 둘 다 이 브라우저가 터미널을 그리는 방식이고, 둘 다 브라우저

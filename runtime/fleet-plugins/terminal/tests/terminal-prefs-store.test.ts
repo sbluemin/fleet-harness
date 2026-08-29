@@ -181,7 +181,7 @@ describe("connectTerminalSettings / server hydration", () => {
     resolveRead({ font: { source: "curated", id: "jetbrains", customName: "", size: 12 } });
     await vi.waitFor(() => expect(cap.putCalls.length).toBeGreaterThan(0));
     expect(getTerminalPrefsSnapshot().font).toMatchObject({ source: "custom", id: null, customName: "MesloLGS NF" });
-    expect((cap.putCalls[0]?.value as { font?: unknown }).font).toEqual({ source: "custom", id: null, customName: "MesloLGS NF", size: getTerminalPrefsSnapshot().font.size });
+    expect((cap.putCalls[0]?.value as { font?: unknown }).font).toEqual({ source: "custom", id: null, customName: "MesloLGS NF", cjkFallbackName: "", size: getTerminalPrefsSnapshot().font.size });
   });
 
   it("race guard: hydration does not seed PUT if write epoch changed", async () => {
@@ -233,7 +233,7 @@ describe("connectTerminalSettings / server hydration", () => {
     setInstalledTerminalFont("  MesloLGS NF\u0000  ");
     await vi.waitFor(() => expect(cap.putCalls.some((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF")).toBe(true));
     const installedWrite = cap.putCalls.find((call) => (call.value as { font?: { customName?: string } }).font?.customName === "MesloLGS NF");
-    expect(installedWrite).toEqual({ id: "terminal", value: { font: { source: "custom", id: null, customName: "MesloLGS NF", size: 17 } } });
+    expect(installedWrite).toEqual({ id: "terminal", value: { font: { source: "custom", id: null, customName: "MesloLGS NF", cjkFallbackName: "", size: 17 } } });
     expect(store[FONT_KEY]).toBeUndefined();
   });
 
@@ -247,7 +247,7 @@ describe("connectTerminalSettings / server hydration", () => {
       id: "terminal",
       value: {
         analyst: { selection },
-        font: { source: "curated", id: "jetbrains", customName: "", size: getTerminalPrefsSnapshot().font.size },
+        font: { source: "curated", id: "jetbrains", customName: "", cjkFallbackName: "", size: getTerminalPrefsSnapshot().font.size },
       },
     });
   });
