@@ -8,7 +8,7 @@ import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../server/agent-api/chat-session.js";
 import { initialAgentChatLogState, reduceAgentChatLog } from "../client/agent/chat/chat-events.js";
-import type { AgentChatJournalEvent } from "../server/agent-api/chat-events.js";
+import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../server/agent-api/chat-events.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -422,6 +422,75 @@ describe("AgentChatRegistry — maintenance command lane", () => {
     session.subscribe((entry) => replayed.push(entry));
     expect(kinds(replayed).filter((kind) => kind === "dispatch")).toEqual([]);
     expect(kinds(replayed)).toContain("cleared");
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 P1)가 지목한 경로. 자식은 압축 경계를 `result`보다 **먼저** 낸다. 경계에서 레인을
+   * 닫으면 대기 중이던 다음 지시가 곧바로 시작하고, 그 뒤에 도착한 옛 result가 방금 열린 사용자
+   * 턴을 닫아 그 턴의 진짜 답을 떨어뜨린다.
+   *
+   * 재현하려면 두 프레임 **사이가 벌어져야** 한다. 가짜 세션의 `send`는 한 턴의 메시지를 통째로
+   * 큐에 넣어 리더가 연달아 소진하므로 그 틈이 생기지 않는다 — 그래서 경계까지만 대본에 두고,
+   * 늦은 result는 `emit`으로 따로 흘린다.
+   */
+  it("holds the lane until the command's own result lands", async () => {
+    const home = tempDir("chat-home-");
+    // 대본은 두 지시 모두 **아무 프레임도 내지 않게** 두고, 순서가 중요한 프레임만 아래에서
+    // 손으로 흘린다. 대본에 실으면 한 턴의 메시지가 통째로 큐에 들어가 사이가 벌어지지 않는다.
+    const fake = createFakeSdkFactory([
+      { messages: [{ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 900, post_tokens: 300 } }] },
+      { messages: [] },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-hold", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    session.send("and now a real question");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // `/compact`의 늦은 result. 레인을 경계에서 닫아 버렸다면 이 시점에 두 번째 턴이 이미 열려
+    // 있고, 이 프레임이 그 턴을 답 없이 닫는다.
+    fake.liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // 두 번째 지시의 진짜 결말.
+    fake.liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "the real answer" });
+    await drainTurn(registry, "op-hold");
+
+    const answers = events
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<AgentChatStreamEvent, { kind: "turn-end" }> => event.kind === "turn-end")
+      .map((event) => event.answer);
+    expect(answers).toEqual(["the real answer"]);
+    const ends = events.map((entry) => entry.event).filter((event) => event.kind === "command-end");
+    expect(ends).toEqual([{ kind: "command-end", ok: true, compact: { before: 900, after: 300 } }]);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 리뷰(#941 P2)가 지목한 경로. 정비 줄은 `turnOpen`을 세우지 않으므로 `closeTurn`이 곧바로
+   * 되돌아간다 — 자식이 result 없이 죽으면 `awaitingTurn`이 풀리지 않아 이 세션의 다음 메시지가
+   * 전부 대기열에 갇힌다.
+   */
+  it("settles a running command lane when the child dies without a result", async () => {
+    const home = tempDir("chat-home-");
+    const fake = createFakeSdkFactory([
+      // 압축 중이라는 프레임 하나만 흘리고 스트림이 터진다 — result는 오지 않는다.
+      { messages: [{ type: "system", subtype: "status", status: "compacting" }], failAfter: 1 },
+    ]);
+    const registry = new AgentChatRegistry(fake.factory);
+    const session = await registry.ensure("op-dead", () => freshSeedFor(home));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("/compact");
+    // 멈추면 이 await가 영영 돌아오지 않는다.
+    await drainTurn(registry, "op-dead");
+
+    const ends = events.map((entry) => entry.event).filter((event) => event.kind === "command-end");
+    expect(ends).toEqual([{ kind: "command-end", ok: false }]);
     await registry.disposeAll();
   });
 

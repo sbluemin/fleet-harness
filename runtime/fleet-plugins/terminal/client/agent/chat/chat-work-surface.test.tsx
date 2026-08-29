@@ -47,6 +47,7 @@ function stateWith(jobs: readonly AgentChatJob[]): AgentChatLogState {
     jobs,
     context: null,
     queue: [],
+    catalogEpoch: 0,
   };
 }
 

@@ -822,3 +822,57 @@ describe("job end arrivals", () => {
     expect(state.turns.at(-1)?.contextBefore).toBe(30_000);
   });
 });
+
+describe("maintenance command lane", () => {
+  it("keeps a command out of the turn grammar and carries its numbers", () => {
+    const state = fold([
+      { kind: "command", name: "compact", at: 1 },
+      { kind: "command-progress", phase: "compacting" },
+      { kind: "command-end", ok: true, compact: { before: 62400, after: 18100, durationMs: 3200 } },
+    ]);
+    expect(state.turns).toHaveLength(1);
+    const turn = state.turns[0]!;
+    expect(turn.command).toEqual({ name: "compact", compact: { before: 62400, after: 18100, durationMs: 3200 } });
+    expect(turn.state).toBe("done");
+    // 턴 문법의 재료가 하나도 실리지 않아야 한다 — 실리면 원장이 사고를 그린다.
+    expect(turn.items).toEqual([]);
+    expect(turn.answer).toBeUndefined();
+  });
+
+  it("empties the ledger when the session is cleared", () => {
+    const state = fold([
+      { kind: "dispatch", text: "remember this" },
+      { kind: "text", text: "remembered" },
+      { kind: "turn-end", ok: true },
+      { kind: "cleared", at: 2 },
+    ]);
+    // 자식이 읽지 못하는 대화가 남으면 그것을 읽고 이어 묻는 사람에게 화면이 거짓말을 한다.
+    expect(state.turns).toEqual([]);
+    expect(state.context).toBeNull();
+  });
+
+  /**
+   * 리뷰(#941 P3)가 지목한 경로. 서버가 자기 카탈로그 캐시를 버리는 것만으로는 화면이 따라오지
+   * 않는다 — 컴포저는 사본을 마운트 내내 들고 있으므로, 만료를 말해 주는 좌표가 필요하다.
+   */
+  it("advances the catalog epoch when a skill reload finishes", () => {
+    const before = fold([{ kind: "command", name: "reload-skills", at: 1 }]);
+    expect(before.catalogEpoch).toBe(0);
+    const after = reduceAgentChatLog(before, { kind: "command-end", ok: true, summary: "Reloaded skills: 15" });
+    expect(after.catalogEpoch).toBe(1);
+  });
+
+  it("leaves the catalog epoch alone for other commands and failed reloads", () => {
+    const other = fold([
+      { kind: "command", name: "compact", at: 1 },
+      { kind: "command-end", ok: true, compact: { before: 10, after: 5 } },
+    ]);
+    expect(other.catalogEpoch).toBe(0);
+    const failed = fold([
+      { kind: "command", name: "reload-skills", at: 1 },
+      { kind: "command-end", ok: false },
+    ]);
+    // 실패한 재읽기는 목록을 바꾸지 않았다 — 사본을 버릴 이유가 없다.
+    expect(failed.catalogEpoch).toBe(0);
+  });
+});

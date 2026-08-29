@@ -743,6 +743,14 @@ export interface AgentChatLogState {
   readonly context: AgentChatContext | null;
   /** 서버가 접수했으나 아직 시작하지 않은 지시들. 서버가 권위이고 화면은 그대로 그린다. */
   readonly queue: readonly AgentChatQueueEntry[];
+  /**
+   * 자식의 능력 목록이 바뀐 횟수. `/reload-skills`가 끝날 때마다 오른다.
+   *
+   * 서버가 자기 캐시를 버리는 것만으로는 화면이 따라오지 않는다 — 컴포저는 덱을 처음 열 때 한 번만
+   * 카탈로그를 읽고 그 사본을 마운트 내내 들고 있으므로, 갱신 신호가 없으면 방금 추가한 스킬이
+   * 패널을 다시 세울 때까지 보이지 않는다. 이 좌표가 그 사본의 만료를 말한다.
+   */
+  readonly catalogEpoch: number;
 }
 
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
@@ -757,6 +765,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   jobs: [],
   context: null,
   queue: [],
+  catalogEpoch: 0,
 };
 
 /**
@@ -860,8 +869,13 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
     case "command-end": {
       const last = state.turns.at(-1);
       if (!last?.command) return state;
+      // 스킬을 다시 읽은 명령이 끝났다 — 컴포저가 들고 있는 카탈로그 사본은 이 시점부터 낡았다.
+      const catalogEpoch = last.command.name === "reload-skills" && event.ok
+        ? state.catalogEpoch + 1
+        : state.catalogEpoch;
       return {
         ...state,
+        catalogEpoch,
         turns: [...state.turns.slice(0, -1), {
           ...last,
           state: event.ok ? "done" : "error",

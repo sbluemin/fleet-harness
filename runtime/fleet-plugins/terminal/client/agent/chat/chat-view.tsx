@@ -494,6 +494,7 @@ export function AgentChatView({
             meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
             coordinates={coordinates}
             onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
+            catalogEpoch={state.catalogEpoch}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}

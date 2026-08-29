@@ -43,6 +43,7 @@ function stateWith(context: AgentChatContext | null, turnState: AgentChatTurn["s
     jobs: [],
     context,
     queue: [],
+    catalogEpoch: 0,
   };
 }
 

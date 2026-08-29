@@ -400,7 +400,22 @@ class AgentChatSession {
    * 지금 도는 정비 명령. 값이 있으면 이 왕복은 턴이 아니라 원장의 정비 줄로 그려지고,
    * 자식이 흘리는 조각들은 턴 내용이 아니라 그 줄의 진행·결말로 읽힌다.
    */
-  private commandLane: { readonly name: string } | null = null;
+  private commandLane: {
+    readonly name: string;
+    /**
+     * 자식이 먼저 말한 결말(압축 경계·압축 실패). **여기 보관하고 즉시 닫지 않는다.**
+     *
+     * 닫으면 `awaitingTurn`이 풀려 다음 디스패치가 곧바로 시작하는데, 이 명령의 `result`는
+     * 그 뒤에 온다(실측: 경계가 result보다 앞선다). 그러면 늦은 result가 `commandLane === null`
+     * 상태로 들어와 **방금 열린 사용자 턴**을 닫아, 그 턴의 진짜 답이 떨어져 나가거나 남의
+     * 턴에 붙는다. 턴이 자기 result를 기다리는 것과 같은 규율을 이 레인도 진다.
+     */
+    pendingEnd?: {
+      readonly ok: boolean;
+      readonly summary?: string;
+      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    };
+  } | null = null;
   /** 이 세션이 연 누적 턴 수. 저널이 앞을 버려도 재접속 receipt가 비교할 단조 좌표다. */
   private observedTurns = 0;
   /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
@@ -1710,7 +1725,7 @@ class AgentChatSession {
    * 대화 조각(text·tool·ask)은 버린다. 그것들이 이 줄에 실려도 그릴 자리가 없고, 턴으로
    * 새어 나가면 정비 동작 하나가 대화 한 턴으로 둔갑한다.
    */
-  private ingestCommandLane(event: AgentChatStreamEvent): void {
+  private ingestCommandLane(lane: NonNullable<AgentChatSession["commandLane"]>, event: AgentChatStreamEvent): void {
     // 잡 축은 레인과 무관하게 산다 — 백그라운드 작업은 문맥이 아니라 프로세스라, 정비 중에
     // 끝난 잡의 결말이 사라지면 그 작업은 영영 도는 것으로 남는다.
     this.trackJob(event);
@@ -1723,12 +1738,16 @@ class AgentChatSession {
       return;
     }
     if (event.kind === "command-end") {
-      // 자식이 스스로 낸 결말(압축 경계·압축 실패). `result`보다 먼저 오며 숫자를 싣는다.
-      this.endCommandLane({
-        ok: event.ok,
-        ...(event.summary === undefined ? {} : { summary: event.summary }),
-        ...(event.compact === undefined ? {} : { compact: event.compact }),
-      });
+      // 자식이 스스로 낸 결말(압축 경계·압축 실패)은 `result`보다 먼저 오며 숫자를 싣는다.
+      // 보관만 하고 닫지 않는 이유는 `commandLane.pendingEnd`에 적혀 있다.
+      this.commandLane = {
+        name: lane.name,
+        pendingEnd: {
+          ok: event.ok,
+          ...(event.summary === undefined ? {} : { summary: event.summary }),
+          ...(event.compact === undefined ? {} : { compact: event.compact }),
+        },
+      };
       return;
     }
     if (event.kind === "reset") {
@@ -1736,9 +1755,10 @@ class AgentChatSession {
       return;
     }
     if (event.kind === "turn-end") {
-      // 숫자 있는 결말이 앞서 왔다면 이 줄은 이미 닫혔다 — `endCommandLane`이 멱등이라
-      // 여기서 다시 불러도 두 번 그리지 않는다.
-      this.endCommandLane({
+      // 이 레인의 유일한 종점이다. 자식이 숫자 있는 결말을 먼저 냈으면 그것이 이기고,
+      // 아니면 result가 실어 온 한 줄이 결말이 된다.
+      const pending = lane.pendingEnd;
+      this.endCommandLane(pending ?? {
         ok: event.ok,
         ...(event.answer === undefined ? {} : { summary: event.answer }),
       });
@@ -1764,7 +1784,7 @@ class AgentChatSession {
     // 두지 않으면 `text` 하나가 턴을 열어(opensChatTurn), 사고하지 않는 동작이 사고하는
     // 것처럼 그려진다 — 이 레인이 존재하는 이유가 바로 그 그림을 없애는 것이다.
     if (this.commandLane) {
-      this.ingestCommandLane(event);
+      this.ingestCommandLane(this.commandLane, event);
       return;
     }
     if (event.kind === "turn-end") {
@@ -1949,7 +1969,12 @@ class AgentChatSession {
     this.syncBackgroundPending();
     // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
     // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
+    //
+    // 정비 줄도 여기서 함께 정산해야 한다: 그 줄은 `turnOpen`을 세우지 않으므로 `closeTurn`이
+    // 곧바로 되돌아가고, 그러면 `awaitingTurn`이 영영 풀리지 않아 `turnFlight`가 멈춘 채 이
+    // 세션의 다음 메시지가 전부 대기열에 갇힌다.
     this.settlingStoppedTurn = false;
+    this.endCommandLane({ ok: false });
     this.closeTurn({ ok: false });
     this.releaseTurnCloseWaiters();
   }

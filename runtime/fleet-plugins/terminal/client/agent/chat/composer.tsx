@@ -99,6 +99,7 @@ export function AgentChatComposer({
   onCancelQueued,
   coordinates,
   onOpenContextMeter,
+  catalogEpoch,
 }: {
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
@@ -139,6 +140,8 @@ export function AgentChatComposer({
   readonly coordinates: { readonly model: string | null; readonly effort: string | null };
   /** `/context`가 가는 자리 — 같은 수를 이미 그리고 있는 컴포저 바의 문맥 계기를 연다. */
   readonly onOpenContextMeter: () => void;
+  /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
+  readonly catalogEpoch: number;
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
@@ -223,6 +226,8 @@ export function AgentChatComposer({
   const [deckIndex, setDeckIndex] = React.useState(0);
   const [caret, setCaret] = React.useState(0);
   const catalogFlight = React.useRef(false);
+  /** 지금 들고 있는 사본이 어느 판본의 것인가. `null`은 아직 한 번도 읽지 않았다는 뜻이다. */
+  const fetchedEpoch = React.useRef<number | null>(null);
 
   // 덱은 캐럿이 이 입력에 있을 때만 선다. 포커스를 해제 상태로 대신하면(blur → dismissed)
   // 그 표시가 그대로 눌어붙어, 패널 최대화처럼 잠깐 포커스를 가져가는 조작 뒤에 `/`를 다시
@@ -251,8 +256,13 @@ export function AgentChatComposer({
   // 덱이 처음 열릴 때 한 번만 읽는다. 이 요청이 자식을 여는 쪽이므로(결정: 첫 `/`에 세션을 연다)
   // 사용자가 묻지 않았는데 미리 부르지 않는다.
   React.useEffect(() => {
-    if (!deckOpen || catalog !== null || catalogFlight.current) return;
+    if (!deckOpen || catalogFlight.current) return;
+    // 이미 읽어 둔 사본은 **그 판본에 한해서만** 유효하다. `/reload-skills`가 끝나면 판본이
+    // 올라가고, 그때 이 사본은 방금 추가·삭제된 스킬을 모르는 낡은 목록이 된다. 서버가 자기
+    // 캐시를 버리는 것만으로는 여기까지 오지 않는다.
+    if (catalog !== null && fetchedEpoch.current === catalogEpoch) return;
     catalogFlight.current = true;
+    fetchedEpoch.current = catalogEpoch;
     void readAgentChatCatalog(context.operationId)
       .then((value) => { if (value) setCatalog(value); })
       .catch(() => {})
@@ -260,7 +270,7 @@ export function AgentChatComposer({
         catalogFlight.current = false;
         setCatalogTried(true);
       });
-  }, [context.operationId, deckOpen, catalog]);
+  }, [context.operationId, deckOpen, catalog, catalogEpoch]);
 
   const deckId = `agent-chat-deck-${context.operationId}`;
   const deckOptionId = React.useCallback((index: number) => `${deckId}-opt-${index}`, [deckId]);

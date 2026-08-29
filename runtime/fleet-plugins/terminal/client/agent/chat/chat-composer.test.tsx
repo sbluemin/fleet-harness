@@ -16,6 +16,7 @@ let renames: string[] = [];
 let renameFails = false;
 /** 덱과 Console 라우팅이 함께 읽는 카탈로그. `null`이면 "아직 모른다"이고 라우팅은 쉰다. */
 let catalogPayload: AgentChatCatalog | null = null;
+let catalogFetches = 0;
 let canceled: string[] = [];
 let cancelOutcome: "canceled" | "started" | "unreachable" = "canceled";
 let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
@@ -31,7 +32,7 @@ vi.mock("../api.js", () => ({
     return { id: `att-${uploads.length}` };
   },
   discardLaunchAttachment: async () => {},
-  readAgentChatCatalog: async () => catalogPayload,
+  readAgentChatCatalog: async () => { catalogFetches += 1; return catalogPayload; },
 }));
 
 let root: Root | null = null;
@@ -49,6 +50,7 @@ beforeEach(() => {
   renames = [];
   renameFails = false;
   catalogPayload = null;
+  catalogFetches = 0;
   // jsdom에는 scrollIntoView가 없다 — 덱이 활성 행을 따라가며 부른다.
   if (!(Element.prototype as { scrollIntoView?: unknown }).scrollIntoView) {
     (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
@@ -71,6 +73,7 @@ afterEach(() => {
 interface MountOptions {
   readonly turnRunning?: boolean;
   readonly queue?: readonly { readonly id: string; readonly text: string }[];
+  readonly catalogEpoch?: number;
 }
 
 function composerProps(options: MountOptions = {}) {
@@ -109,6 +112,7 @@ function composerProps(options: MountOptions = {}) {
     },
     coordinates: { model: null, effort: null },
     onOpenContextMeter: () => { meterOpens += 1; },
+    catalogEpoch: options.catalogEpoch ?? 0,
   };
 }
 
@@ -310,6 +314,11 @@ describe("chat panel composer", () => {
 
   // Quick Launch와 같은 `ultracode` 무장을 이 컴포저도 진다 — 같은 부품(sdk/composer)이
   // 인식·미러 문법을 소유하고, 표식만 이 조립이 싣는다.
+  /** 같은 트리에 프롭만 갈아 끼운다. 다시 마운트하면 어차피 새로 읽으므로 검사가 무의미해진다. */
+  function rerender(options: MountOptions): void {
+    act(() => { root?.render(createElement(AgentChatComposer, composerProps(options))); });
+  }
+
   function type(value: string, caret = value.length): void {
     const field = input();
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
@@ -465,6 +474,34 @@ describe("chat panel composer", () => {
       expect(messages).toEqual(["/context"]);
     });
   });
+
+  describe("catalog freshness", () => {
+    const CATALOG2: AgentChatCatalog = {
+      commands: [{ name: "reload-skills", description: "Pick up skills changed on disk", argumentHint: "" }],
+      skills: [],
+      agents: [],
+      unclassified: [],
+    };
+
+    it("re-reads the catalog after a skill reload advances the epoch", async () => {
+      // 서버가 자기 캐시를 버려도 이 사본은 마운트 내내 살아 있다 — 만료 좌표가 없으면 방금
+      // 추가한 스킬이 패널을 다시 세울 때까지 보이지 않는다.
+      catalogPayload = CATALOG2;
+      mount();
+      await act(async () => { input()?.focus(); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      // 같은 판본에서 덱을 닫았다 열어도 다시 읽지 않는다.
+      await act(async () => { type(""); });
+      await act(async () => { type("/"); });
+      await act(async () => {});
+      expect(catalogFetches).toBe(1);
+
+      rerender({ catalogEpoch: 1 });
+      await act(async () => {});
+      expect(catalogFetches).toBe(2);
+    });
+  });
 });
-
-
