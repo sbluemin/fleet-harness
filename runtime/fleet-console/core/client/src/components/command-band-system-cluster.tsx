@@ -116,7 +116,9 @@ export function CommandBandSystemCluster() {
         version={state.version}
         latestVersion={state.latestVersion}
         updateAvailable={state.updateAvailable}
-        releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)}
+        // 새로고침/언어 전환 실패는 이미 표시 중인 노트를 버리지 않는다. 남은 노트가 있으면
+        // Help 진입도 열어 두어 inline 오류를 보고 다시 시도할 수 있어야 한다.
+        releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0}
       />
     </div>
   );

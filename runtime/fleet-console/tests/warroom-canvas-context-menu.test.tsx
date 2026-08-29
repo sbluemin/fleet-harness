@@ -370,6 +370,7 @@ const STATE: ConsoleState = {
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
+  releaseNotesLocale: null,
   releaseNotesLoading: false,
   releaseNotesError: null,
   releaseNotesSourceRef: null,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Select } from "@fleet-console/sdk/react/browser";
 
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable, requestReleaseNotes, type WhatsNewTabId } from "../whatsnew.js";
 import { closeWhatsNew, selectReleaseNote } from "../store.js";
@@ -37,13 +37,15 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const tabRefs = useRef(new Map<WhatsNewTabId, HTMLButtonElement>());
   const [activeTab, setActiveTab] = useState<WhatsNewTabId>("overview");
   const globalSettings = useGlobalSettingsStore();
-  // locale은 릴리스 노트 본문 언어(fetch·폴백 배지·선택기 상태)에 관여한다. 모달 크롬은 useT()로 로케일화한다.
-  const locale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+  // 본문은 마지막으로 적용된 릴리스 노트 언어를 따르고, 첫 fetch 전만 Console 언어에서 기본값을 얻는다.
+  // 모달 chrome은 별도로 useT()를 사용하므로 Settings의 Auto/명시 언어를 계속 따른다.
+  const locale = state.releaseNotesLocale ?? resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
   const selectedKey = state.selectedReleaseNoteKey ?? releaseNoteKey(state.releaseNotes[0]?.version ?? "", 0);
   const selectedIndex = state.releaseNotes.findIndex((note, index) => releaseNoteKey(note.version, index) === selectedKey);
   const selected = state.releaseNotes[selectedIndex] ?? state.releaseNotes[0];
   const selectedValue = selected ? releaseNoteKey(selected.version, selectedIndex >= 0 ? selectedIndex : 0) : "";
   const tabs = selected ? deriveWhatsNewTabs(selected) : [];
+  const contentLanguage = locale === "ko" && !selected?.localizationFallback ? "ko" : "en";
 
   useEffect(() => {
     setActiveTab("overview");
@@ -111,8 +113,16 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const handleRefresh = () => {
     void requestReleaseNotes({ force: true, locale });
   };
-  const selectLanguage = async (nextLocale: "en" | "ko") => {
-    await setGlobalSettingsField("language", nextLocale);
+  const selectLanguage = (nextLocale: "en" | "ko") => {
+    if (state.releaseNotesLoading) return;
+    if (nextLocale === locale) {
+      // 한국어 모드가 영어 fallback을 보여 주는 동안에는 같은 버튼으로 번역을 다시 시도할 수 있다.
+      if (nextLocale === "ko" && selected?.localizationFallback) {
+        void requestReleaseNotes({ force: true, locale: nextLocale });
+      }
+      return;
+    }
+    void requestReleaseNotes({ locale: nextLocale });
   };
   // 셀렉터는 한 페이지에 최근 RELEASE_NOTE_PAGE_SIZE개만 노출한다. 현재 페이지는 선택된 버전에서 파생하므로
   // 별도 상태가 필요 없고, 선택이 항상 현재 페이지에 포함된다. 페이지 이동은 그 페이지의 가장 최신 버전을 선택한다.
@@ -144,6 +154,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
           <div className="whatsnew-meta-row">
             {selected.date ? <time className="whatsnew-date" dateTime={selected.date}>{t("chrome.whatsnew.released", { date: selected.date })}</time> : <span className="whatsnew-date">{t("chrome.whatsnew.unreleased")}</span>}
             {state.releaseNotesStale ? <span className="whatsnew-stale">{t("chrome.whatsnew.stale")}</span> : null}
+            {locale === "ko" && selected.localizationFallback ? <span className="whatsnew-fallback">{t("chrome.whatsnew.englishFallback")}</span> : null}
           </div>
         </header>
         <button ref={closeButtonRef} type="button" className="whatsnew-close" onClick={closeWhatsNew} aria-label={t("chrome.whatsnew.closeAria")}>
@@ -185,8 +196,8 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
                   type="button"
                   className={locale === nextLocale ? "is-active" : ""}
                   aria-pressed={locale === nextLocale}
-                  disabled={globalSettings.savingField === "language"}
-                  onClick={() => void selectLanguage(nextLocale)}
+                  disabled={state.releaseNotesLoading}
+                  onClick={() => selectLanguage(nextLocale)}
                 >
                   {nextLocale === "en" ? t("chrome.whatsnew.langEn") : t("chrome.whatsnew.langKo")}
                 </button>
@@ -226,12 +237,12 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
                   <button key={item.id} type="button" className="whatsnew-overview-card" onClick={() => selectTabAndFocus(item.id)}>
                     <span className="whatsnew-overview-label">{item.label}</span>
                     <span className="whatsnew-overview-count">{t(item.count === 1 ? "chrome.whatsnew.updateCount_one" : "chrome.whatsnew.updateCount_other", { count: item.count })}</span>
-                    <span className="whatsnew-overview-summary">{item.summary}</span>
+                    <span className="whatsnew-overview-summary" lang={contentLanguage}>{item.summary}</span>
                   </button>
                 ))}
               </div>
             ) : filterWhatsNewSections(selected, activeTab).map((section, index) => (
-              <ReleaseNoteSectionView key={section.heading} section={section} index={index} />
+              <ReleaseNoteSectionView key={section.heading} section={section} index={index} contentLanguage={contentLanguage} />
             ))}
           </div>
         </div>
@@ -254,7 +265,15 @@ const SECTION_LABEL_KEYS = {
   "Breaking Changes": "whatsnew.section.breakingChanges",
 } as const satisfies Record<ReleaseNoteSection["heading"], CoreMessageKey>;
 
-function ReleaseNoteSectionView({ section, index }: { readonly section: ReleaseNoteSection; readonly index: number }) {
+function ReleaseNoteSectionView({
+  section,
+  index,
+  contentLanguage,
+}: {
+  readonly section: ReleaseNoteSection;
+  readonly index: number;
+  readonly contentLanguage: "en" | "ko";
+}) {
   const t = useT();
   const tone = section.heading.toLowerCase().replaceAll(" ", "-");
   const style: WhatsNewSectionStyle = { "--whatsnew-delay": `${index * 55}ms` };
@@ -266,7 +285,7 @@ function ReleaseNoteSectionView({ section, index }: { readonly section: ReleaseN
       <ul>
         {section.items.map((item, itemIndex) => (
           <li key={`${item.text}:${itemIndex}`}>
-            <ReleaseNoteItemView item={item} />
+            <ReleaseNoteItemView item={item} contentLanguage={contentLanguage} />
           </li>
         ))}
       </ul>
@@ -274,7 +293,7 @@ function ReleaseNoteSectionView({ section, index }: { readonly section: ReleaseN
   );
 }
 
-function ReleaseNoteItemView({ item }: { readonly item: ReleaseNoteItem }) {
+function ReleaseNoteItemView({ item, contentLanguage }: { readonly item: ReleaseNoteItem; readonly contentLanguage: "en" | "ko" }) {
   return (
     <>
       {item.packageTags.map((tag, index) => (
@@ -282,7 +301,7 @@ function ReleaseNoteItemView({ item }: { readonly item: ReleaseNoteItem }) {
           {tag}
         </span>
       ))}
-      <span>{item.text}</span>
+      <span lang={contentLanguage}>{item.text}</span>
     </>
   );
 }

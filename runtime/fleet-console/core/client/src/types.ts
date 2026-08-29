@@ -567,6 +567,8 @@ export interface ConsoleState {
   readonly pendingQuickLaunch: QuickLaunchRequest | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
+  /** 적용된 릴리스 노트의 요청 로케일. 개별 노트는 번역 누락 시 영어로 fallback할 수 있다. */
+  readonly releaseNotesLocale: ReleaseNotesLocale | null;
   readonly releaseNotesLoading: boolean;
   readonly releaseNotesError: string | null;
   readonly releaseNotesSourceRef: "main" | null;
