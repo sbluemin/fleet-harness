@@ -25,7 +25,7 @@ import {
 import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 import { fetchSearch } from "./codex/api.js";
-import { openCodexRailPanel } from "./host.js";
+import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
 
@@ -97,7 +97,10 @@ export const codexPanel: RailPanelDescriptor = {
       activate: () => {
         // 팔레트에서 열면 패널이 아직 서 있지 않을 수 있다 — 공유 링크와 같은 자리다.
         openCodexRailPanel();
-        openCodexReader({ kind: "entry", entryId: entry.id });
+        // 리더를 직접 열지 않고 **주소로** 연다. 패널은 마운트 직후 Theater가 확정되기 전
+        // 리더를 한 번 닫으므로, 직접 연 문서는 그 닫힘에 지워진다. 주소는 그 구간을 건너
+        // 살아남았다가 Theater가 준비된 뒤 적용된다 — 공유 링크가 그렇게 동작한다.
+        openCodexReaderByAddress(entry.id, theaterId);
       },
     }));
   },
@@ -158,9 +161,14 @@ function CodexRailPanel({
     : null;
 
   // 실제 Theater가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
+  //
+  // "아직 Theater를 모른다"(빈 contextKey)에서 실제 Theater로 가는 것은 **바뀐 것이 아니라
+  // 정해진 것**이다. 그것을 변경으로 읽으면, 주소가 막 열어 둔 문서를 부팅 도중에 닫아
+  // 버린다 — 공유 링크가 확대로 들어와도 축소로 되돌아가던 원인이 이것이었다.
   useEffect(() => {
     latestContextKeyRef.current = contextKey;
-    if (lastCodexContextKey !== null && lastCodexContextKey !== contextKey) {
+    const settledFromUnknown = lastCodexContextKey === "";
+    if (lastCodexContextKey !== null && !settledFromUnknown && lastCodexContextKey !== contextKey) {
       closeCodexReader();
     }
     lastCodexContextKey = contextKey;

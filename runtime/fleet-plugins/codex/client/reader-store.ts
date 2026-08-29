@@ -93,10 +93,35 @@ export function expandCodexReader(): void {
   if (reader === null) return;
   expanded = true;
   publish();
-  hostCapabilities().surfaces.open({ surfaceId: SURFACE_ID });
+  openSurfaceSlot();
 }
 
+/**
+ * 슬롯 열기는 능력이 묶인 뒤에만 가능하다. 상주 기여는 install보다 먼저 마운트되므로,
+ * 주소가 `codexView=full`을 싣고 들어온 첫 순간에는 아직 빈손일 수 있다 — 그때 던지는
+ * 접근자를 쓰면 확대가 통째로 사라지고 문서만 축소로 열린다(실측: 공유 확대 링크가
+ * 축소로 복원됐다). 묶이기 전이면 의사를 들고 있다가 묶이는 순간 연다.
+ */
+function openSurfaceSlot(): void {
+  const surfaces = hostCapabilities.bound()?.surfaces;
+  if (surfaces) {
+    surfaces.open({ surfaceId: SURFACE_ID });
+    return;
+  }
+  pendingExpand = true;
+}
+
+let pendingExpand = false;
+
+onCodexHostBound(() => {
+  if (!pendingExpand) return;
+  pendingExpand = false;
+  // 묶이는 사이에 사용자가 접었을 수 있다 — 지금도 확대 중일 때만 연다.
+  if (expanded && reader !== null) hostCapabilities.bound()?.surfaces.open({ surfaceId: SURFACE_ID });
+});
+
 export function collapseCodexReader(): void {
+  pendingExpand = false;
   expanded = false;
   publish();
   closeSurfaceSlots();
@@ -119,6 +144,7 @@ export function releaseCodexExpansion(): void {
 }
 
 export function closeCodexReader(): void {
+  pendingExpand = false;
   reader = null;
   expanded = false;
   publish();
@@ -128,7 +154,9 @@ export function closeCodexReader(): void {
 function closeSurfaceSlots(): void {
   // 표면 id로 닫는다 — `close`는 인스턴스 id를 받으므로(`codex#1`) 표면 id를 넘기면
   // 일치하는 슬롯이 없어 조용히 아무 일도 일어나지 않고, 빈 슬롯만 캔버스에 남는다.
-  hostCapabilities().surfaces.closeSurface(SURFACE_ID);
+  //
+  // 묶이기 전이면 닫을 슬롯도 없다 — 던지는 접근자를 쓰면 부팅 순서가 닫기를 예외로 만든다.
+  hostCapabilities.bound()?.surfaces.closeSurface(SURFACE_ID);
 }
 
 export function setActiveTheater(theaterId: string): void {

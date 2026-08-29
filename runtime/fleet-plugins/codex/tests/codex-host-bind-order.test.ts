@@ -5,7 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../client/codex-host.js", () => ({ setCodexReaderExpandedForSession: vi.fn() }));
 
 import { bindCodexHost } from "../client/host.js";
-import { getReaderState, subscribeReader } from "../client/reader-store.js";
+import {
+  closeCodexReader,
+  expandCodexReader,
+  getReaderState,
+  openCodexReader,
+  subscribeReader,
+} from "../client/reader-store.js";
 
 function boundHost(theaters: ReadonlyArray<{ id: string; label: string }>, activeId: string | null) {
   const listeners = new Set<() => void>();
@@ -67,5 +73,37 @@ describe("reader state across host binding", () => {
     stop();
 
     expect(host.subscriberCount()).toBeGreaterThan(0);
+  });
+});
+
+describe("expanding before the host is bound", () => {
+  // 상주 기여는 install보다 먼저 마운트된다. 주소가 codexView=full을 싣고 들어온 첫 순간에
+  // 능력이 아직 없으면, 던지는 접근자를 쓴 확대는 통째로 사라지고 문서만 축소로 열린다 —
+  // 실측에서 공유 확대 링크가 정확히 그렇게 축소로 복원됐다.
+  it("opens the slot once the host arrives", () => {
+    closeCodexReader();
+    // 아직 능력이 없는 상태를 만든다.
+    bindCodexHost(null as never);
+    openCodexReader({ kind: "entry", entryId: "tide-model" });
+    expandCodexReader();
+    expect(getReaderState().codexReaderExpanded).toBe(true);
+
+    const host = boundHost([{ id: "theater-a", label: "A" }], "theater-a");
+    bindCodexHost(host.capabilities as never);
+
+    expect(host.capabilities.surfaces.open).toHaveBeenCalledWith({ surfaceId: "codex" });
+  });
+
+  it("does not open a slot for an expansion the user already dropped", () => {
+    closeCodexReader();
+    bindCodexHost(null as never);
+    openCodexReader({ kind: "entry", entryId: "tide-model" });
+    expandCodexReader();
+    closeCodexReader();
+
+    const host = boundHost([], null);
+    bindCodexHost(host.capabilities as never);
+
+    expect(host.capabilities.surfaces.open).not.toHaveBeenCalled();
   });
 });

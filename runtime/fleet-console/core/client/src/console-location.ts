@@ -7,7 +7,7 @@
  * `history.pushState`를 직접 부르지 않는 이유는 popstate가 발화하지 않아 라우터가
  * 이동을 놓치기 때문이다 — 주소는 바뀌었는데 화면은 그대로인 상태가 된다.
  */
-type Navigate = (to: string, options?: { readonly replace?: boolean }) => void;
+type Navigate = (to: { readonly search: string }, options?: { readonly replace?: boolean }) => void;
 type Listener = () => void;
 
 let navigate: Navigate | null = null;
@@ -61,10 +61,13 @@ export function applySearchParams(
   if (!changed) return;
 
   const query = params.toString();
-  const target = `${window.location.pathname}${query ? `?${query}` : ""}`;
-  // 라우터가 아직 안 붙은 부팅 구간에서도 주소는 맞춰 둔다. 이때는 화면이 아직
-  // 그 주소를 읽기 전이므로 replaceState로 조용히 맞추는 것이 옳다.
-  if (navigate) navigate(target, { replace });
-  else window.history.replaceState(null, "", target);
+  const search = query ? `?${query}` : "";
+  // 라우터에는 **쿼리만** 건넨다. `location.pathname`은 basename(`/console`)을 이미 품고
+  // 있어서, 그대로 넘기면 라우터가 basename을 한 번 더 붙여 `/console/console/...`이 된다 —
+  // 콘솔은 없는 경로로 떨어지고 화면이 빈 껍데기가 된다.
+  // 라우터가 아직 안 붙은 부팅 구간에서만 절대 경로로 직접 맞춘다(그때는 basename을
+  // 붙일 라우터가 없으므로 pathname이 정확하다).
+  if (navigate) navigate({ search }, { replace });
+  else window.history.replaceState(null, "", `${window.location.pathname}${search}`);
   notifyConsoleLocationChanged();
 }

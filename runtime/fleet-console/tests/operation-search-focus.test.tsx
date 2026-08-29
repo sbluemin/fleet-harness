@@ -5,9 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const codexApiMocks = vi.hoisted(() => ({ fetchSearch: vi.fn() }));
-vi.mock("../core/client/src/codex/api.js", () => codexApiMocks);
-
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
 import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/shortcuts.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
@@ -31,8 +28,6 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   canUndoLastClose = false;
   onUndoLastClose = vi.fn();
-  codexApiMocks.fetchSearch.mockReset();
-  codexApiMocks.fetchSearch.mockResolvedValue({ entries: [], total: 0 });
   setSideBarCollapsed(false);
 
   previousFocus = document.createElement("button");

@@ -207,7 +207,10 @@ export function OperationSearch({
     } catch {
       return;
     }
-    navigate("/operations");
+    // 경로만 옮기고 주소는 그대로 둔다. `navigate("/operations")`는 쿼리를 함께 버리는데,
+    // activate가 방금 기록한 것이 바로 그 쿼리다 — 주소로 문서를 여는 플러그인은 자기가
+    // 세운 주소가 이 한 줄에 지워져 아무 일도 일어나지 않는다(실측: 팔레트로 연 Codex 항목).
+    navigate({ pathname: "/operations", search: window.location.search });
     openRailPanel(panelId);
     setRailChromeExpanded(true);
     closeOperationSearch();

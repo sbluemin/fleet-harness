@@ -164,6 +164,20 @@ describe("Codex rail panel in-memory state", () => {
     expect(panelMocks.refreshCodexHealth).toHaveBeenCalledOnce();
   });
 
+  // "아직 Theater를 모른다"에서 실제 Theater로 가는 것은 바뀐 것이 아니라 정해진 것이다.
+  // 그것을 변경으로 읽으면 주소가 막 열어 둔 문서를 부팅 도중에 닫아, 공유 확대 링크가
+  // 축소로 되돌아간다(실측으로 잡은 증상).
+  it("keeps the reader when the Theater settles from unknown", async () => {
+    // Theater를 아직 모르는 상태에 세운다. 여기까지 오는 길에 닫는 것은 이 테스트의 관심이
+    // 아니므로(모듈 전역 상태가 앞 테스트에서 넘어온다) 그 뒤부터 센다.
+    await renderPanel(null as never);
+    panelMocks.closeCodexReader.mockClear();
+
+    await renderPanel("theater-a");
+
+    expect(panelMocks.closeCodexReader).not.toHaveBeenCalled();
+  });
+
   it("preserves same-Theater remount state and closes the reader only after a Theater change", async () => {
     await renderPanel("theater-a");
     expect(panelMocks.closeCodexReader).not.toHaveBeenCalled();

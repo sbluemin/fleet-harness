@@ -78,6 +78,21 @@ export function openCodexRailPanel(): void {
   capabilities?.rail.open("codex");
 }
 
+/**
+ * 문서를 **주소로** 연다.
+ *
+ * 리더를 직접 세우면 안 되는 자리가 있다: Codex 패널은 마운트 직후 Theater가 확정되기 전
+ * 리더를 한 번 닫으므로, 그 직전에 직접 연 문서는 지워진다. 주소는 그 구간을 넘어 살아남아
+ * Theater가 준비된 뒤 적용된다(use-codex-reader-url의 목표 보존).
+ */
+export function openCodexReaderByAddress(entryId: string, theaterId: string | null): void {
+  capabilities?.navigation.setSearchParams({
+    codex: entryId,
+    codexTheater: theaterId,
+    codexView: null,
+  }, { replace: false });
+}
+
 export function subscribeConsoleState(listener: () => void): () => void {
   return capabilities?.consoleState.subscribe(listener) ?? (() => undefined);
 }

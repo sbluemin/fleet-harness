@@ -2,12 +2,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const searchMocks = vi.hoisted(() => ({ fetchSearch: vi.fn(), openReader: vi.fn(), openPanel: vi.fn() }));
+const searchMocks = vi.hoisted(() => ({ fetchSearch: vi.fn(), openReader: vi.fn(), openPanel: vi.fn(), openByAddress: vi.fn() }));
 
 vi.mock("../client/codex/api.js", () => ({ fetchSearch: searchMocks.fetchSearch }));
 vi.mock("../client/host.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   openCodexRailPanel: searchMocks.openPanel,
+  openCodexReaderByAddress: searchMocks.openByAddress,
 }));
 vi.mock("../client/reader-store.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -49,7 +50,17 @@ describe("Codex entries in the console palette", () => {
     row!.activate();
 
     expect(searchMocks.openPanel).toHaveBeenCalled();
-    expect(searchMocks.openReader).toHaveBeenCalledWith({ kind: "entry", entryId: "tide-model" });
+    expect(searchMocks.openByAddress).toHaveBeenCalledWith("tide-model", "theater-a");
+  });
+
+  // 리더를 직접 세우면 패널이 마운트 직후 Theater 확정 전에 한 번 닫으면서 그 문서를 지운다.
+  // 실측에서 팔레트로 연 문서가 그렇게 사라졌다 — 주소로 열어야 그 구간을 넘는다.
+  it("opens through the address rather than seating the reader directly", async () => {
+    const [row] = await codexPanel.search!(request);
+
+    row!.activate();
+
+    expect(searchMocks.openReader).not.toHaveBeenCalled();
   });
 
   it("asks for nothing when no Theater is active", async () => {
