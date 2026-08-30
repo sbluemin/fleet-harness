@@ -97,6 +97,22 @@ export const RailSurface = memo(function RailSurface({
     resetSurfacePanes(paneIndexRef.current, ownedIdsRef.current);
   }, [entryId]);
 
+  // 떠나는 표면의 잔재 정리(departing sweep) — 독점 레일에서 패널 교체·닫기는 이 표면의
+  // 언마운트로 온다. 자기 소유 중 **비-keepAlive detail만** 닫는다: primary 인스턴스는 주소
+  // 기억으로 남고(재열림 연속성 계약), keepAlive는 세워 둔 채 떠나야 돌아왔을 때 그 자리가
+  // 다시 선다(구 unpin 계약 승계). 남기면 keepAlive 없이 닫힌 detail이 재열림에서 옛 params째
+  // 되살아난다(닫기=언마운트 계약). React는 물러나는 트리의 passive cleanup을 도착 트리의
+  // mount effect보다 먼저 돌리므로 도착 본문이 마운트에서 여는 detail은 여기 걸리지 않고,
+  // StrictMode 예행에서도 효과가 세운 열은 재설치가 다시 세운다.
+  const panesRef = useRef(binding.panes);
+  panesRef.current = binding.panes;
+  useEffect(() => () => {
+    for (const pane of panesRef.current) {
+      if (pane.role === "primary" || pane.keepAlive === true) continue;
+      closePane(pane.id);
+    }
+  }, []);
+
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],
     [binding.panes],

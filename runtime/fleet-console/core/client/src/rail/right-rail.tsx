@@ -311,12 +311,14 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           />
         )}
         {activeBinding !== null && (
-          // 의도적으로 key를 두지 않는다 — 섹션 인스턴스가 하나로 유지되어야 RailSurface가
-          // 엔트리 교체를 목격하고 pane 계약의 정리(resetSurfacePanes)를 돌린다: 떠나는 표면의
-          // 비-keepAlive 열은 내려가고 keepAlive는 주차된다. key 재마운트는 그 정리를 침묵시켜
-          // 닫힌 detail이 옛 params째 되살아난다(Codex P1). 명시적 닫기(X·아이콘 재클릭)는
-          // 섹션 언마운트로 남아 재열림 복원의 연속성을 그대로 잇는다.
+          // key 재마운트가 패널 교체의 수명 계약이다: 떠나는 표면은 자기 언마운트 cleanup에서
+          // 비-keepAlive detail을 닫는다(RailSurface의 departing sweep). React가 물러나는
+          // 트리의 passive cleanup을 도착 트리의 mount effect보다 먼저 돌리므로, 도착 본문이
+          // 마운트에서 여는 detail(파일 문서 열·Codex 리더)은 정리에 걸리지 않는다. 인스턴스를
+          // 재사용하면 그 정리가 수동 effect로 밀려 도착 마운트 **뒤에** 돌아, 방금 연 열을
+          // 쓸어 내거나(Codex 3차 P1) 확장 폭 소유권이 새 패널로 샌다(Codex 2차 P2).
           <RailSection
+            key={activeBinding.entry.id}
             binding={activeBinding}
             baseCtx={baseCtx}
             connection={connection}

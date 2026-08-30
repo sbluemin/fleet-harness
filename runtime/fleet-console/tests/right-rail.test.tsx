@@ -77,6 +77,15 @@ const PLUGIN_FIXTURES: Record<string, unknown>[] = [
     icon: "L",
     render: () => null,
   },
+  {
+    id: "ledger",
+    title: "LEDGER",
+    icon: "L",
+    // 마운트 효과에서 자기 detail을 여는 본문 — 팔레트 착지 직후의 파일 문서 열, Codex 리더가
+    // 실제로 하는 일이다(Codex 3차 P1 판별 픽스처).
+    details: [{ id: "ledger-doc", title: "DOC" }],
+    render: () => <LedgerMountDetail />,
+  },
 ];
 
 // 새 계약의 레지스트리를 모킹한다. 여기 적는 것은 여전히 "옛 패널 모양"이고, 아래 helper가
@@ -144,6 +153,13 @@ import {
 function FilesMountExtra() {
   useEffect(() => {
     requestRailPanelExtraWidth("file-explorer", 360);
+  }, []);
+  return null;
+}
+
+function LedgerMountDetail() {
+  useEffect(() => {
+    openPane({ paneId: "ledger-doc", mount: "rail", params: { path: "doc.md" } });
   }, []);
   return null;
 }
@@ -266,26 +282,44 @@ describe("Right Rail exclusive panel", () => {
     expect(document.activeElement).toBe(iconButton("REPOSITORY"));
   });
 
-  it("drops the leaving panel's non-keepAlive detail on switch — the swap runs the pane contract", () => {
+  it("drops the leaving panel's non-keepAlive detail on switch — the departing sweep closes it", () => {
     renderRail();
     act(() => openPane({ paneId: "repo-notes", mount: "rail", params: { path: "a.md" } }));
     expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(true);
 
     act(() => iconButton("CODEX").click());
 
-    // 떠나는 표면의 비-keepAlive 열은 내려간다 — 섹션을 key로 재마운트하면 RailSurface가
-    // 엔트리 교체를 못 보고 이 정리가 침묵해, 돌아왔을 때 옛 params째 되살아난다(Codex P1).
+    // 떠나는 표면이 언마운트 cleanup에서 자기 비-keepAlive detail을 닫는다 — 남기면 돌아왔을 때
+    // 옛 params째 되살아난다(닫기=언마운트 계약, Codex 1차 P1).
     expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(false);
   });
 
-  it("parks the leaving panel's keepAlive detail instead of dropping it", () => {
+  it("leaves the leaving panel's keepAlive detail standing so it returns on reopen", () => {
     renderRail();
     act(() => openPane({ paneId: "repo-term", mount: "rail" }));
 
     act(() => iconButton("CODEX").click());
 
-    const parked = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "repo-term");
-    expect(parked?.visible).toBe(false);
+    // keepAlive는 PTY·읽던 자리의 계약이다 — 떠나도 스토어에 세워 둔 채 두어야 돌아왔을 때
+    // 그 자리가 다시 선다(구 unpin/re-pin 계약 승계). 화면에는 서지 않는다: 도착 표면의
+    // owned 필터가 남의 페인을 걸러 낸다.
+    const kept = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "repo-term");
+    expect(kept?.visible).toBe(true);
+    expect([...container.querySelectorAll(".right-rail-section-title")].map((el) => el.textContent)).toEqual(["CODEX"]);
+  });
+
+  it("keeps a detail the arriving panel opens during its own mount", () => {
+    renderRail();
+    act(() => openPane({ paneId: "repo-notes", mount: "rail" }));
+
+    act(() => iconButton("LEDGER").click());
+
+    // 도착 본문은 마운트 효과에서 자기 detail을 연다(파일 문서 열·Codex 리더). 떠나는 표면의
+    // 정리가 도착 마운트 **뒤에** 도는 구조라면 방금 연 이 열이 쓸려 나간다(Codex 3차 P1) —
+    // key 재마운트 + 언마운트 cleanup은 정리를 도착보다 먼저 돌게 만든다.
+    const doc = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "ledger-doc");
+    expect(doc?.visible).toBe(true);
+    expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(false);
   });
 
   it("keeps the arriving panel's mount-time extra-width request across the swap", () => {
