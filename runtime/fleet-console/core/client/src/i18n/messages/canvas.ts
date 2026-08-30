@@ -174,6 +174,8 @@ export const canvasEn = {
   "sidebar.chip.closeArmed": "Close?",
 
   // ── rail ────────────────────────────────────────────────────────────────
+  "pane.caption.expand": "Expand",
+  "pane.caption.close": "Close pane",
   "rail.chrome.aria": "Activity Rail",
   "rail.chrome.toolsAria": "Activity tools",
   "rail.chrome.panelsAria": "Activity panels",
@@ -364,6 +366,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.chip.closeTitle": "Operation 닫기",
   "sidebar.chip.closeArmed": "닫을까요?",
 
+  "pane.caption.expand": "확대",
+  "pane.caption.close": "페인 닫기",
   "rail.chrome.aria": "Activity Rail",
   "rail.chrome.toolsAria": "Activity 도구",
   "rail.chrome.panelsAria": "Activity 패널",

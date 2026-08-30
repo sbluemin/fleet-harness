@@ -444,3 +444,110 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── 레일 표면과 페인 ──────────────────────────────────────────────────────
+   표면은 열의 배치와 분할선을, 캡션은 페인의 정체와 창 조작을 소유한다. 캡션 아래
+   `.rail-pane-body`부터가 플러그인 몫이다. Operation 프레임의 `.fleet-caption-*`와
+   이름을 나누는 이유는 두 밴드가 같은 문법을 쓰되 사는 곳이 다르기 때문이다. */
+
+.rail-surface {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  height: 100%;
+}
+
+.rail-surface.is-split > .rail-pane.role-primary {
+  flex: 0 0 auto;
+  width: var(--pane-width, 248px);
+  min-width: 200px;
+}
+
+.rail-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rail-pane + .rail-pane {
+  border-left: 1px solid var(--hairline);
+}
+
+/* 주차된 페인은 자리를 차지하지 않되 언마운트되지 않는다 — PTY와 읽던 자리가 여기 산다. */
+.rail-pane.is-parked {
+  display: none;
+}
+
+.rail-pane-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  container-type: inline-size;
+}
+
+.pane-caption {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-panel);
+}
+
+.pane-caption-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.pane-caption.is-focused .pane-caption-title {
+  color: var(--text-primary);
+}
+
+.pane-caption-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.pane-caption-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.pane-caption-control svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pane-caption-control:hover,
+.pane-caption-control:focus-visible {
+  background: var(--control-hover-fill);
+  color: var(--brass);
+}
+
+.pane-caption-control:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: -1px;
+}
