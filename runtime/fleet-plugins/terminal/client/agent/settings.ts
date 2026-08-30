@@ -56,6 +56,7 @@ export type XaiEndpointPreference = "direct" | "cli-proxy";
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
+  readonly claudeCodeSkipPermissions: boolean;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -67,6 +68,7 @@ export interface SystemPromptSettingsState {
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
+  | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -118,6 +120,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
+    || typeof payload.claudeCodeSkipPermissions !== "boolean"
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
@@ -129,6 +132,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
+    claudeCodeSkipPermissions: payload.claudeCodeSkipPermissions,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
@@ -168,7 +172,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -243,6 +247,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   if (field === "claudeCodeSystemPrompt") {
     return { claudeCodeSystemPrompt: state.claudeCodeSystemPrompt };
   }
+  if (field === "claudeCodeSkipPermissions") {
+    return { claudeCodeSkipPermissions: state.claudeCodeSkipPermissions };
+  }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "cursorDiagnosticsEnabled") {
     return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };
@@ -256,6 +263,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   if (field === "xaiEndpoint") {
     return { xaiEndpoint: state.xaiEndpoint };
   }
+  // 후미 폴백이라 분기를 빠뜨린 새 필드는 조용히 **다른 설정**을 저장한다(실측: 승인
+  // 게이트를 켜면 휴면 시간이 저장됐다). 필드를 더할 때는 분기도 함께 더할 것 —
+  // 그 대칭은 아래 테스트가 필드 목록 전체를 돌며 지킨다.
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
 

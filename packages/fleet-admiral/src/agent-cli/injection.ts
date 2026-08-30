@@ -44,6 +44,11 @@ export interface InjectAgentCliProfileOptions {
    * 플래그 없는 런치가 이미 하는 일이다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다.
    */
   readonly claudeCodeSystemPrompt?: "on" | "off";
+  /**
+   * Claude Code의 승인 게이트를 이 런치에서 건너뛸지. 생략하면 `false` — 자식이 도구마다
+   * 터미널에서 묻는다. argv 표면에만 실린다(SDK 표면은 `session.ts` 참조).
+   */
+  readonly claudeCodeSkipPermissions?: boolean;
   /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
   readonly origin?: ClaudeSessionOrigin;
   /**
@@ -161,6 +166,9 @@ export async function injectAgentCliProfile(
       ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
       sessionCoordinate: session.coordinate,
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
+      ...(options.claudeCodeSkipPermissions !== undefined
+        ? { claudeCodeSkipPermissions: options.claudeCodeSkipPermissions }
+        : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(

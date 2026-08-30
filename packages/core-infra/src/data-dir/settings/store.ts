@@ -14,6 +14,14 @@ export interface GlobalOptionsData {
    * which is what a launch without any prompt flag already does.
    */
   readonly claudeCodeSystemPrompt?: ClaudeCodeSystemPromptMode;
+  /**
+   * Whether Fleet launches Claude Code with its permission gate skipped. Key absent means
+   * `false`: the child boots on its own default and asks before each tool. Turning this on is
+   * an explicit user choice and only the surfaces that can actually show a prompt carry it —
+   * the terminal and the `fleet` launcher. Chat keeps bypass regardless, because that surface
+   * has no permission gate of its own to honour the choice with.
+   */
+  readonly claudeCodeSkipPermissions?: boolean;
 }
 
 export interface GlobalOptionsValidationResult {
@@ -115,15 +123,23 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
+  const claudeCodeSkipPermissions = sanitizeClaudeCodeSkipPermissions(value.claudeCodeSkipPermissions);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
+    ...(claudeCodeSkipPermissions !== undefined ? { claudeCodeSkipPermissions } : {}),
   };
-  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "claudeCodeSystemPrompt"]);
+  const allowedKeys = new Set([
+    "version",
+    "agentIdleDormantMinutes",
+    "claudeCodeSystemPrompt",
+    "claudeCodeSkipPermissions",
+  ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
-    ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined);
+    ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined) ||
+    ("claudeCodeSkipPermissions" in value && claudeCodeSkipPermissions === undefined);
 
   return { data, changed };
 }
@@ -136,6 +152,14 @@ function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefi
 
 function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptMode | undefined {
   return value === "on" || value === "off" ? value : undefined;
+}
+
+/**
+ * Only a real boolean survives. A truthy string from a hand-edited file must not read as
+ * consent to skip the permission gate, so anything else drops the key back to the default.
+ */
+function sanitizeClaudeCodeSkipPermissions(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,6 +1,6 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection } from "./agent/index.js";
+import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "./agent/index.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
 import { PersistentShellHost, shellSurface } from "./shell/index.js";
 import { preloadTerminalFallbackFonts } from "./shared/terminal-fallback-fonts.js";
@@ -19,7 +19,7 @@ const AGENT_OPERATION_TYPES = new Set(["agent"]);
 const terminalPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
-  settingsSections: [generalSettingsSection, agentSettingsSection],
+  settingsSections: [harnessSettingsSection, generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   railPanels: [globalShellPanel],
   expandedSurfaces: [shellSurface],
@@ -63,7 +63,7 @@ const terminalPlugin = definePlugin({
 });
 
 export const operationKinds = [agentOperationKind] as const;
-export const settingsSections = [generalSettingsSection, agentSettingsSection] as const;
+export const settingsSections = [harnessSettingsSection, generalSettingsSection, agentSettingsSection] as const;
 export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;
 

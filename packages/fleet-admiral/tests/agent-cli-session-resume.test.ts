@@ -47,7 +47,9 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", resumeSessionId]);
     expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
     expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
-    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--dangerously-skip-permissions"]));
+    // 주입 인자의 마지막 가족을 기준으로 잰다 — 바이패스 플래그는 옵트인일 때만 실리므로
+    // 순서 계약의 기준점이 될 수 없다.
+    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--allowedTools"]));
     // 이어 붙이는 세션은 id를 고를 수 없다 — 자식이 `--session-id`를 함께 받으면 거부한다.
     expect(injected.args).not.toContain("--session-id");
     expect(injected.session.sessionId).toBe(resumeSessionId);

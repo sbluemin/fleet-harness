@@ -89,6 +89,24 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("keeps claudeCodeSkipPermissions only as a real boolean", () => {
+    for (const skip of [true, false]) {
+      expect(sanitizeGlobalOptionsData({ version: 1, claudeCodeSkipPermissions: skip })).toEqual({
+        changed: false,
+        data: { version: 1, claudeCodeSkipPermissions: skip },
+      });
+    }
+    // 키가 없으면 게이트가 살아 있는 것이고, 그 부재는 결함이 아니다.
+    expect(sanitizeGlobalOptionsData({ version: 1 })).toEqual({ changed: false, data: { version: 1 } });
+    // 참으로 읽히는 값은 동의가 아니다 — 지우고 그 사실을 changed로 보고해 파일을 정리한다.
+    for (const value of ["true", 1, "on"]) {
+      expect(sanitizeGlobalOptionsData({ version: 1, claudeCodeSkipPermissions: value })).toEqual({
+        changed: true,
+        data: { version: 1 },
+      });
+    }
+  });
+
   it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,

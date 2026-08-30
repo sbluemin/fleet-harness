@@ -98,6 +98,14 @@ export interface AgentCliInjectionContext {
    * 실측(2.1.235, haiku): 턴당 총 입력 토큰 26,036 → 19,546.
    */
   readonly claudeCodeSystemPrompt?: "on" | "off";
+  /**
+   * 이 런치가 Claude Code의 승인 게이트를 건너뛸지. 생략은 `false`이며 플래그가 붙지 않는다 —
+   * 그때 자식은 자기 기본 권한 모드로 떠서 도구마다 터미널에서 승인을 묻는다.
+   *
+   * 이 축은 argv 표면에만 있다. SDK 표면(Chat Mode)은 값과 무관하게 bypass로 남는데,
+   * 그 이유는 `session.ts`의 `permissionMode` 옆에 적혀 있다.
+   */
+  readonly claudeCodeSkipPermissions?: boolean;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

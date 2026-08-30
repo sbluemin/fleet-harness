@@ -11,8 +11,29 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
     ...buildSettingsArgs(context.skillOverrides),
     ...buildSearchToolArgs(),
-    "--dangerously-skip-permissions",
+    ...buildPermissionArgs(context.claudeCodeSkipPermissions),
   ];
+}
+
+/**
+ * 두 방향 모두 명시한다. 끄는 쪽에서 플래그를 빼는 것만으로는 게이트가 서지 않기 때문이다 —
+ * 그때는 사용자·프로젝트 설정의 `permissions.defaultMode`가 그대로 살아난다.
+ *
+ * 실측(Claude Code 2.1.251, 격리 config): 사용자 설정에 `permissions.defaultMode:
+ * "bypassPermissions"`만 두고 플래그 없이 열면 init 메시지가 `permissionMode:
+ * "bypassPermissions"`로 온다. 같은 설정에 `--permission-mode default`를 더하면 `"default"`가
+ * 온다. 즉 플래그를 빼는 선택은 "게이트를 세운다"가 아니라 "주변 설정에 맡긴다"이고, 그러면
+ * 설정 화면은 끔이라고 말하면서 세션은 바이패스로 도는 조합이 생긴다.
+ *
+ * 이 자리는 Fleet이 자기 런치의 권한 모드를 정하는 곳이다. 바이패스를 강제하던 이전에도
+ * 주변 설정은 이미 무시되고 있었으므로, 반대 방향을 못박는 것은 좁히기가 아니라 같은 권한을
+ * 안전한 쪽으로 돌리는 것이다. 무엇을 승인할지 묻고 답을 받는 화면은 Claude Code TUI의 것이고,
+ * Fleet은 그것을 대신 그리지 않는다.
+ */
+function buildPermissionArgs(claudeCodeSkipPermissions: boolean | undefined): string[] {
+  return claudeCodeSkipPermissions === true
+    ? ["--dangerously-skip-permissions"]
+    : ["--permission-mode", "default"];
 }
 
 /**
@@ -22,10 +43,13 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
  *
  * `--tools`는 내장 집합을 통째로 **대체**하므로 두 도구를 되살리는 값이 나머지 열두
  * 개를 함께 지운다. 이름을 허용 목록에 올리는 쪽은 억제만 해제한다 — 측정: 무플래그
- * 12개, `--tools Grep,Glob` 2개, 이 플래그 14개. 바이패스 모드에서 허용 목록은 권한
- * 판정에 관여하지 않으니 여기서는 순수 가산이다.
+ * 12개, `--tools Grep,Glob` 2개, 이 플래그 14개.
  *
  * `--settings`의 `permissions.allow`로는 풀리지 않는다. 억제 해제는 이 플래그 전용이다.
+ *
+ * 바이패스 런치에서 이 목록은 권한 판정에 관여하지 않으므로 순수 가산이다. 승인 게이트가
+ * 살아 있는 런치에서는 허용 목록으로도 읽혀 이 두 이름만 무승인으로 지나간다 — 둘 다 읽기
+ * 전용이라 의도한 결과지만, "가산일 뿐"이라는 말이 한쪽 런치에서만 참이라는 것은 적어 둔다.
  */
 function buildSearchToolArgs(): string[] {
   return ["--allowedTools", "Grep,Glob"];
