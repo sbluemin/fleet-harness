@@ -28,9 +28,9 @@ describe("resetSurfacePanes arriving exemption", () => {
     expect(getPaneStoreSnapshot().focusedPaneId).toBeNull();
   });
 
-  it("keeps an arriving instance with its params and visibility", () => {
+  it("keeps an arriving primary with its params and visibility", () => {
     openPane({ paneId: "settings", params: { section: "connectivity" } });
-    resetSurfacePanes(new Map(), new Set(["settings"]));
+    resetSurfacePanes(new Map([["settings", { role: "primary" }]]), new Set(["settings"]));
 
     const [instance] = getPaneStoreSnapshot().rail;
     expect(instance?.paneId).toBe("settings");
@@ -51,6 +51,15 @@ describe("resetSurfacePanes arriving exemption", () => {
   it("drops a non-keepAlive stranger even when an arriving set exists", () => {
     openPane({ paneId: "stray-detail", params: {} });
     resetSurfacePanes(new Map(), new Set(["settings"]));
+
+    expect(getPaneStoreSnapshot().rail).toHaveLength(0);
+  });
+
+  it("does not resurrect a closed non-keepAlive detail through the arriving set", () => {
+    // 닫힘 동안은 이 정리가 돌지 않는다 — 재열림의 도착 면제가 detail까지 품으면, keepAlive
+    // 없이 닫힌 detail이 옛 params째 되살아난다(닫기=언마운트 계약 위반, 리뷰 적발).
+    openPane({ paneId: "repo-doc", params: { path: "old.md" } });
+    resetSurfacePanes(new Map([["repo-doc", { role: "detail" }]]), new Set(["repo-doc"]));
 
     expect(getPaneStoreSnapshot().rail).toHaveLength(0);
   });

@@ -39,7 +39,7 @@ import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDro
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
-import { SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
+import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/interaction.js";
 import {
@@ -221,6 +221,13 @@ export function OperationSearch({
     navigate({ pathname: "/operations", search: window.location.search });
     // 계약을 따르는 공급자는 열 자리를 값으로 돌려준다. 그 경우 부작용에 기대지 않고 여기서
     // 직접 착지시킨다 — 싱글턴을 쓰지 않는 외부 공급자는 이 경로가 없으면 결과를 열지 못한다.
+    // 폰에는 레일이 없다 — 설정 타깃은 모바일 표현(/settings 페이지)의 같은 섹션으로 보낸다.
+    if (target && getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
+      const section = target.params?.section;
+      navigate({ pathname: "/settings", search: section === undefined ? "" : `?section=${encodeURIComponent(section)}` });
+      closeOperationSearch();
+      return;
+    }
     if (target) {
       const owner = railBindings.find((binding) => binding.panes.some((pane) => pane.id === target!.paneId));
       const descriptor = owner?.panes.find((pane) => pane.id === target!.paneId);
@@ -387,6 +394,13 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
+        // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
+        // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
+        if (getViewModeSnapshot().effective === "mobile") {
+          previousFocusRef.current = null;
+          navigate("/settings");
+          break;
+        }
         // 설정은 라우트가 아니라 레일 표면이다 — 포커스는 표면이 받으므로 복원을 억제한다.
         previousFocusRef.current = null;
         // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
