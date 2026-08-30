@@ -160,7 +160,7 @@ describe("settings pane body", () => {
 
   it("reaches the migrated rail rows by their visible names", () => {
     renderPane({});
-    typeQuery("Panel opacity");
+    typeQuery("Right sidebar opacity");
 
     const labels = [...document.querySelectorAll(".settings-pane-result-label")].map((e) => e.textContent);
     expect(labels).toEqual(["Appearance"]);
@@ -209,15 +209,19 @@ describe("settings pane body", () => {
     });
   });
 
-  it("hosts the rail preferences in Appearance and resets opacity on slider double-click", () => {
+  it("hosts the rail opacity row in the Theme card below the panel fade and resets on double-click", () => {
     renderPane({});
 
     // 전면 해도 개편으로 push/overlay 스위치는 퇴역했다 — 겉모습에 남는 레일 취향은 불투명도뿐이다.
     expect(document.querySelector('.settings-pane [role="switch"][aria-label="Float over Map"]')).toBeNull();
+    // 전용 "레일 패널" 카드도 퇴역했다 — 행은 테마 카드 안, 비포커스 패널 흐리기 바로 아래에 선다(재가된 배치).
+    const themeSliders = [...document.querySelectorAll<HTMLInputElement>(".settings-pane .appearance-card .settings-slider")]
+      .map((input) => input.getAttribute("aria-label"));
+    expect(themeSliders).toEqual(["Unfocused panel fade", "Right sidebar opacity"]);
 
     act(() => setRailOverlayAlpha(65));
     renderPane({});
-    const slider = document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Panel opacity"]')!;
+    const slider = document.querySelector<HTMLInputElement>('.settings-pane .appearance-card input[aria-label="Right sidebar opacity"]')!;
     act(() => slider.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
     expect(getRailStoreSnapshot().overlayAlpha).toBe(RAIL_OVERLAY_ALPHA_DEFAULT);
   });
@@ -225,7 +229,7 @@ describe("settings pane body", () => {
   it("carries the rail preferences into the expanded Appearance section too", () => {
     renderPane({ section: "appearance" }, sectionPane);
 
-    expect(document.querySelector('.settings-expanded input[aria-label="Panel opacity"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Right sidebar opacity"]')).not.toBeNull();
     // 확대 사본은 준비된 스냅숏을 재사용한다 — 여기서 GET을 또 쏘면 그 응답이 사용자의
     // 낙관 저장 뒤에 도착해 옛 값으로 화면을 되덮는다(리뷰 적발).
     const settingsGets = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
