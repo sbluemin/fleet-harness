@@ -178,10 +178,13 @@ export const canvasEn = {
   "rail.chrome.toolsAria": "Activity tools",
   "rail.chrome.panelsAria": "Activity panels",
   "rail.chrome.resizePanel": "Resize {title} panel",
-  "rail.chrome.floatToggle": "Float panel over the Map",
+  "rail.chrome.settings": "Rail settings",
   "rail.chrome.floatLabel": "Float over Map",
   "rail.chrome.opacityAria": "Panel opacity",
+  "rail.chrome.resetWidth": "Reset panel width",
   "rail.chrome.closePanel": "Close {title}",
+  "rail.chrome.closePanelGeneric": "Close panel",
+  "rail.chrome.noPanel": "No panel open",
   "rail.theater.fallback": "Theater",
 
 } as const;
@@ -365,10 +368,13 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "rail.chrome.toolsAria": "Activity 도구",
   "rail.chrome.panelsAria": "Activity 패널",
   "rail.chrome.resizePanel": "{title} 패널 크기 조절",
-  "rail.chrome.floatToggle": "패널을 Map 위에 띄우기",
+  "rail.chrome.settings": "레일 설정",
   "rail.chrome.floatLabel": "Map 위에 띄우기",
   "rail.chrome.opacityAria": "패널 불투명도",
+  "rail.chrome.resetWidth": "패널 폭 초기화",
   "rail.chrome.closePanel": "{title} 닫기",
+  "rail.chrome.closePanelGeneric": "패널 닫기",
+  "rail.chrome.noPanel": "열린 패널 없음",
   "rail.theater.fallback": "Theater",
 
 };

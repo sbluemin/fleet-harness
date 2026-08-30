@@ -67,9 +67,11 @@ vi.mock("../core/client/src/rail/rail-registry.js", () => ({
 
 import { RightRail } from "../core/client/src/rail/right-rail.js";
 import {
+  closeRailPanel,
   getRailStoreSnapshot,
   requestRailPanelExtraWidth,
   setActiveRailPanel,
+  setRailChromeExpanded,
   setRailOverlayAlpha,
   setRailPanelBehavior,
 } from "../core/client/src/rail/rail-store.js";
@@ -89,6 +91,7 @@ beforeEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
   window.localStorage.clear();
   setActiveRailPanel("repository");
+  setRailChromeExpanded(true);
   requestRailPanelExtraWidth("repository", null);
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
@@ -111,16 +114,18 @@ afterEach(() => {
 describe("Right Rail overlay opacity slider", () => {
   it("renders no opacity slider or alpha variable in push mode", () => {
     renderRail();
+    openRailMenu();
 
-    expect(container.querySelector('input[aria-label="Panel opacity"]')).toBeNull();
+    expect(opacitySlider()).toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("");
   });
 
   it("renders the slider in overlay mode, applies changes, and resets on double-click", () => {
     setRailPanelBehavior("overlay");
     renderRail();
+    openRailMenu();
 
-    const slider = container.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]');
+    const slider = opacitySlider();
     expect(slider).not.toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
 
@@ -143,8 +148,9 @@ describe("Right Rail overlay opacity slider", () => {
   it("does not re-render the panel body while the opacity slider changes", () => {
     setRailPanelBehavior("overlay");
     renderRail();
+    openRailMenu();
 
-    const slider = container.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]')!;
+    const slider = opacitySlider()!;
     const renderCountBeforeChange = railPanelContextMock.renderCount;
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => {
@@ -443,86 +449,117 @@ describe("Right Rail panel width", () => {
   });
 });
 
-describe("Right Rail hover-reveal header", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("keeps the header hidden until a delayed pointer approach, then hides immediately on leave", () => {
+describe("Right Rail settings menu", () => {
+  it("puts the settings gear first in the icon column, split from the panel tabs by a divider", () => {
     renderRail();
-    const reveal = panelHeadReveal();
-    expect(reveal.classList.contains("is-revealed")).toBe(false);
-    expect(container.querySelector(".right-rail-panel-peek")).not.toBeNull();
+    const column = container.querySelector<HTMLElement>(".right-rail-icons")!;
+    const children = [...column.children];
 
-    dispatchSlotPointer("pointermove", { clientY: 104 });
-    expect(reveal.classList.contains("is-revealed")).toBe(false);
+    expect(children[0]).toBe(gearButton());
+    expect(children[1]?.className).toBe("right-rail-divider");
+    expect(children[1]?.getAttribute("role")).toBe("separator");
+    // 디바이더 다음부터가 패널 탭이다 — 레일을 손보는 일과 패널을 고르는 일의 경계.
+    expect(children[2]?.className).toBe("right-rail-tabs");
+  });
+
+  it("carries no hover-reveal chrome, so the body owns the whole slot", () => {
+    renderRail();
+
+    expect(container.querySelector(".right-rail-panel-head-reveal")).toBeNull();
+    expect(container.querySelector(".right-rail-panel-peek")).toBeNull();
+    expect(panelSlot().querySelector(".right-rail-panel-body")).not.toBeNull();
+  });
+
+  it("opens on click and closes on Escape, returning focus to the gear", () => {
+    renderRail();
+    expect(railMenu()).toBeNull();
+    expect(gearButton().getAttribute("aria-expanded")).toBe("false");
+
+    openRailMenu();
+    expect(railMenu()).not.toBeNull();
+    expect(gearButton().getAttribute("aria-expanded")).toBe("true");
+    expect(gearButton().classList.contains("is-open")).toBe(true);
 
     act(() => {
-      vi.advanceTimersByTime(119);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
-    expect(reveal.classList.contains("is-revealed")).toBe(false);
 
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(reveal.classList.contains("is-revealed")).toBe(true);
-
-    dispatchSlotPointer("pointermove", { clientY: 180 });
-    expect(reveal.classList.contains("is-revealed")).toBe(false);
+    expect(railMenu()).toBeNull();
+    expect(document.activeElement).toBe(gearButton());
   });
 
-  it("does not start a reveal from a touch pointermove", () => {
+  it("closes on a pointer press outside the menu", () => {
     renderRail();
-    dispatchSlotPointer("pointermove", { clientY: 104, pointerType: "touch" });
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
-  });
-
-  it("reveals from a touch on the top edge and hides when the body is tapped", () => {
-    renderRail();
-    dispatchSlotPointer("pointerdown", { clientY: 120, pointerType: "touch" });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
-
-    dispatchSlotPointer("pointerdown", { clientY: 240, pointerType: "touch" });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
-  });
-
-  it("keeps a touch reveal open through the lift so a second tap can reach the chrome", () => {
-    renderRail();
-    dispatchSlotPointer("pointerdown", { clientY: 120, pointerType: "touch" });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
-
-    dispatchSlotPointer("pointerleave", { clientY: 120, pointerType: "touch" });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+    openRailMenu();
 
     act(() => {
-      panelHeadReveal().dispatchEvent(new PointerEvent("pointerleave", {
-        bubbles: true,
-        cancelable: true,
-        clientX: 980,
-        clientY: 110,
-        pointerType: "touch",
-      }));
+      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    expect(railMenu()).toBeNull();
   });
 
-  it("resets the reveal when the active panel changes", () => {
+  it("toggles the float behavior from the checkbox item", () => {
     renderRail();
-    dispatchSlotPointer("pointermove", { clientY: 104 });
-    act(() => {
-      vi.advanceTimersByTime(120);
-    });
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+    openRailMenu();
 
-    act(() => setActiveRailPanel("codex"));
-    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
+    const floatItem = menuItem("Float over Map");
+    expect(floatItem.getAttribute("aria-checked")).toBe("false");
+
+    act(() => floatItem.click());
+
+    expect(getRailStoreSnapshot().panelBehavior).toBe("overlay");
+    expect(menuItem("Float over Map").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("resets a remembered panel width to the panel default and forgets the stored value", () => {
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 520 }));
+    renderRail();
+    expect(renderedPanelWidth()).toBe(520);
+
+    openRailMenu();
+    act(() => menuItem("Reset panel width").click());
+
+    expect(renderedPanelWidth()).toBe(360);
+    expect(window.localStorage.getItem("fleet-console.rail.panelWidths")).toBe("{}");
+    // 초기화는 메뉴를 닫고 톱니로 포커스를 돌려준다.
+    expect(railMenu()).toBeNull();
+  });
+
+  it("closes the active panel from the menu", () => {
+    renderRail();
+    openRailMenu();
+
+    act(() => menuItem("Close REPOSITORY").click());
+
+    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+    expect(railMenu()).toBeNull();
+  });
+
+  it("takes the floating menu down with the rail chrome, so no anchorless menu survives", () => {
+    renderRail();
+    openRailMenu();
+
+    act(() => setRailChromeExpanded(false));
+
+    // 톱니는 inert 안으로 들어가지만 포털된 메뉴는 문서에 남는다 — 함께 거둬야 한다.
+    expect(container.querySelector(".right-rail")!.hasAttribute("inert")).toBe(true);
+    expect(railMenu()).toBeNull();
+
+    act(() => setRailChromeExpanded(true));
+    expect(railMenu()).toBeNull();
+  });
+
+  it("disables the panel-scoped items and names the empty state when no panel is open", () => {
+    act(() => closeRailPanel());
+    renderRail();
+    openRailMenu();
+
+    expect(railMenu()!.querySelector(".right-rail-menu-label")!.textContent).toBe("No panel open");
+    expect(menuItem("Reset panel width").disabled).toBe(true);
+    expect(menuItem("Close panel").disabled).toBe(true);
+    // 플로팅은 레일 차원의 상시 취향이라 패널이 없어도 정할 수 있다.
+    expect(menuItem("Float over Map").disabled).toBe(false);
   });
 });
 
@@ -538,37 +575,31 @@ function panelSlot(): HTMLDivElement {
   return slot!;
 }
 
-function panelHeadReveal(): HTMLDivElement {
-  const reveal = container.querySelector<HTMLDivElement>(".right-rail-panel-head-reveal");
-  expect(reveal).not.toBeNull();
-  return reveal!;
+function gearButton(): HTMLButtonElement {
+  const gear = container.querySelector<HTMLButtonElement>(".right-rail-settings-btn");
+  expect(gear).not.toBeNull();
+  return gear!;
 }
 
-function dispatchSlotPointer(
-  type: "pointermove" | "pointerdown" | "pointerleave",
-  init: { readonly clientY: number; readonly pointerType?: string },
-): void {
-  const slot = panelSlot();
-  vi.spyOn(slot, "getBoundingClientRect").mockReturnValue({
-    x: 800,
-    y: 100,
-    top: 100,
-    left: 800,
-    right: 1160,
-    bottom: 700,
-    width: 360,
-    height: 600,
-    toJSON: () => ({}),
-  });
-  act(() => {
-    slot.dispatchEvent(new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      clientX: 980,
-      clientY: init.clientY,
-      pointerType: init.pointerType ?? "mouse",
-    }));
-  });
+/** 메뉴는 body로 포털된다 — 레일이 push 모드에서 자기 안의 팝업을 잘라내기 때문이다. */
+function railMenu(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>(".right-rail-menu");
+}
+
+function openRailMenu(): void {
+  act(() => gearButton().click());
+  expect(railMenu()).not.toBeNull();
+}
+
+function menuItem(labelPrefix: string): HTMLButtonElement {
+  const item = [...railMenu()!.querySelectorAll<HTMLButtonElement>(".right-rail-menu-item")]
+    .find((button) => (button.textContent ?? "").startsWith(labelPrefix));
+  expect(item, `menu item starting with "${labelPrefix}"`).toBeDefined();
+  return item!;
+}
+
+function opacitySlider(): HTMLInputElement | null {
+  return document.body.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]');
 }
 
 function panelBody(): HTMLDivElement {
