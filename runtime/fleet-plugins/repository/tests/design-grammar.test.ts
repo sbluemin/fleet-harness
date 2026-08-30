@@ -189,8 +189,8 @@ describe("Repository design grammar", () => {
     expect(css).not.toContain(".repository-scan-foot");
     expect(blockOf(".repository-ref-mark")).toContain("var(--brass-ink)");
     expect(blockOf(".repository-ref-hl")).toContain("var(--brass-ink)");
-    // .history-detail-pane은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 glass를 소비해야 한다.
-    const detailPanes = blocksOf(".history-detail-pane").filter((body) => body.includes("background"));
+    // .history-inspector-shelf은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 glass를 소비해야 한다.
+    const detailPanes = blocksOf(".history-inspector-shelf").filter((body) => body.includes("background"));
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 

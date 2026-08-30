@@ -720,7 +720,7 @@
 }
 
 .history-list-pane,
-.history-detail-pane {
+.history-inspector-shelf {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1084,7 +1084,7 @@
   color: var(--coral-ink);
 }
 
-.history-detail-pane {
+.history-inspector-shelf {
   grid-row: 1;
   grid-column: 1;
   display: grid;
@@ -1131,7 +1131,7 @@
 /* Segmented Commit Inspector — master graph/list remains above the detail. */
 .history-root { grid-template-rows: minmax(0, 1fr); }
 .history-list-pane { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--surface-rim); }
-.history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
+.history-inspector-shelf { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
 .history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
 .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto minmax(0, auto) 7ch auto; gap: 0 7px; }
@@ -1584,7 +1584,7 @@
   height: 100%;
 }
 
-.repository-ws-history > .history-detail-pane {
+.repository-ws-history > .history-inspector-shelf {
   grid-row: 3;
   background: var(--surface-glass);
 }
@@ -1718,7 +1718,7 @@
    경계는 WORKSPACE_DOCK_SPLIT_MIN_WIDTH(파일 150 + 디바이더 4 + diff 340)와 같아야 한다:
    더 좁은데도 좌우로 나누면 디바이더가 보이는데 클램프는 no-op인 구간이 생긴다.
    범위 문법을 쓰는 이유는 소수점 폭에서도 경계가 정확히 맞아떨어지게 하기 위함이다. */
-.history-detail-pane { container-type: inline-size; }
+.history-inspector-shelf { container-type: inline-size; }
 @container (width < 494px) {
   .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
   /* 세로 스택에서는 열 디바이더가 트랙 수를 어긋내므로 흐름에서 제거하고, 이음매는 테두리가 잇는다. */
