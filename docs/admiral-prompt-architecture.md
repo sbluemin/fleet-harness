@@ -55,16 +55,24 @@ one on-demand skill, the live Workflow tool, the `gateway_models` tool, and embe
 hooks. `fleet:delegation` owns semantic execution-graph decisions and opens with a
 preflight that requires a `gateway_models` call; the Workflow tool owns graph mechanics;
 `gateway_models` owns the identity roster and reports its own spellings and constraints.
-The host reads that roster itself. The command hook at
+The host reads that roster itself.
+
+Routing into the skill is owned by the skill's own `description`: it names the concrete
+triggers — calling an agent, using the dynamic Workflow tool, orchestrating parallel or
+multi-agent work, delegating work to another model — and instructs loading the skill
+before the first `Agent` or `Workflow` call. A per-turn UserPromptSubmit reminder
+(`remind`) used to carry that routing, but the sessions that failed to load the skill
+were failing on an abstract description, not on a missing injection, so the reminder was
+retired instead of kept as standing per-turn context.
+
+The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, injects the skill-and-roster
-routing tripwire, validates the resulting pin, and handles Workflow receipts. Every
-judgment is made from one stdin payload. One script serves three roles, selected by its
-first argument:
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, validates the resulting pin and
+handles Workflow receipts. Every judgment is made from one stdin payload. One script
+serves both roles, selected by its first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
-| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:delegation` and names `gateway_models` as the roster source; it does not repeat the pin mechanics. |
 | `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and a pin whose spelling this run cannot resolve. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 
@@ -76,7 +84,7 @@ verbose log. An earlier design injected the roster from a `PostToolUse` MCP hook
 that way and recorded a prompt-scoped receipt the dispatch gate validated against; it
 never fired once, no receipt was ever written, and the gate refused every gateway pin
 while the pin contract itself never reached the host. The roster now reaches the host
-through its own attention — the turn reminder and the skill preflight.
+through its own attention — the skill description's triggers and the skill preflight.
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
@@ -115,7 +123,7 @@ once per identity would put the same table in the session window twenty times ov
 
 Runtime state is read through direct owners:
 
-- Delegation gate and routing tripwire: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- Delegation gate and workflow receipt: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
 - On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
 - Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`

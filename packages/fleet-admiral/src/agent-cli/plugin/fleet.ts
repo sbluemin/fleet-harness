@@ -71,14 +71,14 @@ function compactEventHook(): FleetHookExec {
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unknown {
-  // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더하고,
-  // 위임·병렬 작업을 delegation 스킬과 로스터 조회로 보내는 트립와이어를 그 뒤에 붙인다.
-  // 스킬은 의미 정책만 소유하고, 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
+  // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더한다.
+  // 위임·병렬 작업을 delegation 스킬로 보내는 라우팅은 스킬 description의 When-to-use
+  // 트리거가 소유한다 — 매 턴 remind 주입은 description이 추상적이던 시절의 보완이었고,
+  // 상주 문맥만 늘려 제거했다. 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
   const userPromptSubmitExecs = [
     options.captureSessionHookExec,
     options.turnStartHookExec,
     options.autoNameHookExec,
-    modelGuardHook("remind"),
   ].filter((exec): exec is FleetHookExec => exec !== undefined);
   // Stop: 턴 종료 신호. 살아 있는 백그라운드 작업 목록은 같은 payload에 실려 오므로 별도 hook을 걸지 않고
   // 턴 종료 hook이 함께 실어 나른다 — 한 이벤트에 두 hook을 걸면 둘이 병렬로 떠서 턴 종료가 먼저 도착하고,
@@ -105,7 +105,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
   // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
   // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
   // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
-  // 호스트가 스킬의 preflight 지시와 매 턴 리마인더를 읽고 gateway_models로 직접 읽는다.
+  // 호스트가 스킬의 preflight 지시를 읽고 gateway_models로 직접 읽는다.
   const postToolUse = [{
     // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
     matcher: "Workflow",

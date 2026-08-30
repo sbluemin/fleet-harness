@@ -51,28 +51,13 @@ describe("gateway model guard — plugin version", () => {
   });
 });
 
-describe("gateway model guard — remind", () => {
-  // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 매 턴 주입은 세부 핀 규약 대신
-  // 위임·병렬 작업을 온디맨드 delegation 스킬로 라우팅하는 트립와이어만 맡는다.
-  it("routes delegated and parallel work through delegation on every turn", () => {
-    const { status, stdout } = run("remind", {});
+describe("gateway model guard — retired subcommands", () => {
+  // 위임 라우팅은 delegation 스킬 description이 소유한다. 옛 `remind` 주입을 다시 물려도
+  // 판정 없이 통과로 끝나야 한다 — 낡은 hooks.json이 남은 세션에서 턴을 오류로 물들이면 안 된다.
+  it("passes an unknown subcommand without judging or injecting", () => {
+    const { status, stdout } = run("remind", { hook_event_name: "UserPromptSubmit", prompt: "hello" });
     expect(status).toBe(0);
-    const parsed = JSON.parse(stdout) as {
-      hookSpecificOutput: { hookEventName: string; additionalContext: string };
-    };
-    expect(parsed.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("delegation or a parallel workload");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("fleet:delegation");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("before calling Agent or Workflow");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("gateway_models");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("session-scoped");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("Do not delegate implementation by default");
-    expect(parsed.hookSpecificOutput.additionalContext).not.toContain("opts.model");
-  });
-
-  // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 라우팅 트립와이어는 실려야 한다.
-  it("does not depend on the hook payload", () => {
-    expect(run("remind", { hook_event_name: "UserPromptSubmit", prompt: "hello" }).status).toBe(0);
+    expect(stdout).toBe("");
   });
 });
 

@@ -206,10 +206,9 @@ describe("agent CLI session resume and capture hooks", () => {
       }],
     }]);
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
+    // 위임 라우팅은 delegation 스킬 description이 소유한다 — UserPromptSubmit에는 호스트 훅만 남는다.
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
-      // 위임·병렬 요청을 delegation 스킬로 보내는 라우팅 트립와이어.
-      { args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "remind"], command: process.execPath, type: "command" },
     ]);
     expect(existsSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"))).toBe(false);
   });

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Fleet gateway model guard — 게이트웨이 세션의 위임 정책을 코드로 강제하는 단일 훅.
 //
-// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을 delegation
-// 스킬로 보내고 살아 있는 로스터를 직접 읽게 하는 짧은 트립와이어만 주입한다. 스킬은 의미 정책만
-// 소유하고, 핀에 쓸 수 있는 이름은 gateway_models 응답에만 있으며, 디스패치 직전의 이 훅은 그
-// 결과의 형식을 하드 게이트로 검증한다.
+// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않고, 매 턴 주입도 하지 않는다. 위임·병렬 작업을
+// delegation 스킬로 보내는 라우팅은 스킬 description의 When-to-use 트리거가 소유한다 — 한때
+// UserPromptSubmit `remind` 주입이 그 라우팅을 맡았으나, 스킬이 호출되지 않던 원인은 주입의
+// 부재가 아니라 추상적인 description이었으므로 상주 문맥만 남기는 주입은 제거했다. 스킬은 의미
+// 정책만 소유하고, 핀에 쓸 수 있는 이름은 gateway_models 응답에만 있으며, 디스패치 직전의 이
+// 훅은 그 결과의 형식을 하드 게이트로 검증한다.
 //
 // 로스터 주입을 훅으로 하지 않는 이유: Claude Code의 `if` 조건은 퍼미션 룰 문법으로 평가되고
 // 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 의존한다. Skill 도구에는 그 매처가 없어
@@ -12,12 +14,10 @@
 // 스킵된다. 스킬 전후에 훅을 걸어 문맥을 주입하는 설계는 그래서 성립하지 않는다 — 대신 호스트가
 // 직접 도구를 호출하게 한다.
 //
-// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 세 판정이 같은 어휘
-// (delegation 스킬 / 정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
-// 여러 곳에서 따로 늙는다.
+// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 두 판정이 같은 어휘
+// (정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가 여러 곳에서 따로 늙는다.
 //
 //   plugin-version <ver>   SessionStart               이 세션이 시작할 때 렌더된 플러그인 버전
-//   remind                 UserPromptSubmit           위임·병렬 작업을 스킬과 로스터 조회로 라우팅
 //   gate-delegation        PreToolUse Agent|Workflow   핀되지 않은 위임을 차단
 //   workflow-receipt       PostToolUse Workflow         접수증을 결과로 읽는 사고를 차단
 //
@@ -27,13 +27,6 @@
 import { readFileSync } from "node:fs";
 
 // 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
-const TURN_REMINDER = [
-  "If handling this request requires delegation or a parallel workload, invoke the fleet:delegation skill",
-  "before calling Agent or Workflow, and read the live roster with the fleet gateway_models tool in the same turn —",
-  "delegation identities are session-scoped, so one not taken from that reading will not resolve.",
-  "Do not delegate implementation by default; keep it on the host unless the skill's narrow mechanical exception applies.",
-].join(" ");
-
 const IN_FLIGHT_CONTRACT = [
   "This Workflow call returned a receipt, not a result. The run is still in flight and its result arrives later.",
   "End this turn with one status line: which surface, how many stages, and what you are waiting for.",
@@ -243,10 +236,6 @@ if (subcommand === "plugin-version") {
   const version = process.argv[3];
   if (version) emitContext("SessionStart", `Fleet plugin version: ${version}`);
   process.exit(0);
-}
-
-if (subcommand === "remind") {
-  emitContext("UserPromptSubmit", TURN_REMINDER);
 }
 
 const input = readHookInput();
