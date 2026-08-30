@@ -12987,8 +12987,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   z-index: var(--z-expanded-surface);
   /* 아레나 기준 인셋 — 전면 캔버스에서 박스 기준 12px는 표면 우측(Close·본문)을 부유 레일
      카드(z --z-rail) 밑에 넣어 히트를 먹인다(적대 리뷰 확정). 다른 캔버스 오버레이(모드
-     프레임·미니맵·덱)와 같은 --arena-* 채널을 소비한다. */
-  inset: calc(var(--arena-top, 0px) + var(--space-3)) calc(var(--arena-right, 0px) + var(--space-3)) calc(var(--arena-bottom, 0px) + var(--space-3)) calc(var(--arena-left, 0px) + var(--space-3));
+     프레임·미니맵·덱)와 같은 --arena-* 채널을 소비한다. 가로는 프레임(max(10px, 아레나 − 4px))을
+     따라 다가선다 — 프레임 안쪽 2px라는 종전 관계를 유지하는 max(12px, 아레나 − 2px). 크롬이
+     접힌 변은 max() 바닥이 기존 12px을 되살린다. */
+  inset: calc(var(--arena-top, 0px) + var(--space-3)) max(var(--space-3), var(--arena-right, 0px) - 2px) calc(var(--arena-bottom, 0px) + var(--space-3)) max(var(--space-3), var(--arena-left, 0px) - 2px);
   display: grid;
   /* 열 템플릿은 슬롯 가중치에서 인라인으로 들어온다(레이어 소유). */
   gap: 0;
