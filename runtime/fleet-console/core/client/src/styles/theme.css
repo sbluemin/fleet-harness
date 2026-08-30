@@ -240,15 +240,8 @@
   --glass-tint-terminal-floor: var(--glass-tint-terminal);
   --glass-tint-band: var(--surface-band);
   /* 패널 광원(pane-light) — 유리 뒤가 앱에서 가장 어두운 캔버스라 blur가 굴절시킬 빛이 없다.
-     그래서 유리는 자기 면에 계조를 한 겹 얹어 재질을 명도가 아니라 기울기로 말한다.
-     이 채널은 그 겹의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다.
-     겹의 **자리**는 극성이 정한다: 어두운 판 위에서는 위에서 내려오는 빛이고, 종이 위에서는
-     더할 빛이 없어 아래로 떨어지는 그늘이다. 색과 자리는 한 테마가 함께 정한다 — 둘이 갈리면
-     라이트에서 그늘이 위로 붙어 창이 뒤집힌 것처럼 읽힌다.
-     자리 채널(--glass-pane-anchor)은 여기에 값을 두지 않는다. 기본 자리는 **형상마다 다르고**
-     (패널 -12px, 떠 있는 캡션 -44px, 확대 Shell -48px) 그 값은 각 창의 구조라 components.css가
-     안다 — :root에서 하나로 선언하면 셋이 한 값으로 뭉개진다. 그래서 각 형상이 자기 기본값을
-     var() 폴백으로 들고, 자리를 뒤집어야 하는 테마만 이 채널을 선언해 셋을 함께 뒤집는다. */
+     그래서 다크 유리는 자기 위쪽에 광원을 하나 얹어 재질을 명도가 아니라 기울기로 말한다.
+     이 채널은 광원의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다. */
   --glass-pane-light: transparent;
   /* 캔버스 대기광 — 유리가 실제로 굴절할 것을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
   --canvas-ambience: var(--canvas-sea-core);
@@ -777,54 +770,11 @@
   --gauge-weight-warn: 100%;
   --gauge-weight-critical: 100%;
 
-  /* 라이트 캔버스는 계조 폭을 지고 있어야 한다 — 연출이 아니라 물리다. 패널 유리는 60% 틴트라
-     뒤에 있는 것의 40%만 통과시키므로, 책상이 평평하면 그 위의 유리도 평평해진다. 구 값(L 94~97.6,
-     실측 폭 2.38 L*)에서는 통과분이 1.0 L* 아래라 지각 문턱을 못 넘었고, 그래서 라이트 유리는
-     "패널 안 계조 0.00 L*"(다크 3.16 L*)로 측정됐다. 창(near)에서 방의 그늘(far)까지 폭을
-     6.8 L*로 벌려 통과분을 2.7 L*로 끌어올린다. 채도도 함께 올라가야 saturate()가 항등함수를
-     벗어난다(구 C ≤0.007 -> 0.018, 다크 0.0125~0.0216과 같은 예산). */
-  --canvas-abyss: oklch(92.4% 0.012 93);
-  --canvas-sea-core: oklch(95.8% 0.009 95);
-  --canvas-sea-near: oklch(96.4% 0.007 96);
-  --canvas-sea-mid: oklch(94.6% 0.011 94);
-  --canvas-sea-far: oklch(90.2% 0.018 91);
-
-  /* Map 지형 = DRAWING BOARD(창가의 제도판). 다크 3종이 어둠 속에서 저마다 등을 켜는 자리라면
-     (Instrument=가운데 심해 우물, Maritime=해도대 등불, Carbon=머리 위 작업등), 라이트의 빛은
-     인공 조명이 아니라 **좌상단 창에서 들어오는 주광**이다 — 빛의 자리를 가르는 넷째 답이자,
-     극성이 뒤집힌 테마가 가질 수 있는 유일하게 자연스러운 광원이다. 판은 흑연으로 격자를 그은
-     제도판이고, 빛의 반대쪽(우하단)은 방의 그늘로 떨어진다. 대각 심해(145deg)가 아니라 118deg를
-     쓰는 것은 창빛이 판을 가로질러 훑는 각이기 때문이다.
-     weave는 주선 2슬롯 + 보조선 2슬롯의 고정 어휘를 지킨다(줌 계산이 컴포넌트에 있다) — 제도판은
-     가로·세로 주선을 둘 다 쓰므로 다크 3종과 달리 두 주선 슬롯이 모두 찬다. 잉크는 흑연
-     (--ink-pearl)이다: 라이트에서 격자를 brass/aurora로 그으면 신호색이 배경으로 새고, 종이 위
-     저채도 회색은 인쇄된 제도지의 결과 같은 자리에 선다. */
-  --canvas-weave-major: 56px;
-  --canvas-weave-minor: 14px;
-  --canvas-weave-opacity: 0.5;
-  --canvas-field:
-    radial-gradient(62% 54% at 24% 16%, color-mix(in oklch, var(--canvas-ambience) 88%, transparent), transparent 62%),
-    radial-gradient(58% 62% at 88% 84%, color-mix(in oklch, var(--brass) 11%, transparent), transparent 48%),
-    radial-gradient(54% 58% at 8% 96%, color-mix(in oklch, var(--aurora) 6%, transparent), transparent 44%),
-    linear-gradient(118deg, var(--canvas-wash-near), var(--canvas-wash-mid) 54%, var(--canvas-wash-far));
-  --canvas-weave:
-    linear-gradient(color-mix(in oklch, var(--ink-pearl) 10%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in oklch, var(--ink-pearl) 10%, transparent) 1px, transparent 1px),
-    radial-gradient(circle, color-mix(in oklch, var(--ink-pearl) 13%, transparent) 1px, transparent 1.4px),
-    linear-gradient(transparent, transparent);
-  /* Tactical = 판을 비우고 창빛을 띠로 넓힌 제도판. 슬롯이 보여야 하는 모드라 계조를 위에서
-     아래 한 방향으로만 흘려, 어느 슬롯에 놓이든 같은 순서로 읽히게 한다. */
-  --canvas-field-formation:
-    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-ambience) 92%, transparent), transparent 34%),
-    radial-gradient(120% 70% at 50% 6%, color-mix(in oklch, var(--canvas-sea-core) 88%, transparent), transparent 74%),
-    radial-gradient(90% 46% at 50% 108%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 60%),
-    var(--canvas-abyss);
-  /* War Room = 창 쪽으로 기울인 판. 초점 모드는 빛의 자리로 테마를 가르고, Whites의 자리는
-     왼쪽 창이다 — 무대에 오른 한 건이 창가에 서고 나머지는 방의 그늘로 물러난다. */
-  --canvas-field-triage:
-    radial-gradient(64% 132% at -6% 50%, color-mix(in oklch, var(--canvas-ambience) 94%, transparent), transparent 72%),
-    radial-gradient(86% 70% at 96% 62%, color-mix(in oklch, var(--brass) 13%, transparent), transparent 64%),
-    var(--canvas-abyss);
+  --canvas-abyss: oklch(97.8% 0.003 100);
+  --canvas-sea-core: oklch(94% 0.006 98);
+  --canvas-sea-near: oklch(95.3% 0.005 99);
+  --canvas-sea-mid: oklch(96.5% 0.004 100);
+  --canvas-sea-far: oklch(97.6% 0.003 100);
 
   --provider-claude: oklch(54% 0.135 62);
   --provider-kimi: oklch(52% 0.135 315);
@@ -845,68 +795,15 @@
 
   --surface-glass: oklch(98% 0.004 100 / 70%);
   --surface-chrome: oklch(96% 0.004 100);
-  /* ── 라이트 유리 재료 ──────────────────────────────────────────────────
-     알파·블러 정책은 다크 3종과 **같은 값**이다: 패널 α60% + 무블러, 팝업 blur 24/12px,
-     Shell 20px, 팬 계조 한 겹. 라이트가 다르게 가지는 것은 그 정책의 **부호**뿐이다 —
-     --control-wash가 이미 못박아 둔 규칙("다크의 화이트 워시를 그대로 반전하면 백지 위
-     백워시라 지각 불가이므로, 라이트만 어두운 잉크를 낮은 알파로 얹는다")을 유리에도 그대로
-     적용한다. 그래서 다크가 위쪽에 광원을 얹는 자리에서 라이트는 아래쪽에 그늘을 얹는다
-     (--glass-pane-anchor).
-     틴트 명도는 종이보다 살짝 내린 스모크드 밀크 대역이다 — 백지 위 백유리는 지각 불가이고,
-     떠 있는 층이 종이와 분리되어야 부유가 읽힌다. 패널만은 종이 리터럴을 그대로 쓴다:
-     "패널이 최명면" 극성 계약이 알파 60%의 합성 결과에도 걸려 있고, 책상이 내려간 지금
-     그 합성값(둘레 L 94.6~96.4 위에서 96.7~97.6)이 크롬보다 높게 남는다. */
-  --glass-on-tint-strong: oklch(97.4% 0.008 96 / 58%);
-  --glass-on-tint-soft: oklch(97.8% 0.007 96 / 52%);
-  --glass-on-tint-pillar: oklch(98% 0.006 97 / 55%);
-  --glass-on-tint-raised: oklch(97% 0.008 96 / 52%);
-  --glass-on-tint-deep: oklch(97% 0.008 96 / 52%);
-  --glass-on-tint-abyss: oklch(97.6% 0.007 97 / 52%);
-  --glass-on-tint-chrome: oklch(95.4% 0.008 96 / 52%);
-  --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
-  --glass-on-tint-caption: oklch(97.4% 0.007 96 / 88%);
-  /* 팬 그늘 — 다크의 22% 광원과 같은 자리의 같은 한 겹이고, 부호만 반대다. 알파가 다크보다
-     낮은 것은 이 그늘이 60% 틴트 **아래**에 깔려 유효 알파가 0.4배로 줄기 때문이 아니라,
-     밝은 바탕에서 어두운 잉크의 명도 이동폭이 훨씬 크기 때문이다(같은 알파면 종이가 회색이 된다). */
-  --glass-on-pane-light: oklch(34% 0.02 92 / 12%);
-  --glass-on-tint-band: oklch(95.4% 0.008 96 / 52%);
-  --glass-on-backdrop-strong: blur(24px) saturate(1.7);
-  --glass-on-backdrop-soft: blur(12px) saturate(1.5);
-  --glass-on-backdrop-panel: none;
-  /* 터미널 필드도 다크와 같은 단일층 규약을 쓴다 — 필드는 비우고(transparent), 패널 루트의
-     유리 한 장이 필드와 거터를 함께 칠한다. terminal 틴트가 panel 틴트와 같은 값인 것도 다크와
-     같다: Operation은 루트 유리를 그대로 받고, 독립 Shell은 자기 면으로 같은 값을 칠한다.
-     floor는 유리 유효색의 **불투명 근사**다. xterm은 dim(SGR 2) 셀을 배경 워드의 비트로 싣고
-     WebGL RectangleRenderer가 그 사각형의 알파를 1로 강제하므로, RGB를 유리 톤으로 채워 두지
-     않으면 dim 거터가 순색 블록으로 드러난다. 값은 종이 60% 틴트가 패널이 실제로 놓이는 밝은
-     절반(L 94.6~96.4) 위에서 내는 합성값의 중앙이다 — 유리는 뒤에 오는 것에 따라 흔들리므로
-     일치가 아니라 근사다. */
-  --glass-on-tint-terminal: oklch(98.2% 0.004 100 / 60%);
-  --glass-on-tint-terminal-floor: oklch(97% 0.005 98);
-  --glass-on-tint-field: transparent;
-  --glass-on-backdrop-terminal: blur(20px) saturate(1.45);
-  --glass-on-rim: oklch(100% 0 0 / 88%);
-  /* 라이트 유리의 두께는 그늘 쪽이 말한다 — 흰 하이라이트는 본체 위로 얻을 여유가 거의 없지만
-     (종이 L98.2, 천장 100), 어두운 쪽으로는 전 대역이 비어 있다. */
-  --glass-on-bevel: oklch(34% 0.03 92 / 30%);
-  /* 밝은 바탕에서 부유를 만드는 것은 명도차가 아니라 그림자다. 색을 중성 회색에서 brass 쪽으로
-     기울여 먼지가 아니라 따뜻한 재질을 통과한 빛으로 읽힌다. */
-  --glass-on-lift: 0 2px 5px -1px oklch(34% 0.035 88 / 22%), 0 20px 46px -18px oklch(32% 0.04 88 / 30%);
-  --glass-on-sheen: linear-gradient(118deg, oklch(100% 0 0 / 72%) 0%, transparent 30%, transparent 74%, oklch(100% 0 0 / 34%) 100%);
-  /* 창가의 빛웅덩이 — Map 지형의 ambience 자리다. 게이트가 닫히면 sea-core로 떨어져 웅덩이만
-     사라지고 118deg 계조와 격자는 그대로 남는다(지형은 게이트 밖이다). */
-  --canvas-on-ambience: oklch(97.6% 0.005 98);
-  /* 팬 그늘의 자리 — 다크는 창 위, 라이트는 창 아래다. 라이트는 세 형상이 모두 같은 값을 쓴다:
-     그늘이 바닥에 걸리므로 떠 있는 캡션이 창의 꼭대기를 밀어 올려도 바닥은 움직이지 않는다.
-     그래서 한 줄이면 되고, 이 한 줄이 패널·떠 있는 캡션·확대 Shell 셋을 함께 뒤집는다. */
-  --glass-pane-anchor: calc(100% + 12px);
-
-  /* 라이트에서 패널은 종이다 — 크롬보다 밝은 최명면이어야 시선이 작업면에 남는다.
-     캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하므로 패널 둘레의
-     실측값으로 판단해야 한다 — 캔버스 base(--canvas-abyss)만 보고 차이를 읽으면 안 된다.
-     이 계약은 게이트 양쪽에서 각각 성립해야 한다: 닫히면 불투명 종이(98.2)가 책상 L 90.2~96.4
-     위에 서고, 열리면 같은 종이의 60% 틴트 합성(둘레 밝은 절반에서 96.7~97.6)이 유리 크롬
-     합성보다 높게 남는다. 프레임 톤(ink-deep 95.5%)으로 통일하면 두 경우 모두 창이 책상에 녹는다. */
+  /* 라이트(Whites)는 리퀴드 글래스를 받지 않는다 — 파일 하단 게이트가 이 테마를 제외하므로
+     유리 재료(--glass-on-, --canvas-on- 계열)를 여기 두지 않는다. 채널은 전부 base의 닫힌-게이트
+     기본값(불투명 언더레이·현행 틴트·무블러)으로 남고, 그 폴백이 곧 종이 위의 판독 계약이다.
+     백지 위 백유리는 애초에 지각 불가에 가깝고, 밝은 바탕에서 blur가 굴절시킬 명도차도 없다. */
+  /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.
+     캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하며 패널 둘레에서
+     L 94.9~96.6으로 실측된다. 그래서 프레임 톤(ink-deep 95.5%)으로 통일하면 패널이 책상과
+     같은 밝기가 되어 창이 배경에 녹는다 — 캔버스 base(--canvas-abyss 97.8%)만 보고 2.4 차가
+     남는다고 읽으면 안 된다. 종이 톤을 유지해 둘레 대비 +2.8을 확보한다. */
   --surface-panel: oklch(98.2% 0.004 100);
   /* 라이트는 얹히는 면이 아래로 물러난다 — 종이(98.2%) 위에서 ink-deep이 한 칸이고,
      ink-mid까지 내려가면 카드가 종이 위에 뚫린 구멍처럼 무거워진다. */
@@ -939,24 +836,20 @@
    설정 해제는 서버 주입(static-console)·부트 힌트(theme-boot)·store가 :root에
    data-glass="off"를 세운다. 블러를 그릴 수 없는 엔진은 @supports가 걸러내고,
    투명도 축소 선호는 아래 media 블록이 같은 특이도로 나중에 서서 기본값(불투명
-   언더레이)으로 되돌린다 — 세 게이트 중 하나만 닫혀도 유리는 꺼지고, 소비처는
+   언더레이)으로 되돌린다 — 네 게이트 중 하나만 닫혀도 유리는 꺼지고, 소비처는
    아무것도 몰라도 된다(채널 기본값이 곧 현행 계약이므로).
 
-   [테마 극성은 게이트가 아니다] 한때 라이트(Whites)를 여기서 통째로 제외했었다. 근거는
-   "백지 위 백유리는 지각 불가"였는데, 실측이 원인을 다른 곳으로 옮겼다 — 문제는 유리가 아니라
-   **책상**이었다. 60% 틴트는 뒤에 있는 것의 40%를 통과시키므로 유리의 세기는 전적으로 뒤에
-   무엇이 있느냐로 정해지는데, 당시 라이트 캔버스의 계조 폭은 2.38 L*(다크 5.51)이고 채도는
-   1/3이라 통과분이 지각 문턱 아래였다. 그 결과가 "패널 안 계조 0.00 L*"(다크 3.16)다.
-   Whites가 자기 Map 지형과 계조 폭을 갖게 된 지금 제외는 근거를 잃었고, 라이트는 다른 테마와
-   같은 방식으로 이 게이트를 통과한다. 극성이 정하는 것은 게이트가 아니라 **재료의 부호**이며,
-   그 부호는 각 테마 블록의 리터럴이 진다(--glass-on-pane-light, --glass-pane-anchor).
+   넷째 게이트는 테마 극성이다. 라이트(Whites)는 유리를 아예 받지 않는다 — 종이 위
+   백유리는 지각 불가에 가깝고, 뒤가 이미 밝아 blur가 굴절시킬 명도차가 없다. 이 제외는
+   설정값과 무관하다: 저장된 선호는 다크로 돌아갈 때를 위해 그대로 보존되고(그래서
+   라이트에서도 data-glass 속성은 사용자의 선호 그대로다), 화면을 닫는 일은 여기서만 한다.
 
-   제외 목록을 다시 쓸 일이 생기면 반드시 **선택자 목록** :not(A, B) 한 겹으로 쓴다.
-   :not(A):not(B)로 사슬을 걸면 특이도가 (0,1,0)에서 (0,2,0)으로 올라가고, 아래 축소-투명도
-   되돌림 블록이 같은 특이도로 나중에 서서 이기던 계약이 깨진다(@media는 특이도를 더하지 않는다).
-   두 선택자는 언제나 글자까지 같아야 하며, 그 대칭은 계약 테스트가 못박는다. */
+   제외는 반드시 **선택자 목록** :not(A, B) 한 겹으로 쓴다. :not(A):not(B)로 사슬을 걸면
+   특이도가 (0,2,0)에서 (0,3,0)으로 올라가고, 아래 축소-투명도 되돌림 블록이 같은 특이도로
+   나중에 서서 이기던 계약이 깨진다(@media는 특이도를 더하지 않는다). 두 선택자는 언제나
+   글자까지 같아야 하며, 그 대칭은 계약 테스트가 못박는다. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root:not([data-glass="off"]) {
+  :root:not([data-glass="off"], [data-theme="whites"]) {
     --glass-underlay: var(--glass-on-underlay);
     --glass-tint-strong: var(--glass-on-tint-strong);
     --glass-tint-soft: var(--glass-on-tint-soft);
@@ -980,16 +873,15 @@
     --glass-backdrop-terminal: var(--glass-on-backdrop-terminal);
     --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
     --glass-rim: var(--glass-on-rim);
-    /* 베벨·부양은 라이트에만 재료가 있다 — 밝은 바탕에서 부유를 만드는 것은 명도차가 아니라
-       그늘이기 때문이다. fallback이 곧 현행 계약이라 재료가 없는 다크 3종은 이 두 줄이 있어도
-       한 픽셀도 바뀌지 않는다. */
-    --glass-bevel: var(--glass-on-bevel, transparent);
-    --glass-lift: var(--glass-on-lift, var(--shadow-floating));
+    /* 베벨·부양·워시·블룸 채널은 여기서 싣지 않는다 — 재료를 가진 테마가 라이트뿐이었고,
+       라이트가 게이트에서 빠지면서 재료가 사라졌다. 채널 자체는 base에 그대로 살아 있으니
+       (--glass-bevel: transparent 외 6종), 나중에 어느 테마가 재료를 갖게 되면 그때
+       테마 블록에 리터럴을 두고 이 자리에 한 줄을 되살리면 된다. */
     --glass-sheen: var(--glass-on-sheen);
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-glass="off"]) {
+    :root:not([data-glass="off"], [data-theme="whites"]) {
       --glass-underlay: var(--ink-deep);
       --glass-tint-strong: var(--surface-glass-strong);
       --glass-tint-soft: var(--surface-glass);
@@ -1013,8 +905,6 @@
       --glass-backdrop-terminal: none;
       --glass-backdrop-scrim: none;
       --glass-rim: transparent;
-      --glass-bevel: transparent;
-      --glass-lift: var(--shadow-floating);
       --glass-sheen: linear-gradient(transparent, transparent);
     }
   }
