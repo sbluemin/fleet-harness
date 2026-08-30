@@ -2,6 +2,8 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-c
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { PaneBody, usePaneContext } from "./pane-body.js";
+import { openExpandedSurface } from "../expanded-surface/store.js";
+import { closePane, openPane } from "./pane-store.js";
 import { usePaneIndex } from "./pane-registry.js";
 
 /**
@@ -88,6 +90,7 @@ function ExpandedPaneContent({
   readonly descriptor: import("@fleet-console/sdk/pane").PaneDescriptor;
   readonly ctx: ExpandedSurfaceContext;
 }) {
+  const index = usePaneIndex();
   const paneCtx = usePaneContext({
     descriptor,
     mount: "expanded",
@@ -104,6 +107,18 @@ function ExpandedPaneContent({
     theme: ctx.theme,
     onClose: () => ctx.close(),
     onReplaceParams: (next) => ctx.replaceParams({ ...ctx.params, ...next }),
+    // 확대된 페인도 다른 페인을 열 수 있어야 한다 — 같은 `PanesCapability`가 두 마운트에
+    // 모두 실리는데 한쪽만 무응답이면 계약이 마운트에 따라 달라진다.
+    onOpen: (request) => {
+      const target = index.get(request.paneId);
+      const mount = request.mount ?? target?.mounts[0] ?? "rail";
+      if (mount === "expanded") {
+        openExpandedSurface({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...request.params, paneId: request.paneId } });
+        return;
+      }
+      openPane(request);
+    },
+    onCloseOther: (paneId) => { closePane(paneId, { keepAlive: index.get(paneId)?.keepAlive === true }); },
   });
   return <PaneBody descriptor={descriptor} ctx={paneCtx} />;
 }

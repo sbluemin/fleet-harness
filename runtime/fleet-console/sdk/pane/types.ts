@@ -131,7 +131,14 @@ export interface PaneContext {
   readonly role: PaneRole;
   /** 지금 이 페인이 서 있는 마운트. 확대·축소로 바뀐다. */
   readonly mount: PaneMount;
-  /** 실제로 놓인 폭(px). 분할선 드래그·창 리사이즈에 따라 갱신된다. */
+  /**
+   * 이 페인에 배정된 폭(px) — 서술자가 말한 값이거나 호스트가 정한 초기 폭이다.
+   *
+   * **매 프레임 측정한 실측값이 아니다.** 렌더마다 실제 폭을 실어 나르면 컨텍스트가 계속
+   * 새로 만들어져 본문이 다시 그려지므로, 폭에 반응하는 레이아웃은 이 숫자가 아니라 컨테이너
+   * 쿼리로 짠다(호스트가 본문에 `container-type: inline-size`를 건다). 이 값은 초기 판단과
+   * 로깅용 힌트로 쓴다.
+   */
   readonly width: number;
   /**
    * 지금 화면에 보이는가. `keepAlive` 페인은 닫힌 뒤에도 렌더되지만 이 값이 false가 된다.

@@ -57,11 +57,14 @@ export const RailSurface = memo(function RailSurface({
 
   // 엔트리를 갈아타면 이전 표면의 열은 사라져야 한다. 비우지 않으면 돌아왔을 때 옛 detail이
   // 옛 params 그대로 되살아나고, keepAlive를 선언하지 않은 페인까지 스토어에 남는다.
+  //
+  // 남길 것은 **각 페인 자신의 서술자**가 정한다. 새로 선 엔트리의 목록으로 판단하면 떠나는
+  // 엔트리가 지키던 터미널·초안이 그 자리에서 사라진다 — keepAlive가 약속한 바로 그것이.
   const entryId = binding.entry.id;
+  const paneIndexForReset = usePaneIndex();
   useEffect(() => {
-    const keepAliveIds = new Set(binding.panes.filter((pane) => pane.keepAlive === true).map((pane) => pane.id));
-    resetSurfacePanes(keepAliveIds);
-  }, [binding.panes, entryId]);
+    resetSurfacePanes(paneIndexForReset);
+  }, [entryId, paneIndexForReset]);
 
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],

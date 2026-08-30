@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -73,17 +73,19 @@ export function usePaneContext({
   // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. cleanup이 없으면 signal은 영원히
   // 열린 채로 남아, 닫힌 페인의 요청과 watcher가 다음 페인 위에 착지한다.
   //
-  // 상태로 드는 이유는 StrictMode다. 개발 빌드는 setup → cleanup → setup을 한 번 예행하는데,
-  // ref에 든 controller를 그대로 재사용하면 두 번째 setup이 이미 abort된 signal을 물려받아
-  // 본문의 첫 fetch가 태어나자마자 죽는다. 죽은 것을 만나면 새로 만들어 다시 그린다.
-  const [controller, setController] = useState(() => new AbortController());
+  // 까다로운 쪽은 StrictMode다. 개발 빌드는 setup → cleanup → setup을 한 번 예행하고, 그
+  // 순환은 렌더 사이에 일어나지 않는다. 그래서 죽은 controller를 상태로 교체하면 늦는다 —
+  // 교체가 반영되기 전에 본문의 `[]` effect가 이미 재시작해 abort된 signal을 쓴다. cleanup이
+  // 그 자리에서 다음 것을 세우고, 컨텍스트는 값이 아니라 getter로 지금 살아 있는 것을 읽는다.
+  const controllerRef = useRef<AbortController | null>(null);
+  controllerRef.current ??= new AbortController();
   useEffect(() => {
-    if (controller.signal.aborted) {
-      setController(new AbortController());
-      return;
-    }
-    return () => { controller.abort(); };
-  }, [controller]);
+    const controller = controllerRef.current!;
+    return () => {
+      controller.abort();
+      controllerRef.current = new AbortController();
+    };
+  }, []);
 
   const handleOpen = useCallback((request: PaneOpenRequest) => { onOpen?.(request); }, [onOpen]);
 
@@ -108,7 +110,7 @@ export function usePaneContext({
       replaceParams: onReplaceParams,
       isOpen: (paneId) => isOpen?.(paneId) ?? (paneId === descriptor.id && visible),
     },
-    signal: controller.signal,
+    get signal() { return controllerRef.current!.signal; },
     ...(requestExtraWidth === undefined ? {} : { requestExtraWidth }),
     language,
     theme,

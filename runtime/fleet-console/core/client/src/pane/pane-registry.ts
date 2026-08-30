@@ -162,14 +162,23 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
   }, [panes, railEntries, railPanels, side]);
 }
 
-/** 모든 페인을 id로 찾는 색인. `panes.open`이 이름만 받아 여는 근거다. */
+/**
+ * 모든 페인을 id로 찾는 색인. `panes.open`이 이름만 받아 여는 근거다.
+ *
+ * 레일 바인딩이 아니라 레지스트리에서 만든다 — 계약이 독립 등록을 허용하므로, 어느 레일
+ * 엔트리에도 실리지 않은 페인(확대 전용이거나 다른 페인만 여는 detail)이 존재할 수 있고
+ * 그것도 주소로 찾혀야 한다. 옛 패널에서 투영된 것도 함께 실어 두 계약을 한 색인에 둔다.
+ */
 export function usePaneIndex(): ReadonlyMap<string, PaneDescriptor> {
+  const registry = usePluginRegistry();
   const bindings = useRailEntries();
+  const registered = registry.panes ?? [];
   return useMemo(() => {
     const index = new Map<string, PaneDescriptor>();
     for (const binding of bindings) {
       for (const pane of binding.panes) index.set(pane.id, pane);
     }
+    for (const pane of registered) if (!index.has(pane.id)) index.set(pane.id, pane);
     return index;
-  }, [bindings]);
+  }, [bindings, registered]);
 }

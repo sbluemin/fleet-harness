@@ -18,6 +18,13 @@ import {
 import { closeRailPanel, getRailStoreSnapshot, setRailChromeExpanded } from "../core/client/src/rail/rail-store.js";
 import { getState, setState } from "../core/client/src/store.js";
 
+// 팔레트가 페인 레지스트리를 읽으므로 그 모듈을 대역으로 세운다. 실물을 태우면
+// plugin-registry가 번들러 가상 모듈(virtual:fleet-plugins)을 끌어와 해석 단계에서 막힌다.
+vi.mock("../core/client/src/pane/pane-registry.js", () => ({
+  useRailEntries: () => [],
+  usePaneIndex: () => new Map(),
+}));
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;

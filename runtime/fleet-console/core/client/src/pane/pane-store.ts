@@ -106,12 +106,19 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
   });
 }
 
-/** 엔트리를 갈아탈 때 그 표면의 페인들을 정리한다. keepAlive만 살아남는다. */
-export function resetSurfacePanes(keepAliveIds: ReadonlySet<string>): void {
+/**
+ * 엔트리를 갈아탈 때 그 표면의 페인들을 정리한다. `keepAlive`를 선언한 것만 주차된 채 남는다.
+ *
+ * 판단 근거로 서술자 색인을 받는 이유는, 남길지를 정하는 것이 새로 선 엔트리가 아니라 그
+ * 페인 자신이기 때문이다. 새 엔트리의 목록으로 거르면 떠나는 쪽이 지키던 상태가 사라진다.
+ */
+export function resetSurfacePanes(descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean }>): void {
   const rail = state.rail
-    .filter((instance) => keepAliveIds.has(instance.paneId))
-    .map((instance) => ({ ...instance, visible: false }));
-  if (rail.length === state.rail.length && rail.every((instance, index) => instance === state.rail[index])) return;
+    .filter((instance) => descriptors.get(instance.paneId)?.keepAlive === true)
+    .map((instance) => (instance.visible ? { ...instance, visible: false } : instance));
+  const unchanged = rail.length === state.rail.length
+    && rail.every((instance, index) => instance === state.rail[index]);
+  if (unchanged && state.focusedPaneId === null) return;
   emit({ rail, focusedPaneId: null });
 }
 
