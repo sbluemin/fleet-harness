@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -113,10 +113,20 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const bindings = useRailEntries();
-  // 페인을 세우는 엔트리와 그냥 실행하는 엔트리. 옛 판별 유니온이 하던 구분을, 이제는
-  // "이 엔트리가 세우는 페인이 있는가"라는 사실 하나가 대신한다(pane 계약, #957).
+  // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
+  // 사실 하나가 진다(pane 계약, #957). 고정 스택·폭 계산은 페인 엔트리만 본다.
   const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
-  const actionEntries = bindings.filter((binding) => binding.panes.length === 0);
+  // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
+  // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
+  // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
+  const pluginRuns: { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] }[] = [];
+  for (const binding of bindings) {
+    if (binding.core) continue;
+    const kind = binding.panes.length > 0 ? "panes" : "action";
+    const tail = pluginRuns[pluginRuns.length - 1];
+    if (tail !== undefined && tail.kind === kind) tail.bindings.push(binding);
+    else pluginRuns.push({ kind, key: binding.entry.id, bindings: [binding] });
+  }
   // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
   const { instances: openSurfaces } = useExpandedSurfaces();
   const openSurfaceIds = useMemo(
@@ -348,22 +358,29 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
             <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={pinnedIds.includes(entry.id)} />
           ))}
         </div>
-        {actionEntries.map(({ entry }) => (
-          <RailIcon
-            key={entry.id}
-            entry={entry}
-            context={baseCtx}
-            language={language}
-            // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
-            // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
-            isActive={entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)}
-          />
-        ))}
-        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-          {paneEntries.filter((binding) => !binding.core).map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={pinnedIds.includes(entry.id)} />
+        {pluginRuns.map((run) => run.kind === "action"
+          ? (
+            <Fragment key={run.key}>
+              {run.bindings.map(({ entry }) => (
+                <RailIcon
+                  key={entry.id}
+                  entry={entry}
+                  context={baseCtx}
+                  language={language}
+                  // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
+                  // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
+                  isActive={entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)}
+                />
+              ))}
+            </Fragment>
+          )
+          : (
+            <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+              {run.bindings.map(({ entry }) => (
+                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={pinnedIds.includes(entry.id)} />
+              ))}
+            </div>
           ))}
-        </div>
       </nav>
     </div>
   );

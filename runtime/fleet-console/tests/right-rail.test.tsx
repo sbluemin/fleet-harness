@@ -42,7 +42,15 @@ const CORE_PANELS: Record<string, unknown>[] = [
   },
 ];
 
+/* 페인 엔트리 사이에 동작 엔트리를 끼워 둔다 — 프로덕션의 Codex(페인)·Shell(동작) 이웃처럼,
+   합성 순서가 렌더에서 종류별로 뒤집히지 않는다는 계약을 이 배열 순서가 검증한다. */
 const PLUGIN_FIXTURES: Record<string, unknown>[] = [
+  {
+    id: "file-explorer",
+    title: "FILES",
+    icon: "F",
+    render: () => null,
+  },
   {
     id: "shell-action",
     title: "SHELL",
@@ -57,9 +65,9 @@ const PLUGIN_FIXTURES: Record<string, unknown>[] = [
     activate: () => undefined,
   },
   {
-    id: "file-explorer",
-    title: "FILES",
-    icon: "F",
+    id: "ledger",
+    title: "LEDGER",
+    icon: "L",
     render: () => null,
   },
 ];
@@ -437,6 +445,17 @@ describe("Right Rail occupied width report", () => {
     act(() => closeRailPanel("repository"));
     renderRail();
     expect(getRailStoreSnapshot().railOccupiedPx).toBe(44);
+  });
+});
+
+describe("Right Rail icon order", () => {
+  it("keeps plugin icons in composition order — actions stand in place instead of jumping ahead of panel toggles", () => {
+    renderRail();
+    const labels = [...container.querySelectorAll<HTMLButtonElement>(".right-rail-icons .right-rail-ico")]
+      .map((button) => button.getAttribute("aria-label"));
+    // 톱니(첫 아이콘)를 뺀 나머지가 합성 순서 그대로다 — 코어 페인들 뒤에 플러그인들이
+    // 등록 순서로 선다. 동작(SHELL·PLAIN)이 페인들 앞으로 끌려 나오면 이 목록이 깨진다.
+    expect(labels.slice(1)).toEqual(["REPOSITORY", "CODEX", "ALERTS", "FILES", "SHELL", "PLAIN", "LEDGER"]);
   });
 });
 
