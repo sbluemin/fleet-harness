@@ -261,7 +261,8 @@ describe("rail search fan-out", () => {
     });
 
     expect(getExpandedSurfaceState().instances.map((instance) => instance.surfaceId)).toEqual(["repository"]);
-    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+    // 레일에 고정되지도 않아야 한다 — 세울 페인이 없는 엔트리를 고정하면 빈 섹션이 선다.
+    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual([]);
   });
 
   it("keeps matching Operations above panel groups", async () => {

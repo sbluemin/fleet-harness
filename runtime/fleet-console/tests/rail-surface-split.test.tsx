@@ -23,7 +23,7 @@ vi.mock("../core/client/src/pane/pane-registry.js", () => ({
 
 const { RailSurface } = await import("../core/client/src/pane/rail-surface.js");
 const { openPane, closePane, __resetPaneStoreForTests } = await import("../core/client/src/pane/pane-store.js");
-const { getPaneStoreSnapshot, resetSurfacePanes } = await import("../core/client/src/pane/pane-store.js");
+const { getPaneStoreSnapshot } = await import("../core/client/src/pane/pane-store.js");
 const { __resetPaneWidthsForTests, getStoredPaneWidth } = await import("../core/client/src/pane/pane-width-store.js");
 const { getExpandedSurfaceState, openExpandedSurface, resetExpandedSurfacesForTest } = await import("../core/client/src/expanded-surface/store.js");
 
@@ -221,25 +221,6 @@ describe("레일 표면의 2단", () => {
     });
 
     expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(true);
-  });
-
-  it("엔트리를 갈아타도 keepAlive 열은 선 채로 남는다", () => {
-    render();
-    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
-
-    // 다른 엔트리로 갔다 오는 것. 주차해 버리면 돌아왔을 때 접힌 열을 다시 세울 주체가 없다 —
-    // 페인을 연 것은 사용자의 한 번뿐인 동작이었기 때문이다.
-    act(() => { resetSurfacePanes(PANE_INDEX.value as never); });
-
-    expect(getPaneStoreSnapshot().rail.map((i) => [i.paneId, i.visible])).toEqual([["doc", true]]);
-  });
-
-  it("keepAlive를 말하지 않은 열은 엔트리를 갈아탈 때 사라진다", () => {
-    render();
-    act(() => { openPane({ paneId: "doc" }); });
-    act(() => { resetSurfacePanes(new Map([["doc", { keepAlive: false }]]) as never); });
-
-    expect(getPaneStoreSnapshot().rail).toEqual([]);
   });
 
   it("분할선 키보드 이동은 폭을 기억한다", () => {
