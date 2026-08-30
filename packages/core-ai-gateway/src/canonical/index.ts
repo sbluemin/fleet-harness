@@ -277,11 +277,18 @@ export interface CanonicalReasoningOutputItem {
   encrypted_content?: string;
 }
 
+export interface CanonicalCompactionOutputItem {
+  id?: string;
+  type: "compaction";
+  encrypted_content: string;
+}
+
 export type CanonicalOutputItem =
   | CanonicalMessageOutputItem
   | CanonicalFunctionCallOutputItem
   | CanonicalWebSearchCallOutputItem
-  | CanonicalReasoningOutputItem;
+  | CanonicalReasoningOutputItem
+  | CanonicalCompactionOutputItem;
 
 export type CanonicalResponseEvent =
   | {

@@ -12,6 +12,7 @@ export const assetBundle: AssetPluginBundle = {
 };
 
 const MODEL_GUARD_SCRIPT_NAME = "fleet-gateway-model-guard.mjs";
+const COMPACT_EVENT_SCRIPT_NAME = "fleet-compact-event.mjs";
 
 /** 스냅숏에 들어갈 파일 하나. relativePath는 `/` 구분의 스냅숏 루트 상대 경로다. */
 export interface AssetPluginFile {
@@ -36,6 +37,9 @@ export function buildAssetPluginFiles(
   const guardAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
   if (!guardAsset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${MODEL_GUARD_SCRIPT_NAME}`, content: guardAsset.content });
+  const compactAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === COMPACT_EVENT_SCRIPT_NAME);
+  if (!compactAsset) throw new Error(`Missing embedded ${COMPACT_EVENT_SCRIPT_NAME} hook asset`);
+  files.push({ relativePath: `hooks/${COMPACT_EVENT_SCRIPT_NAME}`, content: compactAsset.content });
   files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, version)) });
   for (const file of buildGatewayAgentFiles(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)) {
     files.push({ relativePath: `agents/${file.fileName}`, content: file.content });
@@ -56,6 +60,13 @@ function modelGuardHook(subcommand: string, ...args: readonly string[]): FleetHo
   return {
     command: process.execPath,
     args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand, ...args],
+  };
+}
+
+function compactEventHook(): FleetHookExec {
+  return {
+    command: process.execPath,
+    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${COMPACT_EVENT_SCRIPT_NAME}`],
   };
 }
 
@@ -128,6 +139,14 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
           hooks: [claudeCommandHook(options.backgroundReportHookExec)],
         }],
       } : {}),
+      PreCompact: [{
+        matcher: "manual|auto",
+        hooks: [claudeCommandHook(compactEventHook())],
+      }],
+      PostCompact: [{
+        matcher: "manual|auto",
+        hooks: [claudeCommandHook(compactEventHook())],
+      }],
     },
   };
 }

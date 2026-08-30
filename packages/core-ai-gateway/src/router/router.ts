@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   AnthropicMessagesGateway,
   ContextWindowExceededError,
@@ -8,11 +10,14 @@ import {
 } from "../upstream/anthropic/native.js";
 import { claudeCodeHarnessProfile } from "../downstream/harness/claude-code/profile.js";
 import type { GatewayHarnessProfile } from "../downstream/harness/contract.js";
+import { translateAnthropicRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import { AntigravityGenerateContentAdapter } from "../upstream/antigravity/generate-content/adapter.js";
 import { resolveAntigravityCredentials } from "../upstream/antigravity/credentials.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
+import { compactCodexConversation } from "../upstream/codex/compaction.js";
+import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
 import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
 import {
   CursorAdapter,
@@ -35,6 +40,12 @@ import {
 import type { GatewayModel } from "../models.js";
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
+import {
+  hasClaudeCompactContinuation,
+  isClaudeCompactSummaryRequest,
+  stripClaudeCompactContinuation,
+  stripClaudeCompactPrompt,
+} from "../downstream/harness/claude-code/context.js";
 import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
@@ -81,7 +92,7 @@ export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
  * `/v1/messages`를 떼면 남는 마지막 조각이 `grok`이다. 마운트 경로에 우연히 같은 이름이
  * 들어 있어도 그것은 접미 바로 앞이 아니므로 선택자가 되지 않는다.
  */
-const WIRE_ENDPOINT_SUFFIXES = ["/v1/messages", "/v1/models"] as const;
+const WIRE_ENDPOINT_SUFFIXES = ["/v1/messages", "/v1/models", "/v1/compact-events"] as const;
 
 /**
  * `/v1/messages` 본문의 상한.
@@ -195,6 +206,10 @@ export interface AiGatewayRouteDeps {
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
+  /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
+  readonly compactionStore?: ClaudeCodexCompactionStore;
+  /** Process-local hook credential injected into Fleet-launched Claude children. */
+  readonly compactionHookToken?: string;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
@@ -280,6 +295,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
   // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
   const withheldSkills = new Set<string>();
+  // Claude Code may retry the same summary request while the first compaction is still
+  // in flight. One provider checkpoint per session is the semantic operation; duplicate
+  // callers await it rather than spending and racing a second checkpoint into storage.
+  const codexCompactionFlights = new Map<
+    string,
+    ReturnType<typeof compactCodexConversation>
+  >();
   // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
   // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
   const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
@@ -337,6 +359,44 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     if (servedHarnesses.some((profile) => profile.probePaths.some((probePath) => pathname.endsWith(probePath)))) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end("{}");
+      return true;
+    }
+    if (pathname.endsWith("/v1/compact-events")) {
+      if (req.method !== "POST") {
+        writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
+        return true;
+      }
+      const hookToken = req.headers["x-fleet-compact-token"];
+      if (!deps.compactionStore || !deps.compactionHookToken || hookToken !== deps.compactionHookToken) {
+        writeAnthropicError(res, 401, "authentication_error", "Invalid compact hook credential");
+        return true;
+      }
+      try {
+        const event = await readJsonBody<Record<string, unknown>>(req, 4 * 1024 * 1024);
+        if (!event || typeof event.session_id !== "string") {
+          writeAnthropicError(res, 400, "invalid_request_error", "Invalid compact event");
+          return true;
+        }
+        if (event.hook_event_name === "PreCompact") {
+          deps.compactionStore.recordPreCompact({
+            sessionId: event.session_id,
+            trigger: event.trigger === "manual" ? "manual" : "auto",
+            customInstructions: typeof event.custom_instructions === "string" ? event.custom_instructions : "",
+          });
+        } else if (event.hook_event_name === "PostCompact") {
+          deps.compactionStore.recordPostCompact({
+            sessionId: event.session_id,
+            summary: typeof event.compact_summary === "string" ? event.compact_summary : "",
+          });
+        } else {
+          writeAnthropicError(res, 400, "invalid_request_error", "Unknown compact event");
+          return true;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end('{"ok":true}');
+      } catch {
+        writeAnthropicError(res, 400, "invalid_request_error", "Invalid compact event");
+      }
       return true;
     }
     // 하네스의 gateway model discovery. 이게 있어야 Claude Code의 /model picker에 GPT가 뜬다.
@@ -401,6 +461,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       writeAnthropicError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
       return true;
     }
+
+    const sessionId = claudeSessionId(body.metadata?.user_id);
+    const compactSummary = target?.provider === "codex"
+      && sessionId !== undefined
+      && isClaudeCompactSummaryRequest(body.messages)
+      ? deps.compactionStore?.readPending(sessionId)
+      : undefined;
+    if (compactSummary) body = { ...body, messages: stripClaudeCompactPrompt(body.messages) };
 
     // 대상을 가리지 않고 모든 요청에 닿아야 하는 다듬기는 하네스가 선언한다. 게이트웨이 대상이
     // 없는 네이티브 Anthropic까지 덮어야 하므로 아래 공급자 정책으로 내려갈 수 없다.
@@ -512,6 +580,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         );
         return true;
       }
+      const codexAdapter = target.provider === "codex"
+        ? new CodexResponsesAdapter({
+            accountId: chatgptAccountId,
+            headers: { originator: deps.originator },
+            fetch: fetchImpl,
+          })
+        : undefined;
       const gateway = deps.gateway
         ?? (target.provider === "cursor"
           ? ownedCursorGateway!
@@ -527,7 +602,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
               }))
               : target.provider === "antigravity"
                 ? antigravityGateway()
-                : createGatewayFor(target, chatgptAccountId, deps.originator, fetchImpl));
+                : new AnthropicMessagesGateway(codexAdapter!));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()
         : undefined;
@@ -538,7 +613,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         && target.contextWindow > 0
         ? target.contextWindow
         : undefined;
-      const upstream = await gateway.stream(body, {
+      const callOptions = {
         apiKey: credential,
         ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
         ...(projection === undefined ? {} : { projectInputTokens: projection }),
@@ -554,7 +629,81 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ...(target.provider !== "cursor" && target.effort.supported
           ? { reasoningEfforts: target.effort.levels }
           : {}),
-      });
+      };
+
+      if (compactSummary && codexAdapter && sessionId) {
+        const binding = compactBinding(target.id, chatgptAccountId);
+        const completedRetry = deps.compactionStore?.readReady(sessionId, binding);
+        if (completedRetry) {
+          writeClaudeCompactMessage(res, body, completedRetry.summary, {
+            id: "msg_fleet_compact_retry",
+            model: upstreamModelId(target),
+            usage: null,
+          });
+          return true;
+        }
+        const canonical = translateAnthropicRequest(body, {
+          model: upstreamModelId(target),
+          ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
+          ...(target.effort.supported ? { reasoningEfforts: target.effort.levels } : {}),
+          nativeTools: codexAdapter.capabilities.nativeTools,
+        });
+        let compactFlight = codexCompactionFlights.get(sessionId);
+        if (!compactFlight) {
+          compactFlight = compactCodexConversation({
+            adapter: codexAdapter,
+            request: canonical,
+            call: {
+              apiKey: credential,
+              ...(modelContextWindow === undefined ? {} : { modelContextWindow }),
+              signal: controller.signal,
+            },
+            customInstructions: compactSummary.customInstructions,
+            supportedEfforts: target.effort.supported ? target.effort.levels : undefined,
+          });
+          codexCompactionFlights.set(sessionId, compactFlight);
+          void compactFlight.finally(() => {
+            if (codexCompactionFlights.get(sessionId) === compactFlight) {
+              codexCompactionFlights.delete(sessionId);
+            }
+          }).catch(() => undefined);
+        }
+        const compacted = await compactFlight;
+        if (compacted.encryptedContent) {
+          deps.compactionStore?.writeReady(sessionId, {
+            binding,
+            encryptedContent: compacted.encryptedContent,
+            summary: compacted.summary,
+          });
+        }
+        // PostCompact is the authority that the client installed this response. Keep
+        // pending until then so a transport retry is still classified as compaction.
+        // PreCompact already invalidated any older ready checkpoint, so plaintext
+        // fallback cannot accidentally replay stale provider state.
+        writeClaudeCompactMessage(res, body, compacted.summary, compacted.summaryResponse);
+        return true;
+      }
+
+      let upstream;
+      if (target.provider === "codex" && sessionId && hasClaudeCompactContinuation(body.messages)) {
+        const ready = deps.compactionStore?.readReady(sessionId, compactBinding(target.id, chatgptAccountId));
+        if (ready) {
+          body = { ...body, messages: stripClaudeCompactContinuation(body.messages) };
+          const canonical = translateAnthropicRequest(body, {
+            model: upstreamModelId(target),
+            ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
+            ...(target.effort.supported ? { reasoningEfforts: target.effort.levels } : {}),
+            nativeTools: codexAdapter?.capabilities.nativeTools,
+          });
+          canonical.input = [
+            { type: "compaction", encrypted_content: ready.encryptedContent },
+            ...canonical.input,
+          ] as typeof canonical.input;
+          upstream = await gateway.streamCanonical(body, canonical, callOptions);
+        }
+      }
+
+      upstream ??= await gateway.stream(body, callOptions);
       res.writeHead(upstream.status, headerEntries(upstream.headers));
       for await (const chunk of upstream.body) {
         if (!res.write(chunk)) await drain(res);
@@ -624,6 +773,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     upstreamStats: () => upstreamGate.stats(),
     dispose: () => {
       upstreamGate.dispose();
+      codexCompactionFlights.clear();
       ownedCursorAdapter?.dispose();
     },
   };
@@ -679,24 +829,6 @@ async function proxyToKimi(
   });
 }
 
-function createGatewayFor(
-  model: GatewayModel,
-  chatgptAccountId: string,
-  originator: string,
-  fetchImpl: typeof fetch,
-): AnthropicMessagesGateway {
-  if (model.provider !== "codex") {
-    throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
-  }
-  // 어댑터가 fetch를 받지 않으면 globalThis.fetch로 떨어져 게이트 밖에서 소켓을 연다.
-  // 그러면 이 라우터의 상한과 점유 보고가 이 공급자만 보지 못한다.
-  return new AnthropicMessagesGateway(new CodexResponsesAdapter({
-    accountId: chatgptAccountId,
-    headers: { originator },
-    fetch: fetchImpl,
-  }));
-}
-
 /**
  * Anthropic Messages 와이어가 자격증명을 싣는 두 자리의 값을, 실린 순서대로 꺼낸다.
  *
@@ -715,6 +847,94 @@ function createGatewayFor(
  * 이미 값이 있으면 덮지 않는다. 본문에 직접 싣는 클라이언트(Claude Code)의 값이 언제나
  * 이기며, 그래야 기존 동작이 글자 하나 바뀌지 않는다.
  */
+function claudeSessionId(rawUserId: unknown): string | undefined {
+  if (typeof rawUserId !== "string" || rawUserId.trim().length === 0) return undefined;
+  try {
+    const parsed = JSON.parse(rawUserId) as { readonly session_id?: unknown };
+    if (typeof parsed.session_id === "string" && parsed.session_id.trim().length > 0) {
+      return parsed.session_id;
+    }
+  } catch {
+    // Non-JSON clients may already use a stable session id directly.
+  }
+  return rawUserId;
+}
+
+function compactBinding(modelId: string, accountId: string): string {
+  return createHash("sha256")
+    .update("fleet:codex-compaction:v1:")
+    .update(modelId)
+    .update("\0")
+    .update(accountId)
+    .digest("hex");
+}
+
+function writeClaudeCompactMessage(
+  res: GatewayProxyResponse,
+  request: AnthropicMessagesRequest,
+  summary: string,
+  response: import("../canonical/index.js").CanonicalResponseSnapshot,
+): void {
+  const usage = {
+    input_tokens: response.usage?.input_tokens ?? 0,
+    cache_read_input_tokens: response.usage?.cached_input_tokens ?? 0,
+    cache_creation_input_tokens: response.usage?.cache_write_input_tokens ?? 0,
+    output_tokens: response.usage?.output_tokens ?? 0,
+  };
+  if (request.stream === true) {
+    const frames = [
+      ["message_start", {
+        type: "message_start",
+        message: {
+          id: response.id,
+          type: "message",
+          role: "assistant",
+          content: [],
+          model: request.model,
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { ...usage, output_tokens: 0 },
+        },
+      }],
+      ["content_block_start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }],
+      ["content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: summary },
+      }],
+      ["content_block_stop", { type: "content_block_stop", index: 0 }],
+      ["message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage,
+      }],
+      ["message_stop", { type: "message_stop" }],
+    ] as const;
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache" });
+    const encoder = new TextEncoder();
+    for (const [event, data] of frames) {
+      res.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    }
+    res.end();
+    return;
+  }
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({
+    id: response.id,
+    type: "message",
+    role: "assistant",
+    content: [{ type: "text", text: summary }],
+    model: request.model,
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    usage,
+  }));
+}
+
 function withSessionIdentity(
   body: AnthropicMessagesRequest,
   harness: GatewayHarnessProfile,

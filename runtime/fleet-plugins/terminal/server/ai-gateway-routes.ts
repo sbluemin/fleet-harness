@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -6,6 +7,7 @@ import {
   createAiGatewayRouter,
   createCursorDiagnosticLog,
   createFailureJournal,
+  createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
@@ -42,7 +44,7 @@ export type ConsoleAiGatewayRouteDeps = Omit<
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
   deps: ConsoleAiGatewayRouteDeps = {},
-): void {
+): { readonly compactHookToken: string } {
   const ownedDiagnostics = deps.cursorDiagnostics
     ? undefined
     : createCursorDiagnosticLog(path.join(
@@ -60,9 +62,15 @@ export function registerAiGatewayRoutes(
           "failures.jsonl",
         ),
       });
+  const compactHookToken = randomUUID();
+  const compactionStore = createClaudeCodexCompactionStore({
+    directory: path.join(ctx.host.paths.pluginDataDir(ctx.pluginId), "ai-gateway"),
+  });
   const router = createAiGatewayRouter({
     ...deps,
     originator: "fleet-console",
+    compactionStore,
+    compactionHookToken: compactHookToken,
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
@@ -83,5 +91,7 @@ export function registerAiGatewayRoutes(
     { method: "*", path: "/api/hello", summary: "Read the AI Gateway health response.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "*", path: "/v1/models", summary: "Proxy the AI Gateway model listing.", category: "Terminal Plugin", gate: "anthropic-credential", transport: "proxy" },
     { method: "POST", path: "/v1/messages", summary: "Proxy an Anthropic Messages request through the AI Gateway.", category: "Terminal Plugin", gate: "anthropic-credential", transport: "proxy" },
+    { method: "POST", path: "/v1/compact-events", summary: "Receive a Claude compact lifecycle event.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
   ]);
+  return { compactHookToken };
 }

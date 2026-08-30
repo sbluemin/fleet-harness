@@ -1,8 +1,11 @@
 import {
   AnthropicMessagesGateway,
   CURSOR_TOOL_BYTES_LIMIT,
+  createClaudeCodexCompactionStore,
   ContextWindowExceededError,
   CursorAdapter,
+  CLAUDE_COMPACT_CONTINUATION_MARKER,
+  CLAUDE_COMPACT_PROMPT_MARKER,
 } from "../../src/index.js";
 import type {
   AdapterResponse,
@@ -13,6 +16,9 @@ import type {
 } from "../../src/index.js";
 import type { GatewayFailureRecord } from "../../src/index.js";
 import type { GatewayHttpHandlerContext } from "../../src/router/types.js";
+import { createHash } from "node:crypto";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -108,6 +114,198 @@ describe("router lifecycle", () => {
     } finally {
       disposeSpy.mockRestore();
     }
+  });
+});
+
+describe("Claude Codex compaction routing", () => {
+  it("records hook events, compacts the summary request, and replays the opaque item", async () => {
+    const stored = new Map<string, any>();
+    const pending = new Map<string, any>();
+    const compactionStore = {
+      path: "/state.json",
+      recordPreCompact: ({ sessionId, trigger, customInstructions }: any) => pending.set(sessionId, { trigger, customInstructions, updatedAt: 1 }),
+      recordPostCompact: ({ sessionId, summary }: any) => {
+        const ready = stored.get(sessionId);
+        if (ready) stored.set(sessionId, { ...ready, summary });
+      },
+      readPending: (sessionId: string) => pending.get(sessionId),
+      clearPending: (sessionId: string) => pending.delete(sessionId),
+      readReady: (sessionId: string, binding: string) => stored.get(sessionId)?.binding === binding ? stored.get(sessionId) : undefined,
+      writeReady: (sessionId: string, ready: any) => stored.set(sessionId, { ...ready, updatedAt: 1 }),
+      clear: (sessionId: string) => { pending.delete(sessionId); stored.delete(sessionId); },
+    };
+    const upstreamBodies: any[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      upstreamBodies.push(body);
+      const isCompact = body.input?.at(-1)?.type === "compaction_trigger";
+      const isSummary = body.input?.[0]?.type === "compaction" && body.input?.length === 2;
+      const events = isCompact
+        ? [
+            { type: "response.created", response: { id: "compact", model: "gpt-5.6-luna", usage: null } },
+            { type: "response.output_item.done", output_index: 0, item: { type: "compaction", encrypted_content: "opaque-state" } },
+            { type: "response.completed", response: { id: "compact", model: "gpt-5.6-luna", usage: { input_tokens: 10, output_tokens: 5 } } },
+          ]
+        : isSummary
+          ? [
+              { type: "response.created", response: { id: "summary", model: "gpt-5.6-luna", usage: null } },
+              { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "handoff CANARY" },
+              { type: "response.completed", response: { id: "summary", model: "gpt-5.6-luna", usage: { input_tokens: 2, output_tokens: 2 } } },
+            ]
+          : [
+              { type: "response.created", response: { id: "turn", model: "gpt-5.6-luna", usage: null } },
+              { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "recalled CANARY" },
+              { type: "response.completed", response: { id: "turn", model: "gpt-5.6-luna", usage: { input_tokens: 3, output_tokens: 2 } } },
+            ];
+      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { status: 200 });
+    });
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      compactionStore,
+      compactionHookToken: "hook-token",
+    });
+    const userId = JSON.stringify({ session_id: "session-compact" });
+
+    const pre = response();
+    await router.handle(ctx({
+      res: pre,
+      pathname: `${BASE}/v1/compact-events`,
+      headers: { "x-fleet-compact-token": "hook-token" },
+      rawBody: {
+        hook_event_name: "PreCompact",
+        session_id: "session-compact",
+        trigger: "manual",
+        custom_instructions: "Preserve DIRECTIVE",
+      },
+    }));
+    expect(pre.status).toBe(200);
+
+    const compact = response();
+    await router.handle(ctx({
+      res: compact,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna",
+      metadata: { user_id: userId },
+      messages: [
+        { role: "user", content: "CANARY" },
+        { role: "assistant", content: [{ type: "text", text: "stored" }] },
+        { role: "user", content: [{ type: "text", text: `boundary\n\n${CLAUDE_COMPACT_PROMPT_MARKER}` }] },
+      ],
+    }));
+    expect(compact.status).toBe(200);
+    expect(compact.headers["content-type"]).toContain("text/event-stream");
+    expect(compact.body).toContain("handoff CANARY");
+    expect(upstreamBodies[0].input.at(-1)).toEqual({ type: "compaction_trigger" });
+    expect(upstreamBodies[0].instructions).toContain("Preserve DIRECTIVE");
+
+    // A response-body retry before PostCompact returns the stored summary and does not
+    // spend another provider compaction or summary turn.
+    const compactRetry = response();
+    await router.handle(ctx({
+      res: compactRetry,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna",
+      metadata: { user_id: userId },
+      messages: [
+        { role: "user", content: "CANARY" },
+        { role: "assistant", content: [{ type: "text", text: "stored" }] },
+        { role: "user", content: [{ type: "text", text: `boundary\n\n${CLAUDE_COMPACT_PROMPT_MARKER}` }] },
+      ],
+    }));
+    expect(compactRetry.body).toContain("handoff CANARY");
+    expect(upstreamBodies).toHaveLength(2);
+
+    const post = response();
+    await router.handle(ctx({
+      res: post,
+      pathname: `${BASE}/v1/compact-events`,
+      headers: { "x-fleet-compact-token": "hook-token" },
+      rawBody: {
+        hook_event_name: "PostCompact",
+        session_id: "session-compact",
+        trigger: "manual",
+        compact_summary: "handoff CANARY",
+      },
+    }));
+    expect(post.status).toBe(200);
+
+    const continuation = response();
+    await router.handle(ctx({
+      res: continuation,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna",
+      metadata: { user_id: userId },
+      messages: [
+        { role: "user", content: `${CLAUDE_COMPACT_CONTINUATION_MARKER}\n\nhandoff CANARY` },
+        { role: "assistant", content: [{ type: "text", text: "after compact" }] },
+        { role: "user", content: "recall" },
+      ],
+    }));
+    expect(continuation.status).toBe(200);
+    expect(continuation.body).toContain("recalled CANARY");
+    expect(upstreamBodies.at(-1).input[0]).toEqual({ type: "compaction", encrypted_content: "opaque-state" });
+    expect(JSON.stringify(upstreamBodies.at(-1).input)).not.toContain(CLAUDE_COMPACT_CONTINUATION_MARKER);
+  });
+
+  it("replays a durable checkpoint after the router and store are recreated", async () => {
+    const fixture = wireLogFixture("compact-resume-");
+    const directory = path.dirname(fixture.path);
+    const firstStore = createClaudeCodexCompactionStore({ directory });
+    firstStore.writeReady("resumed-session", {
+      binding: createHash("sha256")
+        .update("fleet:codex-compaction:v1:")
+        .update("codex--gpt-5.6-luna")
+        .update("\0")
+        .update(ACCOUNT_ID)
+        .digest("hex"),
+      encryptedContent: "durable-opaque",
+      summary: "durable summary",
+    });
+    const bodies: any[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response([
+        `data: ${JSON.stringify({ type: "response.created", response: { id: "turn", model: "gpt-5.6-luna", usage: null } })}\n\n`,
+        `data: ${JSON.stringify({ type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "resumed" })}\n\n`,
+        `data: ${JSON.stringify({ type: "response.completed", response: { id: "turn", model: "gpt-5.6-luna", usage: { input_tokens: 1, output_tokens: 1 } } })}\n\n`,
+      ].join(""), { status: 200 });
+    });
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      compactionStore: createClaudeCodexCompactionStore({ directory }),
+      compactionHookToken: "new-process-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna",
+      metadata: { user_id: JSON.stringify({ session_id: "resumed-session" }) },
+      messages: [
+        { role: "user", content: `${CLAUDE_COMPACT_CONTINUATION_MARKER}\n\ndurable summary` },
+        { role: "user", content: "continue after restart" },
+      ],
+    }));
+    expect(res.status).toBe(200);
+    expect(bodies[0].input[0]).toEqual({ type: "compaction", encrypted_content: "durable-opaque" });
+    fixture.cleanup();
+  });
+
+  it("refuses compact events without the process token", async () => {
+    const router = createAiGatewayRouter({
+      readAuth,
+      compactionStore: {} as any,
+      compactionHookToken: "hook-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      pathname: `${BASE}/v1/compact-events`,
+      rawBody: { hook_event_name: "PreCompact", session_id: "session", trigger: "auto" },
+    }));
+    expect(res.status).toBe(401);
   });
 });
 
@@ -2505,8 +2703,10 @@ function ctx(options: {
   readonly messages?: ReadonlyArray<Record<string, unknown>>;
   readonly tools?: ReadonlyArray<Record<string, unknown>>;
   readonly toolChoice?: Record<string, unknown>;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly rawBody?: unknown;
 }): GatewayHttpHandlerContext {
-  const payload = JSON.stringify({
+  const payload = JSON.stringify(options.rawBody ?? {
     model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
     messages: options.messages ?? [{ role: "user", content: "Hello" }],
     max_tokens: 128,
@@ -2524,6 +2724,7 @@ function ctx(options: {
     headers: {
       ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
       ...(options.apiKey === undefined ? {} : { "x-api-key": options.apiKey }),
+      ...options.headers,
     },
     once: () => undefined,
     off: () => undefined,

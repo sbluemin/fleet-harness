@@ -71,6 +71,7 @@ export type AgentChatSessionOrigin =
 
 export interface AgentChatSessionSeed {
   readonly baseUrl: string;
+  readonly compactHookToken?: string;
   readonly model: string;
   /**
    * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 자식은 좌표가 둘뿐이라
@@ -1449,7 +1450,13 @@ class AgentChatSession {
             ...(this.seed.ultracode ? { ultracode: true } : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
-            env: chatChildEnv(process.env),
+            env: {
+              ...chatChildEnv(process.env),
+              FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
+              ...(this.seed.compactHookToken
+                ? { FLEET_COMPACT_HOOK_TOKEN: this.seed.compactHookToken }
+                : {}),
+            },
           });
           if (this.disposed) {
             await sdk.dispose().catch(() => undefined);

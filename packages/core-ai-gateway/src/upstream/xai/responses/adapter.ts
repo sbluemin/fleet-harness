@@ -913,6 +913,9 @@ async function* salvageXaiPendingCalls(
 
   for (const [key, call] of pending) {
     const args = completeXaiArguments(call) ?? "";
+    // Pending entries are created only for function_call items; keep that runtime
+    // invariant visible after CanonicalOutputItem gains another opaque item type.
+    if (call.added.item.type !== "function_call") continue;
     const item = { ...call.added.item, arguments: args } as typeof call.added.item;
     yield call.added;
     yield {

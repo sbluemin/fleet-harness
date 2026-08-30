@@ -42,6 +42,8 @@ export interface AiGatewayLaunchBinding {
   readonly routePath: string;
   /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
   origin(): string | null;
+  /** Process-local credential accepted only by the compact lifecycle endpoint. */
+  readonly compactHookToken?: string;
 }
 
 export interface TerminalLaunchResolverDeps {
@@ -361,6 +363,7 @@ async function createAgentCliLaunchSpec(options: {
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
+        compactHookToken: options.aiGateway.compactHookToken,
       });
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });

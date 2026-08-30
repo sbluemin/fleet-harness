@@ -99,7 +99,7 @@ export default definePlugin({
       wireLogRuntime: wireLog,
     });
     registerTerminalModelAuthRoutes(ctx, { authService });
-    registerAiGatewayRoutes(ctx, {
+    const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
       readAiGatewaySettings: aiGatewayStore.read,
       readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
       readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
@@ -117,6 +117,7 @@ export default definePlugin({
       aiGateway: {
         routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
         origin: () => ctx.host.server.origin(),
+        compactHookToken: aiGatewayRuntime.compactHookToken,
       },
     });
     registerLaunchCatalog(ctx, async () => agentLaunchKinds());

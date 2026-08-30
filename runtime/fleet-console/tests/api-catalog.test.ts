@@ -173,6 +173,7 @@ POST|/plugins/terminal/agent/sessions/:sessionId/resume|http
 POST|/plugins/terminal/agent/sessions/:sessionId/turn|http
 POST|/plugins/terminal/agent/sessions|http
 POST|/plugins/terminal/agent/ticket|http
+POST|/plugins/terminal/ai-gateway/v1/compact-events|http
 POST|/plugins/terminal/ai-gateway/v1/messages|proxy
 POST|/plugins/terminal/analysis/:operationId/message|http
 POST|/plugins/terminal/analysis/:operationId/start|http
@@ -216,7 +217,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(146);
+    expect(body.routes).toHaveLength(147);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

@@ -21,6 +21,7 @@
     "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
     "e2e:provider-loop": "node scripts/provider-loop-e2e.mjs",
     "probe:claude-auto-compact": "pnpm run build 1>&2 && node scripts/probe-claude-auto-compact.mjs",
+    "probe:claude-codex-compact": "pnpm run build 1>&2 && node scripts/probe-claude-codex-compact.mjs",
     "probe:cursor-context": "pnpm run build 1>&2 && node scripts/probe-cursor-context-windows.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
