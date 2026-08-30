@@ -592,6 +592,10 @@ function forOpenAIResponsesBackend(
   // rather than at each producer. `reasoning_content` is replay metadata only the Chat
   // Completions path consumes; this backend takes reasoning back as its own items.
   payload.input = request.input.map((item) => {
+    const wireType = (item as { type?: unknown }).type;
+    if (wireType === "compaction" || wireType === "compaction_trigger") {
+      return item;
+    }
     if (item.type === "function_call_output") {
       const {
         is_error: _isError,
@@ -600,7 +604,9 @@ function forOpenAIResponsesBackend(
       } = item;
       return wireItem;
     }
-    const { reasoning_content: _reasoningContent, ...wireItem } = item;
+    const { reasoning_content: _reasoningContent, ...wireItem } = item as CanonicalResponseRequest["input"][number] & {
+      reasoning_content?: string;
+    };
     return wireItem;
   });
 
@@ -1117,6 +1123,13 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
       call_id: typeof item.call_id === "string" ? item.call_id : id,
       name: string(item.name, "item.name"),
       arguments: typeof item.arguments === "string" ? stripNullArguments(item.arguments) : ""
+    };
+  }
+  if (item.type === "compaction" || item.type === "compaction_summary") {
+    return {
+      type: "compaction",
+      ...(typeof item.id === "string" ? { id: item.id } : {}),
+      encrypted_content: string(item.encrypted_content, "item.encrypted_content"),
     };
   }
   if (item.type === "web_search_call") {

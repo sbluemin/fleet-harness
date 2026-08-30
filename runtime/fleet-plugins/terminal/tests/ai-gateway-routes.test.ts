@@ -12,7 +12,7 @@ describe("AI gateway Console route adapter", () => {
     let cleanup: (() => void | Promise<void>) | undefined;
     const pluginDataDir = "/tmp/fleet-console-test/plugins/terminal";
 
-    registerAiGatewayRoutes({
+    const runtime = registerAiGatewayRoutes({
       pluginId: "terminal",
       basePath: "/plugins/terminal",
       registerRouter,
@@ -31,6 +31,7 @@ describe("AI gateway Console route adapter", () => {
     expect(registerRouter).toHaveBeenCalledTimes(1);
     expect(registerRouter.mock.calls[0]?.[0]).toBe("ai-gateway");
     expect(cleanup).toBeTypeOf("function");
+    expect(runtime.compactHookToken).toMatch(/^[0-9a-f-]{36}$/);
     await cleanup?.();
     expect(path.join(pluginDataDir, "ai-gateway")).toContain("plugins/terminal/ai-gateway");
   });

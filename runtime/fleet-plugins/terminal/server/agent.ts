@@ -1461,6 +1461,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ok: true,
       seed: {
         baseUrl: gatewayBaseUrl,
+        compactHookToken: deps.aiGateway?.compactHookToken,
         model,
         // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
         // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.

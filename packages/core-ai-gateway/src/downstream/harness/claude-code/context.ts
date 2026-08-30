@@ -111,6 +111,66 @@ export function stripClaudeOneMillionMarker(modelId: string): string {
   return modelId.replace(/\[1m\]$/i, "");
 }
 
+/** Stable sentinels in Claude Code's own client-side compact request and replacement history. */
+export const CLAUDE_COMPACT_PROMPT_MARKER =
+  "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.";
+export const CLAUDE_COMPACT_CONTINUATION_MARKER =
+  "This session is being continued from a previous conversation that ran out of context.";
+
+interface ClaudeCompactMessageLike {
+  readonly role?: unknown;
+  readonly content: unknown;
+}
+
+export function isClaudeCompactSummaryRequest(
+  messages: readonly ClaudeCompactMessageLike[],
+): boolean {
+  return messages.some((message) => message.role === "user"
+    && messageTextIncludes(message.content, CLAUDE_COMPACT_PROMPT_MARKER));
+}
+
+export function hasClaudeCompactContinuation(
+  messages: readonly ClaudeCompactMessageLike[],
+): boolean {
+  return messages.some((message) => message.role === "user"
+    && messageTextIncludes(message.content, CLAUDE_COMPACT_CONTINUATION_MARKER));
+}
+
+/** Remove only Claude's private compact instruction block; preserve the conversation it follows. */
+export function stripClaudeCompactPrompt<M extends ClaudeCompactMessageLike>(messages: readonly M[]): M[] {
+  return stripClaudeMessageBlocks(messages, CLAUDE_COMPACT_PROMPT_MARKER);
+}
+
+/** Remove Claude's plaintext replacement summary before replaying the provider's opaque checkpoint. */
+export function stripClaudeCompactContinuation<M extends ClaudeCompactMessageLike>(messages: readonly M[]): M[] {
+  return stripClaudeMessageBlocks(messages, CLAUDE_COMPACT_CONTINUATION_MARKER);
+}
+
+function stripClaudeMessageBlocks<M extends ClaudeCompactMessageLike>(
+  messages: readonly M[],
+  marker: string,
+): M[] {
+  return messages.flatMap((message) => {
+    if (message.role !== "user") return [message];
+    if (typeof message.content === "string") return message.content.includes(marker) ? [] : [message];
+    if (!Array.isArray(message.content)) return [message];
+    const content = message.content.filter((block) => !(
+      isRecord(block)
+      && block.type === "text"
+      && typeof block.text === "string"
+      && block.text.includes(marker)
+    ));
+    return content.length === 0 ? [] : [{ ...message, content } as M];
+  });
+}
+
+function messageTextIncludes(content: unknown, marker: string): boolean {
+  if (typeof content === "string") return content.includes(marker);
+  return Array.isArray(content) && content.some((block) => (
+    isRecord(block) && block.type === "text" && typeof block.text === "string" && block.text.includes(marker)
+  ));
+}
+
 /**
  * Map a provider model's occupied input onto the fixed coordinate Claude Code assigns
  * from its model id: 200k without `[1m]`, 1M with it.

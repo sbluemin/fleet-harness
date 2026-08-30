@@ -16,6 +16,7 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly baseUrl: string;
 	readonly selection?: AiGatewaySelection;
 	readonly homeDir?: string;
+	readonly compactHookToken?: string;
 }
 
 export function prepareAiGatewayLaunchProfile(
@@ -36,6 +37,12 @@ export function prepareAiGatewayLaunchProfile(
 		// Gateway가 tool_reference 계약을 보존한다. Cursor는 이를 지연 catalog 선택에 쓰고,
 		// 호환 프로바이더 경계는 각자의 eager wire 형식으로 정규화한다.
 		ENABLE_TOOL_SEARCH: "true",
+		...(options.compactHookToken
+			? {
+				FLEET_COMPACT_BASE_URL: options.baseUrl,
+				FLEET_COMPACT_HOOK_TOKEN: options.compactHookToken,
+			}
+			: {}),
 	};
 	writeClaudeGatewayModelCache(
 		options.baseUrl,

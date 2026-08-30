@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 
@@ -6,6 +7,7 @@ import {
   createAiGatewayRouter,
   createCursorDiagnosticLog,
   createFailureJournal,
+  createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
@@ -17,11 +19,11 @@ import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
 } from "@dotobokuri/fleet-admiral";
-import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 export interface FleetCliGatewayServer {
   origin(): string;
   readonly routePath: string;
+  readonly compactHookToken?: string;
   close(): Promise<void>;
 }
 
@@ -35,11 +37,15 @@ export async function startGatewayHttpServer(deps: {
    */
   readonly port?: number;
 }): Promise<FleetCliGatewayServer> {
-  const diagnostics = createCursorDiagnosticLog(path.join(getFleetDataDir(), "fleet-cli", "ai-gateway"));
+  const gatewayDir = path.join(path.dirname(deps.store.path), "fleet-cli", "ai-gateway");
+  const diagnostics = createCursorDiagnosticLog(gatewayDir);
   const failureJournal = createFailureJournal({
-    filePath: path.join(getFleetDataDir(), "fleet-cli", "ai-gateway", "failures.jsonl"),
+    filePath: path.join(gatewayDir, "failures.jsonl"),
   });
+  const compactHookToken = randomUUID();
   const router = createAiGatewayRouter({
+    compactionStore: createClaudeCodexCompactionStore({ directory: gatewayDir }),
+    compactionHookToken: compactHookToken,
     failureJournal: failureJournal.write,
     readAiGatewaySettings: () => deps.store.read(),
     readKimiApiKey: () => deps.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
@@ -91,6 +97,7 @@ export async function startGatewayHttpServer(deps: {
   let closePromise: Promise<void> | undefined;
   return {
     routePath,
+    compactHookToken,
     origin() {
       const address = server.address();
       if (!address || typeof address === "string") {

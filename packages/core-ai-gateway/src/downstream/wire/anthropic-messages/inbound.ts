@@ -53,6 +53,14 @@ export interface AnthropicGatewayResponse {
 export class AnthropicMessagesGateway {
   constructor(private readonly adapter: AiGatewayAdapter = new OpenAIResponsesAdapter()) {}
 
+  async streamCanonical(
+    request: AnthropicMessagesRequest,
+    canonical: CanonicalResponseRequest,
+    options: AnthropicGatewayCallOptions,
+  ): Promise<AnthropicGatewayResponse> {
+    return this.streamTranslated(request, canonical, options);
+  }
+
   async stream(
     request: AnthropicMessagesRequest,
     options: AnthropicGatewayCallOptions
@@ -80,6 +88,14 @@ export class AnthropicMessagesGateway {
         ? { nativeTools: this.adapter.capabilities.nativeTools }
         : {}),
     });
+    return this.streamTranslated(request, canonical, options);
+  }
+
+  private async streamTranslated(
+    request: AnthropicMessagesRequest,
+    canonical: CanonicalResponseRequest,
+    options: AnthropicGatewayCallOptions,
+  ): Promise<AnthropicGatewayResponse> {
     wireLog("canonical.request", {
       model: canonical.model,
       tool_choice: canonical.tool_choice,
@@ -218,6 +234,7 @@ function estimateCanonicalRequestTokens(
     } else {
       parts.push(item.output);
     }
+
   }
   for (const tool of wireTools) {
     parts.push(tool.name);

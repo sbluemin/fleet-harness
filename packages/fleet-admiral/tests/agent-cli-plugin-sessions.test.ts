@@ -185,6 +185,16 @@ describe("agent CLI shared plugin store", () => {
     expect(hooksJson.hooks.Notification).toEqual([
       { matcher: "permission_prompt|elicitation_dialog", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
     ]);
+    const compactHook = [{
+      matcher: "manual|auto",
+      hooks: [{
+        type: "command",
+        command: process.execPath,
+        args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-compact-event.mjs"],
+      }],
+    }];
+    expect(hooksJson.hooks.PreCompact).toEqual(compactHook);
+    expect(hooksJson.hooks.PostCompact).toEqual(compactHook);
   });
 
   it("wires capture, turn-start, and auto-name onto Claude UserPromptSubmit in order", async () => {
@@ -223,6 +233,7 @@ describe("agent CLI shared plugin store", () => {
     }
     expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs"))).toBe(true);
   });
 
   it("renders the latest gateway roster into the shared tree", async () => {

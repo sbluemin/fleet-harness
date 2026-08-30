@@ -46,6 +46,7 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     const launchProfile = prepareAiGatewayLaunchProfile(injected, {
       baseUrl: options.gatewayServer.origin() + options.gatewayServer.routePath,
       selection,
+      compactHookToken: options.gatewayServer.compactHookToken,
     });
     const child = spawn(launchProfile.bin, launchProfile.args, {
       cwd: launchProfile.cwd,

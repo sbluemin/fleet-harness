@@ -34,6 +34,7 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		const prepared = prepareAiGatewayLaunchProfile(profile, {
 			baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			homeDir,
+			compactHookToken: "compact-token",
 		});
 
 		expect(prepared).not.toBe(profile);
@@ -49,6 +50,8 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
 			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000",
 			ENABLE_TOOL_SEARCH: "true",
+			FLEET_COMPACT_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
+			FLEET_COMPACT_HOOK_TOKEN: "compact-token",
 		});
 
 		const cachePath = path.join(homeDir, ".claude", "cache", "gateway-models.json");
@@ -60,6 +63,15 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		expect(cache.models.length).toBeGreaterThan(0);
 		expect(cache.models.every((model) => /^(claude|anthropic)/i.test(model.id))).toBe(true);
 		expect(statSync(cachePath).mode & 0o777).toBe(0o600);
+	});
+
+	it("omits compact hook env when the host did not provide a process token", () => {
+		const prepared = prepareAiGatewayLaunchProfile(makeProfile(), {
+			baseUrl: "http://127.0.0.1:4310/gateway",
+			homeDir: makeTemporaryDirectory(),
+		});
+		expect(prepared.env.FLEET_COMPACT_BASE_URL).toBeUndefined();
+		expect(prepared.env.FLEET_COMPACT_HOOK_TOKEN).toBeUndefined();
 	});
 
 	it("preserves an explicit auto-compact ceiling", () => {
