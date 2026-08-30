@@ -536,6 +536,40 @@ describe("Right Rail settings menu", () => {
     expect(railMenu()).toBeNull();
   });
 
+  it("leaves the opacity slider its own arrow and Home/End keys", () => {
+    setRailPanelBehavior("overlay");
+    renderRail();
+    openRailMenu();
+
+    const slider = opacitySlider()!;
+    act(() => slider.focus());
+    expect(document.activeElement).toBe(slider);
+
+    // 항목 순회가 이 키들을 가로채면 값 조절이 죽고 포커스까지 빼앗겨 슬라이더가 키보드로
+    // 손댈 수 없는 컨트롤이 된다 — 메뉴 안이라도 항목이 아닌 컨트롤은 자기 키를 갖는다.
+    for (const key of ["ArrowDown", "ArrowUp", "Home", "End"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      act(() => { slider.dispatchEvent(event); });
+      expect(event.defaultPrevented, `${key} must reach the slider`).toBe(false);
+      expect(document.activeElement, `${key} must not move focus`).toBe(slider);
+    }
+
+    // 메뉴 항목 위에서는 순회가 그대로 살아 있어야 한다.
+    const floatItem = menuItem("Float over Map");
+    act(() => floatItem.focus());
+    act(() => {
+      floatItem.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).not.toBe(floatItem);
+
+    // Esc는 슬라이더에 포커스가 있어도 메뉴를 닫는다.
+    act(() => slider.focus());
+    act(() => {
+      slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(railMenu()).toBeNull();
+  });
+
   it("takes the floating menu down with the rail chrome, so no anchorless menu survives", () => {
     renderRail();
     openRailMenu();

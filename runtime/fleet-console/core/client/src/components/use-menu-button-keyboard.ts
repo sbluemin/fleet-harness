@@ -40,6 +40,14 @@ export function useMenuButtonKeyboard(
         return;
       }
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      // 메뉴 안의 항목이 아닌 컨트롤(불투명도 슬라이더 등)은 이 키들을 스스로 쓴다 — 항목 순회가
+      // 가로채면 값 조절이 죽고 포커스까지 빼앗겨 키보드로는 손댈 수 없는 컨트롤이 된다.
+      const target = event.target;
+      if (
+        target instanceof Element
+        && menuRef.current?.contains(target) === true
+        && target.closest(ENABLED_MENU_ITEM_SELECTOR) === null
+      ) return;
       const items = [...(menuRef.current?.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR) ?? [])];
       if (items.length === 0) return;
       event.preventDefault();
