@@ -5,9 +5,9 @@ import type { PaneCloseContext, PaneMount, PaneOpenRequest } from "@fleet-consol
 /**
  * 표면에 서 있는 페인 인스턴스들.
  *
- * primary 페인은 여기 없다 — 엔트리가 열리면 그 엔트리의 primary가 자동으로 서므로, 스토어가
- * 기억할 것은 **그 위에 추가로 열린 것들**뿐이다. 이 비대칭은 의도적이다: primary를 스토어에
- * 넣으면 "엔트리는 열렸는데 primary가 없는" 표현 가능한 잘못된 상태가 생긴다.
+ * primary 페인은 보통 여기 없다 — 엔트리가 열리면 그 엔트리의 primary가 자동으로 선다. 다만
+ * primary가 `replaceParams`로 주소를 얻었거나 팔레트·딥링크가 착지 params를 먼저 심은 뒤에는
+ * 그 주소만 기억하는 인스턴스가 선다. 표면은 이를 추가 열로 세지 않고 자동 primary에 합친다.
  *
  * keepAlive 페인은 닫혀도 목록에서 빠지지 않고 `visible: false`로 남는다. 그것이 PTY와 읽던
  * 자리를 지키는 방식이며, 지금 플러그인들이 portal parking·DOM relocate로 각자 하던 일이다.
@@ -152,10 +152,29 @@ export function resetSurfacePanes(
  */
 export function replacePaneParams(paneId: string, params: Readonly<Record<string, string>>): void {
   const target = state.rail.find((instance) => instance.paneId === paneId);
-  if (!target || sameParams(target.params, params)) return;
+  if (target) {
+    if (sameParams(target.params, params)) return;
+    emit({
+      ...state,
+      rail: state.rail.map((instance) => (instance.paneId === paneId ? { ...instance, params } : instance)),
+    });
+    return;
+  }
+
+  // primary는 엔트리와 함께 자동으로 서서 평소 스토어 인스턴스가 없다. 그 본문이 자기 주소를
+  // 갈아탈 때 무시하면(설정 섹션 칩이 대표 사례) ctx.params가 영원히 빈 값에 머문다. 주소를
+  // 처음 얻는 순간에만 인스턴스를 심고, RailSurface가 이를 자동 primary의 params로 합친다.
   emit({
-    ...state,
-    rail: state.rail.map((instance) => (instance.paneId === paneId ? { ...instance, params } : instance)),
+    rail: [...state.rail, {
+      paneId,
+      // RailSurface가 인스턴스 없는 자동 primary에 쓰던 값과 같아야 첫 주소 변경이 본문을
+      // 재마운트하지 않는다. 설정 검색어처럼 섹션 밖의 primary-로컬 상태도 그대로 남아야 한다.
+      instanceId: `pane-primary-${paneId}`,
+      params,
+      mount: "rail",
+      visible: true,
+    }],
+    focusedPaneId: state.focusedPaneId,
   });
 }
 
