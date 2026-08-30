@@ -2051,14 +2051,18 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain('toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
-    // Doctrine: brass is the location/focus channel, so the open gear may wear it — but not
-    // the tablist's left brass bar, because the gear is not a tab.
     // Doctrine: the gear carries an explicit glyph size. An SVG with only a viewBox fills its
     // button (30px inside the 32px control), which is how it first shipped oversized; plugin
     // icons bring their own sizes but this core-drawn glyph has to state one here.
     expect(rail).toMatch(/\.right-rail-settings-btn svg \{[^}]*width: \d+px;[^}]*height: \d+px;/);
-    expect(rail).toMatch(/\.right-rail-settings-btn\.is-active \{[^}]*background: var\(--brass-glow\);/);
-    expect(rail).toMatch(/\.right-rail-settings-btn\.is-active::before \{[^}]*content: none;/);
+    // Doctrine: one column, one "on" grammar. The gear wears the same active mark as every
+    // other rail icon (dark fill, rim-strong border, left brass bar) and declares no active
+    // rule of its own — it first shipped with a brass-glow fill and a suppressed bar, which
+    // read as a different kind of selection sitting right above the panel tabs. That the gear
+    // is a door and not a tab is already carried by role/aria, not by a second visual grammar.
+    expect(rail).not.toMatch(/\.right-rail-settings-btn\.is-active/);
+    expect(rail).toMatch(/\.right-rail-ico\.is-active \{[^}]*background: var\(--ink-deep\);/);
+    expect(rail).toMatch(/\.right-rail-ico\.is-active::before \{[^}]*background: var\(--brass\);/);
     // Doctrine: the gear menu is dismantled — no popup portals out of the rail any more,
     // and width reset became direct manipulation on the resize handle itself.
     expect(rightRail).not.toContain("RailSettingsMenu");

@@ -344,7 +344,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
         {/* 설정은 열 최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과
             작업 패널을 고르는 일은 다른 종류의 동작이다. 톱니는 이제 메뉴가 아니라 설정
-            표면의 문이고, 켜짐은 다른 패널과 같은 문법(brass)으로 "지금 여기"를 말한다. */}
+            표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
         <button
           id="rail-settings-toggle"
           type="button"

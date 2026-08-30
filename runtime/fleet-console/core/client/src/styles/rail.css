@@ -235,17 +235,10 @@
   display: block;
 }
 
-/* 열린 상태는 brass 테두리로만 말한다 — 좌측 brass 바(.is-active::before)는 탭의
-   문법이고 톱니는 탭이 아니다. brass는 위치·포커스 채널이므로 열림 표시에 legal하다. */
-.right-rail-settings-btn.is-active {
-  color: var(--brass-ink);
-  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-  background: var(--brass-glow);
-}
-
-.right-rail-settings-btn.is-active::before {
-  content: none;
-}
+/* 열린 상태는 톱니만의 문법을 따로 두지 않는다 — 레일 아이콘 하나가 켜졌다는 사실은
+   열 전체에서 한 가지 모습으로만 말해야 한다(.right-rail-ico.is-active: 어두운 면·
+   rim-strong 테두리·좌측 brass 바). 톱니가 탭이 아니라는 사실은 role/aria가 이미
+   말하고 있고, 시각 표식까지 갈라놓으면 같은 열의 켜짐이 두 문법으로 읽힌다. */
 
 .right-rail-divider {
   flex: none;
