@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -14,6 +14,7 @@ import { COMMISSIONING_SEEN_KEY, openWhatsNew } from "../store.js";
 import { AddHostDialog } from "./add-host-dialog.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
+import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
 type UpdateApplyState = "idle" | "applying" | "armed" | "blocked" | "error";
 
@@ -36,7 +37,6 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
-const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
 /**
  * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
@@ -691,45 +691,6 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
     </div> : null}
     {shortcutsOpen ? <KeyboardShortcutsDialog onClose={() => { setShortcutsOpen(false); triggerRef.current?.focus(); }} /> : null}
   </span>;
-}
-
-function useMenuButtonKeyboard(rootRef: RefObject<HTMLElement | null>, triggerRef: RefObject<HTMLButtonElement | null>, menuRef: RefObject<HTMLDivElement | null>, open: boolean, setOpen: Dispatch<SetStateAction<boolean>>) {
-  useEffect(() => {
-    if (!open) return;
-    // menu-button 패턴: 열리면 첫 menuitem으로 포커스 이동.
-    const frame = window.requestAnimationFrame(() => {
-      menuRef.current?.querySelector<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR)?.focus();
-    });
-    const handlePointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-        return;
-      }
-      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR) ?? [])];
-      if (items.length === 0) return;
-      event.preventDefault();
-      const currentIndex = items.findIndex((item) => item === document.activeElement);
-      const nextIndex = event.key === "Home" || (event.key === "ArrowDown" && currentIndex === items.length - 1)
-        ? 0
-        : event.key === "End" || (event.key === "ArrowUp" && currentIndex <= 0)
-          ? items.length - 1
-          : event.key === "ArrowDown" ? currentIndex + 1 : currentIndex - 1;
-      items[nextIndex]?.focus();
-    };
-    window.addEventListener("pointerdown", handlePointer, true);
-    window.addEventListener("keydown", handleKey, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("pointerdown", handlePointer, true);
-      window.removeEventListener("keydown", handleKey, true);
-    };
-  }, [menuRef, open, rootRef, setOpen, triggerRef]);
 }
 
 function UpdateApplyControl({ latestVersion, version, onStarted }: {

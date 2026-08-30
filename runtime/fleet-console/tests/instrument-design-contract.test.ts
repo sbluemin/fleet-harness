@@ -1955,6 +1955,7 @@ describe("Instrument core design contract", () => {
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");
+    const railMenu = source("rail/rail-settings-menu.tsx");
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).toContain(".right-rail.is-switching");
@@ -1969,25 +1970,37 @@ describe("Instrument core design contract", () => {
     // keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     expect(rail).not.toContain(".right-rail-alpha-slider::-moz-range-progress");
-    expect(rightRail).toContain("right-rail-alpha-slider fleet-slider");
+    expect(railMenu).toContain("right-rail-alpha-slider fleet-slider");
     expect(rightRail).toContain("useRailPanelBehavior");
-    expect(rightRail).toContain("right-rail-float-toggle");
-    expect(rightRail).toContain("right-rail-alpha-slider");
+    expect(railMenu).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
-    // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail
-    // does not — its head is hover-reveal chrome so the body uses the full slot.
-    // Hide with opacity+transform only (never display/visibility) so keyboard
-    // focus can still enter and reveal it; reveal entry stays pointermove-gated
-    // with an intent delay so scroll-under-pointer never triggers it.
-    expect(rail).toContain(".right-rail-panel-head-reveal");
-    expect(rail).toMatch(/\.right-rail-panel-head-reveal \{[^}]*pointer-events:\s*none/);
-    expect(rail).toMatch(/\.right-rail-panel-head-reveal\.is-revealed \{[^}]*pointer-events:\s*auto/);
-    expect(rail).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^{]*\.right-rail-panel-head-reveal/);
-    expect(rail).toContain(".right-rail-panel-peek");
+    // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail has no
+    // panel head at all — its settings live behind the gear at the top of the icon column,
+    // so the body owns the whole slot and no chrome can summon itself over it. The retired
+    // hover-reveal head is pinned negatively: it fired from the most common pointer path
+    // across the panel top and then covered the very controls that path was aiming for.
+    expect(rail).not.toContain(".right-rail-panel-head-reveal");
+    expect(rail).not.toContain(".right-rail-panel-peek");
     expect(rail).not.toContain("grid-template-rows: 32px minmax(0, 1fr);");
-    expect(rightRail).toContain("HEAD_REVEAL_INTENT_DELAY_MS");
-    expect(rightRail).not.toMatch(/onPointerEnter=\{(?:handleSlotPointerMove|holdHeadOpen)/);
+    expect(rightRail).not.toContain("HEAD_REVEAL");
+    expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
+    // Doctrine: the gear stands first in the icon column and a divider splits it from the
+    // panel tablist — choosing a panel and tuning the rail are different kinds of act.
+    expect(rightRail).toMatch(/<RailSettingsMenu[\s\S]{0,400}right-rail-divider[\s\S]{0,200}right-rail-tabs/);
+    expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
+    // Doctrine: brass is the location/focus channel, so the open gear may wear it — but not
+    // the tablist's left brass bar, because the gear is not a tab.
+    expect(rail).toMatch(/\.right-rail-settings-btn\.is-open \{[^}]*background: var\(--brass-glow\);/);
+    expect(rail).not.toContain(".right-rail-settings-btn.is-open::before");
+    // Doctrine: the menu is portaled to the document because .right-rail clips its own
+    // children in push mode — drawn inside the rail it could never open to the left.
+    expect(railMenu).toContain("createPortal");
+    expect(rail).toMatch(/\.right-rail \{[^}]*overflow: hidden;/);
+    // Doctrine: one menu-button dialect for the whole console — the rail menu and the
+    // command band system menu share the keyboard and dismissal contract, never a copy.
+    expect(railMenu).toContain('from "../components/use-menu-button-keyboard.js"');
+    expect(source("components/command-band-system-cluster.tsx")).toContain('from "./use-menu-button-keyboard.js"');
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
     expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
@@ -2034,6 +2047,9 @@ describe("Instrument core design contract", () => {
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
+    // Activity Rail 설정 메뉴도 같은 재질을 탄다 — 밴드 메뉴와 한 벌이다.
+    expect(source("styles/rail.css")).toMatch(/\.right-rail-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
+    expect(source("styles/rail.css")).toMatch(/\.right-rail-menu \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
     // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
     // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--glass-underlay\);/);

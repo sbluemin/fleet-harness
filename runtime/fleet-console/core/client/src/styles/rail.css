@@ -4,6 +4,9 @@
 :root {
   --z-rail: 10;
   --z-codex-side: 20;
+  /* 설정 메뉴는 body로 포털되어 .console-shell 밖에 선다 — 셸이 여는 --z-floating을
+     물려받지 못하므로 같은 부유 팝오버 층(60)을 여기서 직접 연다. */
+  --z-rail-menu: 60;
 }
 
 .right-rail {
@@ -108,176 +111,6 @@
   backdrop-filter: var(--glass-backdrop-strong);
   opacity: var(--right-rail-overlay-alpha, 1);
   pointer-events: none;
-}
-
-/* ── 호버-리빌 헤더 ─────────────────────────────────────────────────
-   세 통제(타이틀·플로팅·닫기)는 전부 저빈도 set-and-forget이라 상주 캡션 대신
-   상단 접근 시에만 본문 위 오버레이로 소환한다(진입 판정은 right-rail.tsx의
-   pointermove+의도 지연 계약). 숨김은 opacity+transform으로만 처리해 Tab
-   포커스 진입이 리빌 경로로 남는다. */
-.right-rail-panel-head-reveal {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 3;
-  transform: translateY(-100%);
-  opacity: 0;
-  pointer-events: none;
-  border-bottom: 1px solid var(--surface-rim);
-  /* 본문 위에 얹히는 오버레이라 glass 카드와 같은 불투명 언더레이가 필요하다. */
-  background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
-  /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
-  box-shadow: 0 10px 26px oklch(0% 0 0 / 40%);
-  transition: transform 180ms var(--ease-spring), opacity 140ms ease;
-}
-
-.right-rail-panel-head-reveal.is-revealed {
-  transform: none;
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* 리빌 힌트 — 헤더가 숨어 있음을 알리는 유일한 상주 크롬(3px 대시). */
-.right-rail-panel-peek {
-  position: absolute;
-  top: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 30px;
-  height: 3px;
-  border-radius: 2px;
-  z-index: 2;
-  background: var(--text-tertiary);
-  opacity: 0.32;
-  pointer-events: none;
-  transition: opacity 140ms ease;
-}
-
-.right-rail-panel-head-reveal.is-revealed + .right-rail-panel-peek {
-  opacity: 0;
-}
-
-.right-rail-panel-head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  min-height: 32px;
-  min-width: 0;
-  padding: 0 8px;
-}
-
-.right-rail-panel-title {
-  flex: 0 1 auto;
-  max-width: 50%;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.right-rail-float-toggle {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--surface-rim-strong);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color 140ms, background 140ms, border-color 140ms;
-}
-
-.right-rail-float-toggle svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.right-rail-float-toggle:hover {
-  color: var(--text-primary);
-  background: var(--ink-veil);
-}
-
-.right-rail-float-toggle.is-active {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-}
-
-/* 활성 hover는 brass 채널을 유지한 채 테두리만 강화한다(비활성 hover의 veil 덮기 방지). */
-.right-rail-float-toggle.is-active:hover {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
-}
-
-.right-rail-alpha {
-  flex: 0 1 auto;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  padding: 0 6px;
-  height: 20px;
-}
-
-.right-rail-alpha-slider {
-  flex: 1 1 44px;
-  width: 64px;
-  min-width: 44px;
-}
-
-.right-rail-alpha-value {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  color: var(--brass-ink);
-  width: 30px;
-  text-align: right;
-}
-
-.right-rail-close-btn {
-  margin-left: auto;
-  width: 20px;
-  height: 20px;
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  border-radius: var(--radius-xs);
-  background: none;
-  border: 1px solid transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color 140ms, background 140ms, border-color 140ms;
-}
-
-.right-rail-close-btn svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.right-rail-close-btn:hover,
-.right-rail-close-btn:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
 }
 
 .right-rail-panel-body {
@@ -388,6 +221,144 @@
   background: var(--brass);
 }
 
+/* ── 레일 설정 톱니 + 컨텍스트 메뉴 ──────────────────────────────
+   레일의 설정(플로팅·불투명도·폭·닫기)은 전부 저빈도 set-and-forget이라 상주 크롬이
+   아니라 부를 때만 오는 메뉴가 진다. 톱니는 아이콘 열 최상단에 서고 디바이더가 패널
+   탭과 갈라 놓는다 — 패널을 고르는 일과 레일을 손보는 일은 다른 종류의 동작이다. */
+/* 열린 상태는 brass 테두리로만 말한다 — 좌측 brass 바(.is-active)는 탭의 문법이고
+   톱니는 탭이 아니다. brass는 위치·포커스 채널이므로 열림 표시에 legal하다. */
+.right-rail-settings-btn.is-open {
+  color: var(--brass-ink);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: var(--brass-glow);
+}
+
+.right-rail-divider {
+  flex: none;
+  width: 20px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--surface-rim-strong);
+}
+
+/* 메뉴는 포털로 문서에 그린다(.right-rail은 push 모드에서 overflow: hidden).
+   유리 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이 — command-band-system-menu와
+   같은 한 벌이다(콘솔 메뉴 단일 방언). */
+.right-rail-menu {
+  z-index: var(--z-rail-menu);
+  display: flex;
+  flex-direction: column;
+  min-width: 214px;
+  max-width: min(292px, calc(100vw - 16px));
+  padding: 4px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+}
+
+.right-rail-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  text-align: left;
+  cursor: pointer;
+}
+
+.right-rail-menu-item:hover,
+.right-rail-menu-item:focus-visible {
+  background: var(--surface-pillar);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.right-rail-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+
+.right-rail-menu-item:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.right-rail-menu-item:disabled:hover {
+  background: none;
+  color: var(--text-tertiary);
+}
+
+/* 체크 자리는 켜짐과 무관하게 늘 차지한다 — 라벨이 좌우로 흔들리지 않는다. */
+.right-rail-menu-check {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--brass-ink);
+}
+
+.right-rail-menu-label {
+  margin: 0;
+  padding: 6px 10px 2px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-rail-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--surface-rim);
+}
+
+/* 값 조절 행은 menuitem 역할을 갖지 않는다 — 방향키 순회가 슬라이더 조작과 싸우지 않도록. */
+.right-rail-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 8px;
+}
+
+.right-rail-menu-row-label {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.right-rail-alpha-slider {
+  flex: 1 1 auto;
+  min-width: 56px;
+}
+
+.right-rail-alpha-value {
+  flex: none;
+  width: 34px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--brass-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */
 .right-rail-resize-handle {
   position: absolute;
@@ -452,14 +423,11 @@
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .right-rail,
-  .right-rail-panel-slot,
-  .right-rail-panel-head-reveal,
-  .right-rail-panel-peek {
+  .right-rail-panel-slot {
     transition: none !important;
   }
 
   .right-rail-ico,
-  .right-rail-float-toggle,
   .right-rail-resize-handle {
     transition-duration: 0.01ms !important;
   }
