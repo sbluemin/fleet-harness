@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { RailPanelContext } from "@fleet-console/sdk/rail";
+import type { PaneContext } from "@fleet-console/sdk/pane";
 
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
@@ -17,7 +17,7 @@ interface ComparePair {
 }
 
 interface CompareInspectorProps {
-  readonly ctx: RailPanelContext;
+  readonly ctx: PaneContext;
   readonly repoRel: string;
   readonly pair: ComparePair;
   readonly onSwap: () => void;

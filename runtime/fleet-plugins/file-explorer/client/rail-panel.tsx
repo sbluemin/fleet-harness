@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailPanelContext, RailEntryDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
@@ -138,7 +138,7 @@ function nameOfPath(relativePath: string): string {
   return relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
 }
 
-function FileExplorerPanel(ctx: RailPanelContext) {
+function FileExplorerPanel(ctx: PaneContext) {
   const { theaterId } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailPanelContext, RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
@@ -25,7 +25,7 @@ type RepositoryFetchResult =
   | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
 
 interface RepositoryPanelProps {
-  readonly ctx: RailPanelContext;
+  readonly ctx: PaneContext;
 }
 
 const PREFS_SOURCE = "fleet-console.repository.source";
