@@ -122,7 +122,10 @@ afterEach(() => {
   root = null;
   container = null;
   syncSettingsSearchPlugins([]);
-  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
+  {
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active !== null) closeRailPanel(active);
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -175,10 +178,10 @@ describe("settings pane body", () => {
     // 첫 Esc는 검색을 거둔다 — 질의를 지우려던 손이 페인째 닫으면 안 된다.
     pressEscape(searchInput());
     expect(document.querySelector(".settings-pane-results")).toBeNull();
-    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).toBe("settings");
 
     pressEscape(searchInput());
-    expect(getRailStoreSnapshot().pinnedPanelIds).not.toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).not.toBe("settings");
     expect(document.activeElement).toBe(gear);
 
     gear.remove();
@@ -188,7 +191,7 @@ describe("settings pane body", () => {
     renderPane({});
     pressEscape(searchInput(), true);
 
-    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).toBe("settings");
   });
 
   it("keeps the remote management out of the pane and opens it on the expanded surface", () => {

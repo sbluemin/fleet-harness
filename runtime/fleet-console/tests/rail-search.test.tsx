@@ -41,7 +41,10 @@ beforeEach(() => {
   document.body.replaceChildren();
   scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
-  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
+  {
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active !== null) closeRailPanel(active);
+  }
   setRailChromeExpanded(false);
   resetExpandedSurfacesForTest();
   setState({
@@ -226,7 +229,7 @@ describe("rail search fan-out", () => {
     act(() => option!.click());
     expect(activate).toHaveBeenCalledOnce();
     expect(pathname).toBe("/settings");
-    expect(getRailStoreSnapshot().pinnedPanelIds).not.toContain("files");
+    expect(getRailStoreSnapshot().activePanelId).not.toBe("files");
     expect(getRailStoreSnapshot()).toMatchObject({ railChromeExpanded: false });
 
     await act(async () => {
@@ -234,7 +237,7 @@ describe("rail search fan-out", () => {
       await Promise.resolve();
     });
     expect(pathname).toBe("/operations");
-    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("files");
+    expect(getRailStoreSnapshot().activePanelId).toBe("files");
     expect(getRailStoreSnapshot()).toMatchObject({ railChromeExpanded: true });
   });
 
@@ -261,8 +264,8 @@ describe("rail search fan-out", () => {
     });
 
     expect(getExpandedSurfaceState().instances.map((instance) => instance.surfaceId)).toEqual(["repository"]);
-    // 레일에 고정되지도 않아야 한다 — 세울 페인이 없는 엔트리를 고정하면 빈 섹션이 선다.
-    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual([]);
+    // 레일에 서지도 않아야 한다 — 세울 페인이 없는 엔트리를 활성으로 삼으면 빈 섹션이 선다.
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
   });
 
   it("keeps matching Operations above panel groups", async () => {

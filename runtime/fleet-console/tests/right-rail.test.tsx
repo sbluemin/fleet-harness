@@ -123,7 +123,6 @@ import {
   openRailPanel,
   setRailChromeExpanded,
   setRailOverlayAlpha,
-  toggleRailSectionCollapsed,
 } from "../core/client/src/rail/rail-store.js";
 import {
   closeExpandedSurfacesOf,
@@ -139,7 +138,8 @@ let root: Root;
 
 /* 스토어는 모듈 싱글턴이다 — 파일 안에서 테스트끼리 새지 않게 공개 API로만 초기화한다. */
 function resetRailStore() {
-  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
+  const active = getRailStoreSnapshot().activePanelId;
+  if (active !== null) closeRailPanel(active);
   setRailChromeExpanded(true);
   setRailOverlayAlpha(100);
 }
@@ -201,57 +201,47 @@ function gearButton(): HTMLButtonElement {
   return gear;
 }
 
-describe("Right Rail pinned stack", () => {
-  it("renders one section per pinned panel in pin order", () => {
+describe("Right Rail exclusive panel", () => {
+  it("renders only the active panel's section — opening another replaces it", () => {
     act(() => openRailPanel("codex"));
     renderRail();
 
     const titles = [...container.querySelectorAll(".right-rail-section-title")].map((el) => el.textContent);
-    expect(titles).toEqual(["REPOSITORY", "CODEX"]);
+    expect(titles).toEqual(["CODEX"]);
     expect(railRoot().classList.contains("is-open")).toBe(true);
   });
 
-  it("keeps a collapsed section mounted — the body hides but does not unmount", () => {
+  it("carries no collapse affordance — the body stands visible with the panel", () => {
     renderRail();
-    const renderedBefore = railPanelContextMock.renderCount;
-    expect(renderedBefore).toBeGreaterThan(0);
-
-    act(() => toggleRailSectionCollapsed("repository"));
+    expect(railPanelContextMock.renderCount).toBeGreaterThan(0);
+    expect(container.querySelector(".right-rail-section-toggle")).toBeNull();
+    expect(container.querySelector(".right-rail-section-caret")).toBeNull();
     const body = sectionOf("REPOSITORY").querySelector<HTMLElement>(".right-rail-section-body");
-    expect(body?.hidden).toBe(true);
-    // 본문 DOM은 남아 있다 — 접기가 플러그인 트리를 파괴하면 스택은 배타 탭보다 나쁘다.
+    expect(body?.hidden).toBe(false);
     expect(body?.querySelector(".test-panel-action")).not.toBeNull();
   });
 
-  it("closes one section from its header without touching the other", () => {
+  it("closes the section from its header", () => {
     act(() => openRailPanel("codex"));
     renderRail();
 
     const close = sectionOf("CODEX").querySelector<HTMLButtonElement>(".right-rail-section-close");
     act(() => close!.click());
 
-    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual(["repository"]);
-    expect([...container.querySelectorAll(".right-rail-section-title")].map((el) => el.textContent)).toEqual(["REPOSITORY"]);
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
+    expect(container.querySelector(".right-rail-section")).toBeNull();
   });
 
-  it("moves focus to the rail icon before a focused close button unpins its section", () => {
+  it("moves focus to the rail icon before a focused close button unmounts its section", () => {
     // 포커스를 쥔 닫기 버튼이 언마운트되면 포커스가 body로 떨어진다 — 아이콘 이관 계약(Codex 리뷰).
     renderRail();
     const close = sectionOf("REPOSITORY").querySelector<HTMLButtonElement>(".right-rail-section-close");
     act(() => { close!.focus(); close!.click(); });
-    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual([]);
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
     expect(document.activeElement).toBe(iconButton("REPOSITORY"));
   });
 
-  it("collapse toggle speaks aria-expanded on the section header", () => {
-    renderRail();
-    const toggle = sectionOf("REPOSITORY").querySelector<HTMLButtonElement>(".right-rail-section-toggle");
-    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
-    act(() => toggle!.click());
-    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("with nothing pinned the slot closes and the rail loses is-open", () => {
+  it("with nothing active the slot closes and the rail loses is-open", () => {
     act(() => closeRailPanel("repository"));
     renderRail();
 
@@ -261,30 +251,30 @@ describe("Right Rail pinned stack", () => {
 });
 
 describe("Right Rail icons", () => {
-  it("marks every pinned panel icon pressed — the stack has no exclusive tab", () => {
+  it("marks only the active panel icon pressed — exclusive grammar", () => {
     act(() => openRailPanel("codex"));
     renderRail();
 
-    expect(iconButton("REPOSITORY").getAttribute("aria-pressed")).toBe("true");
+    expect(iconButton("REPOSITORY").getAttribute("aria-pressed")).toBe("false");
     expect(iconButton("CODEX").getAttribute("aria-pressed")).toBe("true");
     expect(iconButton("ALERTS").getAttribute("aria-pressed")).toBe("false");
     expect(container.querySelector('[role="tab"]')).toBeNull();
   });
 
-  it("icon click pins and unpins", () => {
+  it("icon click replaces the active panel and a second click closes it", () => {
     renderRail();
     act(() => iconButton("CODEX").click());
-    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual(["repository", "codex"]);
+    expect(getRailStoreSnapshot().activePanelId).toBe("codex");
     act(() => iconButton("CODEX").click());
-    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual(["repository"]);
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
   });
 });
 
 describe("Right Rail card width", () => {
-  it("uses the widest pinned default when nothing is stored", () => {
+  it("uses the active panel's declared default when nothing is stored", () => {
     act(() => openRailPanel("codex"));
     renderRail();
-    // repository 360 vs codex 420 → 카드 폭은 최댓값 420.
+    // 독점 슬롯이라 카드 기본 폭은 활성 패널의 선언값 하나다 — codex 420.
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
   });
 
@@ -363,16 +353,16 @@ describe("Right Rail settings gear", () => {
     expect(panelSlot().querySelector(".right-rail-panel-body")).not.toBeNull();
   });
 
-  it("toggles the settings surface as a pinned section and speaks pressed + brass", () => {
+  it("toggles the settings surface as the active section and speaks pressed + brass", () => {
     renderRail();
     expect(gearButton().getAttribute("aria-pressed")).toBe("false");
 
     act(() => gearButton().click());
 
-    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).toBe("settings");
     expect(gearButton().getAttribute("aria-pressed")).toBe("true");
     expect(gearButton().classList.contains("is-active")).toBe(true);
-    // 문은 표면을 그대로 연다 — 스택 섹션 본문은 문(토글)을 라벨로 삼는 region으로 서고,
+    // 문은 표면을 그대로 연다 — 섹션 본문은 문(토글)을 라벨로 삼는 region으로 서고,
     // 문은 자기 표면을 가리킨다.
     const panel = container.querySelector("#rail-panel-settings")!;
     expect(panel).not.toBeNull();
@@ -382,15 +372,15 @@ describe("Right Rail settings gear", () => {
     expect(gearButton().getAttribute("aria-controls")).toBe("rail-panel-settings");
 
     act(() => gearButton().click());
-    expect(getRailStoreSnapshot().pinnedPanelIds).not.toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
     expect(gearButton().getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("stacks the settings section alongside pinned work panels instead of evicting them", () => {
+  it("replaces the active work panel — the exclusive card never stacks sections", () => {
     renderRail();
     act(() => gearButton().click());
     const titles = [...container.querySelectorAll(".right-rail-section-title")].map((el) => el.textContent);
-    expect(titles).toEqual(["REPOSITORY", "SETTINGS"]);
+    expect(titles).toEqual(["SETTINGS"]);
   });
 
   it("keeps the settings entry out of the panel toggle lists", () => {
@@ -401,7 +391,16 @@ describe("Right Rail settings gear", () => {
     expect(container.querySelector("#rail-tab-settings")).toBeNull();
   });
 
-  it("resets the card width to the widest pinned default on a divider double-click", () => {
+  it("moves focus to the gear before a focused close button unmounts settings", () => {
+    renderRail();
+    act(() => gearButton().click());
+    const close = sectionOf("SETTINGS").querySelector<HTMLButtonElement>(".right-rail-section-close");
+    act(() => { close!.focus(); close!.click(); });
+    expect(getRailStoreSnapshot().activePanelId).toBeNull();
+    expect(document.activeElement).toBe(gearButton());
+  });
+
+  it("resets the card width to the active panel's default on a divider double-click", () => {
     window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
     renderRail();
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("500px");
@@ -441,7 +440,7 @@ describe("Right Rail occupied width report", () => {
     expect(getRailStoreSnapshot().railOccupiedPx).toBe(0);
   });
 
-  it("shrinks the report to the icon strip when nothing is pinned", () => {
+  it("shrinks the report to the icon strip when nothing is active", () => {
     act(() => closeRailPanel("repository"));
     renderRail();
     expect(getRailStoreSnapshot().railOccupiedPx).toBe(44);
