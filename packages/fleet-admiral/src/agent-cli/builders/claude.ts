@@ -11,8 +11,18 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
     ...buildSettingsArgs(context.skillOverrides),
     ...buildSearchToolArgs(),
-    "--dangerously-skip-permissions",
+    ...buildPermissionArgs(context.claudeCodeSkipPermissions),
   ];
+}
+
+/**
+ * 승인 게이트를 건너뛸 때만 플래그가 실린다. 끄는 쪽은 플래그를 빼는 것으로 끝난다 —
+ * 자식의 기본 권한 모드가 곧 "도구마다 묻는다"이므로 그것을 되돌리려고 `--permission-mode`를
+ * 따로 실을 이유가 없다. 무엇을 승인할지 묻고 답을 받는 화면은 Claude Code TUI의 것이고,
+ * Fleet은 그것을 대신 그리지 않는다.
+ */
+function buildPermissionArgs(claudeCodeSkipPermissions: boolean | undefined): string[] {
+  return claudeCodeSkipPermissions === true ? ["--dangerously-skip-permissions"] : [];
 }
 
 /**
@@ -22,10 +32,13 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
  *
  * `--tools`는 내장 집합을 통째로 **대체**하므로 두 도구를 되살리는 값이 나머지 열두
  * 개를 함께 지운다. 이름을 허용 목록에 올리는 쪽은 억제만 해제한다 — 측정: 무플래그
- * 12개, `--tools Grep,Glob` 2개, 이 플래그 14개. 바이패스 모드에서 허용 목록은 권한
- * 판정에 관여하지 않으니 여기서는 순수 가산이다.
+ * 12개, `--tools Grep,Glob` 2개, 이 플래그 14개.
  *
  * `--settings`의 `permissions.allow`로는 풀리지 않는다. 억제 해제는 이 플래그 전용이다.
+ *
+ * 바이패스 런치에서 이 목록은 권한 판정에 관여하지 않으므로 순수 가산이다. 승인 게이트가
+ * 살아 있는 런치에서는 허용 목록으로도 읽혀 이 두 이름만 무승인으로 지나간다 — 둘 다 읽기
+ * 전용이라 의도한 결과지만, "가산일 뿐"이라는 말이 한쪽 런치에서만 참이라는 것은 적어 둔다.
  */
 function buildSearchToolArgs(): string[] {
   return ["--allowedTools", "Grep,Glob"];

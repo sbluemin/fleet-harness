@@ -247,7 +247,26 @@ describe("claude-gateway argument composition", () => {
     expect(args).toContain("--plugin-dir");
     expect(args).toContain("--mcp-config");
     expect(args).toContain("--settings");
-    expect(args).toContain("--dangerously-skip-permissions");
+    // 승인 게이트를 건너뛰는 것은 사용자가 켠 경우에만 참이다 — 기본 런치는 플래그를 싣지 않는다.
+    expect(args).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("carries the bypass flag only when the launch opted in, and always after the allowlist value", () => {
+    const base = {
+      cliId: "claude" as const,
+      mcpServers: [],
+      pluginRoot: "/fleet/plugin",
+      pluginRoots: ["/fleet/plugin"],
+      sessionCoordinate: { kind: "new" as const, sessionId: randomUUID() },
+    };
+
+    expect(buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: false }))
+      .not.toContain("--dangerously-skip-permissions");
+
+    const optedIn = buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: true });
+    // 가변 인자가 값을 삼키지 않도록 바이패스 플래그는 허용 목록 값 뒤에 와야 한다.
+    const allowed = optedIn.indexOf("--allowedTools");
+    expect(optedIn.indexOf("--dangerously-skip-permissions")).toBeGreaterThan(allowed + 1);
   });
 
   it("turns Claude Code's own prompt off with an empty prompt value, never with an append flag", () => {
@@ -280,8 +299,6 @@ describe("claude-gateway argument composition", () => {
     expect(allowed).toBeGreaterThanOrEqual(0);
     expect(args[allowed + 1]).toBe("Grep,Glob");
     expect(args).not.toContain("--tools");
-    // 가변 인자가 값을 삼키지 않도록 바이패스 플래그가 뒤에 와야 한다.
-    expect(args.indexOf("--dangerously-skip-permissions")).toBeGreaterThan(allowed + 1);
   });
 
   it("cleans the prompt file when plugin injection fails", async () => {
@@ -339,6 +356,20 @@ describe("claude-gateway argument composition", () => {
     }
   });
 
+  it("carries the permission opt-in from launch options all the way into argv", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-permission-optin-");
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      claudeCodeSkipPermissions: true,
+    }));
+
+    try {
+      expect(injected.args).toContain("--dangerously-skip-permissions");
+    } finally {
+      injected.cleanup?.();
+    }
+  });
+
   it("composes gateway assets with no system prompt flag on any path", async () => {
     const root = createTempRoot("fleet-admiral-gateway-compose-");
     const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
@@ -355,7 +386,7 @@ describe("claude-gateway argument composition", () => {
     expect(injected.args).toContain("--plugin-dir");
     expect(injected.args).toContain("--mcp-config");
     expect(injected.args).toContain("--settings");
-    expect(injected.args).toContain("--dangerously-skip-permissions");
+    expect(injected.args).not.toContain("--dangerously-skip-permissions");
 
     const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
     const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
@@ -462,11 +493,15 @@ function baseInjectOptions(
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
     readonly claudeCodeSystemPrompt?: "on" | "off";
+    readonly claudeCodeSkipPermissions?: boolean;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
     dataDir: path.join(root, "data"),
     ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
+    ...(overrides.claudeCodeSkipPermissions !== undefined
+      ? { claudeCodeSkipPermissions: overrides.claudeCodeSkipPermissions }
+      : {}),
     dedicatedMcpSession: {
       async getEndpoint() {
         return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };

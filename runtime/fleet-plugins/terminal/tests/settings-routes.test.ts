@@ -33,6 +33,8 @@ describe("terminal settings routes", () => {
       agentIdleDormantMinutes: 60,
       // 키가 없는 설정 파일은 플래그 없는 런치와 같은 뜻이다 — Claude Code 프롬프트가 켜진 세션.
       claudeCodeSystemPrompt: "on",
+      // 승인 게이트는 그 반대다 — 저장된 적 없는 상태가 건너뛰기 동의를 대신할 수 없다.
+      claudeCodeSkipPermissions: false,
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
@@ -104,6 +106,36 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSystemPrompt: "off" });
     expect(harness.currentData()).toEqual({ version: 1, claudeCodeSystemPrompt: "off" });
+  });
+
+  it("PUT /plugins/terminal/settings stores the Claude Code permission opt-in", async () => {
+    const harness = createRouteHarness({
+      body: { claudeCodeSkipPermissions: true },
+      data: { version: 1 },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSkipPermissions: true });
+    expect(harness.currentData()).toEqual({ version: 1, claudeCodeSkipPermissions: true });
+  });
+
+  it("PUT /plugins/terminal/settings takes the permission opt-in back off", async () => {
+    const harness = createRouteHarness({
+      body: { claudeCodeSkipPermissions: false },
+      data: { version: 1, claudeCodeSkipPermissions: true },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSkipPermissions: false });
+    expect(harness.currentData()).toEqual({ version: 1, claudeCodeSkipPermissions: false });
+  });
+
+  it("PUT /plugins/terminal/settings rejects a non-boolean permission opt-in", async () => {
+    // 문자열 "true"가 동의로 읽히면, 손으로 고친 파일 한 줄이 게이트를 연다.
+    const harness = createRouteHarness({ body: { claudeCodeSkipPermissions: "true" }, data: { version: 1 } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects a system prompt value outside the two modes", async () => {

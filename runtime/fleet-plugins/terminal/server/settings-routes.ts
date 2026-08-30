@@ -30,6 +30,7 @@ interface TerminalSettingsRouteDeps {
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
   readonly claudeCodeSystemPrompt?: unknown;
+  readonly claudeCodeSkipPermissions?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -40,6 +41,7 @@ interface TerminalSettingsBody {
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
+  | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -51,6 +53,7 @@ const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
+  readonly claudeCodeSkipPermissions: boolean;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -166,6 +169,7 @@ function toTerminalSettingsState(
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
+    claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(data),
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -185,6 +189,14 @@ export function resolveClaudeCodeSystemPrompt(data: GlobalOptionsData): ClaudeCo
   return data.claudeCodeSystemPrompt ?? "on";
 }
 
+/**
+ * 키가 없으면 꺼진 것으로 읽는다 — 승인 게이트를 건너뛰는 것은 사용자가 명시적으로 켠
+ * 경우에만 참이어야 하고, 저장된 적 없는 상태가 그 동의를 대신할 수는 없다.
+ */
+export function resolveClaudeCodeSkipPermissions(data: GlobalOptionsData): boolean {
+  return data.claudeCodeSkipPermissions === true;
+}
+
 export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
   return data.agentIdleDormantMinutes === undefined
     ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
@@ -200,6 +212,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "agentIdleDormantMinutes") {
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
+      : null;
+  }
+  if (keys[0] === "claudeCodeSkipPermissions") {
+    return typeof body.claudeCodeSkipPermissions === "boolean"
+      ? { claudeCodeSkipPermissions: body.claudeCodeSkipPermissions }
       : null;
   }
   if (keys[0] === "claudeCodeSystemPrompt") {

@@ -105,6 +105,10 @@ export async function prepareClaudeSession(
       },
       request: {
         ...toSdkSessionCoordinate(coordinate),
+        // SDK 표면은 사용자의 승인 게이트 선택을 따르지 않는다 — 따를 수 없어서다. 채팅
+        // 세션의 `canUseTool`은 권한 게이트가 아니라 질문 통로이고, 그 집합 밖의 도구는
+        // 콜백 첫 줄에서 그대로 허용된다. 여기서 모드만 내리면 화면은 승인제라고 말하고
+        // 실제로는 전부 통과하므로, 그 게이트가 실제로 설 때까지 이 값은 bypass로 남는다.
         permissionMode: "bypassPermissions",
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
       },

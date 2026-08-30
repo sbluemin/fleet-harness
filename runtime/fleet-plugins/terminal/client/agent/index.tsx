@@ -13,7 +13,7 @@ import {
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { SettingsScope, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../shared/terminal-preferences.js";
@@ -122,19 +122,40 @@ export const generalSettingsSection = defineSettingsSection({
   // "모든 설정 검색"이라는 약속을 지키지 못한다. 개념어는 그 뒤에 더한다.
   keywords: [
     (locale) => [
-      getT(locale)("terminal.settings.claudeSystemPromptTitle"),
-      getT(locale)("terminal.settings.idleAgent"),
       getT(locale)("terminal.settings.terminalFont"),
       getT(locale)("terminal.settings.cjkFallback"),
       getT(locale)("terminal.settings.chatReadingWidthTitle"),
       getT(locale)("terminal.settings.terminalRenderer"),
       getT(locale)("terminal.settings.inactiveFlush"),
-      getT(locale)("terminal.settings.compactTiming"),
     ].join(" "),
-    "terminal font typeface monospace dormant idle session timeout system prompt claude renderer webgl canvas reading width compact cjk fallback korean japanese chinese hangul kana han glyph coverage",
-    "터미널 글꼴 서체 고정폭 휴면 유휴 세션 시간 시스템 프롬프트 렌더러 읽기 폭 압축 폴백 한글 일본어 중국어 가나 한자 글리프 커버리지",
+    "terminal font typeface monospace renderer webgl canvas reading width cjk fallback korean japanese chinese hangul kana han glyph coverage",
+    "터미널 글꼴 서체 고정폭 렌더러 읽기 폭 폴백 한글 일본어 중국어 가나 한자 글리프 커버리지",
   ],
   render: () => <GeneralSection />,
+});
+
+/**
+ * 에이전트를 **어떻게 실행하는가**의 방. 터미널 섹션이 화면을 그리는 법을 말하는 것과 같은
+ * 층에서, 이 섹션은 자식 프로세스의 정책을 말한다 — 승인 게이트, 시스템 프롬프트, 휴면,
+ * 실행 파일. 하네스가 하나뿐인 지금도 카드를 하네스별로 세워 두는 이유는, 둘째 하네스가
+ * 왔을 때 옮길 것이 없어야 하기 때문이다.
+ */
+export const harnessSettingsSection = defineSettingsSection({
+  id: "harness",
+  title: (locale) => getT(locale)("terminal.settings.harness"),
+  group: "work",
+  keywords: [
+    (locale) => [
+      getT(locale)("terminal.settings.harnessClaudeCode"),
+      getT(locale)("terminal.settings.skipPermissionsTitle"),
+      getT(locale)("terminal.settings.claudeSystemPromptTitle"),
+      getT(locale)("terminal.settings.idleAgent"),
+      getT(locale)("terminal.settings.agentCliAvailable"),
+    ].join(" "),
+    "harness permission permissions approval prompt bypass dangerously skip system prompt claude code dormant idle session timeout cli path executable",
+    "하네스 권한 승인 프롬프트 바이패스 건너뛰기 시스템 프롬프트 휴면 유휴 세션 시간 실행 파일 경로",
+  ],
+  render: () => <HarnessSection />,
 });
 
 export const agentSettingsSection = defineSettingsSection({
@@ -143,13 +164,13 @@ export const agentSettingsSection = defineSettingsSection({
   group: "work",
   keywords: [
     (locale) => [
-      getT(locale)("terminal.settings.agentCliAvailable"),
       getT(locale)("terminal.settings.aiGatewayModels"),
+      getT(locale)("terminal.settings.compactTiming"),
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key cli path codex cursor opencode xai kimi diagnostics wire log",
-    "게이트웨이 공급자 모델 키 경로 진단 와이어 로그",
+    "gateway provider model api key codex cursor opencode xai kimi diagnostics wire log compact",
+    "게이트웨이 공급자 모델 키 진단 와이어 로그 압축",
   ],
   render: () => <AgentCliSection />,
 });
@@ -187,7 +208,7 @@ function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
-  settingsSections: [generalSettingsSection, agentSettingsSection],
+  settingsSections: [harnessSettingsSection, generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
@@ -701,8 +722,6 @@ function GeneralSection() {
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
-      <ClaudeCodeSystemPromptSettingsBlock />
-      <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <ChatReadingWidthSettingsCard />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
@@ -711,10 +730,29 @@ function GeneralSection() {
 }
 
 /**
- * Claude Code 자신의 시스템 프롬프트를 새 세션에 실을지 고르는 표면. Fleet은 자기 프롬프트를
- * 싣지 않으므로 이 스위치가 끄는 것은 Claude Code의 것 하나뿐이다.
+ * 하네스 방의 차례: 하네스별 정책 → 하네스 공통 → 설치.
+ *
+ * 정책이 먼저 서는 이유는 이 방을 여는 이유가 대개 그것이기 때문이고, 실행 파일 목록이
+ * 마지막인 이유는 한 번 맞춰 놓으면 다시 볼 일이 거의 없기 때문이다. 휴면은 자식이 아니라
+ * Console이 하는 일이라 하네스별 카드가 아니라 공통 카드에 눕는다.
  */
-function ClaudeCodeSystemPromptSettingsBlock() {
+function HarnessSection() {
+  // 카드를 Fragment로 직접 반환한다 — 간격은 호스트의 .global-settings-detail이 진다.
+  return (
+    <>
+      <ClaudeCodeHarnessCard />
+      <AgentSessionsSettingsCard />
+      <AgentCliAvailabilityCard />
+    </>
+  );
+}
+
+/**
+ * 한 하네스의 실행 정책이 한 카드에 모인다 — 승인 게이트와 시스템 프롬프트는 둘 다
+ * "이 자식을 어떻게 띄우는가"이고, 둘 다 새 세션부터 듣는다. 하네스가 늘면 이 카드가
+ * 그 수만큼 서고, 방의 구조는 그대로다.
+ */
+function ClaudeCodeHarnessCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
@@ -727,10 +765,34 @@ function ClaudeCodeSystemPromptSettingsBlock() {
   }, []);
 
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.claudeSystemPromptAria")}>
+    <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
+      <p className="global-settings-card-title">{t("terminal.settings.harnessClaudeCode")}</p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <>
+          {/* 행 제목이 컨트롤의 이름이 되도록 그룹으로 묶는다 — 토글 자신이 말하는 것은
+              켬/끔뿐이라, 무엇을 켜는지는 이 연결이 없으면 화면 밖에서 사라진다. */}
+          <div className="global-settings-row" role="group" aria-labelledby="claude-code-skip-permissions-label">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title" id="claude-code-skip-permissions-label">
+                {t("terminal.settings.skipPermissionsTitle")}
+                <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
+              </p>
+              <p className="global-settings-help">{t("terminal.settings.skipPermissionsHelp")}</p>
+              <HarnessSurfaceList />
+              {state.claudeCodeSkipPermissions ? (
+                <p className="harness-hazard" role="note">{t("terminal.settings.skipPermissionsWarn")}</p>
+              ) : null}
+            </div>
+            <SettingsToggle
+              checked={state.claudeCodeSkipPermissions}
+              disabled={saving}
+              label={state.claudeCodeSkipPermissions
+                ? t("terminal.settings.skipPermissionsOn")
+                : t("terminal.settings.skipPermissionsOff")}
+              onChange={(next) => void setSystemPromptSettingsField("claudeCodeSkipPermissions", next)}
+            />
+          </div>
           <div className="global-settings-row">
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title" id="claude-code-system-prompt-label">
@@ -753,12 +815,28 @@ function ClaudeCodeSystemPromptSettingsBlock() {
               )}
             />
           </div>
-          <p className="global-settings-foot">{t("terminal.settings.claudeSystemPromptFoot")}</p>
+          <p className="global-settings-foot">{t("terminal.settings.harnessFoot")}</p>
         </>
       ) : (
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
     </section>
+  );
+}
+
+/**
+ * 승인 게이트 선택이 실제로 닿는 표면. 도움말 문장이 같은 사실을 이미 말하므로 이 줄은
+ * 훑어 읽는 판본이고, 그래서 칩만으로 뜻이 완성되지 않아도 된다. 채팅이 빠져 있는 것은
+ * 결함이 아니라 계약이다 — 그 표면에는 승인을 물을 화면이 없다(admiral session.ts 참조).
+ */
+function HarnessSurfaceList() {
+  const t = getT(useTerminalLocale());
+  return (
+    <ul className="harness-surfaces" aria-label={t("terminal.settings.harnessSurfaceLabel")}>
+      <li className="harness-surface is-on">{t("terminal.settings.harnessSurfaceTerminal")}</li>
+      <li className="harness-surface is-on">{t("terminal.settings.harnessSurfaceCli")}</li>
+      <li className="harness-surface is-off">{t("terminal.settings.harnessSurfaceChat")}</li>
+    </ul>
   );
 }
 
@@ -796,7 +874,11 @@ const IDLE_AGENT_DORMANT_OPTIONS = [
   { value: "240", labelKey: "terminal.settings.idleAgent4h" },
 ] as const;
 
-function IdleAgentSessionsSettingsBlock() {
+/**
+ * 하네스 공통 카드. 휴면은 자식이 아니라 Console이 하는 일이라 어떤 하네스로 연 Operation
+ * 이든 같은 규칙을 받는다 — 그래서 하네스별 카드가 아니라 이 자리에 눕는다.
+ */
+function AgentSessionsSettingsCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
@@ -835,7 +917,8 @@ function IdleAgentSessionsSettingsBlock() {
   })();
 
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.idleAgent")}>
+    <section className="global-settings-card" aria-label={t("terminal.settings.harnessAgentSessions")}>
+      <p className="global-settings-card-title">{t("terminal.settings.harnessAgentSessions")}</p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <div className="global-settings-row">
@@ -867,6 +950,23 @@ function IdleAgentSessionsSettingsBlock() {
 }
 
 function AgentCliSection() {
+  // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
+  // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
+  return (
+    <>
+      <ModelAuthBlock />
+      <AiGatewayModelsCard />
+      <AiGatewayCompactTimingCard />
+      <AiGatewayDiagnosticsCard />
+    </>
+  );
+}
+
+/**
+ * 이 기계에 어떤 하네스 실행 파일이 있고 어디에 있는가. 게이트웨이 모델 곁에 있던 카드지만
+ * 그것은 공급자 이야기이고 이쪽은 실행기 이야기라, 방을 가르면서 함께 옮겨 왔다.
+ */
+function AgentCliAvailabilityCard() {
   const t = getT(useTerminalLocale());
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
   const [diagnostics, setDiagnostics] = React.useState<readonly AgentCliDiagnosticsEntry[]>([]);
@@ -891,33 +991,25 @@ function AgentCliSection() {
     return () => abort.abort();
   }, [refresh]);
 
-  // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
-  // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
-    <>
-      <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
-        <div className="agent-cli-head">
-          <p className="global-settings-resp-title">{t("terminal.settings.agentCliAvailable")}</p>
-        </div>
-        <p className="global-settings-help">{t("terminal.settings.agentCliHelp")}</p>
-        {error ? <p className="settings-error">{error}</p> : null}
-        <div className="agent-cli-list">
-          {clis.map((cli) => (
-            <AgentCliRow
-              key={cli.id}
-              cli={cli}
-              diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)}
-              onChanged={refresh}
-            />
-          ))}
-        </div>
-        <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
-      </section>
-      <ModelAuthBlock />
-      <AiGatewayModelsCard />
-      <AiGatewayCompactTimingCard />
-      <AiGatewayDiagnosticsCard />
-    </>
+    <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
+      <div className="agent-cli-head">
+        <p className="global-settings-resp-title">{t("terminal.settings.agentCliAvailable")}</p>
+      </div>
+      <p className="global-settings-help">{t("terminal.settings.agentCliHelp")}</p>
+      {error ? <p className="settings-error">{error}</p> : null}
+      <div className="agent-cli-list">
+        {clis.map((cli) => (
+          <AgentCliRow
+            key={cli.id}
+            cli={cli}
+            diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)}
+            onChanged={refresh}
+          />
+        ))}
+      </div>
+      <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
+    </section>
   );
 }
 

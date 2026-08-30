@@ -919,6 +919,66 @@
 }
 
 
+/* 승인 게이트 선택이 실제로 닿는 표면. 카드가 자기 적용 범위를 스스로 말하지 않으면,
+   채팅에서 지켜지지 않는 스위치가 화면에서는 지켜지는 것처럼 보인다. 적용 여부는 상태이므로
+   점만 신호 토큰을 쓰고, 글자와 테두리는 중립으로 둔다 — 칩 세 개가 경보처럼 읽히면
+   정작 위험을 말하는 아래 줄이 묻힌다. */
+.harness-surfaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.harness-surface {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--ink-deep) 42%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.harness-surface::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+}
+
+.harness-surface.is-on::before { background: var(--positive); }
+.harness-surface.is-off::before { background: var(--warn); }
+
+/* 건너뛰기가 켜져 있는 동안에만 서는 줄. 위험은 상태이므로 coral이 말하되 글자에서만
+   말한다 — 면을 칠하면 같은 카드의 시스템 프롬프트 행까지 경보로 읽힌다. */
+.harness-hazard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--coral-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+}
+
+.harness-hazard::before {
+  content: "\25B2";
+  flex: none;
+  padding-top: 2px;
+  font-size: var(--t-2xs);
+}
+
 /* 고대비(forced-colors) — 워시·잉크 워시가 걷히는 환경에서는 켜짐을 시스템 선택색으로 말한다. */
 @media (forced-colors: active) {
   .ai-gateway-host-only.is-on,
