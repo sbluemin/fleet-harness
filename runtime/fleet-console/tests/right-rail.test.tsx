@@ -570,6 +570,34 @@ describe("Right Rail settings menu", () => {
     expect(railMenu()).toBeNull();
   });
 
+  it.each([
+    ["a window resize", () => window.dispatchEvent(new Event("resize"))],
+    ["a captured scroll", () => document.body.dispatchEvent(new Event("scroll"))],
+  ])("hands focus back to the gear when %s dismisses the menu", (_label, jolt) => {
+    renderRail();
+    openRailMenu();
+    const firstItem = menuItem("Float over Map");
+    act(() => firstItem.focus());
+
+    act(() => { jolt(); });
+
+    // 포커스를 쥔 요소를 그냥 걷어내면 body로 떨어진다 — 톱니는 그대로 서 있으므로 그리로.
+    expect(railMenu()).toBeNull();
+    expect(document.activeElement).toBe(gearButton());
+  });
+
+  it("leaves focus alone when the menu is dismissed while something else holds it", () => {
+    renderRail();
+    openRailMenu();
+    const outside = container.querySelector<HTMLButtonElement>("#rail-tab-codex")!;
+    act(() => outside.focus());
+
+    act(() => { window.dispatchEvent(new Event("resize")); });
+
+    expect(railMenu()).toBeNull();
+    expect(document.activeElement).toBe(outside);
+  });
+
   it("takes the floating menu down with the rail chrome and hands focus to the band toggle", () => {
     const railToggle = document.createElement("button");
     railToggle.className = "command-band-rail-toggle";

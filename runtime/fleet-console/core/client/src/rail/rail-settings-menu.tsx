@@ -82,9 +82,16 @@ export function RailSettingsMenu({ panelBehavior, overlayAlpha, activePanelTitle
   }, [railChromeExpanded]);
 
   // 창이 움직이면 좌표가 낡는다 — 다시 계산하는 대신 닫는다(group-context-menu와 같은 계약).
+  //
+  // 이때 메뉴가 포커스를 쥐고 있었다면 톱니로 돌려준다. 포커스를 쥔 요소를 그냥 걷어내면
+  // body로 떨어져 키보드 사용자가 자리를 잃는다. 레일 접힘과 달리 톱니는 그대로 서 있으므로
+  // 돌아갈 자리는 트리거다. 쥐고 있지 않았다면(다른 곳을 보다가 스크롤한 경우) 건드리지 않는다.
   useEffect(() => {
     if (!open) return;
-    const dismiss = () => setOpen(false);
+    const dismiss = () => {
+      if (menuRef.current?.contains(document.activeElement) === true) triggerRef.current?.focus();
+      setOpen(false);
+    };
     window.addEventListener("resize", dismiss);
     window.addEventListener("scroll", dismiss, true);
     return () => {
