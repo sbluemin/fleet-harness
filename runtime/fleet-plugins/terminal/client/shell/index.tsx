@@ -44,8 +44,18 @@ function subscribeShellMount(listener: () => void): () => void {
 }
 
 function attachShellMount(target: HTMLElement, context: ExpandedSurfaceContext): void {
-  // 새 슬롯의 layout effect가 이전 슬롯의 cleanup보다 먼저 올 수 있다. 이 시점에 DOM을 바로
-  // 옮겨 두면 뒤늦은 cleanup은 target 불일치로 무시되고, React effect가 0×0 주차장을 거치지 않는다.
+  if (
+    shellMountState.target
+    && shellMountState.target !== target
+    && shellMountState.context?.instanceId !== context.instanceId
+  ) {
+    // Shell은 콘솔 전체에 하나뿐이다. 범용 표면 API의 split 요청으로 둘째 슬롯이 들어와도
+    // 기존 터미널을 빼앗지 않고 새 인스턴스만 즉시 거둔다.
+    context.close();
+    return;
+  }
+  // 같은 인스턴스의 새 target layout effect가 이전 target cleanup보다 먼저 올 수 있다. 이 시점에
+  // DOM을 바로 옮겨 두면 뒤늦은 cleanup은 target 불일치로 무시되고 0×0 주차장을 거치지 않는다.
   if (shellPersistentHost && shellPersistentHost.parentElement !== target) target.append(shellPersistentHost);
   publishShellMount({ activated: true, target, context });
 }

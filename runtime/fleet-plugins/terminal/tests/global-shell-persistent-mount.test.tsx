@@ -79,9 +79,31 @@ describe("persistent Shell mount", () => {
     expect(document.querySelector(".slot .global-shell-persistent-host")).not.toBeNull();
     expect(document.querySelector("[data-testid='terminal-surface']")?.getAttribute("data-active")).toBe("true");
   });
+
+  it("closes a split Shell instance without moving the shared terminal", () => {
+    const first = shellContext();
+    const second = shellContext({ instanceId: "shell#2" });
+
+    act(() => {
+      root.render(
+        <>
+          <PersistentShellHost language="en" theme="instrument" />
+          <div className="first-slot">{shellSurface.render(first)}</div>
+          <div className="second-slot">{shellSurface.render(second)}</div>
+        </>,
+      );
+    });
+
+    expect(second.close).toHaveBeenCalledTimes(1);
+    expect(first.close).not.toHaveBeenCalled();
+    expect(terminalMocks.mounted).toHaveBeenCalledTimes(1);
+    expect(terminalMocks.unmounted).not.toHaveBeenCalled();
+    expect(document.querySelector(".first-slot .global-shell-persistent-host")).not.toBeNull();
+    expect(document.querySelector(".second-slot .global-shell-persistent-host")).toBeNull();
+  });
 });
 
-function shellContext(): ExpandedSurfaceContext {
+function shellContext(overrides: Partial<ExpandedSurfaceContext> = {}): ExpandedSurfaceContext {
   return {
     surfaceId: "shell",
     instanceId: "shell#1",
@@ -99,5 +121,6 @@ function shellContext(): ExpandedSurfaceContext {
     close: vi.fn(),
     focus: vi.fn(),
     replaceParams: vi.fn(),
+    ...overrides,
   };
 }
