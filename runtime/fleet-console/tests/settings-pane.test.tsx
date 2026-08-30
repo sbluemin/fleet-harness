@@ -226,6 +226,11 @@ describe("settings pane body", () => {
     renderPane({ section: "appearance" }, sectionPane);
 
     expect(document.querySelector('.settings-expanded [role="switch"][aria-label="Float over Map"]')).not.toBeNull();
+    // 확대 사본은 준비된 스냅숏을 재사용한다 — 여기서 GET을 또 쏘면 그 응답이 사용자의
+    // 낙관 저장 뒤에 도착해 옛 값으로 화면을 되덮는다(리뷰 적발).
+    const settingsGets = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      .filter((call) => String(call[0]).includes("/api/v1/settings/global"));
+    expect(settingsGets).toHaveLength(0);
   });
 });
 

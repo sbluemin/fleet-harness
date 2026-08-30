@@ -356,9 +356,13 @@ function SettingsSectionExpanded({ ctx }: { readonly ctx: PaneContext }) {
   const state = settings.state;
   const saving = settings.savingField !== null;
 
+  // 확대는 언제나 이미 적재를 끝낸 primary 페인 옆에 선다 — 여기서 GET을 한 번 더 쏘면,
+  // 그 응답이 사용자의 낙관 저장(PUT) 뒤에 도착해 옛 스냅숏으로 화면을 되덮는 경쟁이 생긴다.
+  // 준비된 스냅숏은 그대로 쓰고, 비어 있을 때(방어적 폴백)만 적재한다.
   useEffect(() => {
+    if (state !== null) return;
     void loadGlobalSettings(ctx.signal);
-  }, [ctx.signal]);
+  }, [ctx.signal, state]);
 
   const coreSections = buildCoreSettingsSections(t, state);
   const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
