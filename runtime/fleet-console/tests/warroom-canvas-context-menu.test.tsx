@@ -229,7 +229,6 @@ describe("War Room empty space releases a focused deck panel", () => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
           arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
-          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -269,7 +268,6 @@ describe("War Room empty space releases a focused deck panel", () => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
           arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
-          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -301,7 +299,6 @@ describe("War Room empty space releases a focused deck panel", () => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
           arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
-          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -329,7 +326,6 @@ describe("War Room empty space releases a focused deck panel", () => {
 
 function renderCanvas(onLaunchKind: OperationsCanvasLaunchKind = () => {}) {
   act(() => root!.render(createElement(OperationsCanvas, {
-    arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
     arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
     state: STATE,
     catalog: CATALOG,

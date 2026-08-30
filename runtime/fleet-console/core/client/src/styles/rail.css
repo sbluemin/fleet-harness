@@ -86,6 +86,10 @@
       color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep))
     ),
     var(--glass-underlay);
+  /* 구 overlay 슬롯의 판독성 계약 그대로 — blur가 빠지면 다크 유리에서 뒤 캔버스의 글자·격자가
+     54% 틴트를 생으로 관통해 패널 본문과 겹친다(적대 리뷰 확정). */
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   opacity: var(--right-rail-overlay-alpha, 1);
   pointer-events: none;
 }

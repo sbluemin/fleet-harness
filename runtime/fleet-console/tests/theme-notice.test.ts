@@ -61,7 +61,11 @@ vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: 
 vi.mock("../core/client/src/settings/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
 vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], expandedSurfaces: [], persistentComponents: [] }), useExpandedSurfaceDescriptors: () => new Map() }));
-vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
+// 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
+vi.mock("../core/client/src/rail/rail-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/client/src/rail/rail-store.js")>()),
+  toggleRailChrome: vi.fn(),
+}));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (importOriginal) => ({

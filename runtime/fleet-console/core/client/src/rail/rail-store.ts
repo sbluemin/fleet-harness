@@ -98,7 +98,9 @@ export function requestRailPanelExtraWidth(panelId: string, px: number | null): 
   const raw = (px === null || !Number.isFinite(px)) ? 0 : px;
   const normalized = Math.max(0, Math.round(raw));
   const clamped = typeof window !== "undefined" ? Math.min(normalized, Math.max(0, window.innerWidth - 548)) : normalized;
-  if (clamped === (store.panelExtraWidths[panelId] ?? 0)) return;
+  // 미등록 상태에서 0 요청도 항목을 심는다 — undefined와 0을 같다고 치면 첫 정규화 요청이
+  // 스냅샷에 흔적을 남기지 않아 상태 검사가 어긋난다.
+  if (store.panelExtraWidths[panelId] !== undefined && clamped === store.panelExtraWidths[panelId]) return;
   setStore({ ...store, panelExtraWidths: { ...store.panelExtraWidths, [panelId]: clamped } });
 }
 
