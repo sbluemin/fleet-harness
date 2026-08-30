@@ -177,6 +177,34 @@ describe("레일 표면의 2단", () => {
     expect(new Set(seenPanes).size).toBe(1);
   });
 
+  it("자동으로 선 primary도 자기 params를 갈아탈 수 있다", () => {
+    render();
+    expect(listCtx?.params).toEqual({});
+
+    act(() => { listCtx?.panes.replaceParams({ section: "language" }); });
+
+    // primary는 처음에 스토어 인스턴스가 없다. 주소 갱신이 그 이유로 버려지면 설정 칩처럼
+    // ctx.params로 선택을 읽는 본문은 클릭을 받아도 영원히 첫 화면에 머문다.
+    expect(listCtx?.params).toEqual({ section: "language" });
+    expect(getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "list")?.params)
+      .toEqual({ section: "language" });
+    // 주소를 기억한 primary를 detail 열로 오인해 분할하면 안 된다.
+    expect(container.querySelector(".rail-pane-divider")).toBeNull();
+    expect(container.querySelectorAll(".rail-pane")).toHaveLength(1);
+  });
+
+  it("물러난 primary의 늦은 주소 갱신은 다음 열림에 남기지 않는다", () => {
+    render();
+    const stalePanes = listCtx!.panes;
+
+    // 레일 섹션을 닫아 PaneHost가 헐린 상황. 그 전에 시작한 비동기 작업만 옛 창구를 쥔다.
+    act(() => { root.render(<div data-testid="rail-closed" />); });
+    act(() => { stalePanes.replaceParams({ section: "late" }); });
+
+    // 늦은 응답이 씨앗을 만들면 다음에 같은 primary를 열 때 닫힌 뒤 생긴 주소가 되살아난다.
+    expect(getPaneStoreSnapshot().rail).toHaveLength(0);
+  });
+
   it("확대된 페인을 다시 열면 그 자리에서 갈아탄다 — 레일에 사본을 세우지 않는다", () => {
     render();
     openExpandedSurface({ surfaceId: "pane", params: { paneId: "doc", path: "a.ts" } });
