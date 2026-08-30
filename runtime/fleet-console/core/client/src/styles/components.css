@@ -4792,14 +4792,11 @@
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 박스 안의 본문 팬은 panel-face(게이트
-     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. 틴트 아래의 pane-light는 창이 자기 위에
-     얹는 계조 한 겹이다: 유리 뒤가 캔버스라 blur가 굴절시킬 것이 적으므로, 재질은 명도가 아니라
-     이 기울기가 말한다. 게이트가 닫히면 이 겹은 투명, 틴트는 불투명 --surface-panel이라 목록
-     전체가 오늘의 한 겹으로 축약된다.
-     기하(반경·중심)는 창의 구조라 여기가 소유하고, **자리만** 테마가 정한다: 어두운 판 위에서는
-     빛이 위에서 오지만(-12px), 종이 위에서는 더할 빛이 없어 같은 겹이 아래쪽 그늘이 되어야 한다
-     (--glass-pane-anchor). 색과 자리는 한 테마가 함께 정해야 부호가 어긋나지 않는다. */
-  --pane-light-origin: var(--glass-pane-anchor, -12px);
+     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. 틴트 아래의 pane-light는 창 위쪽에 놓인
+     광원 한 겹이다: 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없으므로,
+     재질은 명도가 아니라 이 기울기가 말한다. 게이트가 닫히면 광원은 투명, 틴트는 불투명
+     --surface-panel이라 목록 전체가 오늘의 한 겹으로 축약된다. */
+  --pane-light-origin: -12px;
   background:
     linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),
     radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),
@@ -6519,15 +6516,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 /* 떠 있는 캡션(Cruise·Tactical·War Room·최대화)과 companion 캡션은 top:-32px로 루트 박스 밖에
-   선다 — 창의 꼭대기가 본문이 아니라 그 캡션이라는 뜻이다. 계조 원점을 캡션 높이만큼 위로 밀어
+   선다 — 창의 꼭대기가 본문이 아니라 그 캡션이라는 뜻이다. 광원 원점을 캡션 높이만큼 위로 밀어
    본문이 창 전체를 비추는 한 줄기 빛의 아래쪽을 받게 한다. 각자 자기 박스 기준으로 그리면
    본문 상단이 한 번 더 밝아져 캡션과의 이음새에 계단이 생긴다.
-   덱 타일과 상단 접힘 캡션(is-top-edge)은 흐름 안이라 루트의 top이 곧 창의 꼭대기다.
-   이 보정은 계조가 **위**에 걸린 극성에만 있다 — 아래쪽 그늘은 창의 바닥에 걸리고, 바닥은 떠 있는
-   캡션이 있어도 그대로다. 그래서 자리는 여기서 정하지 않고 테마가 이 형상 전용 채널로 답한다. */
+   덱 타일과 상단 접힘 캡션(is-top-edge)은 흐름 안이라 루트의 top이 곧 창의 꼭대기다. */
 .canvas-operation:not(.is-deck-tile):not(.is-top-edge):has(> .canvas-operation-titlebar),
 .canvas-operation:has(> .canvas-companion-caption) {
-  --pane-light-origin: var(--glass-pane-anchor, -44px);
+  --pane-light-origin: -44px;
 }
 
 /* 덱 타일만 그 면제에서 빠진다 — 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로
@@ -13034,7 +13029,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .expanded-surface-slot:has(.terminal-shell) {
   background:
     linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
-    radial-gradient(150% 420px at 50% var(--glass-pane-anchor, -48px), var(--glass-pane-light) 0%, transparent 62%),
+    radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-terminal);
   backdrop-filter: var(--glass-backdrop-terminal);

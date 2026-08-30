@@ -256,12 +256,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
    현재 문서 스크롤을 갖는 데스크톱 라우트는 설정 하나뿐이다. Operations 캔버스는 스크롤이
    아니라 고정 프레임이라 이 규칙의 대상이 아니다.
 
-   이 선택자는 theme.css의 채널 게이트와 **글자까지 같아야 한다**. 이 규칙은 채널이 아니라
-   data-glass 속성을 직접 읽으므로, 한 테마를 theme.css에서만 빼면 여기는 계속 열려 있다 —
-   불투명해진 밴드 뒤로 본문이 흘러 굴절 대신 가려지기만 한다(축소-투명도에서 이미 같은 이유로
-   되돌리는 실패 양식이다). 한때 라이트(Whites)를 :not(…, [data-theme="whites"])로 제외했던
-   것도 이 대칭을 함께 지켜야 했던 이유다. 제외를 다시 쓸 일이 생기면 :not(A, B) 목록 한 겹으로
-   쓴다 — 사슬은 특이도를 올려 아래 축소-투명도 되돌림을 무력화한다. */
+   제외 목록은 theme.css의 채널 게이트와 **글자까지 같아야 한다**. 이 규칙은 채널이 아니라
+   data-glass 속성을 직접 읽으므로, 라이트(Whites)를 theme.css에서만 빼면 여기는 계속 열려
+   있다 — 불투명해진 밴드 뒤로 본문이 흘러 굴절 대신 가려지기만 한다(축소-투명도에서 이미
+   같은 이유로 되돌리는 실패 양식이다). :not(A, B) 목록 형태를 지키는 이유도 같다. */
 @supports (selector(:has(*)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))) {
   /* 셸은 밴드와 라우트 사이에 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)를
      조건부로 끼운다. 그 바가 하나라도 서면 음수 마진은 밴드가 아니라 그 바를 라우트로 덮어
@@ -275,14 +273,14 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
      사이에 있어 영영 매칭되지 않는다.
      --band-underflow는 그 자리에서만 켜지고 자손이 상속한다 — 조건이 깨지면 0px 기본값으로
      떨어져 페이지 패딩과 sticky 오프셋이 함께 원래 레이아웃으로 돌아간다. */
-  :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
+  :root:not([data-glass="off"], [data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
     --band-underflow: var(--chrome-band-height);
     margin-top: calc(-1 * var(--band-underflow));
   }
 
   /* 밴드는 라우트 본문(위치 없음, z:auto)만 이기면 된다. 값을 키우면 What's new(35) 같은
      낮은 오버레이 위로 밴드가 올라서므로(기존 is-docked 주석의 실측 회귀) 사다리의 맨 아래에 둔다. */
-  :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
+  :root:not([data-glass="off"], [data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
     --z-band-underflow: 2;
     isolation: isolate;
     z-index: var(--z-band-underflow);
@@ -291,12 +289,12 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   /* 유리 게이트의 셋째 조건. 투명도 축소를 선호하면 밴드는 불투명 실색으로 돌아가므로,
      본문을 그 뒤로 보내면 굴절 대신 가려지기만 한다 — 공간 예약 레이아웃으로 되돌린다. */
   @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
+    :root:not([data-glass="off"], [data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
       --band-underflow: 0px;
       margin-top: 0;
     }
 
-    :root:not([data-glass="off"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
+    :root:not([data-glass="off"], [data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
       isolation: auto;
       z-index: auto;
     }
