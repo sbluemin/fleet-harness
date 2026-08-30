@@ -311,10 +311,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           />
         )}
         {activeBinding !== null && (
-          // key가 패널 교체를 언마운트/재마운트로 만든다 — 스택 시절 unpin/re-pin과 같은
-          // 수명 계약이라, pane-store의 keepAlive 주차·복귀 경로가 그대로 이어진다.
+          // 의도적으로 key를 두지 않는다 — 섹션 인스턴스가 하나로 유지되어야 RailSurface가
+          // 엔트리 교체를 목격하고 pane 계약의 정리(resetSurfacePanes)를 돌린다: 떠나는 표면의
+          // 비-keepAlive 열은 내려가고 keepAlive는 주차된다. key 재마운트는 그 정리를 침묵시켜
+          // 닫힌 detail이 옛 params째 되살아난다(Codex P1). 명시적 닫기(X·아이콘 재클릭)는
+          // 섹션 언마운트로 남아 재열림 복원의 연속성을 그대로 잇는다.
           <RailSection
-            key={activeBinding.entry.id}
             binding={activeBinding}
             baseCtx={baseCtx}
             connection={connection}

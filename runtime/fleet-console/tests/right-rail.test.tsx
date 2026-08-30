@@ -14,6 +14,11 @@ const CORE_PANELS: Record<string, unknown>[] = [
     title: "REPOSITORY",
     defaultWidth: 360,
     icon: "P",
+    // 교체 정리 계약을 재는 detail 짝 — keepAlive 없는 열과 keepAlive 열을 하나씩 둔다.
+    details: [
+      { id: "repo-notes", title: "NOTES" },
+      { id: "repo-term", title: "TERM", keepAlive: true },
+    ],
     render: (ctx: { readonly theme?: unknown }) => {
       railPanelContextMock.renderCount += 1;
       railPanelContextMock.themes.push(ctx.theme);
@@ -77,13 +82,14 @@ const PLUGIN_FIXTURES: Record<string, unknown>[] = [
 // 경로도 함께 지킨다(#957 상류 테스트와 같은 문법).
 function toBinding(panel: Record<string, unknown>, core: boolean) {
   const hasBody = typeof panel.render === "function";
+  const details = Array.isArray(panel.details) ? panel.details as readonly Record<string, unknown>[] : [];
   return {
     entry: {
       id: panel.id,
       title: panel.title,
       icon: panel.icon,
       ...(panel.surfaceId === undefined ? {} : { surfaceId: panel.surfaceId }),
-      ...(hasBody ? { panes: [panel.id] } : { activate: panel.activate }),
+      ...(hasBody ? { panes: [panel.id, ...details.map((detail) => detail.id)] } : { activate: panel.activate }),
     },
     panes: hasBody
       ? [{
@@ -93,7 +99,14 @@ function toBinding(panel: Record<string, unknown>, core: boolean) {
         title: () => panel.title,
         render: panel.render,
         ...(panel.defaultWidth === undefined ? {} : { defaultWidth: panel.defaultWidth }),
-      }]
+      }, ...details.map((detail) => ({
+        id: detail.id,
+        role: "detail",
+        mounts: ["rail"],
+        title: () => detail.title,
+        render: () => null,
+        ...(detail.keepAlive === true ? { keepAlive: true } : {}),
+      }))]
       : [],
     projected: true,
     core,
@@ -129,6 +142,7 @@ import {
   openExpandedSurface,
   resetExpandedSurfacesForTest,
 } from "../core/client/src/expanded-surface/store.js";
+import { __resetPaneStoreForTests, getPaneStoreSnapshot, openPane } from "../core/client/src/pane/pane-store.js";
 import { setState } from "../core/client/src/store.js";
 
 let container: HTMLDivElement;
@@ -154,6 +168,7 @@ beforeEach(() => {
   railPanelContextMock.activate.mockClear();
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   resetExpandedSurfacesForTest();
+  __resetPaneStoreForTests();
   container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
@@ -239,6 +254,28 @@ describe("Right Rail exclusive panel", () => {
     act(() => { close!.focus(); close!.click(); });
     expect(getRailStoreSnapshot().activePanelId).toBeNull();
     expect(document.activeElement).toBe(iconButton("REPOSITORY"));
+  });
+
+  it("drops the leaving panel's non-keepAlive detail on switch — the swap runs the pane contract", () => {
+    renderRail();
+    act(() => openPane({ paneId: "repo-notes", mount: "rail", params: { path: "a.md" } }));
+    expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(true);
+
+    act(() => iconButton("CODEX").click());
+
+    // 떠나는 표면의 비-keepAlive 열은 내려간다 — 섹션을 key로 재마운트하면 RailSurface가
+    // 엔트리 교체를 못 보고 이 정리가 침묵해, 돌아왔을 때 옛 params째 되살아난다(Codex P1).
+    expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(false);
+  });
+
+  it("parks the leaving panel's keepAlive detail instead of dropping it", () => {
+    renderRail();
+    act(() => openPane({ paneId: "repo-term", mount: "rail" }));
+
+    act(() => iconButton("CODEX").click());
+
+    const parked = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "repo-term");
+    expect(parked?.visible).toBe(false);
   });
 
   it("with nothing active the slot closes and the rail loses is-open", () => {
