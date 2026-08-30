@@ -907,10 +907,10 @@ describe("Instrument core design contract", () => {
          특이도를 올려, 같은 특이도로 나중에 서서 이기던 축소-투명도 되돌림 블록을 무력화한다.
      (3) 라이트 블록이 자기 유리 재료를 가져야 한다. 재료 없이 게이트만 열면 라이트가 base(다크)
          재료를 상속해 종이 위에 밤빛 유리를 칠한다.
-     (4) 라이트 필드는 불투명이어야 한다. xterm의 allowTransparency는 투명도 지원이 아니라 글리프
-         래스터 경로를 고르고, 밝은 바탕에서 켜면 획 잉크가 18.2% 사라진다(dpr=2 실측). 필드·거터·
-         xterm이 **같은 불투명 값** 하나로 만나는 것이 그 예외의 형태다. 알파가 한 자리라도 새면
-         terminalFieldIsTranslucent가 참이 되어 그 비용을 바로 지불한다. */
+     (4) 라이트 필드도 다크와 같은 단일층 규약을 쓴다. 필드는 비우고 패널 루트의 유리 한 장이
+         필드와 거터를 함께 칠하며, terminal 틴트는 panel 틴트와 같은 값이다. floor만 불투명
+         근사로 남는데 이건 투명도 정책이 아니라 dim(SGR 2) 셀 때문이다 — xterm이 그 사각형의
+         알파를 1로 강제하므로 RGB가 유리 톤이 아니면 순색 블록으로 드러난다. */
   it("opens the liquid glass gate for every theme and keeps the light terminal field opaque", () => {
     const theme = source("styles/theme.css");
     const layout = source("styles/layout.css");
@@ -936,13 +936,20 @@ describe("Instrument core design contract", () => {
     expect(whitesDeclarations).toMatch(/--glass-on-backdrop-strong: blur\(/);
     expect(theme).toMatch(/--glass-on-backdrop-strong: blur\(/);
 
-    // 라이트 필드 예외 — terminal/field/floor가 알파 없는 한 값으로 만나고 블러도 서지 않는다.
-    expect(whitesDeclarations).toContain("--glass-on-tint-terminal: oklch(97% 0.005 98);");
-    expect(whitesDeclarations).toContain("--glass-on-tint-terminal-floor: var(--glass-on-tint-terminal);");
-    expect(whitesDeclarations).toContain("--glass-on-tint-field: var(--glass-on-tint-terminal);");
-    expect(whitesDeclarations).toContain("--glass-on-backdrop-terminal: none;");
-    const lightTerminal = whitesDeclarations.match(/--glass-on-tint-terminal: [^;]+;/)?.[0] ?? "";
-    expect(lightTerminal).not.toMatch(/\/\s*\d/);
+    // 라이트 필드도 다크와 같은 단일층 규약 — 필드는 비우고, terminal 틴트는 panel 틴트와 같은 값,
+    // floor만 dim 셀을 위한 불투명 근사로 남는다.
+    expect(whitesDeclarations).toContain("--glass-on-tint-field: transparent;");
+    expect(whitesDeclarations).toContain("--glass-on-tint-terminal: oklch(98.2% 0.004 100 / 60%);");
+    expect(whitesDeclarations).toContain("--glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);");
+    expect(whitesDeclarations).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
+    const lightFloor = whitesDeclarations.match(/--glass-on-tint-terminal-floor: [^;]+;/)?.[0] ?? "";
+    expect(lightFloor).toMatch(/oklch\(/);
+    expect(lightFloor).not.toMatch(/\/\s*\d/); // floor는 알파 없는 실색이어야 dim 사각형을 덮는다
+
+    // 극성이 아니라 게이트 상태가 필드 분기를 정한다 — JS에 테마 분기를 심으면 진실이 두 벌이 된다.
+    const surfaceSource = fs.readFileSync(TERMINAL_SURFACE_PATH, "utf8");
+    expect(surfaceSource).toContain("if (readLiquidGlassPaneActive()) {");
+    expect(surfaceSource).not.toMatch(/!LIGHT_TERMINAL_THEMES\.has\(theme\) && readLiquidGlassPaneActive\(\)/);
   });
 
   /* 라이트가 유리를 받으려면 그 뒤에 굴절시킬 것이 있어야 한다. 60% 틴트는 뒤에 있는 것의 40%만
@@ -1070,9 +1077,8 @@ describe("Instrument core design contract", () => {
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
     expect(theme).toContain("--glass-on-backdrop-panel: none;");
     expect(theme).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
-    // 다크 3종은 전부 필드를 루트 유리에 넘긴다. 라이트만 불투명 근사 한 값으로 갈리며,
-    // 그 예외는 바로 위 게이트 계약이 따로 못박는다.
-    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
+    // 네 테마 모두 필드를 루트 유리에 넘긴다.
+    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(4);
   });
 
   /* 비운 터미널 필드의 RGB는 검정이 아니라 유리 톤이어야 한다. xterm은 dim(SGR 2)을 배경 워드의

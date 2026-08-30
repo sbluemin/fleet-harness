@@ -807,14 +807,12 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
-   - 라이트(Whites) + 게이트 열림: 유리는 받되 **필드만** 불투명이다. 라이트 유리가 되살아나면서
-     (theme.css) 극성은 더 이상 게이트가 아니지만, 필드 하나는 여전히 투명해질 수 없다:
-     allowTransparency는 투명도 지원이 아니라 글리프 래스터 경로를 고르고, 켜면 밝은 바탕 위
-     어두운 잉크의 커버리지가 감마 미보정 합성으로 과소 표현되어 획 잉크가 18.2% 사라진다
-     (dpr=2 실측, 다크는 반대 부호로 +2.6%). 그래서 Whites의 --glass-on-tint-terminal은
-     유리 유효색의 **불투명 근사**이고, 아래 LIGHT_TERMINAL_THEMES 조건이 그 값을 그대로 통과시켜
-     필드·거터가 같은 불투명 값으로 만난다. 이제 이 조건은 둘째 자물쇠가 아니라 **유일한** 자물쇠다 —
-     지우면 라이트가 다크 경로(알파 0)로 빠져 그 18.2%를 바로 지불한다.
+   라이트(Whites)도 열린 게이트에서는 같은 경로다. 한때 라이트만 필드를 불투명으로 남겼었고 근거는
+   allowTransparency의 글리프 래스터 비용이었는데(밝은 바탕에서 획 잉크 손실), 극성이 아니라
+   **게이트 상태**가 이 분기를 정해야 진실이 한 벌로 남는다 — mCR은 알파가 아니라 배경 RGB로
+   대비를 재고, glassFieldClearColor가 알파 0에도 유리 톤 RGB를 실어 보내므로 라이트의 판독
+   보정(mCR 4.5)은 투명 필드에서도 그대로 작동한다. 잉크 손실의 현재 크기와 렌더러별 차이는
+   PR #955에서 재실측했다.
    xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
    생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
@@ -825,7 +823,7 @@ export function resolvePanelSurface(
 ): string {
   if (typeof document === "undefined") return fallback;
   const rootStyle = getComputedStyle(document.documentElement);
-  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) {
+  if (readLiquidGlassPaneActive()) {
     return glassFieldClearColor(surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor", rootStyle);
   }
   const resolved = rootStyle.getPropertyValue("--glass-tint-terminal").trim();

@@ -77,13 +77,16 @@ describe("resolved terminal field drives allowTransparency", () => {
     expect(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)")).toBe("rgba(0, 0, 0, 0)");
   });
 
-  /* 라이트 필드는 유리가 켜져 있어도 불투명 종이다(--glass-on-tint-terminal에 알파가 없다).
-     여기서 allowTransparency가 켜지면 라이트 터미널 글자가 얇아지는 회귀가 재발한다. */
-  it("keeps the light field opaque even while the glass gate is open", () => {
+  /* 필드 분기는 테마 극성이 아니라 게이트 상태가 정한다 — 라이트도 게이트가 열려 있으면 다크와
+     같은 경로로 비워지고, floor RGB만 유리 톤으로 남아 dim 사각형을 덮는다. JS에 테마 분기를
+     남기면 CSS 채널과 진실이 두 벌이 된다. */
+  it("clears the light field the same way once the glass gate is open", () => {
     openGlassGate();
-    setTerminalTint("rgb(250, 249, 246)");
-    setTerminalFloor("rgb(250, 249, 246)");
-    expect(terminalFieldIsTranslucent(resolvePanelSurface("whites", "oklch(98.2% 0.004 100)"))).toBe(false);
+    setTerminalTint("rgba(250, 249, 246, 0.6)");
+    setTerminalFloor("rgb(246, 245, 241)");
+    const cleared = resolvePanelSurface("whites", "oklch(98.2% 0.004 100)");
+    expect(cleared).toBe("rgba(246, 245, 241, 0)");
+    expect(terminalFieldIsTranslucent(cleared)).toBe(true);
   });
 
   it("keeps every field opaque once the glass gate is closed", () => {

@@ -871,21 +871,18 @@
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
   --glass-on-backdrop-panel: none;
-  /* ── 터미널 필드는 라이트에서 불투명하다 (요구된 예외) ──────────────────────
-     xterm의 allowTransparency는 투명도 지원이 아니라 글리프 래스터 경로를 고른다. 켜면 글리프가
-     투명 위에 선형 커버리지 알파로만 그려지고 GlyphRenderer가 sRGB 바이트 공간에서 다시 합성하는데,
-     감마 미보정 lerp는 **밝은 바탕 위 어두운 잉크**의 커버리지를 과소 표현한다 — 획 잉크가 18.2%
-     사라지는 것이 dpr=2 실측으로 확인됐다(다크는 반대 부호로 +2.6%라 드러나지 않았다).
-     그래서 필드는 유리 유효색의 **불투명 근사** 한 값으로 칠하고 거터도 같은 값으로 만난다
-     (단일층 규약). 값은 종이 60% 틴트가 패널이 실제로 놓이는 밝은 절반(L 94.6~96.4) 위에서 내는
-     합성값의 중앙이다 — 유리는 뒤에 오는 것에 따라 흔들리므로 일치가 아니라 근사다.
-     유리는 캡션·프레임·거터·Chat/분석가 작업면·부유층에서 온전히 읽히고, 필드 한 곳만 무광이다. */
-  --glass-on-tint-terminal: oklch(97% 0.005 98);
-  --glass-on-tint-terminal-floor: var(--glass-on-tint-terminal);
-  --glass-on-tint-field: var(--glass-on-tint-terminal);
-  /* 위 필드가 불투명이므로 그 뒤의 blur는 그릴 픽셀이 없다 — 비용만 남는 블러는 켜지 않는다.
-     이 한 줄이 다크와 갈리는 유일한 정책 값이고, 갈리는 이유는 바로 위 필드 예외 하나다. */
-  --glass-on-backdrop-terminal: none;
+  /* 터미널 필드도 다크와 같은 단일층 규약을 쓴다 — 필드는 비우고(transparent), 패널 루트의
+     유리 한 장이 필드와 거터를 함께 칠한다. terminal 틴트가 panel 틴트와 같은 값인 것도 다크와
+     같다: Operation은 루트 유리를 그대로 받고, 독립 Shell은 자기 면으로 같은 값을 칠한다.
+     floor는 유리 유효색의 **불투명 근사**다. xterm은 dim(SGR 2) 셀을 배경 워드의 비트로 싣고
+     WebGL RectangleRenderer가 그 사각형의 알파를 1로 강제하므로, RGB를 유리 톤으로 채워 두지
+     않으면 dim 거터가 순색 블록으로 드러난다. 값은 종이 60% 틴트가 패널이 실제로 놓이는 밝은
+     절반(L 94.6~96.4) 위에서 내는 합성값의 중앙이다 — 유리는 뒤에 오는 것에 따라 흔들리므로
+     일치가 아니라 근사다. */
+  --glass-on-tint-terminal: oklch(98.2% 0.004 100 / 60%);
+  --glass-on-tint-terminal-floor: oklch(97% 0.005 98);
+  --glass-on-tint-field: transparent;
+  --glass-on-backdrop-terminal: blur(20px) saturate(1.45);
   --glass-on-rim: oklch(100% 0 0 / 88%);
   /* 라이트 유리의 두께는 그늘 쪽이 말한다 — 흰 하이라이트는 본체 위로 얻을 여유가 거의 없지만
      (종이 L98.2, 천장 100), 어두운 쪽으로는 전 대역이 비어 있다. */
