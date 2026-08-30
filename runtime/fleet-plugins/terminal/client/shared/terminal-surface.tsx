@@ -22,7 +22,7 @@ import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { getT } from "../i18n/index.js";
-import { terminalInactiveFlushMs, useTerminalPrefs, type TerminalRenderer } from "./terminal-preferences.js";
+import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
@@ -216,18 +216,18 @@ export function terminalForegroundFor(
   theme: TerminalThemeId,
   base: string,
   fieldIsTranslucent: boolean,
-  renderer: TerminalRenderer,
+  webglActive: boolean,
 ): string {
-  if (renderer !== "webgl" || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") return base;
+  if (!webglActive || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") return base;
   return SUBPIXEL_COMPENSATED_FOREGROUND;
 }
 
 export function terminalFontWeightsFor(
   theme: TerminalThemeId,
   fieldIsTranslucent: boolean,
-  renderer: TerminalRenderer,
+  webglActive: boolean,
 ): { readonly fontWeight: FontWeight; readonly fontWeightBold: FontWeight } {
-  if (renderer !== "webgl" || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") {
+  if (!webglActive || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") {
     return { fontWeight: "normal", fontWeightBold: "bold" };
   }
   return { fontWeight: SUBPIXEL_COMPENSATED_WEIGHT, fontWeightBold: SUBPIXEL_COMPENSATED_WEIGHT_BOLD };
@@ -246,6 +246,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  // 보정 게이트의 진실 — 선호가 아니라 addon이 실제로 살아 있는지. ref는 리렌더를 못 부르므로 state다.
+  const [webglActive, setWebglActive] = useState(false);
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
@@ -366,7 +368,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       await waitForTerminalFallbackFonts();
       if (disposed) return;
 
-      const terminalTheme = terminalThemeFor(activeTheme, surface, terminalRenderer);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, webglActive);
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
@@ -374,7 +376,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         theme: terminalTheme,
         allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? ""),
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
-        ...terminalFontWeightsFor(activeTheme, terminalFieldIsTranslucent(terminalTheme.background ?? ""), terminalRenderer),
+        ...terminalFontWeightsFor(activeTheme, terminalFieldIsTranslucent(terminalTheme.background ?? ""), webglActive),
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
@@ -688,8 +690,11 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             // xterm WebglAddon dispose 버그를 렌더러 폴백 경로에서도 흡수한다.
           }
           if (webglAddonRef.current === webglAddon) webglAddonRef.current = null;
+          // 폴백이 시작된 순간 보정도 함께 걷힌다 — DOM은 서브픽셀 AA를 되찾으므로 과보정이 된다.
+          setWebglActive(false);
         });
         terminal.loadAddon(webglAddon);
+        setWebglActive(true);
       } catch {
         // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
         try {
@@ -698,7 +703,10 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           // xterm WebglAddon dispose 버그를 WebGL 초기화 실패 경로에서도 흡수한다.
         }
         webglAddonRef.current = null;
+        setWebglActive(false);
       }
+    } else {
+      setWebglActive(false);
     }
 
     return () => {
@@ -719,7 +727,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     const container = containerRef.current;
     if (!terminal || !container) return;
     const applyTerminalTheme = () => {
-      const terminalTheme = terminalThemeFor(activeTheme, surface, terminalRenderer);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, webglActive);
       // 뷰포트 인라인 배경이 allowTransparency보다 먼저 자리를 잡아야 한다 — 이 옵션이 꺼지면
       // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
       // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
@@ -730,14 +738,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
       // 보정은 필드 투명도와 한 벌로 움직여야 한다 — 유리를 끄면 서브픽셀 AA가 돌아오므로
       // 웨이트가 남아 있으면 그때는 과보정이 된다.
-      const weights = terminalFontWeightsFor(activeTheme, translucent, terminalRenderer);
+      const weights = terminalFontWeightsFor(activeTheme, translucent, webglActive);
       terminal.options.fontWeight = weights.fontWeight;
       terminal.options.fontWeightBold = weights.fontWeightBold;
     };
     applyTerminalTheme();
     // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
     // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
-  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface, terminalRenderer]);
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface, webglActive]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -966,14 +974,14 @@ export function readLiquidGlassPaneActive(): boolean {
   return backdrop !== "" && backdrop !== "none";
 }
 
-function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell", renderer: TerminalRenderer): ITheme {
+function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell", webglActive: boolean): ITheme {
   const base = baseTerminalThemeFor(theme);
   const background = resolvePanelSurface(theme, base.background ?? "", surface);
   const translucent = terminalFieldIsTranslucent(background);
   return {
     ...base,
     background,
-    foreground: terminalForegroundFor(theme, base.foreground ?? "", translucent, renderer),
+    foreground: terminalForegroundFor(theme, base.foreground ?? "", translucent, webglActive),
   };
 }
 

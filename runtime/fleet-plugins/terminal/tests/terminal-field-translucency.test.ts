@@ -107,23 +107,25 @@ describe("terminalFontWeightsFor", () => {
   const DEFAULTS = { fontWeight: "normal", fontWeightBold: "bold" };
 
   it("compensates only light + translucent field + webgl", () => {
-    expect(terminalFontWeightsFor("whites", true, "webgl")).toEqual({ fontWeight: 600, fontWeightBold: 900 });
+    expect(terminalFontWeightsFor("whites", true, true)).toEqual({ fontWeight: 600, fontWeightBold: 900 });
   });
 
   it("leaves every other combination on the font's own weights", () => {
     // DOM은 실제 배경 위에 그려 서브픽셀 AA가 살아 있다 — 여기에 걸면 이중 보정이다.
-    expect(terminalFontWeightsFor("whites", true, "dom")).toEqual(DEFAULTS);
+    // 셋째 인자는 사용자의 선호가 아니라 **지금 켜진 렌더러**다: WebGL 초기화 실패나 컨텍스트
+    // 유실로 DOM 폴백이 서면 선호는 "webgl"인 채로 남으므로, 선호로 걸면 폴백 세션 내내 과보정이다.
+    expect(terminalFontWeightsFor("whites", true, false)).toEqual(DEFAULTS);
     // 불투명 필드는 아틀라스가 배경을 알고 굽는다 — 잃은 것이 없으므로 되돌릴 것도 없다.
-    expect(terminalFontWeightsFor("whites", false, "webgl")).toEqual(DEFAULTS);
+    expect(terminalFontWeightsFor("whites", false, true)).toEqual(DEFAULTS);
     // 다크는 같은 왜곡이 반대 부호라 보정이 악화시킨다.
     for (const theme of ["instrument", "maritime", "carbon"] as const) {
-      expect(terminalFontWeightsFor(theme, true, "webgl")).toEqual(DEFAULTS);
+      expect(terminalFontWeightsFor(theme, true, true)).toEqual(DEFAULTS);
     }
   });
 
   /* 웨이트는 기본 웨이트보다 위여야 보정이고, 볼드는 그보다 위여야 볼드가 볼드로 남는다. */
   it("keeps the compensated weights above the defaults and ordered", () => {
-    const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, "webgl");
+    const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, true);
     expect(fontWeight).toBeGreaterThan(400);
     expect(fontWeightBold).toBeGreaterThan(Number(fontWeight));
   });
@@ -134,14 +136,14 @@ describe("terminalForegroundFor", () => {
   const BASE = "oklch(24% 0.012 95)";
 
   it("darkens the ink only on light + translucent field + webgl", () => {
-    expect(terminalForegroundFor("whites", BASE, true, "webgl")).not.toBe(BASE);
+    expect(terminalForegroundFor("whites", BASE, true, true)).not.toBe(BASE);
   });
 
   it("leaves every other combination on the theme's own foreground", () => {
-    expect(terminalForegroundFor("whites", BASE, true, "dom")).toBe(BASE);
-    expect(terminalForegroundFor("whites", BASE, false, "webgl")).toBe(BASE);
+    expect(terminalForegroundFor("whites", BASE, true, false)).toBe(BASE);
+    expect(terminalForegroundFor("whites", BASE, false, true)).toBe(BASE);
     for (const theme of ["instrument", "maritime", "carbon"] as const) {
-      expect(terminalForegroundFor(theme, BASE, true, "webgl")).toBe(BASE);
+      expect(terminalForegroundFor(theme, BASE, true, true)).toBe(BASE);
     }
   });
 });

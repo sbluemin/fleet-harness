@@ -2613,7 +2613,13 @@ describe("Instrument core design contract", () => {
     expect(surface).toContain("terminal.options.allowTransparency = translucent;");
     // 서브픽셀 AA 보정은 그 투명도 판정과 **같은 자리**에서 갱신되어야 한다 — 따로 놀면 유리를
     // 껐을 때 웨이트만 남아 과보정이 된다(게이트는 terminalFontWeightsFor가 소유한다).
-    expect(surface).toContain("terminalFontWeightsFor(activeTheme, translucent, terminalRenderer)");
+    expect(surface).toContain("terminalFontWeightsFor(activeTheme, translucent, webglActive)");
+    // 그리고 그 게이트는 사용자의 렌더러 **선호**가 아니라 실제로 켜진 렌더러를 읽어야 한다 —
+    // WebGL 초기화 실패·컨텍스트 유실은 선호를 "webgl"로 둔 채 DOM으로 폴백하므로, 선호로 걸면
+    // 서브픽셀 AA가 살아 있는 화면에 보정이 얹혀 남은 세션 내내 과보정이 된다.
+    expect(surface).not.toMatch(/terminalFontWeightsFor\([^)]*terminalRenderer\)/);
+    expect(surface).not.toMatch(/terminalForegroundFor\([^)]*terminalRenderer\)/);
+    expect(surface).toContain("setWebglActive(false);");
     // 뷰포트 인라인 배경이 먼저다 — 순서가 뒤집히면 xterm의 :not(.allow-transparency) 규칙이
     // background-color:#000을 한 프레임 드러낸다.
     const applyBlock = surface.slice(surface.indexOf("const applyTerminalTheme = () => {"));
