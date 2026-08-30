@@ -25,6 +25,7 @@ import { FileTree, isFilterFocusShortcut, type FileTreeHandle } from "./tree.js"
 import { loadedMtimeOf, stalePathsAfterRefresh } from "./viewer/stale.js";
 import {
   activateStoredDocument,
+  getFileExplorerSnapshot,
   hydrateStoredSession,
   markDocStale,
   seedDocMtime,
@@ -139,19 +140,14 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
 
   // 저장된 열린 문서 세션 복원 — 메모리에 이미 세션이 있으면 그쪽이 이긴다.
+  //
+  // 되살린 그 순간에만 문서 열을 세운다. 칩만 살아나고 열이 없으면 읽던 문서가 사라진 것으로
+  // 보이지만, 마운트마다 세우면 반대로 사용자가 닫아 둔 열이 레일 탭을 오갈 때마다 되살아난다.
   useEffect(() => {
-    hydrateStoredSession(contextScope || null);
-  }, [contextScope]);
-
-  // 복원된 세션에도 문서 창이 서야 한다 — 칩만 살아나고 열이 없으면 읽던 문서가 사라진 것으로 보인다.
-  const restoredPath = openDocs.length > 0 ? selectedPath ?? openDocs.at(-1)?.relativePath ?? null : null;
-  useEffect(() => {
-    if (!restoredPath) return;
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restoredPath }, focus: false });
-    // 한 번 세우고 나면 이후의 문서 전환은 스토어가 진다 — 여기서 다시 열면 매 전환마다
-    // 포커스가 문서 창으로 끌려간다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextScope, panes, restoredPath !== null]);
+    if (!hydrateStoredSession(contextScope || null)) return;
+    const restored = getFileExplorerSnapshot(contextScope).activePath;
+    if (restored) panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored }, focus: false });
+  }, [contextScope, panes]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string) => {
     if (!theaterId) return;

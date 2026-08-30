@@ -194,14 +194,20 @@ export function getFileExplorerSnapshot(theaterId: string | null): FileExplorerV
   return getSnapshot(theaterId);
 }
 
-/** 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다. */
-export function hydrateStoredSession(theaterId: string | null): void {
-  if (!theaterId) return;
+/**
+ * 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다.
+ *
+ * **실제로 되살렸을 때만 `true`.** 문서 열을 세우는 것은 이 한 번뿐이어야 하기 때문이다:
+ * 마운트마다 세우면 사용자가 닫아 둔 열이 레일 탭을 오갈 때마다 되살아난다.
+ */
+export function hydrateStoredSession(theaterId: string | null): boolean {
+  if (!theaterId) return false;
   const current = getOrDefault(theaterId);
-  if (current.openDocs.length > 0 || current.activePath !== null) return;
+  if (current.openDocs.length > 0 || current.activePath !== null) return false;
   const persisted = readDocSession(theaterId);
-  if (!persisted || persisted.openDocs.length === 0) return;
+  if (!persisted || persisted.openDocs.length === 0) return false;
   patchTheaterState(theaterId, { ...persisted, selectedPath: persisted.activePath });
+  return true;
 }
 
 function emit(): void {

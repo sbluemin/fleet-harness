@@ -67,14 +67,28 @@ export const RailSurface = memo(function RailSurface({
   //
   // 남길 것은 **각 페인 자신의 서술자**가 정한다. 새로 선 엔트리의 목록으로 판단하면 떠나는
   // 엔트리가 지키던 터미널·초안이 그 자리에서 사라진다 — keepAlive가 약속한 바로 그것이.
+  //
+  // **엔트리가 실제로 바뀔 때만** 돈다. 서술자 색인은 판단의 근거일 뿐 계기가 아니다 —
+  // 그 정체는 플러그인 레지스트리가 채워지며 부팅 중에 한두 번 바뀌고, 그것을 계기로 삼으면
+  // 방금 복원한 열을 그 순간 치운다(실측: 새로고침 뒤 읽던 문서 열이 주차된 채로 남았다).
+  //
+  // 처음 서는 표면도 치울 것이 없다. 다른 엔트리가 두고 간 페인은 `owned`가 이미 걸러 낸다.
   const entryId = binding.entry.id;
   const paneIndexForReset = usePaneIndex();
   // 이 엔트리 소유의 페인 id — 정리에서 면제된다. 팔레트·딥링크는 표면을 열기 직전에
   // openPane으로 착지 params를 심는데, 그 씨앗이 이 마운트 정리에 쓸려 나가면 안 된다.
   const ownedIds = useMemo(() => new Set(binding.panes.map((pane) => pane.id)), [binding.panes]);
+  const paneIndexRef = useRef(paneIndexForReset);
+  paneIndexRef.current = paneIndexForReset;
+  const ownedIdsRef = useRef(ownedIds);
+  ownedIdsRef.current = ownedIds;
+  const previousEntryRef = useRef<string | null>(null);
   useEffect(() => {
-    resetSurfacePanes(paneIndexForReset, ownedIds);
-  }, [entryId, paneIndexForReset, ownedIds]);
+    const previous = previousEntryRef.current;
+    previousEntryRef.current = entryId;
+    if (previous === null || previous === entryId) return;
+    resetSurfacePanes(paneIndexRef.current, ownedIdsRef.current);
+  }, [entryId]);
 
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],

@@ -107,7 +107,14 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
 }
 
 /**
- * 엔트리를 갈아탈 때 그 표면의 페인들을 정리한다. `keepAlive`를 선언한 것만 주차된 채 남는다.
+ * 엔트리를 갈아탈 때 그 표면의 페인들을 정리한다.
+ *
+ * `keepAlive`를 선언하지 않은 페인은 사라진다. 선언한 페인은 **선 채로 남는다** — 주차하지
+ * 않는다. 다른 엔트리에 가 있는 동안 그 페인은 어차피 그려지지 않고(표면은 자기 엔트리의
+ * 페인만 세운다), 돌아왔을 때 읽던 열이 그 자리에 그대로 있는 것이 keepAlive가 약속한 것이다.
+ *
+ * 주차하던 시절에는 돌아와도 열이 접힌 채였고, 그것을 다시 세울 주체가 없었다 — 페인을 연
+ * 것은 사용자의 한 번뿐인 동작이었기 때문이다(실측: 새로고침 뒤 읽던 문서 열이 사라졌다).
  *
  * 판단 근거로 서술자 색인을 받는 이유는, 남길지를 정하는 것이 새로 선 엔트리가 아니라 그
  * 페인 자신이기 때문이다. 새 엔트리의 목록으로 거르면 떠나는 쪽이 지키던 상태가 사라진다.
@@ -122,13 +129,13 @@ export function resetSurfacePanes(
   // detail은 면제하지 않는다: 닫힌 동안은 이 정리가 돌지 않아, 면제하면 keepAlive 없이 닫힌
   // detail이 재열림에서 옛 params째 되살아난다(닫기=언마운트 계약 위반).
   const exempt = (paneId: string) => arriving?.has(paneId) === true && descriptors.get(paneId)?.role === "primary";
+  // 살아남은 페인의 **가시성은 건드리지 않는다.** 주차해 두면 돌아왔을 때 접힌 열을 다시
+  // 세울 주체가 없다 — 페인을 연 것은 사용자의 한 번뿐인 동작이었기 때문이다(실측: 새로고침
+  // 뒤 읽던 문서 열이 주차된 채로 남았다). 다른 엔트리에 가 있는 동안 그 페인은 어차피
+  // 그려지지 않으므로(표면은 자기 엔트리의 페인만 세운다) 주차할 이유도 없다.
   const rail = state.rail
-    .filter((instance) => exempt(instance.paneId) || descriptors.get(instance.paneId)?.keepAlive === true)
-    .map((instance) => (
-      exempt(instance.paneId) || !instance.visible ? instance : { ...instance, visible: false }
-    ));
-  const unchanged = rail.length === state.rail.length
-    && rail.every((instance, index) => instance === state.rail[index]);
+    .filter((instance) => exempt(instance.paneId) || descriptors.get(instance.paneId)?.keepAlive === true);
+  const unchanged = rail.length === state.rail.length;
   if (unchanged && state.focusedPaneId === null) return;
   emit({ rail, focusedPaneId: null });
 }

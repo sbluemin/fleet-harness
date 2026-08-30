@@ -23,7 +23,7 @@ vi.mock("../core/client/src/pane/pane-registry.js", () => ({
 
 const { RailSurface } = await import("../core/client/src/pane/rail-surface.js");
 const { openPane, closePane, __resetPaneStoreForTests } = await import("../core/client/src/pane/pane-store.js");
-const { getPaneStoreSnapshot } = await import("../core/client/src/pane/pane-store.js");
+const { getPaneStoreSnapshot, resetSurfacePanes } = await import("../core/client/src/pane/pane-store.js");
 const { __resetPaneWidthsForTests, getStoredPaneWidth } = await import("../core/client/src/pane/pane-width-store.js");
 const { getExpandedSurfaceState, openExpandedSurface, resetExpandedSurfacesForTest } = await import("../core/client/src/expanded-surface/store.js");
 
@@ -57,6 +57,8 @@ const docPane: PaneDescriptor = {
   },
   defaultWidth: 420,
   minWidth: 200,
+  // 실제 문서 열이 그렇듯 닫아도 읽던 자리를 지킨다.
+  keepAlive: true,
 };
 
 const binding = {
@@ -195,6 +197,49 @@ describe("레일 표면의 2단", () => {
     // 확대된 문서가 주소를 갱신할 때마다 주차된 사본이 튀어나오면 같은 다툼이 되살아난다.
     expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(false);
     expect(getPaneStoreSnapshot().rail[0]?.params).toEqual({ path: "b.ts" });
+  });
+
+  // 서술자 색인의 정체는 플러그인 레지스트리가 채워지며 부팅 중에 바뀐다. 그것을 계기로
+  // 삼으면 마운트 직후 복원한 열이 그 순간 주차된다 — 새로고침 뒤 읽던 문서가 사라진다.
+  it("색인 정체가 바뀌었다는 이유로 세운 열을 치우지 않는다", () => {
+    render();
+    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
+    expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(true);
+
+    // 레지스트리가 늦게 채워져 색인이 새 Map으로 바뀐 상황.
+    act(() => {
+      PANE_INDEX.value = new Map<string, unknown>([["list", listPane], ["doc", docPane]]);
+      root.render(
+        <RailSurface
+          binding={binding as never}
+          theaterId="theater-1"
+          api={{} as never}
+          language="en"
+          onRequestExtraWidth={(px) => extraWidthRequests.push(px)}
+        />,
+      );
+    });
+
+    expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(true);
+  });
+
+  it("엔트리를 갈아타도 keepAlive 열은 선 채로 남는다", () => {
+    render();
+    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
+
+    // 다른 엔트리로 갔다 오는 것. 주차해 버리면 돌아왔을 때 접힌 열을 다시 세울 주체가 없다 —
+    // 페인을 연 것은 사용자의 한 번뿐인 동작이었기 때문이다.
+    act(() => { resetSurfacePanes(PANE_INDEX.value as never); });
+
+    expect(getPaneStoreSnapshot().rail.map((i) => [i.paneId, i.visible])).toEqual([["doc", true]]);
+  });
+
+  it("keepAlive를 말하지 않은 열은 엔트리를 갈아탈 때 사라진다", () => {
+    render();
+    act(() => { openPane({ paneId: "doc" }); });
+    act(() => { resetSurfacePanes(new Map([["doc", { keepAlive: false }]]) as never); });
+
+    expect(getPaneStoreSnapshot().rail).toEqual([]);
   });
 
   it("분할선 키보드 이동은 폭을 기억한다", () => {
