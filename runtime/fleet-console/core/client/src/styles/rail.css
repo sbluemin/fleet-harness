@@ -4,9 +4,6 @@
 :root {
   --z-rail: 10;
   --z-codex-side: 20;
-  /* 설정 메뉴는 body로 포털되어 .console-shell 밖에 선다 — 셸이 여는 --z-floating을
-     물려받지 못하므로 같은 부유 팝오버 층(60)을 여기서 직접 연다. */
-  --z-rail-menu: 60;
 }
 
 .right-rail {
@@ -221,10 +218,11 @@
   background: var(--brass);
 }
 
-/* ── 레일 설정 톱니 + 컨텍스트 메뉴 ──────────────────────────────
-   레일의 설정(플로팅·불투명도·폭·닫기)은 전부 저빈도 set-and-forget이라 상주 크롬이
-   아니라 부를 때만 오는 메뉴가 진다. 톱니는 아이콘 열 최상단에 서고 디바이더가 패널
-   탭과 갈라 놓는다 — 패널을 고르는 일과 레일을 손보는 일은 다른 종류의 동작이다. */
+/* ── 설정 톱니 ──────────────────────────────────────────────────
+   톱니는 설정 표면의 문이다. 옛 컨텍스트 메뉴(플로팅·불투명도·폭·닫기)는 해체됐다 —
+   레일 취향은 설정 > 겉모습으로, 폭 초기화는 분할선 더블클릭으로 갔다. 톱니는 아이콘 열
+   최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과 작업 패널을
+   고르는 일은 다른 종류의 동작이다. */
 /* 크기를 적지 않은 SVG는 viewBox만 갖고 버튼을 통째로 채운다(32px 버튼 안에서 30px) —
    플러그인 아이콘은 저마다 크기를 들고 오지만 코어가 그리는 이 글리프는 여기서 정해야 한다.
    값은 상자 맞춤이 아니라 광학 무게로 골랐다: 톱니는 링·이·안쪽 원이 겹친 조밀한 형태라
@@ -237,12 +235,16 @@
   display: block;
 }
 
-/* 열린 상태는 brass 테두리로만 말한다 — 좌측 brass 바(.is-active)는 탭의 문법이고
-   톱니는 탭이 아니다. brass는 위치·포커스 채널이므로 열림 표시에 legal하다. */
-.right-rail-settings-btn.is-open {
+/* 열린 상태는 brass 테두리로만 말한다 — 좌측 brass 바(.is-active::before)는 탭의
+   문법이고 톱니는 탭이 아니다. brass는 위치·포커스 채널이므로 열림 표시에 legal하다. */
+.right-rail-settings-btn.is-active {
   color: var(--brass-ink);
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
   background: var(--brass-glow);
+}
+
+.right-rail-settings-btn.is-active::before {
+  content: none;
 }
 
 .right-rail-divider {
@@ -251,124 +253,6 @@
   height: 1px;
   margin: 2px 0;
   background: var(--surface-rim-strong);
-}
-
-/* 메뉴는 포털로 문서에 그린다(.right-rail은 push 모드에서 overflow: hidden).
-   유리 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이 — command-band-system-menu와
-   같은 한 벌이다(콘솔 메뉴 단일 방언). */
-.right-rail-menu {
-  z-index: var(--z-rail-menu);
-  display: flex;
-  flex-direction: column;
-  min-width: 214px;
-  max-width: min(292px, calc(100vw - 16px));
-  padding: 4px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
-}
-
-.right-rail-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  text-align: left;
-  cursor: pointer;
-}
-
-.right-rail-menu-item:hover,
-.right-rail-menu-item:focus-visible {
-  background: var(--surface-pillar);
-  color: var(--text-primary);
-  outline: none;
-}
-
-.right-rail-menu-item:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--brass);
-}
-
-.right-rail-menu-item:disabled {
-  color: var(--text-tertiary);
-  opacity: 0.5;
-  cursor: default;
-}
-
-.right-rail-menu-item:disabled:hover {
-  background: none;
-  color: var(--text-tertiary);
-}
-
-/* 체크 자리는 켜짐과 무관하게 늘 차지한다 — 라벨이 좌우로 흔들리지 않는다. */
-.right-rail-menu-check {
-  flex: none;
-  width: 13px;
-  height: 13px;
-  color: var(--brass-ink);
-}
-
-.right-rail-menu-label {
-  margin: 0;
-  padding: 6px 10px 2px;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.right-rail-menu-divider {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--surface-rim);
-}
-
-/* 값 조절 행은 menuitem 역할을 갖지 않는다 — 방향키 순회가 슬라이더 조작과 싸우지 않도록. */
-.right-rail-menu-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px 8px;
-}
-
-.right-rail-menu-row-label {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.right-rail-alpha-slider {
-  flex: 1 1 auto;
-  min-width: 56px;
-}
-
-.right-rail-alpha-value {
-  flex: none;
-  width: 34px;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  color: var(--brass-ink);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */

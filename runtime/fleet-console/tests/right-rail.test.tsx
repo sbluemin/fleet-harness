@@ -74,14 +74,29 @@ function toBinding(panel: Record<string, unknown>) {
   };
 }
 
+// 프로덕션과 같은 자리의 코어 네이티브 설정 바인딩 — 톱니가 여는 표면이 실재해야
+// "문이 표면을 연다"는 계약을 이 테스트가 지킬 수 있다.
+function settingsBinding() {
+  return {
+    entry: { id: "settings", title: "SETTINGS", icon: "G", panes: ["settings"] },
+    panes: [{ id: "settings", role: "primary", mounts: ["rail"], title: () => "SETTINGS", render: () => null, defaultWidth: 360 }],
+    projected: false,
+    core: true,
+  };
+}
+
+function allBindings() {
+  return [settingsBinding(), ...[...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding)];
+}
+
 vi.mock("../core/client/src/pane/pane-registry.js", () => ({
   // 프로덕션 useRailEntries는 useMemo라 참조가 안정적이다. 매 호출 새 배열을 주면
   // RailSurface의 memo가 깨져 본문이 다시 렌더되므로, 여기서도 한 번만 만든다.
-  useRailEntries: () => (BINDING_CACHE.value ??= [...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding)),
+  useRailEntries: () => (BINDING_CACHE.value ??= allBindings()),
   // 표면이 마운트 라우팅과 형제 keepAlive를 이 색인으로 판단한다 — 같은 바인딩에서 파생시켜
   // 두 목록이 어긋나지 않게 한다.
   usePaneIndex: () => (PANE_INDEX_CACHE.value ??= new Map(
-    (BINDING_CACHE.value ??= [...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding))
+    (BINDING_CACHE.value ??= allBindings())
       .flatMap((binding: { panes: { id: string }[] }) => binding.panes.map((pane) => [pane.id, pane])),
   )),
 }));
@@ -110,7 +125,6 @@ const LEGACY_PANEL_FIXTURES: Record<string, unknown>[] = [
 
 import { RightRail } from "../core/client/src/rail/right-rail.js";
 import {
-  closeRailPanel,
   getRailStoreSnapshot,
   requestRailPanelExtraWidth,
   setActiveRailPanel,
@@ -154,52 +168,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Right Rail overlay opacity slider", () => {
-  it("renders no opacity slider or alpha variable in push mode", () => {
+/* 불투명도 컨트롤은 설정 페인(설정 > 겉모습)으로 이사했다 — 레일에 남은 계약은
+   "스토어의 알파가 오버레이 슬롯에만 실린다"는 것이다. */
+describe("Right Rail overlay opacity", () => {
+  it("carries no alpha variable in push mode", () => {
     renderRail();
-    openRailMenu();
 
-    expect(opacitySlider()).toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("");
   });
 
-  it("renders the slider in overlay mode, applies changes, and resets on double-click", () => {
+  it("follows the store alpha in overlay mode", () => {
     setRailPanelBehavior("overlay");
     renderRail();
-    openRailMenu();
-
-    const slider = opacitySlider();
-    expect(slider).not.toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
 
-    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setInputValue.call(slider, "65");
-      slider!.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    act(() => setRailOverlayAlpha(65));
 
     expect(getRailStoreSnapshot().overlayAlpha).toBe(65);
     expect(window.localStorage.getItem("fleet-console.rail.overlayAlpha")).toBe("65");
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("0.65");
-
-    act(() => slider!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-
-    expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
-    expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
   });
 
-  it("does not re-render the panel body while the opacity slider changes", () => {
+  it("does not re-render the panel body while the alpha changes", () => {
     setRailPanelBehavior("overlay");
     renderRail();
-    openRailMenu();
 
-    const slider = opacitySlider()!;
     const renderCountBeforeChange = railPanelContextMock.renderCount;
-    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setInputValue.call(slider, "65");
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    act(() => setRailOverlayAlpha(65));
 
     expect(getRailStoreSnapshot().overlayAlpha).toBe(65);
     expect(railPanelContextMock.renderCount).toBe(renderCountBeforeChange);
@@ -492,7 +487,9 @@ describe("Right Rail panel width", () => {
   });
 });
 
-describe("Right Rail settings menu", () => {
+/* 톱니는 메뉴가 아니라 설정 표면의 문이다 — 옛 컨텍스트 메뉴 계약(플로팅·불투명도·폭·닫기)은
+   설정 페인과 직접 조작으로 해체됐고, 여기 남는 것은 문의 계약이다. */
+describe("Right Rail settings gear", () => {
   it("puts the settings gear first in the icon column, split from the panel tabs by a divider", () => {
     renderRail();
     const column = container.querySelector<HTMLElement>(".right-rail-icons")!;
@@ -501,7 +498,7 @@ describe("Right Rail settings menu", () => {
     expect(children[0]).toBe(gearButton());
     expect(children[1]?.className).toBe("right-rail-divider");
     expect(children[1]?.getAttribute("role")).toBe("separator");
-    // 디바이더 다음부터가 패널 탭이다 — 레일을 손보는 일과 패널을 고르는 일의 경계.
+    // 디바이더 다음부터가 패널 탭이다 — 콘솔을 다스리는 일과 패널을 고르는 일의 경계.
     expect(children[2]?.className).toBe("right-rail-tabs");
   });
 
@@ -513,171 +510,55 @@ describe("Right Rail settings menu", () => {
     expect(panelSlot().querySelector(".right-rail-panel-body")).not.toBeNull();
   });
 
-  it("opens on click and closes on Escape, returning focus to the gear", () => {
+  it("toggles the settings surface and speaks its open state with pressed + brass", () => {
     renderRail();
-    expect(railMenu()).toBeNull();
-    expect(gearButton().getAttribute("aria-expanded")).toBe("false");
+    expect(gearButton().getAttribute("aria-pressed")).toBe("false");
 
-    openRailMenu();
-    expect(railMenu()).not.toBeNull();
-    expect(gearButton().getAttribute("aria-expanded")).toBe("true");
-    expect(gearButton().classList.contains("is-open")).toBe(true);
+    act(() => gearButton().click());
 
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
+    expect(getRailStoreSnapshot().activeRailPanelId).toBe("settings");
+    expect(gearButton().getAttribute("aria-pressed")).toBe("true");
+    expect(gearButton().classList.contains("is-active")).toBe(true);
+    // 문은 표면을 그대로 연다 — 설정 페인 본문이 패널 슬롯에 선다. 탭 없는 표면이므로
+    // tabpanel이 아니라 문(토글)을 라벨로 삼는 region으로 서고, 문은 자기 표면을 가리킨다.
+    const panel = container.querySelector("#rail-panel-settings")!;
+    expect(panel).not.toBeNull();
+    expect(panel.getAttribute("role")).toBe("region");
+    expect(panel.getAttribute("aria-labelledby")).toBe("rail-settings-toggle");
+    expect(gearButton().id).toBe("rail-settings-toggle");
+    expect(gearButton().getAttribute("aria-controls")).toBe("rail-panel-settings");
 
-    expect(railMenu()).toBeNull();
-    expect(document.activeElement).toBe(gearButton());
+    act(() => gearButton().click());
+    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+    expect(gearButton().getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("closes on a pointer press outside the menu", () => {
+  it("keeps the settings entry out of both panel tab lists", () => {
     renderRail();
-    openRailMenu();
-
-    act(() => {
-      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    });
-
-    expect(railMenu()).toBeNull();
+    // 톱니가 곧 설정의 자리다 — 같은 표면을 여는 탭이 디바이더 아래 또 서면 문이 둘이 된다.
+    expect(container.querySelector("#rail-tab-settings")).toBeNull();
+    act(() => gearButton().click());
+    expect(container.querySelector("#rail-tab-settings")).toBeNull();
   });
 
-  it("toggles the float behavior from the checkbox item", () => {
-    renderRail();
-    openRailMenu();
-
-    const floatItem = menuItem("Float over Map");
-    expect(floatItem.getAttribute("aria-checked")).toBe("false");
-
-    act(() => floatItem.click());
-
-    expect(getRailStoreSnapshot().panelBehavior).toBe("overlay");
-    expect(menuItem("Float over Map").getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("resets a remembered panel width to the panel default and forgets the stored value", () => {
+  it("resets a remembered panel width to the panel default on a divider double-click", () => {
     window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 520 }));
     renderRail();
     expect(renderedPanelWidth()).toBe(520);
 
-    openRailMenu();
-    act(() => menuItem("Reset panel width").click());
+    // 옛 메뉴의 "패널 폭 초기화"는 조작 대상 위의 직접 조작으로 왔다.
+    act(() => resizeHandle().dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 
     expect(renderedPanelWidth()).toBe(360);
     expect(window.localStorage.getItem("fleet-console.rail.panelWidths")).toBe("{}");
-    // 초기화는 메뉴를 닫고 톱니로 포커스를 돌려준다.
-    expect(railMenu()).toBeNull();
   });
 
-  it("closes the active panel from the menu", () => {
+  it("leaves no portaled rail menu behind", () => {
     renderRail();
-    openRailMenu();
+    act(() => gearButton().click());
 
-    act(() => menuItem("Close REPOSITORY").click());
-
-    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
-    expect(railMenu()).toBeNull();
-  });
-
-  it("leaves the opacity slider its own arrow and Home/End keys", () => {
-    setRailPanelBehavior("overlay");
-    renderRail();
-    openRailMenu();
-
-    const slider = opacitySlider()!;
-    act(() => slider.focus());
-    expect(document.activeElement).toBe(slider);
-
-    // 항목 순회가 이 키들을 가로채면 값 조절이 죽고 포커스까지 빼앗겨 슬라이더가 키보드로
-    // 손댈 수 없는 컨트롤이 된다 — 메뉴 안이라도 항목이 아닌 컨트롤은 자기 키를 갖는다.
-    for (const key of ["ArrowDown", "ArrowUp", "Home", "End"]) {
-      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-      act(() => { slider.dispatchEvent(event); });
-      expect(event.defaultPrevented, `${key} must reach the slider`).toBe(false);
-      expect(document.activeElement, `${key} must not move focus`).toBe(slider);
-    }
-
-    // 메뉴 항목 위에서는 순회가 그대로 살아 있어야 한다.
-    const floatItem = menuItem("Float over Map");
-    act(() => floatItem.focus());
-    act(() => {
-      floatItem.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
-    });
-    expect(document.activeElement).not.toBe(floatItem);
-
-    // Esc는 슬라이더에 포커스가 있어도 메뉴를 닫는다.
-    act(() => slider.focus());
-    act(() => {
-      slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-    });
-    expect(railMenu()).toBeNull();
-  });
-
-  it.each([
-    ["a window resize", () => window.dispatchEvent(new Event("resize"))],
-    ["a captured scroll", () => document.body.dispatchEvent(new Event("scroll"))],
-  ])("hands focus back to the gear when %s dismisses the menu", (_label, jolt) => {
-    renderRail();
-    openRailMenu();
-    const firstItem = menuItem("Float over Map");
-    act(() => firstItem.focus());
-
-    act(() => { jolt(); });
-
-    // 포커스를 쥔 요소를 그냥 걷어내면 body로 떨어진다 — 톱니는 그대로 서 있으므로 그리로.
-    expect(railMenu()).toBeNull();
-    expect(document.activeElement).toBe(gearButton());
-  });
-
-  it("leaves focus alone when the menu is dismissed while something else holds it", () => {
-    renderRail();
-    openRailMenu();
-    const outside = container.querySelector<HTMLButtonElement>("#rail-tab-codex")!;
-    act(() => outside.focus());
-
-    act(() => { window.dispatchEvent(new Event("resize")); });
-
-    expect(railMenu()).toBeNull();
-    expect(document.activeElement).toBe(outside);
-  });
-
-  it("takes the floating menu down with the rail chrome and hands focus to the band toggle", () => {
-    const railToggle = document.createElement("button");
-    railToggle.className = "command-band-rail-toggle";
-    document.body.append(railToggle);
-    try {
-      renderRail();
-      openRailMenu();
-      const firstItem = menuItem("Float over Map");
-      act(() => firstItem.focus());
-      expect(document.activeElement).toBe(firstItem);
-
-      act(() => setRailChromeExpanded(false));
-
-      // 톱니는 inert 안으로 들어가지만 포털된 메뉴는 문서에 남는다 — 함께 거둬야 한다.
-      expect(container.querySelector(".right-rail")!.hasAttribute("inert")).toBe(true);
-      expect(railMenu()).toBeNull();
-      // 레일 DOM만 보는 RightRail의 복귀는 body로 포털된 메뉴를 못 본다 — 메뉴가 직접
-      // 넘기지 않으면 포커스가 body로 떨어진다.
-      expect(document.activeElement).toBe(railToggle);
-
-      act(() => setRailChromeExpanded(true));
-      expect(railMenu()).toBeNull();
-    } finally {
-      railToggle.remove();
-    }
-  });
-
-  it("disables the panel-scoped items and names the empty state when no panel is open", () => {
-    act(() => closeRailPanel());
-    renderRail();
-    openRailMenu();
-
-    expect(railMenu()!.querySelector(".right-rail-menu-label")!.textContent).toBe("No panel open");
-    expect(menuItem("Reset panel width").disabled).toBe(true);
-    expect(menuItem("Close panel").disabled).toBe(true);
-    // 플로팅은 레일 차원의 상시 취향이라 패널이 없어도 정할 수 있다.
-    expect(menuItem("Float over Map").disabled).toBe(false);
+    // 메뉴는 해체됐다 — 문서에 포털된 팝업이 더는 서지 않는다.
+    expect(document.body.querySelector(".right-rail-menu")).toBeNull();
   });
 });
 
@@ -697,27 +578,6 @@ function gearButton(): HTMLButtonElement {
   const gear = container.querySelector<HTMLButtonElement>(".right-rail-settings-btn");
   expect(gear).not.toBeNull();
   return gear!;
-}
-
-/** 메뉴는 body로 포털된다 — 레일이 push 모드에서 자기 안의 팝업을 잘라내기 때문이다. */
-function railMenu(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>(".right-rail-menu");
-}
-
-function openRailMenu(): void {
-  act(() => gearButton().click());
-  expect(railMenu()).not.toBeNull();
-}
-
-function menuItem(labelPrefix: string): HTMLButtonElement {
-  const item = [...railMenu()!.querySelectorAll<HTMLButtonElement>(".right-rail-menu-item")]
-    .find((button) => (button.textContent ?? "").startsWith(labelPrefix));
-  expect(item, `menu item starting with "${labelPrefix}"`).toBeDefined();
-  return item!;
-}
-
-function opacitySlider(): HTMLInputElement | null {
-  return document.body.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]');
 }
 
 function panelBody(): HTMLDivElement {

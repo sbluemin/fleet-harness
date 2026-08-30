@@ -31,7 +31,8 @@ import { bindConsoleNavigate, notifyConsoleLocationChanged } from "./console-loc
 import type { PaletteSearchPanel } from "./operation-search.js";
 import { useRailEntries } from "./pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "./plugin-registry.js";
-import { GlobalSettings } from "./pages/global-settings.js";
+import { SettingsRouteAdapter } from "./settings/settings-route-adapter.js";
+import { syncSettingsSearchPlugins } from "./settings/settings-pane.js";
 import { Operations } from "./pages/operations.js";
 import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
@@ -133,6 +134,8 @@ export function App() {
   // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
   const railBindings = useRailEntries();
+  // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
+  useEffect(() => { syncSettingsSearchPlugins(registry.plugins); }, [registry.plugins]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       .filter((binding) => binding.panes.length > 0)
@@ -418,7 +421,7 @@ export function App() {
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
-                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <GlobalSettings />} />
+                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>

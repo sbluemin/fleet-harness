@@ -17,7 +17,7 @@ import { getState, subscribe } from "../store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { requestRailPanelExtraWidth, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth } from "./rail-store.js";
-import { RailSettingsMenu } from "./rail-settings-menu.js";
+import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 
@@ -322,6 +322,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           <div
             className="right-rail-resize-handle"
             onPointerDown={handleResizeDragStart}
+            // 옛 톱니 메뉴의 "패널 폭 초기화"는 조작 대상 위의 직접 조작으로 온다 —
+            // 더블클릭이 기억된 폭을 지우고 패널이 선언한 기본값으로 되돌린다.
+            onDoubleClick={handleResetPanelWidth}
+            title={t("rail.chrome.resetWidth")}
             onKeyDown={handleResizeKeyDown}
             role="separator"
             aria-orientation="vertical"
@@ -338,18 +342,24 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
-        {/* 설정은 열 최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 패널을 고르는 일과
-            레일을 손보는 일은 다른 종류의 동작이다. */}
-        <RailSettingsMenu
-          panelBehavior={panelBehavior}
-          overlayAlpha={overlayAlpha}
-          activePanelTitle={activeBinding === null ? null : activePanelTitle}
-          railChromeExpanded={railChromeExpanded}
-          onResetWidth={handleResetPanelWidth}
-        />
+        {/* 설정은 열 최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과
+            작업 패널을 고르는 일은 다른 종류의 동작이다. 톱니는 이제 메뉴가 아니라 설정
+            표면의 문이고, 켜짐은 다른 패널과 같은 문법(brass)으로 "지금 여기"를 말한다. */}
+        <button
+          id="rail-settings-toggle"
+          type="button"
+          className={`right-rail-ico right-rail-settings-btn${activeId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
+          aria-pressed={activeId === SETTINGS_RAIL_ENTRY_ID}
+          aria-controls={activeId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
+          aria-label={t("settings.title")}
+          title={t("settings.title")}
+          onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
+        >
+          <GearGlyph />
+        </button>
         <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
-          {paneEntries.filter((binding) => binding.core).map(({ entry }) => (
+          {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
             <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activeId === entry.id} />
           ))}
         </div>
@@ -426,8 +436,18 @@ const RailPanelBody = memo(function RailPanelBody({ binding, activeId, ctx, conn
     }
   }, [staleVisible]);
 
+  // 설정은 탭이 아니라 문(토글)이 연다 — 탭 없는 tabpanel은 고아가 되므로, 문이 여는 표면은
+  // 문을 라벨로 삼는 region으로 선다. 탭 문법은 실제 탭(rail-tab-*)이 있는 엔트리만 쓴다.
+  const doorSurface = binding.entry.id === SETTINGS_RAIL_ENTRY_ID;
   return (
-    <div ref={panelBodyRef} id={`rail-panel-${binding.entry.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
+    <div
+      ref={panelBodyRef}
+      id={`rail-panel-${binding.entry.id}`}
+      className="right-rail-panel-body"
+      role={doorSurface ? "region" : "tabpanel"}
+      aria-labelledby={doorSurface ? "rail-settings-toggle" : `rail-tab-${activeId}`}
+      tabIndex={-1}
+    >
       <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
         <RailSurface
           binding={binding}

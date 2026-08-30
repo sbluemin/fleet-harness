@@ -996,7 +996,7 @@ describe("Instrument core design contract", () => {
      페이지 컴포넌트는 번들러 가상 모듈(virtual:fleet-plugins)을 끌어와 단위 렌더가 불가능하므로
      (quick-launch.ts의 같은 주석), 이 파일의 다른 설정 계약과 같은 소스 수준으로 못박는다. */
   it("keeps the liquid glass row a single switch over a single stored value", () => {
-    const settings = source("pages/global-settings.tsx");
+    const settings = source("settings/sections.tsx");
 
     // 손잡이는 저장값을 그대로 말한다 — 테마로 깎아내는 분기가 남아 있으면 안 된다.
     expect(settings).toMatch(/const liquidGlass = state\?\.liquidGlass \?\? true;/);
@@ -1016,36 +1016,22 @@ describe("Instrument core design contract", () => {
     expect(selectTheme).not.toMatch(/[Ll]iquidGlass/);
   });
 
-  /* 겉모습 축소판은 자기가 고르게 하는 화면을 대신 보여 준다. 계약은 둘이다. 축소판은 컨트롤
-     열의 높이를 따라야 하고(예전에는 208px 프레임이 열 꼭대기에 못박혀 폭과 무관하게 아래
-     126px가 늘 비었다 — 바로 아래 타이포그래피 카드의 목록/미리보기 동일 높이 문법과도 어긋난다),
-     떠 있는 메뉴는 터미널 글줄 위에 얹혀야 한다(유리 뒤가 비면 backdrop-filter는 블러 없음과
-     똑같은 픽셀을 그린다). */
-  it("lets the appearance preview follow its controls column and keep glass over text", () => {
+  /* 겉모습 축소판은 페인 이전과 함께 은퇴했다 — 설정이 콘솔 옆에 서므로 콘솔 자체가
+     미리보기다. 남는 계약은 둘이다: 모형의 잔재가 어디에도 없어야 하고, 페인의 폭 대응은
+     뷰포트 미디어가 아니라 컨테이너 쿼리가 져야 한다(데스크톱 뷰포트의 좁은 페인에서
+     뷰포트 미디어는 침묵한다). */
+  it("retires the appearance preview and stacks the settings pane by container, not viewport", () => {
     const components = source("styles/components.css");
-    const settings = source("pages/global-settings.tsx");
-    const split = components.match(/\.appearance-split \{[^}]*\}/)?.[0] ?? "";
-    const preview = components.match(/\.appearance-preview \{[^}]*\}/)?.[0] ?? "";
-    const stage = components.match(/\.appearance-preview-stage \{[^}]*\}/)?.[0] ?? "";
-    const flow = components.match(/\.appearance-preview-terminal-flow \{[^}]*\}/)?.[0] ?? "";
-    const menu = components.match(/\.appearance-preview-menu \{[^}]*\}/)?.[0] ?? "";
+    const settings = source("settings/sections.tsx");
 
-    // 상단 고정이 곧 예전 결함이다 — 열이 아무리 길어져도 축소판만 제 크기로 남았다.
-    expect(split).not.toContain("align-items: start;");
-    expect(preview).toContain("grid-template-rows: minmax(0, 1fr) auto;");
-    // 남는 높이는 터미널이 흡수한다 — 패널이 늘어나면 두 줄짜리 카드가 빈 상자가 된다.
-    expect(stage).toContain("grid-template-rows: auto minmax(0, 1fr);");
-    expect(stage).not.toContain("align-content: start;");
-    // 글줄은 흐름 밖에 둔다. 흐름 안이면 줄 수가 프레임의 최소 높이를 정해 버려 위 규칙이
-    // "컨트롤 열 높이"가 아니라 "글줄 수와의 우연"에 기대게 된다.
-    expect(flow).toContain("position: absolute;");
-    expect(flow).toContain("mask-image: linear-gradient(to bottom, oklch(0% 0 0) calc(100% - 18px), transparent);");
-    // 메뉴는 프레임 바닥이 아니라 터미널 칸을 기준으로 앉는다 — 바닥에 매달면 프레임이 자랄수록
-    // 글줄에서 멀어져 빈 바탕 위로 떠오르고, 그때 유리는 유리로 읽히지 않는다.
-    expect(settings).toContain('<div className="appearance-preview-terminal-slot">');
-    expect(menu).toContain("position: absolute;");
-    expect(menu).toContain("top: 26px;");
-    expect(menu).not.toContain("bottom:");
+    expect(components).not.toContain("appearance-preview");
+    expect(settings).not.toContain("AppearancePreview");
+    expect(source("i18n/messages/pages.ts")).not.toContain("settings.preview.");
+
+    // 페인 폭 대응은 컨테이너 쿼리 절 하나가 소유한다 — .rail-pane-body가 컨테이너다.
+    expect(components).toMatch(/@container \(max-width: 640px\) \{[\s\S]{0,400}\.settings-pane \.global-settings-row \{/);
+    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+    expect(source("styles/rail.css")).toContain("container-type: inline-size");
   });
 
   // 다크 유리의 판독 계약 — 유리 뒤가 앱에서 가장 어두운 캔버스라 투과는 명도를 빼기만 한다.
@@ -2026,7 +2012,7 @@ describe("Instrument core design contract", () => {
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");
-    const railMenu = source("rail/rail-settings-menu.tsx");
+    const settingsPane = source("settings/settings-pane.tsx");
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).toContain(".right-rail.is-switching");
@@ -2037,13 +2023,14 @@ describe("Instrument core design contract", () => {
     expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
     // opacity control communicates its filled range in either engine. The recipe is shared -
-    // the rail's opacity and the Settings fade strength are one control grammar, and the rail
-    // keeps only its own layout.
+    // the rail's opacity and the Settings fade strength are one control grammar. The control
+    // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
+    // dismantled and the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
-    expect(rail).not.toContain(".right-rail-alpha-slider::-moz-range-progress");
-    expect(railMenu).toContain("right-rail-alpha-slider fleet-slider");
+    expect(settingsPane).toContain("fleet-slider settings-slider");
+    expect(settingsPane).toContain("setRailOverlayAlpha");
+    expect(settingsPane).toContain("toggleRailPanelBehavior");
     expect(rightRail).toContain("useRailPanelBehavior");
-    expect(railMenu).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
     // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail has no
@@ -2057,8 +2044,12 @@ describe("Instrument core design contract", () => {
     expect(rightRail).not.toContain("HEAD_REVEAL");
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
     // Doctrine: the gear stands first in the icon column and a divider splits it from the
-    // panel tablist — choosing a panel and tuning the rail are different kinds of act.
-    expect(rightRail).toMatch(/<RailSettingsMenu[\s\S]{0,400}right-rail-divider[\s\S]{0,200}right-rail-tabs/);
+    // panel tablist — governing the console and choosing a work panel are different kinds
+    // of act. The gear is the settings surface's one door: it toggles the core settings
+    // pane and never appears again as a tab below the divider.
+    expect(rightRail).toMatch(/right-rail-settings-btn[\s\S]{0,800}right-rail-divider[\s\S]{0,600}right-rail-tabs/);
+    expect(rightRail).toContain('toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)');
+    expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
     // Doctrine: brass is the location/focus channel, so the open gear may wear it — but not
     // the tablist's left brass bar, because the gear is not a tab.
@@ -2066,15 +2057,14 @@ describe("Instrument core design contract", () => {
     // button (30px inside the 32px control), which is how it first shipped oversized; plugin
     // icons bring their own sizes but this core-drawn glyph has to state one here.
     expect(rail).toMatch(/\.right-rail-settings-btn svg \{[^}]*width: \d+px;[^}]*height: \d+px;/);
-    expect(rail).toMatch(/\.right-rail-settings-btn\.is-open \{[^}]*background: var\(--brass-glow\);/);
-    expect(rail).not.toContain(".right-rail-settings-btn.is-open::before");
-    // Doctrine: the menu is portaled to the document because .right-rail clips its own
-    // children in push mode — drawn inside the rail it could never open to the left.
-    expect(railMenu).toContain("createPortal");
+    expect(rail).toMatch(/\.right-rail-settings-btn\.is-active \{[^}]*background: var\(--brass-glow\);/);
+    expect(rail).toMatch(/\.right-rail-settings-btn\.is-active::before \{[^}]*content: none;/);
+    // Doctrine: the gear menu is dismantled — no popup portals out of the rail any more,
+    // and width reset became direct manipulation on the resize handle itself.
+    expect(rightRail).not.toContain("RailSettingsMenu");
+    expect(rail).not.toContain(".right-rail-menu");
+    expect(rightRail).toContain("onDoubleClick={handleResetPanelWidth}");
     expect(rail).toMatch(/\.right-rail \{[^}]*overflow: hidden;/);
-    // Doctrine: one menu-button dialect for the whole console — the rail menu and the
-    // command band system menu share the keyboard and dismissal contract, never a copy.
-    expect(railMenu).toContain('from "../components/use-menu-button-keyboard.js"');
     expect(source("components/command-band-system-cluster.tsx")).toContain('from "./use-menu-button-keyboard.js"');
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
@@ -2122,9 +2112,8 @@ describe("Instrument core design contract", () => {
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
-    // Activity Rail 설정 메뉴도 같은 재질을 탄다 — 밴드 메뉴와 한 벌이다.
-    expect(source("styles/rail.css")).toMatch(/\.right-rail-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
-    expect(source("styles/rail.css")).toMatch(/\.right-rail-menu \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
+    // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
+    expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
     // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
     // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--glass-underlay\);/);
@@ -3212,7 +3201,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the remote NAT endpoint on the established token grammar without warn hover", () => {
-    const settings = source("pages/global-settings.tsx");
+    const settings = source("settings/sections.tsx");
     const components = source("styles/components.css");
 
     expect(settings).toContain('t("settings.remote.listenAddress")');
@@ -3231,7 +3220,7 @@ describe("Instrument core design contract", () => {
 
   it("keeps the access-link entry in the host box and out of Settings", () => {
     const systemCluster = source("components/command-band-system-cluster.tsx");
-    const settings = source("pages/global-settings.tsx");
+    const settings = source("settings/sections.tsx");
     const dialog = source("components/add-host-dialog.tsx");
 
     // 추가는 관리보다 위에 선다 — 목록을 고르러 온 사람이 먼저 만나는 것은 새 콘솔을 붙이는 일이다.
@@ -3268,7 +3257,9 @@ describe("Instrument core design contract", () => {
 
     expect(source("canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
-    expect(systemCluster).toContain('t("chrome.system.settings")');
+    // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
+    expect(systemCluster).not.toContain("command-band-settings");
+    expect(source("rail/right-rail.tsx")).toContain('t("settings.title")');
     expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
     expect(systemCluster).toContain("openWhatsNew");
     expect(components).toContain(".command-band-system-cluster {");
@@ -3372,7 +3363,7 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionTerminal).toContain("transition: none;");
     expect(source("canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
     expect(source("store.ts")).toContain("--unfocused-panel-opacity");
-    expect(source("pages/global-settings.tsx")).toContain('className="fleet-slider settings-slider"');
+    expect(source("settings/sections.tsx")).toContain('className="fleet-slider settings-slider"');
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,

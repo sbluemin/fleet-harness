@@ -62,9 +62,12 @@ export const RailSurface = memo(function RailSurface({
   // 엔트리가 지키던 터미널·초안이 그 자리에서 사라진다 — keepAlive가 약속한 바로 그것이.
   const entryId = binding.entry.id;
   const paneIndexForReset = usePaneIndex();
+  // 이 엔트리 소유의 페인 id — 정리에서 면제된다. 팔레트·딥링크는 표면을 열기 직전에
+  // openPane으로 착지 params를 심는데, 그 씨앗이 이 마운트 정리에 쓸려 나가면 안 된다.
+  const ownedIds = useMemo(() => new Set(binding.panes.map((pane) => pane.id)), [binding.panes]);
   useEffect(() => {
-    resetSurfacePanes(paneIndexForReset);
-  }, [entryId, paneIndexForReset]);
+    resetSurfacePanes(paneIndexForReset, ownedIds);
+  }, [entryId, paneIndexForReset, ownedIds]);
 
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],

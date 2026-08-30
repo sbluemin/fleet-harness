@@ -208,6 +208,9 @@ export function buildPaletteCommands(
     );
   }
   for (const panel of railPanels) {
+    // 설정은 아래에서 자기 이름의 일급 명령(open-settings)으로 선다 — 같은 표면을 여는
+    // "Open panel: Settings"까지 만들면 팔레트에 같은 문이 두 개 선다.
+    if (panel.id === "settings") continue;
     commands.push({
       commandId: `open-rail-panel:${panel.id}`,
       label: t("palette.openPanel", { title: resolveLocalizedText(panel.title, language) }),

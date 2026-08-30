@@ -11,7 +11,6 @@ import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/r
 
 import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { OperationNameMark } from "./operation-name-mark.js";
-import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
@@ -40,6 +39,7 @@ import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDro
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
+import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/interaction.js";
 import {
@@ -215,6 +215,15 @@ export function OperationSearch({
     } catch {
       return;
     }
+    // 폰에는 레일이 없다 — 설정 타깃은 모바일 표현(/settings 페이지)의 같은 섹션으로 보낸다.
+    // 아래의 일반 /operations 항해보다 먼저 갈라야 한다: 순서가 뒤면 설정 목록과 상세 사이에
+    // /operations 항목이 끼어 Back 제스처가 목록 대신 캔버스로 빠진다.
+    if (target && getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
+      const section = target.params?.section;
+      navigate({ pathname: "/settings", search: section === undefined ? "" : `?section=${encodeURIComponent(section)}` });
+      closeOperationSearch();
+      return;
+    }
     // 경로만 옮기고 주소는 그대로 둔다. `navigate("/operations")`는 쿼리를 함께 버리는데,
     // activate가 방금 기록한 것이 바로 그 쿼리다 — 주소로 문서를 여는 플러그인은 자기가
     // 세운 주소가 이 한 줄에 지워져 아무 일도 일어나지 않는다(실측: 팔레트로 연 Codex 항목).
@@ -387,14 +396,26 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // 라우트 전환으로 이전 포커스 요소가 unmount되므로 복원을 억제한다(switch-theater와 동일).
+        // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
+        // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
+        if (getViewModeSnapshot().effective === "mobile") {
+          previousFocusRef.current = null;
+          navigate("/settings");
+          break;
+        }
+        // 설정은 라우트가 아니라 레일 표면이다 — 포커스는 표면이 받으므로 복원을 억제한다.
         previousFocusRef.current = null;
-        // 토글 닫기가 설정 구간을 소비하려면 진입 마커가 필요하다. 이미 설정 위에서
-        // 열 때는 새로 기록하면 마커가 설정 안쪽을 가리켜 첫 설정 항목이 고아가 되므로
-        // 기존 마커를 보존하고 현재 항목을 대체한다.
-        const onSettings = location.pathname.replace(/\/+$/, "") === "/settings";
-        if (!onSettings) recordSettingsEntryIndex();
-        navigate("/settings", { replace: onSettings, state: propagateSettingsEntryIndex(onSettings ? location.state : null) });
+        // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
+        if (!location.pathname.startsWith("/operations")) navigate({ pathname: "/operations", search: window.location.search });
+        openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+        setRailChromeExpanded(true);
+        // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
+        // 프레임을 하나 넘겨 검색 입력(첫 컨트롤)으로 보낸다. 실패 시 표면 본문이 받는다.
+        window.requestAnimationFrame(() => {
+          const landing = document.querySelector<HTMLElement>(".settings-pane .settings-search input")
+            ?? document.querySelector<HTMLElement>(`#rail-panel-${SETTINGS_RAIL_ENTRY_ID}`);
+          landing?.focus();
+        });
         break;
       }
       case "open-keyboard-shortcuts": {

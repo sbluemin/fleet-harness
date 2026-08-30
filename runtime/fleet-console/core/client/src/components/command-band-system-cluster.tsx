@@ -10,6 +10,9 @@ import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
+import { openPane } from "../pane/pane-store.js";
+import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
+import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew } from "../store.js";
 import { AddHostDialog } from "./add-host-dialog.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
@@ -83,35 +86,14 @@ function pickerUrl(homeOrigin: string, surface: string, at?: string): string {
   return url.toString();
 }
 
-// 설정 진입 시점의 history index를 기록하는 세션 스코프 마커. GlobalSettings의 섹션
-// 이동은 state 없이 push하므로 location.state로는 이 마커가 전파되지 않는다 — 모듈
-// 스코프 변수로 들고 있다가 selectSection이 다음 항목으로 전파한다(아래 export 참조).
-// 설정에 머무는 동안에만 의미가 있고, 설정을 벗어나는 다른 경로 전환과 무관하게
-// 마지막 진입 값이 남는 것은 허용한다(판별은 pathname이 한다).
-let settingsEntryIndex: number | null = null;
-
-export function recordSettingsEntryIndex() {
-  settingsEntryIndex = window.history.state?.idx ?? null;
-}
-
-export function propagateSettingsEntryIndex(state: unknown): Record<string, unknown> {
-  // 현재 항목이 이미 마커를 들고 있으면(Back으로 재방문한 과거 설정 항목 등)
-  // 그 항목의 마커가 진실이다 — 세션 스코프 값은 최근 진입의 것일 뿐이다.
-  // 명시적 null은 "이 방문은 무표시"라는 기록이므로 세션 값을 빌려오지 않는다.
-  const existing = (state as { settingsEntry?: unknown } | null)?.settingsEntry;
-  if (existing === null) return { ...(state as Record<string, unknown> | null), settingsEntry: null };
-  const entry = typeof existing === "number" ? existing : settingsEntryIndex;
-  return entry === null ? {} : { ...(state as Record<string, unknown> | null), settingsEntry: entry };
-}
-
 // 시스템 클러스터는 커맨드 밴드 우측에 상주한다 — 사이드바 접힘·라우트 전환과 무관하게
-// 설정(직행)·도움말(메뉴)이 항상 도달 가능해야 한다는 배치 계약의 소유자다.
+// 도움말(메뉴)이 항상 도달 가능해야 한다는 배치 계약의 소유자다. 설정 버튼은 여기 없다:
+// 설정의 문은 레일의 톱니 하나이고, 페이지가 은퇴하며 history 진입 마커도 함께 은퇴했다.
 export function CommandBandSystemCluster() {
   const state = useConsoleState();
   return (
     <div className="command-band-system-cluster">
       <HostSwitcher />
-      <SettingsButton />
       <HelpMenu
         version={state.version}
         latestVersion={state.latestVersion}
@@ -372,13 +354,18 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
   if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
-    // 관리는 집의 설정 화면에서 한다. 덮개는 목록만 들고 있으므로 창째로 집에 보낸다.
+    // 관리는 집의 설정 표면에서 한다. 덮개는 목록만 들고 있으므로 창째로 집에 보낸다 —
+    // 옛 주소는 라우트 어댑터가 받아 같은 표면으로 번역한다.
     if (inPicker) {
       location.assign(new URL("/console/settings?section=remote-access", `${location.origin}/`).toString());
       return;
     }
     setOpen(false);
-    navigate({ pathname: "/settings", search: "?section=remote-access" });
+    // 레일은 /operations에만 마운트된다 — 표면을 부르기 전에 캔버스로 돌아간다.
+    navigate("/operations");
+    openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+    openPane({ paneId: SETTINGS_PANE_ID, params: { section: "connectivity" } });
+    setRailChromeExpanded(true);
   };
   const openAdd = () => {
     // 덮개에서는 판을 접지 않는다 — 접으면 팝업이 닫힌 뒤 빈 덮개만 남는다.
@@ -584,55 +571,6 @@ function ChevronGlyph() {
 
 function CheckGlyph() {
   return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function SettingsButton() {
-  const t = useT();
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const goToSettings = () => {
-    // 설정 화면에서 다시 누륄 때 토글로 닫는다 — 설정 내 섹션 이동은 search만 바꾸므로
-    // pathname 기준으로 판별해야 잘못 닫히지 않는다. React Router는 후행 슬래시를 허용하므로
-    // 비교·기록 모두 정규화한다. 직행 진입(딥링크 등)은 기본 화면인 /operations로 복귀한다.
-    const pathname = location.pathname.replace(/\/+$/, "") || "/";
-    if (pathname === "/settings") {
-      const state = location.state as { settingsEntry?: unknown } | null;
-      const entry = typeof state?.settingsEntry === "number" ? state.settingsEntry : null;
-      const currentIndex = window.history.state?.idx;
-      // 닫기는 설정을 연 채 쌓인 항목을 모두 소비하는 동작이다 — 섹션 이동이 push한
-      // 중간 /settings?... 항목까지 진입 지점과의 idx 차이만큼 되돌아가야 Back이
-      // 설정을 다시 열지 않는다. 마커를 알 수 없는 진입(딥링크·리로드)은 replace 폐기.
-      if (entry !== null && typeof currentIndex === "number" && currentIndex > entry) {
-        navigate(entry - currentIndex);
-        return;
-      }
-      navigate("/operations", { replace: true });
-      return;
-    }
-    recordSettingsEntryIndex();
-    navigate("/settings", { state: propagateSettingsEntryIndex(null) });
-    window.requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>("main h2, h2");
-      target?.focus?.();
-      if (target && document.activeElement !== target) {
-        target.setAttribute("tabindex", "-1");
-        target.focus();
-      }
-    });
-  };
-
-  return (
-    <button
-      type="button"
-      className="command-band-button command-band-settings"
-      onClick={goToSettings}
-      aria-label={t("chrome.system.settings")}
-      title={t("chrome.system.settings")}
-    >
-      <SettingsGlyph />
-    </button>
-  );
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
@@ -879,10 +817,6 @@ function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
-}
-
-function SettingsGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /><circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 function HelpGlyph() {

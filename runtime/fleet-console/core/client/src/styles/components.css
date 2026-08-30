@@ -293,6 +293,229 @@
   line-height: 1.55;
 }
 
+/* ── 설정 페인 — 페이지의 후계자 ─────────────────────────────────
+   설정은 레일 표면의 primary 페인으로 선다(단일 페인 + 칩 행). 본문은 .rail-pane-body
+   (container-type: inline-size) 안에서 스크롤하므로, 옛 페이지의 뷰포트 미디어 쿼리는
+   여기서 침묵한다 — 폭 대응은 아래 @container 절이 대신 진다. */
+.settings-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  min-height: 100%;
+}
+
+.settings-pane-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-pane-toolbar .settings-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 확대 버튼 — 캡션이 없는 primary 페인에서 "이 섹션을 넓게"로 가는 유일한 문. */
+.settings-pane-zoom {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.settings-pane-zoom svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-pane-zoom:hover {
+  color: var(--text-secondary);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.settings-pane-zoom:focus-visible {
+  outline: none;
+  box-shadow: var(--control-focus-ring);
+}
+
+/* 칩은 전부 선다 — 줄바꿈이 접힘(+N)을 대신한다(재가된 변형 B의 계약). */
+.settings-pane-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.settings-chip {
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  padding: 3px 11px;
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.settings-chip:hover:not([aria-pressed="true"]) {
+  color: var(--text-primary);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.settings-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--control-focus-ring);
+}
+
+/* 선 자리는 brass가 말한다 — 위치 채널. 신호 토큰은 여기 오지 않는다. */
+.settings-chip.is-active {
+  color: var(--brass-ink);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: var(--brass-glow);
+}
+
+.settings-pane-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-pane-result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-pane-result:hover {
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.settings-pane-result:focus-visible {
+  outline: none;
+  box-shadow: var(--control-focus-ring);
+}
+
+.settings-pane-result-group {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* 섹션 본문 — 플러그인 프래그먼트가 기대하던 카드 사이 간격을 페이지 대신 여기서 준다. */
+.settings-pane-sections {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+/* grid 자식의 min-width:auto는 카드의 min-content 폭을 페인 밖까지 밀어낸다(모델 행처럼
+   넓은 내용을 가진 카드가 8px씩 삐져나온다) — 줄이도록 풀어 주면 안쪽 flex-wrap이 받는다. */
+.settings-pane-sections > * {
+  min-width: 0;
+}
+
+.settings-pane-manage {
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.settings-pane-manage:hover {
+  color: var(--text-primary);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.settings-pane-manage:focus-visible {
+  outline: none;
+  box-shadow: var(--control-focus-ring);
+}
+
+/* 확대 표면의 섹션 캔버스 — 같은 섹션 레지스트리를 넓은 폭으로 편다. 자기 컨테이너를
+   선언해 카드 내부 @container(backend-api 등)가 페인에서와 같은 문법으로 판정한다. */
+.settings-expanded {
+  height: 100%;
+  overflow: auto;
+  container-type: inline-size;
+}
+
+.settings-expanded-canvas {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+/* 페인 폭 대응 — 옛 페이지의 뷰포트 미디어(767/720/640px)는 데스크톱 뷰포트의 좁은
+   페인에서 발화하지 않는다. 같은 스택 규칙을 컨테이너 기준으로 겹쳐 쓴다. */
+@container (max-width: 640px) {
+  .settings-pane .global-settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .settings-pane .global-settings-row-text {
+    max-width: none;
+  }
+
+  .settings-pane .fc-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-pane .settings-slider-field {
+    width: 100%;
+  }
+
+  .settings-pane .settings-slider {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  /* FontPicker의 minmax(16rem, 1fr) 격자는 페인 폭 아래에서 가로 스크롤을 만든다. */
+  .settings-pane .fc-font-browser__panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 420px) {
+  .settings-pane .theme-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .global-settings-nav-item {
   display: flex;
   width: 100%;
@@ -440,250 +663,12 @@
 .settings-scope.is-restart i { background: var(--warn); }
 .settings-scope.is-sessions i { background: var(--aurora); }
 
-/* 겉모습은 고르는 자리에서 보여야 한다. 컨트롤과 축소판이 한 행에 서고, 좁아지면 축소판이
-   컨트롤 아래로 내려간다.
-
-   축소판은 컨트롤 열의 높이를 그대로 받는다(align-items 기본값 stretch). 예전에는 208px
-   프레임이 열 꼭대기에 못박혀 폭과 무관하게 아래 126px가 늘 비었고, 바로 아래 타이포그래피
-   카드의 같은 문법(글꼴 목록과 미리보기가 같은 높이)과도 어긋났다. */
-.appearance-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
-  gap: var(--space-5);
-}
-
+/* 겉모습 카드의 컨트롤 열. 축소판 미리보기는 페인 이전과 함께 은퇴했다 — 설정이 콘솔
+   옆에 서므로 콘솔 자체가 미리보기이고, 모형은 페이지가 콘솔을 가리던 시절의 보철이었다. */
 .appearance-controls {
   display: grid;
   align-content: start;
   min-width: 0;
-}
-
-.appearance-preview {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: var(--space-2);
-  margin: 0;
-  min-width: 0;
-}
-
-/*
-  축소판이 유리를 보이게 하는 조건은 하나다. **떠 있는 면이 내용 위에 겹쳐야 한다.**
-  유리 뒤가 빈 그라디언트면 backdrop-filter는 블러 없음과 똑같은 픽셀을 그리고, 그것이
-  예전 설정 화면이 자기 리퀴드 글래스 스위치를 보여 주지 못한 이유다(끄고 켤 때 바뀌는
-  화면 픽셀 0.02%). 그래서 메뉴는 터미널 위에 얹히고 캔버스에는 격자가 깔린다.
-*/
-.appearance-preview-frame {
-  position: relative;
-  display: grid;
-  grid-template-rows: 22px minmax(0, 1fr);
-  min-height: 208px;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background:
-    radial-gradient(120% 84% at 16% 0%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 56%),
-    linear-gradient(168deg, var(--canvas-sea-near), var(--canvas-sea-mid) 52%, var(--canvas-sea-far));
-}
-
-.appearance-preview-weave {
-  position: absolute;
-  inset: 22px 0 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  background-image:
-    linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent) 1px, transparent 1px),
-    linear-gradient(color-mix(in oklch, var(--aurora) 16%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
-    linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px);
-  background-size: 48px 48px, 48px 48px, 16px 16px, 16px 16px;
-}
-
-.appearance-preview-top {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-deep) 76%, transparent);
-}
-
-.appearance-preview-top i {
-  width: 5px;
-  height: 5px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-}
-
-.appearance-preview-top span {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.appearance-preview-body {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: var(--space-2);
-  padding: var(--space-2);
-}
-
-.appearance-preview-rail {
-  display: grid;
-  gap: 4px;
-  align-content: start;
-}
-
-.appearance-preview-rail b,
-.appearance-preview-rail em {
-  overflow: hidden;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-size: var(--t-2xs);
-  font-style: normal;
-  font-weight: var(--weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.appearance-preview-rail b {
-  border-color: transparent;
-  background: var(--control-wash);
-  box-shadow: inset 2px 0 0 var(--brass);
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
-}
-
-/* 터미널이 남는 높이를 흡수한다 — 패널은 제 크기를 지키고, 프레임이 자라도 빈 바닥이
-   생기지 않는다. */
-.appearance-preview-stage {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
-  min-width: 0;
-}
-
-.appearance-preview-panel {
-  padding: 6px 8px;
-  border: 1px solid var(--glass-rim);
-  border-radius: var(--radius-xs);
-  background: var(--glass-tint-raised);
-  backdrop-filter: var(--glass-backdrop-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-panel);
-}
-
-.appearance-preview-panel-title {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.appearance-preview-panel-value {
-  margin: 2px 0 0;
-  color: var(--text-primary);
-  font-size: var(--font-body-size);
-  line-height: 1.3;
-}
-
-/* 떠 있는 메뉴는 이 칸을 기준으로 앉는다. 프레임 바닥이 아니라 터미널 글줄 위여야 뒤가
-   비지 않고, 그래야 블러가 블러로 보인다. */
-.appearance-preview-terminal-slot {
-  position: relative;
-  display: grid;
-  min-height: 0;
-}
-
-.appearance-preview-terminal {
-  position: relative;
-  overflow: hidden;
-  min-height: 0;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-abyss) 72%, transparent);
-}
-
-/* 글줄은 흐름에서 빼 둔다. 흐름 안에 두면 줄 수가 프레임의 최소 높이를 정해 버리고,
-   "축소판은 컨트롤 열 높이를 따른다"는 규칙이 글줄 수와의 우연에 기대게 된다.
-   마스킹도 상자가 아니라 글줄에만 건다 — 상자째 흐리면 테두리와 바탕까지 사라진다.
-   덕분에 높이가 얼마든 터미널은 차 있는 것처럼 보이고, 넘친 줄은 잘린 글자 대신 사그라든다. */
-.appearance-preview-terminal-flow {
-  position: absolute;
-  inset: 7px 8px;
-  margin: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: calc(var(--font-body-size) - 3px);
-  line-height: 1.7;
-  white-space: pre;
-  mask-image: linear-gradient(to bottom, oklch(0% 0 0) calc(100% - 18px), transparent);
-  -webkit-mask-image: linear-gradient(to bottom, oklch(0% 0 0) calc(100% - 18px), transparent);
-}
-
-.appearance-preview-terminal-flow .is-prompt { color: var(--brass-bright); }
-.appearance-preview-terminal-flow .is-good { color: var(--positive); }
-.appearance-preview-terminal-flow .is-busy { color: var(--aurora); }
-.appearance-preview-terminal-flow .is-warn { color: var(--warn); }
-
-.appearance-preview-menu {
-  position: absolute;
-  top: 26px;
-  right: 6px;
-  z-index: 2;
-  display: grid;
-  gap: 3px;
-  width: 132px;
-  padding: 6px 7px;
-  border: 1px solid var(--glass-rim);
-  border-radius: var(--radius-xs);
-  background: var(--glass-tint-panel);
-  backdrop-filter: var(--glass-backdrop-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-panel);
-  box-shadow: var(--shadow-soft);
-}
-
-.appearance-preview-menu p {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--t-2xs);
-}
-
-.appearance-preview-menu p:first-child {
-  color: var(--text-primary);
-}
-
-.appearance-preview-menu span {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-}
-
-.appearance-preview figcaption {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-  line-height: 1.5;
-}
-
-@media (max-width: 1180px) {
-  .appearance-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .appearance-preview-frame {
-    max-width: 420px;
-  }
 }
 
 /* 좁은 폭에서는 목록이 접힌다. 예전에는 row wrap 격자로 풀려 세로 328px를 먹고 항목 폭이
@@ -2595,7 +2580,6 @@
   .fc-select__option[aria-selected="true"],
   .global-settings-nav-item.is-active,
   .global-settings-nav-item[aria-pressed="true"],
-  .appearance-preview-rail b,
   .host-switcher-panel > button.is-current,
   .remote-interface-preset.is-selected,
   .theme-card.is-active,

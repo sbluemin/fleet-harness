@@ -112,10 +112,21 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
  * 판단 근거로 서술자 색인을 받는 이유는, 남길지를 정하는 것이 새로 선 엔트리가 아니라 그
  * 페인 자신이기 때문이다. 새 엔트리의 목록으로 거르면 떠나는 쪽이 지키던 상태가 사라진다.
  */
-export function resetSurfacePanes(descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean }>): void {
+export function resetSurfacePanes(
+  descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean; readonly role?: string }>,
+  arriving?: ReadonlySet<string>,
+): void {
+  // 들어오는 엔트리의 **primary**는 정리 대상이 아니다 — 팔레트·딥링크가 표면을 열기 직전에
+  // 심어 둔 착지 params가 이 정리에 쓸려 나가면, 문을 연 손짓이 곧 그 착지를 지운다. primary는
+  // 표면과 수명을 같이하므로 params가 닫힘을 건너 남는 것은 폭 기억과 같은 연속성이다.
+  // detail은 면제하지 않는다: 닫힌 동안은 이 정리가 돌지 않아, 면제하면 keepAlive 없이 닫힌
+  // detail이 재열림에서 옛 params째 되살아난다(닫기=언마운트 계약 위반).
+  const exempt = (paneId: string) => arriving?.has(paneId) === true && descriptors.get(paneId)?.role === "primary";
   const rail = state.rail
-    .filter((instance) => descriptors.get(instance.paneId)?.keepAlive === true)
-    .map((instance) => (instance.visible ? { ...instance, visible: false } : instance));
+    .filter((instance) => exempt(instance.paneId) || descriptors.get(instance.paneId)?.keepAlive === true)
+    .map((instance) => (
+      exempt(instance.paneId) || !instance.visible ? instance : { ...instance, visible: false }
+    ));
   const unchanged = rail.length === state.rail.length
     && rail.every((instance, index) => instance === state.rail[index]);
   if (unchanged && state.focusedPaneId === null) return;

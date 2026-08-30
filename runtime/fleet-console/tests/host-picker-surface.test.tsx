@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HostSwitcher, readHostPickerSurface } from "../core/client/src/components/command-band-system-cluster.js";
 import { HostPickerScreen } from "../core/client/src/components/host-picker-surface.js";
+import { __resetPaneStoreForTests, getPaneStoreSnapshot } from "../core/client/src/pane/pane-store.js";
+import { closeRailPanel, getRailStoreSnapshot, setRailChromeExpanded } from "../core/client/src/rail/rail-store.js";
 
 const HOME = "http://127.0.0.1:59229";
 /** 같은 기계에서 따로 돌고 있는, 스캔이 정규 슬롯에서 찾아낸 콘솔. */
@@ -391,5 +393,46 @@ describe("a home the scan disproves", () => {
     await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
 
     expect(rowText().some((text) => text.includes(new URL(HOME).host))).toBe(false);
+  });
+});
+
+/**
+ * 설정 페이지 은퇴 뒤의 "호스트 관리..." 두 갈래. 집에서는 레일의 설정 표면을 연결 섹션으로
+ * 소환하고, 덮개(피커)에서는 창째로 집의 옛 주소에 보낸다 — 그 주소는 라우트 어댑터가 같은
+ * 표면으로 번역한다. 두 쪽이 따로 표류하면 한쪽 관리 문이 조용히 죽는다.
+ */
+describe("the manage door after the settings page retired", () => {
+  function manageLink(): HTMLButtonElement {
+    const link = [...document.querySelectorAll<HTMLButtonElement>(".host-switcher-link")]
+      .find((button) => (button.textContent ?? "").startsWith("Manage"));
+    expect(link, "manage link").toBeDefined();
+    return link!;
+  }
+
+  it("summons the settings surface at connectivity from the home list", async () => {
+    __resetPaneStoreForTests();
+    closeRailPanel();
+    setRailChromeExpanded(false);
+    stubHomeConsole();
+
+    await mount(createElement(HostSwitcher));
+    await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+    await act(async () => { manageLink().click(); });
+
+    expect(getRailStoreSnapshot().activeRailPanelId).toBe("settings");
+    expect(getRailStoreSnapshot().railChromeExpanded).toBe(true);
+    expect(getPaneStoreSnapshot().rail[0]?.paneId).toBe("settings");
+    expect(getPaneStoreSnapshot().rail[0]?.params).toEqual({ section: "connectivity" });
+    // 집의 표면을 열었으니 창은 어디로도 항해하지 않는다.
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("sends the picker fork home through the legacy settings address", async () => {
+    stubHomeConsole();
+
+    await mount(createElement(HostPickerScreen, { surface: { at: HERE } }));
+    await act(async () => { manageLink().click(); });
+
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining("/console/settings?section=remote-access"));
   });
 });

@@ -878,6 +878,14 @@
   }
 }
 
+/* 설정이 레일 페인으로 이사하며 섹션은 데스크톱 뷰포트의 좁은 컨테이너에서도 선다 —
+   뷰포트 미디어는 거기서 침묵하므로 같은 스택을 컨테이너 기준으로 겹쳐 쓴다. */
+@container (max-width: 640px) {
+  .compact-timing-readout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .compact-timing-stat {
   padding: 10px 12px;
   border: 1px solid var(--surface-rim);

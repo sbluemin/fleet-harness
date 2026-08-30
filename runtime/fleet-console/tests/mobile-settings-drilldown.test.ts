@@ -19,7 +19,8 @@ const PAGE = read("../core/client/src/mobile/mobile-settings-page.tsx");
  */
 describe("mobile settings", () => {
   it("routes /settings to the mobile page only while the mobile layout is on", () => {
-    expect(APP).toContain('<Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <GlobalSettings />} />');
+    // 데스크톱은 페이지 대신 어댑터를 받는다 — 주소는 살아 있고, 표면은 레일이 진다.
+    expect(APP).toContain('<Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />');
   });
 
   it("keeps the section in the address so the platform back gesture returns to the list", () => {
