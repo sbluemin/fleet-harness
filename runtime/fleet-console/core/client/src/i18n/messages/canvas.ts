@@ -180,6 +180,7 @@ export const canvasEn = {
   // ── rail ────────────────────────────────────────────────────────────────
   "pane.caption.expand": "Expand",
   "pane.caption.close": "Close pane",
+  "pane.divider.resize": "Resize {title} pane",
   "rail.chrome.aria": "Activity Rail",
   "rail.chrome.toolsAria": "Activity tools",
   "rail.chrome.panelsAria": "Activity panels",
@@ -372,6 +373,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "pane.caption.expand": "확대",
   "pane.caption.close": "페인 닫기",
+  "pane.divider.resize": "{title} 페인 크기 조절",
   "rail.chrome.aria": "Activity Rail",
   "rail.chrome.toolsAria": "Activity 도구",
   "rail.chrome.panelsAria": "Activity 패널",

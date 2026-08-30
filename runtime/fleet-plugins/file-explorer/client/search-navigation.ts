@@ -12,8 +12,10 @@ export interface FileSearchTarget {
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
+const revealListeners = new Set<Listener>();
 let requestId = 0;
 let target: FileSearchTarget | null = null;
+let reveal: FileSearchTarget | null = null;
 
 export function activateFileSearchTarget(
   theaterId: string,
@@ -53,4 +55,40 @@ function getSnapshot(): FileSearchTarget | null {
 
 function emit(): void {
   for (const listener of listeners) listener();
+}
+
+// ═══ reveal 타깃 ═════════════════════════════════════════════════════════════
+//
+// "이 경로를 보여 달라"는 요청은 두 페인이 함께 본다 — 트리는 그 자리로 스크롤하고 펼치며,
+// 문서 창은 내용 검색이 지목한 줄로 이동한다. 열이 갈라지기 전에는 패널 하나의 지역 상태로
+// 충분했지만, 이제는 둘 다 같은 값을 봐야 하므로 스토어가 진다.
+
+export function setFileRevealTarget(next: FileSearchTarget | null): void {
+  if (reveal === next) return;
+  reveal = next;
+  for (const listener of revealListeners) listener();
+}
+
+export function useFileRevealTarget(): FileSearchTarget | null {
+  return useSyncExternalStore(subscribeReveal, getRevealSnapshot, getRevealSnapshot);
+}
+
+export function getFileRevealTarget(): FileSearchTarget | null {
+  return reveal;
+}
+
+function subscribeReveal(listener: Listener): () => void {
+  revealListeners.add(listener);
+  return () => { revealListeners.delete(listener); };
+}
+
+function getRevealSnapshot(): FileSearchTarget | null {
+  return reveal;
+}
+
+/** 테스트 전용 — 모듈 스코프 상태를 초기화한다. */
+export function __resetSearchNavigationForTests(): void {
+  target = null;
+  reveal = null;
+  requestId = 0;
 }

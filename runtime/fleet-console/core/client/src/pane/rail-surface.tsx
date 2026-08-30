@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -11,6 +11,9 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-surface.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
+import { PaneDivider } from "./pane-divider.js";
+import { clampPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
+import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
 
@@ -54,6 +57,10 @@ export const RailSurface = memo(function RailSurface({
 }: RailSurfaceProps) {
   const openInstances = useRailPanes();
   const focusedPaneId = useFocusedPaneId();
+  const paneWidths = usePaneWidths();
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const [surfaceWidth, setSurfaceWidth] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   // 엔트리를 갈아타면 이전 표면의 열은 사라져야 한다. 비우지 않으면 돌아왔을 때 옛 detail이
   // 옛 params 그대로 되살아나고, keepAlive를 선언하지 않은 페인까지 스토어에 남는다.
@@ -82,28 +89,110 @@ export const RailSurface = memo(function RailSurface({
       .map((instance) => ({ instance, descriptor: owned.get(instance.paneId)! })),
     [openInstances, owned, primary?.id],
   );
+  // 주차된 페인은 `display: none`이라 자리를 차지하지 않는다 — 기하 계산에서도 빠져야 한다.
+  const standing = useMemo(() => extras.filter(({ instance }) => instance.visible), [extras]);
+
+  // 표면 폭 실측. 이 숫자는 **호스트 안에서만** 산다 — ctx로 흘리면 렌더마다 컨텍스트가
+  // 새로 만들어져 본문이 다시 그려진다(계약이 `ctx.width`를 힌트로만 두는 이유).
+  useLayoutEffect(() => {
+    const node = surfaceRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const next = Math.round(node.getBoundingClientRect().width);
+      setSurfaceWidth((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  // 갈라지기 직전의 폭. 첫 분할에서 primary를 이 값으로 세우면 사용자가 정해 둔 열 폭이
+  // 그대로 남고 detail이 옆에 붙는다 — 기억된 폭이 없다고 기본값으로 되돌리면, 폭을 넓혀
+  // 두었던 사용자는 문서를 열 때마다 트리가 좁아지는 것을 본다.
+  const soloWidthRef = useRef(0);
+  if (standing.length === 0 && surfaceWidth > 0) soloWidthRef.current = surfaceWidth;
+
+  const limits: PaneSplitLimits = useMemo(() => ({
+    surfaceWidth,
+    minPrimary: primary?.minWidth ?? MIN_PANE_PX,
+    minDetail: standing.reduce(
+      (widest, { descriptor }) => Math.max(widest, descriptor.minWidth ?? MIN_PANE_PX),
+      MIN_PANE_PX,
+    ),
+  }), [primary?.minWidth, standing, surfaceWidth]);
+
+  // 순서가 곧 근거의 순서다: 사용자가 끈 폭 → 갈라지기 직전의 폭 → 서술자의 기본값.
+  // 실측 전에는 soloWidth가 0이므로 `??`로 이으면 0이 기본값을 이겨 열이 최소폭으로 접힌다.
+  const primaryWidth = clampPrimaryWidth(
+    paneWidths[primary?.id ?? ""]
+      ?? (soloWidthRef.current > 0 ? soloWidthRef.current : undefined)
+      ?? primary?.defaultWidth
+      ?? MIN_PANE_PX,
+    limits,
+  );
+
+  // detail이 서면 표면 전체가 그만큼 넓어져야 한다 — 그러지 않으면 새 열은 primary를 잘라
+  // 먹는다. 예전에 플러그인이 `requestExtraWidth`로 하던 일이며, 이제 표면이 자기가 세운
+  // 열을 보고 스스로 요구한다.
+  //
+  // **서 있는 detail이 없을 때는 값을 건드리지 않는다.** 아직 한 본문 안에서 두 열을 그리는
+  // 플러그인이 같은 창구로 폭을 요구하고 있어서, 0을 써 버리면 그 요구를 덮는다.
+  const desiredExtra = standing.reduce(
+    (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? descriptor.defaultWidth ?? MIN_PANE_PX),
+    0,
+  );
+  const ownsExtraRef = useRef(false);
+  useEffect(() => {
+    if (standing.length > 0) {
+      ownsExtraRef.current = true;
+      onRequestExtraWidth?.(desiredExtra);
+      return;
+    }
+    if (!ownsExtraRef.current) return;
+    ownsExtraRef.current = false;
+    onRequestExtraWidth?.(null);
+  }, [desiredExtra, onRequestExtraWidth, standing.length]);
+
+  const handlePrimaryWidthChange = useCallback((width: number) => {
+    if (!primary) return;
+    setPaneWidth(primary.id, width);
+  }, [primary]);
 
   if (!primary) return null;
 
   const primaryInstance = openInstances.find((instance) => instance.paneId === primary.id);
+  const split = standing.length > 0;
+  const primaryTitle = resolveLocalizedText(binding.entry.title, language);
 
+  const primaryHost = (
+    <PaneHost
+      key={`${primary.id}:${theaterId ?? ""}`}
+      descriptor={primary}
+      instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
+      params={primaryInstance?.params ?? EMPTY_PARAMS}
+      visible
+      focused={focusedPaneId === primary.id}
+      theaterId={theaterId}
+      api={api}
+      language={language}
+      theme={theme}
+      surfaces={surfaces}
+      onRequestExtraWidth={onRequestExtraWidth}
+      onLaunchOperation={onLaunchOperation}
+      {...(split ? { width: primaryWidth } : {})}
+    />
+  );
+
+  // detail은 primary **왼쪽**에 선다. 레일은 오른쪽 가장자리에 정박해 왼쪽으로 자라므로,
+  // 목록 열이 아이콘 띠에 붙어 있어야 폭이 변해도 손이 가는 자리가 움직이지 않는다.
+  // DOM 순서도 같게 두어 탭 이동이 눈에 보이는 순서를 따른다.
   return (
-    <div className={`rail-surface${extras.length > 0 ? " is-split" : ""}`} data-pane-count={extras.length + 1}>
-      <PaneHost
-        key={`${primary.id}:${theaterId ?? ""}`}
-        descriptor={primary}
-        instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
-        params={primaryInstance?.params ?? EMPTY_PARAMS}
-        visible
-        focused={focusedPaneId === primary.id}
-        theaterId={theaterId}
-        api={api}
-        language={language}
-        theme={theme}
-        surfaces={surfaces}
-        onRequestExtraWidth={onRequestExtraWidth}
-        onLaunchOperation={onLaunchOperation}
-      />
+    <div
+      ref={surfaceRef}
+      className={`rail-surface${split ? " is-split" : ""}${isDragging ? " is-dragging" : ""}`}
+      data-pane-count={standing.length + 1}
+    >
       {extras.map(({ instance, descriptor }) => (
         <PaneHost
           key={`${instance.instanceId}:${theaterId ?? ""}`}
@@ -121,6 +210,17 @@ export const RailSurface = memo(function RailSurface({
           onLaunchOperation={onLaunchOperation}
         />
       ))}
+      {split ? (
+        <PaneDivider
+          primaryPaneId={primary.id}
+          primaryTitle={primaryTitle}
+          width={primaryWidth}
+          limits={limits}
+          onWidthChange={handlePrimaryWidthChange}
+          onDragStateChange={setIsDragging}
+        />
+      ) : null}
+      {primaryHost}
     </div>
   );
 });
@@ -138,6 +238,8 @@ interface PaneHostProps {
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
   readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
+  readonly width?: number;
 }
 
 /**
@@ -163,6 +265,7 @@ function PaneHost({
   surfaces,
   onRequestExtraWidth,
   onLaunchOperation,
+  width,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const paneIndex = usePaneIndex();
@@ -211,7 +314,7 @@ function PaneHost({
     focused,
     // 폭은 표면이 정한다. 본문은 컨테이너 쿼리로 스스로 열화하므로, 측정값을 렌더마다 흘리면
     // 컨텍스트가 매번 새로 만들어져 본문이 다시 그려진다.
-    width: descriptor.defaultWidth ?? 0,
+    width: width ?? descriptor.defaultWidth ?? 0,
     theaterId,
     api,
     lifecycle: HOST_CAPABILITIES.lifecycle,
@@ -232,12 +335,13 @@ function PaneHost({
 
   return (
     <div
-      className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}`}
+      id={`rail-pane-${descriptor.id}`}
+      className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}${width === undefined ? "" : " is-sized"}`}
       data-pane={descriptor.id}
       hidden={!visible}
       aria-hidden={visible ? undefined : true}
       inert={visible ? undefined : true}
-      style={descriptor.defaultWidth === undefined ? undefined : { ["--pane-width" as string]: `${descriptor.defaultWidth}px` }}
+      style={width === undefined ? undefined : { ["--pane-width" as string]: `${width}px` }}
       onFocusCapture={() => { if (visible) focusPane(descriptor.id); }}
     >
       {hasCaption ? (
