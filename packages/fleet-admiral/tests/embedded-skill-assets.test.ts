@@ -53,8 +53,12 @@ describe("embedded Fleet skills", () => {
     // 스킬은 로스터를 읽으라고만 말한다. 이름의 철자와 제약은 도구가 스스로 보고하므로
     // 여기에 옮겨 적으면 같은 사실이 두 곳에서 따로 늙는다.
     expect(content).toContain("call the Fleet MCP tool `gateway_models`");
-    // 판정 대상의 범위는 실으나 핀 철자는 싣지 않는다.
-    expect(content).toContain("a `meta.phases` entry's included");
+    // 디스패치 게이트가 퇴역했으므로 정체성 선택의 의미 정책은 스킬이 홀로 진다: 무선택 상속의
+    // 결과와 로스터 크기별 배분 규칙은 실으나, 핀 철자는 여전히 싣지 않는다.
+    expect(content).toContain("No hook inspects a dispatch");
+    expect(content).toContain("A dispatch that names no identity inherits the session's own model");
+    expect(content).toContain("never fake variety by fusing providers or strengths into a single value");
+    expect(content).not.toContain("a `meta.phases` entry's included");
     expect(content).not.toContain("agentTypes");
     expect(content).not.toContain("subagent_type");
     expect(content).not.toContain("modelId");

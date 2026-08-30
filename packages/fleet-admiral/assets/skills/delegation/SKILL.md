@@ -9,7 +9,13 @@ Research, review, and verification may be delegated; implementation normally is 
 
 ## Preflight
 
-Before dispatching anything, call the Fleet MCP tool `gateway_models` in this turn. Delegation identities are session-scoped and the exposed set is editable while a session runs, so nothing else in this session states which identities exist. Take every identity from that reading, and use the spellings and constraints the tool itself reports; this skill does not restate them. If the reading fails or exposes nothing usable, keep the work on the host and say the handoff is blocked. Every `model:` value in a workflow script is judged before dispatch, a `meta.phases` entry's included — leave that field out unless it names the same model its stages pin.
+Before dispatching anything, call the Fleet MCP tool `gateway_models` in this turn. Delegation identities are session-scoped and the exposed set is editable while a session runs, so nothing else in this session states which identities exist. Take every identity from that reading, and use the spellings and constraints the tool itself reports; this skill does not restate them. If the reading fails or exposes nothing usable, keep the work on the host and say the handoff is blocked.
+
+## Choose an identity per dispatch
+
+No hook inspects a dispatch; choosing deliberately here is the only gate. A dispatch that names no identity inherits the session's own model. Inheritance is a legitimate choice when continuity with the host's context or capability class is the point; it is waste when it merely happens because no choice was made. When spreading work across the roster is the point of delegating, give each run an identity taken from the `gateway_models` reading, using whichever option the dispatching surface itself documents for that purpose.
+
+One identity names one model and nothing else: its provider is already part of the name, and reasoning strength is the separate effort option. When the roster exposes several models, assign them across runs by role; when it exposes one, use that one everywhere — never fake variety by fusing providers or strengths into a single value.
 
 ## Plan the execution graph
 
