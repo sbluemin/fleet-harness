@@ -1,11 +1,12 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { repositoryEntry, repositoryPane } from "./rail-panel.js";
+import { repositoryEntry } from "./rail-panel.js";
+import { repositorySurface } from "./repository-surface.js";
 
 const repositoryPlugin = definePlugin({
   id: "repository",
   railEntries: [repositoryEntry],
-  panes: [repositoryPane],
+  expandedSurfaces: [repositorySurface],
 });
 
 export const plugins = [repositoryPlugin] as const;

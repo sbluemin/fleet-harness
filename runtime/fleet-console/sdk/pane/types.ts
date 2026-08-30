@@ -69,6 +69,18 @@ export interface PaneDescriptor {
    */
   readonly captionActions?: (ctx: PaneContext) => ReactNode;
   /**
+   * 이 페인이 닫혔다는 통보. 캡션의 닫기·형제의 `panes.close` 등 **호스트가 닫는 모든 경로**에서
+   * 인스턴스가 정리된 뒤 불린다.
+   *
+   * 닫기는 호스트가 소유하지만, "내가 무엇을 담고 있다"를 함께 들고 있는 플러그인은 그 사실을
+   * 되돌릴 기회가 필요하다 — 통보가 없으면 열은 사라졌는데 플러그인은 여전히 그 문서를 읽는
+   * 중이라 믿어, 다음 상태 발행이 사용자가 닫은 열을 되살린다. 여기서 다시 닫기를 부르지 말 것.
+   *
+   * 확대 표면이 같은 이유로 같은 문을 이미 갖고 있다. 두 마운트가 같은 어휘를 쓴다는 것은
+   * 이런 자리까지 같다는 뜻이다.
+   */
+  readonly onClose?: (ctx: PaneCloseContext) => void;
+  /**
    * detail 페인의 캡션까지 끈다.
    *
    * 캡션은 role이 정한다 — **detail에만 선다.** primary는 표면과 수명을 같이하므로 닫을 것도
@@ -83,9 +95,17 @@ export interface PaneDescriptor {
   /**
    * 이 페인이 이 폭보다 좁아지지 않도록 분할선 드래그를 막는다(px). 생략하면 호스트 기본값을
    * 쓴다. 상한은 없다 — 좁아지는 쪽만 막는다.
+   *
+   * 표면은 두 열의 `minWidth`를 함께 본다: 둘 다 자기 몫을 못 가질 만큼 좁아지면 분할선은
+   * 아예 잠기고, 그 사실을 `aria-disabled`로 말한다.
    */
   readonly minWidth?: number;
-  /** 처음 설 때의 폭(px). 사용자가 분할선을 옮기면 그 값이 이긴다. */
+  /**
+   * 처음 설 때의 폭(px). 사용자가 분할선을 옮기면 그 값이 이긴다.
+   *
+   * role에 따라 뜻이 다르다. primary에게는 **표면이 혼자 설 때의 폭**이고, detail에게는
+   * **설 때 표면이 더 넓어질 만큼**이다 — 그래서 문서를 열어도 목록이 좁아지지 않는다.
+   */
   readonly defaultWidth?: number;
   /**
    * 닫아도 본문을 살려 둔다.
@@ -111,6 +131,15 @@ export interface PaneDescriptor {
 }
 
 export type PaneRole = "primary" | "detail" | "aside";
+
+/**
+ * 닫힘 통보가 싣는 것. 열은 이미 사라졌으므로 기하·포커스는 말할 수 없고, 어느 페인이 무엇을
+ * 담고 있었는지만 남는다.
+ */
+export interface PaneCloseContext {
+  readonly paneId: string;
+  readonly params: Readonly<Record<string, string>>;
+}
 
 export type PaneMount = "rail" | "expanded";
 
@@ -159,17 +188,6 @@ export interface PaneContext {
    * 착지하는 일이 계약 수준에서 막힌다.
    */
   readonly signal: AbortSignal;
-  /**
-   * 표면에 폭을 더 달라고 요청한다(px). `null`이면 요청을 거둔다.
-   *
-   * `minWidth`가 정적인 하한이라면 이것은 동적인 요구다 — 본문이 지금 담은 것에 따라 필요한
-   * 폭이 달라질 때 쓴다. 호스트는 이 값을 힌트로만 받아 뷰포트 안에서 클램프하므로, 요청이
-   * 곧 보장은 아니다.
-   *
-   * 한 페인이 자기 안에서 두 열을 그리는 동안의 임시 수단이기도 하다. 그 두 열이 진짜 페인
-   * 둘로 갈라지면 폭은 표면이 분할선으로 소유하므로 이 요청은 사라진다.
-   */
-  readonly requestExtraWidth?: (px: number | null) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }

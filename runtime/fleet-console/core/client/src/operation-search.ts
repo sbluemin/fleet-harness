@@ -62,6 +62,8 @@ export interface PaletteSearchPanel {
   readonly id: string;
   readonly title: LocalizedText;
   readonly search?: PaneSearchProvider;
+  /** 페인 대신 확대 표면을 여는 엔트리라면 그 표면의 id — 팔레트의 착지가 이 값을 따른다. */
+  readonly surfaceId?: string;
 }
 
 export async function searchRailPanels(

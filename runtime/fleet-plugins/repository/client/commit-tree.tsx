@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { DiffFileEntry, TreeEntry, TreeResult } from "../server/types.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
@@ -14,7 +14,7 @@ type FolderState =
   | { readonly kind: "error" };
 
 interface CommitTreeViewProps {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
   readonly repoRel: string;
   readonly fullHash: string;
   /** 이 커밋에서 바뀐 파일 — 트리에서 상태 글리프로 표시되고, 선택하면 diff로 이동한다. */

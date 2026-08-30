@@ -241,7 +241,11 @@ export function OperationSearch({
         openPane({ paneId: target.paneId, ...(target.params ? { params: target.params } : {}) });
       }
     } else {
-      openRailPanel(panelId);
+      // 페인을 세우지 않는 엔트리는 레일 패널을 열 수 없다 — 그 엔트리가 여는 것은 표면이다.
+      // 여기서 갈라 주지 않으면 팔레트로 고른 결과가 아무 데도 착지하지 않는다.
+      const surfaceId = railPanels.find((panel) => panel.id === panelId)?.surfaceId;
+      if (surfaceId) openExpandedSurface({ surfaceId });
+      else openRailPanel(panelId);
     }
     setRailChromeExpanded(true);
     closeOperationSearch();
@@ -365,7 +369,8 @@ export function OperationSearch({
       case "open-rail-panel": {
         // rail·사이드바는 operations 페이지에만 마운트되므로 다른 경로에서는 먼저 이동한다.
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        openRailPanel(action.panelId);
+        if (action.surfaceId) openExpandedSurface({ surfaceId: action.surfaceId });
+        else openRailPanel(action.panelId);
         setRailChromeExpanded(true);
         break;
       }

@@ -3,20 +3,20 @@ import { useSyncExternalStore } from "react";
 import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
 
 /**
- * 확대 표면 스토어 — 열린 슬롯의 순서 있는 목록과 폭 가중치를 소유한다.
+ * 확대 표면 스토어 — 열린 페인의 순서 있는 목록과 폭 가중치를 소유한다.
  *
  * 캔버스 focus layer(canvas-store의 focusLayersByTheater)와 같은 급의 상태다:
  * 모듈 메모리에만 살고 durable state에 들어가지 않는다. 새로고침 뒤의 복원은
  * 영속이 아니라 URL 주소화가 책임진다 — 주소를 가진 표면만 돌아온다.
  *
- * 슬롯 개수에 상한이 없다. 좁아지는 것은 분할선 드래그의 최소폭 클램프가 막고,
+ * 페인 개수에 상한이 없다. 좁아지는 것은 분할선 드래그의 최소폭 클램프가 막고,
  * 그 클램프는 픽셀을 아는 레이어가 적용한다(스토어는 가중치만 안다).
  */
 export interface ExpandedSurfaceInstance {
   readonly instanceId: string;
   readonly surfaceId: string;
   readonly params: Readonly<Record<string, string>>;
-  /** 슬롯 폭 가중치. 합이 얼마든 상관없고 레이어가 fr로 정규화한다. */
+  /** 페인 폭 가중치. 합이 얼마든 상관없고 레이어가 fr로 정규화한다. */
   readonly weight: number;
 }
 
@@ -48,7 +48,7 @@ export function bindExpandedSurfaceCloseNotifier(notifier: CloseNotifier): void 
 
 function announceClosed(instances: readonly ExpandedSurfaceInstance[]): void {
   for (const instance of instances) {
-    // 한 표면의 실패가 나머지 슬롯의 통보를 삼키지 않게 한다.
+    // 한 표면의 실패가 나머지 페인의 통보를 삼키지 않게 한다.
     try {
       notifyClosed({ surfaceId: instance.surfaceId, instanceId: instance.instanceId, params: instance.params });
     } catch (error) {
@@ -92,8 +92,8 @@ function sameParams(
 /**
  * 표면을 연다.
  *
- * 기본은 `"reuse"`다 — 같은 표면이 이미 슬롯을 차지하고 있으면 새 슬롯을 만들지 않고
- * 그 슬롯의 문서만 갈아탄다. 문서를 옮길 때마다 슬롯이 늘어나면 사용자가 닫아야 할
+ * 기본은 `"reuse"`다 — 같은 표면이 이미 페인을 차지하고 있으면 새 페인을 만들지 않고
+ * 그 페인의 문서만 갈아탄다. 문서를 옮길 때마다 페인이 늘어나면 사용자가 닫아야 할
  * 창만 쌓인다. 나란히 두고 비교하려는 의도는 `"split"`으로 명시해야 한다.
  */
 export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
@@ -105,8 +105,8 @@ export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string
     if (existing) {
       const paramsChanged = !sameParams(existing.params, params);
       const focusChanged = state.focusedInstanceId !== existing.instanceId;
-      // 이미 그 문서를 그 슬롯에서 보고 있으면 상태를 새로 만들지 않는다 — 새 객체를
-      // 흘리면 아무것도 바뀌지 않았는데 모든 슬롯이 다시 그려진다.
+      // 이미 그 문서를 그 페인에서 보고 있으면 상태를 새로 만들지 않는다 — 새 객체를
+      // 흘리면 아무것도 바뀌지 않았는데 모든 페인이 다시 그려진다.
       if (!paramsChanged && !focusChanged) return existing.instanceId;
       setState({
         instances: paramsChanged
@@ -121,7 +121,7 @@ export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string
   }
 
   const instanceId = nextInstanceId(request.surfaceId);
-  // 새 슬롯은 현재 슬롯들의 평균 몫을 갖고 들어온다 — 사용자가 넓혀 둔 비율을
+  // 새 페인은 현재 페인들의 평균 몫을 갖고 들어온다 — 사용자가 넓혀 둔 비율을
   // 신규 진입이 리셋하지 않도록.
   const weight = averageWeight(state.instances);
   const instance: ExpandedSurfaceInstance = {
@@ -133,9 +133,9 @@ export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string
 
   const instances = [...state.instances];
   const at =
-    request.slotIndex === undefined
+    (request.paneIndex ?? request.slotIndex) === undefined
       ? instances.length
-      : Math.max(0, Math.min(instances.length, Math.trunc(request.slotIndex)));
+      : Math.max(0, Math.min(instances.length, Math.trunc((request.paneIndex ?? request.slotIndex)!)));
   instances.splice(at, 0, instance);
 
   setState({ instances, focusedInstanceId: instanceId });
@@ -220,7 +220,7 @@ export function setExpandedSurfaceWeights(weights: readonly number[]): void {
   setState({ ...state, instances });
 }
 
-/** 열려 있는 슬롯 중 focus 대상의 인덱스. 없으면 -1. */
+/** 열려 있는 페인 중 focus 대상의 인덱스. 없으면 -1. */
 export function focusedExpandedSurfaceIndex(): number {
   return state.instances.findIndex(
     (instance) => instance.instanceId === state.focusedInstanceId,

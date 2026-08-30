@@ -2279,11 +2279,11 @@ describe("Instrument core design contract", () => {
     expect(operationTerminalShellBlock).toContain("backdrop-filter: none;");
     // 확대 Shell도 slot 루트에서 terminal tint와 전용 blur를 한 번만 합성한다. Codex 등
     // 다른 확대 표면은 공통 팝업 재질을 유지하고, 안쪽 terminal-shell은 투명·무블러다.
-    const expandedShellSlotBlock = components.match(/^\.expanded-surface-slot:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
-    expect(expandedShellSlotBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
-    expect(expandedShellSlotBlock).toContain("var(--glass-underlay);");
-    expect(expandedShellSlotBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
-    const expandedTerminalBlock = components.match(/^\.expanded-surface-slot \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
+    const expandedShellPaneBlock = components.match(/^\.expanded-surface-pane:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
+    expect(expandedShellPaneBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
+    expect(expandedShellPaneBlock).toContain("var(--glass-underlay);");
+    expect(expandedShellPaneBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
+    const expandedTerminalBlock = components.match(/^\.expanded-surface-pane \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
     expect(expandedTerminalBlock).toContain("background: transparent;");
     expect(expandedTerminalBlock).toContain("backdrop-filter: none;");
     expect(expandedTerminalBlock).toContain("box-shadow: none;");
@@ -2365,26 +2365,24 @@ describe("Instrument core design contract", () => {
     expect(bodyChildrenBlock).toContain("flex: none;");
   });
 
-  it("bounds the Codex navigator host so long Wiki entry lists keep native scrolling", () => {
+  // 2단 격자와 분할선은 이제 표면이 진다 — 여기서 지키는 것은 그 격자가 아니라 **각 열이
+  // 자기 높이에 갇혀 있는가**다. 열 하나가 내용 높이로 자라면 그 안의 목록은 네이티브
+  // 스크롤을 잃고 레일 전체가 늘어난다.
+  it("bounds the Codex navigator and document columns so long Wiki entry lists keep native scrolling", () => {
     const components = source("styles/components.css");
     const navigatorLayout = externalSource(CODEX_LAYOUT_CSS_PATH);
     const railHostBlock = components.match(/\.codex-rail-host \{[^}]*\}/)?.[0] ?? "";
-    const splitRailHostBlock = components.match(/\.codex-rail-host\.is-split \{[^}]*\}/)?.[0] ?? "";
-    const navPaneBlock = components.match(/\.codex-nav-pane \{[^}]*\}/)?.[0] ?? "";
-    const hostBlock = components.match(/\.codex-rail-host > \.codex-host,\n\.codex-nav-pane > \.codex-host \{[^}]*\}/)?.[0] ?? "";
+    const docPaneBlock = components.match(/\.codex-doc-pane \{[^}]*\}/)?.[0] ?? "";
+    const hostBlock = components.match(/\.codex-rail-host > \.codex-host \{[^}]*\}/)?.[0] ?? "";
     const navigatorBlock = navigatorLayout.match(/\.codex-navigator \{[^}]*\}/)?.[0] ?? "";
     const navigatorScrollBlock = navigatorLayout.match(/\.codex-navigator-scroll \{[^}]*\}/)?.[0] ?? "";
 
     expect(railHostBlock).toContain("height: 100%;");
     expect(railHostBlock).toContain("min-height: 0;");
-    expect(splitRailHostBlock).toContain("display: grid;");
-    expect(splitRailHostBlock).toContain("grid-template-rows: minmax(0, 1fr);");
-    expect(splitRailHostBlock).toContain("height: 100%;");
-    expect(splitRailHostBlock).toContain("min-height: 0;");
-    expect(navPaneBlock).toContain("display: flex;");
-    expect(navPaneBlock).toContain("flex-direction: column;");
-    expect(navPaneBlock).toContain("min-height: 0;");
-    expect(navPaneBlock).toContain("overflow: hidden;");
+    expect(docPaneBlock).toContain("display: flex;");
+    expect(docPaneBlock).toContain("flex-direction: column;");
+    expect(docPaneBlock).toContain("min-height: 0;");
+    expect(docPaneBlock).toContain("height: 100%;");
     expect(hostBlock).toContain("height: 100%;");
     expect(hostBlock).toContain("min-height: 0;");
     expect(navigatorBlock).toContain("display: flex;");

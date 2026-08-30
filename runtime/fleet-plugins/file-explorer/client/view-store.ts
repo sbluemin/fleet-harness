@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { MIN_TREE_PX, TREE_PANE_DEFAULT_WIDTH } from "./layout.js";
-
 export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
@@ -30,14 +28,12 @@ interface TheaterViewState extends DocSession {
 }
 
 interface FileExplorerViewState extends TheaterViewState {
-  readonly treePaneWidth: number;
   /** Wrap long lines in the code viewer — remembered for this Console session. */
   readonly wrapLines: boolean;
 }
 
 type Listener = () => void;
 
-const PREFS_TREE_PANE_WIDTH = "fleet-console.file-explorer.treePaneWidth";
 const SESSION_KEY_PREFIX = "fleet-console.fileExplorer.session.";
 const SESSION_OPEN_DOC_CAP = 20;
 
@@ -56,14 +52,12 @@ const DEFAULT_THEATER_STATE: TheaterViewState = {
 
 const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
   ...DEFAULT_THEATER_STATE,
-  treePaneWidth: TREE_PANE_DEFAULT_WIDTH,
   wrapLines: false,
 };
 
 const theaterStateMap = new Map<string, TheaterViewState>();
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
-let treePaneWidth = readTreePaneWidth();
 let wrapLines = false;
 
 export function useFileExplorerViewState(theaterId: string | null): FileExplorerViewState {
@@ -200,24 +194,20 @@ export function getFileExplorerSnapshot(theaterId: string | null): FileExplorerV
   return getSnapshot(theaterId);
 }
 
-/** 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다. */
-export function hydrateStoredSession(theaterId: string | null): void {
-  if (!theaterId) return;
+/**
+ * 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다.
+ *
+ * **실제로 되살렸을 때만 `true`.** 문서 열을 세우는 것은 이 한 번뿐이어야 하기 때문이다:
+ * 마운트마다 세우면 사용자가 닫아 둔 열이 레일 탭을 오갈 때마다 되살아난다.
+ */
+export function hydrateStoredSession(theaterId: string | null): boolean {
+  if (!theaterId) return false;
   const current = getOrDefault(theaterId);
-  if (current.openDocs.length > 0 || current.activePath !== null) return;
+  if (current.openDocs.length > 0 || current.activePath !== null) return false;
   const persisted = readDocSession(theaterId);
-  if (!persisted || persisted.openDocs.length === 0) return;
+  if (!persisted || persisted.openDocs.length === 0) return false;
   patchTheaterState(theaterId, { ...persisted, selectedPath: persisted.activePath });
-}
-
-export function setTreePaneWidth(nextWidth: number): void {
-  treePaneWidth = clampStoredTreePaneWidth(nextWidth);
-  try {
-    localStorage.setItem(PREFS_TREE_PANE_WIDTH, String(treePaneWidth));
-  } catch {
-    // localStorage 접근 실패 무시
-  }
-  emit();
+  return true;
 }
 
 function emit(): void {
@@ -240,12 +230,11 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.history === base.history
     && prev.historyIndex === base.historyIndex
     && prev.docStates === base.docStates
-    && prev.treePaneWidth === treePaneWidth
     && prev.wrapLines === wrapLines
   ) {
     return prev;
   }
-  const next = { ...base, treePaneWidth, wrapLines };
+  const next = { ...base, wrapLines };
   snapshotMap.set(key, next);
   return next;
 }
@@ -310,17 +299,4 @@ function readDocSession(theaterId: string): DocSession | null {
   } catch {
     return null;
   }
-}
-
-function readTreePaneWidth(): number {
-  try {
-    return clampStoredTreePaneWidth(Number(localStorage.getItem(PREFS_TREE_PANE_WIDTH)));
-  } catch {
-    return TREE_PANE_DEFAULT_WIDTH;
-  }
-}
-
-function clampStoredTreePaneWidth(width: number): number {
-  if (!Number.isFinite(width) || width <= 0) return TREE_PANE_DEFAULT_WIDTH;
-  return Math.max(MIN_TREE_PX, Math.round(width));
 }

@@ -23,7 +23,8 @@
   --fexp-ic-default: var(--ink-fog);
 }
 
-/* ── 루트 레이아웃 — 트리 단독 ↔ 뷰어+트리 2단계 전환 ── */
+/* ── 루트 레이아웃 — 트리 열 하나.
+   2단은 이제 표면이 만든다: 문서는 자기 페인으로 서고, 폭·분할선·캡션은 호스트 소유다. */
 .fexp-root {
   position: relative;
   display: grid;
@@ -33,17 +34,11 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  transition: grid-template-columns var(--duration-base) var(--ease-spring);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fexp-root,
-  .fexp-divider,
   .fexp-filter-input,
   .fexp-filter-clear,
-  .fexp-viewer-close,
-  .fexp-viewer-stale,
-  .fexp-viewer-wrap,
   .fexp-tree-row,
   .fexp-tree-chevron svg,
   .fexp-hidden-toggle,
@@ -58,11 +53,6 @@
   }
 }
 
-/* 드래그 중에는 transition을 끈다 — 커서 추적 지연 방지. */
-.fexp-root.is-dragging {
-  transition: none;
-}
-
 .fexp-tree-pane {
   display: grid;
   grid-template-rows: 1fr;
@@ -71,50 +61,6 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-.fexp-root.is-split .fexp-tree-pane {
-  /* 확장 분할에서는 트리 페인 상단에 파일리스트 라벨 행이 붙는다. */
-  grid-template-rows: auto 1fr;
-  border-left: 1px solid var(--surface-rim);
-}
-
-/* 분할 상태에서 트리 페인을 파일 리스트로 명명하는 라벨 — 뷰어 칩 스트립과 시선 높이를 맞춘다. */
-.fexp-tree-pane-label {
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  min-height: 33px;
-  border-bottom: 1px solid var(--surface-rim);
-  color: var(--text-tertiary);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* ── viewer↔tree 디바이더 ── */
-.fexp-divider {
-  width: 4px;
-  cursor: col-resize;
-  background: var(--surface-rim);
-  transition: background var(--duration-fast) var(--ease-spring);
-  flex-shrink: 0;
-}
-
-.fexp-divider:hover {
-  background: color-mix(in oklab, var(--brass) 50%, transparent);
-}
-
-.fexp-divider:active {
-  background: color-mix(in oklab, var(--brass) 80%, transparent);
-}
-
-.fexp-divider:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-  background: color-mix(in oklab, var(--brass) 50%, transparent);
 }
 
 /* ── 파일 행 컨텍스트 메뉴 ── */
@@ -211,14 +157,16 @@
 
 .fexp-viewer-pane {
   display: grid;
-  /* 칩 스트립(auto) · 헤더(46px) · 본문(1fr) · 메타 바(auto) */
-  grid-template-rows: auto 46px minmax(0, 1fr) auto;
+  /* 칩 스트립(auto) · 경로 줄(32px) · 본문(1fr) · 메타 바(auto)
+     이력·낡음·줄바꿈은 호스트 캡션으로 올라갔고, 여기 남은 머리는 경로와 보기 모드뿐이라
+     46px이던 자리가 32px로 줄었다 — 캡션이 새로 먹는 세로를 그만큼 되돌린다. */
+  grid-template-rows: auto 32px minmax(0, 1fr) auto;
   /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid var(--surface-rim);
+  height: 100%;
 }
 
 /* ── 열린 파일 칩 스트립 ── */
@@ -319,15 +267,11 @@
 .fexp-chip-close:focus-visible,
 .fexp-crumb-seg:focus-visible,
 .fexp-img-zoom button:focus-visible,
-.fexp-viewer-nav:focus-visible,
 .fexp-view-mode button:focus-visible,
 .fexp-sort-btn:focus-visible,
 .fexp-filter-clear:focus-visible,
 .fexp-refresh-btn:focus-visible,
 .fexp-hidden-toggle:focus-visible,
-.fexp-viewer-close:focus-visible,
-.fexp-viewer-stale:focus-visible,
-.fexp-viewer-wrap:focus-visible,
 .fexp-tree-error-retry:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: -2px;
@@ -370,30 +314,7 @@
   color: var(--text-secondary);
 }
 
-/* ── 뷰어 이력/모드 컨트롤 ── */
-.fexp-viewer-nav {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding: 3px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  color: var(--text-tertiary);
-  line-height: 1;
-}
-
-.fexp-viewer-nav:hover:not(:disabled) {
-  color: var(--text-secondary);
-}
-
-.fexp-viewer-nav:disabled {
-  color: var(--text-tertiary);
-  opacity: 0.45;
-  cursor: default;
-}
-
+/* ── 뷰어 문서 표식 ── */
 .fexp-viewer-doc-icon {
   flex-shrink: 0;
   display: inline-flex;
@@ -485,7 +406,7 @@
   gap: 8px;
   padding: 0 12px;
   border-bottom: 1px solid var(--surface-rim);
-  min-height: 46px;
+  min-height: 32px;
   background: var(--surface-glass);
 }
 
@@ -544,64 +465,6 @@
 .fexp-crumb-seg:hover {
   color: var(--brass-ink);
   background: var(--brass-glow);
-}
-
-.fexp-viewer-stale {
-  flex-shrink: 0;
-  max-width: 42%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px 8px;
-  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--warn) 9%, transparent);
-  color: var(--warn-ink);
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  line-height: 1.5;
-  transition: background var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-viewer-wrap {
-  flex-shrink: 0;
-  max-width: 28%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  line-height: 1.5;
-  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-viewer-wrap[aria-pressed="true"] {
-  background: var(--surface-glass-strong);
-  color: var(--text-primary);
-}
-
-.fexp-viewer-close {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: var(--t-base);
-  line-height: 1;
-  padding: 4px;
-  border-radius: var(--radius-xs);
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-viewer-close:hover {
-  color: var(--text-secondary);
 }
 
 .fexp-viewer-body {

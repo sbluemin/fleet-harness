@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { PaneMount, PaneOpenRequest } from "@fleet-console/sdk/pane";
+import type { PaneCloseContext, PaneMount, PaneOpenRequest } from "@fleet-console/sdk/pane";
 
 /**
  * 표면에 서 있는 페인 인스턴스들.
@@ -92,7 +92,10 @@ export function openPane(request: PaneOpenRequest, options: { readonly keepAlive
  * 페인을 닫는다. `keepAlive` 페인은 목록에 남되 보이지 않게 된다 — 본문이 살아 있어야 다음에
  * 열 때 읽던 자리로 돌아간다.
  */
-export function closePane(paneId: string, options: { readonly keepAlive?: boolean } = {}): void {
+export function closePane(
+  paneId: string,
+  options: { readonly keepAlive?: boolean; readonly onClose?: (ctx: PaneCloseContext) => void } = {},
+): void {
   const target = state.rail.find((instance) => instance.paneId === paneId);
   if (!target) return;
 
@@ -104,6 +107,9 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
     rail,
     focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   });
+  // 인스턴스가 정리된 **뒤에** 알린다 — 통보를 받은 쪽이 상태를 되돌리며 다시 스토어를 읽으므로,
+  // 먼저 부르면 아직 서 있는 자기 자신을 보게 된다.
+  options.onClose?.({ paneId, params: target.params });
 }
 
 /**
@@ -111,6 +117,10 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
  *
  * 판단 근거로 서술자 색인을 받는 이유는, 남길지를 정하는 것이 새로 선 엔트리가 아니라 그
  * 페인 자신이기 때문이다. 새 엔트리의 목록으로 거르면 떠나는 쪽이 지키던 상태가 사라진다.
+ *
+ * **부르는 쪽이 엔트리가 실제로 바뀐 순간만 고르는 것이 전제다.** 마운트마다 부르면 방금
+ * 복원한 열이 그 순간 주차되고, 그것을 다시 세울 주체가 없다 — 페인을 연 것은 사용자의 한
+ * 번뿐인 동작이었기 때문이다(실측: 새로고침 뒤 읽던 문서 열이 주차된 채로 남았다).
  */
 export function resetSurfacePanes(
   descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean; readonly role?: string }>,
@@ -131,6 +141,28 @@ export function resetSurfacePanes(
     && rail.every((instance, index) => instance === state.rail[index]);
   if (unchanged && state.focusedPaneId === null) return;
   emit({ rail, focusedPaneId: null });
+}
+
+/**
+ * 같은 페인이 다른 대상으로 갈아탄다. **가시성은 건드리지 않는다.**
+ *
+ * 예전에는 `openPane`을 그대로 불렀는데, 그 경로는 존재하는 인스턴스를 `visible: true`로
+ * 되살린다. 확대된 문서가 주소를 갱신할 때마다 레일에 주차돼 있던 같은 페인이 함께 튀어나와,
+ * 한 페인의 두 사본이 서로 다른 주소를 들고 다투게 된다.
+ */
+export function replacePaneParams(paneId: string, params: Readonly<Record<string, string>>): void {
+  const target = state.rail.find((instance) => instance.paneId === paneId);
+  if (!target || sameParams(target.params, params)) return;
+  emit({
+    ...state,
+    rail: state.rail.map((instance) => (instance.paneId === paneId ? { ...instance, params } : instance)),
+  });
+}
+
+function sameParams(a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => a[key] === b[key]);
 }
 
 export function focusPane(paneId: string): void {

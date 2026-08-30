@@ -49,6 +49,7 @@ vi.mock("../client/codex-host.js", () => ({
 
 vi.mock("../client/reader-store.js", () => ({
   useReaderState: () => panelMocks.consoleState,
+  getReaderState: () => panelMocks.consoleState,
   useConsoleLocale: () => "en",
   closeCodexReader: panelMocks.closeCodexReader,
   collapseCodexReader: vi.fn(),
@@ -74,6 +75,7 @@ vi.mock("../client/codex/state.js", () => ({
 
 import { CodexReadingSheet } from "../client/codex-reading-sheet.js";
 import { codexPane } from "../client/codex-panel.js";
+import { codexReaderPane, shouldStandReaderColumn } from "../client/codex-reader-pane.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -122,7 +124,7 @@ describe("Codex rail panel workspace request", () => {
   // 서버 라우트만 검사하면 이 갈라짐이 보이지 않는다 — 부르는 쪽을 못 박는다.
   it("asks the plugin's own route and carries the Theater in the body", async () => {
     await act(async () => {
-      root.render(codexPane.render?.({ theaterId: "theater-a" } as never) ?? null);
+      root.render(codexPane.render?.(paneCtx("theater-a")) ?? null);
     });
 
     const calls = vi.mocked(globalThis.fetch).mock.calls;
@@ -184,12 +186,11 @@ describe("Codex rail panel in-memory state", () => {
     expect(container.querySelector(".codex-rail-host")).not.toBeNull();
 
     act(() => root.unmount());
-    expect(panelMocks.saveReaderScroll).toHaveBeenCalledOnce();
     expect(panelMocks.teardownCodex).not.toHaveBeenCalled();
 
     root = createRoot(container);
     act(() => {
-      root.render(codexPane.render?.({ theaterId: "theater-a" } as never) ?? null);
+      root.render(columns("theater-a"));
     });
 
     // 동일 Theater는 비동기 workspace 재해석 전에도 캐시된 navigator를 즉시 복원한다.
@@ -198,12 +199,24 @@ describe("Codex rail panel in-memory state", () => {
     expect(panelMocks.closeCodexReader).not.toHaveBeenCalled();
 
     act(() => {
-      root.render(codexPane.render?.({ theaterId: "theater-b" } as never));
+      root.render(columns("theater-b"));
     });
     await flushEffects();
 
     expect(panelMocks.closeCodexReader).toHaveBeenCalledOnce();
     expect(panelMocks.setNavigatorTheater).toHaveBeenLastCalledWith("00000000000b");
+  });
+
+  it("문서 열이 헐릴 때 읽던 자리를 저장한다", async () => {
+    panelMocks.consoleState.codexReader = { kind: "entry", entryId: "entry-a" } as never;
+    await renderPanel("theater-a");
+    expect(panelMocks.saveReaderScroll).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+
+    // 읽던 자리는 문서 열이 안다 — 그 열이 사라지기 직전이 저장할 마지막 순간이다.
+    expect(panelMocks.saveReaderScroll).toHaveBeenCalledOnce();
+    root = createRoot(container);
   });
 
   it("resynchronizes the collapsed outline spine from the relocated TOC after expanded view", async () => {
@@ -230,9 +243,47 @@ describe("Codex rail panel in-memory state", () => {
   });
 });
 
+/**
+ * 호스트가 하는 일을 최소한으로 흉내 낸다: 카탈로그 열은 늘 서고, 문서 열은 서야 할 때만
+ * 선다. 문서 열을 조건 없이 그리면 확대 중에도 레일의 목차가 남아, 실제로는 없는 상태를
+ * 검증하게 된다.
+ */
+const panesStub = {
+  open: vi.fn(),
+  close: vi.fn(),
+  replaceParams: vi.fn(),
+  isOpen: () => false,
+};
+
+function paneCtx(theaterId: string | null, params: Record<string, string> = {}): never {
+  return {
+    paneId: "codex",
+    instanceId: "codex#1",
+    params,
+    role: "primary",
+    mount: "rail",
+    width: 420,
+    visible: true,
+    focused: false,
+    theaterId,
+    panes: panesStub,
+    signal: new AbortController().signal,
+    language: "en",
+  } as never;
+}
+
+function columns(theaterId: string | null) {
+  return createElement(
+    "div",
+    null,
+    codexPane.render?.(paneCtx(theaterId)),
+    shouldStandReaderColumn(panelMocks.consoleState) ? codexReaderPane.render?.(paneCtx(theaterId)) : null,
+  );
+}
+
 async function renderPanel(theaterId: string): Promise<void> {
   await act(async () => {
-    root.render(codexPane.render?.({ theaterId } as never));
+    root.render(columns(theaterId));
     await Promise.resolve();
   });
   await flushEffects();

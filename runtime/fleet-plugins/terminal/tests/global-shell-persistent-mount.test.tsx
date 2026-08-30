@@ -39,21 +39,21 @@ afterEach(() => {
 });
 
 describe("persistent Shell mount", () => {
-  it("parks one terminal subtree while the slot is closed and reuses it when reopened", () => {
+  it("parks one terminal subtree while the pane is closed and reuses it when reopened", () => {
     const context = shellContext();
 
     act(() => {
       root.render(
         <>
           <PersistentShellHost language="en" theme="instrument" />
-          <div className="slot">{shellSurface.render(context)}</div>
+          <div className="pane">{shellSurface.render(context)}</div>
         </>,
       );
     });
 
     expect(terminalMocks.mounted).toHaveBeenCalledTimes(1);
     expect(terminalMocks.unmounted).not.toHaveBeenCalled();
-    expect(document.querySelector(".slot .global-shell-persistent-host")).not.toBeNull();
+    expect(document.querySelector(".pane .global-shell-persistent-host")).not.toBeNull();
     expect(document.querySelector("[data-testid='terminal-surface']")?.getAttribute("data-active")).toBe("true");
 
     act(() => {
@@ -69,14 +69,14 @@ describe("persistent Shell mount", () => {
       root.render(
         <>
           <PersistentShellHost language="en" theme="instrument" />
-          <div className="slot">{shellSurface.render(context)}</div>
+          <div className="pane">{shellSurface.render(context)}</div>
         </>,
       );
     });
 
     expect(terminalMocks.mounted).toHaveBeenCalledTimes(1);
     expect(terminalMocks.unmounted).not.toHaveBeenCalled();
-    expect(document.querySelector(".slot .global-shell-persistent-host")).not.toBeNull();
+    expect(document.querySelector(".pane .global-shell-persistent-host")).not.toBeNull();
     expect(document.querySelector("[data-testid='terminal-surface']")?.getAttribute("data-active")).toBe("true");
   });
 
@@ -88,8 +88,8 @@ describe("persistent Shell mount", () => {
       root.render(
         <>
           <PersistentShellHost language="en" theme="instrument" />
-          <div className="first-slot">{shellSurface.render(first)}</div>
-          <div className="second-slot">{shellSurface.render(second)}</div>
+          <div className="first-pane">{shellSurface.render(first)}</div>
+          <div className="second-pane">{shellSurface.render(second)}</div>
         </>,
       );
     });
@@ -98,8 +98,8 @@ describe("persistent Shell mount", () => {
     expect(first.close).not.toHaveBeenCalled();
     expect(terminalMocks.mounted).toHaveBeenCalledTimes(1);
     expect(terminalMocks.unmounted).not.toHaveBeenCalled();
-    expect(document.querySelector(".first-slot .global-shell-persistent-host")).not.toBeNull();
-    expect(document.querySelector(".second-slot .global-shell-persistent-host")).toBeNull();
+    expect(document.querySelector(".first-pane .global-shell-persistent-host")).not.toBeNull();
+    expect(document.querySelector(".second-pane .global-shell-persistent-host")).toBeNull();
   });
 });
 
@@ -108,6 +108,9 @@ function shellContext(overrides: Partial<ExpandedSurfaceContext> = {}): Expanded
     surfaceId: "shell",
     instanceId: "shell#1",
     params: {},
+    paneIndex: 0,
+    paneCount: 1,
+    paneWidth: 900,
     slotIndex: 0,
     slotCount: 1,
     slotWidth: 900,

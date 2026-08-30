@@ -1,6 +1,8 @@
 import fs from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { __resetEntryStatsForTests, knownMtime, knownSize, noteEntryStats } from "../client/entry-stats.js";
 
 import {
   activateDocument,
@@ -206,16 +208,28 @@ describe("검색·복원으로 연 문서의 mtime 심기", () => {
 });
 
 describe("낡음 기준선의 소유권", () => {
-  it("Theater 스코프가 바뀌면 mtime 캐시를 비운다", () => {
-    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
-    // A의 foo.png mtime이 B의 같은 이름 파일에 실리면 바뀌지도 않은 문서가 낡음으로 표시된다.
-    expect(source).toContain("knownMtimesRef.current = new Map<string, number>();");
+  beforeEach(() => { __resetEntryStatsForTests(); });
+
+  it("한 Theater의 mtime은 다른 Theater의 같은 이름 파일에 실리지 않는다", () => {
+    // 트리와 문서 창이 갈라지면서 이 캐시는 컴포넌트 ref에서 모듈 스토어로 나왔다.
+    // 경로 공간이 Theater마다 다르므로, 한 통에 담으면 A의 foo.png mtime이 B의 같은 이름
+    // 파일에 실려 바뀌지도 않은 문서를 낡음으로 표시한다.
+    noteEntryStats("theater-a", [{ relativePath: "foo.png", mtimeMs: 111, sizeBytes: 10 }]);
+
+    expect(knownMtime("theater-a", "foo.png")).toBe(111);
+    expect(knownMtime("theater-b", "foo.png")).toBeUndefined();
+    expect(knownSize("theater-b", "foo.png")).toBeUndefined();
+  });
+
+  it("Theater를 모르면 아무것도 기억하지 않는다", () => {
+    noteEntryStats(null, [{ relativePath: "foo.png", mtimeMs: 111 }]);
+    expect(knownMtime(null, "foo.png")).toBeUndefined();
   });
 
   it("기준 mtime 없이 여는 이미지는 여는 시점에 부모 목록으로 기준을 잡는다", () => {
-    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    const source = fs.readFileSync(new URL("../client/doc-loader.ts", import.meta.url), "utf8");
     // 첫 목록이 "이미 바뀐 뒤"의 값이면 그 변경을 영영 놓친다.
-    expect(source).toContain("if (!knownMtimesRef.current.has(relativePath))");
+    expect(source).toContain("if (knownMtime(theaterId, relativePath) === undefined)");
     expect(source).toContain("listFolder(parentDirOf(relativePath))");
   });
 });

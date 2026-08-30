@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+
+import { REPOSITORY_SURFACE_ID } from "./repository-context.js";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { DiffFileEntry, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
@@ -25,7 +27,7 @@ type RepositoryFetchResult =
   | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
 
 interface RepositoryPanelProps {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
 }
 
 const PREFS_SOURCE = "fleet-console.repository.source";
@@ -178,7 +180,7 @@ function buildCheckoutTabs(repos: readonly RepoCandidate[], worktrees: readonly 
   return tabs;
 }
 
-function RepositoryPanel({ ctx }: RepositoryPanelProps) {
+export function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
@@ -1334,24 +1336,26 @@ function RepositoryIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
 }
 
+/**
+ * 레일 아이콘은 페인을 세우지 않고 확대 표면을 직접 여닫는다 — Shell과 같은 자리다.
+ *
+ * 저장소 작업면은 두 열과 그 위에 걸친 동사 줄로 이루어진 한 덩어리다. 그 덩어리를 레일의
+ * 좁은 슬롯이 아니라 캔버스에 세우면 배치를 바꾸지 않고도 필요한 폭을 얻는다 — 이 기여가
+ * 페인 계약이 아니라 표면 계약을 쓰는 이유다.
+ *
+ * 검색은 엔트리에 붙는다. 세울 페인이 없으므로 결과의 착지는 `surfaceId`가 말한다.
+ */
 export const repositoryEntry: RailEntryDescriptor = {
   id: "repository",
   title: (locale) => getT(locale)("repository.panel.title"),
   icon: () => <RepositoryIcon />,
-  panes: ["repository"],
-};
-
-/**
- * 소스 트리와 작업면이 아직 한 본문 안에 있다. 커밋 초안은 `hidden` 동시 마운트가
- * 지키므로, 페인이 갈라질 때 그 자리가 keepAlive로 옮겨 간다.
- */
-export const repositoryPane: PaneDescriptor = {
-  id: "repository",
-  role: "primary",
-  mounts: ["rail"],
-  title: (ctx) => getT(ctx.language ?? "en")("repository.panel.title"),
-  render: (ctx) => <RepositoryPanel ctx={ctx} />,
-  defaultWidth: 420,
+  surfaceId: REPOSITORY_SURFACE_ID,
+  activate: (ctx) => {
+    const surfaces = ctx.surfaces;
+    if (!surfaces) return;
+    if (surfaces.isOpen(REPOSITORY_SURFACE_ID)) surfaces.closeSurface(REPOSITORY_SURFACE_ID);
+    else surfaces.open({ surfaceId: REPOSITORY_SURFACE_ID });
+  },
   search: async ({ query, theaterId, limit, signal }) => {
     const repoRel = readStoredRepositoryRel(theaterId);
     const response = await fetch("/plugins/repository/palette-search", {

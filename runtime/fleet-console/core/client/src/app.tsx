@@ -138,17 +138,22 @@ export function App() {
   useEffect(() => { syncSettingsSearchPlugins(registry.plugins); }, [registry.plugins]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
-      .filter((binding) => binding.panes.length > 0)
+      // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.
+      .filter((binding) => binding.panes.length > 0 || binding.entry.search !== undefined)
       .map((binding) => {
-        const providers = binding.panes.filter((pane) => pane.search !== undefined);
+        const providers = [
+          ...binding.panes.flatMap((pane) => pane.search === undefined ? [] : [pane.search]),
+          ...(binding.entry.search === undefined ? [] : [binding.entry.search]),
+        ];
         return {
           id: binding.entry.id,
           title: binding.entry.title,
+          ...(binding.entry.surfaceId === undefined ? {} : { surfaceId: binding.entry.surfaceId }),
           ...(providers.length === 0
             ? {}
             : {
               search: async (request) => {
-                const batches = await Promise.all(providers.map((pane) => pane.search!(request)));
+                const batches = await Promise.all(providers.map((provider) => provider(request)));
                 return batches.flat();
               },
             }),
@@ -185,7 +190,7 @@ export function App() {
 
   // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /operations 라우트에만
   // 서지만 스토어와 surfaces 능력은 어느 화면에서든 살아 있다 — 레이어에 묶어 두면
-  // 설정 화면에서 닫힌 슬롯의 onClose가 조용히 건너뛰어지고, 플러그인은 자기가 아직
+  // 설정 화면에서 닫힌 페인의 onClose가 조용히 건너뛰어지고, 플러그인은 자기가 아직
   // 열려 있다고 믿은 채로 남는다.
   useEffect(() => {
     bindExpandedSurfaceCloseNotifier((closed) => {

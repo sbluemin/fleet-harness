@@ -3,101 +3,16 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { getT } from "../client/i18n/index.js";
-import {
-  HOST_EXTRA_WIDTH_CLAMP_PX,
-  DIVIDER_KEYBOARD_STEP_PX,
-  DIVIDER_WIDTH_PX,
-  MIN_VIEWER_PX,
-  MIN_TREE_PX,
-  buildSplitGridTemplate,
-  canResizeTreePane,
-  clampTreePaneWidth,
-  countOverflowingChips,
-  getTreePaneMaxWidth,
-  getTreePaneSeparatorState,
-  getTreePaneWidthForContainer,
-  resizeTreePaneWithKeyboard,
-  EXTRA_WIDTH_MAX_PX,
-  resolveExtraWidth,
-} from "../client/layout.js";
+import { countOverflowingChips } from "../client/layout.js";
 import { buildViewerMetaParts } from "../client/format.js";
 import { canWrapLines, visibleLineWindow, WRAP_LINE_BUDGET } from "../client/viewer/code.js";
 
 const t = getT("en");
 
+// 열의 폭·분할선·최소폭은 이제 표면(호스트)이 소유한다 — 그 산수는
+// `runtime/fleet-console/tests/pane-geometry.test.ts`가 지킨다. 여기 남은 것은 칩 띠처럼
+// 페인 본문 안에서만 뜻이 있는 계산이다.
 describe("file explorer rail layout", () => {
-  it("파일 선택 상태에서만 extra width를 요청한다", () => {
-    expect(resolveExtraWidth(false, 1440)).toBeNull();
-    expect(resolveExtraWidth(false, 800)).toBeNull();
-  });
-
-  it("extra width를 창 비율로 요청하되 남은 뷰포트를 넘지 않는다", () => {
-    // 좁은 창: 남은 뷰포트가 곧 상한이다.
-    expect(resolveExtraWidth(true, HOST_EXTRA_WIDTH_CLAMP_PX)).toBe(0);
-    expect(resolveExtraWidth(true, 800)).toBe(800 - HOST_EXTRA_WIDTH_CLAMP_PX);
-    // 보통 창: 창의 30%를 요청한다(고정 360px도, 남은 전부도 아니다).
-    expect(resolveExtraWidth(true, 1280)).toBe(384);
-    expect(resolveExtraWidth(true, 1440)).toBe(432);
-    // 넓은 창: 상한 720px에서 멈춰 캔버스를 남긴다.
-    expect(resolveExtraWidth(true, 2560)).toBe(EXTRA_WIDTH_MAX_PX);
-    // 어떤 폭에서도 호스트 클램프를 넘겨 요청하지 않는다.
-    for (const width of [640, 900, 1024, 1280, 1600, 2560]) {
-      expect(resolveExtraWidth(true, width)).toBeLessThanOrEqual(Math.max(0, width - HOST_EXTRA_WIDTH_CLAMP_PX));
-    }
-  });
-
-  it("트리 pane 폭을 드래그 범위 안으로 클램프한다", () => {
-    expect(clampTreePaneWidth(248, 140, 700)).toBe(MIN_TREE_PX);
-    expect(clampTreePaneWidth(248, -400, 700)).toBe(496);
-    expect(clampTreePaneWidth(248, -80, 700)).toBe(328);
-  });
-
-  it("360px 컨테이너에서는 실제 156px 트리 폭을 보고하고 리사이즈를 비활성화한다", () => {
-    expect(canResizeTreePane(360)).toBe(false);
-    expect(clampTreePaneWidth(248, -80, 360)).toBe(248);
-    expect(getTreePaneMaxWidth(360)).toBe(156);
-    expect(getTreePaneWidthForContainer(248, 360)).toBe(156);
-    expect(getTreePaneSeparatorState(248, 360)).toEqual({
-      currentWidth: 156,
-      minWidth: 156,
-      maxWidth: 156,
-      canResize: false,
-      tabIndex: -1,
-      ariaDisabled: true,
-    });
-  });
-
-  it("저장된 트리 폭을 viewer 최소폭 보존 CSS clamp로 감싼다", () => {
-    const preservedViewerWidth = MIN_VIEWER_PX + DIVIDER_WIDTH_PX;
-    expect(buildSplitGridTemplate(468)).toBe(
-      `minmax(0, 1fr) ${DIVIDER_WIDTH_PX}px minmax(0, min(468px, calc(100% - ${preservedViewerWidth}px)))`,
-    );
-  });
-
-  it("키보드 화살표를 16px 물리 이동으로 변환해 동일한 폭 clamp에 적용한다", () => {
-    expect(DIVIDER_KEYBOARD_STEP_PX).toBe(16);
-    expect(resizeTreePaneWithKeyboard(248, "ArrowLeft", 700)).toBe(264);
-    expect(resizeTreePaneWithKeyboard(248, "ArrowRight", 700)).toBe(232);
-    expect(resizeTreePaneWithKeyboard(248, "Enter", 700)).toBe(248);
-  });
-
-  it("키보드 폭과 WAI separator 값을 최소·최대 경계에 클램프한다", () => {
-    expect(getTreePaneMaxWidth(700)).toBe(496);
-    expect(getTreePaneSeparatorState(248, 700)).toEqual({
-      currentWidth: 248,
-      minWidth: MIN_TREE_PX,
-      maxWidth: 496,
-      canResize: true,
-      tabIndex: 0,
-      ariaDisabled: undefined,
-    });
-    expect(getTreePaneWidthForContainer(900, 700)).toBe(496);
-    expect(getTreePaneWidthForContainer(80, 700)).toBe(MIN_TREE_PX);
-    expect(resizeTreePaneWithKeyboard(496, "ArrowLeft", 700)).toBe(496);
-    expect(resizeTreePaneWithKeyboard(MIN_TREE_PX, "ArrowRight", 700)).toBe(MIN_TREE_PX);
-    expect(resizeTreePaneWithKeyboard(248, "ArrowLeft", 360)).toBe(248);
-  });
-
   it("칩 스트립 오버플로 개수는 완전히 보이지 않는 칩만 센다", () => {
     // 5×140 + 4×4 = 716 against a 466px strip (M8).
     expect(countOverflowingChips(466, 0, [140, 140, 140, 140, 140], 4)).toBe(2);
@@ -138,7 +53,7 @@ describe("code viewer window", () => {
 
 describe("활성 칩 가시성", () => {
   it("띠 밖으로 걸친 활성 칩을 좌표로 끌어온다", () => {
-    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    const source = fs.readFileSync(new URL("../client/document-pane.tsx", import.meta.url), "utf8");
     // scrollIntoView는 "조금 걸친" 칩을 보이는 것으로 판정해 잘린 채 남긴다.
     expect(source).toContain("ensureActiveChipVisible");
     expect(source).not.toContain('scrollIntoView({ inline: "nearest"');
@@ -157,7 +72,7 @@ describe("줄바꿈 가상화", () => {
   it("줄바꿈 예산을 넘는 파일은 줄바꿈 컨트롤을 닫고 이유를 말한다", () => {
     expect(canWrapLines(WRAP_LINE_BUDGET)).toBe(true);
     expect(canWrapLines(WRAP_LINE_BUDGET + 1)).toBe(false);
-    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    const source = fs.readFileSync(new URL("../client/document-pane.tsx", import.meta.url), "utf8");
     expect(source).toContain("disabled={!wrapAvailable}");
     expect(source).toContain("fileExplorer.viewer.wrapUnavailable");
   });

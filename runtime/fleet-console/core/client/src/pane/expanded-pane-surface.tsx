@@ -2,7 +2,7 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-c
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { PaneBody, usePaneContext } from "./pane-body.js";
-import { openExpandedSurface } from "../expanded-surface/store.js";
+import { getExpandedSurfaceState, openExpandedSurface } from "../expanded-surface/store.js";
 import { closePane, openPane } from "./pane-store.js";
 import { usePaneIndex } from "./pane-registry.js";
 
@@ -14,16 +14,33 @@ import { usePaneIndex } from "./pane-registry.js";
  * 캔버스 위에 세운다. 페인은 자기가 어디에 서 있는지만 `ctx.mount`로 알 뿐, 확대를 위한
  * 코드를 따로 쓰지 않는다.
  *
- * 슬롯 머리는 호스트가 이미 제목과 닫기를 그린다. 그래서 확대된 페인은 자기 캡션을 세우지
+ * 페인 머리는 호스트가 이미 제목과 닫기를 그린다. 그래서 확대된 페인은 자기 캡션을 세우지
  * 않는다 — 세우면 같은 문장이 두 줄에 겹쳐 선다(Codex 읽기 시트가 지금 그 상태다).
  */
 export const EXPANDED_PANE_SURFACE_ID = "pane";
+
+/**
+ * 이 페인이 지금 확대 표면에 서 있는가.
+ *
+ * 계약은 "마운트를 생략하면 그 페인이 이미 서 있는 자리에" 연다고 말한다. 그 규칙이 없으면
+ * 확대해 둔 문서를 목록에서 갈아탈 때 같은 페인이 레일에도 함께 서고, **한 페인의 두 사본이
+ * 서로 다른 주소를 들고** 각자 자기 주소로 스토어를 되돌리려 든다 — 무한 갱신이다.
+ */
+export function openExpandedPane(paneId: string, params?: Readonly<Record<string, string>>): void {
+  openExpandedSurface({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...params, paneId } });
+}
+
+export function isPaneExpanded(paneId: string): boolean {
+  return getExpandedSurfaceState().instances.some(
+    (instance) => instance.surfaceId === EXPANDED_PANE_SURFACE_ID && instance.params.paneId === paneId,
+  );
+}
 
 export const expandedPaneSurface: ExpandedSurfaceDescriptor = {
   id: EXPANDED_PANE_SURFACE_ID,
   title: (ctx) => (language) => resolvePaneTitle(ctx, language),
   render: (ctx) => <ExpandedPaneBody ctx={ctx} />,
-  minSlotWidth: 420,
+  minPaneWidth: 420,
 };
 
 /**
@@ -53,7 +70,7 @@ function toPaneContext(ctx: ExpandedSurfaceContext, role: import("@fleet-console
     params: ctx.params,
     role,
     mount: "expanded" as const,
-    width: ctx.slotWidth,
+    width: ctx.paneWidth,
     visible: true,
     focused: ctx.focused,
     theaterId: ctx.theaterId,
@@ -98,7 +115,7 @@ function ExpandedPaneContent({
     params: ctx.params,
     visible: true,
     focused: ctx.focused,
-    width: ctx.slotWidth,
+    width: ctx.paneWidth,
     theaterId: ctx.theaterId,
     api: ctx.api,
     lifecycle: ctx.lifecycle,
@@ -111,9 +128,10 @@ function ExpandedPaneContent({
     // 모두 실리는데 한쪽만 무응답이면 계약이 마운트에 따라 달라진다.
     onOpen: (request) => {
       const target = index.get(request.paneId);
-      const mount = request.mount ?? target?.mounts[0] ?? "rail";
+      const standing = isPaneExpanded(request.paneId) ? "expanded" as const : undefined;
+      const mount = request.mount ?? standing ?? target?.mounts[0] ?? "rail";
       if (mount === "expanded") {
-        openExpandedSurface({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...request.params, paneId: request.paneId } });
+        openExpandedPane(request.paneId, request.params);
         return;
       }
       openPane(request);

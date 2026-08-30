@@ -26,7 +26,7 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().focusedInstanceId).toBeNull();
   });
 
-  it("reuses a surface's slot instead of stacking one per document", () => {
+  it("reuses a surface's pane instead of stacking one per document", () => {
     const first = openExpandedSurface({ surfaceId: "codex:reader", params: { entryId: "a" } });
     const second = openExpandedSurface({ surfaceId: "codex:reader", params: { entryId: "b" } });
 
@@ -37,7 +37,7 @@ describe("expanded surface store", () => {
     expect(state.focusedInstanceId).toBe(first);
   });
 
-  it("opens a second slot for the same surface only when split is asked for", () => {
+  it("opens a second pane for the same surface only when split is asked for", () => {
     const first = openExpandedSurface({ surfaceId: "codex:reader", params: { entryId: "a" } });
     const second = openExpandedSurface({
       surfaceId: "codex:reader",
@@ -50,14 +50,14 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().focusedInstanceId).toBe(second);
   });
 
-  it("has no slot cap", () => {
+  it("has no pane cap", () => {
     for (let index = 0; index < 12; index += 1) {
       openExpandedSurface({ surfaceId: `plugin:surface-${index}` });
     }
     expect(getExpandedSurfaceState().instances).toHaveLength(12);
   });
 
-  it("gives a new slot the average of the widths already set", () => {
+  it("gives a new pane the average of the widths already set", () => {
     openExpandedSurface({ surfaceId: "a" });
     openExpandedSurface({ surfaceId: "b" });
     // 사용자가 첫 슬롯을 3배로 넓혀 둔 상태.
@@ -69,15 +69,15 @@ describe("expanded surface store", () => {
     expect(weights).toEqual([900, 300, 600]);
   });
 
-  it("inserts at a requested slot index", () => {
+  it("inserts at a requested pane index", () => {
     openExpandedSurface({ surfaceId: "a" });
     openExpandedSurface({ surfaceId: "b" });
-    openExpandedSurface({ surfaceId: "c", slotIndex: 1 });
+    openExpandedSurface({ surfaceId: "c", paneIndex: 1 });
 
     expect(getExpandedSurfaceState().instances.map((i) => i.surfaceId)).toEqual(["a", "c", "b"]);
   });
 
-  it("hands focus to the right-hand neighbour when the focused slot closes", () => {
+  it("hands focus to the right-hand neighbour when the focused pane closes", () => {
     const a = openExpandedSurface({ surfaceId: "a" });
     const b = openExpandedSurface({ surfaceId: "b" });
     const c = openExpandedSurface({ surfaceId: "c" });
@@ -89,7 +89,7 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().instances.map((i) => i.instanceId)).toEqual([a, c]);
   });
 
-  it("falls back to the left neighbour when the last slot closes", () => {
+  it("falls back to the left neighbour when the last pane closes", () => {
     const a = openExpandedSurface({ surfaceId: "a" });
     const b = openExpandedSurface({ surfaceId: "b" });
     focusExpandedSurface(b);
@@ -99,14 +99,14 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().focusedInstanceId).toBe(a);
   });
 
-  it("clears focus when the last slot closes", () => {
+  it("clears focus when the last pane closes", () => {
     const a = openExpandedSurface({ surfaceId: "a" });
     closeExpandedSurface(a);
     expect(getExpandedSurfaceState().focusedInstanceId).toBeNull();
     expect(getExpandedSurfaceState().instances).toEqual([]);
   });
 
-  it("keeps a non-focused slot's focus when a sibling closes", () => {
+  it("keeps a non-focused pane's focus when a sibling closes", () => {
     const a = openExpandedSurface({ surfaceId: "a" });
     const b = openExpandedSurface({ surfaceId: "b" });
     focusExpandedSurface(a);
@@ -116,7 +116,7 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().focusedInstanceId).toBe(a);
   });
 
-  it("refuses weights that do not match the slot count", () => {
+  it("refuses weights that do not match the pane count", () => {
     openExpandedSurface({ surfaceId: "a" });
     openExpandedSurface({ surfaceId: "b" });
 
@@ -125,7 +125,7 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().instances.map((i) => i.weight)).toEqual([1, 1]);
   });
 
-  it("ignores non-positive weights rather than collapsing a slot to nothing", () => {
+  it("ignores non-positive weights rather than collapsing a pane to nothing", () => {
     openExpandedSurface({ surfaceId: "a" });
     openExpandedSurface({ surfaceId: "b" });
 
@@ -157,7 +157,7 @@ describe("expanded surface store", () => {
     expect(notifications).toBe(2);
   });
 
-  it("reports and moves focus by slot index", () => {
+  it("reports and moves focus by pane index", () => {
     openExpandedSurface({ surfaceId: "a" });
     const b = openExpandedSurface({ surfaceId: "b" });
 
@@ -172,7 +172,7 @@ describe("expanded surface store", () => {
     expect(getExpandedSurfaceState().instances[1]?.instanceId).toBe(b);
   });
 
-  it("closes every slot at once", () => {
+  it("closes every pane at once", () => {
     openExpandedSurface({ surfaceId: "a" });
     openExpandedSurface({ surfaceId: "b" });
 
@@ -202,7 +202,7 @@ describe("expanded surface close notification", () => {
     });
   });
 
-  it("has already removed the slot by the time the surface hears about it", () => {
+  it("has already removed the pane by the time the surface hears about it", () => {
     let openAtNotice: number | null = null;
     bindExpandedSurfaceCloseNotifier(() => {
       openAtNotice = getExpandedSurfaceState().instances.length;
@@ -214,7 +214,7 @@ describe("expanded surface close notification", () => {
     expect(openAtNotice).toBe(0);
   });
 
-  it("announces every slot when the host closes them all", () => {
+  it("announces every pane when the host closes them all", () => {
     const closed = vi.fn();
     bindExpandedSurfaceCloseNotifier(closed);
     openExpandedSurface({ surfaceId: "codex" });
@@ -225,7 +225,7 @@ describe("expanded surface close notification", () => {
     expect(closed.mock.calls.map(([ctx]) => ctx.surfaceId).sort()).toEqual(["codex", "shell"]);
   });
 
-  it("keeps one surface's failure from swallowing the next slot's notice", () => {
+  it("keeps one surface's failure from swallowing the next pane's notice", () => {
     const seen: string[] = [];
     bindExpandedSurfaceCloseNotifier((ctx) => {
       seen.push(ctx.surfaceId);
@@ -254,7 +254,7 @@ describe("closing a surface by its own id", () => {
   // 플러그인은 자기 인스턴스 id를 들고 있지 않다. 표면 id를 `closeExpandedSurface`에
   // 넘기면 인스턴스 id(`codex#1`)와 맞지 않아 조용히 아무 일도 일어나지 않아, 빈 슬롯이
   // 캔버스에 남는다 — Codex의 접기가 실제로 이 함정에 빠져 있었다.
-  it("closes the slot that the instance-keyed door leaves standing", () => {
+  it("closes the pane that the instance-keyed door leaves standing", () => {
     openExpandedSurface({ surfaceId: "codex", params: { entryId: "tide-model" } });
 
     closeExpandedSurface("codex");
@@ -274,7 +274,7 @@ describe("closing a surface by its own id", () => {
     expect(getExpandedSurfaceState().focusedInstanceId).toBe(shell);
   });
 
-  it("announces each slot it closed", () => {
+  it("announces each pane it closed", () => {
     const closed = vi.fn();
     bindExpandedSurfaceCloseNotifier(closed);
     openExpandedSurface({ surfaceId: "codex", params: { entryId: "a" } });
@@ -285,7 +285,7 @@ describe("closing a surface by its own id", () => {
     expect(closed).toHaveBeenCalledTimes(2);
   });
 
-  it("stays quiet when that surface has no slot", () => {
+  it("stays quiet when that surface has no pane", () => {
     const closed = vi.fn();
     bindExpandedSurfaceCloseNotifier(closed);
     const shell = openExpandedSurface({ surfaceId: "shell" });
