@@ -193,6 +193,18 @@ describe("레일 표면의 2단", () => {
     expect(container.querySelectorAll(".rail-pane")).toHaveLength(1);
   });
 
+  it("물러난 primary의 늦은 주소 갱신은 다음 열림에 남기지 않는다", () => {
+    render();
+    const stalePanes = listCtx!.panes;
+
+    // 레일 섹션을 닫아 PaneHost가 헐린 상황. 그 전에 시작한 비동기 작업만 옛 창구를 쥔다.
+    act(() => { root.render(<div data-testid="rail-closed" />); });
+    act(() => { stalePanes.replaceParams({ section: "late" }); });
+
+    // 늦은 응답이 씨앗을 만들면 다음에 같은 primary를 열 때 닫힌 뒤 생긴 주소가 되살아난다.
+    expect(getPaneStoreSnapshot().rail).toHaveLength(0);
+  });
+
   it("확대된 페인을 다시 열면 그 자리에서 갈아탄다 — 레일에 사본을 세우지 않는다", () => {
     render();
     openExpandedSurface({ surfaceId: "pane", params: { paneId: "doc", path: "a.ts" } });

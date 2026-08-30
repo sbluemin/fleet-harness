@@ -282,6 +282,13 @@ function PaneHost({
   width,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  // ctx.panes는 params가 바뀌어도 안정적이라 비동기 작업이 오래 쥘 수 있다. 호스트가 헐린 뒤
+  // 도착한 콜백까지 받으면 닫힌 primary의 주소가 다음 열림에 되살아나므로 수명을 함께 확인한다.
+  const mountedRef = useRef(true);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const paneIndex = usePaneIndex();
 
   // 요청받은 마운트가 확대면 확대 표면으로 보낸다. 스토어는 레일 열만 알고 있어서, 여기서
@@ -320,6 +327,7 @@ function PaneHost({
   }, [descriptor]);
 
   const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
+    if (!mountedRef.current) return;
     replacePaneParams(descriptor.id, next, descriptor.role);
   }, [descriptor.id, descriptor.role]);
 
