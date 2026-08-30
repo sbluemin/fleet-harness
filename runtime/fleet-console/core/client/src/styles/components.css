@@ -3434,8 +3434,12 @@
 
 .canvas-mode-frame {
   position: absolute;
-  /* 아레나 인셋(부유 크롬 점유) 위에 10px — 브래킷은 크롬이 아니라 유효 아레나의 경계다. */
-  inset: calc(var(--arena-top, 0px) + 10px) calc(var(--arena-right, 0px) + 10px) calc(var(--arena-bottom, 0px) + 10px) calc(var(--arena-left, 0px) + 10px);
+  /* 세로는 아레나 인셋 위에 10px — 브래킷은 크롬이 아니라 유효 아레나의 경계다.
+     가로는 부유 카드에 다가선다: 아레나는 카드 바깥 12px 거터를 포함하므로 4px를 되물려
+     카드↔브래킷 간격을 8px(--space-2)로 좁힌다. 딱 붙이면 카드 rim과 브래킷 선이 뭉개져
+     한 획으로 읽히니 숨은 쉬게 둔다. 크롬이 접힌 변은 아레나가 0이라 max()가 기존 10px
+     화면 여백을 되살린다. */
+  inset: calc(var(--arena-top, 0px) + 10px) max(10px, var(--arena-right, 0px) - 4px) calc(var(--arena-bottom, 0px) + 10px) max(10px, var(--arena-left, 0px) - 4px);
   z-index: 76;
   pointer-events: none;
   border: 1px solid color-mix(in oklch, var(--brass) 16%, transparent);
