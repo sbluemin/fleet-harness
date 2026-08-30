@@ -17,11 +17,18 @@ const terminalMocks = vi.hoisted(() => ({
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class Terminal {
-    readonly buffer = { active: { baseY: 0, viewportY: 0 } };
+    readonly buffer = {
+      active: { baseY: 0, viewportY: 0, type: "normal" },
+      onBufferChange: () => ({ dispose() {} }),
+    };
     readonly cols = 80;
     readonly rows = 24;
     readonly unicode = { activeVersion: "" };
-    readonly parser = { registerOscHandler: () => ({ dispose() {} }) };
+    readonly parser = {
+      registerCsiHandler: () => ({ dispose() {} }),
+      registerEscHandler: () => ({ dispose() {} }),
+      registerOscHandler: () => ({ dispose() {} }),
+    };
     readonly options: Record<string, unknown> = {};
     readonly focus = terminalMocks.focus;
     attachCustomKeyEventHandler() {}
@@ -29,7 +36,9 @@ vi.mock("@xterm/xterm", () => ({
     getSelection() { return ""; }
     input() {}
     loadAddon() {}
+    onBinary() { return { dispose() {} }; }
     onData() { return { dispose() {} }; }
+    onDimensionsChange() { return { dispose() {} }; }
     open() {}
     refresh = terminalMocks.refresh;
     scrollToBottom() {}

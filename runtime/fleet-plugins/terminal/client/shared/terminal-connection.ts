@@ -7,6 +7,7 @@ export type TerminalSocketRole = "control" | "viewer";
 
 export interface TerminalLike {
   readonly onData: (listener: (data: string) => void) => { readonly dispose: () => void };
+  readonly onBinary?: (listener: (data: string) => void) => { readonly dispose: () => void };
   readonly write: (data: Uint8Array) => void;
   readonly drain: (callback: () => void) => void;
 }
@@ -33,10 +34,19 @@ export interface TerminalConnectionOptions {
    * 서버 보유 scrollback을 재생하는 구간의 시작(true)과 끝(false)을 알린다. 재생 청크는 과거에 이미
    * 흘러간 바이트라, 그 안의 부수효과 시퀀스를 지금 다시 실행하면 안 되는 소비자를 위한 신호다.
    */
-  readonly onReplayStateChange?: (replaying: boolean) => void;
+  readonly onReplayStateChange?: (replaying: boolean, state?: TerminalReplayState) => void;
+  /** Called before retained output is parsed so a remount can select the PTY's current buffer first. */
+  readonly onReplayState?: (state: TerminalReplayState) => void;
   readonly onExit?: () => void;
   readonly location?: Pick<Location, "host" | "protocol">;
   readonly webSocketFactory?: (url: string) => WebSocketLike;
+}
+
+export interface TerminalReplayState {
+  /** Fields are undefined only when reconnecting to an older Console server that predates mode sideband. */
+  readonly alternateScreenActive?: boolean;
+  readonly mouseProtocol?: "none" | "x10" | "vt200" | "drag" | "any";
+  readonly mouseEncoding?: "default" | "sgr" | "sgr-pixels";
 }
 
 export interface TerminalCloseInfo {
@@ -102,7 +112,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   const encoder = new TextEncoder();
   let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
   let socket: WebSocketLike | null = null;
-  let inputSubscription: { readonly dispose: () => void } | null = null;
+  let inputSubscriptions: Array<{ readonly dispose: () => void }> = [];
   let pendingSize: { readonly cols: number; readonly rows: number } | null = null;
   // 실제로 이 소켓으로 나간 마지막 격자. 연결마다 비워 (재)연결이 항상 한 번은 크기를 협상하게 한다 —
   // 새 소켓 너머의 세션이 어떤 크기를 알고 있는지는 클라이언트가 가정할 수 없다.
@@ -117,8 +127,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   let consecutiveFailures = 0;
 
   const disposeInput = () => {
-    inputSubscription?.dispose();
-    inputSubscription = null;
+    for (const subscription of inputSubscriptions) subscription.dispose();
+    inputSubscriptions = [];
   };
 
   const sendResize = (cols: number, rows: number) => {
@@ -187,22 +197,33 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         } catch {
           return;
         }
+        if (isReplayStateFrame(frame)) {
+          connectionOptions.onReplayState?.(replayStateFromFrame(frame));
+          return;
+        }
         if (!isReplayEndFrame(frame)) return;
         connectionOptions.terminal.drain(() => {
           // 이 소켓이 아직 활성일 때만 재생 구간을 닫는다. drain은 출력 파싱을 기다리므로 소켓이 먼저
           // 닫히고 재접속이 새 재생을 시작한 뒤에 이 콜백이 도착할 수 있는데, 그때 창을 닫아버리면
           // 새 연결의 재생분이 클립보드를 덮는다. 다른 소켓이 주인이면 그 소켓이 자기 창을 닫는다.
           if (socket !== ws) return;
-          // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 조건과 무관하게 창은 닫는다.
-          connectionOptions.onReplayStateChange?.(false);
+          // 재생 바이트가 모두 파싱된 뒤다. 서버의 sideband는 scrollback 첫 진입 시퀀스가 잘려도
+          // 살아 있는 PTY의 mode를 전한다. 화면은 xterm의 공개 buffer 상태를 권위로 삼되 이 값으로
+          // 복원 누락을 검증하고, geometry 변경은 이 한 지점에서 합친다.
+          connectionOptions.onReplayStateChange?.(false, replayStateFromFrame(frame));
           // 입력 구독 자체를 만들지 않는 것이 관전의 실제 경계다. 서버도 viewer 소켓의 메시지를
           // 듣지 않지만, 보내지 않는 편이 화면과 전송을 같은 이야기로 만든다.
           if (role === "viewer") return;
-          if (ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
+          if (ws.readyState !== OPEN_READY_STATE || inputSubscriptions.length > 0) return;
           disposeInput();
-          inputSubscription = connectionOptions.terminal.onData((data) => {
+          inputSubscriptions.push(connectionOptions.terminal.onData((data) => {
             if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
-          });
+          }));
+          if (connectionOptions.terminal.onBinary) {
+            inputSubscriptions.push(connectionOptions.terminal.onBinary((data) => {
+              if (ws.readyState === OPEN_READY_STATE) ws.send(binaryStringToBytes(data));
+            }));
+          }
         });
       };
       ws.onerror = () => {
@@ -302,8 +323,45 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
   return new WebSocket(url) as unknown as WebSocketLike;
 }
 
-function isReplayEndFrame(value: unknown): value is { readonly type: "replay_end" } {
-  return !!value && typeof value === "object" && (value as { readonly type?: unknown }).type === "replay_end";
+interface ReplayStateFrame {
+  readonly type: "replay_state" | "replay_end";
+  readonly alternateScreenActive?: boolean;
+  readonly mouseProtocol?: TerminalReplayState["mouseProtocol"];
+  readonly mouseEncoding?: TerminalReplayState["mouseEncoding"];
+}
+
+function isReplayStateFrame(value: unknown): value is ReplayStateFrame {
+  if (!value || typeof value !== "object") return false;
+  const frame = value as { readonly type?: unknown };
+  return frame.type === "replay_state";
+}
+
+function isReplayEndFrame(value: unknown): value is ReplayStateFrame {
+  if (!value || typeof value !== "object") return false;
+  const frame = value as { readonly type?: unknown };
+  return frame.type === "replay_end";
+}
+
+function replayStateFromFrame(frame: ReplayStateFrame): TerminalReplayState {
+  return {
+    ...(typeof frame.alternateScreenActive === "boolean" ? { alternateScreenActive: frame.alternateScreenActive } : {}),
+    ...(isMouseProtocol(frame.mouseProtocol) ? { mouseProtocol: frame.mouseProtocol } : {}),
+    ...(isMouseEncoding(frame.mouseEncoding) ? { mouseEncoding: frame.mouseEncoding } : {}),
+  };
+}
+
+function isMouseProtocol(value: unknown): value is NonNullable<TerminalReplayState["mouseProtocol"]> {
+  return value === "none" || value === "x10" || value === "vt200" || value === "drag" || value === "any";
+}
+
+function isMouseEncoding(value: unknown): value is NonNullable<TerminalReplayState["mouseEncoding"]> {
+  return value === "default" || value === "sgr" || value === "sgr-pixels";
+}
+
+function binaryStringToBytes(data: string): Uint8Array {
+  const bytes = new Uint8Array(data.length);
+  for (let index = 0; index < data.length; index += 1) bytes[index] = data.charCodeAt(index) & 0xff;
+  return bytes;
 }
 
 async function delay(ms: number, signal: AbortSignal): Promise<void> {

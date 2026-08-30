@@ -1,3 +1,10 @@
+.terminal-alternate-screen-edge-fill {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
 /* On-screen terminal keys.
    Every colour here is a theme token, so the bar retunes with instrument, maritime, carbon, and
    whites rather than carrying a palette of its own — it sits directly against the terminal, which

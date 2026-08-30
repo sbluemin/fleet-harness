@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
 import { applyTerminalModifiers, terminalKeySequence, type TerminalKeyId } from "./terminal-key-sequences.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
+import { createTerminalAlternateScreenController } from "./terminal-alternate-screen.js";
 import { createTerminalConnection, type TerminalConnection, type TerminalConnectionStatus } from "./terminal-connection.js";
 import { describeTerminalFailure } from "./terminal-failure.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
@@ -334,6 +335,11 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       terminal.open(container);
       syncTerminalViewportBackground(container, terminalTheme);
       const xtermScreen = container.querySelector<HTMLElement>(".xterm-screen");
+      // 정수 cols×rows 뒤에 남는 한 셀 미만의 오른쪽·아래 공간은 xterm canvas 밖이다. 전체 화면 TUI는
+      // 자기 화면을 마지막 셀까지 칠하므로, 그 셀의 배경색을 잉여까지 잇지 않으면 terminal field 색이
+      // 테두리처럼 보인다. 입력·cell geometry는 그대로 두고 별도 비상호작용 strip에 마지막 열·행의
+      // 배경색만 연장한다. Operation과 rail Shell이 공유하는 이 mount에서 처리해야 두 표면이 같은 계약을 가진다.
+      const alternateScreenEdgeFill = xtermScreen ? createTerminalAlternateScreenEdgeFill(terminal, container, xtermScreen) : null;
       // xterm's own touch inertia emits gesture changes without a client point. Under mouse tracking
       // it serializes those missing coordinates as `NaN` and sends them to the PTY. Guard the private
       // event at the public DOM boundary rather than patching or deep-importing xterm internals.
@@ -407,13 +413,17 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         terminal,
         activeRef.current !== false,
         inactiveFlushMsRef.current,
-        scrollFollow.restoreAfterOutputParsing,
+        () => {
+          scrollFollow.restoreAfterOutputParsing();
+          alternateScreenEdgeFill?.schedulePaint();
+        },
       );
       outputSchedulerRef.current = outputScheduler;
       const statusDetailReporter = createTerminalStatusDetailReporter({
         report: (detail) => onStatusDetailRef.current?.(detail),
       });
       statusDetailReporterRef.current = statusDetailReporter;
+      let alternateScreenController: ReturnType<typeof createTerminalAlternateScreenController> | null = null;
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
@@ -433,14 +443,32 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             const { ctrl, alt } = consumeLatchedModifiersRef.current();
             listener(ctrl || alt ? applyTerminalModifiers(data, { ctrl, alt, shift: false }) : data);
           }),
+          // Legacy mouse encodings are binary strings rather than UTF-8 text. Preserve their bytes
+          // through the WebSocket; SGR mouse reporting continues to use onData above.
+          onBinary: (listener) => terminal.onBinary(listener),
           write: (data) => {
             statusDetailReporter.push(data);
             outputScheduler.write(data);
           },
           drain: outputScheduler.drain,
         },
-        onReplayStateChange: (replaying) => {
+        onReplayState: (replayState) => {
+          if (typeof replayState.alternateScreenActive !== "boolean") return;
+          alternateScreenController?.prepareReplay({
+            alternateScreenActive: replayState.alternateScreenActive,
+            ...(replayState.mouseProtocol ? { mouseProtocol: replayState.mouseProtocol } : {}),
+            ...(replayState.mouseEncoding ? { mouseEncoding: replayState.mouseEncoding } : {}),
+          });
+        },
+        onReplayStateChange: (replaying, replayState) => {
           replayingScrollback = replaying;
+          if (!replaying && typeof replayState?.alternateScreenActive === "boolean") {
+            alternateScreenController?.finishReplay({
+              alternateScreenActive: replayState.alternateScreenActive,
+              ...(replayState.mouseProtocol ? { mouseProtocol: replayState.mouseProtocol } : {}),
+              ...(replayState.mouseEncoding ? { mouseEncoding: replayState.mouseEncoding } : {}),
+            });
+          }
         },
         onExit: () => onExitRef.current?.(),
         onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
@@ -459,6 +487,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           fitAddon.fit();
           connection.resize(terminal.cols, terminal.rows);
           if (refresh) terminal.refresh(0, terminal.rows - 1);
+          alternateScreenEdgeFill?.schedulePaint();
         });
       };
       const scheduleFitAndResize = (refresh = false) => {
@@ -473,6 +502,13 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         }, RESIZE_DEBOUNCE_MS);
       };
       scheduleFitAndResizeRef.current = scheduleFitAndResize;
+      alternateScreenController = createTerminalAlternateScreenController({
+        terminal,
+        fitAddon,
+        resizePty: connection.resize,
+        isReplaying: () => replayingScrollback,
+        onAlternateScreenChange: alternateScreenEdgeFill?.setActive,
+      });
 
       const runInitialFit = async () => {
         await document.fonts?.ready;
@@ -502,11 +538,13 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         imeEventTarget.removeEventListener("focusout", imeHandler.onCompositionCancel);
         imeHandler.dispose();
         connection.dispose();
+        alternateScreenController?.dispose();
         copyOnSelect.dispose();
         osc52Clipboard.dispose();
         scrollGesture.dispose();
         touchGestures.dispose();
         xtermGestureOriginGuard?.dispose();
+        alternateScreenEdgeFill?.dispose();
         outputScheduler.dispose();
         statusDetailReporter.dispose();
         scrollFollow.dispose();
@@ -887,6 +925,242 @@ export function syncTerminalViewportBackground(container: HTMLElement, theme: IT
   } else {
     viewport.style.removeProperty("background-color");
   }
+}
+
+interface TerminalAlternateScreenEdgeFill {
+  readonly setActive: (active: boolean) => void;
+  readonly schedulePaint: () => void;
+  readonly dispose: () => void;
+}
+
+interface TerminalAlternateScreenEdgeFillOptions {
+  readonly terminal: Pick<XtermTerminal, "buffer" | "cols" | "rows" | "onDimensionsChange" | "options">;
+  readonly container: HTMLElement;
+  readonly screen: HTMLElement;
+  readonly createCanvas?: (edge: "right" | "bottom") => HTMLCanvasElement;
+  readonly requestFrame?: (callback: FrameRequestCallback) => number;
+  readonly cancelFrame?: (handle: number) => void;
+  readonly devicePixelRatio?: () => number;
+}
+
+export function createTerminalAlternateScreenEdgeFill(
+  terminal: TerminalAlternateScreenEdgeFillOptions["terminal"],
+  container: HTMLElement,
+  screen: HTMLElement,
+): TerminalAlternateScreenEdgeFill;
+export function createTerminalAlternateScreenEdgeFill(options: TerminalAlternateScreenEdgeFillOptions): TerminalAlternateScreenEdgeFill;
+export function createTerminalAlternateScreenEdgeFill(
+  terminalOrOptions: TerminalAlternateScreenEdgeFillOptions["terminal"] | TerminalAlternateScreenEdgeFillOptions,
+  container?: HTMLElement,
+  screen?: HTMLElement,
+): TerminalAlternateScreenEdgeFill {
+  const options = "terminal" in terminalOrOptions
+    ? terminalOrOptions
+    : { terminal: terminalOrOptions, container: container!, screen: screen! };
+  const { terminal } = options;
+  const rightCanvas = options.createCanvas?.("right") ?? document.createElement("canvas");
+  const bottomCanvas = options.createCanvas?.("bottom") ?? document.createElement("canvas");
+  const requestFrame = options.requestFrame ?? ((callback: FrameRequestCallback) => window.requestAnimationFrame(callback));
+  const cancelFrame = options.cancelFrame ?? ((handle: number) => window.cancelAnimationFrame(handle));
+  const readDevicePixelRatio = options.devicePixelRatio ?? (() => window.devicePixelRatio || 1);
+  rightCanvas.className = "terminal-alternate-screen-edge-fill terminal-alternate-screen-edge-fill--right";
+  bottomCanvas.className = "terminal-alternate-screen-edge-fill terminal-alternate-screen-edge-fill--bottom";
+  rightCanvas.setAttribute("aria-hidden", "true");
+  bottomCanvas.setAttribute("aria-hidden", "true");
+  // xterm renderer의 screen 자식으로 canvas를 끼우지 않는다. WebGL/DOM renderer는 그 subtree를
+  // 자기 레이어로 소유한다. 두 strip은 TerminalSurface mount 단의 형제이며 남는 영역만 점유한다.
+  options.container.append(rightCanvas, bottomCanvas);
+
+  let active = false;
+  let disposed = false;
+  let frame: number | null = null;
+  let repaintRequested = false;
+  let settlePaintPending = false;
+
+  const hideCanvas = (canvas: HTMLCanvasElement) => {
+    canvas.hidden = true;
+    canvas.width = 0;
+    canvas.height = 0;
+  };
+  const hide = () => {
+    hideCanvas(rightCanvas);
+    hideCanvas(bottomCanvas);
+  };
+
+  const sizeCanvas = (
+    canvas: HTMLCanvasElement,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    dpr: number,
+  ): CanvasRenderingContext2D | null => {
+    if (width < 0.5 || height < 0.5) {
+      hideCanvas(canvas);
+      return null;
+    }
+    canvas.hidden = false;
+    canvas.style.left = `${left}px`;
+    canvas.style.top = `${top}px`;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.width = Math.max(1, Math.ceil(width * dpr));
+    canvas.height = Math.max(1, Math.ceil(height * dpr));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+    return context;
+  };
+
+  const paint = () => {
+    frame = null;
+    const containerRect = options.container.getBoundingClientRect();
+    const screenRect = options.screen.getBoundingClientRect();
+    const canvasWidth = screenRect.width;
+    const canvasHeight = screenRect.height;
+    if (disposed || !active || canvasWidth <= 0 || canvasHeight <= 0) {
+      hide();
+      return;
+    }
+    const screenLeft = screenRect.left - containerRect.left;
+    const screenTop = screenRect.top - containerRect.top;
+    const rightRemainder = Math.max(0, containerRect.right - screenRect.right);
+    const bottomRemainder = Math.max(0, containerRect.bottom - screenRect.bottom);
+    if (rightRemainder < 0.5 && bottomRemainder < 0.5) {
+      hide();
+      return;
+    }
+
+    const dpr = readDevicePixelRatio();
+    // xterm의 public dimensions 이벤트는 resize 중 DOM screen rect보다 한 프레임 늦을 수 있다.
+    // fill은 실제로 보이는 grid 경계만 잇기 때문에 paint 시점의 screen rect를 geometry authority로 쓴다.
+    const rightContext = sizeCanvas(
+      rightCanvas,
+      screenLeft + canvasWidth,
+      screenTop,
+      rightRemainder,
+      canvasHeight + bottomRemainder,
+      dpr,
+    );
+    const bottomContext = sizeCanvas(
+      bottomCanvas,
+      screenLeft,
+      screenTop + canvasHeight,
+      canvasWidth,
+      bottomRemainder,
+      dpr,
+    );
+    const buffer = terminal.buffer.active;
+    const viewportY = buffer.viewportY;
+    const theme = terminal.options.theme ?? {};
+    const rowHeight = canvasHeight / terminal.rows;
+    const columnWidth = canvasWidth / terminal.cols;
+
+    if (rightContext) {
+      for (let row = 0; row < terminal.rows; row += 1) {
+        rightContext.fillStyle = terminalCellVisualBackground(
+          buffer.getLine(viewportY + row)?.getCell(terminal.cols - 1),
+          theme,
+        );
+        rightContext.fillRect(0, row * rowHeight, rightRemainder, rowHeight + 0.5);
+      }
+      rightContext.fillStyle = terminalCellVisualBackground(
+        buffer.getLine(viewportY + terminal.rows - 1)?.getCell(terminal.cols - 1),
+        theme,
+      );
+      rightContext.fillRect(0, canvasHeight, rightRemainder, bottomRemainder);
+    }
+
+    if (bottomContext) {
+      const lastLine = buffer.getLine(viewportY + terminal.rows - 1);
+      for (let column = 0; column < terminal.cols; column += 1) {
+        bottomContext.fillStyle = terminalCellVisualBackground(lastLine?.getCell(column), theme);
+        bottomContext.fillRect(column * columnWidth, 0, columnWidth + 0.5, bottomRemainder);
+      }
+    }
+  };
+
+  const schedulePaint = () => {
+    if (disposed || !active) return;
+    if (frame !== null) {
+      repaintRequested = true;
+      return;
+    }
+    repaintRequested = false;
+    frame = requestFrame(() => {
+      paint();
+      const shouldRepaint = repaintRequested;
+      const shouldSettle = settlePaintPending;
+      repaintRequested = false;
+      settlePaintPending = false;
+      // requestAnimationFrame 안에서 schedule하면 frame handle이 아직 남아 coalescing gate에 막힌다.
+      // 먼저 현재 frame을 비운 뒤, 겹친 변경이나 xterm의 다음-frame screen commit을 이어 칠한다.
+      if (!disposed && active && (shouldRepaint || shouldSettle)) schedulePaint();
+    });
+  };
+
+  const dimensionsSubscription = terminal.onDimensionsChange(() => {
+    settlePaintPending = true;
+    schedulePaint();
+  });
+  // xterm은 renderer canvas와 `.xterm-screen` CSS 크기를 dimensions 이벤트보다 늦게 commit할 수 있다.
+  // 실제 screen box의 변화 자체도 관찰해야 최대화 직후 옛 920×448 경계에 strip이 멈추지 않는다.
+  const screenResizeObserver = typeof ResizeObserver === "undefined"
+    ? null
+    : new ResizeObserver(() => schedulePaint());
+  screenResizeObserver?.observe(options.screen);
+
+  return {
+    setActive: (next) => {
+      active = next;
+      if (active) schedulePaint();
+      else hide();
+    },
+    schedulePaint,
+    dispose: () => {
+      disposed = true;
+      if (frame !== null) cancelFrame(frame);
+      dimensionsSubscription.dispose();
+      screenResizeObserver?.disconnect();
+      rightCanvas.remove();
+      bottomCanvas.remove();
+    },
+  };
+}
+
+function terminalCellVisualBackground(
+  cell: ReturnType<NonNullable<ReturnType<XtermTerminal["buffer"]["active"]["getLine"]>>["getCell"]> | undefined,
+  theme: ITheme,
+): string {
+  if (!cell) return theme.background ?? "transparent";
+  const useForeground = cell.isInverse() !== 0;
+  const color = useForeground ? cell.getFgColor() : cell.getBgColor();
+  const isRgb = useForeground ? cell.isFgRGB() : cell.isBgRGB();
+  const isPalette = useForeground ? cell.isFgPalette() : cell.isBgPalette();
+  if (isRgb) return `rgb(${color >> 16 & 0xff}, ${color >> 8 & 0xff}, ${color & 0xff})`;
+  if (isPalette) return terminalPaletteColor(color, theme);
+  return useForeground ? theme.foreground ?? theme.background ?? "transparent" : theme.background ?? "transparent";
+}
+
+const TERMINAL_ANSI_THEME_KEYS = [
+  "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+  "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
+] as const;
+
+function terminalPaletteColor(index: number, theme: ITheme): string {
+  if (index < TERMINAL_ANSI_THEME_KEYS.length) {
+    return theme[TERMINAL_ANSI_THEME_KEYS[index] ?? "black"] ?? theme.background ?? "transparent";
+  }
+  const extended = theme.extendedAnsi?.[index - TERMINAL_ANSI_THEME_KEYS.length];
+  if (extended) return extended;
+  if (index < 232) {
+    const value = index - 16;
+    const levels = [0, 95, 135, 175, 215, 255];
+    return `rgb(${levels[Math.floor(value / 36)] ?? 0}, ${levels[Math.floor(value / 6) % 6] ?? 0}, ${levels[value % 6] ?? 0})`;
+  }
+  const level = 8 + (index - 232) * 10;
+  return `rgb(${level}, ${level}, ${level})`;
 }
 
 function scrollTerminalToBottom(terminal: XtermTerminal | null): void {

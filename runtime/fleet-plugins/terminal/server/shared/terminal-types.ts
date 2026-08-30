@@ -86,7 +86,7 @@ export interface TerminalPtyHandle {
   readonly fd?: number;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
-  write(data: string): void;
+  write(data: string | Buffer): void;
   resize(cols: number, rows: number): void;
   kill(): void;
   destroy?(): void;

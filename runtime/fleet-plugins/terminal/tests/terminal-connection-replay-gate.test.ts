@@ -34,11 +34,17 @@ describe("terminal connection replay input gate", () => {
     terminal.emitData("before-replay-end");
     expect(socket!.sent).toHaveLength(1);
 
+    socket!.receive(JSON.stringify({
+      type: "replay_state",
+      alternateScreenActive: false,
+      mouseProtocol: "none",
+      mouseEncoding: "default",
+    }));
     const replay = new TextEncoder().encode("replayed-output");
     socket!.receive(replay.buffer);
     expect(terminal.written).toEqual([replay]);
 
-    socket!.receive(JSON.stringify({ type: "replay_end" }));
+    socket!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: false }));
     expect(terminal.pendingDrains).toHaveLength(1);
     terminal.emitData("while-draining");
     expect(socket!.sent).toHaveLength(1);
@@ -50,6 +56,75 @@ describe("terminal connection replay input gate", () => {
     expect(socket!.sent[1]).toBeInstanceOf(Uint8Array);
     expect(new TextDecoder().decode(socket!.sent[1] as Uint8Array)).toBe("live-input");
 
+    connection.dispose();
+  });
+
+  it("preserves legacy onBinary mouse report bytes", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "ticket-binary", ttlMs: 10_000 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const terminal = new FakeTerminal();
+    let socket: FakeWebSocket | undefined;
+    const connection = createTerminalConnection({
+      operationId: "session-binary",
+      terminal,
+      ticketPath: "/ticket",
+      wsPath: "/ws",
+      location: { host: "console.test", protocol: "http:" },
+      webSocketFactory: () => {
+        socket = new FakeWebSocket();
+        return socket;
+      },
+    });
+    connection.start();
+    await vi.waitFor(() => expect(socket).toBeDefined());
+    socket!.open();
+    socket!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: false }));
+    terminal.releaseDrain();
+
+    terminal.emitBinary("\x1b[M\x80\xff\x00");
+
+    expect(socket!.sent).toHaveLength(1);
+    expect([...socket!.sent[0] as Uint8Array]).toEqual([0x1b, 0x5b, 0x4d, 0x80, 0xff, 0x00]);
+    connection.dispose();
+  });
+
+  it("passes server modes before replay parsing and confirms them only after drain", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "ticket-state", ttlMs: 10_000 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const terminal = new FakeTerminal();
+    const replayStates: Array<{ readonly replaying: boolean; readonly alternate?: boolean }> = [];
+    const initialModes: boolean[] = [];
+    let socket: FakeWebSocket | undefined;
+    const connection = createTerminalConnection({
+      operationId: "session-state",
+      terminal,
+      ticketPath: "/ticket",
+      wsPath: "/ws",
+      location: { host: "console.test", protocol: "http:" },
+      onReplayState: (state) => initialModes.push(state.alternateScreenActive === true),
+      onReplayStateChange: (replaying, state) => replayStates.push({ replaying, alternate: state?.alternateScreenActive }),
+      webSocketFactory: () => {
+        socket = new FakeWebSocket();
+        return socket;
+      },
+    });
+    connection.start();
+    await vi.waitFor(() => expect(socket).toBeDefined());
+    socket!.open();
+    socket!.receive(JSON.stringify({ type: "replay_state", alternateScreenActive: true }));
+    expect(initialModes).toEqual([true]);
+    socket!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: true }));
+
+    expect(replayStates).toEqual([{ replaying: true }]);
+    terminal.releaseDrain();
+    expect(replayStates).toEqual([
+      { replaying: true },
+      { replaying: false, alternate: true },
+    ]);
     connection.dispose();
   });
 
@@ -129,7 +204,7 @@ describe("terminal connection replay input gate", () => {
     sockets[0]!.receive(new TextEncoder().encode("replayed-output").buffer);
     expect(replayStates).toEqual([true]);
 
-    sockets[0]!.receive(JSON.stringify({ type: "replay_end" }));
+    sockets[0]!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: false }));
     expect(replayStates).toEqual([true]);
 
     // It closes only once the replayed bytes have actually been parsed.
@@ -170,7 +245,7 @@ describe("terminal connection replay input gate", () => {
     sockets[0]!.open();
 
     // The first socket asks to close its window, but its drain has not run yet.
-    sockets[0]!.receive(JSON.stringify({ type: "replay_end" }));
+    sockets[0]!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: false }));
     expect(terminal.pendingDrains).toHaveLength(1);
 
     // It dies first, and the reconnect opens a fresh replay window.
@@ -184,7 +259,7 @@ describe("terminal connection replay input gate", () => {
     expect(replayStates).toEqual([true, true]);
 
     // Only the live socket's own replay_end closes it.
-    sockets[1]!.receive(JSON.stringify({ type: "replay_end" }));
+    sockets[1]!.receive(JSON.stringify({ type: "replay_end", alternateScreenActive: false }));
     terminal.releaseDrain();
     expect(replayStates).toEqual([true, true, false]);
 
@@ -195,7 +270,17 @@ describe("terminal connection replay input gate", () => {
 class FakeTerminal {
   readonly written: Uint8Array[] = [];
   readonly pendingDrains: Array<() => void> = [];
+  private binaryListener: ((data: string) => void) | null = null;
   private dataListener: ((data: string) => void) | null = null;
+
+  readonly onBinary = (listener: (data: string) => void) => {
+    this.binaryListener = listener;
+    return {
+      dispose: () => {
+        if (this.binaryListener === listener) this.binaryListener = null;
+      },
+    };
+  };
 
   readonly onData = (listener: (data: string) => void) => {
     this.dataListener = listener;
@@ -213,6 +298,10 @@ class FakeTerminal {
   readonly drain = (callback: () => void) => {
     this.pendingDrains.push(callback);
   };
+
+  emitBinary(data: string): void {
+    this.binaryListener?.(data);
+  }
 
   emitData(data: string): void {
     this.dataListener?.(data);

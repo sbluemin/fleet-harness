@@ -5,6 +5,7 @@ import type { SessionIdentityResolver } from "../agent-api/session-identity.js";
 
 import { createOscTitleParser, type OscTitleParser } from "./osc-title-parser.js";
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
+import { createTerminalModeTracker, type TerminalModeTracker } from "./terminal-mode-tracker.js";
 import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext, TerminalTitleListener } from "./terminal-types.js";
 
 export interface TerminalSessionManagerDeps {
@@ -45,6 +46,7 @@ interface TerminalSession {
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
   graceTimer: ReturnType<typeof setTimeout> | null;
   terminalQueryResidual: string;
+  readonly modeTracker: TerminalModeTracker;
   // 인메모리 유후 추적(서버 monotonic). 생성 시 시드되고 attach / PTY 출력 / binary 입력 / 서버 주입 write에서 갱신.
   lastActivityAt: number | undefined;
 }
@@ -98,10 +100,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.activeSocket = socket;
     touchActivity(session);
     session.pty.resize(session.cols, session.rows);
+    sendReplayState(session, socket);
     replayScrollback(session, socket);
-    if (socket.readyState === WS_OPEN_STATE) {
-      socket.send(Buffer.from(JSON.stringify({ type: "replay_end" }), "utf8"), { binary: false });
-    }
+    sendReplayEnd(session, socket);
     socket.on("message", (data, isBinary) => handleSocketMessage(session, data, isBinary));
     socket.once("close", () => detachSocket(session, socket));
   }
@@ -118,10 +119,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const session = sessions.get(sessionId);
     if (!session) return false;
     session.viewers.add(socket);
+    sendReplayState(session, socket);
     replayScrollback(session, socket);
-    if (socket.readyState === WS_OPEN_STATE) {
-      socket.send(Buffer.from(JSON.stringify({ type: "replay_end" }), "utf8"), { binary: false });
-    }
+    sendReplayEnd(session, socket);
     socket.once("close", () => {
       session.viewers.delete(socket);
       scheduleTheaterShellCleanup(session);
@@ -270,6 +270,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       rows: DEFAULT_ROWS,
       graceTimer: null,
       terminalQueryResidual: "",
+      modeTracker: createTerminalModeTracker(),
       // 생성 시각으로 시드한다 — 조용한 PTY가 attach 전에 고아가 되어도 sweeper가 유후 판정할 수 있게 한다.
       lastActivityAt: now(),
     };
@@ -303,6 +304,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       for (const response of queryResponses) writeTerminalQueryResponse(session, response);
     }
     observeOscTitles(session, buffer);
+    session.modeTracker.push(buffer);
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
     liveSocket?.send(buffer, { binary: true });
@@ -332,7 +334,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   function handleSocketMessage(session: TerminalSession, data: TerminalSocketData, isBinary: boolean): void {
     if (isBinary) {
       touchActivity(session);
-      session.pty.write(toBuffer(data).toString("utf8"));
+      // xterm onBinary carries legacy mouse reports as a binary string. The WebSocket preserves those
+      // octets, so do not decode and re-encode them as UTF-8 before node-pty receives them.
+      session.pty.write(toBuffer(data));
       return;
     }
     handleControlFrame(session, toBuffer(data).toString("utf8"));
@@ -392,6 +396,22 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       if (socket.readyState !== WS_OPEN_STATE) return;
       socket.send(chunk, { binary: true });
     }
+  }
+
+  function sendReplayState(session: TerminalSession, socket: TerminalSocket): void {
+    if (socket.readyState !== WS_OPEN_STATE) return;
+    socket.send(Buffer.from(JSON.stringify({
+      type: "replay_state",
+      ...session.modeTracker.snapshot(),
+    }), "utf8"), { binary: false });
+  }
+
+  function sendReplayEnd(session: TerminalSession, socket: TerminalSocket): void {
+    if (socket.readyState !== WS_OPEN_STATE) return;
+    socket.send(Buffer.from(JSON.stringify({
+      type: "replay_end",
+      ...session.modeTracker.snapshot(),
+    }), "utf8"), { binary: false });
   }
 
   function removeSession(session: TerminalSession, options: KillSessionOptions = {}): void {
