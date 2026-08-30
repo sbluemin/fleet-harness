@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -70,15 +70,20 @@ export function usePaneContext({
   legacySurfaces,
   legacyLaunchOperation,
 }: PaneContextInput): HostPaneContext {
-  const abortRef = useRef<AbortController | null>(null);
-  abortRef.current ??= new AbortController();
-
-  // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. 이 cleanup이 없으면 signal은 영원히
+  // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. cleanup이 없으면 signal은 영원히
   // 열린 채로 남아, 닫힌 페인의 요청과 watcher가 다음 페인 위에 착지한다.
+  //
+  // 상태로 드는 이유는 StrictMode다. 개발 빌드는 setup → cleanup → setup을 한 번 예행하는데,
+  // ref에 든 controller를 그대로 재사용하면 두 번째 setup이 이미 abort된 signal을 물려받아
+  // 본문의 첫 fetch가 태어나자마자 죽는다. 죽은 것을 만나면 새로 만들어 다시 그린다.
+  const [controller, setController] = useState(() => new AbortController());
   useEffect(() => {
-    const controller = abortRef.current!;
+    if (controller.signal.aborted) {
+      setController(new AbortController());
+      return;
+    }
     return () => { controller.abort(); };
-  }, []);
+  }, [controller]);
 
   const handleOpen = useCallback((request: PaneOpenRequest) => { onOpen?.(request); }, [onOpen]);
 
@@ -103,7 +108,7 @@ export function usePaneContext({
       replaceParams: onReplaceParams,
       isOpen: (paneId) => isOpen?.(paneId) ?? (paneId === descriptor.id && visible),
     },
-    signal: abortRef.current!.signal,
+    signal: controller.signal,
     ...(requestExtraWidth === undefined ? {} : { requestExtraWidth }),
     language,
     theme,

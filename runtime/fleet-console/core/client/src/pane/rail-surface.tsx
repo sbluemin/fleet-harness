@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -11,11 +11,8 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-surface.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
-import type { HostPaneContext, RailEntryBinding } from "./pane-registry.js";
-import { closePane, focusPane, openPane, useFocusedPaneId, useRailPanes } from "./pane-store.js";
-
-/** 남의 페인을 닫는 경로 — 스토어 호출을 그대로 넘긴다. */
-const closePaneById = (paneId: string) => { closePane(paneId); };
+import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
+import { closePane, focusPane, openPane, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
 
 /**
  * 레일 표면 — 활성 엔트리가 세우는 페인들을 담는 그릇.
@@ -58,6 +55,14 @@ export const RailSurface = memo(function RailSurface({
   const openInstances = useRailPanes();
   const focusedPaneId = useFocusedPaneId();
 
+  // 엔트리를 갈아타면 이전 표면의 열은 사라져야 한다. 비우지 않으면 돌아왔을 때 옛 detail이
+  // 옛 params 그대로 되살아나고, keepAlive를 선언하지 않은 페인까지 스토어에 남는다.
+  const entryId = binding.entry.id;
+  useEffect(() => {
+    const keepAliveIds = new Set(binding.panes.filter((pane) => pane.keepAlive === true).map((pane) => pane.id));
+    resetSurfacePanes(keepAliveIds);
+  }, [binding.panes, entryId]);
+
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],
     [binding.panes],
@@ -79,7 +84,7 @@ export const RailSurface = memo(function RailSurface({
   return (
     <div className={`rail-surface${extras.length > 0 ? " is-split" : ""}`} data-pane-count={extras.length + 1}>
       <PaneHost
-        key={primary.id}
+        key={`${primary.id}:${theaterId ?? ""}`}
         descriptor={primary}
         instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
         params={primaryInstance?.params ?? EMPTY_PARAMS}
@@ -95,7 +100,7 @@ export const RailSurface = memo(function RailSurface({
       />
       {extras.map(({ instance, descriptor }) => (
         <PaneHost
-          key={instance.instanceId}
+          key={`${instance.instanceId}:${theaterId ?? ""}`}
           descriptor={descriptor}
           instanceId={instance.instanceId}
           params={instance.params}
@@ -154,6 +159,25 @@ function PaneHost({
   onLaunchOperation,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  const paneIndex = usePaneIndex();
+
+  // 요청받은 마운트가 확대면 확대 표면으로 보낸다. 스토어는 레일 열만 알고 있어서, 여기서
+  // 갈라 주지 않으면 확대 요청이 조용히 사라진다.
+  const handleOpen = useCallback((request: PaneOpenRequest) => {
+    const target = paneIndex.get(request.paneId);
+    const mount = request.mount ?? target?.mounts[0] ?? "rail";
+    if (mount === "expanded") {
+      surfaces?.open({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...request.params, paneId: request.paneId } });
+      return;
+    }
+    openPane(request);
+  }, [paneIndex, surfaces]);
+
+  // 남의 페인을 닫을 때도 그 페인의 keepAlive를 따른다. 자기를 닫을 때만 지켜 주면
+  // 형제가 닫는 순간 터미널과 초안이 사라진다.
+  const handleCloseOther = useCallback((paneId: string) => {
+    closePane(paneId, { keepAlive: paneIndex.get(paneId)?.keepAlive === true });
+  }, [paneIndex]);
 
   const handleClose = useCallback(() => {
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
@@ -190,8 +214,8 @@ function PaneHost({
     theme,
     onClose: handleClose,
     onReplaceParams: handleReplaceParams,
-    onOpen: openPane,
-    onCloseOther: closePaneById,
+    onOpen: handleOpen,
+    onCloseOther: handleCloseOther,
     ...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth }),
     legacySurfaces: surfaces,
     legacyLaunchOperation: onLaunchOperation,

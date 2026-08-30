@@ -8,6 +8,7 @@ const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], render
 
 const CORE_PANEL_FIXTURES = vi.hoisted(() => [] as Record<string, unknown>[]);
 const BINDING_CACHE = vi.hoisted(() => ({ value: null as unknown }));
+const PANE_INDEX_CACHE = vi.hoisted(() => ({ value: null as unknown }));
 
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: CORE_PANEL_FIXTURES,
@@ -77,6 +78,12 @@ vi.mock("../core/client/src/pane/pane-registry.js", () => ({
   // 프로덕션 useRailEntries는 useMemo라 참조가 안정적이다. 매 호출 새 배열을 주면
   // RailSurface의 memo가 깨져 본문이 다시 렌더되므로, 여기서도 한 번만 만든다.
   useRailEntries: () => (BINDING_CACHE.value ??= [...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding)),
+  // 표면이 마운트 라우팅과 형제 keepAlive를 이 색인으로 판단한다 — 같은 바인딩에서 파생시켜
+  // 두 목록이 어긋나지 않게 한다.
+  usePaneIndex: () => (PANE_INDEX_CACHE.value ??= new Map(
+    (BINDING_CACHE.value ??= [...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding))
+      .flatMap((binding: { panes: { id: string }[] }) => binding.panes.map((pane) => [pane.id, pane])),
+  )),
 }));
 
 const LEGACY_PANEL_FIXTURES: Record<string, unknown>[] = [
