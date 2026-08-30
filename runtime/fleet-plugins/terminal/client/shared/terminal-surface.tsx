@@ -807,12 +807,14 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
-     라이트(Whites)는 언제나 이쪽이다. 테마 극성 자체가 유리 게이트의 넷째 닫힘 조건이라
-     (theme.css), 라이트에서 --glass-backdrop-*는 설정과 무관하게 none이고
-     readLiquidGlassPaneActive()는 false다. 아래 LIGHT_TERMINAL_THEMES 조건은 그래서
-     제품 경로에서는 이미 참인 조건을 한 번 더 세우는 둘째 자물쇠다 — 남겨 둔다. 이 한 곳이
-     틀리면 밝은 바탕에서 allowTransparency가 켜져 획 잉크가 18.2% 사라지는데(dpr=2 실측),
-     그 비용에 비하면 조건 하나는 공짜다.
+   - 라이트(Whites) + 게이트 열림: 유리는 받되 **필드만** 불투명이다. 라이트 유리가 되살아나면서
+     (theme.css) 극성은 더 이상 게이트가 아니지만, 필드 하나는 여전히 투명해질 수 없다:
+     allowTransparency는 투명도 지원이 아니라 글리프 래스터 경로를 고르고, 켜면 밝은 바탕 위
+     어두운 잉크의 커버리지가 감마 미보정 합성으로 과소 표현되어 획 잉크가 18.2% 사라진다
+     (dpr=2 실측, 다크는 반대 부호로 +2.6%). 그래서 Whites의 --glass-on-tint-terminal은
+     유리 유효색의 **불투명 근사**이고, 아래 LIGHT_TERMINAL_THEMES 조건이 그 값을 그대로 통과시켜
+     필드·거터가 같은 불투명 값으로 만난다. 이제 이 조건은 둘째 자물쇠가 아니라 **유일한** 자물쇠다 —
+     지우면 라이트가 다크 경로(알파 0)로 빠져 그 18.2%를 바로 지불한다.
    xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
    생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
@@ -901,10 +903,11 @@ export function terminalFieldIsTranslucent(background: string): boolean {
   return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }
 
-/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 네 게이트(설정·@supports·
-   reduced-transparency·테마 극성)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
-   특히 극성은 여기서 다시 묻지 않는다: 라이트를 닫는 일은 CSS 게이트가 하고, 이 함수는
-   그 결과만 읽는다. JS에 극성 분기를 심으면 진실이 두 벌이 된다. */
+/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
+   reduced-transparency)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
+   프로브를 --glass-backdrop-strong로 잡는 이유가 여기 있다: 이 채널은 세 게이트에만 딸려 있고
+   테마별 재료 결정에는 딸려 있지 않다. 필드가 불투명한 라이트에서 -terminal 채널은 none이지만
+   유리 자체는 켜져 있으므로, -terminal을 프로브로 쓰면 라이트가 통째로 꺼진 것으로 오독된다. */
 export function readLiquidGlassPaneActive(): boolean {
   if (typeof document === "undefined") return false;
   const backdrop = getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-strong").trim();

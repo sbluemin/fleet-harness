@@ -20,7 +20,7 @@ import { isDesktopShell } from "../desktop-shell.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade, themePolarity } from "../store.js";
+import { setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import { buildRemoteEndpointPresentation, generateRemoteAutoPort, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
@@ -439,14 +439,7 @@ export function ThemeCard({
       if (!saved) setActiveTheme(previousTheme);
     });
   };
-  /* 라이트 테마는 유리를 받지 않는다(theme.css 게이트가 극성으로 제외한다). 그래서 이 줄은
-     저장된 선호가 아니라 **지금 화면에 실제로 실린 재질**을 말해야 한다 — 크롬이 불투명한데
-     손잡이만 켜져 있으면 화면과 컨트롤이 서로 다른 말을 한다. 켜진 채로 흐려진 손잡이는
-     이 저장소에서 이미 "꺼진 것으로 읽힌다"고 못박은 실패 양식이기도 하다(agent-cli 강도 사다리).
-     저장값 자체는 건드리지 않는다 — 쓰기는 toggleLiquidGlass 하나뿐이고, 다크로 돌아오면
-     사용자가 고른 값이 그대로 다시 선다. */
-  const lightTheme = themePolarity(activeTheme) === "light";
-  const liquidGlass = (state?.liquidGlass ?? true) && !lightTheme;
+  const liquidGlass = state?.liquidGlass ?? true;
   const savedPanelFade = state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT;
   // 끄는 동안의 값은 화면이 들고, 서버 값은 손을 뗄 때 따라온다. 저장 왕복마다 손잡이가
   // 서버 값으로 되튀면 연속 조작이 끊긴다.
@@ -524,12 +517,12 @@ export function ThemeCard({
               {/* 도움말은 줄마다 한 문단이다 — 두 번째 문단을 쌓지 않고 문장을 갈아 끼운다.
                   기본 문안은 "끄면 원래대로"라고 말하므로, 끌 수 없는 자리에 그대로 두면 거짓이 된다. */}
               <p className="global-settings-help">
-                {t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")}
+                {t("settings.theme.liquidGlassHelp")}
               </p>
             </div>
             <SettingsSwitch
               checked={liquidGlass}
-              disabled={saving || state === null || lightTheme}
+              disabled={saving || state === null}
               label={t("settings.theme.liquidGlass")}
               onChange={toggleLiquidGlass}
             />
