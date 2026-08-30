@@ -3013,7 +3013,7 @@ function createRecordingPty(): TerminalPtyHandle & { readonly writes: string[] }
     onData: () => ({ dispose: () => undefined }),
     onExit: () => ({ dispose: () => undefined }),
     write(data) {
-      this.writes.push(data);
+      this.writes.push(typeof data === "string" ? data : data.toString("utf8"));
     },
     resize: () => undefined,
     kill: () => undefined,
