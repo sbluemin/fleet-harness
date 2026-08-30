@@ -264,6 +264,18 @@ describe("Repository design grammar", () => {
     expect(blockOf(".repository-identity .repository-verb-cluster")).toContain("overflow: visible");
   });
 
+  // 확대 표면 슬롯 본문은 가로 flex다. 껍데기만 늘려 두고 화면 자신이 자리를 요구하지 않으면
+  // 두 열 격자가 내용 폭(약 200px) 안에서 접혀, 넓은 캔버스가 통째로 비어 보인다.
+  it("makes the repository screen claim the surface slot, not just its wrapper", () => {
+    const wrapper = blockOf(".repository-surface-body");
+    expect(wrapper).toContain("display: flex");
+    expect(wrapper).toContain("flex: 1");
+    expect(wrapper).toContain("min-width: 0");
+    const screen = blockOf(".repository-surface-body > .repository-unified");
+    expect(screen).toContain("flex: 1");
+    expect(screen).toContain("min-width: 0");
+  });
+
   it("keeps workspace section header buttons within the interaction grammar", () => {
     const sectionHead = blockOf(".repository-ws-section-head");
     expect(sectionHead).toContain("display: flex");

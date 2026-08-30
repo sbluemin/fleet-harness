@@ -1203,6 +1203,14 @@
   min-height: 0;
 }
 
+/* 화면 자신도 자리를 차지하겠다고 말해야 한다. 가로 flex의 자식은 기본이 `0 1 auto`라
+   내용 폭으로 쪼그라들고, 그러면 두 열 격자가 200px 안에서 접힌다 — 껍데기만 늘려 두면
+   그 안이 비어 있는 것으로 보인다. */
+.repository-surface-body > .repository-unified {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
 .repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); flex: none; }
