@@ -212,12 +212,9 @@ describe("agent CLI shared plugin store", () => {
       readonly hooks: Record<string, ReadonlyArray<{ readonly hooks: ReadonlyArray<{ readonly args: readonly string[] }> }>>;
     };
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks ?? [];
-    expect(userPromptSubmit.slice(0, 3).map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
-    expect(userPromptSubmit[3]?.args).toEqual([
-      "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
-      "remind",
-    ]);
-    expect(userPromptSubmit).toHaveLength(4);
+    expect(userPromptSubmit.map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
+    // 위임 라우팅은 delegation 스킬 description이 소유한다 — 매 턴 remind 주입은 렌더되지 않는다.
+    expect(JSON.stringify(hooksJson.hooks.UserPromptSubmit)).not.toContain("remind");
     expect(hooksJson.hooks.Stop?.[0]?.hooks.map((hook) => hook.args[2])).toEqual(["turn-end"]);
   });
 

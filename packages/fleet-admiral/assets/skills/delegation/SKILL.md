@@ -1,6 +1,6 @@
 ---
 name: delegation
-description: Decide whether research, review, or verification should leave the host, plan the smallest useful execution graph, and integrate returned evidence while keeping implementation on the host by default. Use for multi-step delegation, parallel agents, Workflow calls, or cross-run synthesis. Skip for a direct host-only task.
+description: Delegation and orchestration policy for Fleet gateway sessions. Use whenever you are about to call an agent (any Agent tool dispatch or subagent launch), use the dynamic Workflow tool, orchestrate parallel or multi-agent work, or delegate research, review, verification, or implementation to another model — invoke this skill first, before the Agent or Workflow call, to plan the smallest useful execution graph and read the live identity roster. Skip only when the host completes the work directly with no agent dispatch.
 ---
 
 # Delegation
