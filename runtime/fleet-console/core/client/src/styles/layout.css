@@ -367,53 +367,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   min-width: 0;
 }
 
+/* 밴드는 한 판이다 — 구 "사이드바 상단 캡"(전용 틴트 ::before·border-right·인셋 그림자·
+   is-collapsed 페인트 게이트)은 전면 해도 개편에서 원자적으로 퇴역했다. 사이드바가 부유
+   카드로 내려가 밴드 아래로 이어질 열 자체가 사라졌기 때문이다. 좌측은 이제 순수한 흐름
+   클러스터이고 재질은 밴드 루트 ::before(--glass-tint-band) 한 장이 전부 진다.
+   darwin 신호등 인셋(88px)은 캡 페인트가 아니라 window-policy 계약이라 그대로 남는다. */
 .command-band-left {
   grid-column: 1;
-  width: var(--command-band-left-width, 280px);
+  width: fit-content;
   gap: var(--space-1);
   padding-inline: var(--space-2);
-  border-right: 1px solid var(--surface-rim);
-  /* 사이드바 상단 캡 — 같은 크롬 표면(chrome 틴트 채널)을 ::before로 공유해야 한 열로 읽힌다. */
-  position: relative;
-  background: none;
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel);
-  transition: border-color 200ms ease;
-}
-
-.command-band-left::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: var(--glass-tint-chrome);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
-  pointer-events: none;
-  transition: background 200ms ease;
-}
-
-.command-band-left.is-collapsed {
-  border-color: transparent;
-  box-shadow: none;
-}
-
-/* 접힌 캡은 좌표만 유지하고 그리지 않는다. band tint를 다시 칠하거나 backdrop-filter를 남기면
-   280px 캡 끝이 모드 스위치 안을 가르는 재질 이음선으로 드러난다. */
-.command-band-left.is-collapsed::before {
-  display: none;
-}
-
-.command-band.is-utility .command-band-left {
-  width: fit-content;
-  border-right-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* Utility route에는 아래로 이어질 사이드바가 없다. band 루트가 이미 전체 Glass 면을 칠하므로
-   좌측 cap을 다시 그리면 같은 반투명 tint가 겹쳐 별도 판으로 보인다. 좌표만 남기고 paint는 끈다. */
-.command-band.is-utility .command-band-left::before {
-  display: none;
 }
 
 .command-band-brand {
@@ -638,23 +601,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   color: var(--brass-ink);
 }
 
-/* 맵 컨트롤 클러스터(보기 초기화·전체 맞춤·Formation·선별 처리)는 한 컨테이너의 플로우 형제다 —
-   개별 절대 위치 + 매직 오프셋(116px)은 버튼 추가 시 겹침으로 깨졌다(fit-all 도입 당시 선별 처리 아이콘 덮임).
-   앵커는 접힘 여부에 따라 갈린다: 펼침 = 사이드바 경계선 옆, 접힘 = 좌측 컨트롤군 끝(도킹) —
-   접힌 사이드바의 옛 폭에 남겨두면 아무 경계도 없는 밴드 한가운데에 떠 보인다. */
+/* 맵 컨트롤 클러스터(모드 스위치 + 모드 도구)는 좌측 클러스터의 플로우 형제로 합류했다 —
+   구 절대 배치 + 사이드바-가장자리 추종 앵커는 밴드 좌측이 사이드바의 일부라는 캡 계약의
+   산물이었고, 캡 퇴역과 함께 고정 흐름 위치로 돌아온다. 개별 절대 위치 + 매직 오프셋
+   금지(116px 사고)와 "한 컨테이너의 플로우 형제" 계약은 그대로 유지한다. */
 .command-band-map-controls {
-  position: absolute;
-  left: calc(var(--command-band-map-anchor, var(--command-band-left-width, 280px)) + var(--space-2));
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* 글라이드는 접힘/펼침 앵커 전환 전용 — 드래그 리사이즈는 아래 :has 게이트가 즉시 추종으로 끊는다. */
-  transition: left 200ms ease;
+  margin-inline-start: var(--space-2);
 }
-
-body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }
 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
    모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
@@ -1066,30 +1022,36 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   padding-inline-start: 88px;
 }
 
+/* ── 전면 해도(full-bleed chart) ─────────────────────────────────────────────
+   구 3열 그리드(사이드바 | 캔버스 | 레일)는 퇴역했다 — 캔버스가 body 전면 레이어가 되고
+   사이드바·레일은 그 위에 뜬 유리 카드다. body가 컨테이닝 블록이어야 한다: 없으면 absolute
+   inset:0 캔버스가 position:relative인 .console-shell에 잡혀 커맨드 밴드(44px)까지 덮고,
+   모드 커튼이 밴드 클릭을 1950ms 동안 삼킨다(사전 감사 확증). */
 .console-body.is-canvas {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  position: relative;
   overflow: hidden;
 }
 
-/* 저장 거절 배너는 사이드바·스테이지·레일 위에 한 줄로 깐다 — 칸을 안 주면
-   암시적 행에 끼어 세 열이 한 칸씩 밀린다. */
-.console-body.is-canvas > .operations-mutation-error {
-  grid-column: 1 / -1;
-}
-
-/* 명시적 열 고정 — 접힌 크롬이 display:none으로 슬롯을 비워도(auto-placement 시프트)
-   캔버스가 1열로, 레일이 1fr로 밀리지 않게 한다. */
-.console-body.is-canvas > .operations-side-bar {
-  grid-column: 1;
-}
-
+/* 전면 스테이지 — 명시적 z-index: 0으로 스택 문맥을 캔버스 쪽에 열어, DOM상 앞 형제인
+   사이드바가 z-index만으로 캔버스 위에 서게 한다(캔버스는 contain:paint 스택 컨텍스트라
+   z-auto면 뒤 형제인 자신이 앞 형제 사이드바를 덮는다 — 사전 감사 blocker). */
 .console-body.is-canvas > .operations-center-stage {
-  grid-column: 2;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
-.console-body.is-canvas > .right-rail {
-  grid-column: 3;
+/* 저장 거절 배너 — 그리드 행이 아니라 부유 크롬 위의 오버레이다. 흐름 행으로 남기면 전면
+   캔버스의 높이를 줄이지 못한 채 첫 줄만 가리고, 재시도 버튼의 히트가 캔버스에 밀린다. */
+.console-body.is-canvas > .operations-mutation-error {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(560px, calc(100% - 24px));
+  border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  border-radius: var(--radius-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {

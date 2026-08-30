@@ -76,17 +76,18 @@ export function modeSlotGeometryFor(
 }
 
 export function triageStageGeometryFor(
-  canvasSize: { readonly width: number; readonly height: number },
+  arena: ModeGeometryRect,
   zIndex: number,
   slotIndex = 0,
   slotCount = 1,
 ): OperationGeometry {
-  // 무대는 Tactical 슬롯과 같은 18px 인셋이다. 하단 대기 레일이 있던 자리(옛 height-84)는
-  // 레일 제거 이후 비워 두지 않는다 — 사이드바 '대기'가 그 순서를 쥐고 있다.
+  // 무대는 Tactical 슬롯과 같은 18px 인셋이다. 기준 상자는 캔버스 박스가 아니라 아레나
+  // (부유 크롬 인셋을 뺀 유효 뷰포트)다 — 전면 캔버스에서 박스 기준 18px는 무대를 부유
+  // 사이드바·레일 밑으로 넣는다. 18px은 크롬 폭의 대체가 아니라 모드 프레임 여백이다.
   return modeSlotGeometryFor({
-    x: 18,
-    y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT,
-    width: Math.max(320, canvasSize.width - 36),
-    height: Math.max(240, canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT),
+    x: arena.x + 18,
+    y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT,
+    width: Math.max(320, arena.width - 36),
+    height: Math.max(240, arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT),
   }, slotIndex, slotCount, 8, zIndex);
 }

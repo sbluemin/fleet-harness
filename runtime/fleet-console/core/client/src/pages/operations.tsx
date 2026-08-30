@@ -11,7 +11,7 @@ import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-op
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../shortcuts.js";
 import { closeOperationCompletely, minimizeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../theater.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -24,7 +24,8 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { TriageSideBar } from "../sidebar/triage-side-bar.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
-import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { toggleSideBarStatusAxis, useSideBarState } from "../sidebar/operations-side-bar-store.js";
+import { useRailOccupiedPx } from "../rail/rail-store.js";
 import { ExpandedSurfaceLayer } from "../expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
@@ -38,6 +39,9 @@ import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
+// 부유 크롬 카드의 가장자리 인셋(12px) + 카드와 아레나 사이 숨(12px). 카드 자신의 폭에 더해
+// 아레나 인셋이 된다 — CSS의 카드 인셋(var(--space-3))과 한 값이어야 한다.
+const CHROME_FLOAT_GUTTER = 24;
 // 사용자 close와 PTY 자가종료가 같은 operation의 close path를 중복 실행하는 것을 막는다.
 const closingOperationIds = new Set<string>();
 
@@ -66,6 +70,22 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly returnFocus?: HTMLElement | null;
   } | null>(null);
   const triageActive = useTriageActive();
+
+  // ── 아레나 인셋 ─────────────────────────────────────────────────────────────
+  // 전면 캔버스 위 부유 크롬(사이드바·레일 카드)의 점유 폭. 크롬 구성의 소유자인 이 페이지가
+  // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
+  // Cruise는 인셋을 알고 Tactical은 모르는 감사 실패 양식이 재발한다.
+  const sideBar = useSideBarState();
+  const railOccupiedPx = useRailOccupiedPx();
+  const arenaInsets: CanvasArenaInsets = useMemo(() => ({
+    left: sideBar.collapsed ? 0 : sideBar.width + CHROME_FLOAT_GUTTER,
+    top: 0,
+    right: railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0,
+    bottom: 0,
+  }), [railOccupiedPx, sideBar.collapsed, sideBar.width]);
+  useEffect(() => {
+    setCanvasArenaInsets(arenaInsets);
+  }, [arenaInsets]);
 
   const operationOrder = useMemo(
     () => sortedTheaterOperations(state).map((operation) => operation.id),
@@ -763,6 +783,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       <div className="operations-center-stage" ref={bodyRef}>
         <OperationsCanvas
           state={state}
+          arenaInsets={arenaInsets}
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
@@ -906,10 +927,16 @@ function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] 
     .sort(compareOperationCreatedAt);
 }
 
+// 포커스·발사 중앙의 기준 창은 아레나다 — 전면 스테이지 rect를 그대로 쓰면 대상이
+// 부유 크롬 밑 중앙에 앉는다. 스토어의 인셋을 발화 시점에 읽어 같은 원천을 공유한다.
 function viewportSizeFor(element: HTMLElement | null): { readonly width: number; readonly height: number } | null {
   if (!element) return null;
   const rect = element.getBoundingClientRect();
-  return { width: rect.width, height: rect.height };
+  const insets = getCanvasArenaInsets();
+  return {
+    width: Math.max(0, rect.width - insets.left - insets.right),
+    height: Math.max(0, rect.height - insets.top - insets.bottom),
+  };
 }
 
 function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
@@ -918,8 +945,10 @@ function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
 
 function canvasCenterPoint(element: HTMLElement | null): CanvasPoint {
   const snapshot = getCanvasSnapshot();
-  const width = element?.clientWidth ?? 800;
-  const height = element?.clientHeight ?? 600;
+  const insets = getCanvasArenaInsets();
+  const width = Math.max(0, (element?.clientWidth ?? 800) - insets.left - insets.right);
+  const height = Math.max(0, (element?.clientHeight ?? 600) - insets.top - insets.bottom);
+  // 저장 viewport는 아레나-상대 좌표이므로 아레나-local 중앙점을 그대로 환산하면 된다.
   return screenToCanvas({ x: width / 2, y: height / 2 }, snapshot.viewport);
 }
 

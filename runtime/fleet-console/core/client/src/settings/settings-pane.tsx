@@ -14,9 +14,7 @@ import {
   RAIL_OVERLAY_ALPHA_MAX,
   RAIL_OVERLAY_ALPHA_MIN,
   setRailOverlayAlpha,
-  toggleRailPanelBehavior,
   useRailOverlayAlpha,
-  useRailPanelBehavior,
 } from "../rail/rail-store.js";
 import type { RemoteAccessState } from "../types.js";
 import {
@@ -29,7 +27,6 @@ import {
   SETTINGS_GROUP_LABEL_KEYS,
   SETTINGS_GROUP_ORDER,
   SettingsScope,
-  SettingsSwitch,
   type PluginSettingsNavItem,
   type SettingsSectionId,
 } from "./sections.js";
@@ -194,7 +191,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
       setQuery("");
       return;
     }
-    closeRailPanel();
+    closeRailPanel(SETTINGS_RAIL_ENTRY_ID);
     document.querySelector<HTMLElement>(".right-rail-settings-btn")?.focus();
   };
   const matches = trimmed === "" ? null : chips.filter((chip) => chip.haystack.includes(trimmed));
@@ -298,53 +295,39 @@ function RemoteSummaryCard({ remote, onManage }: {
 /**
  * 레일 표면 취향 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 터미널 렌더러가 그렇듯
  * 브라우저-로컬도 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라 하는 일이다.
+ * 전면 해도 개편으로 레일은 항상 해도 위에 뜨는 카드가 되어 push/overlay 스위치는 퇴역했고,
+ * 카드 불투명도만 남는다.
  */
 function RailPreferencesCard() {
   const t = useT();
-  const behavior = useRailPanelBehavior();
   const overlayAlpha = useRailOverlayAlpha();
-  const floating = behavior === "overlay";
   return (
     <section className="global-settings-card" aria-label={t("settings.rail.title")}>
       <p className="global-settings-card-title">{t("settings.rail.title")}</p>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
-            {t("rail.chrome.floatLabel")}
+            {t("rail.chrome.opacityAria")}
             <SettingsScope kind="live" />
           </p>
-          <p className="global-settings-help">{t("settings.rail.floatHelp")}</p>
         </div>
-        <SettingsSwitch
-          checked={floating}
-          disabled={false}
-          label={t("rail.chrome.floatLabel")}
-          onChange={toggleRailPanelBehavior}
-        />
+        <div className="settings-slider-field">
+          <input
+            className="fleet-slider settings-slider"
+            type="range"
+            min={RAIL_OVERLAY_ALPHA_MIN}
+            max={RAIL_OVERLAY_ALPHA_MAX}
+            step={1}
+            value={overlayAlpha}
+            aria-label={t("rail.chrome.opacityAria")}
+            aria-valuetext={`${overlayAlpha}%`}
+            style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+            onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
+            onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
+          />
+          <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
+        </div>
       </div>
-      {floating ? (
-        <div className="global-settings-row">
-          <div className="global-settings-row-text">
-            <p className="global-settings-resp-title">{t("rail.chrome.opacityAria")}</p>
-          </div>
-          <div className="settings-slider-field">
-            <input
-              className="fleet-slider settings-slider"
-              type="range"
-              min={RAIL_OVERLAY_ALPHA_MIN}
-              max={RAIL_OVERLAY_ALPHA_MAX}
-              step={1}
-              value={overlayAlpha}
-              aria-label={t("rail.chrome.opacityAria")}
-              aria-valuetext={`${overlayAlpha}%`}
-              style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
-              onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
-              onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
-            />
-            <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

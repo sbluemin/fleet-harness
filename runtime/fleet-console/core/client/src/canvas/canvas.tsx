@@ -20,7 +20,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../operation-activ
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -36,6 +36,8 @@ import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, ge
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
+  /** 전면 캔버스 위 부유 크롬(사이드바·레일 카드)이 가리는 가장자리 — 아레나 계산의 원료. */
+  readonly arenaInsets: CanvasArenaInsets;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
@@ -90,6 +92,7 @@ const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 
 export function OperationsCanvas({
   state,
+  arenaInsets,
   catalog,
   canLaunch,
   renderKindIcon,
@@ -237,13 +240,35 @@ export function OperationsCanvas({
     enforceStationKeeping();
   }, [focusLayerActive, formationView, triageActive]);
 
+  // ── 아레나 좌표계 ──────────────────────────────────────────────────────────
+  // 전면 캔버스에서 저장된 viewport/geometry는 아레나-상대 좌표를 유지한다(무마이그레이션 계약).
+  // 화면 변환에는 아레나 원점을 더한 screenViewport를 쓰고, 제스처가 돌려준 값에서는 도로 빼서
+  // 스토어에 넣는다. 사이드바 접힘·레일 개폐로 아레나 원점이 움직이면 콘텐츠가 그에 따라
+  // 흐른다 — 도킹 시절 스테이지 원점이 움직이던 것과 같은 문법이다.
+  const arena = {
+    x: arenaInsets.left,
+    y: arenaInsets.top,
+    width: Math.max(0, canvasSize.width - arenaInsets.left - arenaInsets.right),
+    height: Math.max(0, canvasSize.height - arenaInsets.top - arenaInsets.bottom),
+  };
+  const screenViewport = {
+    x: canvas.viewport.x + arena.x,
+    y: canvas.viewport.y + arena.y,
+    zoom: canvas.viewport.zoom,
+  };
+  const storedViewportFromScreen = useCallback((viewport: { readonly x: number; readonly y: number; readonly zoom: number }) => ({
+    x: viewport.x - arenaInsets.left,
+    y: viewport.y - arenaInsets.top,
+    zoom: viewport.zoom,
+  }), [arenaInsets.left, arenaInsets.top]);
+
   const interaction = useCanvasInteraction({
-    viewport: canvas.viewport,
+    viewport: screenViewport,
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
     // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
     disabled: disabled || formationView || companionOperationId !== null || triageActive,
-    onViewportChange: setViewport,
-    onZoom: animateViewportTo,
+    onViewportChange: (viewport) => setViewport(storedViewportFromScreen(viewport)),
+    onZoom: (viewport) => animateViewportTo(storedViewportFromScreen(viewport)),
     onCreate: (rect) => {
       setContextMenu(null);
       if (state.activeTheaterId && canLaunch) {
@@ -321,7 +346,8 @@ export function OperationsCanvas({
     const rect = canvasRef.current?.getBoundingClientRect();
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
-    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
+    // 월드 환산은 아레나 원점을 더한 screenViewport로 — 저장 좌표는 아레나-상대다.
+    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, screenViewport) });
     onRefreshCatalog?.();
   };
 
@@ -338,8 +364,12 @@ export function OperationsCanvas({
       // 실행 좌표는 그 Theater의 world 좌표여야 한다 — canvasPointToGeometry는 받은 점을 world로
       // 취급한다. War Room은 전 Theater를 한 판에 얹으므로 화면-local을 그대로 넘기면 그 Theater를
       // 다시 열었을 때 패널이 보이는 자리 밖에 놓인다. 로드된 Theater가 아닐 수 있으니 저장된
-      // 스냅샷의 뷰포트로 환산한다.
-      canvasPoint: screenToCanvas(local, getTheaterCanvasSnapshot(theaterId).viewport),
+      // 스냅샷의 뷰포트로 환산한다. 저장 viewport는 아레나-상대이므로 아레나 원점을 더해 환산한다.
+      canvasPoint: screenToCanvas(local, {
+        x: getTheaterCanvasSnapshot(theaterId).viewport.x + arena.x,
+        y: getTheaterCanvasSnapshot(theaterId).viewport.y + arena.y,
+        zoom: getTheaterCanvasSnapshot(theaterId).viewport.zoom,
+      }),
       theaterId,
     });
     onRefreshCatalog?.();
@@ -743,15 +773,17 @@ export function OperationsCanvas({
   const formationCellCount = formationLayout === "grid"
     ? completeFormationGridCellCount(formationOperationIds.length)
     : formationOperationIds.length;
+  // Tactical 슬롯·컴패니언 분할의 기준 상자는 아레나다 — 18px는 크롬 폭이 아니라
+  // 모드 프레임 여백이므로 아레나 위에 얹는다(감사 불변식: 18/32는 safe-area에 가산).
   const formationSlotArea = {
-    x: 18,
-    y: 18 + TITLEBAR_OUTSET_PX,
-    width: Math.max(0, canvasSize.width - 36),
-    height: Math.max(0, canvasSize.height - 36 - TITLEBAR_OUTSET_PX),
+    x: arena.x + 18,
+    y: arena.y + 18 + TITLEBAR_OUTSET_PX,
+    width: Math.max(0, arena.width - 36),
+    height: Math.max(0, arena.height - 36 - TITLEBAR_OUTSET_PX),
   };
   const allFormationSlots = formationView
     ? calculateGridSlots(
-        { x: 0, y: TITLEBAR_OUTSET_PX, width: canvasSize.width, height: canvasSize.height - TITLEBAR_OUTSET_PX },
+        { x: arena.x, y: arena.y + TITLEBAR_OUTSET_PX, width: arena.width, height: arena.height - TITLEBAR_OUTSET_PX },
         formationCellCount,
         undefined,
         undefined,
@@ -831,15 +863,24 @@ export function OperationsCanvas({
       onWheel={interaction.onWheel}
       onContextMenu={handleContextMenu}
       ref={canvasRef}
+      style={{
+        // 아레나 인셋을 CSS 채널로 노출한다 — 모드 프레임·덱·빈 상태·미니맵이 부유 크롬을
+        // 피해 앉는 단일 원천이다(감사 계약: 주입구 하나).
+        "--arena-left": `${arenaInsets.left}px`,
+        "--arena-right": `${arenaInsets.right}px`,
+        "--arena-top": `${arenaInsets.top}px`,
+        "--arena-bottom": `${arenaInsets.bottom}px`,
+      } as CSSProperties}
     >
-      <CanvasGrid viewport={canvas.viewport} />
+      <CanvasGrid viewport={screenViewport} />
       <div
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
           // will-change 합성 레이어의 서브픽셀 오프셋 리샘플(글자 번짐)을 제거한다.
+          // 월드는 아레나 원점에 앵커된다 — 저장 좌표를 옮기지 않고 전면 캔버스를 세우는 계약.
           transform: panelMaximized || panelCompanion || formationView || triageActive
             ? "none"
-            : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
+            : `translate(${Math.round(screenViewport.x)}px, ${Math.round(screenViewport.y)}px) scale(${screenViewport.zoom})`,
         }}
         className="operations-canvas-world"
       >
@@ -912,18 +953,18 @@ export function OperationsCanvas({
                   companionOpen: panelCompanion !== null,
                 });
           const frameGeometry = operationTriageStage
-            ? triageStageGeometryFor(canvasSize, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
+            ? triageStageGeometryFor(arena, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
             : operationMaximized
-            ? maximizedGeometryFor(canvasSize, topPanelZIndex)
+            ? maximizedGeometryFor(arena, topPanelZIndex)
             : operationCompanion
             ? formationView
               ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
-              : companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
+              : companionGeometryFor(arena, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot && !deckSlot
-            && canvas.viewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
+            && screenViewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
             unseen: idleArrivalIds.has(operation.id),
@@ -952,10 +993,10 @@ export function OperationsCanvas({
             companions: operationCompanion ? visibleCompanionPanels : [],
             companionGeometries: operationCompanion
               ? visibleCompanionPanels.map((_, index) => triageActive
-                  ? triageStageGeometryFor(canvasSize, topPanelZIndex, index + 1, companionSlotCount)
+                  ? triageStageGeometryFor(arena, topPanelZIndex, index + 1, companionSlotCount)
                   : formationView
                     ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
-                    : companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex))
+                    : companionGeometryFor(arena, index + 1, companionSlotCount, topPanelZIndex))
               : [],
             hiddenCompanionPanelIds: operationCompanion ? hiddenCompanionPanelIds : [],
             formation: formationView || triageActive,
@@ -1112,12 +1153,14 @@ export function OperationsCanvas({
           onNewOperation={requestOperationLaunchMenu}
         />
       ) : null}
-      {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={canvas.viewport} /> : null}
+      {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={screenViewport} /> : null}
       {contextMenu ? (
         <CanvasContextMenu
           key={`${contextMenu.anchor.x}:${contextMenu.anchor.y}`}
           anchor={contextMenu.anchor}
-          viewportBounds={viewportBoundsFor(canvasRef.current)}
+          // 우/하단 클램프 경계에서 부유 크롬 점유 폭을 빼 메뉴가 카드 밑으로 파고들지 않게 한다.
+          // 좌측은 커서가 크롬 위에서는 캔버스에 닿지 않으므로 별도 하한이 필요 없다.
+          viewportBounds={viewportBoundsFor(canvasRef.current, arenaInsets)}
           placement="cursor"
           catalog={catalog}
           // 실행 가부는 모드가 아니라 Theater가 정한다 — 사이드바와 좌하단 런처는 어느 모드에서도
@@ -1142,10 +1185,12 @@ export function OperationsCanvas({
           return color ? [[operation.id, color] as const] : [];
         }))}
         viewport={canvas.viewport}
-        canvasSize={canvasSize}
+        // 렌즈와 점프의 기준 창은 아레나다 — 캔버스 박스로 재면 크롬에 덮인 영역을
+        // "보이는 창"으로 치고, 점프가 대상을 부유 카드 밑 중앙에 앉힌다.
+        canvasSize={{ width: arena.width, height: arena.height }}
         onJump={(center) => setViewport({
-          x: canvasSize.width / 2 - center.x * canvas.viewport.zoom,
-          y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
+          x: arena.width / 2 - center.x * canvas.viewport.zoom,
+          y: arena.height / 2 - center.y * canvas.viewport.zoom,
           zoom: canvas.viewport.zoom,
         })}
       />
@@ -1153,10 +1198,13 @@ export function OperationsCanvas({
   );
 }
 
-function viewportBoundsFor(element: HTMLElement | null): { readonly width: number; readonly height: number } | undefined {
+function viewportBoundsFor(element: HTMLElement | null, arenaInsets?: CanvasArenaInsets): { readonly width: number; readonly height: number } | undefined {
   if (!element) return undefined;
   const rect = element.getBoundingClientRect();
-  return { width: rect.width, height: rect.height };
+  return {
+    width: rect.width - (arenaInsets?.right ?? 0),
+    height: rect.height - (arenaInsets?.bottom ?? 0),
+  };
 }
 
 function rectToGeometry(rect: CanvasRect): OperationGeometry {
@@ -1167,29 +1215,30 @@ function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
   return operation.geometry ?? { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
 }
 
-// 최대화 패널은 world transform이 none인 상태에서 렌더되므로 화면 좌표(0,0) 기준 캔버스 풀사이즈로 배치한다.
-// viewport에 의존하지 않아 현재 줌/팬과 무관하게 항상 net scale 1로 최대화된다.
-function maximizedGeometryFor(canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
+// 최대화 패널은 world transform이 none인 상태에서 렌더되므로 화면 좌표 기준 아레나 풀사이즈로 배치한다.
+// viewport에 의존하지 않아 현재 줌/팬과 무관하게 항상 net scale 1로 최대화된다. 기준은 캔버스
+// 박스가 아니라 아레나 — 전면 캔버스에서 박스 가장자리 채움은 부유 크롬 밑 채움이 된다.
+function maximizedGeometryFor(arena: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
   return {
-    x: 0,
-    y: TITLEBAR_OUTSET_PX,
-    width: Math.max(320, canvasSize.width),
-    height: Math.max(240, canvasSize.height - TITLEBAR_OUTSET_PX),
+    x: arena.x,
+    y: arena.y + TITLEBAR_OUTSET_PX,
+    width: Math.max(320, arena.width),
+    height: Math.max(240, arena.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
 }
 
 // Companion layout은 world transform이 none인 전용 화면 레이아웃이다. Operation과 companion panel이
 // 동일한 슬롯 폭을 사용하므로 Map의 geometry/viewport를 변경하지 않고 EXIT 시 원상 복원된다.
-function companionGeometryFor(canvasSize: { readonly width: number; readonly height: number }, slotIndex: number, slotCount: number, zIndex: number): OperationGeometry {
+function companionGeometryFor(arena: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, slotIndex: number, slotCount: number, zIndex: number): OperationGeometry {
   const count = Math.max(1, slotCount);
   const gap = 8;
-  const width = Math.max(0, (canvasSize.width - gap * (count - 1)) / count);
+  const width = Math.max(0, (arena.width - gap * (count - 1)) / count);
   return {
-    x: slotIndex * (width + gap),
-    y: TITLEBAR_OUTSET_PX,
+    x: arena.x + slotIndex * (width + gap),
+    y: arena.y + TITLEBAR_OUTSET_PX,
     width,
-    height: Math.max(0, canvasSize.height - TITLEBAR_OUTSET_PX),
+    height: Math.max(0, arena.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
 }

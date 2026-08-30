@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin } from "../sdk/operations/types.js";
 
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandOperationAttribute, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMenuClampedLeft, commandBandOperationAttribute, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
@@ -139,28 +139,18 @@ describe("Command Band menu viewport clamp", () => {
 });
 
 describe("Command Band center visibility measurements", () => {
-  it("uses the floor gutter while map controls are unmeasured or narrower than the floor", () => {
-    expect(commandBandCenterGutter(0, 0)).toBe(44);
-    expect(commandBandCenterGutter(0, 1)).toBe(44);
+  it("uses the floor gutter while the left cluster is unmeasured", () => {
+    // 전면 해도 개편: 맵 컨트롤은 좌측 클러스터의 플로우 형제라 하한의 원료는 클러스터 콘텐츠 끝 하나다.
+    expect(commandBandCenterGutter(0)).toBe(44);
+    expect(commandBandCenterGutter(-1)).toBe(44);
   });
 
-  it("derives the gutter from the map controls' viewport edge", () => {
-    expect(commandBandCenterGutter(0, 163)).toBe(8 + 163 + 12);
-    // 펼친 사이드바 경계도 viewport 좌표 그대로 포함한다 — 브레드크럼 중심은 Console 중앙이다.
-    expect(commandBandCenterGutter(280, 163)).toBe(280 + 8 + 163 + 12);
-    // 접힘 시에는 좌측 컨트롤군 끝으로 도킹한 앵커가 같은 좌표계에서 하한을 정한다.
-    expect(commandBandCenterGutter(185, 163)).toBe(185 + 8 + 163 + 12);
-  });
-
-  it("docks the map controls to the measured left-cluster end only while collapsed", () => {
-    // 펼침: 앵커 = 사이드바 폭(경계선 옆) — 기존 문법 그대로.
-    expect(commandBandMapControlsAnchor(false, 280, 183)).toBe(280);
-    // 접힘: 앵커 = 콘텐츠 끝. CSS 인셋(8)이 펼침 상태와 같은 단일 간격을 만든다.
-    expect(commandBandMapControlsAnchor(true, 280, 183)).toBe(183);
-    // 사이드바를 넓혀도 접힘 앵커는 사이드바 폭과 무관하다 — 넓힌-뒤-접기 부유가 소멸한다.
-    expect(commandBandMapControlsAnchor(true, 460, 183)).toBe(183);
-    // 미측정(0 이하) 폴백: 기존 사이드바 폭 앵커를 유지해 첫 페인트가 흔들리지 않는다.
-    expect(commandBandMapControlsAnchor(true, 280, 0)).toBe(280);
+  it("derives the gutter from the measured left-cluster content end", () => {
+    expect(commandBandCenterGutter(163)).toBe(163 + 12);
+    // 사이드바 폭은 하한과 무관하다 — 부유 카드로 내려간 사이드바는 밴드 좌표계의 일부가 아니다.
+    expect(commandBandCenterGutter(320)).toBe(320 + 12);
+    // 클러스터가 하한(44)보다 좁아도 바닥은 유지된다.
+    expect(commandBandCenterGutter(20)).toBe(44);
   });
 
   it("keeps the center visible while the track is unmeasured", () => {

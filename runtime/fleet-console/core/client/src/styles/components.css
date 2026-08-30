@@ -3317,9 +3317,10 @@
      자체를 만들지 않아 그 경로를 원천에서 닫는다. */
   overflow: clip;
   contain: paint;
-  border: 1px solid var(--surface-rim);
-  border-left-color: transparent;
-  border-radius: var(--radius-md);
+  /* 전면 해도 — 캔버스는 body 전면 지면이라 열 카드 시절의 이음 문법(투명 좌측 보더·radius-md)을
+     걷었다. 남기면 부유 크롬 아래에서 3변 라운드 카드 유령이 보인다(사전 감사 missed risk). */
+  border: none;
+  border-radius: 0;
   background: var(--canvas-abyss);
   box-shadow: none;
   touch-action: none;
@@ -3433,7 +3434,8 @@
 
 .canvas-mode-frame {
   position: absolute;
-  inset: 10px;
+  /* 아레나 인셋(부유 크롬 점유) 위에 10px — 브래킷은 크롬이 아니라 유효 아레나의 경계다. */
+  inset: calc(var(--arena-top, 0px) + 10px) calc(var(--arena-right, 0px) + 10px) calc(var(--arena-bottom, 0px) + 10px) calc(var(--arena-left, 0px) + 10px);
   z-index: 76;
   pointer-events: none;
   border: 1px solid color-mix(in oklch, var(--brass) 16%, transparent);
@@ -3618,7 +3620,9 @@
    한 행의 수용량을 깎았다. */
 .canvas-triage-deck {
   position: absolute;
-  inset: 26px;
+  /* 아레나 인셋 위에 26px — 전면 캔버스에서 박스 기준 26px는 첫 열 칸·밴드 헤드·지도 점을
+     부유 사이드바 카드 밑에 넣는다(사전 감사 blocker). */
+  inset: calc(var(--arena-top, 0px) + 26px) calc(var(--arena-right, 0px) + 26px) calc(var(--arena-bottom, 0px) + 26px) calc(var(--arena-left, 0px) + 26px);
   z-index: 80;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -4607,8 +4611,9 @@
    brass는 위치 채널(뷰포트 렌즈·hover/focus)에서만 발화한다. */
 .canvas-minimap {
   position: absolute;
-  right: var(--space-4);
-  bottom: var(--space-4);
+  /* 아레나 안 도킹 — 레일 카드가 점유한 폭(--arena-right)을 피해서 선다(사전 감사 high). */
+  right: calc(var(--arena-right, 0px) + var(--space-4));
+  bottom: calc(var(--arena-bottom, 0px) + var(--space-4));
   z-index: 14;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -4719,8 +4724,8 @@
 /* 접힌 Map — 우하단 단일 Map 아이콘 버튼. 휴지 상태는 중립, brass는 hover/focus에서만. */
 .canvas-minimap-fab {
   position: absolute;
-  right: var(--space-4);
-  bottom: var(--space-4);
+  right: calc(var(--arena-right, 0px) + var(--space-4));
+  bottom: calc(var(--arena-bottom, 0px) + var(--space-4));
   z-index: 14;
   display: grid;
   place-items: center;
@@ -5265,26 +5270,30 @@ body[data-side-bar-animating="true"] .canvas-operation {
    폭은 --side-bar-width CSS 변수(인라인 style)로 외부 제어, 리사이즈 핸들로 연속 조정.
 ═══════════════════════════════════════════════════════════════════════════════════ */
 
+/* 부유 유리 카드 — 전면 해도 개편으로 사이드바는 그리드 열이 아니라 캔버스 위에 뜬 카드다.
+   z는 레일과 같은 --z-rail을 공유해 전면 캔버스(z:0 스택 컨텍스트) 위에 선다.
+   유리는 자식 없는 ::before가 진다 — 루트 backdrop-filter는 containing block을 만들어
+   안쪽 앵커 팝업을 가둔다(.command-band::before 주석 참조). 구 "밴드 좌측 캡" 접합 규칙
+   (border-top 제거·상단 라운드 0)은 캡 퇴역과 함께 원자적으로 걷혔다 — 카드는 네 변 모두
+   자기 마감을 가진다. */
 .operations-side-bar {
-  position: relative;
+  position: absolute;
+  top: var(--space-3);
+  bottom: var(--space-3);
+  left: var(--space-3);
+  /* rail.css가 여는 부유 크롬 공용 층 — 시트 로드 순서와 무관하게 같은 층에 서도록 폴백을 명시한다. */
+  z-index: var(--z-rail, 10);
   display: flex;
   flex-direction: column;
   width: var(--side-bar-width, 56px);
   min-width: 0;
-  height: 100%;
   overflow: hidden;
-  /* 크롬 열은 --surface-chrome — 라이트에서 종이(카드·터미널)보다 어두워 시선을 작업면에 양보한다.
-     유리는 자식 없는 ::before가 진다 — 루트 backdrop-filter는 containing block을 만들어
-     안쪽 앵커 팝업을 가둔다(.command-band::before 주석 참조). */
   background: none;
   border: 1px solid var(--surface-rim);
-  /* 좌측 가장자리·하단 Global Navigation에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
-  border-left: none;
-  border-bottom: none;
-  border-radius: 0 var(--radius-md) 0 0;
+  border-radius: var(--radius-md);
   /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다.
      --glass-bevel은 그 반대편(아래 모서리)의 그늘로, 라이트에서만 값을 갖는다. */
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-soft);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
@@ -5294,24 +5303,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: var(--glass-tint-chrome);
+  /* 유리 게이트가 닫히면(--glass-backdrop-soft: none) 틴트가 반투명 채널 값 그대로 남아
+     전면 캔버스의 격자가 60% 비쳐 보인다 — 불투명 언더레이를 최하층에 깔아 게이트 닫힘이
+     곧 불투명 폴백이 되게 한다(레일 오버레이 슬롯과 같은 판독성 계약). */
+  background:
+    linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),
+    var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-soft);
   backdrop-filter: var(--glass-backdrop-soft);
   pointer-events: none;
-}
-
-/* 펼친 상태에서는 상단 크롬 좌측 블록(.command-band-left)이 같은 폭·표면·우측 경계선으로
-   이 열의 상단 캡이 된다 — 부유 카드의 상단 테두리와 안쪽 라운드를 거기서 다시 그리면
-   한 열 한가운데에 이중 hairline이 깔리고 우측 경계선이 코너만큼 끊긴다.
-   접으면 상단 캡이 밴드 표면으로 물러나므로(.command-band-left.is-collapsed) 카드 문법을 유지한다.
-   자동 은닉 풀스크린은 밴드가 fixed로 흐름에서 빠지므로 캡이 아예 없다 — 그때는 사이드바가
-   뷰포트 최상단에 그대로 닿으니 카드 마감을 되살려야 한다. 반대로 도킹한 풀스크린은 밴드가
-   흐름으로 돌아와 다시 진짜 캡이 되므로 창 모드와 같은 해제가 필요하다.
-   그래서 캡이 실재하는 두 상태로 한정한다. */
-.console-shell:has(.command-band:not(.is-fullscreen)) .operations-side-bar.is-expanded,
-.console-shell:has(.command-band.is-docked) .operations-side-bar.is-expanded {
-  border-top: none;
-  border-top-right-radius: 0;
 }
 
 .operations-side-bar[data-resizing="true"] {
@@ -5380,6 +5380,94 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   line-height: 1.45;
+}
+
+/* ── 카드 헤더 + 인라인 필터 (전면 해도 개편 P2) ───────────────────────────
+   부유 카드가 자기 이름·수량·도구를 갖는 자기 완결 계기 문법. 필터는 가리기 전용이고
+   이동은 ⌘K가 진다 — 두 필터가 같은 열에서 역할을 다투지 않게 placeholder가 구분한다. */
+.side-bar-head {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3) 2px;
+}
+
+.side-bar-head-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.side-bar-head-count {
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-bar-head-tool {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.side-bar-head-tool svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.side-bar-head-tool:hover:not(:disabled),
+.side-bar-head-tool:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.side-bar-head-tool:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.side-bar-filter {
+  flex: none;
+  padding: 2px var(--space-2) var(--space-1);
+}
+
+.side-bar-filter-input {
+  width: 100%;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.side-bar-filter-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.side-bar-filter-input:focus-visible {
+  border-color: var(--control-open-rim);
+  outline: none;
 }
 
 
@@ -7552,8 +7640,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .operations-canvas-empty {
   position: absolute;
-  left: clamp(var(--space-5), 7vw, var(--space-10));
-  bottom: clamp(var(--space-5), 7vw, var(--space-10));
+  /* 부유 사이드바 점유 폭(--arena-left)을 지나 아레나 안에 선다 — 박스 기준 좌표는 덱 전체를
+     카드 밑에 넣어 새 Operation 버튼이 클릭 불능이 된다(사전 감사 blocker). */
+  left: calc(var(--arena-left, 0px) + clamp(var(--space-5), 7vw, var(--space-10)));
+  bottom: calc(var(--arena-bottom, 0px) + clamp(var(--space-5), 7vw, var(--space-10)));
   z-index: 5;
   display: grid;
   gap: var(--space-3);

@@ -138,7 +138,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       label: t("settings.core.appearance.label"),
       // 레일 취향(플로팅·불투명도)은 데스크톱 페인이 겉모습에 덧세우는 카드다 — 검색은 그
       // 행 이름으로도 닿아야 한다. 모바일은 이 entries를 읽지 않으므로 여기 실어도 무해하다.
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.rail.title"), t("rail.chrome.floatLabel"), t("rail.chrome.opacityAria"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.rail.title"), t("rail.chrome.opacityAria"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
