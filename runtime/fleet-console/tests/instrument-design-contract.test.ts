@@ -2240,8 +2240,16 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
+    // blur는 soft가 아니라 strong이다: 뒤에 깔리는 캔버스 위브(48px 주기)를 soft(12px)는
+    // ~73%나 남겨 근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로 양자화된다
+    // (2026-08-31 실측 + 사용자 보고). strong(24px)은 같은 주기를 ~29%까지 눌러 위브가
+    // 재질로만 남는다 — 우측 레일 슬롯이 같은 채널로 검증한 값이다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
-    expect(components).toMatch(/\.operations-side-bar::before \{[^}]*linear-gradient\(var\(--glass-tint-chrome\), var\(--glass-tint-chrome\)\),\n    var\(--glass-underlay\);/);
+    const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
+    expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
+    expect(sideBarBeforeBlock).toContain("var(--glass-underlay);");
+    expect(sideBarBeforeBlock).toContain("backdrop-filter: var(--glass-backdrop-strong);");
+    expect(sideBarBeforeBlock).not.toContain("var(--glass-backdrop-soft)");
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     // Operation과 War Room 카드는 개수와 무관하게 blur하지 않고 같은 투명 면을 공유한다.

@@ -261,10 +261,11 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
               </>
             )
           ) : (
-            renderSettingsSection(activeId, state, saving, pluginSections, t)
+            /* 톱니 메뉴가 들고 있던 레일 취향은 테마 카드의 한 행이 된다 — 비포커스 패널
+               흐리기 아래(재가된 배치). 행 주입은 데스크톱 페인만 한다: 레일 없는 모바일이
+               같은 헬퍼를 본문으로 쓰기 때문이다. */
+            renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <RailOpacityRow /> })
           )}
-          {/* 톱니 메뉴가 들고 있던 레일 취향은 겉모습의 살림이 된다 — 메뉴는 사라지고 톱니는 문이 된다. */}
-          {activeId === "appearance" ? <RailPreferencesCard /> : null}
         </div>
       )}
     </div>
@@ -293,42 +294,40 @@ function RemoteSummaryCard({ remote, onManage }: {
 }
 
 /**
- * 레일 표면 취향 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 터미널 렌더러가 그렇듯
- * 브라우저-로컬도 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라 하는 일이다.
- * 전면 해도 개편으로 레일은 항상 해도 위에 뜨는 카드가 되어 push/overlay 스위치는 퇴역했고,
- * 카드 불투명도만 남는다.
+ * 우측 사이드바(레일 카드) 불투명도 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 터미널
+ * 렌더러가 그렇듯 브라우저-로컬도 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라
+ * 하는 일이다. 전용 "레일 패널" 카드는 퇴역했다 — 화면 재질을 다루는 다른 손잡이(리퀴드
+ * 글래스·패널 흐리기)와 같은 테마 카드에 한 행으로 선다(재가된 배치·리네이밍).
  */
-function RailPreferencesCard() {
+function RailOpacityRow() {
   const t = useT();
   const overlayAlpha = useRailOverlayAlpha();
   return (
-    <section className="global-settings-card" aria-label={t("settings.rail.title")}>
-      <p className="global-settings-card-title">{t("settings.rail.title")}</p>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("rail.chrome.opacityAria")}
-            <SettingsScope kind="live" />
-          </p>
-        </div>
-        <div className="settings-slider-field">
-          <input
-            className="fleet-slider settings-slider"
-            type="range"
-            min={RAIL_OVERLAY_ALPHA_MIN}
-            max={RAIL_OVERLAY_ALPHA_MAX}
-            step={1}
-            value={overlayAlpha}
-            aria-label={t("rail.chrome.opacityAria")}
-            aria-valuetext={`${overlayAlpha}%`}
-            style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
-            onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
-            onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
-          />
-          <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
-        </div>
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">
+          {t("settings.theme.railOpacity")}
+          <SettingsScope kind="live" />
+        </p>
+        <p className="global-settings-help">{t("settings.theme.railOpacityHelp")}</p>
       </div>
-    </section>
+      <div className="settings-slider-field">
+        <input
+          className="fleet-slider settings-slider"
+          type="range"
+          min={RAIL_OVERLAY_ALPHA_MIN}
+          max={RAIL_OVERLAY_ALPHA_MAX}
+          step={1}
+          value={overlayAlpha}
+          aria-label={t("settings.theme.railOpacity")}
+          aria-valuetext={`${overlayAlpha}%`}
+          style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+          onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
+          onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
+        />
+        <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
+      </div>
+    </div>
   );
 }
 
@@ -362,10 +361,9 @@ function SettingsSectionExpanded({ ctx }: { readonly ctx: PaneContext }) {
       {/* 페인과 같은 키 계약 — replaceParams로 섹션을 갈아탈 때 경계와 섹션-로컬 상태를 재마운트한다. */}
       <div key={activeId} className="settings-expanded-canvas">
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-        {renderSettingsSection(activeId, state, saving, pluginSections, t)}
-        {/* 레일 취향은 페인의 겉모습과 같은 자리에서 확대에도 선다 — renderSettingsSection에
-            넣지 않는 이유는 그 헬퍼가 레일 없는 모바일의 본문이기도 하기 때문이다. */}
-        {activeId === "appearance" ? <RailPreferencesCard /> : null}
+        {/* 우측 사이드바 불투명도 행은 페인과 같은 자리(테마 카드)에서 확대에도 선다 — 행 주입인
+            이유는 같은 헬퍼가 레일 없는 모바일의 본문이기도 하기 때문이다. */}
+        {renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <RailOpacityRow /> })}
       </div>
     </div>
   );
