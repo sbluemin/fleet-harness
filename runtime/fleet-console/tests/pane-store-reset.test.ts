@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   __resetPaneStoreForTests,
+  closePane,
   getPaneStoreSnapshot,
   openPane,
+  replacePaneParams,
   resetSurfacePanes,
 } from "../core/client/src/pane/pane-store.js";
 
@@ -60,6 +62,17 @@ describe("resetSurfacePanes arriving exemption", () => {
     // 없이 닫힌 detail이 옛 params째 되살아난다(닫기=언마운트 계약 위반, 리뷰 적발).
     openPane({ paneId: "repo-doc", params: { path: "old.md" } });
     resetSurfacePanes(new Map([["repo-doc", { role: "detail" }]]), new Set(["repo-doc"]));
+
+    expect(getPaneStoreSnapshot().rail).toHaveLength(0);
+  });
+
+  it("does not resurrect a closed detail through a stale parameter callback", () => {
+    openPane({ paneId: "repo-doc", params: { path: "old.md" } });
+    closePane("repo-doc");
+
+    // 닫히기 전 비동기 작업이 쥔 콜백을 흉내 낸다. 대상이 없다는 이유만으로 새 visible
+    // 인스턴스를 만들면, 닫기 이후 도착한 응답이 사용자의 닫힘을 뒤집는다.
+    replacePaneParams("repo-doc", { path: "late.md" }, "detail");
 
     expect(getPaneStoreSnapshot().rail).toHaveLength(0);
   });

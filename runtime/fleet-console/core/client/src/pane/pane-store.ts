@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { PaneCloseContext, PaneMount, PaneOpenRequest } from "@fleet-console/sdk/pane";
+import type { PaneCloseContext, PaneMount, PaneOpenRequest, PaneRole } from "@fleet-console/sdk/pane";
 
 /**
  * 표면에 서 있는 페인 인스턴스들.
@@ -150,7 +150,11 @@ export function resetSurfacePanes(
  * 되살린다. 확대된 문서가 주소를 갱신할 때마다 레일에 주차돼 있던 같은 페인이 함께 튀어나와,
  * 한 페인의 두 사본이 서로 다른 주소를 들고 다투게 된다.
  */
-export function replacePaneParams(paneId: string, params: Readonly<Record<string, string>>): void {
+export function replacePaneParams(
+  paneId: string,
+  params: Readonly<Record<string, string>>,
+  role: PaneRole,
+): void {
   const target = state.rail.find((instance) => instance.paneId === paneId);
   if (target) {
     if (sameParams(target.params, params)) return;
@@ -160,6 +164,10 @@ export function replacePaneParams(paneId: string, params: Readonly<Record<string
     });
     return;
   }
+
+  // missing target은 자동 primary 외에도 이미 닫힌 detail의 늦은 콜백에서 생긴다. 후자를
+  // 되살리면 닫기 계약이 뒤집히므로, 호출한 서술자가 primary라고 말한 경로만 씨앗을 만든다.
+  if (role !== "primary") return;
 
   // primary는 엔트리와 함께 자동으로 서서 평소 스토어 인스턴스가 없다. 그 본문이 자기 주소를
   // 갈아탈 때 무시하면(설정 섹션 칩이 대표 사례) ctx.params가 영원히 빈 값에 머문다. 주소를

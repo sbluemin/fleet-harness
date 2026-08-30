@@ -320,8 +320,8 @@ function PaneHost({
   }, [descriptor]);
 
   const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
-    replacePaneParams(descriptor.id, next);
-  }, [descriptor.id]);
+    replacePaneParams(descriptor.id, next, descriptor.role);
+  }, [descriptor.id, descriptor.role]);
 
   // 확대는 페인마다 만드는 기능이 아니라 표면 계약의 공통 동작이다 — 호스트 내장 표면이
   // paneId를 받아 같은 본문을 캔버스 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
