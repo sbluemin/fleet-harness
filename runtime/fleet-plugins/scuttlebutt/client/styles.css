@@ -64,6 +64,18 @@
   }
 }
 
+/* 설정 페인(좁은 컨테이너, 데스크톱 뷰포트)에서도 같은 스택이 서야 한다 — 뷰포트
+   미디어는 페인 폭을 보지 못한다. */
+@container (max-width: 560px) {
+  .scuttlebutt-settings-sizes {
+    justify-items: stretch;
+  }
+
+  .scuttlebutt-settings-size {
+    justify-content: space-between;
+  }
+}
+
 .scuttlebutt-bird {
   position: fixed;
   left: 0;

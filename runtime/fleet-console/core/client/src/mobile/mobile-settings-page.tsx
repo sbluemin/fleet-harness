@@ -9,7 +9,7 @@ import {
   resolveSettingsSectionId,
   type PluginSettingsNavItem,
   type SettingsSectionId,
-} from "../pages/global-settings.js";
+} from "../settings/sections.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS } from "../ui-font.js";
 import type { GlobalSettingsState, ThemeId } from "../types.js";

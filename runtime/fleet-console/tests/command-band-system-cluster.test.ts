@@ -2,10 +2,10 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopyFor } from "../core/client/src/components/command-band-system-cluster.js";
+import { CommandBandSystemCluster, resolveUpdateApplyCopyFor } from "../core/client/src/components/command-band-system-cluster.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import { applyObserverStatus, setState } from "../core/client/src/store.js";
 import { resolveStepIndex } from "../core/client/src/components/update-curtain.js";
@@ -68,47 +68,6 @@ function mountCluster() {
   act(() => root!.render(createElement(MemoryRouter, null, createElement(CommandBandSystemCluster))));
 }
 
-function LocationProbe() {
-  const location = useLocation();
-  return createElement("output", { "data-testid": "location" }, `${location.pathname}${location.search}`);
-}
-
-function HistoryLengthProbe() {
-  return createElement("output", { "data-testid": "history-length" }, String(window.history.length));
-}
-
-// GlobalSettings.selectSection과 같은 방식의 push 네비게이션을 재현하는 프로브.
-function SectionPushProbe() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  (window as typeof window & { __pushSettingsSection?: () => void }).__pushSettingsSection = () => {
-    navigate({ pathname: "/settings", search: "?section=backend-api" }, { state: propagateSettingsEntryIndex(location.state) });
-  };
-  return null;
-}
-
-function mountClusterAt(initialPath: string) {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  act(() => root!.render(createElement(
-    MemoryRouter,
-    { initialEntries: [initialPath] },
-    createElement(CommandBandSystemCluster),
-    createElement(LocationProbe),
-    createElement(HistoryLengthProbe),
-    createElement(SectionPushProbe),
-  )));
-}
-
-function currentPath(): string {
-  return document.querySelector<HTMLOutputElement>('[data-testid="location"]')!.value;
-}
-
-function currentHistoryLength(): number {
-  return Number(document.querySelector<HTMLOutputElement>('[data-testid="history-length"]')!.value);
-}
-
 function menuItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
@@ -134,10 +93,8 @@ describe("CommandBandSystemCluster", () => {
     mountCluster();
 
     const help = document.querySelector<HTMLButtonElement>(".command-band-help")!;
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
     expect(help.querySelector(".command-band-update-dot")).not.toBeNull();
     // 같은 뜻의 표식이 커맨드 밴드에 둘이 되면 안 된다.
-    expect(settings.querySelector(".command-band-update-dot")).toBeNull();
     expect(document.querySelectorAll(".command-band-update-dot")).toHaveLength(1);
     expect(help.getAttribute("aria-label")).toBe("Help — update ready");
   });
@@ -175,59 +132,6 @@ describe("CommandBandSystemCluster", () => {
   it("keeps the idle row on neutral ink and lets it name the version delta", () => {
     // 대기 중 업데이트 안내는 정보다 — 신호 채널은 확인 대기·진행·실패만 쓴다.
     expect(resolveUpdateApplyCopyFor("idle", null, "1.2.3", getT("en")).tone).toBe("info");
-  });
-
-  it("keeps Settings a direct one-click action without a menu", () => {
-    mountCluster();
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
-    expect(settings.getAttribute("aria-label")).toBe("Settings");
-    expect(settings.getAttribute("aria-haspopup")).toBeNull();
-    expect(document.querySelector(".command-band-system-menu")).toBeNull();
-  });
-
-  it("returns to the previous route when Settings is pressed again from the settings page", () => {
-    mountClusterAt("/operations");
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/settings");
-    const lengthAtSettings = currentHistoryLength();
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/operations");
-    // Closing consumes the Settings entry instead of pushing another one.
-    expect(currentHistoryLength()).toBe(lengthAtSettings);
-  });
-
-  it("treats a trailing-slash Settings pathname as the settings page and closes to /operations", () => {
-    mountClusterAt("/settings/");
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/operations");
-  });
-
-  it("consumes section-navigation entries too when closing Settings", () => {
-    mountClusterAt("/operations");
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/settings");
-
-    // Settings 내 섹션 이동은 /settings?... 항목을 push한다 (global-settings selectSection).
-    act(() => { (window as typeof window & { __pushSettingsSection: () => void }).__pushSettingsSection(); });
-    expect(currentPath()).toBe("/settings?section=backend-api");
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/operations");
-  });
-
-  it("falls back to /operations when Settings is pressed on a deep-linked settings page", () => {
-    mountClusterAt("/settings?section=terminal%3Aagent");
-    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
-
-    act(() => settings.click());
-    expect(currentPath()).toBe("/operations");
   });
 
   it("opens the Help menu with focus on the first enabled item and cycles with arrow keys", () => {

@@ -112,10 +112,17 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
  * 판단 근거로 서술자 색인을 받는 이유는, 남길지를 정하는 것이 새로 선 엔트리가 아니라 그
  * 페인 자신이기 때문이다. 새 엔트리의 목록으로 거르면 떠나는 쪽이 지키던 상태가 사라진다.
  */
-export function resetSurfacePanes(descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean }>): void {
+export function resetSurfacePanes(
+  descriptors: ReadonlyMap<string, { readonly keepAlive?: boolean }>,
+  arriving?: ReadonlySet<string>,
+): void {
+  // 들어오는 엔트리 소유의 페인은 정리 대상이 아니다 — 팔레트·딥링크가 표면을 열기 직전에
+  // 심어 둔 착지 params가 이 정리에 쓸려 나가면, 문을 연 손짓이 곧 그 착지를 지운다.
   const rail = state.rail
-    .filter((instance) => descriptors.get(instance.paneId)?.keepAlive === true)
-    .map((instance) => (instance.visible ? { ...instance, visible: false } : instance));
+    .filter((instance) => arriving?.has(instance.paneId) === true || descriptors.get(instance.paneId)?.keepAlive === true)
+    .map((instance) => (
+      arriving?.has(instance.paneId) === true || !instance.visible ? instance : { ...instance, visible: false }
+    ));
   const unchanged = rail.length === state.rail.length
     && rail.every((instance, index) => instance === state.rail[index]);
   if (unchanged && state.focusedPaneId === null) return;

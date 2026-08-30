@@ -11,7 +11,6 @@ import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/r
 
 import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { OperationNameMark } from "./operation-name-mark.js";
-import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
@@ -40,6 +39,7 @@ import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDro
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
+import { SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/interaction.js";
 import {
@@ -387,14 +387,19 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // 라우트 전환으로 이전 포커스 요소가 unmount되므로 복원을 억제한다(switch-theater와 동일).
+        // 설정은 라우트가 아니라 레일 표면이다 — 포커스는 표면이 받으므로 복원을 억제한다.
         previousFocusRef.current = null;
-        // 토글 닫기가 설정 구간을 소비하려면 진입 마커가 필요하다. 이미 설정 위에서
-        // 열 때는 새로 기록하면 마커가 설정 안쪽을 가리켜 첫 설정 항목이 고아가 되므로
-        // 기존 마커를 보존하고 현재 항목을 대체한다.
-        const onSettings = location.pathname.replace(/\/+$/, "") === "/settings";
-        if (!onSettings) recordSettingsEntryIndex();
-        navigate("/settings", { replace: onSettings, state: propagateSettingsEntryIndex(onSettings ? location.state : null) });
+        // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
+        if (!location.pathname.startsWith("/operations")) navigate({ pathname: "/operations", search: window.location.search });
+        openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+        setRailChromeExpanded(true);
+        // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
+        // 프레임을 하나 넘겨 검색 입력(첫 컨트롤)으로 보낸다. 실패 시 표면 본문이 받는다.
+        window.requestAnimationFrame(() => {
+          const landing = document.querySelector<HTMLElement>(".settings-pane .settings-search input")
+            ?? document.querySelector<HTMLElement>(`#rail-panel-${SETTINGS_RAIL_ENTRY_ID}`);
+          landing?.focus();
+        });
         break;
       }
       case "open-keyboard-shortcuts": {

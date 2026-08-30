@@ -237,7 +237,6 @@ export const chromeEn = {
 
   // command-band system cluster
   "chrome.commandBand.operations": "Operations",
-  "chrome.system.settings": "Settings",
   "chrome.hosts.aria": "Hosts",
   "chrome.hosts.heading": "Hosts",
   "chrome.hosts.add": "Add console...",
@@ -593,7 +592,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.directoryBrowser.addTheater": "Theater 추가",
 
   "chrome.commandBand.operations": "Operations",
-  "chrome.system.settings": "설정",
   "chrome.hosts.aria": "호스트",
   "chrome.hosts.heading": "호스트",
   "chrome.hosts.add": "콘솔 추가...",

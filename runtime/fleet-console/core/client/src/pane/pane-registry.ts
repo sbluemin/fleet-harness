@@ -7,6 +7,7 @@ import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sd
 
 import { usePluginRegistry } from "../plugin-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
+import { settingsPanes, settingsRailEntry } from "../settings/settings-pane.js";
 
 /**
  * 레일 엔트리와 페인의 합성 레지스트리.
@@ -149,15 +150,19 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
   const panes = registry.panes ?? [];
 
   return useMemo(() => {
+    // 코어 네이티브 기여 — 설정 표면. 플러그인 레지스트리를 거치지 않는 이유는 소유 때문이다:
+    // 설정은 콘솔 크롬의 일부라 플러그인 로드 실패·중복 id 경쟁의 영향권 밖에 서야 한다.
+    const coreNative = bindNative([settingsRailEntry], settingsPanes).map((binding) => ({ ...binding, core: true }));
+
     const native = bindNative(railEntries, panes);
-    const nativeIds = new Set(native.map((binding) => binding.entry.id));
+    const nativeIds = new Set([...coreNative, ...native].map((binding) => binding.entry.id));
 
     // 코어가 먼저, 그다음 플러그인 — 합성 순서는 옛 레지스트리와 같다. 같은 id를 가진
     // 네이티브 등록이 있으면 투영을 버린다: 옮겨 온 쪽이 언제나 이긴다.
     const coreProjected = BUILT_IN_RAIL_PANELS.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
     const pluginProjected = railPanels.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel));
 
-    return [...coreProjected, ...native, ...pluginProjected]
+    return [...coreNative, ...coreProjected, ...native.filter((binding) => !coreNative.some((core) => core.entry.id === binding.entry.id)), ...pluginProjected]
       .filter((binding) => (binding.entry.side ?? "right") === side);
   }, [panes, railEntries, railPanels, side]);
 }
