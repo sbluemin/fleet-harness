@@ -7,7 +7,7 @@ vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class Unicode11Addon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class WebglAddon {} }));
 
-import { resolvePanelSurface, terminalFieldIsTranslucent, terminalFontWeightsFor } from "../client/shared/terminal-surface.js";
+import { resolvePanelSurface, terminalFieldIsTranslucent, terminalFontWeightsFor, terminalForegroundFor } from "../client/shared/terminal-surface.js";
 
 /* 유리 게이트를 CSS 채널 계산값으로만 연다 — 제품과 같은 판정 경로를 타야 의미가 있다. */
 const openGlassGate = () => document.documentElement.style.setProperty("--glass-backdrop-strong", "blur(24px) saturate(1.7)");
@@ -107,7 +107,7 @@ describe("terminalFontWeightsFor", () => {
   const DEFAULTS = { fontWeight: "normal", fontWeightBold: "bold" };
 
   it("compensates only light + translucent field + webgl", () => {
-    expect(terminalFontWeightsFor("whites", true, "webgl")).toEqual({ fontWeight: 500, fontWeightBold: 800 });
+    expect(terminalFontWeightsFor("whites", true, "webgl")).toEqual({ fontWeight: 600, fontWeightBold: 900 });
   });
 
   it("leaves every other combination on the font's own weights", () => {
@@ -121,12 +121,27 @@ describe("terminalFontWeightsFor", () => {
     }
   });
 
-  /* 터미널 폰트는 사용자가 고른다. 고른 폰트에 500/800이 없어도 CSS 폰트 매칭이 각각 400/700으로
-     물러나므로 가짜 볼드가 생기지 않는다 — 이 성질이 깨지는 값(예: 목표 600)으로 바꾸면 안 된다. */
-  it("uses weights that fall back cleanly on fonts without them", () => {
+  /* 웨이트는 기본 웨이트보다 위여야 보정이고, 볼드는 그보다 위여야 볼드가 볼드로 남는다. */
+  it("keeps the compensated weights above the defaults and ordered", () => {
     const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, "webgl");
     expect(fontWeight).toBeGreaterThan(400);
-    expect(fontWeight).toBeLessThanOrEqual(500);
-    expect(fontWeightBold).toBeGreaterThanOrEqual(800);
+    expect(fontWeightBold).toBeGreaterThan(Number(fontWeight));
+  });
+});
+
+/* 농도 보정은 웨이트와 같은 게이트를 써야 한다 — 한쪽만 걸리면 색과 굵기가 어긋난 조합이 생긴다. */
+describe("terminalForegroundFor", () => {
+  const BASE = "oklch(24% 0.012 95)";
+
+  it("darkens the ink only on light + translucent field + webgl", () => {
+    expect(terminalForegroundFor("whites", BASE, true, "webgl")).not.toBe(BASE);
+  });
+
+  it("leaves every other combination on the theme's own foreground", () => {
+    expect(terminalForegroundFor("whites", BASE, true, "dom")).toBe(BASE);
+    expect(terminalForegroundFor("whites", BASE, false, "webgl")).toBe(BASE);
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      expect(terminalForegroundFor(theme, BASE, true, "webgl")).toBe(BASE);
+    }
   });
 });

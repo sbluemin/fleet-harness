@@ -202,8 +202,25 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
    [500] -> 그 아래를 내림차순으로 찾으므로 {400,700}만 가진 폰트는 400(현행)으로 떨어지고,
    목표 800은 >=800이 없으면 700으로 떨어진다 — 어느 쪽도 가짜 볼드를 만들지 않는다.
    터미널 폰트는 사용자가 고르므로 이 성질이 조건이다. */
-const SUBPIXEL_COMPENSATED_WEIGHT = 500;
-const SUBPIXEL_COMPENSATED_WEIGHT_BOLD = 800;
+const SUBPIXEL_COMPENSATED_WEIGHT = 600;
+const SUBPIXEL_COMPENSATED_WEIGHT_BOLD = 900;
+/* 웨이트만으로는 닿지 않는다. 부족한 것은 획 폭이 아니라 **가장자리 질량**이기 때문이다 —
+   실측하면 심(core) 밝기와 실심 픽셀 수는 DOM과 거의 같은데 중간톤 픽셀만 31%가 적고,
+   웨이트를 올리면 중간톤이 실심으로 바뀔 뿐 총 질량은 +50당 2%밖에 늘지 않는다(600에서도 12% 부족).
+   그래서 남은 축은 농도다: 같은 커버리지라도 잉크가 진하면 각 부분덮힘 픽셀이 더 깊이 내려가
+   질량 부족을 상쇄한다. 라이트 전경(L24)을 L18로 내리면 배경(L≈97)까지의 낙차가 8% 늘어난다. */
+const SUBPIXEL_COMPENSATED_FOREGROUND = "oklch(18% 0.014 95)";
+
+/* 전경 보정은 웨이트와 **같은 게이트**를 쓴다 — 조건이 갈리면 한쪽만 걸려 색이 어긋난다. */
+export function terminalForegroundFor(
+  theme: TerminalThemeId,
+  base: string,
+  fieldIsTranslucent: boolean,
+  renderer: TerminalRenderer,
+): string {
+  if (renderer !== "webgl" || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") return base;
+  return SUBPIXEL_COMPENSATED_FOREGROUND;
+}
 
 export function terminalFontWeightsFor(
   theme: TerminalThemeId,
@@ -349,7 +366,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       await waitForTerminalFallbackFonts();
       if (disposed) return;
 
-      const terminalTheme = terminalThemeFor(activeTheme, surface);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, terminalRenderer);
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
@@ -702,7 +719,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     const container = containerRef.current;
     if (!terminal || !container) return;
     const applyTerminalTheme = () => {
-      const terminalTheme = terminalThemeFor(activeTheme, surface);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, terminalRenderer);
       // 뷰포트 인라인 배경이 allowTransparency보다 먼저 자리를 잡아야 한다 — 이 옵션이 꺼지면
       // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
       // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
@@ -949,9 +966,15 @@ export function readLiquidGlassPaneActive(): boolean {
   return backdrop !== "" && backdrop !== "none";
 }
 
-function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell"): ITheme {
+function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell", renderer: TerminalRenderer): ITheme {
   const base = baseTerminalThemeFor(theme);
-  return { ...base, background: resolvePanelSurface(theme, base.background ?? "", surface) };
+  const background = resolvePanelSurface(theme, base.background ?? "", surface);
+  const translucent = terminalFieldIsTranslucent(background);
+  return {
+    ...base,
+    background,
+    foreground: terminalForegroundFor(theme, base.foreground ?? "", translucent, renderer),
+  };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

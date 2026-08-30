@@ -2601,7 +2601,7 @@ describe("Instrument core design contract", () => {
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
     expect(surface).toContain("const rootStyle = getComputedStyle(document.documentElement);");
     expect(surface).toContain('rootStyle.getPropertyValue("--glass-tint-terminal")');
-    expect(surface).toContain("...base, background: resolvePanelSurface(");
+    expect(surface).toContain("const background = resolvePanelSurface(theme, base.background ?? \"\", surface);");
 
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
     // 필드(게이트 닫힘)에서도 글리프를 투명 위에 그려 아틀라스가 서브픽셀 AA를 잃게 만든다.
