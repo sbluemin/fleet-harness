@@ -107,7 +107,7 @@ describe("terminalFontWeightsFor", () => {
   const DEFAULTS = { fontWeight: "normal", fontWeightBold: "bold" };
 
   it("compensates only light + translucent field + webgl", () => {
-    expect(terminalFontWeightsFor("whites", true, true)).toEqual({ fontWeight: 600, fontWeightBold: 900 });
+    expect(terminalFontWeightsFor("whites", true, true)).toEqual({ fontWeight: 500, fontWeightBold: 800 });
   });
 
   it("leaves every other combination on the font's own weights", () => {
@@ -123,11 +123,17 @@ describe("terminalFontWeightsFor", () => {
     }
   });
 
-  /* 웨이트는 기본 웨이트보다 위여야 보정이고, 볼드는 그보다 위여야 볼드가 볼드로 남는다. */
-  it("keeps the compensated weights above the defaults and ordered", () => {
+  /* 번들 한글 폴백(Nanum Gothic Coding)은 400/700 두 페이스뿐이다. CSS 폰트 매칭은 목표가 500
+     이하일 때만 아래로 내려가므로, 보통은 500 이하여야 400으로 떨어지고 굵게는 700 초과여야
+     700으로 떨어져 둘이 갈린 채 남는다. 이 성질이 깨지면(예: 600/900은 둘 다 700) 한글 SGR
+     볼드가 보통 글자와 구분되지 않는다 — 실제로 한 번 올렸다가 리뷰에서 적발돼 되돌린 자리다. */
+  it("keeps normal and bold apart on the bundled 400/700 Hangul fallback", () => {
     const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, true);
+    const resolveOn400And700 = (target: number) => (target <= 500 ? 400 : 700);
     expect(fontWeight).toBeGreaterThan(400);
-    expect(fontWeightBold).toBeGreaterThan(Number(fontWeight));
+    expect(Number(fontWeight)).toBeLessThanOrEqual(500);
+    expect(Number(fontWeightBold)).toBeGreaterThan(700);
+    expect(resolveOn400And700(Number(fontWeight))).not.toBe(resolveOn400And700(Number(fontWeightBold)));
   });
 });
 

@@ -1059,7 +1059,24 @@ describe("Instrument core design contract", () => {
       components.match(
         /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\):has\(> \.canvas-operation-titlebar\),\n\.canvas-operation:has\(> \.canvas-companion-caption\) \{[^}]*\}/,
       )?.[0] ?? "";
-    expect(floatingRoot).toContain("--pane-light-origin: var(--glass-pane-anchor-floating, -44px);");
+    expect(floatingRoot).toContain("--pane-light-origin: var(--glass-pane-anchor, -44px);");
+    // 팬 계조를 그리는 **모든** 형상이 같은 자리 채널을 읽어야 한다. 하나라도 좌표를 박아 두면
+    // 극성을 뒤집은 테마에서 그 형상만 반대쪽에 그늘이 붙는다 — 확대 Shell이 -48px를 박아 두어
+    // 라이트에서 위쪽에 어두운 얼룩이 생긴 것이 그 실패다(리뷰 적발).
+    // 자리를 정하는 길은 둘이다 — 형상이 --pane-light-origin 간접을 두거나(패널), 그라디언트가
+    // 채널을 직접 읽거나(확대 Shell). 어느 길이든 끝은 --glass-pane-anchor여야 한다.
+    for (const origin of components.match(/--pane-light-origin: [^;]+;/g) ?? []) {
+      expect(origin).toContain("var(--glass-pane-anchor,");
+    }
+    const paneConsumers = components.match(/at 50% ([^,]*), var\(--glass-pane-light\)/g) ?? [];
+    expect(paneConsumers.length).toBeGreaterThan(0);
+    for (const consumer of paneConsumers) {
+      expect(
+        consumer.includes("var(--glass-pane-anchor,") || consumer.includes("var(--pane-light-origin)"),
+      ).toBe(true);
+    }
+    // 자리 기본값은 형상마다 다르므로 :root가 이 채널을 선언하면 안 된다 — 셋이 한 값으로 뭉개진다.
+    expect(theme).not.toMatch(/^\s*--glass-pane-anchor:\s*-?\d/m);
 
     // 새 채널 셋의 닫힌-게이트 기본값이 곧 구 불투명 계약이다.
     expect(theme).toContain("--glass-tint-field: var(--surface-panel);");

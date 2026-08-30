@@ -6443,7 +6443,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    캡션이 있어도 그대로다. 그래서 자리는 여기서 정하지 않고 테마가 이 형상 전용 채널로 답한다. */
 .canvas-operation:not(.is-deck-tile):not(.is-top-edge):has(> .canvas-operation-titlebar),
 .canvas-operation:has(> .canvas-companion-caption) {
-  --pane-light-origin: var(--glass-pane-anchor-floating, -44px);
+  --pane-light-origin: var(--glass-pane-anchor, -44px);
 }
 
 /* 덱 타일만 그 면제에서 빠진다 — 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로
@@ -12943,7 +12943,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .expanded-surface-slot:has(.terminal-shell) {
   background:
     linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
-    radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
+    radial-gradient(150% 420px at 50% var(--glass-pane-anchor, -48px), var(--glass-pane-light) 0%, transparent 62%),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-terminal);
   backdrop-filter: var(--glass-backdrop-terminal);
