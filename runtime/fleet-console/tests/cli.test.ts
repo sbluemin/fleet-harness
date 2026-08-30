@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,8 @@ import {
   buildConsoleHelpText,
   assertCliCanControlDaemon,
   createConsoleDaemonLifecycle,
+  type ConsoleDaemonLifecycleDeps,
+  type ConsoleDaemonProcess,
   isCliDirectRun,
   isLockProcessAlive,
   main,
@@ -34,6 +37,21 @@ const LOCK: ConsoleLockPayload = {
   version: "test",
 };
 const TEMP_DIRS: string[] = [];
+
+function createFakeDaemonProcess(pid: number | undefined, onKill?: (signal: NodeJS.Signals | number | undefined, child: EventEmitter) => void) {
+  const events = new EventEmitter();
+  const kill = vi.fn((signal?: NodeJS.Signals | number) => {
+    onKill?.(signal, events);
+    return true;
+  });
+  const unref = vi.fn();
+  const child = Object.assign(events, { pid, kill, unref }) as EventEmitter & ConsoleDaemonProcess;
+  return { child, kill, unref, events };
+}
+
+function withPid(lock: ConsoleLockPayload, pid: number): ConsoleLockPayload {
+  return { ...lock, pid };
+}
 
 afterEach(() => {
   for (const dir of TEMP_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -237,13 +255,16 @@ describe("fleet console CLI", () => {
   ])("passes the configured system CA environment to the daemon: $expectedEnv", async ({ env, expectedEnv }) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-system-ca-"));
     TEMP_DIRS.push(dir);
-    const spawnDetached = vi.fn();
+    const spawnDetached = vi.fn<NonNullable<ConsoleDaemonLifecycleDeps["spawnDetached"]>>();
+    let clock = 0;
     const lifecycle = createConsoleDaemonLifecycle({
       env: { ...env, FLEET_CONSOLE_DIR: dir },
       execPath: "/node",
       serverModulePath: "/pkg/dist/cli.mjs",
       spawnDetached,
-      sleep: async () => {},
+      sleep: async (ms) => { clock += ms; },
+      now: () => clock,
+      startupTimeoutMs: 200,
       health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
     });
 
@@ -255,6 +276,310 @@ describe("fleet console CLI", () => {
       env: { ...expectedEnv, FLEET_CONSOLE_DIR: dir },
       stdio: "ignore",
       windowsHide: true,
+    });
+  });
+
+  describe("daemon startup lifecycle", () => {
+    it("waits beyond the old three-second boundary and releases only after readiness", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-delayed-ready-"));
+      TEMP_DIRS.push(dir);
+      const ownLock = withPid(LOCK, 4311);
+      const fake = createFakeDaemonProcess(ownLock.pid);
+      let clock = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        startupTimeoutMs: 60_000,
+        health: {
+          probe: async () => clock >= 3_100
+            ? { healthy: true, lock: ownLock }
+            : { healthy: false, lock: null, error: "lock missing" },
+        },
+      });
+
+      await expect(lifecycle.ensureDaemon()).resolves.toBe(ownLock.endpoint);
+
+      expect(clock).toBe(3_100);
+      expect(fake.kill).not.toHaveBeenCalled();
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails promptly when the child exits before readiness", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-early-exit-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(4312);
+      let clock = 0;
+      let emitted = false;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => {
+          clock += ms;
+          if (!emitted) {
+            emitted = true;
+            fake.events.emit("exit", 7, null);
+          }
+        },
+        now: () => clock,
+        startupTimeoutMs: 60_000,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("exited with status 7");
+
+      expect(clock).toBeLessThan(60_000);
+      expect(fake.kill).not.toHaveBeenCalled();
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a spawn error without waiting for the readiness deadline", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-spawn-error-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(undefined);
+      let clock = 0;
+      let emitted = false;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => {
+          clock += ms;
+          if (!emitted) {
+            emitted = true;
+            fake.events.emit("error", new Error("spawn /node ENOENT"));
+          }
+        },
+        now: () => clock,
+        startupTimeoutMs: 60_000,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("could not be spawned — spawn /node ENOENT");
+
+      expect(clock).toBeLessThan(60_000);
+      expect(fake.kill).not.toHaveBeenCalled();
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses one hard deadline and escalates cleanup from TERM to KILL", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-start-timeout-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(4313, (signal, child) => {
+        if (signal === "SIGKILL") child.emit("exit", null, "SIGKILL");
+      });
+      let clock = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        startupTimeoutMs: 300,
+        cleanupGraceMs: 25,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("within 300 ms — lock missing");
+
+      expect(fake.kill.mock.calls.map(([signal]) => signal)).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+      expect(clock).toBe(325);
+    });
+
+    it("preserves a replacement lock while cleaning the child it spawned", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-replacement-lock-"));
+      TEMP_DIRS.push(dir);
+      const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
+      const replacement = createConsoleLock().writeLock({
+        dir,
+        lockFile: paths.lockFile,
+        pid: 9876,
+        port: 40123,
+        endpoint: "http://127.0.0.1:40123/",
+        version: "replacement",
+      }).payload;
+      fs.rmSync(paths.lockFile);
+      const fake = createFakeDaemonProcess(4314, (_signal, child) => child.emit("exit", 0, null));
+      let clock = 0;
+      let replacementWritten = false;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => {
+          clock += ms;
+          if (clock >= 200 && !replacementWritten) {
+            replacementWritten = true;
+            fs.writeFileSync(paths.lockFile, `${JSON.stringify(replacement)}\n`, { mode: 0o600 });
+          }
+        },
+        now: () => clock,
+        startupTimeoutMs: 200,
+        health: { probe: async (payload) => ({ healthy: false, lock: payload, error: "health failed: 503" }) },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("Fleet Console server did not start");
+
+      expect(createConsoleLock().readLock(paths.lockFile)?.pid).toBe(replacement.pid);
+      expect(fake.kill).toHaveBeenCalledWith("SIGTERM");
+    });
+
+    it("adopts a concurrent healthy winner after cleaning only its own child", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-concurrent-winner-"));
+      TEMP_DIRS.push(dir);
+      const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
+      const replacement = createConsoleLock().writeLock({
+        dir,
+        lockFile: paths.lockFile,
+        pid: 9877,
+        port: 40124,
+        endpoint: "http://127.0.0.1:40124/",
+        version: "replacement",
+      }).payload;
+      fs.rmSync(paths.lockFile);
+      const fake = createFakeDaemonProcess(4315, (_signal, child) => child.emit("exit", 0, null));
+      let clock = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => {
+          clock += ms;
+          if (!fs.existsSync(paths.lockFile)) {
+            fs.writeFileSync(paths.lockFile, `${JSON.stringify(replacement)}\n`, { mode: 0o600 });
+          }
+        },
+        now: () => clock,
+        startupTimeoutMs: 1_000,
+        health: {
+          probe: async (payload) => payload
+            ? { healthy: true, lock: payload }
+            : { healthy: false, lock: null, error: "lock missing" },
+        },
+      });
+
+      await expect(lifecycle.ensureDaemon()).resolves.toBe(replacement.endpoint);
+
+      expect(fake.kill.mock.calls.map(([signal]) => signal)).toEqual(["SIGTERM"]);
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+      expect(createConsoleLock().readLock(paths.lockFile)?.pid).toBe(replacement.pid);
+    });
+
+    it("retries a partial lock until the owned child becomes healthy", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-probe-error-"));
+      TEMP_DIRS.push(dir);
+      const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
+      const ownLock = withPid(LOCK, 4316);
+      const fake = createFakeDaemonProcess(ownLock.pid);
+      let clock = 0;
+      let sleeps = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => {
+          clock += ms;
+          sleeps += 1;
+          if (sleeps === 1) {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(paths.lockFile, "", { mode: 0o600 });
+          } else if (sleeps === 2) {
+            fs.writeFileSync(paths.lockFile, `${JSON.stringify(ownLock)}\n`, "utf8");
+          }
+        },
+        now: () => clock,
+        startupTimeoutMs: 1_000,
+        cleanupGraceMs: 25,
+        health: {
+          probe: async (payload) => payload
+            ? { healthy: true, lock: payload }
+            : { healthy: false, lock: null, error: "lock missing" },
+        },
+      });
+
+      await expect(lifecycle.ensureDaemon()).resolves.toBe(ownLock.endpoint);
+
+      expect(clock).toBe(200);
+      expect(fake.kill).not.toHaveBeenCalled();
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves the last real probe error when the deadline has no budget left", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-last-probe-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(4317, (signal, child) => {
+        if (signal === "SIGKILL") child.emit("exit", null, "SIGKILL");
+      });
+      let clock = 0;
+      let probes = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        startupTimeoutMs: 200,
+        cleanupGraceMs: 25,
+        health: {
+          probe: async () => {
+            probes += 1;
+            return { healthy: false, lock: null, error: probes === 1 ? "lock missing" : "connect ECONNREFUSED" };
+          },
+        },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("within 200 ms — connect ECONNREFUSED");
+
+      expect(probes).toBe(2);
+    });
+
+    it("reports cleanup failure accurately when a concurrent server is healthy", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-winner-cleanup-"));
+      TEMP_DIRS.push(dir);
+      const winner = withPid(LOCK, 9878);
+      const fake = createFakeDaemonProcess(4318);
+      let clock = 0;
+      let probes = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        startupTimeoutMs: 1_000,
+        cleanupGraceMs: 10,
+        health: {
+          probe: async () => {
+            probes += 1;
+            return probes === 1
+              ? { healthy: false, lock: null, error: "lock missing" }
+              : { healthy: true, lock: winner };
+          },
+        },
+      });
+
+      const start = lifecycle.ensureDaemon();
+      await expect(start).rejects.toThrow("Fleet Console is running, but startup cleanup failed");
+      await expect(start).rejects.toThrow(`${winner.endpoint}console/`);
+
+      expect(fake.kill.mock.calls.map(([signal]) => signal)).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not unlink when PID-guarded cleanup observes no lock", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-absent-lock-"));
+      TEMP_DIRS.push(dir);
+      const lockFile = path.join(dir, "console.lock");
+      const rmSync = vi.fn<typeof fs.rmSync>(fs.rmSync.bind(fs));
+      const guardedLock = createConsoleLock({ fs: { ...fs, rmSync } as typeof fs });
+
+      guardedLock.removeLock(lockFile, 4319);
+
+      expect(rmSync).not.toHaveBeenCalled();
     });
   });
 
@@ -290,8 +615,13 @@ describe("fleet console CLI", () => {
     it("tells a daemon start failure apart by whether the process ever spawned", () => {
       const spawnFailed = describeDaemonStartFailure({
         spawnError: "spawn /node ENOENT",
+        childError: null,
+        readinessError: null,
         probeError: null,
+        cleanupError: null,
+        healthyEndpoint: null,
         dataDir: "/tmp/fleet",
+        startupTimeoutMs: 60_000,
       });
       expect(spawnFailed).toContain("Fleet Console server did not start.");
       expect(spawnFailed).toContain("the server process could not be spawned — spawn /node ENOENT");
@@ -299,10 +629,15 @@ describe("fleet console CLI", () => {
 
       const neverAnswered = describeDaemonStartFailure({
         spawnError: null,
+        childError: null,
+        readinessError: null,
         probeError: "lock missing",
+        cleanupError: null,
+        healthyEndpoint: null,
         dataDir: "/tmp/fleet",
+        startupTimeoutMs: 60_000,
       });
-      expect(neverAnswered).toContain("never answered a health check — lock missing");
+      expect(neverAnswered).toContain("did not become healthy within 60 seconds — lock missing");
       // 원인이 무엇이든 사용자가 지금 확인할 수 있는 자리를 준다.
       expect(neverAnswered).toContain("/tmp/fleet");
       expect(neverAnswered).toContain("fleet console status");

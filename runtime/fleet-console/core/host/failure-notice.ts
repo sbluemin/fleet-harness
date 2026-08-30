@@ -41,8 +41,13 @@ export function describeConsoleLaunch(successLine: string, outcome: ConsoleLaunc
 
 export interface DaemonStartFailureInput {
   readonly spawnError: string | null;
+  readonly childError: string | null;
+  readonly readinessError: string | null;
   readonly probeError: string | null;
+  readonly cleanupError: string | null;
+  readonly healthyEndpoint: string | null;
   readonly dataDir: string;
+  readonly startupTimeoutMs: number;
 }
 
 /**
@@ -50,25 +55,50 @@ export interface DaemonStartFailureInput {
  * 사용자가 취할 조치가 서로 다르므로 갈라서 말한다.
  */
 export function describeDaemonStartFailure(input: DaemonStartFailureInput): string {
+  if (input.healthyEndpoint && input.cleanupError) {
+    return formatFailureNotice({
+      what: "Fleet Console is running, but startup cleanup failed.",
+      why: `another healthy server won startup, but the redundant child could not be stopped — ${input.cleanupError}`,
+      next: [
+        `Open the running Console: ${input.healthyEndpoint}console/`,
+        "Show the current state: fleet console status",
+      ],
+    });
+  }
   if (input.spawnError) {
     return formatFailureNotice({
       what: "Fleet Console server did not start.",
-      why: `the server process could not be spawned — ${input.spawnError}`,
+      why: appendCleanup(`the server process could not be spawned — ${input.spawnError}`, input.cleanupError),
       next: [
         "Check that this Node install can run the Console: node --version",
         "Reinstall if the package is incomplete: npm install -g @dotobokuri/fleet-console",
       ],
     });
   }
+  const timeout = formatTimeout(input.startupTimeoutMs);
+  const reason = input.readinessError
+    ? `the readiness check failed — ${input.readinessError}`
+    : input.childError
+      ? `the server process ended before becoming healthy — ${input.childError}`
+      : input.probeError
+        ? `it did not become healthy within ${timeout} — ${input.probeError}`
+        : `it did not become healthy within ${timeout}`;
   return formatFailureNotice({
     what: "Fleet Console server did not start.",
-    why: input.probeError
-      ? `it was started but never answered a health check — ${input.probeError}`
-      : "it was started but never answered a health check within 3 seconds",
+    why: appendCleanup(reason, input.cleanupError),
     next: [
       `Check that this directory is writable: ${input.dataDir}`,
       "Show the current state: fleet console status",
       "Then try again: fleet console restart",
     ],
   });
+}
+
+function formatTimeout(timeoutMs: number): string {
+  if (timeoutMs >= 1_000 && timeoutMs % 1_000 === 0) return `${timeoutMs / 1_000} seconds`;
+  return `${timeoutMs} ms`;
+}
+
+function appendCleanup(reason: string, cleanupError: string | null): string {
+  return cleanupError ? `${reason}; cleanup also failed — ${cleanupError}` : reason;
 }

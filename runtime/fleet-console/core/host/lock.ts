@@ -90,7 +90,9 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     } catch (err) {
       if (pid != null) throw err;
     }
-    if (pid != null && current && current.pid !== pid) return;
+    // pid guard는 "다른 pid"뿐 아니라 "아직 lock 없음"도 삭제 금지로 취급한다.
+    // read와 unlink 사이에 concurrent owner가 O_EXCL lock을 쓰는 경쟁에서 새 lock을 지우면 안 된다.
+    if (pid != null && (!current || current.pid !== pid)) return;
     try {
       fsImpl.rmSync(lockFile, { force: true });
     } catch (err) {

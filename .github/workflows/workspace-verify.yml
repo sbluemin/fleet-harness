@@ -49,3 +49,26 @@ jobs:
         run: pnpm typecheck
       - name: Test every workspace package
         run: pnpm test
+
+  console-windows-lifecycle:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build Fleet Console
+        run: pnpm --filter @dotobokuri/fleet-console build
+      # mock signal만 확인하면 Windows에서 남은 프로세스와 잠긴 파일을 놓친다.
+      - name: Test Windows Console process lifecycle
+        shell: pwsh
+        run: |
+          $env:FLEET_BUILT_SMOKE = "1"
+          pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/console-lifecycle.integration.test.ts

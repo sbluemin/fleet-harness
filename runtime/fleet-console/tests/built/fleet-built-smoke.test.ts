@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
+import { resolveDefaultServerModulePath } from "../../core/host/console-lifecycle.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fleetDist = path.join(packageRoot, "dist", "fleet.mjs");
@@ -22,14 +23,17 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
   });
 
   it("resolves sibling dist/cli.mjs from the built fleet entry URL", () => {
-    expect(resolveSiblingConsoleCliPath(pathToFileURL(fleetDist).href)).toBe(cliDist);
+    const fleetModuleUrl = pathToFileURL(fleetDist).href;
+    expect(resolveSiblingConsoleCliPath(fleetModuleUrl)).toBe(cliDist);
+    expect(resolveDefaultServerModulePath(fleetModuleUrl)).toBe(cliDist);
+    expect(resolveDefaultServerModulePath(fleetModuleUrl)).not.toBe(fleetDist);
   });
 
   it("prints Fleet help from dist/fleet.mjs --help", () => {
     const result = spawnSync(process.execPath, [fleetDist, "--help"], { encoding: "utf8" });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("fleet console [start|stop|restart|status] [--help]");
-    expect(result.stdout).not.toContain("fleet console [start|stop|restart|status|help]");
+    expect(result.stdout).toContain("console             start · stop · restart · status");
+    expect(result.stdout).not.toContain("console             start · stop · restart · status · help");
     expect(result.stdout).toContain("Unrecognized arguments are passed through to Claude Code.");
   });
 
