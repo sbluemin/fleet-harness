@@ -362,6 +362,7 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [operationFilter, setOperationFilter] = useState("");
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
   // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
   useEffect(() => {
@@ -384,7 +385,14 @@ export function OperationsSideBar({
     previousCollapsedRef.current = collapsed;
   }, [collapsed]);
 
-  const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
+  // 인라인 필터는 가리기만 진다 — 이동·점프는 ⌘K 팔레트의 일이다(역할 분리). 제목 부분
+  // 일치·전 Theater 대상이며, 표시 엔트리 구축에만 관여하고 활동 추적·드래그 등 상태 로직은
+  // 계속 전체 목록을 본다. 세션 상태다 — 새 페이지 로드는 필터 없이 시작한다.
+  const normalizedOperationFilter = operationFilter.trim().toLowerCase();
+  const filterVisibleOperations = normalizedOperationFilter === ""
+    ? operations
+    : operations.filter((operation) => operation.title.toLowerCase().includes(normalizedOperationFilter));
+  const activeOperations = filterVisibleOperations.filter((operation) => operation.theaterId === activeTheaterId);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
@@ -420,7 +428,14 @@ export function OperationsSideBar({
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
   );
-  const currentOrder = allEntries.map((entry) => entry.operation.id);
+  // 재정렬 기준 순서는 인라인 필터와 무관한 활성 Theater 전체 목록이다 — 필터된 표시 목록으로
+  // 순서를 커밋하면 숨은 Operation이 operationOrder에서 통째로 탈락해 필터 해제 후 정렬이
+  // 영구 유실된다(적대 리뷰 확정 결함). 세그먼트 재배치 헬퍼들은 전체 순서를 전제로
+  // hidden 보존을 수행하므로, 표시(allEntries)와 기준(currentOrder)의 원천을 분리한다.
+  const currentOrder = sortOperationsByOrder(
+    operations.filter((operation) => operation.theaterId === activeTheaterId),
+    canvas.operationOrder,
+  ).map((operation) => operation.id);
   const statusSignature = operations
     .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationRuntime)}`)
     .join("\0");
@@ -498,6 +513,12 @@ export function OperationsSideBar({
       setSideBarCollapsed(false);
       return false;
     }
+    // 인라인 필터가 대상 칩을 숨기고 있으면 필터를 걷는다 — 칩이 마운트되지 않으면
+    // 팔레트에서 온 이름 변경·그룹 배정 액션이 조용히 증발한다(적대 리뷰 확정).
+    if (normalizedOperationFilter !== "" && !operation.title.toLowerCase().includes(normalizedOperationFilter)) {
+      setOperationFilter("");
+      return false;
+    }
     if (collapsedTheaters.includes(operation.theaterId)) {
       setTheaterCollapsed(operation.theaterId, false);
       return false;
@@ -519,7 +540,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, normalizedOperationFilter, operationRuntime, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -590,8 +611,10 @@ export function OperationsSideBar({
   }, [launchMenuRequest]);
 
 
+  // 메뉴 주인 조회는 표시 목록이 아니라 전체 목록에서 한다 — 메뉴가 열린 채 필터가 바뀌어
+  // 칩이 목록에서 빠져도 메뉴가 close 콜백 없이 즉사하지 않는다.
   const contextMenuOperation = activeContextMenu?.kind === "chip"
-    ? allEntries.find((entry) => entry.operation.id === activeContextMenu.operationId)?.operation ?? null
+    ? operations.find((operation) => operation.id === activeContextMenu.operationId) ?? null
     : null;
   const contextMenuGroup = activeContextMenu?.kind === "group"
     ? groups.find((g) => g.id === activeContextMenu.groupId) ?? null
@@ -914,6 +937,38 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
+      {/* 헤더 행 — 카드가 자기 이름·수량·도구를 갖는 자기 완결 계기 문법(전면 해도 개편 P2).
+          War Room의 TriageSideBar에는 두지 않는다: 그쪽은 Theater 목록이 아니라 STATUS 큐다. */}
+      {!collapsed ? (
+        <div className="side-bar-head">
+          <span className="side-bar-head-label">Theaters</span>
+          <span className="side-bar-head-count">{theaters.length}</span>
+          <button
+            type="button"
+            className="side-bar-head-tool"
+            onClick={openTheaterBrowser}
+            disabled={addingTheater}
+            aria-label={t("sidebar.theater.newTheater")}
+            title={t("sidebar.theater.newTheater")}
+          >
+            <PlusIcon />
+          </button>
+        </div>
+      ) : null}
+      {!collapsed && theaters.length > 0 ? (
+        <div className="side-bar-filter">
+          <input
+            type="search"
+            className="side-bar-filter-input"
+            value={operationFilter}
+            placeholder={t("sidebar.filter.placeholder")}
+            aria-label={t("sidebar.filter.aria")}
+            onChange={(event) => setOperationFilter(event.currentTarget.value)}
+            onKeyDown={(event) => { if (event.key === "Escape" && operationFilter !== "") { event.stopPropagation(); setOperationFilter(""); } }}
+          />
+        </div>
+      ) : null}
+
       {/* 축은 목록 전체를 다시 쓰는 하나짜리 세션 스위치다 — Theater 행에 두면 배치가 국소라고
           말하면서 효과는 전역이라 읽는 사람이 스코프를 오해한다. 목록 위 고정 스트립에
           한 번만 서고, 눌림이 아니라 낱말로 현재 축을 말한다. Theater가 없으면 정리할
@@ -966,7 +1021,7 @@ export function OperationsSideBar({
             const theaterCanvas = getTheaterCanvasSnapshot(theater.id);
             const inactiveEntries = buildTheaterEntries({
               theaterId: theater.id,
-              operations,
+              operations: filterVisibleOperations,
               operationOrder: theaterCanvas.operationOrder,
               minimizedSet: new Set(theaterCanvas.minimized),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).

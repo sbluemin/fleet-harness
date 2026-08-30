@@ -164,10 +164,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--group-mark",
   // What's New TSX injects each section's reveal delay.
   "--whatsnew-delay",
-  // Command Band TSX injects the measured left sidebar width.
-  "--command-band-left-width",
-  // Command Band TSX injects the state-dependent map-controls anchor (sidebar seam ↔ docked left cluster).
-  "--command-band-map-anchor",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
   // Right Rail TSX injects the user-selected overlay opacity.
@@ -2014,13 +2010,18 @@ describe("Instrument core design contract", () => {
     const rightRail = source("rail/right-rail.tsx");
     const settingsPane = source("settings/settings-pane.tsx");
     const railStore = source("rail/rail-store.ts");
-    expect(rail).toContain(".right-rail.is-overlay");
-    expect(rail).toContain(".right-rail.is-switching");
-    // Doctrine: the overlay slot ::before composites its glass layers over the
+    // 전면 해도 개편: push/overlay 이원은 퇴역했다 — 부유 카드가 유일한 형태이고, "가리지
+    // 않는다"는 구 push 기대는 아레나 인셋이 승계한다. 이원의 잔재가 되살아나면 레일이
+    // 두 재질·두 기하로 갈라진다.
+    expect(rail).not.toContain(".right-rail.is-overlay");
+    expect(rail).not.toContain(".right-rail.is-switching");
+    expect(rail).toMatch(/\.right-rail \{[^}]*position: absolute;/);
+    expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);
+    // Doctrine: the slot ::before composites its glass layers over the
     // --glass-underlay channel — its default is the old opaque var(--ink-deep), so with the
     // liquid glass gate closed the slider's 100% endpoint stays fully opaque, and with the
     // gate open the same channel turns transparent under backdrop blur.
-    expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
+    expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
     // opacity control communicates its filled range in either engine. The recipe is shared -
     // the rail's opacity and the Settings fade strength are one control grammar. The control
@@ -2029,10 +2030,14 @@ describe("Instrument core design contract", () => {
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     expect(settingsPane).toContain("fleet-slider settings-slider");
     expect(settingsPane).toContain("setRailOverlayAlpha");
-    expect(settingsPane).toContain("toggleRailPanelBehavior");
-    expect(rightRail).toContain("useRailPanelBehavior");
-    expect(rightRail).toContain("is-switching");
-    expect(railStore).toContain("fleet-console.rail.panelBehavior");
+    // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
+    // 남는 취향은 카드 불투명도 하나다.
+    expect(settingsPane).not.toContain("toggleRailPanelBehavior");
+    // 스택 상주 계약: 고정 목록이 단일 activeId를 대체하고, 섹션 본문은 접혀도 마운트를 유지한다.
+    expect(railStore).toContain("fleet-console.rail.pinnedPanels");
+    expect(railStore).not.toContain("panelBehavior");
+    expect(rightRail).toContain("toggleRailSectionCollapsed");
+    expect(rightRail).toContain('hidden={collapsed} inert={collapsed || undefined}');
     // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail has no
     // panel head at all — its settings live behind the gear at the top of the icon column,
     // so the body owns the whole slot and no chrome can summon itself over it. The retired
@@ -2067,7 +2072,7 @@ describe("Instrument core design contract", () => {
     // and width reset became direct manipulation on the resize handle itself.
     expect(rightRail).not.toContain("RailSettingsMenu");
     expect(rail).not.toContain(".right-rail-menu");
-    expect(rightRail).toContain("onDoubleClick={handleResetPanelWidth}");
+    expect(rightRail).toContain("onDoubleClick={handleResetCardWidth}");
     expect(rail).toMatch(/\.right-rail \{[^}]*overflow: hidden;/);
     expect(source("components/command-band-system-cluster.tsx")).toContain('from "./use-menu-button-keyboard.js"');
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
@@ -2170,8 +2175,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("const panelTogglesVisible = viewMode.effective !== \"mobile\";");
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-sidebar-toggle\"");
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-rail-toggle\"");
-    expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
+    // 맵 컨트롤은 좌측 클러스터의 플로우 자식이다(캡·앵커 퇴역) — 검색 버튼 뒤에 이어 선다.
+    expect(commandBand).toContain(`        </button>
+        {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
     expect(commandBand).not.toContain("command-band-dock-divider");
@@ -2225,24 +2231,21 @@ describe("Instrument core design contract", () => {
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
-    // 앵커는 상태 이원제다: 펼침 = 사이드바 경계선(폭 미러), 접힘 = 좌측 컨트롤군 끝(도킹 앵커).
-    // 옛 사이드바 폭에 고정하면 접힘 시 경계 없는 밴드 한가운데에 떠 보인다(2026-08 부유 사고).
-    expect(layout).toContain("left: calc(var(--command-band-map-anchor, var(--command-band-left-width, 280px)) + var(--space-2));");
-    expect(commandBand).toContain('"--command-band-map-anchor": `${mapControlsAnchor}px`,');
-    expect(commandBand).toContain("const mapControlsAnchor = commandBandMapControlsAnchor(sideBar.collapsed, sideBar.width, leftContentEnd);");
-    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(mapControlsAnchor, mapControlsWidth);");
+    // 전면 해도 개편: 사이드바-가장자리 추종 앵커는 캡 계약과 함께 퇴역했다 — 클러스터는
+    // 흐름 배치이고 하한은 좌측 클러스터 실측 콘텐츠 끝 하나에서 나온다. 앵커 변수가
+    // 되살아나면 모드 스위치가 존재하지 않는 열 경계에 다시 정박한다.
+    expect(layout).not.toContain("--command-band-map-anchor");
+    expect(commandBand).not.toContain("commandBandMapControlsAnchor");
+    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(leftContentEnd);");
     expect(commandBand).toContain("commandBandCenterFits(bandWidth, centerGutter)");
-    // 글라이드는 접힘/펼침 앵커 전환 전용 — 드래그 리사이즈는 :has 게이트로 즉시 추종을 유지한다.
-    expect(layout).toContain("transition: left 200ms ease;");
-    expect(layout).toContain('body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }');
     expect(layout).not.toContain("command-band-dock-divider");
     expect(layout).not.toContain(".command-band-mode-switch {\n  position: absolute;");
     // 구 문법(모드 전용 도구를 밴드에 상시 노출)의 잔재는 남기지 않는다.
     expect(layout).not.toContain(".command-band-formation-group {");
     expect(layout).not.toContain(".command-band-triage-toggle {");
-    // 좌측 캡 폭은 사이드바와 계속 맞추지만, 브레드크럼 트랙은 Console 전체 폭을 좌우 대칭으로
-    // 나눈다. 사이드바와 레일 폭이 달라도 Quick Launch와 같은 viewport 중앙축에서 움직이지 않는다.
-    expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
+    // 밴드는 한 판이다 — 사이드바 폭 미러 주입은 캡과 함께 퇴역했고, 브레드크럼 트랙은
+    // Console 전체 폭을 좌우 대칭으로 나눈다.
+    expect(commandBand).not.toContain("--command-band-left-width");
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
     const commandBandLeftBlocks = [...layout.matchAll(/\.command-band-left \{[^}]*\}/g)].map((match) => match[0]);
@@ -2267,7 +2270,7 @@ describe("Instrument core design contract", () => {
     // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
     // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
     expect(layout).not.toContain("container-type");
-    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
+    expect(layout).not.toContain("--command-band-left-width");
     expect(commandBandCenterBlock).toContain("justify-content: center;");
     expect(commandBandCenterBlock).not.toContain("overflow:");
     expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);
@@ -2295,18 +2298,19 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
     expect(layout).toContain(".command-band-left {");
     expect(components).toContain(".operations-side-bar.is-closed");
-    // 상단 크롬 좌측 블록은 사이드바와 같은 폭·표면·우측 경계선으로 그 열의 상단 캡이 된다.
-    // 그래서 펼침 상태에서만 카드의 상단 테두리·안쪽 라운드를 해제한다 — 세 규칙이 함께 살아
-    // 있어야 한 열 한가운데의 이중 hairline과 우측 경계선 단절이 재발하지 않는다.
+    // 밴드는 한 판이다(전면 해도 개편) — 구 "사이드바 상단 캡"의 전용 틴트·우측 경계선·인셋
+    // 그림자가 하나라도 되살아나면 밴드 안에 유령 이음선이 선다. 재질은 밴드 루트 ::before
+    // (--glass-tint-band) 한 장이 전부 진다.
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
-    expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
-    expect(layout).toMatch(/\.command-band-left::before \{[^}]*background: var\(--glass-tint-chrome\);/);
-    // 아래 사이드바가 없는 utility route는 band 루트가 이미 전체 Glass 면을 칠하므로,
-    // 좌측 cap을 다시 합성하지 않고 paint를 끈다.
-    expect(layout).toMatch(/\.command-band\.is-utility \.command-band-left::before \{[^}]*display: none;/);
-    // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
+    expect(commandBandLeftBlock).not.toContain("border-right");
+    expect(commandBandLeftBlock).not.toContain("box-shadow");
+    expect(commandBandLeftBlock).toContain("width: fit-content;");
+    expect(layout).not.toContain(".command-band-left::before");
+    expect(layout).not.toContain(".command-band-left.is-collapsed");
+    // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
+    // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
-    expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
+    expect(components).toMatch(/\.operations-side-bar::before \{[^}]*linear-gradient\(var\(--glass-tint-chrome\), var\(--glass-tint-chrome\)\),\n    var\(--glass-underlay\);/);
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     // Operation과 War Room 카드는 개수와 무관하게 blur하지 않고 같은 투명 면을 공유한다.
@@ -2358,19 +2362,15 @@ describe("Instrument core design contract", () => {
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
     expect(dormantBlock).not.toContain("var(--ink-deep)");
-    // 캡이 실재하는 상태로 한정한다 — 자동 은닉 풀스크린은 밴드가 fixed로 흐름에서 빠져 캡이
-    // 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
-    // 도킹한 풀스크린은 밴드가 흐름으로 돌아와 다시 캡이 되므로 같은 해제를 받아야 한다.
-    const expandedSideBarBlock =
-      components.match(/\.console-shell:has\(\.command-band:not\(\.is-fullscreen\)\) \.operations-side-bar\.is-expanded,\n\.console-shell:has\(\.command-band\.is-docked\) \.operations-side-bar\.is-expanded \{[^}]*\}/)?.[0] ?? "";
-    expect(expandedSideBarBlock).toContain("border-top: none;");
-    expect(expandedSideBarBlock).toContain("border-top-right-radius: 0;");
+    // 캡 접합 규칙은 캡과 함께 원자적으로 퇴역했다 — 남으면 부유 카드의 상단 마감(테두리·
+    // 라운드)이 창 모드·도킹 풀스크린에서 잘린 채 남는다(사전 감사 blocker). 카드는 네 변
+    // 모두 자기 마감을 가진다.
+    expect(components).not.toContain(".operations-side-bar.is-expanded,");
     expect(components).not.toMatch(/^\.operations-side-bar\.is-expanded \{/m);
+    expect(sideBarBlock).toContain("position: absolute;");
+    expect(sideBarBlock).toContain("border-radius: var(--radius-md);");
+    expect(sideBarBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(layout).toContain(".command-band.is-fullscreen {");
-    // 접거나 풀스크린이면 상단 캡이 없으므로 부유 카드 문법이 그대로 남는다.
-    expect(components).toContain("border-radius: 0 var(--radius-md) 0 0;");
-    expect(layout).toMatch(/\.command-band-left\.is-collapsed \{[^}]*box-shadow: none;/);
-    expect(layout).toMatch(/\.command-band-left\.is-collapsed::before \{[^}]*display: none;/);
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
@@ -2471,22 +2471,9 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
-    // .command-band-left.is-collapsed 블록은 페인트 전환(배경·경계·그림자)만 가진다 —
-    // 위치·크기·여백 속성이 들어오는 순간 좌표 불변 계약이 깨진다.
-    const collapsedBlocks = layout.match(/^\.command-band-left\.is-collapsed \{[^}]*\}/gm) ?? [];
-    expect(collapsedBlocks).toHaveLength(1);
-    const collapsedDeclarations = (collapsedBlocks[0] ?? "")
-      .replace(/^\.command-band-left\.is-collapsed \{/, "")
-      .replace(/\}$/, "")
-      .split(";")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    expect(collapsedDeclarations.length).toBeGreaterThan(0);
-    for (const declaration of collapsedDeclarations) {
-      expect(declaration).toMatch(/^(?:background|border-color|box-shadow):/);
-    }
-    const collapsedBeforeBlock = layout.match(/^\.command-band-left\.is-collapsed::before \{[^}]*\}/m)?.[0] ?? "";
-    expect(collapsedBeforeBlock).toContain("display: none;");
+    // 캡 퇴역 후 밴드 좌측에는 상태 페인트 게이트 자체가 없다 — is-collapsed 변형이
+    // 되살아나면 사이드바 상태가 다시 밴드 기하·재질에 손을 대는 회귀다.
+    expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 어떤 상태 셀렉터도 밴드 버튼의 기하를 조건부로 겨냥하지 못한다.
     const statefulBandButtonRule =
       /(?:is-closed|is-collapsed|data-sidebar|data-rail)[^{]*\.command-band-(?:button|sidebar-toggle|search|rail-toggle)|\.command-band-(?:button|sidebar-toggle|search|rail-toggle)[^{]*(?:is-closed|is-collapsed)/;
@@ -3452,7 +3439,7 @@ describe("Instrument core design contract", () => {
     expect(source("canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
     expect(source("canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
+    expect(source("canvas/canvas.tsx")).toContain("y: arena.y + TITLEBAR_OUTSET_PX");
     const canvasZoom = source("canvas/canvas.tsx");
     expect(canvasZoom).toContain("TITLEBAR_OUTSET_PX * operationZoom");
     expect(canvasZoom).toContain("const operationZoom = focusLayerHidden");
@@ -3465,8 +3452,8 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).not.toContain("adaptivePanelMaterial");
     expect(canvasZoom).not.toContain("is-panel-density-high");
     expect(components).not.toContain(".operations-canvas.is-panel-density-high");
-    expect(source("canvas/coordinates.ts")).toContain("y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("canvas/coordinates.ts")).toContain("canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("canvas/coordinates.ts")).toContain("y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("canvas/coordinates.ts")).toContain("arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");
     expect(source("canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
     expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");

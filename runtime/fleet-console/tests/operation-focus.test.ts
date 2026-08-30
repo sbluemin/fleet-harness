@@ -96,7 +96,9 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     const source = fs.readFileSync(new URL("../core/client/src/pages/operations.tsx", import.meta.url), "utf8");
     expect(source).not.toContain("statusCycleOperationIds");
     const sideBarStoreImport = /import \{([^}]*)\} from "\.\.\/sidebar\/operations-side-bar-store\.js";/.exec(source);
-    expect(sideBarStoreImport?.[1]?.split(",").map((symbol) => symbol.trim())).toEqual(["toggleSideBarStatusAxis"]);
+    // useSideBarState는 아레나 인셋(부유 크롬 점유 폭) 계산 전용이다 — 순환 순서에는 여전히
+    // 상태 축이 관여하지 않는다(focusCycleOperationIds 시그니처가 보장).
+    expect(sideBarStoreImport?.[1]?.split(",").map((symbol) => symbol.trim())).toEqual(["toggleSideBarStatusAxis", "useSideBarState"]);
   });
 
   // 캡션·칩이 여는 Operation 메뉴는 페이지가 소유하므로 주인 패널이 언마운트돼도 저 혼자 남는다.

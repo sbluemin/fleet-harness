@@ -173,6 +173,10 @@ export const canvasEn = {
   "sidebar.chip.closeTitle": "Close operation",
   "sidebar.chip.closeArmed": "Close?",
 
+  // ── sidebar 헤더/필터 (전면 해도 개편 P2) ────────────────────────────────
+  "sidebar.filter.placeholder": "Filter operations…",
+  "sidebar.filter.aria": "Filter operations by title",
+
   // ── rail ────────────────────────────────────────────────────────────────
   "pane.caption.expand": "Expand",
   "pane.caption.close": "Close pane",
@@ -180,7 +184,8 @@ export const canvasEn = {
   "rail.chrome.toolsAria": "Activity tools",
   "rail.chrome.panelsAria": "Activity panels",
   "rail.chrome.resizePanel": "Resize {title} panel",
-  "rail.chrome.floatLabel": "Float over Map",
+  "rail.chrome.resizeCard": "Resize Activity Rail",
+  "rail.chrome.closePanel": "Close {title}",
   "rail.chrome.opacityAria": "Panel opacity",
   "rail.chrome.resetWidth": "Reset panel width",
   "rail.theater.fallback": "Theater",
@@ -362,13 +367,17 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.chip.closeTitle": "Operation 닫기",
   "sidebar.chip.closeArmed": "닫을까요?",
 
+  "sidebar.filter.placeholder": "Operation 필터…",
+  "sidebar.filter.aria": "Operation 제목으로 필터",
+
   "pane.caption.expand": "확대",
   "pane.caption.close": "페인 닫기",
   "rail.chrome.aria": "Activity Rail",
   "rail.chrome.toolsAria": "Activity 도구",
   "rail.chrome.panelsAria": "Activity 패널",
   "rail.chrome.resizePanel": "{title} 패널 크기 조절",
-  "rail.chrome.floatLabel": "Map 위에 띄우기",
+  "rail.chrome.resizeCard": "Activity Rail 폭 조절",
+  "rail.chrome.closePanel": "{title} 닫기",
   "rail.chrome.opacityAria": "패널 불투명도",
   "rail.chrome.resetWidth": "패널 폭 초기화",
   "rail.theater.fallback": "Theater",

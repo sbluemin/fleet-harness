@@ -53,7 +53,7 @@ beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
   __resetPaneStoreForTests();
-  closeRailPanel();
+  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
   setRailChromeExpanded(false);
 });
 
@@ -73,7 +73,7 @@ describe("SettingsRouteAdapter", () => {
   it("translates a legacy remote-access deep link onto the connectivity section", () => {
     mountAt("/settings?section=remote-access");
 
-    expect(getRailStoreSnapshot().activeRailPanelId).toBe("settings");
+    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
     expect(getRailStoreSnapshot().railChromeExpanded).toBe(true);
     const [instance] = getPaneStoreSnapshot().rail;
     expect(instance?.paneId).toBe("settings");

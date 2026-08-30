@@ -95,8 +95,12 @@ export function useFullscreenCommandBand(canHide: () => boolean = ALWAYS_ALLOW_H
       const rising = y < lastY;
       lastY = y;
       // 최상단 구간은 엣지 버튼이 소유한다. 버튼을 누른 채 올라오는 움직임은 캔버스 패닝이므로
-      // 의도로 세지 않는다.
-      if (y < EDGE_INSTANT_PX || y >= EDGE_INTENT_PX || !rising || event.buttons !== 0) {
+      // 의도로 세지 않는다. 부유 크롬 카드 위의 상승도 의도가 아니다 — 카드 상단(top 12px)이
+      // 의도 레인(8–32px)과 겹쳐, 사이드바 헤더의 + 버튼으로 올라가는 커서가 밴드를 불러
+      // 그 버튼을 덮는다(적대 리뷰). 카드 위 조작은 카드의 것이다.
+      const overFloatingChrome = event.target instanceof Element
+        && event.target.closest(".operations-side-bar, .right-rail") !== null;
+      if (y < EDGE_INSTANT_PX || y >= EDGE_INTENT_PX || !rising || event.buttons !== 0 || overFloatingChrome) {
         cancelDwell();
         return;
       }

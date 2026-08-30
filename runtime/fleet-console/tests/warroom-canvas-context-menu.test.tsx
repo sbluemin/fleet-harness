@@ -162,6 +162,7 @@ describe("War Room canvas controls reach", () => {
   it("opens nothing when no Theater owns the launch", () => {
     // 실행 대상이 없으면 메뉴를 띄워도 아무것도 실행할 수 없다 — 브라우저 메뉴만 계속 막는다.
     act(() => root!.render(createElement(OperationsCanvas, {
+      arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
       state: { ...STATE, theaters: [], operations: [], activeTheaterId: null, activeOperationId: null },
       catalog: CATALOG,
       canLaunch: false,
@@ -227,6 +228,7 @@ describe("War Room empty space releases a focused deck panel", () => {
       act(() => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
+          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -265,6 +267,7 @@ describe("War Room empty space releases a focused deck panel", () => {
       act(() => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
+          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -295,6 +298,7 @@ describe("War Room empty space releases a focused deck panel", () => {
       act(() => {
         setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
         root!.render(createElement(OperationsCanvas, {
+          arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
           state: idleState,
           catalog: CATALOG,
           canLaunch: true,
@@ -322,6 +326,7 @@ describe("War Room empty space releases a focused deck panel", () => {
 
 function renderCanvas(onLaunchKind: OperationsCanvasLaunchKind = () => {}) {
   act(() => root!.render(createElement(OperationsCanvas, {
+    arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
     state: STATE,
     catalog: CATALOG,
     canLaunch: true,

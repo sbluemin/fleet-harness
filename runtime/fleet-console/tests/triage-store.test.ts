@@ -971,16 +971,17 @@ describe("triage store", () => {
     expect(byStatus.get("ended")).toEqual(["alpha-dormant"]);
   });
 
-  it("keeps the Triage stage and companions inside the inset without overlap", () => {
-    const canvasSize = { width: 1_200, height: 800 };
+  it("keeps the Triage stage and companions inside the arena inset without overlap", () => {
+    // 전면 해도 개편: 기준 상자는 캔버스 박스가 아니라 아레나(부유 크롬 인셋을 뺀 유효 뷰포트)다.
+    const arena = { x: 304, y: 0, width: 1_200, height: 800 };
     const geometries = [0, 1, 2].map((slotIndex) =>
-      triageStageGeometryFor(canvasSize, 10, slotIndex, 3));
+      triageStageGeometryFor(arena, 10, slotIndex, 3));
 
     for (const geometry of geometries) {
-      expect(geometry.x).toBeGreaterThanOrEqual(18);
-      expect(geometry.y).toBeGreaterThanOrEqual(18 + 32);
-      expect(geometry.x + geometry.width).toBeLessThanOrEqual(canvasSize.width - 18);
-      expect(geometry.y + geometry.height).toBe(canvasSize.height - 18);
+      expect(geometry.x).toBeGreaterThanOrEqual(arena.x + 18);
+      expect(geometry.y).toBeGreaterThanOrEqual(arena.y + 18 + 32);
+      expect(geometry.x + geometry.width).toBeLessThanOrEqual(arena.x + arena.width - 18 + 1e-6);
+      expect(geometry.y + geometry.height).toBe(arena.y + arena.height - 18);
     }
     expect(geometries[0]!.x + geometries[0]!.width).toBeLessThan(geometries[1]!.x);
     expect(geometries[1]!.x + geometries[1]!.width).toBeLessThan(geometries[2]!.x);

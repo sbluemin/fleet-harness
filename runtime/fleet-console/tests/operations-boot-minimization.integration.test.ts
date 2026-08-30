@@ -113,7 +113,11 @@ vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: 
 vi.mock("../core/client/src/settings/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
 vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ plugins: registryMocks.plugins, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] , expandedSurfaces: [], persistentComponents: []}) }));
-vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
+// 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
+vi.mock("../core/client/src/rail/rail-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/client/src/rail/rail-store.js")>()),
+  toggleRailChrome: vi.fn(),
+}));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 // operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
@@ -303,7 +307,9 @@ describe("Operations boot minimization", () => {
     expect(mountCanvas).toHaveBeenCalledOnce();
     expect(getSnapshot().operations.visible).toMatchObject({ x: 20, y: 30, width: 100, height: 80 });
     expect(getSnapshot().minimized).toEqual([]);
-    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+    // 전면 해도 개편: fit-all의 분모·중심은 아레나다 — 펼친 사이드바(폭 280 + 부유 여백 24)가
+    // 좌측 인셋 304px를 만들어 중심이 152px 왼쪽으로 온다(캔버스 박스 중심이던 구 계약의 승계).
+    expect(getSnapshot().viewport).toEqual({ x: 278, y: 330, zoom: 1 });
   });
 
   it("seeds missing geometry before consuming a cold pending fit", async () => {
@@ -336,7 +342,8 @@ describe("Operations boot minimization", () => {
     expect(mountCanvas).toHaveBeenCalledOnce();
     expect(getSnapshot().operations["missing-geometry"]).toMatchObject({ x: 0, y: 0, width: 640, height: 400 });
     expect(getSnapshot().minimized).toEqual([]);
-    expect(getSnapshot().viewport).toEqual({ x: 180, y: 200, zoom: 1 });
+    // 아레나 폭(캔버스 − 좌측 인셋 304)이 bbox보다 좁아 fit이 축소·아레나 중심 좌표로 맞춘다.
+    expect(getSnapshot().viewport).toEqual({ x: 48, y: 212.5, zoom: 0.9375 });
   });
 
   it("prunes stale geometry before consuming a cold pending fit", async () => {
@@ -371,7 +378,9 @@ describe("Operations boot minimization", () => {
     expect(mountCanvas).toHaveBeenCalledOnce();
     expect(getSnapshot().operations.stale).toBeUndefined();
     expect(getSnapshot().operations.visible).toMatchObject({ x: 20, y: 30, width: 100, height: 80 });
-    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+    // 전면 해도 개편: fit-all의 분모·중심은 아레나다 — 펼친 사이드바(폭 280 + 부유 여백 24)가
+    // 좌측 인셋 304px를 만들어 중심이 152px 왼쪽으로 온다(캔버스 박스 중심이던 구 계약의 승계).
+    expect(getSnapshot().viewport).toEqual({ x: 278, y: 330, zoom: 1 });
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {

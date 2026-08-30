@@ -141,6 +141,7 @@ describe("canvas controls launch parity across canvas modes", () => {
 
 function renderCanvas(overrides: Partial<Parameters<typeof OperationsCanvas>[0]> = {}) {
   act(() => root!.render(createElement(OperationsCanvas, {
+    arenaInsets: { left: 0, top: 0, right: 0, bottom: 0 },
     state: STATE,
     catalog: CATALOG,
     canLaunch: true,

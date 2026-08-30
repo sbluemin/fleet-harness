@@ -8,7 +8,7 @@ import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../ap
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
@@ -167,7 +167,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [switcherMenu, setSwitcherMenu] = useState<CommandBandSwitcherMenu | null>(null);
   const [switcherMenuLeft, setSwitcherMenuLeft] = useState(0);
   const [bandWidth, setBandWidth] = useState(0);
-  const [mapControlsWidth, setMapControlsWidth] = useState(0);
   const [leftContentEnd, setLeftContentEnd] = useState(0);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
@@ -175,10 +174,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
-  // 맵 컨트롤 앵커는 펼침 = 사이드바 경계선, 접힘 = 좌측 컨트롤군 끝(도킹)이다.
-  // 브레드크럼은 Console 전체 정중앙에 고정하므로 여백 하한도 같은 viewport 좌표계로 잰다.
-  const mapControlsAnchor = commandBandMapControlsAnchor(sideBar.collapsed, sideBar.width, leftContentEnd);
-  const centerGutter = commandBandCenterGutter(mapControlsAnchor, mapControlsWidth);
+  // 맵 컨트롤은 좌측 클러스터의 플로우 형제다(캡·앵커 퇴역). 브레드크럼은 Console 전체
+  // 정중앙에 고정하므로 여백 하한은 좌측 클러스터의 실측 콘텐츠 끝에서 잰다.
+  const centerGutter = commandBandCenterGutter(leftContentEnd);
   const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth, centerGutter);
   // 브레드크럼을 접은 뒤에는 지킬 중앙 트랙이 없다. 하한을 그대로 두면 고정 트랙 합이 밴드 폭을
   // 넘어 우측 컨트롤이 화면 밖으로 밀린다. 판정용 centerGutter는 그대로 두어 되돌아오는 폭이
@@ -363,17 +361,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     return () => window.removeEventListener("resize", measure);
   }, [switcherMenu]);
 
-  // 맵 컨트롤은 절대 배치라 그리드 트랙에 잡히지 않는다 — 밴드 폭과 클러스터 폭을 실측해
-  // 여백 하한과 브레드크럼 접힘을 판정한다. 사이드바 폭이 드래그로 변하므로 viewport
-  // 미디어쿼리로는 판정할 수 없다. 좌측 컨트롤군 콘텐츠 끝(자식 우단 최대값)은 접힘 도킹
-  // 앵커다 — 캡 폭은 좌표 불변 계약으로 사이드바 폭에 고정돼 있어 캡 자체로는 잴 수 없다.
-  // 자식들은 offsetParent가 밴드(.command-band, relative)라 앵커와 같은 좌표계다.
+  // 좌측 클러스터(모드 스위치·트레이 포함)의 실측 콘텐츠 끝이 브레드크럼 여백 하한의 원료다.
+  // 사이드바 폭이 아니라 클러스터 폭이 하한을 정하므로 viewport 미디어쿼리로는 판정할 수 없다.
+  // 자식 우단 최대값을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 모드 트레이의
+  // 모드별 폭 변동이 모두 하한을 움직인다. offsetParent 좌표계는 밴드와 동일하다.
   useLayoutEffect(() => {
     const band = commandBandRef.current;
     if (!band || typeof ResizeObserver === "undefined") return;
     const measure = () => {
       setBandWidth(band.clientWidth);
-      setMapControlsWidth(mapControlsRef.current?.offsetWidth ?? 0);
       const bandLeft = bandLeftRef.current;
       setLeftContentEnd(bandLeft === null ? 0 : Math.max(0, ...Array.from(bandLeft.children, (child) => (child instanceof HTMLElement ? child.offsetLeft + child.offsetWidth : 0))));
     };
@@ -382,8 +378,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     observer.observe(band);
     const mapControls = mapControlsRef.current;
     if (mapControls) observer.observe(mapControls);
-    // 칩 폭 변화(연결 상태 라벨·폰트 로드)도 앵커를 움직인다 — 자식을 직접 관찰하고,
-    // 칩의 등장/퇴장은 아래 deps가 effect를 다시 돌려 관찰 대상을 갱신한다.
+    // 칩·트레이 폭 변화도 하한을 움직인다 — 자식을 직접 관찰하고, 자식의 등장/퇴장은
+    // 아래 deps가 effect를 다시 돌려 관찰 대상을 갱신한다.
     const bandLeft = bandLeftRef.current;
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     return () => observer.disconnect();
@@ -512,8 +508,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         ref={commandBandRef}
         className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}${fullscreen.isFullscreen && fullscreen.isDocked ? " is-docked" : ""}`}
         style={{
-          "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`,
-          "--command-band-map-anchor": `${mapControlsAnchor}px`,
           "--command-band-center-gutter": `${injectedCenterGutter}px`,
         } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}
@@ -523,7 +517,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         onFocus={fullscreen.reveal}
         onBlur={handleInteractionBlur}
       >
-      <div ref={bandLeftRef} className={`command-band-left${requestedOperationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
+      <div ref={bandLeftRef} className="command-band-left">
         <BrandHome />
         {state.channel === "local" ? <div className="command-band-environment">
           <button ref={environmentTriggerRef} type="button" className={`command-band-local-chip${state.controlHolder !== null ? " is-shared" : ""}`} aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
@@ -545,8 +539,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
           <SearchIcon />
         </button>
-      </div>
-      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
+        {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
         <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
           <SegmentedThumb />
           {CANVAS_MODES.map((mode) => (
@@ -620,7 +613,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             ><layout.Icon /></button>
           ))}
         </div> : null}
-      </div> : null}
+        </div> : null}
+      </div>
       {centerBreadcrumbVisible ? <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" data-keep-operation-active onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>

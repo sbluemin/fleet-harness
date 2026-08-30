@@ -36,6 +36,18 @@ export interface CanvasViewportSize {
   readonly height: number;
 }
 
+/* 전면(full-bleed) 캔버스 위에 뜬 크롬(부유 사이드바·레일 카드)이 가리는 가장자리 폭.
+   캔버스 박스에서 이 인셋을 뺀 사각형이 "아레나" — 사용자가 실제로 보는 유효 뷰포트다.
+   월드 변환은 아레나 원점에 앵커되므로(canvas.tsx) 저장된 viewport/geometry는 계속
+   아레나-상대 좌표다. fit-all·focus·모드 슬롯·미니맵은 전부 아레나 크기로 계산해야
+   패널이 부유 크롬 밑으로 배치되지 않는다(전면화 리스크 감사 계약). */
+export interface CanvasArenaInsets {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
 export interface CanvasWorldRect {
   readonly x: number;
   readonly y: number;
@@ -287,6 +299,18 @@ export function setCanvasViewportSize(viewportSize: CanvasViewportSize): void {
   canvasViewportSize = viewportSize;
 }
 
+// 아레나 인셋은 Operations 페이지(크롬 구성의 소유자)가 사이드바/레일 상태에서 계산해 심는다.
+// 스토어는 fit-all의 분모·중심 계산에서만 소비한다 — 알림 없는 모듈 값(뷰포트 크기와 동일 계약).
+let canvasArenaInsets: CanvasArenaInsets = { left: 0, top: 0, right: 0, bottom: 0 };
+
+export function setCanvasArenaInsets(insets: CanvasArenaInsets): void {
+  canvasArenaInsets = insets;
+}
+
+export function getCanvasArenaInsets(): CanvasArenaInsets {
+  return canvasArenaInsets;
+}
+
 export function requestFitAllOperations(): void {
   fitAllOperationsPending = true;
   consumePendingFitAllOperations();
@@ -305,6 +329,10 @@ export function resetCanvasViewportSize(): void {
 
 export function fitAllOperations(): void {
   if (formationView || focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  // 분모와 중심은 캔버스 박스가 아니라 아레나다 — 전면 캔버스에서 박스 크기로 맞추면
+  // 가장자리 패널이 부유 크롬 밑에 착지하고 그 중심이 viewport로 영속된다.
+  const arenaWidth = Math.max(1, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right);
+  const arenaHeight = Math.max(1, canvasViewportSize.height - canvasArenaInsets.top - canvasArenaInsets.bottom);
   const minimized = new Set(state.minimized);
   const visibleGeometries = Object.entries(state.operations)
     .filter(([operationId]) => !minimized.has(operationId))
@@ -317,12 +345,12 @@ export function fitAllOperations(): void {
   const bboxWidth = maxX - minX;
   const bboxHeight = maxY - minY;
   const zoom = Math.max(FIT_ALL_MIN_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
-    (canvasViewportSize.width - OPERATION_FOCUS_PADDING) / bboxWidth,
-    (canvasViewportSize.height - OPERATION_FOCUS_PADDING) / bboxHeight,
+    (arenaWidth - OPERATION_FOCUS_PADDING) / bboxWidth,
+    (arenaHeight - OPERATION_FOCUS_PADDING) / bboxHeight,
   )));
   animateViewportTo({
-    x: canvasViewportSize.width / 2 - (minX + bboxWidth / 2) * zoom,
-    y: canvasViewportSize.height / 2 - (minY + bboxHeight / 2) * zoom,
+    x: arenaWidth / 2 - (minX + bboxWidth / 2) * zoom,
+    y: arenaHeight / 2 - (minY + bboxHeight / 2) * zoom,
     zoom,
   });
 }

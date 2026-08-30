@@ -39,7 +39,7 @@ beforeEach(() => {
   document.body.replaceChildren();
   scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
-  closeRailPanel();
+  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
   setRailChromeExpanded(false);
   setState({
     ...getState(),
@@ -223,14 +223,16 @@ describe("rail search fan-out", () => {
     act(() => option!.click());
     expect(activate).toHaveBeenCalledOnce();
     expect(pathname).toBe("/settings");
-    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: null, railChromeExpanded: false });
+    expect(getRailStoreSnapshot().pinnedPanelIds).not.toContain("files");
+    expect(getRailStoreSnapshot()).toMatchObject({ railChromeExpanded: false });
 
     await act(async () => {
       finishActivation?.();
       await Promise.resolve();
     });
     expect(pathname).toBe("/operations");
-    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: "files", railChromeExpanded: true });
+    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("files");
+    expect(getRailStoreSnapshot()).toMatchObject({ railChromeExpanded: true });
   });
 
   it("keeps matching Operations above panel groups", async () => {

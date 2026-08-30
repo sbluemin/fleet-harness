@@ -18,9 +18,8 @@ import {
   closeRailPanel,
   getRailStoreSnapshot,
   RAIL_OVERLAY_ALPHA_DEFAULT,
-  setActiveRailPanel,
+  openRailPanel,
   setRailOverlayAlpha,
-  setRailPanelBehavior,
 } from "../core/client/src/rail/rail-store.js";
 import { settingsPanes, syncSettingsSearchPlugins } from "../core/client/src/settings/settings-pane.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
@@ -112,8 +111,7 @@ beforeEach(() => {
   syncSettingsSearchPlugins([]);
   hydrateGlobalSettings(SETTINGS);
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(SETTINGS)));
-  setActiveRailPanel("settings");
-  setRailPanelBehavior("push");
+  openRailPanel("settings");
   setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT);
   panesCapability = { open: vi.fn(), close: vi.fn(), replaceParams: vi.fn(), isOpen: () => false };
 });
@@ -124,7 +122,7 @@ afterEach(() => {
   root = null;
   container = null;
   syncSettingsSearchPlugins([]);
-  closeRailPanel();
+  for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -159,7 +157,7 @@ describe("settings pane body", () => {
 
   it("reaches the migrated rail rows by their visible names", () => {
     renderPane({});
-    typeQuery("Float over Map");
+    typeQuery("Panel opacity");
 
     const labels = [...document.querySelectorAll(".settings-pane-result-label")].map((e) => e.textContent);
     expect(labels).toEqual(["Appearance"]);
@@ -177,10 +175,10 @@ describe("settings pane body", () => {
     // 첫 Esc는 검색을 거둔다 — 질의를 지우려던 손이 페인째 닫으면 안 된다.
     pressEscape(searchInput());
     expect(document.querySelector(".settings-pane-results")).toBeNull();
-    expect(getRailStoreSnapshot().activeRailPanelId).toBe("settings");
+    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
 
     pressEscape(searchInput());
-    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+    expect(getRailStoreSnapshot().pinnedPanelIds).not.toContain("settings");
     expect(document.activeElement).toBe(gear);
 
     gear.remove();
@@ -190,7 +188,7 @@ describe("settings pane body", () => {
     renderPane({});
     pressEscape(searchInput(), true);
 
-    expect(getRailStoreSnapshot().activeRailPanelId).toBe("settings");
+    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
   });
 
   it("keeps the remote management out of the pane and opens it on the expanded surface", () => {
@@ -211,9 +209,8 @@ describe("settings pane body", () => {
   it("hosts the rail preferences in Appearance and resets opacity on slider double-click", () => {
     renderPane({});
 
-    const float = document.querySelector<HTMLButtonElement>('.settings-pane [role="switch"][aria-label="Float over Map"]')!;
-    act(() => float.click());
-    expect(getRailStoreSnapshot().panelBehavior).toBe("overlay");
+    // 전면 해도 개편으로 push/overlay 스위치는 퇴역했다 — 겉모습에 남는 레일 취향은 불투명도뿐이다.
+    expect(document.querySelector('.settings-pane [role="switch"][aria-label="Float over Map"]')).toBeNull();
 
     act(() => setRailOverlayAlpha(65));
     renderPane({});
@@ -225,7 +222,7 @@ describe("settings pane body", () => {
   it("carries the rail preferences into the expanded Appearance section too", () => {
     renderPane({ section: "appearance" }, sectionPane);
 
-    expect(document.querySelector('.settings-expanded [role="switch"][aria-label="Float over Map"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded input[aria-label="Panel opacity"]')).not.toBeNull();
     // 확대 사본은 준비된 스냅숏을 재사용한다 — 여기서 GET을 또 쏘면 그 응답이 사용자의
     // 낙관 저장 뒤에 도착해 옛 값으로 화면을 되덮는다(리뷰 적발).
     const settingsGets = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
