@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,7 +54,9 @@ const PLUGIN_FIXTURES: Record<string, unknown>[] = [
     id: "file-explorer",
     title: "FILES",
     icon: "F",
-    render: () => null,
+    // 마운트 효과에서 자기 확장 폭을 요구하는 본문 — 자식 효과가 부모(RailSurface) 효과보다
+    // 먼저 도는 실제 순서를 재현한다(Codex P2 판별 픽스처).
+    render: () => <FilesMountExtra />,
   },
   {
     id: "shell-action",
@@ -134,9 +136,17 @@ import {
   closeRailPanel,
   getRailStoreSnapshot,
   openRailPanel,
+  requestRailPanelExtraWidth,
   setRailChromeExpanded,
   setRailOverlayAlpha,
 } from "../core/client/src/rail/rail-store.js";
+
+function FilesMountExtra() {
+  useEffect(() => {
+    requestRailPanelExtraWidth("file-explorer", 360);
+  }, []);
+  return null;
+}
 import {
   closeExpandedSurfacesOf,
   openExpandedSurface,
@@ -276,6 +286,20 @@ describe("Right Rail exclusive panel", () => {
 
     const parked = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === "repo-term");
     expect(parked?.visible).toBe(false);
+  });
+
+  it("keeps the arriving panel's mount-time extra-width request across the swap", () => {
+    renderRail();
+    // repository의 detail이 서서 표면이 확장 폭을 소유한 상태에서 교체한다.
+    act(() => openPane({ paneId: "repo-notes", mount: "rail" }));
+    expect(getRailStoreSnapshot().panelExtraWidth).toBeGreaterThan(0);
+
+    act(() => iconButton("FILES").click());
+
+    // 이전 표면의 소유권이 살아남으면 standing 0을 본 폭 효과가 도착 패널의 창구로 null을
+    // 쏴, 도착 본문이 마운트 효과에서 막 요청한 폭을 덮는다(Codex P2) — 소유권은 엔트리
+    // 교체에서 함께 걷혀야 한다.
+    expect(getRailStoreSnapshot().panelExtraWidth).toBe(360);
   });
 
   it("with nothing active the slot closes and the rail loses is-open", () => {

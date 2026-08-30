@@ -83,10 +83,17 @@ export const RailSurface = memo(function RailSurface({
   const ownedIdsRef = useRef(ownedIds);
   ownedIdsRef.current = ownedIds;
   const previousEntryRef = useRef<string | null>(null);
+  // 확장 폭 소유권 — 아래 폭 효과와 나눠 쓴다. 엔트리가 바뀌면 소유권도 떠나는 표면의 것이라
+  // 여기서 함께 걷는다: 남겨 두면 도착 렌더에서 standing 0을 본 폭 효과가 이미 도착 패널의
+  // 것이 된 창구로 null을 쏘고, 자식(도착 본문) 마운트 효과가 부모 효과보다 먼저 돌아 그
+  // 본문이 막 요청한 폭을 덮는다(Codex P2). 떠난 표면 몫의 정리는 창구 소유자(호스트)의
+  // 계약이므로 여기서 창구를 부르지는 않는다.
+  const ownsExtraRef = useRef(false);
   useEffect(() => {
     const previous = previousEntryRef.current;
     previousEntryRef.current = entryId;
     if (previous === null || previous === entryId) return;
+    ownsExtraRef.current = false;
     resetSurfacePanes(paneIndexRef.current, ownedIdsRef.current);
   }, [entryId]);
 
@@ -156,7 +163,6 @@ export const RailSurface = memo(function RailSurface({
     (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? descriptor.defaultWidth ?? MIN_PANE_PX),
     0,
   );
-  const ownsExtraRef = useRef(false);
   useEffect(() => {
     if (standing.length > 0) {
       ownsExtraRef.current = true;
