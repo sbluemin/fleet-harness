@@ -14,7 +14,7 @@ import { usePaneIndex } from "./pane-registry.js";
  * 캔버스 위에 세운다. 페인은 자기가 어디에 서 있는지만 `ctx.mount`로 알 뿐, 확대를 위한
  * 코드를 따로 쓰지 않는다.
  *
- * 슬롯 머리는 호스트가 이미 제목과 닫기를 그린다. 그래서 확대된 페인은 자기 캡션을 세우지
+ * 페인 머리는 호스트가 이미 제목과 닫기를 그린다. 그래서 확대된 페인은 자기 캡션을 세우지
  * 않는다 — 세우면 같은 문장이 두 줄에 겹쳐 선다(Codex 읽기 시트가 지금 그 상태다).
  */
 export const EXPANDED_PANE_SURFACE_ID = "pane";
@@ -40,7 +40,7 @@ export const expandedPaneSurface: ExpandedSurfaceDescriptor = {
   id: EXPANDED_PANE_SURFACE_ID,
   title: (ctx) => (language) => resolvePaneTitle(ctx, language),
   render: (ctx) => <ExpandedPaneBody ctx={ctx} />,
-  minSlotWidth: 420,
+  minPaneWidth: 420,
 };
 
 /**
@@ -70,7 +70,7 @@ function toPaneContext(ctx: ExpandedSurfaceContext, role: import("@fleet-console
     params: ctx.params,
     role,
     mount: "expanded" as const,
-    width: ctx.slotWidth,
+    width: ctx.paneWidth,
     visible: true,
     focused: ctx.focused,
     theaterId: ctx.theaterId,
@@ -115,7 +115,7 @@ function ExpandedPaneContent({
     params: ctx.params,
     visible: true,
     focused: ctx.focused,
-    width: ctx.slotWidth,
+    width: ctx.paneWidth,
     theaterId: ctx.theaterId,
     api: ctx.api,
     lifecycle: ctx.lifecycle,

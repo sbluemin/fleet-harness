@@ -30,7 +30,7 @@ let root: Root;
 beforeEach(() => {
   resetExpandedSurfacesForTest();
   layerMocks.descriptors = new Map();
-  // jsdom에는 없다 — 레이어가 슬롯 폭을 재는 데 쓴다.
+  // jsdom에는 없다 — 레이어가 페인 폭을 재는 데 쓴다.
   vi.stubGlobal("ResizeObserver", class {
     observe(): void {}
     unobserve(): void {}
@@ -63,12 +63,12 @@ describe("a surface that throws", () => {
     openExpandedSurface({ surfaceId: "bad" });
 
     expect(() => act(() => { root.render(<ExpandedSurfaceLayer />); })).not.toThrow();
-    // 슬롯 자체는 살아남아 사용자가 닫을 수 있어야 한다.
+    // 페인 자체는 살아남아 사용자가 닫을 수 있어야 한다.
     // 레이어는 캔버스로 portal하고, 캔버스가 없으면 body로 떨어진다.
-    expect(document.querySelector(".expanded-surface-slot")).not.toBeNull();
+    expect(document.querySelector(".expanded-surface-pane")).not.toBeNull();
   });
 
-  it("still names the slot when the title callback throws", () => {
+  it("still names the pane when the title callback throws", () => {
     layerMocks.descriptors.set("bad", {
       id: "bad",
       title: () => { throw new Error("no name"); },
@@ -77,7 +77,7 @@ describe("a surface that throws", () => {
     openExpandedSurface({ surfaceId: "bad" });
 
     expect(() => act(() => { root.render(<ExpandedSurfaceLayer />); })).not.toThrow();
-    expect(document.querySelector(".expanded-surface-slot")?.getAttribute("aria-label")).toBe("bad");
+    expect(document.querySelector(".expanded-surface-pane")?.getAttribute("aria-label")).toBe("bad");
   });
 
   it("contains a throwing tools callback", () => {
@@ -122,5 +122,44 @@ describe("the close notification's lifetime", () => {
     closeExpandedSurface(instanceId);
 
     expect(delivered).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * 슬롯이 페인으로 이름을 바꾼 뒤에도, 옛 이름으로 쓰인 본문이 폭을 잃지 않아야 한다.
+ * 개명이 곧 고장이 되지 않게 하는 것이 별칭의 전부다.
+ */
+describe("the renamed geometry", () => {
+  it("carries both the new and the deprecated names", () => {
+    let seen: Record<string, unknown> | null = null;
+    layerMocks.descriptors.set("probe", {
+      id: "probe",
+      title: () => "Probe",
+      render: (ctx: Record<string, unknown>) => { seen = ctx; return null; },
+    });
+    openExpandedSurface({ surfaceId: "probe" });
+    act(() => { root.render(<ExpandedSurfaceLayer />); });
+
+    const ctx = seen as unknown as Record<string, number>;
+    expect(ctx).not.toBeNull();
+    expect(ctx.paneIndex).toBe(0);
+    expect(ctx.paneCount).toBe(1);
+    expect(ctx.slotIndex).toBe(ctx.paneIndex);
+    expect(ctx.slotCount).toBe(ctx.paneCount);
+    expect(ctx.slotWidth).toBe(ctx.paneWidth);
+  });
+
+  it("still inserts where a deprecated slotIndex asks", () => {
+    for (const id of ["a", "b"]) {
+      layerMocks.descriptors.set(id, { id, title: () => id, render: () => null });
+    }
+    openExpandedSurface({ surfaceId: "a" });
+    openExpandedSurface({ surfaceId: "b" });
+    layerMocks.descriptors.set("c", { id: "c", title: () => "c", render: () => null });
+    openExpandedSurface({ surfaceId: "c", slotIndex: 1 });
+
+    act(() => { root.render(<ExpandedSurfaceLayer />); });
+    const titles = [...document.querySelectorAll(".expanded-surface-pane-title")].map((node) => node.textContent);
+    expect(titles).toEqual(["a", "c", "b"]);
   });
 });

@@ -2279,11 +2279,11 @@ describe("Instrument core design contract", () => {
     expect(operationTerminalShellBlock).toContain("backdrop-filter: none;");
     // 확대 Shell도 slot 루트에서 terminal tint와 전용 blur를 한 번만 합성한다. Codex 등
     // 다른 확대 표면은 공통 팝업 재질을 유지하고, 안쪽 terminal-shell은 투명·무블러다.
-    const expandedShellSlotBlock = components.match(/^\.expanded-surface-slot:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
-    expect(expandedShellSlotBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
-    expect(expandedShellSlotBlock).toContain("var(--glass-underlay);");
-    expect(expandedShellSlotBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
-    const expandedTerminalBlock = components.match(/^\.expanded-surface-slot \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
+    const expandedShellPaneBlock = components.match(/^\.expanded-surface-pane:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
+    expect(expandedShellPaneBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
+    expect(expandedShellPaneBlock).toContain("var(--glass-underlay);");
+    expect(expandedShellPaneBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
+    const expandedTerminalBlock = components.match(/^\.expanded-surface-pane \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
     expect(expandedTerminalBlock).toContain("background: transparent;");
     expect(expandedTerminalBlock).toContain("backdrop-filter: none;");
     expect(expandedTerminalBlock).toContain("box-shadow: none;");

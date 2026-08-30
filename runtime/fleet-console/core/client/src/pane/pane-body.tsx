@@ -20,7 +20,7 @@ import type { HostPaneContext } from "./pane-registry.js";
  * 자기가 어느 마운트에 서 있는지 `ctx.mount`로 알 뿐, 확대를 위한 코드를 따로 쓰지 않는다.
  *
  * 캡션은 여기 없다. 캡션을 세울지는 마운트가 정한다 — 레일에서는 detail 페인만, 확대 표면에서는
- * 호스트 슬롯 머리가 이미 그 일을 하므로 아무도 세우지 않는다.
+ * 호스트 페인 머리가 이미 그 일을 하므로 아무도 세우지 않는다.
  */
 export interface PaneContextInput {
   readonly descriptor: PaneDescriptor;

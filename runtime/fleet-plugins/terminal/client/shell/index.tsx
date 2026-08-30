@@ -11,14 +11,14 @@ import "./shell.css";
  * Shell은 Operation이 아니라 콘솔 전역 표면이다.
  *
  * 그래서 Theater마다 하나씩 생기지 않고, durable state에 남지 않으며, 캡션도 없다 —
- * 슬롯 머리가 이름을 말하고 닫기를 준다. PTY 세션 키는 서버가 가진 상수 하나뿐이라
+ * 페인 머리가 이름을 말하고 닫기를 준다. PTY 세션 키는 서버가 가진 상수 하나뿐이라
  * 클라이언트는 식별자를 지어내지 않는다.
  */
 const SHELL_SURFACE_ID = "shell";
 const SHELL_TICKET_PATH = "/plugins/terminal/shell/ticket";
 const SHELL_WS_PATH = "/plugins/terminal/ws";
 /** 80열이 서지 않는 폭에서는 셸이 셸 노릇을 못 한다. */
-const SHELL_MIN_SLOT_WIDTH = 360;
+const SHELL_MIN_PANE_WIDTH = 360;
 
 interface ShellMountState {
   readonly activated: boolean;
@@ -49,7 +49,7 @@ function attachShellMount(target: HTMLElement, context: ExpandedSurfaceContext):
     && shellMountState.target !== target
     && shellMountState.context?.instanceId !== context.instanceId
   ) {
-    // Shell은 콘솔 전체에 하나뿐이다. 범용 표면 API의 split 요청으로 둘째 슬롯이 들어와도
+    // Shell은 콘솔 전체에 하나뿐이다. 범용 표면 API의 split 요청으로 둘째 페인이 들어와도
     // 기존 터미널을 빼앗지 않고 새 인스턴스만 즉시 거둔다.
     context.close();
     return;
@@ -80,7 +80,7 @@ function detachShellMount(target: HTMLElement): void {
 }
 
 /**
- * 슬롯을 닫는 것은 셸을 **치우는** 것이지 끝내는 것이 아니다. PTY는 서버에 살아 있고
+ * 페인을 닫는 것은 셸을 **치우는** 것이지 끝내는 것이 아니다. PTY는 서버에 살아 있고
  * 못 박아 둔 cwd도 그대로라, 다시 열면 하던 자리로 돌아온다 — 레일 아이콘 토글이
  * 곧 이 숨김이다.
  *
@@ -91,13 +91,13 @@ function detachShellMount(target: HTMLElement): void {
 export const shellSurface: ExpandedSurfaceDescriptor = {
   id: SHELL_SURFACE_ID,
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
-  minSlotWidth: SHELL_MIN_SLOT_WIDTH,
+  minPaneWidth: SHELL_MIN_PANE_WIDTH,
   render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
 };
 
 /**
  * Shell 본문은 터미널을 직접 소유하지 않고 상주 호스트가 들어설 자리만 내준다.
- * 슬롯이 사라져도 상주 호스트의 portal container는 주차장으로 이동할 뿐 unmount되지 않는다.
+ * 페인이 사라져도 상주 호스트의 portal container는 주차장으로 이동할 뿐 unmount되지 않는다.
  */
 function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   const targetRef = React.useRef<HTMLDivElement>(null);
@@ -121,7 +121,7 @@ function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
 
 /**
  * 콘솔 수명에 붙는 Shell 소유자. 첫 열기 전에는 터미널을 만들지 않고, 한 번 열린 뒤에는
- * 슬롯을 닫아도 같은 portal과 TerminalSurface를 주차해 WebSocket·xterm 상태를 보존한다.
+ * 페인을 닫아도 같은 portal과 TerminalSurface를 주차해 WebSocket·xterm 상태를 보존한다.
  */
 export function PersistentShellHost({ language, theme }: PersistentComponentContext) {
   const mount = React.useSyncExternalStore(subscribeShellMount, () => shellMountState, () => EMPTY_SHELL_MOUNT);
@@ -162,7 +162,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
   const handleExit = () => {
     const close = shellMountState.context?.close;
     // PTY가 실제로 끝난 경우에는 보존할 세션이 없다. portal을 내려 다음 열기가 새
-    // TerminalSurface와 새 PTY를 만들게 하고, 아직 보이는 슬롯도 함께 거둔다.
+    // TerminalSurface와 새 PTY를 만들게 하고, 아직 보이는 페인도 함께 거둔다.
     publishShellMount(EMPTY_SHELL_MOUNT);
     close?.();
   };

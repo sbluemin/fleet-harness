@@ -121,7 +121,7 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
-  // 표면 id는 슬롯 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
+  // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
   // 선착순 중복 제거한다 — 접두를 붙이면 플러그인이 자기 지역 id로 부르는 open/close가
   // 승격된 id와 어긋나고, 능력이 플러그인별로 만들어지지 않는 한 그 간극을 메울 수 없다.
   // 대신 계약이 "콘솔 전체에서 유일"을 요구하고, 어긴 기여는 아래 경고로 드러난다.
@@ -189,7 +189,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   };
 }
 
-/** 표면 id → 서술자. 레이어가 슬롯마다 조회하므로 배열이 아니라 맵으로 준다. */
+/** 표면 id → 서술자. 레이어가 페인마다 조회하므로 배열이 아니라 맵으로 준다. */
 export function useExpandedSurfaceDescriptors(): ReadonlyMap<string, ExpandedSurfaceDescriptor> {
   const { expandedSurfaces } = usePluginRegistry();
   return useMemo(

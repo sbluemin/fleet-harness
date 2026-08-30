@@ -12995,7 +12995,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   cursor: auto;
 }
 
-.expanded-surface-slot {
+.expanded-surface-pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -13018,7 +13018,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 }
 
 /* 포커스는 위치 신호다 — brass 채널. 상태(aurora/warn/coral)와 섞지 않는다. */
-.expanded-surface-slot.is-focused {
+.expanded-surface-pane.is-focused {
   border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim-strong));
 }
 
@@ -13026,7 +13026,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
    강한 팝업 재질을 유지하고, Shell은 terminal tint와 항상 켜지는 전용 blur를 쓴다.
    terminal-shell을 비워 xterm까지 같은 pane을 공유하며, 게이트가 닫히면 불투명 terminal 토큰과
    무블러로 자동 복원된다. */
-.expanded-surface-slot:has(.terminal-shell) {
+.expanded-surface-pane:has(.terminal-shell) {
   background:
     linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
     radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
@@ -13035,14 +13035,14 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   backdrop-filter: var(--glass-backdrop-terminal);
 }
 
-.expanded-surface-slot .terminal-shell {
+.expanded-surface-pane .terminal-shell {
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
 }
 
-.expanded-surface-slot-head {
+.expanded-surface-pane-head {
   flex: 0 0 48px;
   height: 48px;
   display: flex;
@@ -13052,7 +13052,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-bottom: 1px solid var(--surface-rim);
 }
 
-.expanded-surface-slot-title {
+.expanded-surface-pane-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -13062,7 +13062,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   font-weight: var(--weight-medium);
 }
 
-.expanded-surface-slot-tools {
+.expanded-surface-pane-tools {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -13071,7 +13071,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 
 /* 닫기는 호스트 소유다 — 표면이 tools를 안 내도 항상 오른쪽 끝에 선다.
    tools가 있으면 auto 여백은 tools가 가져가고, 둘 사이는 head의 gap이 벌린다. */
-.expanded-surface-slot-close {
+.expanded-surface-pane-close {
   margin-left: auto;
   flex: none;
   display: inline-flex;
@@ -13090,24 +13090,24 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     color var(--duration-fast);
 }
 
-.expanded-surface-slot-tools ~ .expanded-surface-slot-close {
+.expanded-surface-pane-tools ~ .expanded-surface-pane-close {
   margin-left: 0;
 }
 
-.expanded-surface-slot-close:hover,
-.expanded-surface-slot-close:focus-visible {
+.expanded-surface-pane-close:hover,
+.expanded-surface-pane-close:focus-visible {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
-.expanded-surface-slot-body {
+.expanded-surface-pane-body {
   flex: 1;
   min-height: 0;
   display: flex;
 }
 
-.expanded-surface-slot-aside {
+.expanded-surface-pane-aside {
   flex: none;
   width: 220px;
   min-width: 0;
@@ -13115,7 +13115,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-right: 1px solid var(--surface-rim);
 }
 
-.expanded-surface-slot-main {
+.expanded-surface-pane-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -13188,7 +13188,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .expanded-surface-slot,
+  .expanded-surface-pane,
   .expanded-surface-divider-grip {
     transition: none;
   }

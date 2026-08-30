@@ -27,9 +27,9 @@ import {
 /**
  * 두 최소폭을 실제 가용 폭에 맞춘다.
  *
- * 선언된 최소폭은 희망이지 물리가 아니다. 두 슬롯을 합쳐도 둘의 최소폭을 못 담는 좁은
+ * 선언된 최소폭은 희망이지 물리가 아니다. 두 페인을 합쳐도 둘의 최소폭을 못 담는 좁은
  * 캔버스에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
- * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — Formation 슬롯이 최소치를 실제 가용
+ * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — Formation 페인이 최소치를 실제 가용
  * 폭으로 캡하는 것과 같은 규칙이다(canvas-store의 calculateGridSlots).
  */
 function fitMinimums(left: number, right: number, pair: number): readonly [number, number] {
@@ -39,8 +39,8 @@ function fitMinimums(left: number, right: number, pair: number): readonly [numbe
   return [left * scale, right * scale];
 }
 
-/** 분할선이 넘어오지 못하는 슬롯 최소폭. 표면이 더 큰 값을 요구할 수 있다. */
-const DEFAULT_MIN_SLOT_WIDTH = 280;
+/** 분할선이 넘어오지 못하는 페인 최소폭. 표면이 더 큰 값을 요구할 수 있다. */
+const DEFAULT_MIN_PANE_WIDTH = 280;
 /** 키보드로 분할선을 미는 한 걸음. */
 const KEYBOARD_STEP_PX = 24;
 
@@ -63,7 +63,7 @@ export function ExpandedSurfaceLayer() {
 
 
   const gridRef = useRef<HTMLDivElement>(null);
-  const [slotWidths, setSlotWidths] = useState<readonly number[]>([]);
+  const [paneWidths, setPaneWidths] = useState<readonly number[]>([]);
 
   const open = instances.length > 0;
 
@@ -77,14 +77,14 @@ export function ExpandedSurfaceLayer() {
     };
   }, [open]);
 
-  // 실제로 놓인 슬롯 폭을 표면에 통보한다 — 표면은 이 값으로 스스로 열화한다.
+  // 실제로 놓인 페인 폭을 표면에 통보한다 — 표면은 이 값으로 스스로 열화한다.
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
     const measure = () => {
-      const widths = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-slot"))
-        .map((slot) => slot.getBoundingClientRect().width);
-      setSlotWidths((previous) =>
+      const widths = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-pane"))
+        .map((pane) => pane.getBoundingClientRect().width);
+      setPaneWidths((previous) =>
         previous.length === widths.length && previous.every((value, index) => Math.abs(value - (widths[index] ?? 0)) < 0.5)
           ? previous
           : widths,
@@ -93,8 +93,8 @@ export function ExpandedSurfaceLayer() {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(grid);
-    for (const slot of grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-slot")) {
-      observer.observe(slot);
+    for (const pane of grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-pane")) {
+      observer.observe(pane);
     }
     return () => observer.disconnect();
   }, [instances.length]);
@@ -102,25 +102,26 @@ export function ExpandedSurfaceLayer() {
   const minWidthFor = useCallback(
     (instance: ExpandedSurfaceInstance): number => {
       const descriptor = descriptors.get(instance.surfaceId);
-      const declared = descriptor?.minSlotWidth;
+      // 이름이 바뀐 뒤에도 옛 이름으로 등록된 기여가 자기 하한을 잃지 않아야 한다.
+      const declared = descriptor?.minPaneWidth ?? descriptor?.minSlotWidth;
       return typeof declared === "number" && Number.isFinite(declared) && declared > 0
         ? declared
-        : DEFAULT_MIN_SLOT_WIDTH;
+        : DEFAULT_MIN_PANE_WIDTH;
     },
     [descriptors],
   );
 
   /**
-   * 분할선 드래그. 인접한 두 슬롯 사이에서만 폭을 주고받는다 — 하나를 넓히면 그
-   * 오른쪽 이웃만 줄어들고, 나머지 슬롯은 사용자가 맞춰 둔 폭을 그대로 지킨다.
+   * 분할선 드래그. 인접한 두 페인 사이에서만 폭을 주고받는다 — 하나를 넓히면 그
+   * 오른쪽 이웃만 줄어들고, 나머지 페인은 사용자가 맞춰 둔 폭을 그대로 지킨다.
    */
   const beginDivergeDrag = useCallback(
     (dividerIndex: number, event: React.PointerEvent<HTMLDivElement>) => {
       const grid = gridRef.current;
       if (!grid) return;
       event.preventDefault();
-      const slots = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-slot"));
-      const startWidths = slots.map((slot) => slot.getBoundingClientRect().width);
+      const panes = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-pane"));
+      const startWidths = panes.map((pane) => pane.getBoundingClientRect().width);
       const startX = event.clientX;
       const leftMin = minWidthFor(instances[dividerIndex]!);
       const rightMin = minWidthFor(instances[dividerIndex + 1]!);
@@ -163,8 +164,8 @@ export function ExpandedSurfaceLayer() {
     (dividerIndex: number, deltaPx: number) => {
       const grid = gridRef.current;
       if (!grid) return;
-      const slots = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-slot"));
-      const widths = slots.map((slot) => slot.getBoundingClientRect().width);
+      const panes = Array.from(grid.querySelectorAll<HTMLElement>(":scope > .expanded-surface-pane"));
+      const widths = panes.map((pane) => pane.getBoundingClientRect().width);
       const leftMin = minWidthFor(instances[dividerIndex]!);
       const rightMin = minWidthFor(instances[dividerIndex + 1]!);
       const leftStart = widths[dividerIndex] ?? 0;
@@ -180,8 +181,8 @@ export function ExpandedSurfaceLayer() {
     [instances, minWidthFor],
   );
 
-  // Esc는 포커스된 슬롯 하나만 닫는다. 표면 내부의 보조 표면(찾기·오버레이)이 먼저
-  // 먹을 기회를 갖도록 버블 단계에서 듣는다 — 슬롯이 stopPropagation으로 가져간다.
+  // Esc는 포커스된 페인 하나만 닫는다. 표면 내부의 보조 표면(찾기·오버레이)이 먼저
+  // 먹을 기회를 갖도록 버블 단계에서 듣는다 — 페인이 stopPropagation으로 가져간다.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -201,8 +202,8 @@ export function ExpandedSurfaceLayer() {
   if (!open) return null;
 
   const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
-  // 분할선도 그리드 자식이다 — 슬롯 트랙만 세면 자식 수가 트랙 수를 넘어 다음 줄로
-  // 접히고, 나란히 놓으려던 슬롯이 위아래로 쌓인다. 트랙을 슬롯·분할선 순으로 짠다.
+  // 분할선도 그리드 자식이다 — 페인 트랙만 세면 자식 수가 트랙 수를 넘어 다음 줄로
+  // 접히고, 나란히 놓으려던 페인이 위아래로 쌓인다. 트랙을 페인·분할선 순으로 짠다.
   const template = instances
     .map((instance) => `${Math.max(0.0001, instance.weight)}fr`)
     .join(" var(--space-2) ");
@@ -212,7 +213,7 @@ export function ExpandedSurfaceLayer() {
       ref={gridRef}
       className="expanded-surface"
       style={{ gridTemplateColumns: template }}
-      data-slot-count={instances.length}
+      data-pane-count={instances.length}
       role="region"
       aria-label={t("chrome.expandedSurface.regionAria")}
       // 캔버스의 pan/zoom/생성 제스처가 이 작업면에서 시작한 입력을 집어가지 않게 끊는다.
@@ -224,13 +225,13 @@ export function ExpandedSurfaceLayer() {
         const descriptor = descriptors.get(instance.surfaceId);
         const focused = instance.instanceId === focusedInstanceId;
         return (
-          <SurfaceSlot
+          <SurfacePane
             key={instance.instanceId}
             instance={instance}
             descriptor={descriptor}
             index={index}
-            slotCount={instances.length}
-            slotWidth={slotWidths[index] ?? 0}
+            paneCount={instances.length}
+            paneWidth={paneWidths[index] ?? 0}
             focused={focused}
             theaterId={theaterId}
             theme={theme}
@@ -247,12 +248,12 @@ export function ExpandedSurfaceLayer() {
   );
 }
 
-function SurfaceSlot({
+function SurfacePane({
   instance,
   descriptor,
   index,
-  slotCount,
-  slotWidth,
+  paneCount,
+  paneWidth,
   focused,
   theaterId,
   theme,
@@ -265,8 +266,8 @@ function SurfaceSlot({
   readonly instance: ExpandedSurfaceInstance;
   readonly descriptor: ExpandedSurfaceDescriptor | undefined;
   readonly index: number;
-  readonly slotCount: number;
-  readonly slotWidth: number;
+  readonly paneCount: number;
+  readonly paneWidth: number;
   readonly focused: boolean;
   readonly theaterId: string | null;
   readonly theme: ReturnType<typeof getState>["activeTheme"];
@@ -282,9 +283,14 @@ function SurfaceSlot({
     surfaceId: instance.surfaceId,
     instanceId: instance.instanceId,
     params: instance.params,
+    paneIndex: index,
+    paneCount,
+    paneWidth,
+    // 옛 이름도 같은 값으로 함께 싣는다 — 이름이 바뀌었다고 이미 배포된 본문이 폭을
+    // 잃으면 개명이 곧 고장이 된다.
     slotIndex: index,
-    slotCount,
-    slotWidth,
+    slotCount: paneCount,
+    slotWidth: paneWidth,
     focused,
     theaterId,
     api: capabilities.api,
@@ -295,7 +301,7 @@ function SurfaceSlot({
     close: () => closeExpandedSurface(instance.instanceId),
     focus: () => focusExpandedSurface(instance.instanceId),
     replaceParams: (next) => replaceExpandedSurfaceParams(instance.instanceId, next),
-  }), [capabilities, focused, index, instance, language, slotCount, slotWidth, theaterId, theme]);
+  }), [capabilities, focused, index, instance, language, paneCount, paneWidth, theaterId, theme]);
 
   // 제목은 aria-label이라 문자열이어야 하고, 그래서 자식 컴포넌트로 미룰 수 없다 —
   // 경계가 잡아 줄 수 없는 유일한 콜백이므로 여기서 직접 막는다.
@@ -304,20 +310,20 @@ function SurfaceSlot({
   return (
     <>
       <section
-        className={`expanded-surface-slot${focused ? " is-focused" : ""}`}
+        className={`expanded-surface-pane${focused ? " is-focused" : ""}`}
         aria-label={title}
         onPointerDownCapture={() => focusExpandedSurface(instance.instanceId)}
         onFocusCapture={() => focusExpandedSurface(instance.instanceId)}
       >
-        <header className="expanded-surface-slot-head">
-          <span className="expanded-surface-slot-title">{title}</span>
+        <header className="expanded-surface-pane-head">
+          <span className="expanded-surface-pane-title">{title}</span>
           {descriptor?.tools ? (
-            <div className="expanded-surface-slot-tools">
-              <PluginErrorBoundary><SurfaceSlotPart render={descriptor.tools} context={context} /></PluginErrorBoundary>
+            <div className="expanded-surface-pane-tools">
+              <PluginErrorBoundary><SurfacePanePart render={descriptor.tools} context={context} /></PluginErrorBoundary>
             </div>
           ) : null}
           <button
-            className="expanded-surface-slot-close"
+            className="expanded-surface-pane-close"
             type="button"
             aria-label={t("chrome.expandedSurface.closeAria")}
             onClick={() => closeExpandedSurface(instance.instanceId)}
@@ -325,16 +331,16 @@ function SurfaceSlot({
             ✕
           </button>
         </header>
-        <div className="expanded-surface-slot-body">
+        <div className="expanded-surface-pane-body">
           {descriptor?.aside ? (
-            <aside className="expanded-surface-slot-aside">
-              <PluginErrorBoundary><SurfaceSlotPart render={descriptor.aside} context={context} /></PluginErrorBoundary>
+            <aside className="expanded-surface-pane-aside">
+              <PluginErrorBoundary><SurfacePanePart render={descriptor.aside} context={context} /></PluginErrorBoundary>
             </aside>
           ) : null}
-          <div className="expanded-surface-slot-main">
+          <div className="expanded-surface-pane-main">
             <PluginErrorBoundary>
               {descriptor
-                ? <SurfaceSlotPart render={descriptor.render} context={context} />
+                ? <SurfacePanePart render={descriptor.render} context={context} />
                 : <MissingSurface surfaceId={instance.surfaceId} />}
             </PluginErrorBoundary>
           </div>
@@ -366,7 +372,7 @@ function SurfaceSlot({
 }
 
 /**
- * 표면을 기여하던 플러그인이 사라졌는데 슬롯은 남은 경우. 조용히 빈 칸을 두면
+ * 표면을 기여하던 플러그인이 사라졌는데 페인은 남은 경우. 조용히 빈 칸을 두면
  * 사용자는 콘솔이 깨진 줄 안다 — 무엇이 없어졌는지 말하고 닫을 길을 준다.
  */
 function MissingSurface({ surfaceId }: { readonly surfaceId: string }) {
@@ -386,7 +392,7 @@ function MissingSurface({ surfaceId }: { readonly surfaceId: string }) {
  * 자식은 부모의 렌더 중에 평가되므로, 던지는 순간 경계는 아직 트리에 없고 예외는 그대로
  * 위로 올라가 Operations 화면을 통째로 무너뜨린다. 한 칸 아래 컴포넌트로 미뤄야 잡힌다.
  */
-function SurfaceSlotPart({
+function SurfacePanePart({
   render,
   context,
 }: {
@@ -406,7 +412,7 @@ function safeTitle(
   try {
     return resolveLocalizedText(descriptor.title(context), language);
   } catch {
-    // 이름을 못 대는 표면이라도 슬롯은 서 있어야 한다 — 사용자는 닫기라도 누를 수 있어야 한다.
+    // 이름을 못 대는 표면이라도 페인은 서 있어야 한다 — 사용자는 닫기라도 누를 수 있어야 한다.
     return fallback;
   }
 }
