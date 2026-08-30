@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { createPortal } from "react-dom";
 
 import { useMenuButtonKeyboard } from "../components/use-menu-button-keyboard.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { useT } from "../i18n/index.js";
 import {
   closeRailPanel,
@@ -68,9 +69,16 @@ export function RailSettingsMenu({ panelBehavior, overlayAlpha, activePanelTitle
   }, [open]);
 
   // 레일이 접히면 톱니는 inert가 되지만 포털된 메뉴는 문서에 그대로 남는다 — 앵커 없는
-  // 메뉴가 조작 가능한 채 떠 있지 않도록 함께 거둔다. 포커스는 돌려주지 않는다(갈 곳이 없다).
+  // 메뉴가 조작 가능한 채 떠 있지 않도록 함께 거둔다.
+  //
+  // 포커스는 레일이 접힐 때의 기존 계약 그대로 커맨드 밴드 토글로 넘긴다. RightRail의 같은
+  // 호출은 레일 DOM만 보므로 body로 포털된 이 메뉴를 영영 알아보지 못한다 — 메뉴를 컨테이너로
+  // 넘겨 같은 헬퍼를 여기서 한 번 더 태운다. 메뉴가 사라지기 전에 옮겨야 하므로 setOpen보다
+  // 먼저 부른다(이 시점의 activeElement는 아직 메뉴 안이다).
   useEffect(() => {
-    if (!railChromeExpanded) setOpen(false);
+    if (railChromeExpanded) return;
+    focusCommandBandToggleWhenPanelContainsActiveElement(menuRef.current, ".command-band-rail-toggle");
+    setOpen(false);
   }, [railChromeExpanded]);
 
   // 창이 움직이면 좌표가 낡는다 — 다시 계산하는 대신 닫는다(group-context-menu와 같은 계약).

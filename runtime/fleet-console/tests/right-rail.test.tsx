@@ -570,18 +570,31 @@ describe("Right Rail settings menu", () => {
     expect(railMenu()).toBeNull();
   });
 
-  it("takes the floating menu down with the rail chrome, so no anchorless menu survives", () => {
-    renderRail();
-    openRailMenu();
+  it("takes the floating menu down with the rail chrome and hands focus to the band toggle", () => {
+    const railToggle = document.createElement("button");
+    railToggle.className = "command-band-rail-toggle";
+    document.body.append(railToggle);
+    try {
+      renderRail();
+      openRailMenu();
+      const firstItem = menuItem("Float over Map");
+      act(() => firstItem.focus());
+      expect(document.activeElement).toBe(firstItem);
 
-    act(() => setRailChromeExpanded(false));
+      act(() => setRailChromeExpanded(false));
 
-    // 톱니는 inert 안으로 들어가지만 포털된 메뉴는 문서에 남는다 — 함께 거둬야 한다.
-    expect(container.querySelector(".right-rail")!.hasAttribute("inert")).toBe(true);
-    expect(railMenu()).toBeNull();
+      // 톱니는 inert 안으로 들어가지만 포털된 메뉴는 문서에 남는다 — 함께 거둬야 한다.
+      expect(container.querySelector(".right-rail")!.hasAttribute("inert")).toBe(true);
+      expect(railMenu()).toBeNull();
+      // 레일 DOM만 보는 RightRail의 복귀는 body로 포털된 메뉴를 못 본다 — 메뉴가 직접
+      // 넘기지 않으면 포커스가 body로 떨어진다.
+      expect(document.activeElement).toBe(railToggle);
 
-    act(() => setRailChromeExpanded(true));
-    expect(railMenu()).toBeNull();
+      act(() => setRailChromeExpanded(true));
+      expect(railMenu()).toBeNull();
+    } finally {
+      railToggle.remove();
+    }
   });
 
   it("disables the panel-scoped items and names the empty state when no panel is open", () => {
