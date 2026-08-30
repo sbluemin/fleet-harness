@@ -3,7 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
+import { Terminal as XtermTerminal, type FontWeight, type ITheme } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
@@ -186,6 +186,56 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
+/* 서브픽셀 AA 보정 — 라이트 + 투명 필드 + WebGL 세 조건이 **동시에** 설 때만 선다.
+   WebGL 렌더러는 글리프를 미리 구운 아틀라스에서 가져오는데, 필드가 투명하면 아틀라스의 임시 캔버스가
+   alpha:true로 만들어지고(TextureAtlas.ts) xterm이 배경색을 NULL_COLOR로 넘긴다 — 배경을 아틀라스에
+   구우면 AA 가장자리에서 배경이 두 번 합성되기 때문이다(상류 주석). 배경을 모르면 브라우저는 서브픽셀
+   AA를 포기하고 회색조 커버리지만 내는데, 서브픽셀 AA는 **밝은 바탕의 어두운 글자 스템을 두껍게** 하는
+   쪽으로 작동하므로 그 손실이 극성마다 부호가 갈린다. 같은 투명 필드에서 렌더러만 바꿔 실측하면
+   라이트는 DOM보다 획 잉크 9.5%가 적고, 다크는 오히려 13.4%가 많다 — 다크가 멀쩡해 보이는 이유는
+   손실이 없어서가 아니라 같은 왜곡이 유리한 방향으로 작용해서다.
+   상류는 이걸 고칠 계획이 없다: allowTransparency가 서브픽셀 AA를 일괄로 끄는 것은 설계 결정이고
+   (xterm.js #1327 리뷰), 증상 이슈 #4212는 2022년부터 help wanted로 열려 있다. 그래서 손실분을
+   폰트 웨이트 한 단으로 되돌린다.
+
+   [왜 500/800에서 멈추는가] 이 값은 세기가 아니라 **폴백 안전선**이 정한다. 번들 한글 폴백
+   Nanum Gothic Coding은 400/700 두 페이스뿐이고(패키지에 그 둘만 있다), CSS 폰트 매칭은
+   목표가 500 이하일 때만 아래로 내려간다 — 500은 400으로, 800은 >=800이 없어 700으로 떨어져
+   보통/굵게가 400/700으로 **갈린 채** 남는다. 목표를 600/900으로 올리면 둘 다 700으로 해석되어
+   한글 SGR 볼드가 보통 글자와 구분되지 않는다(리뷰 적발 — 한 번 올렸다가 되돌린 자리다).
+   그래서 웨이트는 여기서 멈추고, 부족분은 아래 농도 축이 진다. 농도는 폰트 페이스와 무관하므로
+   폴백 서체에서도 그대로 듣는다. 터미널 폰트는 사용자가 고르므로 이 성질이 값의 조건이다. */
+const SUBPIXEL_COMPENSATED_WEIGHT = 500;
+const SUBPIXEL_COMPENSATED_WEIGHT_BOLD = 800;
+/* 웨이트만으로는 닿지 않는다. 부족한 것은 획 폭이 아니라 **가장자리 질량**이기 때문이다 —
+   실측하면 심(core) 밝기와 실심 픽셀 수는 DOM과 거의 같은데 중간톤 픽셀만 31%가 적고,
+   웨이트를 올리면 중간톤이 실심으로 바뀔 뿐 총 질량은 +50당 2%밖에 늘지 않는다(600에서도 12% 부족).
+   그래서 남은 축은 농도다: 같은 커버리지라도 잉크가 진하면 각 부분덮힘 픽셀이 더 깊이 내려가
+   질량 부족을 상쇄한다. 라이트 전경(L24)을 L18로 내리면 배경(L≈97)까지의 낙차가 8% 늘어난다. */
+const SUBPIXEL_COMPENSATED_FOREGROUND = "oklch(18% 0.014 95)";
+
+/* 전경 보정은 웨이트와 **같은 게이트**를 쓴다 — 조건이 갈리면 한쪽만 걸려 색이 어긋난다. */
+export function terminalForegroundFor(
+  theme: TerminalThemeId,
+  base: string,
+  fieldIsTranslucent: boolean,
+  webglActive: boolean,
+): string {
+  if (!webglActive || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") return base;
+  return SUBPIXEL_COMPENSATED_FOREGROUND;
+}
+
+export function terminalFontWeightsFor(
+  theme: TerminalThemeId,
+  fieldIsTranslucent: boolean,
+  webglActive: boolean,
+): { readonly fontWeight: FontWeight; readonly fontWeightBold: FontWeight } {
+  if (!webglActive || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") {
+    return { fontWeight: "normal", fontWeightBold: "bold" };
+  }
+  return { fontWeight: SUBPIXEL_COMPENSATED_WEIGHT, fontWeightBold: SUBPIXEL_COMPENSATED_WEIGHT_BOLD };
+}
+
 export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
@@ -199,6 +249,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  // 보정 게이트의 진실 — 선호가 아니라 addon이 실제로 살아 있는지. ref는 리렌더를 못 부르므로 state다.
+  const [webglActive, setWebglActive] = useState(false);
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
@@ -319,7 +371,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       await waitForTerminalFallbackFonts();
       if (disposed) return;
 
-      const terminalTheme = terminalThemeFor(activeTheme, surface);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, webglActive);
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
@@ -327,6 +379,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         theme: terminalTheme,
         allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? ""),
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
+        ...terminalFontWeightsFor(activeTheme, terminalFieldIsTranslucent(terminalTheme.background ?? ""), webglActive),
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
@@ -640,8 +693,11 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             // xterm WebglAddon dispose 버그를 렌더러 폴백 경로에서도 흡수한다.
           }
           if (webglAddonRef.current === webglAddon) webglAddonRef.current = null;
+          // 폴백이 시작된 순간 보정도 함께 걷힌다 — DOM은 서브픽셀 AA를 되찾으므로 과보정이 된다.
+          setWebglActive(false);
         });
         terminal.loadAddon(webglAddon);
+        setWebglActive(true);
       } catch {
         // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
         try {
@@ -650,7 +706,10 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           // xterm WebglAddon dispose 버그를 WebGL 초기화 실패 경로에서도 흡수한다.
         }
         webglAddonRef.current = null;
+        setWebglActive(false);
       }
+    } else {
+      setWebglActive(false);
     }
 
     return () => {
@@ -671,19 +730,25 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     const container = containerRef.current;
     if (!terminal || !container) return;
     const applyTerminalTheme = () => {
-      const terminalTheme = terminalThemeFor(activeTheme, surface);
+      const terminalTheme = terminalThemeFor(activeTheme, surface, webglActive);
       // 뷰포트 인라인 배경이 allowTransparency보다 먼저 자리를 잡아야 한다 — 이 옵션이 꺼지면
       // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
       // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
       syncTerminalViewportBackground(container, terminalTheme);
-      terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? "");
+      const translucent = terminalFieldIsTranslucent(terminalTheme.background ?? "");
+      terminal.options.allowTransparency = translucent;
       terminal.options.theme = terminalTheme;
       terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
+      // 보정은 필드 투명도와 한 벌로 움직여야 한다 — 유리를 끄면 서브픽셀 AA가 돌아오므로
+      // 웨이트가 남아 있으면 그때는 과보정이 된다.
+      const weights = terminalFontWeightsFor(activeTheme, translucent, webglActive);
+      terminal.options.fontWeight = weights.fontWeight;
+      terminal.options.fontWeightBold = weights.fontWeightBold;
     };
     applyTerminalTheme();
     // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
     // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
-  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface]);
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface, webglActive]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -807,12 +872,12 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
-     라이트(Whites)는 언제나 이쪽이다. 테마 극성 자체가 유리 게이트의 넷째 닫힘 조건이라
-     (theme.css), 라이트에서 --glass-backdrop-*는 설정과 무관하게 none이고
-     readLiquidGlassPaneActive()는 false다. 아래 LIGHT_TERMINAL_THEMES 조건은 그래서
-     제품 경로에서는 이미 참인 조건을 한 번 더 세우는 둘째 자물쇠다 — 남겨 둔다. 이 한 곳이
-     틀리면 밝은 바탕에서 allowTransparency가 켜져 획 잉크가 18.2% 사라지는데(dpr=2 실측),
-     그 비용에 비하면 조건 하나는 공짜다.
+   라이트(Whites)도 열린 게이트에서는 같은 경로다. 한때 라이트만 필드를 불투명으로 남겼었고 근거는
+   allowTransparency의 글리프 래스터 비용이었는데(밝은 바탕에서 획 잉크 손실), 극성이 아니라
+   **게이트 상태**가 이 분기를 정해야 진실이 한 벌로 남는다 — mCR은 알파가 아니라 배경 RGB로
+   대비를 재고, glassFieldClearColor가 알파 0에도 유리 톤 RGB를 실어 보내므로 라이트의 판독
+   보정(mCR 4.5)은 투명 필드에서도 그대로 작동한다. 잉크 손실의 현재 크기와 렌더러별 차이는
+   PR #955에서 재실측했다.
    xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
    생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
@@ -823,7 +888,7 @@ export function resolvePanelSurface(
 ): string {
   if (typeof document === "undefined") return fallback;
   const rootStyle = getComputedStyle(document.documentElement);
-  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) {
+  if (readLiquidGlassPaneActive()) {
     return glassFieldClearColor(surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor", rootStyle);
   }
   const resolved = rootStyle.getPropertyValue("--glass-tint-terminal").trim();
@@ -901,19 +966,26 @@ export function terminalFieldIsTranslucent(background: string): boolean {
   return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }
 
-/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 네 게이트(설정·@supports·
-   reduced-transparency·테마 극성)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
-   특히 극성은 여기서 다시 묻지 않는다: 라이트를 닫는 일은 CSS 게이트가 하고, 이 함수는
-   그 결과만 읽는다. JS에 극성 분기를 심으면 진실이 두 벌이 된다. */
+/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
+   reduced-transparency)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
+   프로브를 --glass-backdrop-strong로 잡는 이유가 여기 있다: 이 채널은 세 게이트에만 딸려 있고
+   테마별 재료 결정에는 딸려 있지 않다. 필드가 불투명한 라이트에서 -terminal 채널은 none이지만
+   유리 자체는 켜져 있으므로, -terminal을 프로브로 쓰면 라이트가 통째로 꺼진 것으로 오독된다. */
 export function readLiquidGlassPaneActive(): boolean {
   if (typeof document === "undefined") return false;
   const backdrop = getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-strong").trim();
   return backdrop !== "" && backdrop !== "none";
 }
 
-function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell"): ITheme {
+function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell", webglActive: boolean): ITheme {
   const base = baseTerminalThemeFor(theme);
-  return { ...base, background: resolvePanelSurface(theme, base.background ?? "", surface) };
+  const background = resolvePanelSurface(theme, base.background ?? "", surface);
+  const translucent = terminalFieldIsTranslucent(background);
+  return {
+    ...base,
+    background,
+    foreground: terminalForegroundFor(theme, base.foreground ?? "", translucent, webglActive),
+  };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

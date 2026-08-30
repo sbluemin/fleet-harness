@@ -736,9 +736,9 @@ describe("Instrument core design contract", () => {
     expect(formationGrid).toContain("--canvas-weave-zoom: 1 !important;");
     expect(formationGrid).toContain("--canvas-weave-minor: var(--canvas-weave-major) !important;");
 
-    // 세 다크가 각자의 지형을 선언한다 — base(Instrument) + maritime + carbon.
+    // 네 테마가 각자의 지형을 선언한다 — base(Instrument) + maritime + carbon + whites.
     for (const token of ["--canvas-field:", "--canvas-weave:", "--canvas-field-formation:", "--canvas-field-triage:"]) {
-      expect(theme.match(new RegExp(`\\n  \\${token}`, "g"))).toHaveLength(3);
+      expect(theme.match(new RegExp(`\\n  \\${token}`, "g"))).toHaveLength(4);
     }
     // Instrument 지형은 오늘의 화면 그대로다 — 이 값이 곧 Instrument 사양이다.
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
@@ -894,71 +894,121 @@ describe("Instrument core design contract", () => {
     expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
   });
 
-  /* 라이트(Whites)는 리퀴드 글래스를 받지 않는다. 이 계약은 세 조각이 **함께** 서야만 성립한다.
+  /* 라이트(Whites)도 다른 테마와 같은 방식으로 유리 게이트를 통과한다. 이 계약은 네 조각이
+     **함께** 서야만 성립한다.
 
      (1) 게이트 여섯 곳이 글자까지 같아야 한다. theme.css 둘은 채널을, layout.css 넷은 밴드
-         언더플로를 연다. layout.css는 채널이 아니라 data-glass 속성을 직접 읽으므로,
-         theme.css만 고치면 라이트에서 불투명해진 밴드 뒤로 본문이 계속 흘러 가려지기만 한다.
-     (2) 제외는 :not(A, B) 목록 한 겹이어야 한다. :not(A):not(B) 사슬은 특이도를 (0,2,0)에서
-         (0,3,0)으로 올려, 같은 특이도로 나중에 서서 이기던 축소-투명도 되돌림 블록을 무력화한다
-         (@media는 특이도를 더하지 않는다). 주 선택자만 고치면 다크 3종의 접근성 계약이 깨진다.
-     (3) 라이트 블록에 유리 재료가 없어야 한다. 재료를 남긴 채 게이트만 닫으면 죽은 리터럴이고,
-         게이트를 안 닫은 채 재료만 지우면 라이트가 base(다크) 재료를 상속해 밤빛 유리를 칠한다. */
-  it("closes the liquid glass gate on the light theme across every gate that reads data-glass", () => {
+         언더플로를 연다. layout.css는 채널이 아니라 data-glass 속성을 직접 읽으므로, 한쪽만
+         고치면 두 파일이 서로 다른 테마 집합에 유리를 건다.
+     (2) 어느 게이트에도 테마 제외가 없어야 한다. 한때 라이트를 :not(…, [data-theme="whites"])로
+         제외했었고, 그 제외가 여섯 곳 중 일부에만 남으면 채널은 열렸는데 밴드 언더플로는 닫힌
+         (혹은 그 반대의) 반쪽 상태가 된다 — 화면에서는 밴드 뒤 본문이 가려지는 형태로만 드러난다.
+         제외를 다시 쓸 일이 생기면 :not(A, B) 목록 한 겹이어야 한다: :not(A):not(B) 사슬은
+         특이도를 올려, 같은 특이도로 나중에 서서 이기던 축소-투명도 되돌림 블록을 무력화한다.
+     (3) 라이트 블록이 자기 유리 재료를 가져야 한다. 재료 없이 게이트만 열면 라이트가 base(다크)
+         재료를 상속해 종이 위에 밤빛 유리를 칠한다.
+     (4) 라이트 필드도 다크와 같은 단일층 규약을 쓴다. 필드는 비우고 패널 루트의 유리 한 장이
+         필드와 거터를 함께 칠하며, terminal 틴트는 panel 틴트와 같은 값이다. floor만 불투명
+         근사로 남는데 이건 투명도 정책이 아니라 dim(SGR 2) 셀 때문이다 — xterm이 그 사각형의
+         알파를 1로 강제하므로 RGB가 유리 톤이 아니면 순색 블록으로 드러난다. */
+  it("opens the liquid glass gate for every theme and keeps the light terminal field opaque", () => {
     const theme = source("styles/theme.css");
     const layout = source("styles/layout.css");
-    const GATE = ':root:not([data-glass="off"], [data-theme="whites"])';
+    const GATE = ':root:not([data-glass="off"])';
 
-    // 사슬 형태는 특이도를 올려 축소-투명도 되돌림을 죽인다 — 어느 파일에도 있어선 안 된다.
     for (const css of [theme, layout]) {
+      // 사슬 형태는 특이도를 올려 축소-투명도 되돌림을 죽인다 — 어느 파일에도 있어선 안 된다.
       expect(css).not.toMatch(/:not\(\[data-glass="off"\]\):not\(/);
-      expect(css).not.toMatch(/:not\(\[data-theme="whites"\]\):not\(\[data-glass/);
-      // data-glass를 읽는 선택자는 전부 같은 제외 목록을 달고 있어야 한다.
+      // data-glass를 읽는 선택자는 전부 같은 형태여야 하고, 테마 제외를 달아선 안 된다.
       const gates = css.match(/:root:not\(\[data-glass="off"\][^)]*\)/g) ?? [];
       expect(gates.length).toBeGreaterThan(0);
       for (const gate of gates) expect(gate).toBe(GATE);
     }
     // 채널 게이트 둘(주 + 축소-투명도 되돌림)과 밴드 언더플로 넷.
-    expect((theme.match(/:root:not\(\[data-glass="off"\], \[data-theme="whites"\]\)/g) ?? []).length).toBe(2);
-    expect((layout.match(/:root:not\(\[data-glass="off"\], \[data-theme="whites"\]\)/g) ?? []).length).toBe(4);
+    expect((theme.match(/:root:not\(\[data-glass="off"\]\)/g) ?? []).length).toBe(2);
+    expect((layout.match(/:root:not\(\[data-glass="off"\]\)/g) ?? []).length).toBe(4);
 
-    // 라이트 블록에는 유리 재료 선언이 한 줄도 없다. 주석은 그 부재를 설명해야 하므로
-    // 토큰 이름을 그대로 적는다 — 계약은 산문이 아니라 선언에만 걸린다.
     const whites = theme.match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(whites).not.toBe("");
     const whitesDeclarations = whites.replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(whitesDeclarations).not.toMatch(/--(?:glass|canvas)-on-/);
-    // 반대 방향도 못박는다 — 다크 3종은 계속 재료를 가져야 게이트가 실을 것이 있다.
+    // 네 테마 모두 자기 재료를 가진다 — 게이트가 실을 것이 없으면 상속으로 엉뚱한 극성이 칠해진다.
+    expect(whitesDeclarations).toMatch(/--glass-on-tint-panel: oklch\(/);
+    expect(whitesDeclarations).toMatch(/--glass-on-backdrop-strong: blur\(/);
     expect(theme).toMatch(/--glass-on-backdrop-strong: blur\(/);
+
+    // 라이트 필드도 다크와 같은 단일층 규약 — 필드는 비우고, terminal 틴트는 panel 틴트와 같은 값,
+    // floor만 dim 셀을 위한 불투명 근사로 남는다.
+    expect(whitesDeclarations).toContain("--glass-on-tint-field: transparent;");
+    expect(whitesDeclarations).toContain("--glass-on-tint-terminal: oklch(98.2% 0.004 100 / 60%);");
+    expect(whitesDeclarations).toContain("--glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);");
+    expect(whitesDeclarations).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
+    const lightFloor = whitesDeclarations.match(/--glass-on-tint-terminal-floor: [^;]+;/)?.[0] ?? "";
+    expect(lightFloor).toMatch(/oklch\(/);
+    expect(lightFloor).not.toMatch(/\/\s*\d/); // floor는 알파 없는 실색이어야 dim 사각형을 덮는다
+
+    // 극성이 아니라 게이트 상태가 필드 분기를 정한다 — JS에 테마 분기를 심으면 진실이 두 벌이 된다.
+    const surfaceSource = fs.readFileSync(TERMINAL_SURFACE_PATH, "utf8");
+    expect(surfaceSource).toContain("if (readLiquidGlassPaneActive()) {");
+    expect(surfaceSource).not.toMatch(/!LIGHT_TERMINAL_THEMES\.has\(theme\) && readLiquidGlassPaneActive\(\)/);
   });
 
-  /* 설정의 리퀴드 글래스 줄은 라이트에서 "끌 수 없고, 지금 실린 재질을 보여 주고, 저장값은
-     건드리지 않는다"를 동시에 지켜야 한다. 셋 중 하나만 빠져도 실패가 다르다.
-     - 끄기만 하고 checked를 저장값에 묶어 두면: 크롬은 불투명한데 손잡이는 켜짐이라 화면과
-       컨트롤이 다른 말을 한다. 게다가 .settings-switch:disabled는 늘 opacity를 내리므로
-       "켜진 채 흐려진" 손잡이가 되는데, 이 저장소는 그 모양을 이미 "꺼진 것으로 읽힌다"고
-       못박았다(agent-cli 강도 사다리).
-     - 반대로 테마 전환에서 setLiquidGlass(false)나 저장 왕복을 부르면: 사용자가 다크에서
-       고른 값이 조용히 지워진다. 쓰기 경로는 toggleLiquidGlass 하나뿐이어야 한다.
+  /* 라이트가 유리를 받으려면 그 뒤에 굴절시킬 것이 있어야 한다. 60% 틴트는 뒤에 있는 것의 40%만
+     통과시키므로 유리의 세기는 전적으로 캔버스가 진다 — 구 라이트 캔버스는 계조 폭 2.38 L*에
+     채도 ≤0.007이라 통과분이 지각 문턱 아래였고, 그 결과가 "패널 안 계조 0.00 L*"였다(다크 3.16).
+     그래서 Whites는 자기 Map 지형과 계조 폭을 가져야 하고, 이 둘은 유리와 한 벌로만 의미가 있다. */
+  it("gives the light theme its own Map instrument with enough range to refract", () => {
+    const theme = source("styles/theme.css");
+    const whites = theme.match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const declarations = whites.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // 세 모드가 각자 자기 판을 가진다 — Cruise/Tactical/War Room은 형상이 갈리는 축이다.
+    for (const token of ["--canvas-field:", "--canvas-field-formation:", "--canvas-field-triage:", "--canvas-weave:"]) {
+      expect(declarations).toContain(token);
+    }
+    // weave는 주선 2슬롯 + 보조선 2슬롯의 고정 어휘다(줌 계산이 컴포넌트에 있다).
+    const weave = declarations.match(/--canvas-weave:[\s\S]*?;/)?.[0] ?? "";
+    expect(weave.split("gradient(").length - 1).toBe(4);
+
+    // 계조 폭 — near에서 far까지 최소 6 L*는 벌어져야 통과분이 문턱을 넘는다.
+    const lightnessOf = (token: string) => {
+      const raw = declarations.match(new RegExp(`${token}: oklch\\(([\\d.]+)%`))?.[1];
+      expect(raw).toBeDefined();
+      return Number(raw);
+    };
+    const near = lightnessOf("--canvas-sea-near");
+    const far = lightnessOf("--canvas-sea-far");
+    expect(near - far).toBeGreaterThanOrEqual(6);
+
+    // 팬 계조는 극성과 함께 뒤집힌다 — 라이트는 아래쪽 그늘이고, 색도 잉크 쪽이어야 한다.
+    expect(declarations).toContain("--glass-pane-anchor: calc(100% + 12px);");
+    const paneLight = declarations.match(/--glass-on-pane-light: oklch\(([\d.]+)%/)?.[1];
+    expect(paneLight).toBeDefined();
+    expect(Number(paneLight)).toBeLessThan(50);
+  });
+
+  /* 설정의 리퀴드 글래스 줄은 손잡이 하나가 저장값 하나를 말하는 자리다. 한때 라이트에서
+     이 줄을 강제로 끄고 도움말을 갈아 끼웠었다 — 그 테마가 유리를 못 받았기 때문이다. 이제는
+     네 테마 모두 받으므로 그 분기가 남아 있으면 손잡이가 화면과 다른 말을 한다(유리는 켜져
+     있는데 컨트롤은 꺼짐·비활성). .settings-switch:disabled는 늘 opacity를 내리므로 그 모양은
+     이 저장소가 이미 "꺼진 것으로 읽힌다"고 못박은 실패 양식이다(agent-cli 강도 사다리).
+     저장값을 건드리는 경로도 손잡이 하나뿐이어야 한다 — 테마 전환이 유리 설정을 쓰기 시작하면
+     사용자가 고른 값이 조용히 사라진다.
      페이지 컴포넌트는 번들러 가상 모듈(virtual:fleet-plugins)을 끌어와 단위 렌더가 불가능하므로
      (quick-launch.ts의 같은 주석), 이 파일의 다른 설정 계약과 같은 소스 수준으로 못박는다. */
-  it("locks the liquid glass row to the material actually on screen under the light theme", () => {
+  it("keeps the liquid glass row a single switch over a single stored value", () => {
     const settings = source("pages/global-settings.tsx");
 
-    // 극성 판정은 store의 단일 소유자를 쓴다 — 여기서 === "whites"를 다시 쓰면 두 번째 진실이 된다.
-    expect(settings).toMatch(/import \{[^}]*\bthemePolarity\b[^}]*\} from "\.\.\/store\.js";/);
-    expect(settings).toMatch(/const lightTheme = themePolarity\(activeTheme\) === "light";/);
+    // 손잡이는 저장값을 그대로 말한다 — 테마로 깎아내는 분기가 남아 있으면 안 된다.
+    expect(settings).toMatch(/const liquidGlass = state\?\.liquidGlass \?\? true;/);
+    expect(settings).toMatch(/disabled=\{saving \|\| state === null\}/);
+    expect(settings).not.toMatch(/[Ll]ightTheme/);
+    expect(settings).not.toMatch(/themePolarity/);
 
-    // 손잡이는 저장값이 아니라 화면에 실린 재질을 말한다.
-    expect(settings).toMatch(/const liquidGlass = \(state\?\.liquidGlass \?\? true\) && !lightTheme;/);
-    // 그리고 끌 수 없다.
-    expect(settings).toMatch(/disabled=\{saving \|\| state === null \|\| lightTheme\}/);
+    // 도움말은 한 벌이다 — "끄면 원래대로"가 네 테마 모두에서 참이 됐다.
+    expect(settings).toContain('t("settings.theme.liquidGlassHelp")');
+    expect(source("i18n/messages/pages.ts")).not.toContain("liquidGlassLightHelp");
 
-    // 도움말은 갈아 끼운다 — 기본 문안("끄면 원래대로")은 끌 수 없는 자리에서 거짓이 된다.
-    expect(settings).toContain('t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")');
-
-    // 저장값을 건드리는 경로는 사용자가 손잡이를 누르는 하나뿐이다. 테마 전환이 유리 설정을
-    // 쓰기 시작하면 다크에서 고른 값이 사라진다.
+    // 저장값을 건드리는 경로는 사용자가 손잡이를 누르는 하나뿐이다.
     expect((settings.match(/setLiquidGlass\(/g) ?? []).length).toBe(2); // toggle 낙관 적용 + 실패 복원
     expect((settings.match(/setGlobalSettingsField\("liquidGlass"/g) ?? []).length).toBe(1);
     const selectTheme = settings.match(/const selectTheme = \([\s\S]*?\n  \};/)?.[0] ?? "";
@@ -1009,7 +1059,24 @@ describe("Instrument core design contract", () => {
       components.match(
         /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\):has\(> \.canvas-operation-titlebar\),\n\.canvas-operation:has\(> \.canvas-companion-caption\) \{[^}]*\}/,
       )?.[0] ?? "";
-    expect(floatingRoot).toContain("--pane-light-origin: -44px;");
+    expect(floatingRoot).toContain("--pane-light-origin: var(--glass-pane-anchor, -44px);");
+    // 팬 계조를 그리는 **모든** 형상이 같은 자리 채널을 읽어야 한다. 하나라도 좌표를 박아 두면
+    // 극성을 뒤집은 테마에서 그 형상만 반대쪽에 그늘이 붙는다 — 확대 Shell이 -48px를 박아 두어
+    // 라이트에서 위쪽에 어두운 얼룩이 생긴 것이 그 실패다(리뷰 적발).
+    // 자리를 정하는 길은 둘이다 — 형상이 --pane-light-origin 간접을 두거나(패널), 그라디언트가
+    // 채널을 직접 읽거나(확대 Shell). 어느 길이든 끝은 --glass-pane-anchor여야 한다.
+    for (const origin of components.match(/--pane-light-origin: [^;]+;/g) ?? []) {
+      expect(origin).toContain("var(--glass-pane-anchor,");
+    }
+    const paneConsumers = components.match(/at 50% ([^,]*), var\(--glass-pane-light\)/g) ?? [];
+    expect(paneConsumers.length).toBeGreaterThan(0);
+    for (const consumer of paneConsumers) {
+      expect(
+        consumer.includes("var(--glass-pane-anchor,") || consumer.includes("var(--pane-light-origin)"),
+      ).toBe(true);
+    }
+    // 자리 기본값은 형상마다 다르므로 :root가 이 채널을 선언하면 안 된다 — 셋이 한 값으로 뭉개진다.
+    expect(theme).not.toMatch(/^\s*--glass-pane-anchor:\s*-?\d/m);
 
     // 새 채널 셋의 닫힌-게이트 기본값이 곧 구 불투명 계약이다.
     expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
@@ -1027,10 +1094,8 @@ describe("Instrument core design contract", () => {
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
     expect(theme).toContain("--glass-on-backdrop-panel: none;");
     expect(theme).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
-    // 유리를 받는 테마는 다크 3종뿐이고, 그 셋은 전부 필드를 루트 유리에 넘긴다.
-    // 라이트는 게이트 밖이라 재료 자체가 없다(별칭 한 줄도 남기지 않는다).
-    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
-    expect(theme).not.toMatch(/--glass-on-tint-field: var\(/);
+    // 네 테마 모두 필드를 루트 유리에 넘긴다.
+    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(4);
   });
 
   /* 비운 터미널 필드의 RGB는 검정이 아니라 유리 톤이어야 한다. xterm은 dim(SGR 2)을 배경 워드의
@@ -1055,17 +1120,19 @@ describe("Instrument core design contract", () => {
     expect((surface.match(/return "rgba\(0, 0, 0, 0\)";/g) ?? []).length).toBe(2);
   });
 
-  /* 베벨·부양·워시·블룸 넷은 라이트 유리 전용 재료였다. 라이트가 게이트에서 빠지면서 어느
-     테마도 이 재료를 갖지 않으므로, 게이트는 더 이상 이 채널을 싣지 않고 채널은 base의 중립
-     기본값 하나로 산다. 재료 없는 채널에 fallback 다리를 남겨 두면 "여기 라이트 재료가 있다"고
-     거짓말하는 죽은 줄이 되고, 반대로 채널까지 지우면 소비처가 통째로 무너진다. */
-  it("keeps the bevel, lift, wash and bloom channels neutral now that no theme feeds them", () => {
+  /* 베벨·부양·워시·블룸 넷은 라이트 유리 전용 재료다. 앞의 둘은 라이트가 유리를 되찾으면서
+     재료도 함께 돌아왔고(밝은 바탕에서 부유를 만드는 것은 명도차가 아니라 그늘이다), 뒤의 둘은
+     여전히 어느 테마도 먹이지 않는다 — 라이트의 계조는 게이트 뒤 워시가 아니라 캔버스 sea 값
+     자체가 지므로(게이트를 꺼도 제도판은 남는다) 이 두 채널은 중립 기본값 하나로 산다.
+     재료 없는 채널에 fallback 다리를 남겨 두면 "여기 재료가 있다"고 거짓말하는 죽은 줄이 되고,
+     반대로 채널까지 지우면 소비처가 통째로 무너진다. */
+  it("feeds bevel and lift from the light theme while wash and bloom stay neutral", () => {
     const theme = source("styles/theme.css");
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
     const rail = source("styles/rail.css");
 
-    // 채널의 중립 기본값이 곧 이제 모든 테마가 보는 값이다.
+    // 닫힌 게이트의 기본값 — 재료가 있든 없든 이 값이 곧 유리를 끈 화면이다.
     expect(theme).toContain("--glass-bevel: transparent;");
     expect(theme).toContain("--glass-lift: var(--shadow-floating);");
     expect(theme).toContain("--canvas-wash-near: var(--canvas-sea-near);");
@@ -1074,10 +1141,14 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--canvas-bloom-aurora: 7%;");
     expect(theme).toContain("--canvas-bloom-brass: 5%;");
 
-    // 재료도, 그 재료를 싣던 게이트 다리도 남아 있지 않다.
+    // 베벨·부양은 재료와 게이트 다리가 짝으로 서야 한다 — 한쪽만 있으면 죽은 줄이다.
+    expect(theme).toMatch(/--glass-on-bevel: oklch\(/);
+    expect(theme).toMatch(/--glass-on-lift: 0 /);
+    expect(theme).toContain("--glass-bevel: var(--glass-on-bevel, transparent);");
+    expect(theme).toContain("--glass-lift: var(--glass-on-lift, var(--shadow-floating));");
+
+    // 워시·블룸은 재료도, 그 재료를 싣던 게이트 다리도 없다.
     for (const material of [
-      "--glass-on-bevel",
-      "--glass-on-lift",
       "--canvas-on-wash-near",
       "--canvas-on-wash-mid",
       "--canvas-on-wash-far",
@@ -2504,9 +2575,12 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--surface-chrome: var(--surface-glass);");
     expect(theme.match(/--surface-chrome:/g)).toHaveLength(2);
     expect(theme).toContain("--surface-chrome: oklch(96% 0.004 100);");
-    // 라이트 캔버스는 종이(터미널 98.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
-    // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
-    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 100);");
+    // 라이트 캔버스는 종이(터미널 98.2%)보다 어두운 책상이다. 크롬과의 순서는 base 색이 아니라
+    // 그 위에 칠하는 sea 그라디언트가 정하므로 여기서는 상한만 못박는다 — abyss가 종이에 붙으면
+    // 책상이 계조를 잃고, 계조를 잃은 책상 위에서는 60% 틴트가 통과시킬 것이 없어진다.
+    const whitesAbyss = theme.match(/:root\[data-theme="whites"\][\s\S]*?--canvas-abyss: oklch\(([\d.]+)%/)?.[1];
+    expect(whitesAbyss).toBeDefined();
+    expect(Number(whitesAbyss)).toBeLessThan(95);
     // brass 채움 위 텍스트 티어 — 다크는 abyss 별칭, 라이트는 페이지 배경과 독립된 자체 리터럴로
     // AA 4.5:1을 보장한다(abyss 결합 시 페이지 배경 조정이 버튼 대비를 함께 끌어내린다).
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
@@ -2544,15 +2618,25 @@ describe("Instrument core design contract", () => {
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
     expect(surface).toContain("const rootStyle = getComputedStyle(document.documentElement);");
     expect(surface).toContain('rootStyle.getPropertyValue("--glass-tint-terminal")');
-    expect(surface).toContain("...base, background: resolvePanelSurface(");
+    expect(surface).toContain("const background = resolvePanelSurface(theme, base.background ?? \"\", surface);");
 
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
-    // 필드(라이트 종이·게이트 닫힘)에서도 글리프를 투명 위에 그려 GPU가 감마 미보정 sRGB로
-    // 재합성하게 만들고, 획 잉크가 18.2% 사라진다(dpr=2 실측). 상수로 되돌리면 그 회귀가 재발한다.
+    // 필드(게이트 닫힘)에서도 글리프를 투명 위에 그려 아틀라스가 서브픽셀 AA를 잃게 만든다.
+    // 상수로 되돌리면 그 회귀가 재발한다.
     const options = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8");
     expect(options).not.toMatch(/^\s*allowTransparency:/m);
     expect(surface).toContain("allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
-    expect(surface).toContain("terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
+    expect(surface).toMatch(/const translucent = terminalFieldIsTranslucent\(terminalTheme\.background \?\? ""\);/);
+    expect(surface).toContain("terminal.options.allowTransparency = translucent;");
+    // 서브픽셀 AA 보정은 그 투명도 판정과 **같은 자리**에서 갱신되어야 한다 — 따로 놀면 유리를
+    // 껐을 때 웨이트만 남아 과보정이 된다(게이트는 terminalFontWeightsFor가 소유한다).
+    expect(surface).toContain("terminalFontWeightsFor(activeTheme, translucent, webglActive)");
+    // 그리고 그 게이트는 사용자의 렌더러 **선호**가 아니라 실제로 켜진 렌더러를 읽어야 한다 —
+    // WebGL 초기화 실패·컨텍스트 유실은 선호를 "webgl"로 둔 채 DOM으로 폴백하므로, 선호로 걸면
+    // 서브픽셀 AA가 살아 있는 화면에 보정이 얹혀 남은 세션 내내 과보정이 된다.
+    expect(surface).not.toMatch(/terminalFontWeightsFor\([^)]*terminalRenderer\)/);
+    expect(surface).not.toMatch(/terminalForegroundFor\([^)]*terminalRenderer\)/);
+    expect(surface).toContain("setWebglActive(false);");
     // 뷰포트 인라인 배경이 먼저다 — 순서가 뒤집히면 xterm의 :not(.allow-transparency) 규칙이
     // background-color:#000을 한 프레임 드러낸다.
     const applyBlock = surface.slice(surface.indexOf("const applyTerminalTheme = () => {"));

@@ -7,7 +7,7 @@ vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class Unicode11Addon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class WebglAddon {} }));
 
-import { resolvePanelSurface, terminalFieldIsTranslucent } from "../client/shared/terminal-surface.js";
+import { resolvePanelSurface, terminalFieldIsTranslucent, terminalFontWeightsFor, terminalForegroundFor } from "../client/shared/terminal-surface.js";
 
 /* 유리 게이트를 CSS 채널 계산값으로만 연다 — 제품과 같은 판정 경로를 타야 의미가 있다. */
 const openGlassGate = () => document.documentElement.style.setProperty("--glass-backdrop-strong", "blur(24px) saturate(1.7)");
@@ -77,13 +77,16 @@ describe("resolved terminal field drives allowTransparency", () => {
     expect(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)")).toBe("rgba(0, 0, 0, 0)");
   });
 
-  /* 라이트 필드는 유리가 켜져 있어도 불투명 종이다(--glass-on-tint-terminal에 알파가 없다).
-     여기서 allowTransparency가 켜지면 라이트 터미널 글자가 얇아지는 회귀가 재발한다. */
-  it("keeps the light field opaque even while the glass gate is open", () => {
+  /* 필드 분기는 테마 극성이 아니라 게이트 상태가 정한다 — 라이트도 게이트가 열려 있으면 다크와
+     같은 경로로 비워지고, floor RGB만 유리 톤으로 남아 dim 사각형을 덮는다. JS에 테마 분기를
+     남기면 CSS 채널과 진실이 두 벌이 된다. */
+  it("clears the light field the same way once the glass gate is open", () => {
     openGlassGate();
-    setTerminalTint("rgb(250, 249, 246)");
-    setTerminalFloor("rgb(250, 249, 246)");
-    expect(terminalFieldIsTranslucent(resolvePanelSurface("whites", "oklch(98.2% 0.004 100)"))).toBe(false);
+    setTerminalTint("rgba(250, 249, 246, 0.6)");
+    setTerminalFloor("rgb(246, 245, 241)");
+    const cleared = resolvePanelSurface("whites", "oklch(98.2% 0.004 100)");
+    expect(cleared).toBe("rgba(246, 245, 241, 0)");
+    expect(terminalFieldIsTranslucent(cleared)).toBe(true);
   });
 
   it("keeps every field opaque once the glass gate is closed", () => {
@@ -92,5 +95,61 @@ describe("resolved terminal field drives allowTransparency", () => {
     expect(terminalFieldIsTranslucent(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)"))).toBe(false);
     setTerminalTint("rgb(250, 249, 246)");
     expect(terminalFieldIsTranslucent(resolvePanelSurface("whites", "oklch(98.2% 0.004 100)"))).toBe(false);
+  });
+});
+
+/* 서브픽셀 AA 보정의 게이트. 손실은 **세 조건이 동시에 설 때만** 생기므로, 하나라도 빠지면 보정도
+   빠져야 한다 — 걸린 채로 남으면 과보정이고, 그건 손실만큼이나 눈에 띈다.
+   실측(같은 배경, 렌더러만 교체): 라이트 WebGL은 DOM보다 획 잉크 9.5%가 적고, 웨이트 500을
+   물리면 그 차이가 1.5%로 줄어든다. 유리를 끄면 보정 없는 불투명 기준값으로 정확히 돌아온다.
+   다크는 부호가 반대(WebGL이 DOM보다 4.0% 많음)라 같은 보정을 걸면 더 두꺼워지기만 한다. */
+describe("terminalFontWeightsFor", () => {
+  const DEFAULTS = { fontWeight: "normal", fontWeightBold: "bold" };
+
+  it("compensates only light + translucent field + webgl", () => {
+    expect(terminalFontWeightsFor("whites", true, true)).toEqual({ fontWeight: 500, fontWeightBold: 800 });
+  });
+
+  it("leaves every other combination on the font's own weights", () => {
+    // DOM은 실제 배경 위에 그려 서브픽셀 AA가 살아 있다 — 여기에 걸면 이중 보정이다.
+    // 셋째 인자는 사용자의 선호가 아니라 **지금 켜진 렌더러**다: WebGL 초기화 실패나 컨텍스트
+    // 유실로 DOM 폴백이 서면 선호는 "webgl"인 채로 남으므로, 선호로 걸면 폴백 세션 내내 과보정이다.
+    expect(terminalFontWeightsFor("whites", true, false)).toEqual(DEFAULTS);
+    // 불투명 필드는 아틀라스가 배경을 알고 굽는다 — 잃은 것이 없으므로 되돌릴 것도 없다.
+    expect(terminalFontWeightsFor("whites", false, true)).toEqual(DEFAULTS);
+    // 다크는 같은 왜곡이 반대 부호라 보정이 악화시킨다.
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      expect(terminalFontWeightsFor(theme, true, true)).toEqual(DEFAULTS);
+    }
+  });
+
+  /* 번들 한글 폴백(Nanum Gothic Coding)은 400/700 두 페이스뿐이다. CSS 폰트 매칭은 목표가 500
+     이하일 때만 아래로 내려가므로, 보통은 500 이하여야 400으로 떨어지고 굵게는 700 초과여야
+     700으로 떨어져 둘이 갈린 채 남는다. 이 성질이 깨지면(예: 600/900은 둘 다 700) 한글 SGR
+     볼드가 보통 글자와 구분되지 않는다 — 실제로 한 번 올렸다가 리뷰에서 적발돼 되돌린 자리다. */
+  it("keeps normal and bold apart on the bundled 400/700 Hangul fallback", () => {
+    const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, true);
+    const resolveOn400And700 = (target: number) => (target <= 500 ? 400 : 700);
+    expect(fontWeight).toBeGreaterThan(400);
+    expect(Number(fontWeight)).toBeLessThanOrEqual(500);
+    expect(Number(fontWeightBold)).toBeGreaterThan(700);
+    expect(resolveOn400And700(Number(fontWeight))).not.toBe(resolveOn400And700(Number(fontWeightBold)));
+  });
+});
+
+/* 농도 보정은 웨이트와 같은 게이트를 써야 한다 — 한쪽만 걸리면 색과 굵기가 어긋난 조합이 생긴다. */
+describe("terminalForegroundFor", () => {
+  const BASE = "oklch(24% 0.012 95)";
+
+  it("darkens the ink only on light + translucent field + webgl", () => {
+    expect(terminalForegroundFor("whites", BASE, true, true)).not.toBe(BASE);
+  });
+
+  it("leaves every other combination on the theme's own foreground", () => {
+    expect(terminalForegroundFor("whites", BASE, true, false)).toBe(BASE);
+    expect(terminalForegroundFor("whites", BASE, false, true)).toBe(BASE);
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      expect(terminalForegroundFor(theme, BASE, true, true)).toBe(BASE);
+    }
   });
 });
