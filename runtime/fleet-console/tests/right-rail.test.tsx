@@ -6,8 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0, activate: vi.fn() }));
 
+const CORE_PANEL_FIXTURES = vi.hoisted(() => [] as Record<string, unknown>[]);
+const BINDING_CACHE = vi.hoisted(() => ({ value: null as unknown }));
+
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
-  BUILT_IN_RAIL_PANELS: [
+  BUILT_IN_RAIL_PANELS: CORE_PANEL_FIXTURES,
+}));
+
+const CORE_PANELS: Record<string, unknown>[] = [
     {
       id: "repository",
       title: "REPOSITORY",
@@ -38,11 +44,42 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
       icon: "S",
       render: () => null,
     },
-  ],
+];
+
+// 새 계약의 레지스트리를 모킹한다. 여기 적는 것은 여전히 "옛 패널 모양"이고, 아래 helper가
+// 그것을 엔트리+페인 바인딩으로 편다 — 프로덕션의 투영과 같은 규칙이라, 이 테스트는 투영 경로도
+// 함께 지킨다.
+function toBinding(panel: Record<string, unknown>) {
+  const hasBody = typeof panel.render === "function";
+  return {
+    entry: {
+      id: panel.id,
+      title: panel.title,
+      icon: panel.icon,
+      ...(panel.surfaceId === undefined ? {} : { surfaceId: panel.surfaceId }),
+      ...(hasBody ? { panes: [panel.id] } : { activate: panel.activate }),
+    },
+    panes: hasBody
+      ? [{
+        id: panel.id,
+        role: "primary",
+        mounts: ["rail"],
+        title: () => panel.title,
+        render: panel.render,
+        ...(panel.defaultWidth === undefined ? {} : { defaultWidth: panel.defaultWidth }),
+      }]
+      : [],
+    projected: true,
+  };
+}
+
+vi.mock("../core/client/src/pane/pane-registry.js", () => ({
+  // 프로덕션 useRailEntries는 useMemo라 참조가 안정적이다. 매 호출 새 배열을 주면
+  // RailSurface의 memo가 깨져 본문이 다시 렌더되므로, 여기서도 한 번만 만든다.
+  useRailEntries: () => (BINDING_CACHE.value ??= [...CORE_PANELS, ...LEGACY_PANEL_FIXTURES].map(toBinding)),
 }));
 
-vi.mock("../core/client/src/rail/rail-registry.js", () => ({
-  useRailPanels: () => [
+const LEGACY_PANEL_FIXTURES: Record<string, unknown>[] = [
     {
       id: "shell-action",
       title: "SHELL",
@@ -62,8 +99,7 @@ vi.mock("../core/client/src/rail/rail-registry.js", () => ({
       icon: "F",
       render: () => null,
     },
-  ],
-}));
+];
 
 import { RightRail } from "../core/client/src/rail/right-rail.js";
 import {

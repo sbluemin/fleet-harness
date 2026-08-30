@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -25,6 +25,9 @@ import { closePane, focusPane, openPane, useFocusedPaneId, useRailPanes } from "
 // 능력 객체를 렌더마다 새로 만들면 컨텍스트가 매번 바뀌어 본문이 재마운트된다 —
 // keepAlive가 지키려는 것을 정작 호스트가 깨뜨리는 자리다.
 const HOST_CAPABILITIES = createHostCapabilities();
+
+// 렌더마다 새 `{}`를 만들면 ctx의 useMemo가 매번 깨져 본문이 다시 그려진다.
+const EMPTY_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 export interface RailSurfaceProps {
   readonly binding: RailEntryBinding;
@@ -71,9 +74,10 @@ export const RailSurface = memo(function RailSurface({
   return (
     <div className={`rail-surface${extras.length > 0 ? " is-split" : ""}`} data-pane-count={extras.length + 1}>
       <PaneHost
+        key={primary.id}
         descriptor={primary}
         instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
-        params={primaryInstance?.params ?? {}}
+        params={primaryInstance?.params ?? EMPTY_PARAMS}
         visible
         focused={focusedPaneId === primary.id}
         theaterId={theaterId}
@@ -144,6 +148,14 @@ function PaneHost({
   const bodyRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   abortRef.current ??= new AbortController();
+
+  // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. 이 cleanup이 없으면 signal은 영원히
+  // 열린 채로 남아, 닫힌 페인의 요청과 watcher가 계속 돌면서 다음 페인 위에 착지한다.
+  // `keepAlive` 페인은 닫혀도 언마운트되지 않으므로 여기 오지 않는다 — 살아 있으니까.
+  useEffect(() => {
+    const controller = abortRef.current!;
+    return () => { controller.abort(); };
+  }, []);
 
   const handleOpen = useCallback((request: PaneOpenRequest) => { openPane(request); }, []);
   const handleClose = useCallback((paneId?: string) => {

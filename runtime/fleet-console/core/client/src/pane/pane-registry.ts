@@ -6,6 +6,7 @@ import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { usePluginRegistry } from "../plugin-registry.js";
+import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
 
 /**
  * 레일 엔트리와 페인의 합성 레지스트리.
@@ -38,6 +39,8 @@ export interface RailEntryBinding {
   readonly panes: readonly PaneDescriptor[];
   /** 옛 `railPanels`에서 투영된 엔트리인가. 폭 저장 키 등 호환 경로가 이 값을 본다. */
   readonly projected: boolean;
+  /** 코어가 소유한 기여인가. 합성 순서에서 플러그인보다 앞에 선다. */
+  readonly core?: boolean;
 }
 
 /**
@@ -48,7 +51,7 @@ export interface RailEntryBinding {
  * 그 안쪽을 진짜 두 페인으로 가르는 것은 플러그인이 새 계약으로 옮기는 일이지, 투영이 추측할
  * 일이 아니다.
  */
-function projectPanel(panel: RailPanelDescriptor): RailEntryBinding {
+function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBinding {
   const entry: RailEntryDescriptor = {
     id: panel.id,
     title: panel.title,
@@ -59,7 +62,7 @@ function projectPanel(panel: RailPanelDescriptor): RailEntryBinding {
   };
 
   // activate형(Shell)은 펼칠 본문이 없다 — 아이콘이 곧 동작이다.
-  if (panel.activate) return { entry, panes: [], projected: true };
+  if (panel.activate) return { entry, panes: [], projected: true, core };
 
   const pane: PaneDescriptor = {
     id: panel.id,
@@ -105,7 +108,7 @@ function projectPanel(panel: RailPanelDescriptor): RailEntryBinding {
       : {}),
   };
 
-  return { entry, panes: [pane], projected: true };
+  return { entry, panes: [pane], projected: true, core };
 }
 
 function resolveEntryTitle(panel: RailPanelDescriptor, language: string | undefined): string {
@@ -147,11 +150,11 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
 
     // 코어가 먼저, 그다음 플러그인 — 합성 순서는 옛 레지스트리와 같다. 같은 id를 가진
     // 네이티브 등록이 있으면 투영을 버린다: 옮겨 온 쪽이 언제나 이긴다.
-    const projected = railPanels
-      .filter((panel) => !nativeIds.has(panel.id))
-      .map(projectPanel);
+    const coreProjected = BUILT_IN_RAIL_PANELS.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
+    const pluginProjected = railPanels.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel));
 
-    return [...native, ...projected].filter((binding) => (binding.entry.side ?? "right") === side);
+    return [...coreProjected, ...native, ...pluginProjected]
+      .filter((binding) => (binding.entry.side ?? "right") === side);
   }, [panes, railEntries, railPanels, side]);
 }
 
