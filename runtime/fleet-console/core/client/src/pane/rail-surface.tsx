@@ -109,7 +109,9 @@ export const RailSurface = memo(function RailSurface({
   useEffect(() => () => {
     for (const pane of panesRef.current) {
       if (pane.role === "primary" || pane.keepAlive === true) continue;
-      closePane(pane.id);
+      // 호스트가 닫는 모든 경로는 onClose를 통보한다(sdk/pane 계약) — 캡션 닫기와 같은 문.
+      // 빼먹으면 플러그인은 그 문서가 여전히 열려 있다 믿고 다음 상태 발행에서 되살린다.
+      closePane(pane.id, pane.onClose ? { onClose: pane.onClose } : {});
     }
   }, []);
 

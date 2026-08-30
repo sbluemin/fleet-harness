@@ -4,7 +4,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0, activate: vi.fn() }));
+const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0, activate: vi.fn(), repoNotesOnClose: vi.fn() }));
 const BINDING_CACHE = vi.hoisted(() => ({ value: null as unknown }));
 const PANE_INDEX_CACHE = vi.hoisted(() => ({ value: null as unknown }));
 
@@ -16,7 +16,7 @@ const CORE_PANELS: Record<string, unknown>[] = [
     icon: "P",
     // 교체 정리 계약을 재는 detail 짝 — keepAlive 없는 열과 keepAlive 열을 하나씩 둔다.
     details: [
-      { id: "repo-notes", title: "NOTES" },
+      { id: "repo-notes", title: "NOTES", onClose: railPanelContextMock.repoNotesOnClose },
       { id: "repo-term", title: "TERM", keepAlive: true },
     ],
     render: (ctx: { readonly theme?: unknown }) => {
@@ -117,6 +117,7 @@ function toBinding(panel: Record<string, unknown>, core: boolean) {
         title: () => detail.title,
         render: () => null,
         ...(detail.keepAlive === true ? { keepAlive: true } : {}),
+        ...(typeof detail.onClose === "function" ? { onClose: detail.onClose } : {}),
       }))]
       : [],
     projected: true,
@@ -192,6 +193,7 @@ beforeEach(() => {
   railPanelContextMock.themes.length = 0;
   railPanelContextMock.renderCount = 0;
   railPanelContextMock.activate.mockClear();
+  railPanelContextMock.repoNotesOnClose.mockClear();
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   resetExpandedSurfacesForTest();
   __resetPaneStoreForTests();
@@ -292,6 +294,9 @@ describe("Right Rail exclusive panel", () => {
     // 떠나는 표면이 언마운트 cleanup에서 자기 비-keepAlive detail을 닫는다 — 남기면 돌아왔을 때
     // 옛 params째 되살아난다(닫기=언마운트 계약, Codex 1차 P1).
     expect(getPaneStoreSnapshot().rail.some((instance) => instance.paneId === "repo-notes")).toBe(false);
+    // 호스트가 닫는 모든 경로는 onClose를 통보한다(sdk/pane 계약) — 통보가 없으면 플러그인이
+    // 다음 상태 발행에서 닫힌 문서를 되살린다(Codex 4차 P2).
+    expect(railPanelContextMock.repoNotesOnClose).toHaveBeenCalledWith({ paneId: "repo-notes", params: { path: "a.md" } });
   });
 
   it("leaves the leaving panel's keepAlive detail standing so it returns on reopen", () => {
