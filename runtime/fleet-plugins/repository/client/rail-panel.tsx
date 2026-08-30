@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailPanelContext, RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
@@ -1333,12 +1334,24 @@ function RepositoryIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
 }
 
-export const repositoryPanel: RailPanelDescriptor = {
+export const repositoryEntry: RailEntryDescriptor = {
   id: "repository",
   title: (locale) => getT(locale)("repository.panel.title"),
-  defaultWidth: 420,
   icon: () => <RepositoryIcon />,
-  render: (ctx: RailPanelContext) => <RepositoryPanel ctx={ctx} />,
+  panes: ["repository"],
+};
+
+/**
+ * 소스 트리와 작업면이 아직 한 본문 안에 있다. 커밋 초안은 `hidden` 동시 마운트가
+ * 지키므로, 페인이 갈라질 때 그 자리가 keepAlive로 옮겨 간다.
+ */
+export const repositoryPane: PaneDescriptor = {
+  id: "repository",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("repository.panel.title"),
+  render: (ctx) => <RepositoryPanel ctx={ctx} />,
+  defaultWidth: 420,
   search: async ({ query, theaterId, limit, signal }) => {
     const repoRel = readStoredRepositoryRel(theaterId);
     const response = await fetch("/plugins/repository/palette-search", {

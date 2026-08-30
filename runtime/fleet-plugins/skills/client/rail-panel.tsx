@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import type { InstalledSkillSearchResult, Scope, SkillListItem } from "../server/skill-types.js";
 import { FindTab } from "./find-tab.js";
@@ -24,7 +25,7 @@ import { Toast } from "./skill-feedback.js";
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface SkillsPanelProps {
-  readonly ctx: RailPanelContext;
+  readonly ctx: PaneContext;
 }
 
 interface ReadMoreEntry {
@@ -189,12 +190,25 @@ function SkillsIcon() {
 
 // ─── export ──────────────────────────────────────────────────────────────────
 
-export const skillsPanel: RailPanelDescriptor = {
+export const skillsEntry: RailEntryDescriptor = {
   id: "skills",
   title: (locale) => getT(locale)("skills.panel.title"),
-  defaultWidth: 360,
   icon: SkillsIcon,
-  render: (ctx: RailPanelContext) => <SkillsPanel ctx={ctx} />,
+  panes: ["skills"],
+};
+
+/**
+ * 스킬 목록 한 열. 설치됨/찾기 탭은 같은 자리를 갈아끼우는 내용 전환이라 본문에 남고,
+ * 읽기 오버레이는 포커스를 가두는 모달이므로 페인이 아니다 — 360px 열에 720px 시트를
+ * 넣을 수 없고, 확대 표면으로 옮기면 비모달이 되어 차단성을 잃는다.
+ */
+export const skillsPane: PaneDescriptor = {
+  id: "skills",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("skills.panel.title"),
+  render: (ctx) => <SkillsPanel ctx={ctx} />,
+  defaultWidth: 360,
   search: async ({ query, theaterId, limit, signal }) => {
     const response = await fetch("/plugins/skills/palette-search", {
       method: "POST",
@@ -208,7 +222,11 @@ export const skillsPanel: RailPanelDescriptor = {
       id: `${skill.scope}:${skill.name}`,
       title: skill.name,
       subtitle: skill.scope,
-      activate: () => activateSkillSearchTarget(theaterId, skill.name, skill.scope),
+      activate: () => {
+        // 호스트 팔레트가 PaneTarget을 소비하기 전까지는 이 싱글턴이 실제 착지를 맡는다.
+        activateSkillSearchTarget(theaterId, skill.name, skill.scope);
+        return { paneId: "skills", theaterId, params: { skill: skill.name, scope: skill.scope } };
+      },
     }));
   },
 };

@@ -3,11 +3,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { RailPanelContext } from "@fleet-console/sdk/rail";
+import type { PaneContext } from "@fleet-console/sdk/pane";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ledgerEn, ledgerKo } from "../client/i18n/messages.js";
-import { ledgerPanel } from "../client/rail-panel.js";
+import { ledgerPane } from "../client/rail-panel.js";
 import type { LedgerSourceStatus, LedgerSummaryDto, LedgerWindow } from "../server/types.js";
 
 let container: HTMLDivElement;
@@ -74,18 +74,31 @@ function dto(
   };
 }
 
-function context(fetchImpl: RailPanelContext["api"]["fetch"]): RailPanelContext {
+function context(fetchImpl: PaneContext["api"]["fetch"]): PaneContext {
   return {
+    paneId: "ledger",
+    instanceId: "ledger-1",
+    params: {},
+    role: "primary",
+    mount: "rail",
+    width: 392,
+    visible: true,
+    focused: false,
     theaterId: "theater-a",
-    pathContext: { kind: "root", relPath: null, label: "root" },
     api: { fetch: fetchImpl, subscribe: vi.fn(), resync: vi.fn() },
+    // 본문은 api와 language만 읽는다. 나머지 호스트 능력은 이 테스트의 사정권 밖이라
+    // 최소 스텁으로 둔다 — 채워 넣으면 계약이 아니라 스텁을 검증하게 된다.
+    lifecycle: {} as PaneContext["lifecycle"],
+    preferences: {} as PaneContext["preferences"],
+    panes: { open: vi.fn(), close: vi.fn(), replaceParams: vi.fn(), isOpen: () => false },
+    signal: new AbortController().signal,
     language: "en",
   };
 }
 
 async function renderWith(value: LedgerSummaryDto): Promise<ReturnType<typeof vi.fn>> {
   const fetch = vi.fn(async () => ({ json: async () => value } as Response));
-  await act(async () => root.render(ledgerPanel.render(context(fetch))));
+  await act(async () => root.render(ledgerPane.render(context(fetch))));
   return fetch;
 }
 
@@ -93,7 +106,7 @@ async function renderWindowWith(value: LedgerSummaryDto, label: "Today" | "This 
   const fetch = vi.fn(async (_pluginId: string, path: string) => ({
     json: async () => path.includes(`window=${value.scope.window}`) ? value : dto("ok", "week", 0),
   } as Response));
-  await act(async () => root.render(ledgerPanel.render(context(fetch))));
+  await act(async () => root.render(ledgerPane.render(context(fetch))));
   const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
     .find((candidate) => candidate.textContent === label);
   await act(async () => button!.click());
@@ -561,7 +574,7 @@ describe("Ledger requests", () => {
       }
       return Promise.resolve({ json: async () => dto("ok", "week", 12.34) } as Response);
     });
-    await act(async () => root.render(ledgerPanel.render(context(fetch))));
+    await act(async () => root.render(ledgerPane.render(context(fetch))));
     expect(fetch).toHaveBeenCalledWith("ledger", "summary?window=week");
     expect(container.textContent).toContain("$12.34");
 
@@ -587,7 +600,7 @@ describe("Ledger requests", () => {
 
   it("turns request rejection into a retryable transport error", async () => {
     const fetch = vi.fn(async () => { throw new Error("offline"); });
-    await act(async () => root.render(ledgerPanel.render(context(fetch))));
+    await act(async () => root.render(ledgerPane.render(context(fetch))));
     expect(container.textContent).toContain("Could not load usage");
     expect(container.textContent).toContain("Retry");
   });

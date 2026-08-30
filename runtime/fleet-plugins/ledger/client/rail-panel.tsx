@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import type { LedgerDailyDetailDto, LedgerModelRowDto, LedgerSummaryDto, LedgerWindow } from "../server/types.js";
 import { providerGlyph } from "./cli-glyphs.js";
@@ -22,7 +23,7 @@ import { getT, type LedgerMessageKey } from "./i18n/index.js";
 import "./ledger.css";
 
 interface LedgerPanelProps {
-  readonly ctx: RailPanelContext;
+  readonly ctx: PaneContext;
 }
 
 type T = Translate<LedgerMessageKey>;
@@ -251,7 +252,7 @@ function TrendSummaryText({ t, message, day, cost }: {
 
 function DailyDetail({ detail, language, t }: {
   readonly detail: LedgerDailyDetailDto;
-  readonly language: RailPanelContext["language"];
+  readonly language: PaneContext["language"];
   readonly t: T;
 }) {
   const day = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" })
@@ -289,7 +290,7 @@ const NO_DAY_SELECTED: string | null = null;
 
 function TrendSection({ data, language, t }: {
   readonly data: LedgerSummaryDto;
-  readonly language: RailPanelContext["language"];
+  readonly language: PaneContext["language"];
   readonly t: T;
 }) {
   const [scale, setScale] = useState<TrendScale>("linear");
@@ -633,10 +634,19 @@ function LedgerIcon() {
 // `satisfies`, not an annotation: `RailPanelDescriptor` is a union of a rendering panel and an
 // activate-only rail action, so annotating erases which arm this is and leaves `render` optional
 // to every caller. The check against the contract is identical; the concrete shape survives it.
-export const ledgerPanel = {
+export const ledgerEntry: RailEntryDescriptor = {
   id: "ledger",
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
-  defaultWidth: 392,
+  panes: ["ledger"],
+};
+
+/** 지표판 한 열. 옆에 설 상세가 없으므로 detail 페인도 없다. */
+export const ledgerPane: PaneDescriptor = {
+  id: "ledger",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("ledger.panel.title"),
   render: (ctx) => <LedgerPanelBody ctx={ctx} />,
-} satisfies RailPanelDescriptor;
+  defaultWidth: 392,
+};

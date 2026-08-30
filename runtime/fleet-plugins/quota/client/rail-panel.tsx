@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
 import {
@@ -666,7 +667,7 @@ type SummaryResponse = QuotaSummaryDto & {
   readonly foldedProviders?: unknown;
 };
 
-function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
+function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
   const [data, setData] = useState<QuotaSummaryDto | null>(null);
   const [requestError, setRequestError] = useState(false);
@@ -1012,10 +1013,19 @@ function QuotaIcon() {
   );
 }
 
-export const quotaPanel: RailPanelDescriptor = {
+export const quotaEntry: RailEntryDescriptor = {
   id: "quota",
   title: (locale) => getT(locale)("quota.panel.title"),
   icon: QuotaIcon,
-  defaultWidth: 392,
+  panes: ["quota"],
+};
+
+/** 계기판 한 열. 카드 순서와 접힘은 서버에 남으므로 닫혀도 잃을 것이 없다. */
+export const quotaPane: PaneDescriptor = {
+  id: "quota",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("quota.panel.title"),
   render: (ctx) => <QuotaPanel ctx={ctx} />,
+  defaultWidth: 392,
 };

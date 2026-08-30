@@ -28,7 +28,6 @@ import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
  * 공개 타입에 넣지 않는 이유가 그것이다: 넣는 순간 옛 결합이 새 계약의 일부가 된다.
  */
 export interface HostPaneContext extends PaneContext {
-  readonly legacyRequestExtraWidth?: (px: number | null) => void;
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
   readonly legacyLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
 }
@@ -78,7 +77,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
         theme: ctx.theme,
         // 옛 본문은 자기 폭을 요구할 수 있었다. 새 계약에서 폭은 표면이 소유하므로,
         // 이 요구는 표면의 extra-width 힌트로 그대로 흘려보낸다.
-        requestExtraWidth: ctx.legacyRequestExtraWidth,
+        requestExtraWidth: ctx.requestExtraWidth,
         surfaces: ctx.legacySurfaces,
         launchOperation: ctx.legacyLaunchOperation,
         pathContext: { kind: "root", relPath: null, label: "" },

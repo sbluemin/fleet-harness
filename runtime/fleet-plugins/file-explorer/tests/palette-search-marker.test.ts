@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fileExplorerPanel } from "../client/rail-panel.js";
+import { fileExplorerPane } from "../client/rail-panel.js";
 
 interface SearchOutcomeBody {
   readonly files: ReadonlyArray<{ readonly relativePath: string }>;
@@ -20,7 +20,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("fileExplorerPanel.search cap marker", () => {
+describe("fileExplorerPane.search cap marker", () => {
   it("counts the displaced result in the omitted-match total", async () => {
     // 9건 매치·limit 8 — 서버는 8건을 주고, 마커가 한 자리를 쓰므로 7건이 남는다.
     // 마커는 숨겨진 2건(9 - 7)을 말해야 한다.
@@ -29,7 +29,7 @@ describe("fileExplorerPanel.search cap marker", () => {
       totalMatches: 9,
     });
 
-    const items = await fileExplorerPanel.search!(searchRequest());
+    const items = await fileExplorerPane.search!(searchRequest());
 
     expect(items).toHaveLength(8);
     const marker = items.at(-1);
@@ -43,7 +43,7 @@ describe("fileExplorerPanel.search cap marker", () => {
       totalMatches: 3,
     });
 
-    const items = await fileExplorerPanel.search!(searchRequest());
+    const items = await fileExplorerPane.search!(searchRequest());
 
     expect(items).toHaveLength(3);
     expect(items.every((item) => !item.id.startsWith("file-explorer.search-"))).toBe(true);
@@ -56,7 +56,7 @@ describe("fileExplorerPanel.search cap marker", () => {
       walkCapped: true,
     });
 
-    const items = await fileExplorerPanel.search!(searchRequest());
+    const items = await fileExplorerPane.search!(searchRequest());
 
     expect(items).toHaveLength(6);
     expect(items.at(-1)?.id).toBe("file-explorer.search-capped");

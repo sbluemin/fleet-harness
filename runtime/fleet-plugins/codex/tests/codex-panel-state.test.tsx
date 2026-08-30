@@ -73,7 +73,7 @@ vi.mock("../client/codex/state.js", () => ({
 }));
 
 import { CodexReadingSheet } from "../client/codex-reading-sheet.js";
-import { codexPanel } from "../client/codex-panel.js";
+import { codexPane } from "../client/codex-panel.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -122,7 +122,7 @@ describe("Codex rail panel workspace request", () => {
   // 서버 라우트만 검사하면 이 갈라짐이 보이지 않는다 — 부르는 쪽을 못 박는다.
   it("asks the plugin's own route and carries the Theater in the body", async () => {
     await act(async () => {
-      root.render(codexPanel.render?.({ theaterId: "theater-a" } as never) ?? null);
+      root.render(codexPane.render?.({ theaterId: "theater-a" } as never) ?? null);
     });
 
     const calls = vi.mocked(globalThis.fetch).mock.calls;
@@ -189,7 +189,7 @@ describe("Codex rail panel in-memory state", () => {
 
     root = createRoot(container);
     act(() => {
-      root.render(codexPanel.render?.({ theaterId: "theater-a" } as never) ?? null);
+      root.render(codexPane.render?.({ theaterId: "theater-a" } as never) ?? null);
     });
 
     // 동일 Theater는 비동기 workspace 재해석 전에도 캐시된 navigator를 즉시 복원한다.
@@ -198,7 +198,7 @@ describe("Codex rail panel in-memory state", () => {
     expect(panelMocks.closeCodexReader).not.toHaveBeenCalled();
 
     act(() => {
-      root.render(codexPanel.render?.({ theaterId: "theater-b" } as never));
+      root.render(codexPane.render?.({ theaterId: "theater-b" } as never));
     });
     await flushEffects();
 
@@ -232,7 +232,7 @@ describe("Codex rail panel in-memory state", () => {
 
 async function renderPanel(theaterId: string): Promise<void> {
   await act(async () => {
-    root.render(codexPanel.render?.({ theaterId } as never));
+    root.render(codexPane.render?.({ theaterId } as never));
     await Promise.resolve();
   });
   await flushEffects();

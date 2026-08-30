@@ -184,9 +184,9 @@ function PaneHost({
       isOpen: (paneId) => paneId === descriptor.id ? visible : false,
     },
     signal: abortRef.current!.signal,
+    requestExtraWidth: onRequestExtraWidth,
     language,
     theme,
-    legacyRequestExtraWidth: onRequestExtraWidth,
     legacySurfaces: surfaces,
     legacyLaunchOperation: onLaunchOperation,
   }), [api, descriptor.id, descriptor.role, focused, handleClose, handleOpen, instanceId, language, onLaunchOperation, onRequestExtraWidth, params, surfaces, theaterId, theme, visible]);

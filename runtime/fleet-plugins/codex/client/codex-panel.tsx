@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { getT, useT } from "./i18n/index.js";
 import { useConsoleLocale } from "./reader-store.js";
@@ -75,17 +76,24 @@ function hasCodexEntryInUrl(): boolean {
 
 // ─── Rail panel descriptor ───────────────────────────────────────────────────
 
-export const codexPanel: RailPanelDescriptor = {
+export const codexEntry: RailEntryDescriptor = {
   id: "codex",
-  title: (locale: ConsoleLocale) => getT(locale)("rail.codex.title"),
-  defaultWidth: 420,
+  title: (locale) => getT(locale)("rail.codex.title"),
   icon: () => <CodexIcon />,
+  panes: ["codex"],
+};
+
+/**
+ * 네비게이터와 문서 창이 아직 한 본문 안에서 2단을 이룬다. 확대 표면은 이미 별도
+ * 기여이므로 여기서는 레일 쪽만 다룬다.
+ */
+export const codexPane: PaneDescriptor = {
+  id: "codex",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("rail.codex.title"),
   render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} requestExtraWidth={ctx.requestExtraWidth} />,
-  /**
-   * 팔레트에서 위키 항목을 찾는 길. 예전에는 코어 팔레트가 Codex를 알아보고 자기 손으로
-   * 항목을 받아 왔다 — 그 자리를 지우면서 이 provider로 내려왔다. 선언하지 않으면 팔레트에
-   * Codex 항목이 아예 나오지 않는다(코어는 이제 Codex를 이름으로 알지 못한다).
-   */
+  defaultWidth: 420,
   search: async ({ query, theaterId, limit, signal, language }) => {
     if (!theaterId) return [];
     const response = await fetchSearch(theaterId, { q: query, limit, signal });

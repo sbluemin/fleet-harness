@@ -137,6 +137,17 @@ export interface PaneContext {
    * 착지하는 일이 계약 수준에서 막힌다.
    */
   readonly signal: AbortSignal;
+  /**
+   * 표면에 폭을 더 달라고 요청한다(px). `null`이면 요청을 거둔다.
+   *
+   * `minWidth`가 정적인 하한이라면 이것은 동적인 요구다 — 본문이 지금 담은 것에 따라 필요한
+   * 폭이 달라질 때 쓴다. 호스트는 이 값을 힌트로만 받아 뷰포트 안에서 클램프하므로, 요청이
+   * 곧 보장은 아니다.
+   *
+   * 한 페인이 자기 안에서 두 열을 그리는 동안의 임시 수단이기도 하다. 그 두 열이 진짜 페인
+   * 둘로 갈라지면 폭은 표면이 분할선으로 소유하므로 이 요청은 사라진다.
+   */
+  readonly requestExtraWidth?: (px: number | null) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }

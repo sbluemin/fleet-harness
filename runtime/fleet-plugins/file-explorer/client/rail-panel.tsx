@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { RailPanelContext, RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailPanelContext, RailEntryDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
@@ -67,12 +68,24 @@ interface InlineFeedback {
   readonly message: string;
 }
 
-export const fileExplorerPanel: RailPanelDescriptor = {
+export const fileExplorerEntry: RailEntryDescriptor = {
   id: "file-explorer",
   title: (locale) => getT(locale)("fileExplorer.panel.title"),
-  defaultWidth: 360,
   icon: FileExplorerIcon,
+  panes: ["file-explorer"],
+};
+
+/**
+ * 트리와 뷰어가 아직 한 본문 안에서 2단을 이룬다 — 폭은 `requestExtraWidth`로 표면에
+ * 요청한다. 두 열이 진짜 페인 둘로 갈라지면 그 요청은 사라진다.
+ */
+export const fileExplorerPane: PaneDescriptor = {
+  id: "file-explorer",
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language ?? "en")("fileExplorer.panel.title"),
   render: (ctx) => <FileExplorerPanel {...ctx} />,
+  defaultWidth: 360,
   search: async ({ query, theaterId, limit, signal, language }) => {
     const response = await fetch("/plugins/file-explorer/files/palette-search", {
       method: "POST",

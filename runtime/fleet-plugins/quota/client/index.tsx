@@ -1,10 +1,11 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { quotaPanel } from "./rail-panel.js";
+import { quotaEntry, quotaPane } from "./rail-panel.js";
 
 const quotaPlugin = definePlugin({
   id: "quota",
-  railPanels: [quotaPanel],
+  railEntries: [quotaEntry],
+  panes: [quotaPane],
 });
 
 export const plugins = [quotaPlugin] as const;
