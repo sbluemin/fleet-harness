@@ -1991,6 +1991,10 @@ describe("Instrument core design contract", () => {
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
     // Doctrine: brass is the location/focus channel, so the open gear may wear it — but not
     // the tablist's left brass bar, because the gear is not a tab.
+    // Doctrine: the gear carries an explicit glyph size. An SVG with only a viewBox fills its
+    // button (30px inside the 32px control), which is how it first shipped oversized; plugin
+    // icons bring their own sizes but this core-drawn glyph has to state one here.
+    expect(rail).toMatch(/\.right-rail-settings-btn svg \{[^}]*width: \d+px;[^}]*height: \d+px;/);
     expect(rail).toMatch(/\.right-rail-settings-btn\.is-open \{[^}]*background: var\(--brass-glow\);/);
     expect(rail).not.toContain(".right-rail-settings-btn.is-open::before");
     // Doctrine: the menu is portaled to the document because .right-rail clips its own
