@@ -3588,8 +3588,9 @@
 .canvas-triage-clear {
   position: absolute;
   /* 덱과 같은 아레나 기준 — 전면 캔버스에서 박스 기준 인셋은 CLEAR 카피를 프레임 중심이
-     아니라 캔버스 중심에 앉히고 왼쪽 26px가 부유 카드 밑으로 들어간다(적대 리뷰 확정). */
-  inset: calc(var(--arena-top, 0px) + 58px) calc(var(--arena-right, 0px) + 26px) calc(var(--arena-bottom, 0px) + 74px) calc(var(--arena-left, 0px) + 26px);
+     아니라 캔버스 중심에 앉히고 왼쪽 26px가 부유 카드 밑으로 들어간다(적대 리뷰 확정).
+     가로는 프레임(max(10px, 아레나 − 4px))을 따라 12px 가산으로 다가선다 — 내부 16px 유지. */
+  inset: calc(var(--arena-top, 0px) + 58px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 74px) max(26px, var(--arena-left, 0px) + 12px);
   z-index: 80;
   display: flex;
   flex-direction: column;
@@ -3630,8 +3631,9 @@
 .canvas-triage-deck {
   position: absolute;
   /* 아레나 인셋 위에 26px — 전면 캔버스에서 박스 기준 26px는 첫 열 칸·밴드 헤드·지도 점을
-     부유 사이드바 카드 밑에 넣는다(사전 감사 blocker). */
-  inset: calc(var(--arena-top, 0px) + 26px) calc(var(--arena-right, 0px) + 26px) calc(var(--arena-bottom, 0px) + 26px) calc(var(--arena-left, 0px) + 26px);
+     부유 사이드바 카드 밑에 넣는다(사전 감사 blocker). 가로는 프레임을 따라 12px 가산으로
+     다가선다(max(10px, 아레나 − 4px) + 16px) — 프레임↔덱 내부 리듬 16px 유지. */
+  inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
   z-index: 80;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

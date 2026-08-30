@@ -251,6 +251,19 @@ export function OperationsCanvas({
     width: Math.max(0, canvasSize.width - arenaInsets.left - arenaInsets.right),
     height: Math.max(0, canvasSize.height - arenaInsets.top - arenaInsets.bottom),
   };
+  // 모드 프레임은 가로로 부유 카드에 8px까지 다가선다(components.css .canvas-mode-frame:
+  // max(10px, 아레나 − 4px)). Tactical/War Room의 슬롯 배치가 아레나에 머물면 프레임만
+  // 다가서고 패널이 따라오지 못해 내부 리듬(프레임↔패널 8px)이 깨진다 — 18px 인셋을 쓰는
+  // 모드 소비자에게는 가로만 14px 되물린 아레나를 준다: max(0, 인셋−14)+18 = max(18, 인셋+4)
+  // = 프레임 변 + 8. 크롬이 접힌 변은 인셋 0이라 기존 18px가 그대로 남는다.
+  const modeArenaLeft = Math.max(0, arenaInsets.left - 14);
+  const modeArenaRight = Math.max(0, arenaInsets.right - 14);
+  const modeArena = {
+    x: modeArenaLeft,
+    y: arena.y,
+    width: Math.max(0, canvasSize.width - modeArenaLeft - modeArenaRight),
+    height: arena.height,
+  };
   const screenViewport = {
     x: canvas.viewport.x + arena.x,
     y: canvas.viewport.y + arena.y,
@@ -785,17 +798,18 @@ export function OperationsCanvas({
   const formationCellCount = formationLayout === "grid"
     ? completeFormationGridCellCount(formationOperationIds.length)
     : formationOperationIds.length;
-  // Tactical 슬롯·컴패니언 분할의 기준 상자는 아레나다 — 18px는 크롬 폭이 아니라
-  // 모드 프레임 여백이므로 아레나 위에 얹는다(감사 불변식: 18/32는 safe-area에 가산).
+  // Tactical 슬롯·컴패니언 분할의 기준 상자는 모드 아레나다 — 18px는 크롬 폭이 아니라
+  // 모드 프레임 여백이므로 그 위에 얹는다(감사 불변식: 18/32는 safe-area에 가산). 가로는
+  // 프레임을 따라 부유 카드에 다가선 modeArena를 쓴다(위 도출 주석).
   const formationSlotArea = {
-    x: arena.x + 18,
-    y: arena.y + 18 + TITLEBAR_OUTSET_PX,
-    width: Math.max(0, arena.width - 36),
-    height: Math.max(0, arena.height - 36 - TITLEBAR_OUTSET_PX),
+    x: modeArena.x + 18,
+    y: modeArena.y + 18 + TITLEBAR_OUTSET_PX,
+    width: Math.max(0, modeArena.width - 36),
+    height: Math.max(0, modeArena.height - 36 - TITLEBAR_OUTSET_PX),
   };
   const allFormationSlots = formationView
     ? calculateGridSlots(
-        { x: arena.x, y: arena.y + TITLEBAR_OUTSET_PX, width: arena.width, height: arena.height - TITLEBAR_OUTSET_PX },
+        { x: modeArena.x, y: modeArena.y + TITLEBAR_OUTSET_PX, width: modeArena.width, height: modeArena.height - TITLEBAR_OUTSET_PX },
         formationCellCount,
         undefined,
         undefined,
@@ -965,7 +979,7 @@ export function OperationsCanvas({
                   companionOpen: panelCompanion !== null,
                 });
           const frameGeometry = operationTriageStage
-            ? triageStageGeometryFor(arena, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
+            ? triageStageGeometryFor(modeArena, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
             : operationMaximized
             ? maximizedGeometryFor(arena, topPanelZIndex)
             : operationCompanion
@@ -1005,7 +1019,7 @@ export function OperationsCanvas({
             companions: operationCompanion ? visibleCompanionPanels : [],
             companionGeometries: operationCompanion
               ? visibleCompanionPanels.map((_, index) => triageActive
-                  ? triageStageGeometryFor(arena, topPanelZIndex, index + 1, companionSlotCount)
+                  ? triageStageGeometryFor(modeArena, topPanelZIndex, index + 1, companionSlotCount)
                   : formationView
                     ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
                     : companionGeometryFor(arena, index + 1, companionSlotCount, topPanelZIndex))
