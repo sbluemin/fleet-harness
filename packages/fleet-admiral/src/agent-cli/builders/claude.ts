@@ -16,13 +16,24 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
 }
 
 /**
- * 승인 게이트를 건너뛸 때만 플래그가 실린다. 끄는 쪽은 플래그를 빼는 것으로 끝난다 —
- * 자식의 기본 권한 모드가 곧 "도구마다 묻는다"이므로 그것을 되돌리려고 `--permission-mode`를
- * 따로 실을 이유가 없다. 무엇을 승인할지 묻고 답을 받는 화면은 Claude Code TUI의 것이고,
+ * 두 방향 모두 명시한다. 끄는 쪽에서 플래그를 빼는 것만으로는 게이트가 서지 않기 때문이다 —
+ * 그때는 사용자·프로젝트 설정의 `permissions.defaultMode`가 그대로 살아난다.
+ *
+ * 실측(Claude Code 2.1.251, 격리 config): 사용자 설정에 `permissions.defaultMode:
+ * "bypassPermissions"`만 두고 플래그 없이 열면 init 메시지가 `permissionMode:
+ * "bypassPermissions"`로 온다. 같은 설정에 `--permission-mode default`를 더하면 `"default"`가
+ * 온다. 즉 플래그를 빼는 선택은 "게이트를 세운다"가 아니라 "주변 설정에 맡긴다"이고, 그러면
+ * 설정 화면은 끔이라고 말하면서 세션은 바이패스로 도는 조합이 생긴다.
+ *
+ * 이 자리는 Fleet이 자기 런치의 권한 모드를 정하는 곳이다. 바이패스를 강제하던 이전에도
+ * 주변 설정은 이미 무시되고 있었으므로, 반대 방향을 못박는 것은 좁히기가 아니라 같은 권한을
+ * 안전한 쪽으로 돌리는 것이다. 무엇을 승인할지 묻고 답을 받는 화면은 Claude Code TUI의 것이고,
  * Fleet은 그것을 대신 그리지 않는다.
  */
 function buildPermissionArgs(claudeCodeSkipPermissions: boolean | undefined): string[] {
-  return claudeCodeSkipPermissions === true ? ["--dangerously-skip-permissions"] : [];
+  return claudeCodeSkipPermissions === true
+    ? ["--dangerously-skip-permissions"]
+    : ["--permission-mode", "default"];
 }
 
 /**

@@ -247,8 +247,11 @@ describe("claude-gateway argument composition", () => {
     expect(args).toContain("--plugin-dir");
     expect(args).toContain("--mcp-config");
     expect(args).toContain("--settings");
-    // 승인 게이트를 건너뛰는 것은 사용자가 켠 경우에만 참이다 — 기본 런치는 플래그를 싣지 않는다.
+    // 승인 게이트를 건너뛰는 것은 사용자가 켠 경우에만 참이다.
     expect(args).not.toContain("--dangerously-skip-permissions");
+    // 플래그를 빼는 것만으로는 게이트가 서지 않는다 — 주변 설정의 defaultMode가 살아나므로
+    // 끄는 방향도 못박아야 설정 화면의 "끔"이 세션의 사실과 같아진다.
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("default");
   });
 
   it("carries the bypass flag only when the launch opted in, and always after the allowlist value", () => {
@@ -260,10 +263,13 @@ describe("claude-gateway argument composition", () => {
       sessionCoordinate: { kind: "new" as const, sessionId: randomUUID() },
     };
 
-    expect(buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: false }))
-      .not.toContain("--dangerously-skip-permissions");
+    const optedOut = buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: false });
+    expect(optedOut).not.toContain("--dangerously-skip-permissions");
+    expect(optedOut[optedOut.indexOf("--permission-mode") + 1]).toBe("default");
 
     const optedIn = buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: true });
+    // 두 방향은 배타적이다 — 함께 실으면 자식이 무엇을 따를지 argv가 두 번 말한다.
+    expect(optedIn).not.toContain("--permission-mode");
     // 가변 인자가 값을 삼키지 않도록 바이패스 플래그는 허용 목록 값 뒤에 와야 한다.
     const allowed = optedIn.indexOf("--allowedTools");
     expect(optedIn.indexOf("--dangerously-skip-permissions")).toBeGreaterThan(allowed + 1);
@@ -365,6 +371,7 @@ describe("claude-gateway argument composition", () => {
 
     try {
       expect(injected.args).toContain("--dangerously-skip-permissions");
+      expect(injected.args).not.toContain("--permission-mode");
     } finally {
       injected.cleanup?.();
     }
@@ -387,6 +394,7 @@ describe("claude-gateway argument composition", () => {
     expect(injected.args).toContain("--mcp-config");
     expect(injected.args).toContain("--settings");
     expect(injected.args).not.toContain("--dangerously-skip-permissions");
+    expect(injected.args[injected.args.indexOf("--permission-mode") + 1]).toBe("default");
 
     const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
     const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
