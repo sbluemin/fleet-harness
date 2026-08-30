@@ -2637,6 +2637,10 @@ describe("Instrument core design contract", () => {
     expect(surface).not.toMatch(/terminalFontWeightsFor\([^)]*terminalRenderer\)/);
     expect(surface).not.toMatch(/terminalForegroundFor\([^)]*terminalRenderer\)/);
     expect(surface).toContain("setWebglActive(false);");
+    // 초깃값은 선호에서 씨딩해야 한다. WebGL 아틀라스는 addon이 붙는 순간의 옵션으로 구워지고
+    // 이후 옵션 할당은 아틀라스를 다시 굽지 않으므로, false로 시작하면 보정 웨이트가 영영
+    // 반영되지 않는다 — 게이트는 열려 있는데 획만 얇은 상태가 된다.
+    expect(surface).toContain('useState(terminalRenderer === "webgl")');
     // 뷰포트 인라인 배경이 먼저다 — 순서가 뒤집히면 xterm의 :not(.allow-transparency) 규칙이
     // background-color:#000을 한 프레임 드러낸다.
     const applyBlock = surface.slice(surface.indexOf("const applyTerminalTheme = () => {"));

@@ -250,7 +250,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
   // 보정 게이트의 진실 — 선호가 아니라 addon이 실제로 살아 있는지. ref는 리렌더를 못 부르므로 state다.
-  const [webglActive, setWebglActive] = useState(false);
+  /* 보정 게이트의 진실 — 선호가 아니라 addon이 실제로 살아 있는지. ref는 리렌더를 못 부르므로 state다.
+     초깃값을 선호에서 씨딩하는 이유가 이 파일에서 가장 미묘한 자리다: WebGL 글리프 아틀라스는
+     addon이 붙는 **그 순간의 옵션**으로 구워지고, 그 뒤의 terminal.options.fontWeight 할당은
+     아틀라스를 다시 굽지 않는다. false로 시작하면 터미널이 웨이트 없이 생성되고 addon이 그 상태를
+     구워 버려서, 나중에 게이트가 열려도 획은 영영 얇은 채로 남는다(실측: 잉크 픽셀 58063 vs 62028).
+     반대 방향은 이 씨딩 없이도 안전하다 — addon이 죽으면 DOM 렌더러가 옵션을 매 프레임 읽으므로
+     초기화 실패·컨텍스트 유실에서 보정은 그대로 걷힌다(실측으로 확인). */
+  const [webglActive, setWebglActive] = useState(terminalRenderer === "webgl");
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
