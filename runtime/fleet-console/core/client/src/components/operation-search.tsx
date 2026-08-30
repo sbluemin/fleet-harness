@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { PaneSearchResult } from "@fleet-console/sdk/pane";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
@@ -14,6 +15,7 @@ import {
   groupOperationSearchEntries,
   RAIL_SEARCH_DEBOUNCE_MS,
   searchRailPanels,
+  type PaletteSearchPanel,
   searchTokens,
   type RailSearchGroup,
 } from "../operation-search.js";
@@ -52,7 +54,7 @@ import type { ConsoleState } from "../types.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
-  readonly railPanels: readonly RailPanelDescriptor[];
+  readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly FleetClientPlugin[];
   // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
@@ -199,8 +201,10 @@ export function OperationSearch({
     closeOperationSearch();
   };
 
-  const selectRailResult = async (panelId: string, result: RailSearchResult) => {
+  const selectRailResult = async (panelId: string, result: PaneSearchResult) => {
     // activate가 plugin-local 논리 타깃을 먼저 기록한 뒤에만 host route/rail을 연다.
+    // 새 계약의 반환값(PaneTarget)은 아직 소비하지 않는다 — 그 착지 경로는 별도 변경이고,
+    // 여기서 반쯤 받으면 두 착지가 같은 요청에 겹친다.
     previousFocusRef.current = null;
     try {
       await result.activate();

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -9,10 +9,13 @@ import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-surface.js";
-import { PaneBody } from "./pane-body.js";
+import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import type { HostPaneContext, RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, useFocusedPaneId, useRailPanes } from "./pane-store.js";
+
+/** 남의 페인을 닫는 경로 — 스토어 호출을 그대로 넘긴다. */
+const closePaneById = (paneId: string) => { closePane(paneId); };
 
 /**
  * 레일 표면 — 활성 엔트리가 세우는 페인들을 담는 그릇.
@@ -151,7 +154,6 @@ function PaneHost({
   onLaunchOperation,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [captionCtx, setCaptionCtx] = useState<HostPaneContext | null>(null);
 
   const handleClose = useCallback(() => {
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
@@ -170,8 +172,33 @@ function PaneHost({
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
   }, [descriptor.id, descriptor.keepAlive, params, surfaces]);
 
+  const ctx = usePaneContext({
+    descriptor,
+    mount: "rail",
+    instanceId,
+    params,
+    visible,
+    focused,
+    // 폭은 표면이 정한다. 본문은 컨테이너 쿼리로 스스로 열화하므로, 측정값을 렌더마다 흘리면
+    // 컨텍스트가 매번 새로 만들어져 본문이 다시 그려진다.
+    width: descriptor.defaultWidth ?? 0,
+    theaterId,
+    api,
+    lifecycle: HOST_CAPABILITIES.lifecycle,
+    preferences: HOST_CAPABILITIES.preferences,
+    language,
+    theme,
+    onClose: handleClose,
+    onReplaceParams: handleReplaceParams,
+    onOpen: openPane,
+    onCloseOther: closePaneById,
+    ...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth }),
+    legacySurfaces: surfaces,
+    legacyLaunchOperation: onLaunchOperation,
+  });
+
   const hasCaption = descriptor.role === "detail" && descriptor.hideCaption !== true;
-  const title = captionCtx ? resolveLocalizedText(descriptor.title(captionCtx), language) : "";
+  const title = resolveLocalizedText(descriptor.title(ctx), language);
 
   return (
     <div
@@ -188,34 +215,13 @@ function PaneHost({
           title={title}
           paneId={descriptor.id}
           focused={focused}
-          actions={captionCtx ? descriptor.captionActions?.(captionCtx) as ReactNode : null}
+          actions={descriptor.captionActions?.(ctx) as ReactNode}
           {...(canExpand && surfaces ? { onExpand: handleExpand } : {})}
           onClose={handleClose}
         />
       ) : null}
       <div className="rail-pane-body" ref={bodyRef} aria-labelledby={hasCaption ? `pane-caption-${descriptor.id}` : undefined}>
-        <PaneBody
-          descriptor={descriptor}
-          mount="rail"
-          instanceId={instanceId}
-          params={params}
-          visible={visible}
-          focused={focused}
-          width={bodyRef.current?.clientWidth ?? 0}
-          theaterId={theaterId}
-          api={api}
-          lifecycle={HOST_CAPABILITIES.lifecycle}
-          preferences={HOST_CAPABILITIES.preferences}
-          language={language}
-          theme={theme}
-          onClose={handleClose}
-          onReplaceParams={handleReplaceParams}
-          onOpen={openPane}
-          {...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth })}
-          legacySurfaces={surfaces}
-          legacyLaunchOperation={onLaunchOperation}
-          onContext={setCaptionCtx}
-        />
+        <PaneBody descriptor={descriptor} ctx={ctx} />
       </div>
     </div>
   );

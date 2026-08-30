@@ -28,10 +28,11 @@ import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "./gl
 import { useConsoleState } from "./hooks/use-store.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "./console-location.js";
+import type { PaletteSearchPanel } from "./operation-search.js";
+import { useRailEntries } from "./pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "./plugin-registry.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
@@ -128,10 +129,29 @@ export function App() {
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
   const operationsViewVisibleRef = useRef(operationsViewVisible);
   operationsViewVisibleRef.current = operationsViewVisible;
-  // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.
-  const paletteRailPanels = useMemo(
-    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right" && panel.render !== undefined)],
-    [registry.railPanels],
+  // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 같은 레지스트리를 읽어 같은 순서로 선다.
+  // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
+  // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
+  const railBindings = useRailEntries();
+  const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
+    () => railBindings
+      .filter((binding) => binding.panes.length > 0)
+      .map((binding) => {
+        const providers = binding.panes.filter((pane) => pane.search !== undefined);
+        return {
+          id: binding.entry.id,
+          title: binding.entry.title,
+          ...(providers.length === 0
+            ? {}
+            : {
+              search: async (request) => {
+                const batches = await Promise.all(providers.map((pane) => pane.search!(request)));
+                return batches.flat();
+              },
+            }),
+        };
+      }),
+    [railBindings],
   );
   const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
     const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId);

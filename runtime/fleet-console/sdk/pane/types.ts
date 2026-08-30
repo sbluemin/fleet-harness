@@ -25,8 +25,12 @@ import type {
  */
 export interface PaneDescriptor {
   /**
-   * 플러그인 안에서 고유해야 한다. 호스트는 `${pluginId}:${id}`로 이름공간을 나누므로
-   * 다른 플러그인과 겹쳐도 되고, 이 전체 이름이 곧 `panes.open`의 주소다.
+   * **콘솔 전체에서 유일해야 한다.** 호스트는 접두를 붙이지 않고 이 값을 그대로 주소로 쓰며,
+   * 먼저 등록된 페인이 이긴다 — 같은 id를 든 뒤의 기여는 경고와 함께 버려진다.
+   *
+   * 확대 표면이 같은 규칙을 쓰는 이유가 여기에도 그대로 적용된다: 접두를 붙이면 플러그인이
+   * 자기 지역 id로 부르는 `panes.open`이 승격된 id와 어긋나고, 능력이 플러그인별로 만들어지지
+   * 않는 한 그 간극을 메울 수 없다.
    */
   readonly id: string;
   /**
@@ -118,7 +122,7 @@ export type PaneMount = "rail" | "expanded";
  * 컨테이너 쿼리로 스스로 열화한다.
  */
 export interface PaneContext {
-  /** 서술자가 선언한 id에 플러그인 이름공간이 붙은 값. `panes.open`의 주소와 같다. */
+  /** 서술자가 선언한 id 그대로. `panes.open`의 주소와 같다. */
   readonly paneId: string;
   /** 같은 페인을 두 자리에 띄웠을 때 둘을 가르는 id. */
   readonly instanceId: string;

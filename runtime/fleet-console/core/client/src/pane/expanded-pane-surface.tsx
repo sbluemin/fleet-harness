@@ -1,7 +1,7 @@
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
-import { PaneBody } from "./pane-body.js";
+import { PaneBody, usePaneContext } from "./pane-body.js";
 import { usePaneIndex } from "./pane-registry.js";
 
 /**
@@ -78,23 +78,32 @@ function ExpandedPaneBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   const descriptor = paneId === undefined ? undefined : index.get(paneId);
   if (!descriptor) return null;
 
-  return (
-    <PaneBody
-      descriptor={descriptor}
-      mount="expanded"
-      instanceId={ctx.instanceId}
-      params={ctx.params}
-      visible
-      focused={ctx.focused}
-      width={ctx.slotWidth}
-      theaterId={ctx.theaterId}
-      api={ctx.api}
-      lifecycle={ctx.lifecycle}
-      preferences={ctx.preferences}
-      language={ctx.language}
-      theme={ctx.theme}
-      onClose={() => ctx.close()}
-      onReplaceParams={(next) => ctx.replaceParams({ ...ctx.params, ...next })}
-    />
-  );
+  return <ExpandedPaneContent descriptor={descriptor} ctx={ctx} />;
+}
+
+function ExpandedPaneContent({
+  descriptor,
+  ctx,
+}: {
+  readonly descriptor: import("@fleet-console/sdk/pane").PaneDescriptor;
+  readonly ctx: ExpandedSurfaceContext;
+}) {
+  const paneCtx = usePaneContext({
+    descriptor,
+    mount: "expanded",
+    instanceId: ctx.instanceId,
+    params: ctx.params,
+    visible: true,
+    focused: ctx.focused,
+    width: ctx.slotWidth,
+    theaterId: ctx.theaterId,
+    api: ctx.api,
+    lifecycle: ctx.lifecycle,
+    preferences: ctx.preferences,
+    language: ctx.language,
+    theme: ctx.theme,
+    onClose: () => ctx.close(),
+    onReplaceParams: (next) => ctx.replaceParams({ ...ctx.params, ...next }),
+  });
+  return <PaneBody descriptor={descriptor} ctx={paneCtx} />;
 }

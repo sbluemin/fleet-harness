@@ -14,7 +14,7 @@ import type {
 import type { HostPaneContext } from "./pane-registry.js";
 
 /**
- * 페인 본문 — 마운트가 어디든 같은 것을 그린다.
+ * 페인 컨텍스트와 본문 — 마운트가 어디든 같은 것을 그린다.
  *
  * 레일 표면과 확대 표면이 이 한 컴포넌트를 공유하는 것이 '확대'가 공통 기능인 근거다. 페인은
  * 자기가 어느 마운트에 서 있는지 `ctx.mount`로 알 뿐, 확대를 위한 코드를 따로 쓰지 않는다.
@@ -22,7 +22,7 @@ import type { HostPaneContext } from "./pane-registry.js";
  * 캡션은 여기 없다. 캡션을 세울지는 마운트가 정한다 — 레일에서는 detail 페인만, 확대 표면에서는
  * 호스트 슬롯 머리가 이미 그 일을 하므로 아무도 세우지 않는다.
  */
-export interface PaneBodyProps {
+export interface PaneContextInput {
   readonly descriptor: PaneDescriptor;
   readonly mount: PaneMount;
   readonly instanceId: string;
@@ -39,15 +39,15 @@ export interface PaneBodyProps {
   readonly onClose: () => void;
   readonly onReplaceParams: (next: Readonly<Record<string, string>>) => void;
   readonly onOpen?: (request: PaneOpenRequest) => void;
+  /** 다른 페인을 닫는다. 생략하면 자기 자신 외에는 닫지 못한다. */
+  readonly onCloseOther?: (paneId: string) => void;
   readonly isOpen?: (paneId: string) => boolean;
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
   readonly legacyLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
-  /** 컨텍스트가 만들어질 때 호출된다 — 캡션 액션처럼 같은 ctx를 써야 하는 호출자를 위해. */
-  readonly onContext?: (ctx: HostPaneContext) => void;
 }
 
-export function PaneBody({
+export function usePaneContext({
   descriptor,
   mount,
   instanceId,
@@ -64,12 +64,12 @@ export function PaneBody({
   onClose,
   onReplaceParams,
   onOpen,
+  onCloseOther,
   isOpen,
   requestExtraWidth,
   legacySurfaces,
   legacyLaunchOperation,
-  onContext,
-}: PaneBodyProps) {
+}: PaneContextInput): HostPaneContext {
   const abortRef = useRef<AbortController | null>(null);
   abortRef.current ??= new AbortController();
 
@@ -97,7 +97,9 @@ export function PaneBody({
     preferences,
     panes: {
       open: handleOpen,
-      close: (paneId) => { if (paneId === undefined || paneId === descriptor.id) onClose(); else onOpen?.({ paneId, params: {} }); },
+      // 남의 페인을 닫는 경로가 열기로 새면 계약이 뒤집힌다 — 닫으라고 부른 페인이 대신
+      // 서고, 그 페인이 담고 있던 대상까지 빈 params로 지워진다.
+      close: (paneId) => { if (paneId === undefined || paneId === descriptor.id) onClose(); else onCloseOther?.(paneId); },
       replaceParams: onReplaceParams,
       isOpen: (paneId) => isOpen?.(paneId) ?? (paneId === descriptor.id && visible),
     },
@@ -107,9 +109,12 @@ export function PaneBody({
     theme,
     legacySurfaces,
     legacyLaunchOperation,
-  }), [api, descriptor.id, descriptor.role, focused, handleOpen, instanceId, isOpen, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, onClose, onOpen, onReplaceParams, params, preferences, requestExtraWidth, theaterId, theme, visible, width]);
+  }), [api, descriptor.id, descriptor.role, focused, handleOpen, instanceId, isOpen, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, onClose, onCloseOther, onOpen, onReplaceParams, params, preferences, requestExtraWidth, theaterId, theme, visible, width]);
 
-  useEffect(() => { onContext?.(ctx); }, [ctx, onContext]);
+  return ctx;
+}
 
+/** 만들어진 컨텍스트로 본문만 그린다. 캡션은 같은 ctx를 호출자에게서 받아 쓴다. */
+export function PaneBody({ descriptor, ctx }: { readonly descriptor: PaneDescriptor; readonly ctx: HostPaneContext }) {
   return <>{descriptor.render(ctx)}</>;
 }

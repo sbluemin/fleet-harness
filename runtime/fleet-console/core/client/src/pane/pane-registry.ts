@@ -141,7 +141,12 @@ function bindNative(
 }
 
 export function useRailEntries(side: "right" = "right"): readonly RailEntryBinding[] {
-  const { railPanels, railEntries, panes } = usePluginRegistry();
+  const registry = usePluginRegistry();
+  // 레지스트리를 만드는 경로가 새 필드를 아직 싣지 않을 수 있다(외부 합성·테스트 대역). 그때
+  // 레일 전체가 죽는 것보다 그 기여만 비어 있는 편이 낫다.
+  const railPanels = registry.railPanels ?? [];
+  const railEntries = registry.railEntries ?? [];
+  const panes = registry.panes ?? [];
 
   return useMemo(() => {
     const native = bindNative(railEntries, panes);
