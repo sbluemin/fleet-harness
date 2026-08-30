@@ -16,7 +16,7 @@ import {
 } from "./codex-host.js";
 import { getT } from "./i18n/index.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
-import { closeCodexReader, expandCodexReader, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
+import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
 import { loadInitialData } from "./codex/state.js";
 
 /**
@@ -45,7 +45,14 @@ export const codexReaderPane: PaneDescriptor = {
   captionActions: (ctx) => <CodexReaderCaptionActions {...ctx} />,
   // 이 열이 곧 "무엇을 읽고 있는가"다. 열만 치우고 그 사실을 남겨 두면, 다음 상태 발행에서
   // 카탈로그가 사용자가 닫은 열을 되살린다.
-  onClose: () => closeCodexReader(),
+  //
+  // 단, **확대는 닫힘이 아니다.** 카탈로그의 규칙이 "읽을 것이 있고 확대가 아닐 때만 열이
+  // 선다"이므로 확대도 `panes.close`로 도착한다 — 그때까지 읽던 문서를 지우면 방금 캔버스로
+  // 옮겨 간 시트가 그 자리에서 빈다. 통보가 무엇을 뜻하는지는 자기 상태를 아는 쪽만 안다.
+  onClose: () => {
+    if (getReaderState().codexReaderExpanded) return;
+    closeCodexReader();
+  },
   defaultWidth: 360,
   minWidth: 260,
 };

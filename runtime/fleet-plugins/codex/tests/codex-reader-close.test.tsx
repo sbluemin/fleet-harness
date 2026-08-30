@@ -6,7 +6,7 @@ vi.mock("../client/codex-host.js", () => ({ setCodexReaderExpandedForSession: vi
 
 import { bindCodexHost } from "../client/host.js";
 import { codexReaderPane, shouldStandReaderColumn } from "../client/codex-reader-pane.js";
-import { closeCodexReader, getReaderState, openCodexReader } from "../client/reader-store.js";
+import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader } from "../client/reader-store.js";
 
 /**
  * 닫기는 호스트가 소유하지만, "내가 무엇을 읽고 있다"를 함께 들고 있는 플러그인은 그 사실을
@@ -26,6 +26,19 @@ describe("문서 열을 닫으면 읽던 상태도 함께 닫힌다", () => {
       consoleEvents: { subscribe: () => () => undefined },
     } as never);
     closeCodexReader();
+  });
+
+  it("확대로 열이 물러나는 것은 닫힘이 아니다 — 읽던 문서가 그대로 남는다", () => {
+    openCodexReader({ kind: "entry", entryId: "tide-model" });
+    expandCodexReader();
+
+    // 카탈로그의 규칙은 "읽을 것이 있고 확대가 아닐 때만 열이 선다"이므로, 확대는 곧
+    // `panes.close`다. 그 닫힘이 통보까지 실어 나르면 방금 옮겨 간 문서가 그 자리에서 지워진다.
+    expect(shouldStandReaderColumn(getReaderState())).toBe(false);
+    codexReaderPane.onClose?.({ paneId: "codex-reader", params: {} } as never);
+
+    expect(getReaderState().codexReader).not.toBeNull();
+    expect(getReaderState().codexReaderExpanded).toBe(true);
   });
 
   it("호스트가 이 열을 닫으면 리더 상태가 비고, 카탈로그가 열을 다시 세우지 않는다", () => {
