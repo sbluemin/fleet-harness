@@ -249,7 +249,9 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
           ))}
         </div>
       ) : (
-        <div className="settings-pane-sections">
+        /* 섹션 전환은 재마운트다 — 키가 없으면 한 플러그인 섹션의 렌더 실패(hasError)가
+           경계 인스턴스 재사용을 타고 다음 섹션까지 전염된다(옛 페이지의 key 계약 계승). */
+        <div key={activeId} className="settings-pane-sections">
           {activeId === "connectivity" ? (
             state === null ? <p className="global-settings-help">{t("settings.general.loading")}</p> : (
               <>
@@ -374,7 +376,8 @@ function SettingsSectionExpanded({ ctx }: { readonly ctx: PaneContext }) {
 
   return (
     <div className="settings-expanded">
-      <div className="settings-expanded-canvas">
+      {/* 페인과 같은 키 계약 — replaceParams로 섹션을 갈아탈 때 경계와 섹션-로컬 상태를 재마운트한다. */}
+      <div key={activeId} className="settings-expanded-canvas">
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {renderSettingsSection(activeId, state, saving, pluginSections, t)}
         {/* 레일 취향은 페인의 겉모습과 같은 자리에서 확대에도 선다 — renderSettingsSection에

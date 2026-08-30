@@ -234,6 +234,27 @@ describe("settings pane body", () => {
   });
 });
 
+describe("settings pane plugin error isolation", () => {
+  it("does not let one faulty plugin section infect the next section", () => {
+    registryMocks.plugins = [
+      { id: "boom", settingsSections: [{ id: "bad", title: () => "Bad", render: () => { throw new Error("boom"); } }] },
+      { id: "calm", settingsSections: [{ id: "good", title: () => "Good", render: () => "calm-section-body" }] },
+    ];
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      renderPane({ section: "boom:bad" });
+      expect(document.querySelector(".fc-plugin-error")).not.toBeNull();
+
+      // 섹션 전환은 재마운트다 — 경계의 hasError가 다음 섹션까지 전염되면 안 된다.
+      renderPane({ section: "calm:good" });
+      expect(document.querySelector(".fc-plugin-error")).toBeNull();
+      expect(document.querySelector(".settings-pane-sections")?.textContent).toContain("calm-section-body");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
 describe("settings pane search provider", () => {
   const request = (query: string) => ({
     query,
