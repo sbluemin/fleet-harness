@@ -301,8 +301,28 @@ describe("Right Rail card width", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 700 });
     renderRail();
     const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");
-    // max = innerWidth − 148 = 552.
-    expect(handle?.getAttribute("aria-valuemax")).toBe("552");
+    // max = innerWidth − 148 − 사이드바 점유(기본 280 + 부유 여백 24) = 248.
+    // 두 부유 카드는 같은 층의 절대 배치라, 상한이 사이드바 점유를 빼지 않으면
+    // End 키 한 번에 레일이 사이드바를 덮는다(Codex 리뷰 계약).
+    expect(handle?.getAttribute("aria-valuemax")).toBe("248");
+  });
+
+  it("keeps an over-viewport stored width as the desired target and restores it when the window widens", () => {
+    // 좁은 창 로드에서 렌더 폭만 클램프하고 저장 폭은 desired로 남긴다 — init 클램프를
+    // desired로 심으면 큰 화면에서 저장한 폭이 재로드 한 번에 소실된다(Codex 리뷰 계약).
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "900");
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+    renderRail();
+    // 1200 − 148 − 304 = 748로 클램프되어 렌더.
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("748px");
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBe("900");
+
+    act(() => {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1600 });
+      window.dispatchEvent(new Event("resize"));
+    });
+    // 1600 − 148 − 304 = 1148 > 900 → 저장 폭 그대로 복원.
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("900px");
   });
 });
 

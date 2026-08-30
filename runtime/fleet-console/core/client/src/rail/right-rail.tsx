@@ -14,6 +14,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
+import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, toggleRailPanel, toggleRailSectionCollapsed, useRailChromeExpanded, useRailCollapsedPanelIds, useRailOverlayAlpha, useRailPanelExtraWidths, useRailPinnedPanelIds } from "./rail-store.js";
@@ -135,18 +136,30 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     0,
   );
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
+  // 부유 사이드바 카드의 점유 폭 — 두 카드는 같은 층(z --z-rail)의 절대 배치라 그리드가
+  // 겹침을 막아 주지 않는다. 레일 폭 상한이 이 점유를 빼지 않으면 드래그·End 키 한 번에
+  // 레일 카드가 사이드바 카드를 덮는다(Codex 리뷰 확정). 아레나 좌측 인셋과 같은 산식이다.
+  const sideBar = useSideBarState();
+  const sideBarOccupiedPx = sideBar.collapsed ? 0 : sideBar.width + 24;
+  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth - sideBarOccupiedPx));
 
-  const [cardWidth, setCardWidthState] = useState(() => {
+  // 저장 폭은 클램프 없이 desired로 보존한다 — init에서 클램프한 값을 desired로 심으면
+  // 큰 화면에서 저장한 폭이 좁은 창 로드 한 번에 소실되어, 창을 다시 넓혀도 복원되지
+  // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
+  const [initialWidths] = useState(() => {
     const stored = readStoredCardWidth();
     const fallback = defaultCardWidthFor(pinnedBindings.length > 0 ? pinnedBindings : paneEntries);
-    return Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, stored ?? fallback));
+    const desired = Math.max(MIN_PANEL_WIDTH, stored ?? fallback);
+    return { desired, rendered: Math.min(maxPanelWidth, desired) };
   });
-  const desiredWidthRef = useRef(cardWidth);
-  const cardWidthRef = useRef(cardWidth);
+  const [cardWidth, setCardWidthState] = useState(initialWidths.rendered);
+  const desiredWidthRef = useRef(initialWidths.desired);
+  const cardWidthRef = useRef(initialWidths.rendered);
   const [isDragging, setIsDragging] = useState(false);
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
+  const sideBarOccupiedRef = useRef(sideBarOccupiedPx);
+  sideBarOccupiedRef.current = sideBarOccupiedPx;
 
   useLayoutEffect(() => {
     const onResize = () => {
@@ -186,7 +199,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 
     const onMove = (ev: PointerEvent) => {
       const dx = startX - ev.clientX;
-      const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
       const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Math.round(startWidth + dx)));
       cardWidthRef.current = next;
       setCardWidthState(next);
@@ -207,7 +220,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const handleResizeKeyDown = useCallback((event: React.KeyboardEvent) => {
     let next: number;
     const step = event.shiftKey ? 64 : 16;
-    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
+    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
 
     switch (event.key) {
       case "ArrowLeft":
@@ -237,7 +250,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 메뉴의 "패널 폭 초기화" — 기억을 지우고 고정된 패널들의 선언 기본값(최대)으로 되돌린다.
   const handleResetCardWidth = useCallback(() => {
     clearStoredCardWidth();
-    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
+    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
     const next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, defaultCardWidthFor(pinnedBindings.length > 0 ? pinnedBindings : paneEntries)));
     desiredWidthRef.current = next;
     cardWidthRef.current = next;
