@@ -15,8 +15,10 @@ import { dropHistoryCacheForRepository } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
 import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
 import { StagingView, guardMessageOf } from "./staging-view.js";
-import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
+import { buildWorkspaceTreeSections } from "./workspace-layout.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
+import { publishRepositoryWorkbench } from "./workbench-bridge.js";
+import { REPOSITORY_WORKBENCH_PANE_ID } from "./workbench-pane.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -232,10 +234,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [initialRepoViewState] = useState(() => ctx.theaterId ? readRepoViewState(ctx.theaterId, repoRel) : null);
   const repoRelRef = useRef(repoRel);
   const [source, setSourceState] = useState<Source>(readRepositorySource);
-  const [treeWidth, setTreeWidth] = useState(readWorkspaceTreeWidth);
-  const treeWidthRef = useRef(treeWidth);
-  const [isTreeDragging, setIsTreeDragging] = useState(false);
-  const layoutRef = useRef<HTMLDivElement>(null);
   const [refFilter, setRefFilter] = useState<string | null>(initialRepoViewState?.refFilter ?? null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
@@ -307,30 +305,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const setSource = useCallback((next: Source) => {
     setSourceState(next);
     saveRepositorySource(next);
-  }, []);
-  const handleTreeDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const container = layoutRef.current;
-    if (!container) return;
-    const containerWidth = container.getBoundingClientRect().width;
-    const startX = event.clientX;
-    const startWidth = treeWidthRef.current;
-    setIsTreeDragging(true);
-    const onMove = (move: PointerEvent) => {
-      const next = clampWorkspaceTreeWidth(startWidth, move.clientX - startX, containerWidth);
-      if (next !== null) {
-        treeWidthRef.current = next;
-        setTreeWidth(next);
-      }
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      setIsTreeDragging(false);
-      saveWorkspaceTreeWidth(treeWidthRef.current);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
   }, []);
   const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
   repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
@@ -808,16 +782,62 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // Changes만 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
   const workspaceMainVisible = source === "changes";
   const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
+  // 작업면 열이 그릴 것을 싣는다. 상태의 소유자는 여전히 이 열이다 — 갈라진 것은 화면의
+  // 두 자리이지 상태가 아니다.
+  useLayoutEffect(() => {
+    publishRepositoryWorkbench({
+      identity: {
+        name: selectedRepo?.name ?? t("repository.panel.title"),
+        branch: selectedRepo?.branch ?? null,
+        subcontext: Boolean(repoRel),
+      },
+      verbs: {
+        syncing,
+        syncSettled,
+        syncFailed,
+        syncHint: syncHintAvailable && syncHinting ? t("repository.sync.upToDate") : null,
+        behind: workstate?.behind ?? 0,
+        ahead: workstate?.ahead ?? 0,
+        disabled: verbBusy !== null || writeLocked,
+        busy: verbBusy?.verb ?? null,
+        outcome: verbOutcome,
+        stashPromptOpen,
+        onSync: () => { void syncRepository(); },
+        onPull: handlePull,
+        onPush: handlePush,
+        onStash: handleStash,
+        onStashSave: handleStashSave,
+        onStashPromptClose: () => setStashPromptOpen(false),
+      },
+      body: (
+        <>
+          {/* 동사 결과는 말풍선이 물러난 뒤에도 hover 재개방을 위해 남아 있으므로, 한 라이브 리전을 동기화와
+              나눠 쓰면 남아 있는 동사 문면이 뒤이은 동기화 결과의 낭독을 영원히 가린다 — 리전을 분리한다. */}
+          <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
+          <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : ""}</span>
+          {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
+          {rowNotice ? <div className={`repository-sync-toast is-${rowNotice.kind}`} role="status"><span>{rowNotice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setRowNotice(null)}>✕</button></div> : null}
+          <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        </>
+      ),
+    });
+  });
+  useEffect(() => () => publishRepositoryWorkbench(null), []);
+
+  // 작업면은 저장소 패널이 열려 있는 한 함께 선다 — 문서처럼 "골라서 여는" 열이 아니다.
+  // 이름은 캡션이 말하므로 주소에 실어 보낸다.
+  const panes = ctx.panes;
+  const identityName = selectedRepo?.name ?? "";
+  useEffect(() => {
+    panes.open({
+      paneId: REPOSITORY_WORKBENCH_PANE_ID,
+      params: identityName ? { repository: identityName } : {},
+      focus: false,
+    });
+  }, [identityName, panes]);
+
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button><span className="repository-verb-cluster">
-        <VerbToolbarButton glyph="⇩" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
-        <VerbToolbarButton glyph="⇧" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
-        <span className="repository-stash-anchor" ref={stashButtonHostRef}>
-          <VerbToolbarButton glyph="▤" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
-          {stashPromptOpen && <StashSavePopover t={t} hostRef={stashButtonHostRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
-        </span>
-      </span></div>
       <div className="repository-checkout-tabs" role="tablist" aria-label={t("repository.tabs.aria")}>
         {checkoutTabs.map((tab) => <button
           key={tab.relPath || "\u0000root"}
@@ -832,17 +852,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
           {tab.worktree && <i className="repository-checkout-tab-mark" title={t("repository.tabs.worktreeMark")}>wt</i>}
         </button>)}
       </div>
-      {/* 동사 결과는 말풍선이 물러난 뒤에도 hover 재개방을 위해 남아 있으므로, 한 라이브 리전을 동기화와
-          나눠 쓰면 남아 있는 동사 문면이 뒤이은 동기화 결과의 낭독을 영원히 가린다 — 리전을 분리한다. */}
-      <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
-      <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : ""}</span>
-      {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
-      {rowNotice ? <div className={`repository-sync-toast is-${rowNotice.kind}`} role="status"><span>{rowNotice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setRowNotice(null)}>✕</button></div> : null}
-      <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
-        <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
-      </div>
+      <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
     </div>
   );
 }
@@ -1076,49 +1086,6 @@ function RepositoryRefContextMenu({ anchor, boundaryRef, rowRef, currentRef, def
  * Stash 버튼의 메시지 팝오버 — 즉시 실행 대신 메시지를 한 번 묻는다(M5).
  * 비워 두고 확정하면 git의 자동 문구("WIP on …")로 저장된다. Enter=저장, Esc=닫기.
  */
-function StashSavePopover({ t, hostRef, onSave, onClose }: {
-  readonly t: T;
-  readonly hostRef: RefObject<HTMLSpanElement | null>;
-  readonly onSave: (message: string) => void;
-  readonly onClose: () => void;
-}) {
-  const [message, setMessage] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const focusFrame = window.requestAnimationFrame(() => inputRef.current?.focus());
-    return () => window.cancelAnimationFrame(focusFrame);
-  }, []);
-  useEffect(() => {
-    const host = hostRef.current;
-    const handleOutsidePointer = (event: PointerEvent) => {
-      // 앵커(버튼 포함) 밖 클릭만 닫는다 — 버튼 재클릭은 토글 핸들러가 맡는다.
-      if (event.target instanceof Node && host && !host.contains(event.target)) onClose();
-    };
-    document.addEventListener("pointerdown", handleOutsidePointer, true);
-    return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
-  }, [hostRef, onClose]);
-  return <div className="repository-stash-popover" role="dialog" aria-label={t("repository.stash.savePrompt")} onKeyDown={(event) => {
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
-  }}>
-    <label className="repository-stash-popover-label" htmlFor="repository-stash-message">{t("repository.stash.savePrompt")}</label>
-    <input
-      id="repository-stash-message"
-      ref={inputRef}
-      type="text"
-      className="repository-stash-popover-input"
-      placeholder={t("repository.stash.savePlaceholder")}
-      value={message}
-      maxLength={500}
-      onChange={(event) => setMessage(event.target.value)}
-      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); onSave(message); } }}
-    />
-    <div className="repository-stash-popover-actions">
-      <button type="button" className="repository-refresh-btn" onClick={() => onClose()}>{t("repository.stash.saveCancel")}</button>
-      <button type="button" className="repository-refresh-btn repository-stash-popover-confirm" onClick={() => onSave(message)}>{t("repository.stash.saveConfirm")}</button>
-    </div>
-  </div>;
-}
-
 function StashRowContextMenu({ anchor, boundaryRef, stashName, stashSha, t, onAction, onClose }: {
   readonly anchor: { readonly x: number; readonly y: number };
   readonly boundaryRef: RefObject<HTMLElement | null>;
@@ -1338,20 +1305,18 @@ export const repositoryEntry: RailEntryDescriptor = {
   id: "repository",
   title: (locale) => getT(locale)("repository.panel.title"),
   icon: () => <RepositoryIcon />,
-  panes: ["repository"],
+  panes: ["repository", REPOSITORY_WORKBENCH_PANE_ID],
 };
 
-/**
- * 소스 트리와 작업면이 아직 한 본문 안에 있다. 커밋 초안은 `hidden` 동시 마운트가
- * 지키므로, 페인이 갈라질 때 그 자리가 keepAlive로 옮겨 간다.
- */
+/** 소스 트리와 체크아웃 탭 — 표면이 열리면 이 열이 선다. 작업면은 옆에 서는 별개의 열이다. */
 export const repositoryPane: PaneDescriptor = {
   id: "repository",
   role: "primary",
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language ?? "en")("repository.panel.title"),
   render: (ctx) => <RepositoryPanel ctx={ctx} />,
-  defaultWidth: 420,
+  defaultWidth: 260,
+  minWidth: 200,
   search: async ({ query, theaterId, limit, signal }) => {
     const repoRel = readStoredRepositoryRel(theaterId);
     const response = await fetch("/plugins/repository/palette-search", {

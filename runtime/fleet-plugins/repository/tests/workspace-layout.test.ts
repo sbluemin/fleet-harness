@@ -4,24 +4,19 @@ import { getT } from "../client/i18n/index.js";
 import {
   PREFS_WORKSPACE_DOCK_FILES_WIDTH,
   PREFS_WORKSPACE_DOCK_HEIGHT,
-  PREFS_WORKSPACE_TREE_WIDTH,
   WORKSPACE_DOCK_DEFAULT_HEIGHT,
   WORKSPACE_DOCK_DIVIDER_WIDTH,
   WORKSPACE_DOCK_FILES_DEFAULT_WIDTH,
   WORKSPACE_DOCK_FILES_MIN_WIDTH,
   WORKSPACE_DOCK_MAIN_MIN_WIDTH,
   WORKSPACE_DOCK_SPLIT_MIN_WIDTH,
-  WORKSPACE_TREE_DEFAULT_WIDTH,
   buildWorkspaceTreeSections,
   clampWorkspaceDockFilesWidth,
-  clampWorkspaceTreeWidth,
   normalizeWorkspaceDockHeight,
   readWorkspaceDockFilesWidth,
   readWorkspaceDockHeight,
-  readWorkspaceTreeWidth,
   saveWorkspaceDockFilesWidth,
   saveWorkspaceDockHeight,
-  saveWorkspaceTreeWidth,
 } from "../client/workspace-layout.js";
 
 function memoryStorage() {
@@ -33,26 +28,10 @@ function memoryStorage() {
   };
 }
 
+// 소스 트리 열의 폭·분할선은 이제 표면이 소유한다 — 그 산수는
+// `runtime/fleet-console/tests/pane-geometry.test.ts`가 지킨다. 여기 남은 것은 작업면 **안쪽**
+// 독의 축이다(파일 목록 ⇔ diff, 높이).
 describe("Repository workspace layout", () => {
-  it("persists the source-tree width and falls back for invalid values", () => {
-    const storage = memoryStorage();
-    expect(readWorkspaceTreeWidth(storage)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
-
-    saveWorkspaceTreeWidth(280, storage);
-    expect(storage.getItem(PREFS_WORKSPACE_TREE_WIDTH)).toBe("280");
-    expect(readWorkspaceTreeWidth(storage)).toBe(280);
-
-    storage.setItem(PREFS_WORKSPACE_TREE_WIDTH, "12");
-    expect(readWorkspaceTreeWidth(storage)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
-  });
-
-  it("clamps the source-tree drag within the container", () => {
-    expect(clampWorkspaceTreeWidth(222, 40, 800)).toBe(262);
-    expect(clampWorkspaceTreeWidth(222, -200, 800)).toBe(148);
-    expect(clampWorkspaceTreeWidth(222, 900, 800)).toBe(616);
-    expect(clampWorkspaceTreeWidth(222, 0, 300)).toBeNull();
-  });
-
   it("persists the dock height and falls back for invalid values", () => {
     const storage = memoryStorage();
     expect(readWorkspaceDockHeight(storage)).toBe(WORKSPACE_DOCK_DEFAULT_HEIGHT);
@@ -105,11 +84,9 @@ describe("Repository workspace layout", () => {
       get getItem(): never { throw new Error("denied"); },
       get setItem(): never { throw new Error("denied"); },
       get removeItem(): never { throw new Error("denied"); },
-    } as unknown as Parameters<typeof readWorkspaceTreeWidth>[0];
-    expect(readWorkspaceTreeWidth(throwing)).toBe(WORKSPACE_TREE_DEFAULT_WIDTH);
+    } as unknown as Parameters<typeof readWorkspaceDockHeight>[0];
     expect(readWorkspaceDockHeight(throwing)).toBe(WORKSPACE_DOCK_DEFAULT_HEIGHT);
     expect(readWorkspaceDockFilesWidth(throwing)).toBe(WORKSPACE_DOCK_FILES_DEFAULT_WIDTH);
-    expect(() => saveWorkspaceTreeWidth(280, throwing)).not.toThrow();
     expect(() => saveWorkspaceDockHeight(300, throwing)).not.toThrow();
     expect(() => saveWorkspaceDockFilesWidth(320, throwing)).not.toThrow();
   });

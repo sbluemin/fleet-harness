@@ -1197,31 +1197,6 @@
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); flex: none; }
-.repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
-.repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
-.repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-/* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
-   brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
-.repository-identity span { min-width: 0; overflow: hidden; color: var(--brass-ink); flex: 0 1 auto; font-family: var(--font-mono); font-size: var(--t-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.repository-sync-button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; flex: none; font: inherit; font-size: var(--t-sm); }
-.repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
-.repository-sync-button:disabled { cursor: default; opacity: .7; }
-/* 아이콘은 ↻와 ✓를 같은 자리에 겹쳐 두는 13px 슬롯이다 — 글리프를 교체하면 버튼 폭이 흔들려
-   옆의 라벨이 밀린다. 회전은 계속 슬롯 자체에 걸어 두 글리프가 같은 축을 돈다. */
-.repository-identity .repository-sync-icon { position: relative; display: inline-block; width: 13px; height: 13px; min-width: auto; overflow: visible; color: inherit; flex: none; font: inherit; font-size: var(--t-md); line-height: 1; }
-.repository-identity .repository-sync-glyph { position: absolute; inset: 0; display: grid; min-width: auto; overflow: visible; place-items: center; color: inherit; font: inherit; font-size: var(--t-md); line-height: 1; opacity: 0; transform: scale(.72); transition: opacity 150ms ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
-/* ✓는 "가져올 것이 없었다"는 상태이므로 positive 신호 채널을 쓴다 — brass(위치·포커스)를 쓰면 채널이 섞인다. */
-.repository-identity .repository-sync-glyph-settled { color: var(--positive-ink); }
-.repository-sync-icon:not(.is-settled) .repository-sync-glyph-idle,
-.repository-sync-icon.is-settled .repository-sync-glyph-settled { opacity: 1; transform: none; }
-.repository-sync-button.is-syncing .repository-sync-icon { animation: repository-sync-spin 800ms linear infinite; }
-@keyframes repository-sync-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .repository-sync-button.is-syncing .repository-sync-icon { animation: none; }
-  /* 상태 전이 자체는 남기고 전이 연출만 걷는다 — ✓가 아예 뜨지 않으면 결과를 잃는다. */
-  .repository-identity .repository-sync-glyph { transition-duration: 1ms; }
-}
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
@@ -1253,22 +1228,6 @@
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
 .repository-unified [hidden] { display: none !important; }
-
-/* Repository workspace — 레일 소속을 유지한 기본 레이아웃. */
-.repository-ws-layout {
-  display: grid;
-  /* 트리는 설정폭을 따르되 좁은 패널에서는 45cqw로 클램프되어 중앙(History)에 폭을 양보한다. */
-  grid-template-columns: min(var(--ws-tree-width, 222px), 45cqw) 4px minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-}
-
-.repository-ws-tree-divider {
-  height: 100%;
-  cursor: col-resize;
-  touch-action: none;
-}
 
 .repository-ws-tree {
   /* 컨텍스트 메뉴(absolute)의 containing block — 없으면 상위 positioned 조상 기준으로 오배치된다 */
@@ -1753,75 +1712,27 @@
   cursor: pointer;
   margin-left: auto;
 }
-.repository-sync-button { position: relative; }
-/* 말풍선은 버튼 아래로만 열린다 — 레일 패널 body가 overflow:hidden이라 위쪽은 잘리고,
-   버튼 오른쪽 끝이 패널 오른쪽 끝에 붙어 있어 right:0 정렬이 아니면 밖으로 나간다.
-   너비를 max-content로 잡지 않으면 좁은 버튼이 containing block이라 한 마디가 두 줄로 접힌다.
-   `.repository-identity`로 스코프하는 것이 필수다 — `.repository-identity span`(0,1,1)이 브랜치용
-   brass·mono·ellipsis를 모든 자손 span에 걸어 두므로, 클래스 하나(0,1,0)로는 상태 문면이 위치
-   채널(brass)로 칠해지고 10px mono로 접힌다. */
-.repository-identity .repository-sync-hint {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + 6px);
-  right: 0;
-  width: max-content;
-  max-width: 220px;
-  min-width: auto;
-  overflow: visible;
-  padding: 4px 7px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: var(--ink-veil);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: var(--t-sm);
-  line-height: 1.4;
-  white-space: normal;
-  text-align: left;
-  opacity: 0;
-  transform: translateY(-3px);
-  transition: opacity 160ms ease, transform 160ms ease;
-  pointer-events: none;
-}
-.repository-sync-hint::before {
-  content: "";
-  position: absolute;
-  top: -4px;
-  right: 11px;
-  width: 7px;
-  height: 7px;
-  transform: rotate(45deg);
-  border-top: 1px solid var(--hairline-strong);
-  border-left: 1px solid var(--hairline-strong);
-  background: var(--ink-veil);
-}
-/* 동사 실패 문면은 한 마디가 아니라 조치를 담은 문장이라 한 뼘 넓게 서고, 테두리는 신호 채널을 쓴다 —
-   같은 부품이지만 성공(중립)과 실패(coral)가 색으로 갈린다. */
-.repository-identity .repository-verb-button .repository-sync-hint { max-width: 264px; }
-.repository-identity .repository-sync-hint.is-error { border-color: color-mix(in oklab, var(--coral) 45%, transparent); }
-.repository-identity .repository-sync-hint.is-error::before {
-  border-top-color: color-mix(in oklab, var(--coral) 45%, transparent);
-  border-left-color: color-mix(in oklab, var(--coral) 45%, transparent);
-}
-/* 자동 노출이 물러난 뒤에도 다음 동기화까지 hover·포커스로 같은 한 마디를 다시 열 수 있다. */
-.repository-sync-hint.is-open,
-.repository-sync-button:hover .repository-sync-hint,
-.repository-sync-button:focus-visible .repository-sync-hint { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) {
-  /* 기본 규칙과 같은 스코프여야 한다 — 클래스 하나로는 위 (0,2,0) 규칙의 transition을 못 이긴다. */
-  .repository-identity .repository-sync-hint { transition-duration: 1ms; }
-}
-.repository-sync-dot {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--coral);
+/* ═══ 작업면 캡션 — 동기화와 원격 동사 ═══════════════════════════════════ */
+/* 캡션 말풍선에는 성공·실패를 가르는 채널이 없다 — 실패는 마크 위의 점이 진다.
+   coral은 신호 채널이므로 "마지막 시도가 실패했다"를 칠하는 데 쓴다. */
+.repository-caption-fail-dot { fill: var(--coral); }
+
+/* 앞섬·뒤처짐 숫자는 마크에 붙는 수치라 마크와 같은 상자 안에 선다 — 밖으로 빼면
+   버튼 폭이 숫자 자릿수마다 흔들린다. */
+.repository-caption-verb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
 }
 
+.repository-caption-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-style: normal;
+  font-size: var(--t-2xs);
+  line-height: 1;
+  color: inherit;
+}
 
 /* ═══ Fork 워크벤치 — 체크아웃 탭 ═══════════════════════════════════════════ */
 /* 루트 체크아웃과 워크트리가 한 줄에 서는 상단 탭 — 컨텍스트 트리의 빠른 길이다. */
@@ -1865,20 +1776,6 @@
   font-style: normal;
   font-size: var(--t-xs);
   color: var(--text-tertiary);
-}
-
-/* ═══ Fork 워크벤치 — 툴바 동사(Pull/Push/Stash) ══════════════════════════ */
-/* 동사 묶음은 span이라 `.repository-identity span`(0,1,1)의 overflow:hidden을 물려받는다 — 그대로 두면
-   버튼 아래로 여는 결과 말풍선이 버튼 줄 높이에서 잘려 아예 보이지 않는다. 같은 스코프로 되돌린다. */
-.repository-identity .repository-verb-cluster { display: inline-flex; overflow: visible; gap: 4px; margin-left: 4px; }
-.repository-verb-button { position: relative; }
-.repository-verb-button:disabled { opacity: 0.45; cursor: default; }
-.repository-verb-count {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-style: normal;
-  font-size: var(--t-xs);
-  margin-left: 4px;
-  color: var(--brass-ink);
 }
 
 /* ═══ Fork 워크벤치 — 스테이징(Local Changes) ══════════════════════════════ */
