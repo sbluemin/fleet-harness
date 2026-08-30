@@ -5,6 +5,44 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.79.0] - 2026-08-30
+
+### fleet-cli
+
+#### Added
+- Use OpenAI native compaction for Codex gateway models in Claude Code, including automatic and manual compaction, durable resume, and a safe plaintext fallback.
+
+#### Changed
+- `fleet` now launches Claude Code in auto mode, with the permission gate up. Turn on "Skip permission prompts" in Fleet Console Settings, under Harness, to launch without the gate as before.
+
+### fleet-console
+
+#### Added
+- Use OpenAI native compaction for Codex gateway Operations in Claude Code, including automatic and manual compaction, durable resume, and a safe plaintext fallback.
+- Give the sidebar a self-contained card header with a Theater count, a new-Theater action, and an inline operation title filter.
+- A Harness section in Settings gathers how agents are launched: a Claude Code card holding the permission opt-in and the system prompt switch, shared agent session settings, and the agent CLI executable list.
+- "Skip permission prompts" is a new opt-in that is off by default. While it is off, the session runs in Claude Code auto mode: the permission gate stays up, its classifier answers most approvals, asks in the terminal when it needs confirmation, and blocks what it cannot judge. The card states where the choice applies: the terminal and the `fleet` launcher, never Chat, which has no approval screen of its own and always runs bypassed.
+
+#### Changed
+- Expand the operations chart to the full viewport in Cruise, Tactical, and War Room, with the sidebar and Activity Rail floating over it as glass cards and every mode layout, fit, launch, and minimap computed against the unobscured arena.
+- Unify the command band into one continuous plate: the sidebar cap seam is retired and the Cruise, Tactical, and War Room switch joins the left cluster at a fixed position.
+- Host one panel at a time on the Activity Rail card: opening another panel replaces the current one, panel opening no longer pushes the chart, and the push and overlay duality is retired in favor of the floating card.
+- New Claude Code sessions no longer skip the permission gate by default; they open in auto mode instead. Turn the opt-in on under Settings, Harness to get the previous behavior back.
+- The Terminal settings section now holds only what it draws: terminal font, chat reading width, and rendering. The Claude Code system prompt and idle agent session settings moved to Harness, and the agent CLI executable list moved there from AI Gateway.
+- The File Explorer viewer now stands as its own rail column, with a host caption that names the open document and carries history, reload, wrap and expand.
+- Rail columns share one divider: drag or arrow-key the boundary between a list and its document, and each surface remembers where you left it.
+- The Codex document stands as its own rail column, with history and expand on its caption.
+- The Repository rail icon now opens the workbench on the canvas the way Shell does, with the same two-column layout and far more room. Press it again to put it away.
+- Settings moved from a dedicated page into a Settings pane behind the Activity Rail gear: sections stand as wrapped chips, search still covers every setting and now reaches the command palette, dense management faces such as remote access open on the expanded surface, and the console stays visible beside every appearance control.
+- The rail gear menu is dismantled: float and opacity live in the Appearance section, and a double-click on the panel divider resets a remembered panel width.
+- The rail panel opacity control moved into the Theme card as "Right sidebar opacity", standing right below the unfocused panel fade; the dedicated Rail panels card is retired.
+
+#### Fixed
+- With liquid glass on, the left sidebar no longer shows a faint mosaic of false gridlines: its soft glass blur left too much of the chart weave behind it, and the residue posterized on the dark tint. The card now uses the same strong blur as the right sidebar panels, keeping the glass material clean.
+
+#### Removed
+- The dedicated desktop Settings page, its appearance preview mock, and the command band Settings button are retired; old /settings links land on the new pane, and the phone keeps its settings screens.
+
 ## [1.78.0] - 2026-08-30
 
 ### fleet-console
