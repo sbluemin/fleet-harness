@@ -131,15 +131,19 @@ export function createClaudeCodexCompactionStore(options: {
       if (!ready || ready.binding !== binding || now() - ready.updatedAt > READY_TTL_MS) return undefined;
       return ready;
     },
-    writeReady: (sessionId, ready) => updateSession(sessionId, (current) => ({
-      ...current,
-      ready: {
-        binding: normalizeText(ready.binding, 256),
-        encryptedContent: normalizeText(ready.encryptedContent, MAX_ENCRYPTED_CONTENT_CHARS),
-        summary: normalizeText(ready.summary, MAX_SUMMARY_CHARS),
-        updatedAt: now(),
-      },
-    })),
+    writeReady: (sessionId, ready) => {
+      const encryptedContent = normalizeOpaqueCheckpoint(ready.encryptedContent);
+      if (!encryptedContent) return;
+      updateSession(sessionId, (current) => ({
+        ...current,
+        ready: {
+          binding: normalizeText(ready.binding, 256),
+          encryptedContent,
+          summary: normalizeText(ready.summary, MAX_SUMMARY_CHARS),
+          updatedAt: now(),
+        },
+      }));
+    },
     clear: (sessionId) => updateSession(sessionId, () => undefined),
   };
 }
@@ -170,7 +174,7 @@ function sanitizePending(value: unknown): ClaudeCompactPendingState | undefined 
 function sanitizeReady(value: unknown): ClaudeCompactReadyState | undefined {
   if (!isRecord(value) || typeof value.updatedAt !== "number" || !Number.isFinite(value.updatedAt)) return undefined;
   const binding = normalizeText(value.binding, 256);
-  const encryptedContent = normalizeText(value.encryptedContent, MAX_ENCRYPTED_CONTENT_CHARS);
+  const encryptedContent = normalizeOpaqueCheckpoint(value.encryptedContent);
   const summary = normalizeText(value.summary, MAX_SUMMARY_CHARS);
   if (!binding || !encryptedContent) return undefined;
   return { binding, encryptedContent, summary, updatedAt: value.updatedAt };
@@ -212,6 +216,12 @@ function normalizeSessionId(value: unknown): string {
 
 function normalizeText(value: unknown, maxChars: number): string {
   return typeof value === "string" ? value.slice(0, maxChars) : "";
+}
+
+function normalizeOpaqueCheckpoint(value: unknown): string {
+  return typeof value === "string" && value.length <= MAX_ENCRYPTED_CONTENT_CHARS
+    ? value
+    : "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

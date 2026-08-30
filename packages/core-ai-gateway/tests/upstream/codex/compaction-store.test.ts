@@ -62,6 +62,18 @@ describe("Claude Codex compaction store", () => {
     expect(raw.sessions["session-0"]).toBeUndefined();
   });
 
+  it("rejects oversized opaque checkpoints instead of persisting truncated ciphertext", () => {
+    const directory = root();
+    const store = createClaudeCodexCompactionStore({ directory });
+    store.writeReady("session-1", {
+      binding: "binding",
+      encryptedContent: "x".repeat(1_000_001),
+      summary: "plaintext fallback",
+    });
+
+    expect(store.readReady("session-1", "binding")).toBeUndefined();
+  });
+
   it("sanitizes malformed state instead of exposing it", () => {
     const directory = root();
     const store = createClaudeCodexCompactionStore({ directory });
