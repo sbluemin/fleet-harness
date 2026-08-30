@@ -305,12 +305,19 @@ function PaneHost({
   // 남의 페인을 닫을 때도 그 페인의 keepAlive를 따른다. 자기를 닫을 때만 지켜 주면
   // 형제가 닫는 순간 터미널과 초안이 사라진다.
   const handleCloseOther = useCallback((paneId: string) => {
-    closePane(paneId, { keepAlive: paneIndex.get(paneId)?.keepAlive === true });
+    const target = paneIndex.get(paneId);
+    closePane(paneId, {
+      keepAlive: target?.keepAlive === true,
+      ...(target?.onClose ? { onClose: target.onClose } : {}),
+    });
   }, [paneIndex]);
 
   const handleClose = useCallback(() => {
-    closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
-  }, [descriptor.id, descriptor.keepAlive]);
+    closePane(descriptor.id, {
+      keepAlive: descriptor.keepAlive === true,
+      ...(descriptor.onClose ? { onClose: descriptor.onClose } : {}),
+    });
+  }, [descriptor]);
 
   const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
     replacePaneParams(descriptor.id, next);
@@ -320,6 +327,8 @@ function PaneHost({
   // paneId를 받아 같은 본문을 캔버스 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
   // 같은 방식으로 선다.
   const canExpand = descriptor.mounts.includes("expanded");
+  // 확대는 닫힘이 아니다 — 같은 본문이 자리를 옮기는 것이므로 닫힘 통보를 보내지 않는다.
+  // 보내면 무엇을 읽고 있다는 사실을 플러그인이 스스로 지워, 옮겨 간 자리가 곧 비어 버린다.
   const handleExpand = useCallback(() => {
     openExpandedPane(descriptor.id, params);
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });

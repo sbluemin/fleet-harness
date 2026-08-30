@@ -44,6 +44,7 @@ const listPane: PaneDescriptor = {
 };
 
 const seenPanes: unknown[] = [];
+const closeNotices: { readonly paneId: string; readonly params: Record<string, string>; readonly standing: number }[] = [];
 
 const docPane: PaneDescriptor = {
   id: "doc",
@@ -59,6 +60,9 @@ const docPane: PaneDescriptor = {
   minWidth: 200,
   // 실제 문서 열이 그렇듯 닫아도 읽던 자리를 지킨다.
   keepAlive: true,
+  onClose: (ctx) => {
+    closeNotices.push({ paneId: ctx.paneId, params: { ...ctx.params }, standing: getPaneStoreSnapshot().rail.filter((i) => i.visible).length });
+  },
 };
 
 const binding = {
@@ -92,6 +96,7 @@ beforeEach(() => {
   __resetPaneWidthsForTests();
   extraWidthRequests.length = 0;
   seenPanes.length = 0;
+  closeNotices.length = 0;
   listCtx = null;
   docCtx = null;
   resetExpandedSurfacesForTest();
@@ -221,6 +226,30 @@ describe("레일 표면의 2단", () => {
     });
 
     expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(true);
+  });
+
+  it("호스트가 열을 닫으면 그 페인에게 알린다 — 인스턴스가 물러난 뒤에", () => {
+    render();
+    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
+
+    act(() => { closePane("doc", { keepAlive: true, onClose: docPane.onClose! }); });
+
+    // 통보를 받은 쪽은 상태를 되돌리며 스토어를 다시 읽는다 — 먼저 부르면 아직 서 있는
+    // 자기 자신을 보게 된다.
+    expect(closeNotices).toEqual([{ paneId: "doc", params: { path: "a.ts" }, standing: 0 }]);
+  });
+
+  it("확대는 닫힘이 아니므로 통보하지 않는다", () => {
+    render();
+    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
+
+    act(() => { docCtx?.panes.open({ paneId: "doc", mount: "expanded", params: { path: "a.ts" } }); });
+    act(() => { closePane("doc", { keepAlive: true }); });
+
+    // 같은 본문이 자리를 옮긴 것뿐이다. 통보하면 플러그인이 "무엇을 담고 있다"를 지워
+    // 옮겨 간 자리가 곧 빈다.
+    expect(closeNotices).toEqual([]);
+    expect(getExpandedSurfaceState().instances).toHaveLength(1);
   });
 
   it("분할선 키보드 이동은 폭을 기억한다", () => {

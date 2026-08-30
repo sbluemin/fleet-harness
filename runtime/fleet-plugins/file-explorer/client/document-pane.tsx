@@ -48,7 +48,8 @@ const CRUMB_DBLCLICK_GRACE_MS = 500;
 /** 캡션에 설 이름 — 페인 종류가 아니라 지금 담은 문서를 말한다. */
 export function documentPaneTitle(ctx: PaneContext): string {
   const t = getT(ctx.language);
-  const path = ctx.params.path;
+  // 다른 Theater에서 실려 온 주소는 이름도 말하지 않는다 — 그 이름은 지금 화면에 없는 문서다.
+  const path = ctx.params.theaterId === (ctx.theaterId ?? "") ? ctx.params.path : undefined;
   return path ? nameOfPath(path) : t("fileExplorer.panel.title");
 }
 
@@ -73,7 +74,12 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   // 활성 문서가 이미 있으면 손대지 않는다. 주소와 활성이 어긋날 때마다 주소 쪽으로 되돌리면,
   // 같은 페인이 두 자리에 서 있는 순간(확대 + 레일 주차) 두 사본이 서로 다른 주소로 스토어를
   // 번갈아 되돌려 갱신이 멈추지 않는다. 방향은 하나여야 한다 — 스토어가 진실, 주소가 사본.
-  const addressed = params.path;
+  //
+  // 주소는 **자기 Theater 안에서만** 뜻이 있다. 이 열은 `keepAlive`라 Theater를 갈아타도
+  // 인스턴스가 살아남고, 그 인스턴스가 든 경로는 떠나온 Theater의 것이다. 그것을 새 Theater에
+  // 세우면 있지도 않은 문서를 열고 그 Theater의 저장된 세션까지 덮어쓴다 — 그래서 주소가
+  // 어느 Theater의 것인지 함께 싣고, 다르면 세우지 않는다.
+  const addressed = params.theaterId === contextScope ? params.path : undefined;
   useEffect(() => {
     if (!addressed || activePath !== null) return;
     activateStoredDocument(contextScope, { relativePath: addressed, name: nameOfPath(addressed) });
@@ -97,9 +103,10 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   // 주소는 지금 읽는 문서를 말해야 한다 — 캡션 이름과 확대 표면이 같은 값을 읽는다.
   // 이미 같으면 쓰지 않는다: `replaceParams`가 스토어를 건드리므로 무조건 부르면 순환한다.
   useEffect(() => {
-    if (!activePath || params.path === activePath) return;
-    panes.replaceParams({ path: activePath });
-  }, [activePath, panes, params.path]);
+    if (!activePath) return;
+    if (params.path === activePath && params.theaterId === contextScope) return;
+    panes.replaceParams({ path: activePath, theaterId: contextScope });
+  }, [activePath, contextScope, panes, params.path, params.theaterId]);
 
   // 마지막 문서가 닫히면 열도 함께 사라진다. 빈 창을 남겨 두면 사용자는 닫을 것이 하나
   // 더 생긴 것으로 읽는다. 주차된 사본은 이미 닫혀 있으므로 자기를 또 닫지 않는다.

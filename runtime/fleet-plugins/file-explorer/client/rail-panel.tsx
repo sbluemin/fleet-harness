@@ -146,13 +146,13 @@ function FileExplorerTreePane(ctx: PaneContext) {
   useEffect(() => {
     if (!hydrateStoredSession(contextScope || null)) return;
     const restored = getFileExplorerSnapshot(contextScope).activePath;
-    if (restored) panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored }, focus: false });
+    if (restored) panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored, theaterId: contextScope }, focus: false });
   }, [contextScope, panes]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string) => {
     if (!theaterId) return;
     activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath) });
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: relativePath } });
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: relativePath, theaterId: contextScope } });
   }, [contextScope, panes, theaterId]);
 
   useLayoutEffect(() => {

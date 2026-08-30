@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { PaneMount, PaneOpenRequest } from "@fleet-console/sdk/pane";
+import type { PaneCloseContext, PaneMount, PaneOpenRequest } from "@fleet-console/sdk/pane";
 
 /**
  * 표면에 서 있는 페인 인스턴스들.
@@ -92,7 +92,10 @@ export function openPane(request: PaneOpenRequest, options: { readonly keepAlive
  * 페인을 닫는다. `keepAlive` 페인은 목록에 남되 보이지 않게 된다 — 본문이 살아 있어야 다음에
  * 열 때 읽던 자리로 돌아간다.
  */
-export function closePane(paneId: string, options: { readonly keepAlive?: boolean } = {}): void {
+export function closePane(
+  paneId: string,
+  options: { readonly keepAlive?: boolean; readonly onClose?: (ctx: PaneCloseContext) => void } = {},
+): void {
   const target = state.rail.find((instance) => instance.paneId === paneId);
   if (!target) return;
 
@@ -104,6 +107,9 @@ export function closePane(paneId: string, options: { readonly keepAlive?: boolea
     rail,
     focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   });
+  // 인스턴스가 정리된 **뒤에** 알린다 — 통보를 받은 쪽이 상태를 되돌리며 다시 스토어를 읽으므로,
+  // 먼저 부르면 아직 서 있는 자기 자신을 보게 된다.
+  options.onClose?.({ paneId, params: target.params });
 }
 
 /**

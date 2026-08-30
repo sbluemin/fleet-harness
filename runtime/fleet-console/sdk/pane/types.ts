@@ -69,6 +69,18 @@ export interface PaneDescriptor {
    */
   readonly captionActions?: (ctx: PaneContext) => ReactNode;
   /**
+   * 이 페인이 닫혔다는 통보. 캡션의 닫기·형제의 `panes.close` 등 **호스트가 닫는 모든 경로**에서
+   * 인스턴스가 정리된 뒤 불린다.
+   *
+   * 닫기는 호스트가 소유하지만, "내가 무엇을 담고 있다"를 함께 들고 있는 플러그인은 그 사실을
+   * 되돌릴 기회가 필요하다 — 통보가 없으면 열은 사라졌는데 플러그인은 여전히 그 문서를 읽는
+   * 중이라 믿어, 다음 상태 발행이 사용자가 닫은 열을 되살린다. 여기서 다시 닫기를 부르지 말 것.
+   *
+   * 확대 표면이 같은 이유로 같은 문을 이미 갖고 있다. 두 마운트가 같은 어휘를 쓴다는 것은
+   * 이런 자리까지 같다는 뜻이다.
+   */
+  readonly onClose?: (ctx: PaneCloseContext) => void;
+  /**
    * detail 페인의 캡션까지 끈다.
    *
    * 캡션은 role이 정한다 — **detail에만 선다.** primary는 표면과 수명을 같이하므로 닫을 것도
@@ -119,6 +131,15 @@ export interface PaneDescriptor {
 }
 
 export type PaneRole = "primary" | "detail" | "aside";
+
+/**
+ * 닫힘 통보가 싣는 것. 열은 이미 사라졌으므로 기하·포커스는 말할 수 없고, 어느 페인이 무엇을
+ * 담고 있었는지만 남는다.
+ */
+export interface PaneCloseContext {
+  readonly paneId: string;
+  readonly params: Readonly<Record<string, string>>;
+}
 
 export type PaneMount = "rail" | "expanded";
 

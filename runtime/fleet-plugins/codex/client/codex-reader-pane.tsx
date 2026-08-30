@@ -43,6 +43,9 @@ export const codexReaderPane: PaneDescriptor = {
   title: (ctx) => documentTitle(ctx),
   render: (ctx) => <CodexReaderPane {...ctx} />,
   captionActions: (ctx) => <CodexReaderCaptionActions {...ctx} />,
+  // 이 열이 곧 "무엇을 읽고 있는가"다. 열만 치우고 그 사실을 남겨 두면, 다음 상태 발행에서
+  // 카탈로그가 사용자가 닫은 열을 되살린다.
+  onClose: () => closeCodexReader(),
   defaultWidth: 360,
   minWidth: 260,
 };
