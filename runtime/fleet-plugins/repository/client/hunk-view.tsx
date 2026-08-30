@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
 import { getT, readErrorSentence } from "./i18n/index.js";
@@ -9,7 +9,7 @@ import { highlightEscapedDiffCode, parseHunk } from "./repository-parsers.js";
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface HunkViewProps {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
   readonly repoRel: string;
   readonly file: DiffFileEntry;
   readonly mode: DiffFileMode;

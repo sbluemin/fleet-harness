@@ -12,5 +12,5 @@ branch: pane-two-column-split
   ko: 레일의 열은 하나의 분할선을 씁니다 — 목록과 문서 사이 경계를 끌거나 화살표로 옮길 수 있고, 표면마다 그 자리를 기억합니다.
 - The Codex document stands as its own rail column, with history and expand on its caption.
   ko: Codex 문서가 레일의 독립된 열로 서고, 이력과 확대가 그 캡션에 놓입니다.
-- Repository splits into a source tree beside the rail icons and a workbench column whose caption names the checkout and carries sync, pull, push and stash.
-  ko: Repository가 레일 아이콘 옆의 소스 트리와 작업면 열로 갈라지고, 작업면 캡션이 체크아웃 이름과 동기화·pull·push·stash를 함께 싣습니다.
+- The Repository rail icon now opens the workbench on the canvas the way Shell does, with the same two-column layout and far more room. Press it again to put it away.
+  ko: Repository 레일 아이콘이 Shell처럼 작업면을 캔버스에 엽니다 — 배치는 그대로이고 폭만 훨씬 넓어집니다. 다시 누르면 치워집니다.

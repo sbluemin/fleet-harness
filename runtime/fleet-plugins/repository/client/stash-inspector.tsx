@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { DiffFileEntry } from "../server/types.js";
 import { FileRow } from "./changed-files.js";
@@ -30,7 +30,7 @@ export interface StashInspectorTarget {
  * 대체 표면이다. 치워 둔 파일(untracked 포함)과 출구(적용/적용 후 제거/삭제)를 한 카드에 붙인다.
  */
 export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClose }: {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
   readonly repoRel: string;
   readonly stash: StashInspectorTarget;
   readonly workspace: boolean;

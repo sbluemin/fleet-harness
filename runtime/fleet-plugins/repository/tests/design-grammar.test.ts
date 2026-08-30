@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -184,8 +183,9 @@ describe("Repository design grammar", () => {
     for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 55%");
     }
-    // 저장소 이름·브랜치 줄은 호스트 캡션으로 올라갔다 — 이 파일이 칠하던 면은 트리 열만 남는다.
-    expect(blockOf(".repository-ws-tree"), ".repository-ws-tree").toContain("var(--surface-band) 72%");
+    for (const selector of [".repository-identity", ".repository-ws-tree"]) {
+      expect(blockOf(selector), selector).toContain("var(--surface-band) 72%");
+    }
     expect(css).not.toContain(".repository-scan-foot");
     expect(blockOf(".repository-ref-mark")).toContain("var(--brass-ink)");
     expect(blockOf(".repository-ref-hl")).toContain("var(--brass-ink)");
@@ -202,22 +202,40 @@ describe("Repository design grammar", () => {
     expect(blockOf(".repository-toggle-btn.is-active")).toContain("var(--control-wash)");
   });
 
-  it("omits the status strip and leaves motion to the caption", () => {
+  it("keeps the sync button spin animation reducible and omits the status strip", () => {
     expect(css).not.toContain(".repository-sync-status");
-    // 동사 넷은 호스트 캡션의 버튼이 되었다 — 진행 중 연출(그리고 그 동작 줄이기)은
-    // 그 프리미티브가 지므로 플러그인이 자기 회전을 따로 들고 있으면 두 벌이 선다.
-    expect(css).not.toContain(".repository-sync-button");
-    expect(css).not.toContain(".repository-verb-button");
+    expect(blocksOf(".repository-sync-button.is-syncing .repository-sync-icon").some((body) => body.includes("animation: none"))).toBe(true);
   });
 
-  // 2026-08-15 재가 — "이미 최신 상태"는 배너를 쓰지 않는다. 이제 그 결과는 캡션 버튼의
-  // 마크(✓ 교체)와 그 버튼의 말풍선(label)이 함께 진다.
-  it("keeps the up-to-date result on the caption mark and its tip", () => {
-    const pane = readFileSync(new URL("../client/workbench-pane.tsx", import.meta.url), "utf8");
-    // 결과 문면은 버튼의 접근 이름이자 말풍선 문장이다 — 별도 배지를 세우지 않는다.
-    expect(pane).toContain("label={verbLabel(verbs, \"sync\", verbs.syncHint ?? t(\"repository.sync.title\"))}");
-    // ✓는 "가져올 것이 없었다"는 상태다. 마크를 교체하되 상자는 그대로여서 버튼 폭이 흔들리지 않는다.
-    expect(pane).toContain("<SyncGlyph settled={verbs.syncSettled} failed={verbs.syncFailed} />");
+  // 2026-08-15 재가 — "이미 최신 상태"는 배너를 쓰지 않는다. 아이콘 슬롯과 말풍선이 그 결과를 진다.
+  it("keeps the up-to-date result on the icon slot and hint, with motion reducible but state intact", () => {
+    // 글리프 교체가 아니라 겹친 슬롯이어야 버튼 폭이 흔들리지 않는다.
+    const iconSlot = blockOf(".repository-identity .repository-sync-icon");
+    expect(iconSlot).toContain("position: relative");
+    expect(iconSlot).toContain("width: 13px");
+    const glyph = blockOf(".repository-identity .repository-sync-glyph");
+    expect(glyph).toContain("position: absolute");
+    expect(glyph).toContain("opacity: 0");
+    // 말풍선은 아래로만, 오른쪽 정렬로, 접히지 않는 너비로 열린다.
+    // `.repository-identity span`(0,1,1)이 자손 span 전부에 brass·mono·ellipsis를 걸어 두므로
+    // 상태 문면 규칙은 반드시 같은 스코프로 선언해야 한다 — 클래스 하나면 위치 채널로 칠해진다.
+    const hint = blockOf(".repository-identity .repository-sync-hint");
+    expect(hint).toContain("top: calc(100% + 6px)");
+    expect(hint).toContain("right: 0");
+    expect(hint).toContain("width: max-content");
+    expect(hint).toContain("pointer-events: none");
+    expect(hint).toContain("color: var(--text-primary)");
+    expect(hint).toContain("overflow: visible");
+    expect(hint).toContain("font-family: inherit");
+    expect(hint).toContain("white-space: normal");
+    // 자동 노출이 끝난 뒤에도 hover·포커스로 다시 열려야 한다.
+    expect(css).toContain(".repository-sync-button:hover .repository-sync-hint");
+    expect(css).toContain(".repository-sync-button:focus-visible .repository-sync-hint");
+    // 동작 줄이기에서는 전이 연출만 걷고 상태는 남긴다 — opacity/transform 규칙을 지우면 안 된다.
+    const reduced = reducedMotionBodies();
+    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }");
+    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }");
+    expect(glyph).toContain("transition:");
   });
 
   // 2026-08-05 재가 — in-history compare 앵커와 수동 Sync 표면화의 신호 채널 문법.
@@ -228,18 +246,22 @@ describe("Repository design grammar", () => {
     expect(blockOf(".history-row-compare")).not.toContain("var(--brass)");
     expect(blockOf(".repository-sync-toast.is-error")).toContain("var(--coral)");
     expect(blockOf(".repository-sync-toast.is-success")).toContain("var(--positive)");
-    // 실패 표식은 캡션 마크 위의 점으로 옮겼다 — 채널은 그대로 coral이다.
-    expect(blockOf(".repository-caption-fail-dot")).toContain("var(--coral)");
+    expect(blockOf(".repository-sync-dot")).toContain("var(--coral)");
   });
 
-  // 2026-08-20 재가 — 동사 결과는 말풍선이 진다. 캡션 말풍선에는 성공·실패를 가르는 채널이
-  // 없으므로(문장은 같은 자리에 같은 모양으로 뜬다) 실패는 마크 위의 coral 점이 대신 진다.
-  it("carries a failed verb attempt on the signal channel, and its text in the caption tip", () => {
-    const pane = readFileSync(new URL("../client/workbench-pane.tsx", import.meta.url), "utf8");
-    expect(pane).toContain("verbs.outcome?.verb === verb && verbs.outcome.kind === \"error\"");
-    expect(pane).toContain("className=\"repository-caption-fail-dot\"");
-    // 결과 문면은 그 버튼의 이름이 된다 — 성공이든 실패든 같은 창구다.
-    expect(pane).toContain("if (verb !== \"sync\" && verbs.outcome?.verb === verb) return verbs.outcome.text;");
+  // 2026-08-20 재가 — 동사 결과도 말풍선을 쓴다. 실패는 신호 채널(coral)로 갈리고 화살표까지 같이 물든다.
+  // 실패 문면은 한 마디가 아니라 조치 문장이라 동사 버튼에서만 한 뼘 넓게 선다.
+  it("splits the verb outcome hint by signal channel and widens it for actionable failures", () => {
+    const errorHint = blockOf(".repository-identity .repository-sync-hint.is-error");
+    expect(errorHint).toContain("var(--coral)");
+    expect(errorHint).not.toContain("var(--brass)");
+    const arrow = blockOf(".repository-identity .repository-sync-hint.is-error::before");
+    expect(arrow).toContain("border-top-color");
+    expect(arrow).toContain("border-left-color");
+    expect(blockOf(".repository-identity .repository-verb-button .repository-sync-hint")).toContain("max-width: 264px");
+    // 묶음이 span이라 `.repository-identity span`의 overflow:hidden을 물려받는다 — 같은 스코프로 되돌리지
+    // 않으면 버튼 아래로 여는 말풍선이 버튼 줄에서 잘려 결과가 아예 보이지 않는다(실측 확인된 회귀).
+    expect(blockOf(".repository-identity .repository-verb-cluster")).toContain("overflow: visible");
   });
 
   it("keeps workspace section header buttons within the interaction grammar", () => {

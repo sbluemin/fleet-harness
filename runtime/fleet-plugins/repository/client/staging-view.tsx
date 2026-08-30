@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
@@ -29,7 +29,7 @@ type Selection = { readonly axis: Axis; readonly entry: DiffFileEntry };
 export type StagingNotice = { readonly kind: "success" | "error"; readonly text: string };
 
 interface StagingViewProps {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
   readonly repoRel: string;
   readonly workstate: WorkstateResult | null;
   /** workstate 읽기가 실패한 상태 — 울타리를 모르는 채로 쓰기를 열어 두지 않는다. */

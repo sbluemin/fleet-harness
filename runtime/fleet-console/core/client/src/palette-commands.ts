@@ -12,6 +12,8 @@ import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 export interface PaletteRailPanelInfo {
   readonly id: string;
   readonly title: LocalizedText;
+  /** 페인 대신 확대 표면을 여는 엔트리라면 그 표면의 id — "패널 열기"가 이 값을 따른다. */
+  readonly surfaceId?: string;
 }
 
 export type PaletteCommandAction =
@@ -27,7 +29,7 @@ export type PaletteCommandAction =
   | { readonly kind: "toggle-formation" }
   | { readonly kind: "toggle-station-keeping" }
   | { readonly kind: "toggle-status-axis" }
-  | { readonly kind: "open-rail-panel"; readonly panelId: string }
+  | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "toggle-command-band-dock" }
@@ -215,7 +217,7 @@ export function buildPaletteCommands(
       commandId: `open-rail-panel:${panel.id}`,
       label: t("palette.openPanel", { title: resolveLocalizedText(panel.title, language) }),
       current: false,
-      action: { kind: "open-rail-panel", panelId: panel.id },
+      action: { kind: "open-rail-panel", panelId: panel.id, ...(panel.surfaceId === undefined ? {} : { surfaceId: panel.surfaceId }) },
     });
   }
   commands.push({

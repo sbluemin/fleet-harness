@@ -9,6 +9,7 @@ import type { RailPanelDescriptor, RailSearchProvider, RailSearchResult } from "
 
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
+import type { PaletteSearchPanel } from "../core/client/src/operation-search.js";
 import {
   RAIL_SEARCH_DEBOUNCE_MS,
   RAIL_SEARCH_PROVIDER_LIMIT,
@@ -16,6 +17,7 @@ import {
   searchRailPanels,
 } from "../core/client/src/operation-search.js";
 import { closeRailPanel, getRailStoreSnapshot, setRailChromeExpanded } from "../core/client/src/rail/rail-store.js";
+import { getExpandedSurfaceState, resetExpandedSurfacesForTest } from "../core/client/src/expanded-surface/store.js";
 import { getState, setState } from "../core/client/src/store.js";
 
 // 팔레트가 페인 레지스트리를 읽으므로 그 모듈을 대역으로 세운다. 실물을 태우면
@@ -29,7 +31,7 @@ vi.mock("../core/client/src/pane/pane-registry.js", () => ({
 
 let container: HTMLDivElement;
 let root: Root;
-let panels: readonly RailPanelDescriptor[] = [];
+let panels: readonly (RailPanelDescriptor | PaletteSearchPanel)[] = [];
 let pathname = "";
 let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
 
@@ -41,6 +43,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
   setRailChromeExpanded(false);
+  resetExpandedSurfacesForTest();
   setState({
     ...getState(),
     activeTheaterId: "theater-a",
@@ -235,6 +238,32 @@ describe("rail search fan-out", () => {
     expect(getRailStoreSnapshot()).toMatchObject({ railChromeExpanded: true });
   });
 
+  // 페인을 세우지 않고 확대 표면을 여는 기여(Shell·Repository)도 찾을 것을 갖는다. 그 결과는
+  // 레일 패널로 착지할 수 없으므로, 엔트리가 말한 표면이 대신 열려야 한다 — 갈라 주지 않으면
+  // 팔레트로 고른 결과가 아무 데도 도착하지 않는다.
+  it("lands a surface entry's result on that surface, not on a rail panel", async () => {
+    panels = [{
+      id: "repository",
+      title: "Repository",
+      surfaceId: "repository",
+      search: async () => [result("commit-a", "Fix the tide model")],
+    }];
+    renderPalette("/settings");
+
+    setInput("tide");
+    await advanceDebounce();
+    const option = container.querySelector<HTMLButtonElement>(".operation-search-panel-result");
+    expect(option?.textContent).toContain("Fix the tide model");
+
+    await act(async () => {
+      option!.click();
+      await Promise.resolve();
+    });
+
+    expect(getExpandedSurfaceState().instances.map((instance) => instance.surfaceId)).toEqual(["repository"]);
+    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+  });
+
   it("keeps matching Operations above panel groups", async () => {
     panels = [panel("files", "Files", async () => [result("file", "Needle file")])];
     act(() => setState({
@@ -273,7 +302,7 @@ function renderPalette(initialPath = "/operations"): void {
 }
 
 function PaletteHarness() {
-  return createElement(OperationSearch, { state: useConsoleState(), railPanels: panels, plugins: [] });
+  return createElement(OperationSearch, { state: useConsoleState(), railPanels: panels as readonly PaletteSearchPanel[], plugins: [] });
 }
 
 function LocationProbe() {

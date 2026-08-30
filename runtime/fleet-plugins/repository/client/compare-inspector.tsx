@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { RepositoryContext } from "./repository-context.js";
 
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
@@ -17,7 +17,7 @@ interface ComparePair {
 }
 
 interface CompareInspectorProps {
-  readonly ctx: PaneContext;
+  readonly ctx: RepositoryContext;
   readonly repoRel: string;
   readonly pair: ComparePair;
   readonly onSwap: () => void;

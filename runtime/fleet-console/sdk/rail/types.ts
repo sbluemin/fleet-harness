@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientApiCapability, ClientExpandedSurfacesCapability, ConsoleTheme } from "../plugin/types.js";
 import type { OperationLaunchKind } from "../operations/types.js";
+import type { PaneSearchProvider } from "../pane/types.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
 export interface RailPathContext {
@@ -115,4 +116,12 @@ export interface RailEntryDescriptor {
    * 이 값이면 정확히 그 변화에 맞춰 다시 그린다.
    */
   readonly surfaceId?: string;
+  /**
+   * 이 엔트리가 팔레트 검색 결과를 낼 수 있다면 그 공급자.
+   *
+   * 검색은 보통 페인에 붙는다 — 결과를 고르면 "어느 페인에 어떤 params로" 열지를 알아야 하고,
+   * 그 답을 아는 것이 결과를 만든 페인이기 때문이다. 그런데 페인을 세우지 않고 확대 표면을
+   * 여는 엔트리도 찾을 것을 갖는다. 그 경우 착지는 `surfaceId`가 말하므로, 검색만 여기 붙는다.
+   */
+  readonly search?: PaneSearchProvider;
 }

@@ -4,7 +4,11 @@ import type { RepositoryMessageKey } from "./i18n/index.js";
 
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
 const WORKSPACE_DOCK_MIN_HEIGHT = 160;
-// 소스 트리 열의 폭은 이제 표면이 소유한다 — 분할선·클램프·기억은 호스트의 페인 기하가 진다.
+export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
+const WORKSPACE_TREE_MIN_WIDTH = 148;
+const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
+// 트리를 줄여도 중앙(History/Changes) 영역이 유의미하게 남도록 하는 최소 보장 폭.
+const WORKSPACE_MAIN_MIN_WIDTH = 180;
 
 // 검사기 독(파일 목록 ⇔ diff)의 폭 축. 저장값은 CSS 변수로만 주입한다 — 인라인
 // grid-template-columns는 좁은 독을 세로 스택으로 바꾸는 컨테이너 쿼리를 이겨버려
@@ -20,6 +24,7 @@ export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 340;
 export const WORKSPACE_DOCK_SPLIT_MIN_WIDTH = WORKSPACE_DOCK_FILES_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH + WORKSPACE_DOCK_MAIN_MIN_WIDTH;
 
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
+export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";
 export const PREFS_WORKSPACE_DOCK_FILES_WIDTH = "fleet-console.repository.workspace.dockFilesWidth";
 
 interface StorageLike {
@@ -51,6 +56,25 @@ const SECTION_LABEL_KEY: Record<WorkspaceTreeSection["id"], RepositoryMessageKey
   tags: "repository.section.tags",
   stashes: "repository.section.stashes",
 };
+
+export function readWorkspaceTreeWidth(storage?: StorageLike): number {
+  try {
+    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_TREE_WIDTH) ?? "");
+    if (Number.isFinite(value) && value >= WORKSPACE_TREE_MIN_WIDTH) return value;
+  } catch { /* best-effort preference */ }
+  return WORKSPACE_TREE_DEFAULT_WIDTH;
+}
+
+export function saveWorkspaceTreeWidth(width: number, storage?: StorageLike): void {
+  try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_TREE_WIDTH, String(width)); }
+  catch { /* best-effort preference */ }
+}
+
+export function clampWorkspaceTreeWidth(startWidth: number, pointerDeltaX: number, containerWidth: number): number | null {
+  const maximum = containerWidth - WORKSPACE_MAIN_MIN_WIDTH - WORKSPACE_TREE_DIVIDER_WIDTH;
+  if (maximum < WORKSPACE_TREE_MIN_WIDTH) return null;
+  return Math.max(WORKSPACE_TREE_MIN_WIDTH, Math.min(maximum, startWidth + pointerDeltaX));
+}
 
 export function readWorkspaceDockFilesWidth(storage?: StorageLike): number {
   try {
