@@ -67,25 +67,32 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     setSourceModePaths(new Set());
   }, [contextScope]);
 
-  // 주소가 지목한 문서를 세션에 세운다 — 공유 링크나 확대 표면에서 곧장 들어와 아직 아무것도
-  // 열려 있지 않을 때가 그 자리다. 이미 그 문서가 활성이면 아무것도 하지 않는다.
+  // 주소가 지목한 문서를 세션에 **세우기만** 한다 — 공유 링크나 확대 표면에서 곧장 들어와
+  // 아직 아무것도 열려 있지 않을 때가 그 자리다.
+  //
+  // 활성 문서가 이미 있으면 손대지 않는다. 주소와 활성이 어긋날 때마다 주소 쪽으로 되돌리면,
+  // 같은 페인이 두 자리에 서 있는 순간(확대 + 레일 주차) 두 사본이 서로 다른 주소로 스토어를
+  // 번갈아 되돌려 갱신이 멈추지 않는다. 방향은 하나여야 한다 — 스토어가 진실, 주소가 사본.
   const addressed = params.path;
   useEffect(() => {
-    if (!addressed || addressed === activePath) return;
+    if (!addressed || activePath !== null) return;
     activateStoredDocument(contextScope, { relativePath: addressed, name: nameOfPath(addressed) });
   }, [activePath, addressed, contextScope]);
 
   // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
+  // 주차된 사본(확대 중의 레일 인스턴스)은 읽지 않는다 — 같은 문서를 두 번 가져올 뿐이다.
+  // 계약이 "보이지 않는 동안에도 렌더는 계속되므로 값비싼 작업은 스스로 멈춰야 한다"고
+  // 말하는 자리가 여기다.
   const docStatesRef = useRef(docStates);
   docStatesRef.current = docStates;
   useEffect(() => {
-    if (!activePath) return;
+    if (!activePath || !ctx.visible) return;
     void loadDocument(theaterId, activePath, {
       silent: docStatesRef.current.has(activePath),
       language,
       signal,
     });
-  }, [activePath, language, signal, theaterId]);
+  }, [activePath, ctx.visible, language, signal, theaterId]);
 
   // 주소는 지금 읽는 문서를 말해야 한다 — 캡션 이름과 확대 표면이 같은 값을 읽는다.
   // 이미 같으면 쓰지 않는다: `replaceParams`가 스토어를 건드리므로 무조건 부르면 순환한다.
@@ -95,10 +102,10 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   }, [activePath, panes, params.path]);
 
   // 마지막 문서가 닫히면 열도 함께 사라진다. 빈 창을 남겨 두면 사용자는 닫을 것이 하나
-  // 더 생긴 것으로 읽는다.
+  // 더 생긴 것으로 읽는다. 주차된 사본은 이미 닫혀 있으므로 자기를 또 닫지 않는다.
   useEffect(() => {
-    if (openDocs.length === 0) panes.close();
-  }, [openDocs.length, panes]);
+    if (openDocs.length === 0 && ctx.visible) panes.close();
+  }, [ctx.visible, openDocs.length, panes]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string) => {
     if (!theaterId) return;

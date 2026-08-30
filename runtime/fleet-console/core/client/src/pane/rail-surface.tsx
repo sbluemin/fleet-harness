@@ -8,14 +8,14 @@ import type { PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../plugin-capabilities.js";
-import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-surface.js";
+import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";
 import { clampPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
 import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
-import { closePane, focusPane, openPane, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
+import { closePane, focusPane, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
 
 /**
  * 레일 표면 — 활성 엔트리가 세우는 페인들을 담는 그릇.
@@ -272,15 +272,21 @@ function PaneHost({
 
   // 요청받은 마운트가 확대면 확대 표면으로 보낸다. 스토어는 레일 열만 알고 있어서, 여기서
   // 갈라 주지 않으면 확대 요청이 조용히 사라진다.
+  // 마운트를 생략한 요청은 **그 페인이 이미 서 있는 자리로** 간다. 확대해 둔 문서를 목록에서
+  // 갈아탈 때 이 규칙이 없으면 같은 페인이 레일에도 함께 서고, 두 사본이 서로 다른 주소를 들고
+  // 각자 자기 주소로 스토어를 되돌리려 들어 갱신이 멈추지 않는다.
   const handleOpen = useCallback((request: PaneOpenRequest) => {
     const target = paneIndex.get(request.paneId);
-    const mount = request.mount ?? target?.mounts[0] ?? "rail";
+    const standing = isPaneExpanded(request.paneId) ? "expanded" : undefined;
+    const mount = request.mount ?? standing ?? target?.mounts[0] ?? "rail";
     if (mount === "expanded") {
-      surfaces?.open({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...request.params, paneId: request.paneId } });
+      // 확대 표면은 호스트 내장 기여다 — 능력 객체를 거치면 그것이 없는 조립에서 요청이
+      // 조용히 사라진다. 여기서는 호스트가 자기 스토어를 직접 부른다.
+      openExpandedPane(request.paneId, request.params);
       return;
     }
     openPane(request);
-  }, [paneIndex, surfaces]);
+  }, [paneIndex]);
 
   // 남의 페인을 닫을 때도 그 페인의 keepAlive를 따른다. 자기를 닫을 때만 지켜 주면
   // 형제가 닫는 순간 터미널과 초안이 사라진다.
@@ -293,7 +299,7 @@ function PaneHost({
   }, [descriptor.id, descriptor.keepAlive]);
 
   const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
-    openPane({ paneId: descriptor.id, params: next, focus: false });
+    replacePaneParams(descriptor.id, next);
   }, [descriptor.id]);
 
   // 확대는 페인마다 만드는 기능이 아니라 표면 계약의 공통 동작이다 — 호스트 내장 표면이
@@ -301,9 +307,9 @@ function PaneHost({
   // 같은 방식으로 선다.
   const canExpand = descriptor.mounts.includes("expanded");
   const handleExpand = useCallback(() => {
-    surfaces?.open({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...params, paneId: descriptor.id } });
+    openExpandedPane(descriptor.id, params);
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
-  }, [descriptor.id, descriptor.keepAlive, params, surfaces]);
+  }, [descriptor.id, descriptor.keepAlive, params]);
 
   const ctx = usePaneContext({
     descriptor,
@@ -350,7 +356,7 @@ function PaneHost({
           paneId={descriptor.id}
           focused={focused}
           actions={descriptor.captionActions?.(ctx) as ReactNode}
-          {...(canExpand && surfaces ? { onExpand: handleExpand } : {})}
+          {...(canExpand ? { onExpand: handleExpand } : {})}
           onClose={handleClose}
         />
       ) : null}

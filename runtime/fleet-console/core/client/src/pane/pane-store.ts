@@ -133,6 +133,28 @@ export function resetSurfacePanes(
   emit({ rail, focusedPaneId: null });
 }
 
+/**
+ * 같은 페인이 다른 대상으로 갈아탄다. **가시성은 건드리지 않는다.**
+ *
+ * 예전에는 `openPane`을 그대로 불렀는데, 그 경로는 존재하는 인스턴스를 `visible: true`로
+ * 되살린다. 확대된 문서가 주소를 갱신할 때마다 레일에 주차돼 있던 같은 페인이 함께 튀어나와,
+ * 한 페인의 두 사본이 서로 다른 주소를 들고 다투게 된다.
+ */
+export function replacePaneParams(paneId: string, params: Readonly<Record<string, string>>): void {
+  const target = state.rail.find((instance) => instance.paneId === paneId);
+  if (!target || sameParams(target.params, params)) return;
+  emit({
+    ...state,
+    rail: state.rail.map((instance) => (instance.paneId === paneId ? { ...instance, params } : instance)),
+  });
+}
+
+function sameParams(a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => a[key] === b[key]);
+}
+
 export function focusPane(paneId: string): void {
   if (state.focusedPaneId === paneId) return;
   emit({ ...state, focusedPaneId: paneId });

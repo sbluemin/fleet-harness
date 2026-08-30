@@ -23,14 +23,22 @@ vi.mock("../core/client/src/pane/pane-registry.js", () => ({
 
 const { RailSurface } = await import("../core/client/src/pane/rail-surface.js");
 const { openPane, closePane, __resetPaneStoreForTests } = await import("../core/client/src/pane/pane-store.js");
+const { getPaneStoreSnapshot } = await import("../core/client/src/pane/pane-store.js");
 const { __resetPaneWidthsForTests, getStoredPaneWidth } = await import("../core/client/src/pane/pane-width-store.js");
+const { getExpandedSurfaceState, openExpandedSurface, resetExpandedSurfacesForTest } = await import("../core/client/src/expanded-surface/store.js");
+
+let listCtx: import("../sdk/pane/types.js").PaneContext | null = null;
+let docCtx: import("../sdk/pane/types.js").PaneContext | null = null;
 
 const listPane: PaneDescriptor = {
   id: "list",
   role: "primary",
   mounts: ["rail"],
   title: () => "List",
-  render: () => <div data-testid="list-body" />,
+  render: (ctx) => {
+    listCtx = ctx;
+    return <div data-testid="list-body" />;
+  },
   defaultWidth: 360,
   minWidth: 240,
 };
@@ -44,6 +52,7 @@ const docPane: PaneDescriptor = {
   title: (ctx) => ctx.params.path ?? "Document",
   render: (ctx) => {
     seenPanes.push(ctx.panes);
+    docCtx = ctx;
     return <div data-testid="doc-body" />;
   },
   defaultWidth: 420,
@@ -81,6 +90,9 @@ beforeEach(() => {
   __resetPaneWidthsForTests();
   extraWidthRequests.length = 0;
   seenPanes.length = 0;
+  listCtx = null;
+  docCtx = null;
+  resetExpandedSurfacesForTest();
   container = document.createElement("div");
   document.body.append(container);
   act(() => { root = createRoot(container); });
@@ -156,6 +168,33 @@ describe("레일 표면의 2단", () => {
     // 방금 닫은 열을 스스로 다시 여는 종류의 결함이 거기서 태어난다.
     expect(seenPanes.length).toBeGreaterThan(1);
     expect(new Set(seenPanes).size).toBe(1);
+  });
+
+  it("확대된 페인을 다시 열면 그 자리에서 갈아탄다 — 레일에 사본을 세우지 않는다", () => {
+    render();
+    openExpandedSurface({ surfaceId: "pane", params: { paneId: "doc", path: "a.ts" } });
+
+    // 목록에서 다른 문서를 고르는 동작. 마운트를 말하지 않았으므로 호스트가 정한다.
+    act(() => { listCtx?.panes.open({ paneId: "doc", params: { path: "b.ts" } }); });
+
+    // 레일에 사본이 서면 한 페인의 두 사본이 서로 다른 주소를 들고 각자 자기 주소로
+    // 스토어를 되돌리려 든다 — 갱신이 멈추지 않고 화면이 통째로 죽는다.
+    expect(getPaneStoreSnapshot().rail.filter((instance) => instance.visible)).toEqual([]);
+    expect(getExpandedSurfaceState().instances[0]?.params).toEqual({ paneId: "doc", path: "b.ts" });
+  });
+
+  it("주소 갱신은 주차된 페인을 되살리지 않는다", () => {
+    render();
+    act(() => { openPane({ paneId: "doc", params: { path: "a.ts" } }); });
+    act(() => { closePane("doc", { keepAlive: true }); });
+    expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(false);
+
+    // 주차된 사본도 렌더는 계속되므로 자기 컨텍스트를 갖는다 — 그 창구로 갈아탄다.
+    act(() => { docCtx?.panes.replaceParams({ path: "b.ts" }); });
+
+    // 확대된 문서가 주소를 갱신할 때마다 주차된 사본이 튀어나오면 같은 다툼이 되살아난다.
+    expect(getPaneStoreSnapshot().rail[0]?.visible).toBe(false);
+    expect(getPaneStoreSnapshot().rail[0]?.params).toEqual({ path: "b.ts" });
   });
 
   it("분할선 키보드 이동은 폭을 기억한다", () => {
