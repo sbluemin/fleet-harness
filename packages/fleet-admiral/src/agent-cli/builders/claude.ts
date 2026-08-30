@@ -21,9 +21,20 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
  *
  * 실측(Claude Code 2.1.251, 격리 config): 사용자 설정에 `permissions.defaultMode:
  * "bypassPermissions"`만 두고 플래그 없이 열면 init 메시지가 `permissionMode:
- * "bypassPermissions"`로 온다. 같은 설정에 `--permission-mode default`를 더하면 `"default"`가
- * 온다. 즉 플래그를 빼는 선택은 "게이트를 세운다"가 아니라 "주변 설정에 맡긴다"이고, 그러면
- * 설정 화면은 끔이라고 말하면서 세션은 바이패스로 도는 조합이 생긴다.
+ * "bypassPermissions"`로 온다. 같은 설정에 `--permission-mode auto`를 더하면 `"auto"`가 온다.
+ * 즉 플래그를 빼는 선택은 "게이트를 세운다"가 아니라 "주변 설정에 맡긴다"이고, 그러면 설정
+ * 화면은 끔이라고 말하면서 세션은 바이패스로 도는 조합이 생긴다.
+ *
+ * 끄는 쪽이 `auto`인 이유: 이 CLI가 광고하는 선택지는 `acceptEdits, auto, bypassPermissions,
+ * manual, dontAsk, plan`이고(실측: 잘못된 값을 주면 이 목록을 그대로 돌려준다) `default`는
+ * 그 목록에 없는 레거시 별칭이다 — 받아 주기는 하지만 상태줄은 "manual mode on"으로 말한다.
+ * 수동 모드는 도구마다 사람이 답해야 해서 게이트를 세우자는 요구를 넘어 작업 방식을 바꾼다.
+ * `auto`는 게이트를 그대로 세운 채 판정기가 대신 답한다 — 확인이 필요하면 터미널에서 묻고,
+ * 판단이 서지 않으면 막는다(fail closed). 바이패스와 달리 게이트 자체는 살아 있다.
+ *
+ * 값 하나가 자식의 런치 가능 여부를 가른다: 모르는 값을 주면 자식은 세션을 열지 않고
+ * `error: option '--permission-mode <mode>' argument ... is invalid`로 죽는다. 이 목록을
+ * 바꿀 때는 지원 대상 Claude Code가 그 값을 아는지부터 확인할 것.
  *
  * 이 자리는 Fleet이 자기 런치의 권한 모드를 정하는 곳이다. 바이패스를 강제하던 이전에도
  * 주변 설정은 이미 무시되고 있었으므로, 반대 방향을 못박는 것은 좁히기가 아니라 같은 권한을
@@ -33,7 +44,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
 function buildPermissionArgs(claudeCodeSkipPermissions: boolean | undefined): string[] {
   return claudeCodeSkipPermissions === true
     ? ["--dangerously-skip-permissions"]
-    : ["--permission-mode", "default"];
+    : ["--permission-mode", "auto"];
 }
 
 /**

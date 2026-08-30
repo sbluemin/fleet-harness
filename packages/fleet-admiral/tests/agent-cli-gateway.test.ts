@@ -250,8 +250,9 @@ describe("claude-gateway argument composition", () => {
     // 승인 게이트를 건너뛰는 것은 사용자가 켠 경우에만 참이다.
     expect(args).not.toContain("--dangerously-skip-permissions");
     // 플래그를 빼는 것만으로는 게이트가 서지 않는다 — 주변 설정의 defaultMode가 살아나므로
-    // 끄는 방향도 못박아야 설정 화면의 "끔"이 세션의 사실과 같아진다.
-    expect(args[args.indexOf("--permission-mode") + 1]).toBe("default");
+    // 끄는 방향도 못박아야 설정 화면의 "끔"이 세션의 사실과 같아진다. `auto`는 게이트를 세운 채
+    // 판정기가 답하는 모드다(`default`는 상태줄이 "manual mode on"으로 말하는 수동 모드).
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("auto");
   });
 
   it("carries the bypass flag only when the launch opted in, and always after the allowlist value", () => {
@@ -265,7 +266,7 @@ describe("claude-gateway argument composition", () => {
 
     const optedOut = buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: false });
     expect(optedOut).not.toContain("--dangerously-skip-permissions");
-    expect(optedOut[optedOut.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(optedOut[optedOut.indexOf("--permission-mode") + 1]).toBe("auto");
 
     const optedIn = buildClaudeGatewayArgs({ ...base, claudeCodeSkipPermissions: true });
     // 두 방향은 배타적이다 — 함께 실으면 자식이 무엇을 따를지 argv가 두 번 말한다.
@@ -394,7 +395,7 @@ describe("claude-gateway argument composition", () => {
     expect(injected.args).toContain("--mcp-config");
     expect(injected.args).toContain("--settings");
     expect(injected.args).not.toContain("--dangerously-skip-permissions");
-    expect(injected.args[injected.args.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(injected.args[injected.args.indexOf("--permission-mode") + 1]).toBe("auto");
 
     const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
     const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
