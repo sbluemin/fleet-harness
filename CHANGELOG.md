@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.78.0] - 2026-08-30
+
+### fleet-console
+
+#### Changed
+- Activity Rail settings now live behind a gear at the top of the icon column, split from the panel tabs by a divider, and open as a menu holding float over Map, panel opacity, reset panel width, and close panel.
+- Let full-screen terminal applications own scrolling while they use the alternate screen, reclaim scrollbar and sub-cell grid space, and restore normal terminal history when they exit.
+- Let Agent Operations and the global Shell use the full terminal body without an inset gutter.
+- Advertise 24-bit color support to programs running in Shell and Agent terminals while retaining compatible terminal metadata, and let dark Liquid Glass terminal panels reveal the canvas through a smoked translucent surface.
+
+#### Fixed
+- Keep the Session Analyst panel at full strength while its session holds focus, so the panel you just opened no longer fades along with the neighboring panels.
+- Keep the What's New language picker scoped to release notes without overriding the Console display language.
+- Preserve the global Shell session and terminal contents when its sidebar surface is closed and reopened.
+
+#### Removed
+- The rail panel no longer summons a header when the pointer crosses the top of its body, so panel controls on the first row stay reachable and the body keeps the full slot.
+
 ## [1.77.1] - 2026-08-29
 
 ### fleet-console
