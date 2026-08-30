@@ -401,7 +401,15 @@ function RailSection({ binding, collapsed, baseCtx, connection, connectionLostAt
           className="right-rail-section-close"
           aria-label={t("rail.chrome.closePanel", { title })}
           title={t("rail.chrome.closePanel", { title })}
-          onClick={() => closeRailPanel(binding.entry.id)}
+          onClick={(event) => {
+            // 닫힘으로 사라질 버튼이 포커스를 쥔 채 언핀되면 포커스가 body로 떨어져 키보드
+            // 위치를 잃는다(Codex 리뷰). 같은 패널의 레일 아이콘은 언핀 후에도 남는 안정
+            // 좌표이므로 먼저 그리로 옮긴다.
+            if (event.currentTarget === document.activeElement) {
+              document.getElementById(`rail-tab-${binding.entry.id}`)?.focus();
+            }
+            closeRailPanel(binding.entry.id);
+          }}
         >
           <CloseGlyph />
         </button>

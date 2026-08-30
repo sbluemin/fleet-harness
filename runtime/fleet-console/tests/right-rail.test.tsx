@@ -226,6 +226,15 @@ describe("Right Rail pinned stack", () => {
     expect([...container.querySelectorAll(".right-rail-section-title")].map((el) => el.textContent)).toEqual(["REPOSITORY"]);
   });
 
+  it("moves focus to the rail icon before a focused close button unpins its section", () => {
+    // 포커스를 쥔 닫기 버튼이 언마운트되면 포커스가 body로 떨어진다 — 아이콘 이관 계약(Codex 리뷰).
+    renderRail();
+    const close = sectionOf("REPOSITORY").querySelector<HTMLButtonElement>(".right-rail-section-close");
+    act(() => { close!.focus(); close!.click(); });
+    expect(getRailStoreSnapshot().pinnedPanelIds).toEqual([]);
+    expect(document.activeElement).toBe(iconButton("REPOSITORY"));
+  });
+
   it("collapse toggle speaks aria-expanded on the section header", () => {
     renderRail();
     const toggle = sectionOf("REPOSITORY").querySelector<HTMLButtonElement>(".right-rail-section-toggle");
