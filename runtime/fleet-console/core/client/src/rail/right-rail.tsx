@@ -17,7 +17,7 @@ import { getState, subscribe } from "../store.js";
 import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, toggleRailPanel, toggleRailSectionCollapsed, useRailChromeExpanded, useRailCollapsedPanelIds, useRailOverlayAlpha, useRailPanelExtraWidths, useRailPinnedPanelIds } from "./rail-store.js";
+import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth } from "./rail-store.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
@@ -34,9 +34,8 @@ const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 /** 아이콘 열 폭 — rail.css .right-rail-icons와 한 값. */
 const RAIL_ICON_STRIP_WIDTH = 44;
-/* 스택 개편 후 카드 폭은 패널별이 아니라 카드 단일 값이다 — 두 패널이 동시에 상주하는
-   스택에서 패널별 폭 기억은 어느 값을 카드에 입힐지 결정 불능이었다(감사 high). 구 패널별
-   기억(panelWidths)은 첫 로드에 최댓값으로 승격해 카드 폭으로 흡수한다. */
+/* 카드 폭은 패널별이 아니라 카드 단일 값이다 — 어느 패널이 상주하든 카드는 한 폭을 기억한다.
+   구 패널별 기억(panelWidths)은 첫 로드에 최댓값으로 승격해 카드 폭으로 흡수한다(1회성). */
 const PREFS_CARD_WIDTH = "fleet-console.rail.cardWidth";
 const LEGACY_PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
@@ -106,15 +105,14 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const rootRef = useRef<HTMLDivElement>(null);
-  const pinnedIds = useRailPinnedPanelIds();
-  const collapsedIds = useRailCollapsedPanelIds();
-  const extraWidths = useRailPanelExtraWidths();
+  const activePanelId = useRailActivePanelId();
+  const extraWidth = useRailPanelExtraWidth();
   const railChromeExpanded = useRailChromeExpanded();
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const bindings = useRailEntries();
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
-  // 사실 하나가 진다(pane 계약, #957). 고정 스택·폭 계산은 페인 엔트리만 본다.
+  // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
   const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
   // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
   // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
@@ -133,18 +131,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
     [openSurfaces],
   );
-  // 고정 순서(핀 순)가 곧 스택 순서다 — 등록 목록에 없는 id(내려간 플러그인)는 조용히 거른다.
-  const pinnedBindings = pinnedIds
-    .map((id) => paneEntries.find((binding) => binding.entry.id === id))
-    .filter((binding): binding is RailEntryBinding => binding !== undefined);
-  const expandedBindings = pinnedBindings.filter((binding) => !collapsedIds.includes(binding.entry.id));
-  const hasPanel = pinnedBindings.length > 0;
-  // 폭 요구는 펼쳐진 고정 패널들의 최댓값이다 — 합산하면 카드가 요구의 합만큼 부풀어
-  // 아레나를 과점유한다. 접힌 섹션의 요구는 화면에 없으므로 세지 않는다.
-  const extraWidth = expandedBindings.reduce(
-    (max, binding) => Math.max(max, extraWidths[binding.entry.id] ?? 0),
-    0,
-  );
+  // 등록 목록에 없는 id(내려간 플러그인)는 조용히 무시한다 — 저장된 id는 유지되어
+  // 플러그인이 돌아오면 그 패널이 다시 선다.
+  const activeBinding = activePanelId === null
+    ? null
+    : (paneEntries.find((binding) => binding.entry.id === activePanelId) ?? null);
+  const hasPanel = activeBinding !== null;
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   // 부유 사이드바 카드의 점유 폭 — 두 카드는 같은 층(z --z-rail)의 절대 배치라 그리드가
   // 겹침을 막아 주지 않는다. 레일 폭 상한이 이 점유를 빼지 않으면 드래그·End 키 한 번에
@@ -161,7 +153,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
   const [initialWidths] = useState(() => {
     const stored = readStoredCardWidth();
-    const fallback = defaultCardWidthFor(pinnedBindings.length > 0 ? pinnedBindings : paneEntries);
+    const fallback = defaultCardWidthFor(activeBinding !== null ? [activeBinding] : paneEntries);
     const desired = Math.max(MIN_PANEL_WIDTH, stored ?? fallback);
     return { desired, rendered: Math.min(maxPanelWidth, desired) };
   });
@@ -198,7 +190,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   }, [railChromeExpanded]);
 
   // 아레나 계산의 원료 — 레일이 캔버스 위에서 점유하는 실측 폭을 스토어로 보고한다.
-  // fit-all·Tactical 슬롯·War Room 무대가 이 값으로 열린 스택을 피해 계산된다.
+  // fit-all·Tactical 슬롯·War Room 무대가 이 값으로 열린 카드를 피해 계산된다.
   // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
   // 가산 extra(예: Codex 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
   // (Codex 리뷰 확정). extra는 best-effort다: 페인 본문은 컨테이너 쿼리로 스스로 열화한다.
@@ -265,16 +257,16 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     saveStoredCardWidth(desiredWidthRef.current);
   }, []);
 
-  // 메뉴의 "패널 폭 초기화" — 기억을 지우고 고정된 패널들의 선언 기본값(최대)으로 되돌린다.
+  // 메뉴의 "패널 폭 초기화" — 기억을 지우고 활성 패널의 선언 기본값으로 되돌린다.
   const handleResetCardWidth = useCallback(() => {
     clearStoredCardWidth();
     const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
-    const next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, defaultCardWidthFor(pinnedBindings.length > 0 ? pinnedBindings : paneEntries)));
+    const next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, defaultCardWidthFor(activeBinding !== null ? [activeBinding] : paneEntries)));
     desiredWidthRef.current = next;
     cardWidthRef.current = next;
     setCardWidthState(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinnedIds.join("\0"), paneEntries.length]);
+  }, [activePanelId, paneEntries.length]);
 
   const baseCtx: RailPanelContext = useMemo(() => ({
     theaterId,
@@ -318,20 +310,21 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
             aria-valuemax={maxPanelWidth}
           />
         )}
-        {hasPanel && (
-          <div className="right-rail-stack">
-            {pinnedBindings.map((binding) => (
-              <RailSection
-                key={binding.entry.id}
-                binding={binding}
-                collapsed={collapsedIds.includes(binding.entry.id)}
-                baseCtx={baseCtx}
-                connection={connection}
-                connectionLostAt={connectionLostAt}
-                language={language}
-              />
-            ))}
-          </div>
+        {activeBinding !== null && (
+          // key 재마운트가 패널 교체의 수명 계약이다: 떠나는 표면은 자기 언마운트 cleanup에서
+          // 비-keepAlive detail을 닫는다(RailSurface의 departing sweep). React가 물러나는
+          // 트리의 passive cleanup을 도착 트리의 mount effect보다 먼저 돌리므로, 도착 본문이
+          // 마운트에서 여는 detail(파일 문서 열·Codex 리더)은 정리에 걸리지 않는다. 인스턴스를
+          // 재사용하면 그 정리가 수동 effect로 밀려 도착 마운트 **뒤에** 돌아, 방금 연 열을
+          // 쓸어 내거나(Codex 3차 P1) 확장 폭 소유권이 새 패널로 샌다(Codex 2차 P2).
+          <RailSection
+            key={activeBinding.entry.id}
+            binding={activeBinding}
+            baseCtx={baseCtx}
+            connection={connection}
+            connectionLostAt={connectionLostAt}
+            language={language}
+          />
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
@@ -341,9 +334,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         <button
           id="rail-settings-toggle"
           type="button"
-          className={`right-rail-ico right-rail-settings-btn${pinnedIds.includes(SETTINGS_RAIL_ENTRY_ID) ? " is-active" : ""}`}
-          aria-pressed={pinnedIds.includes(SETTINGS_RAIL_ENTRY_ID)}
-          aria-controls={pinnedIds.includes(SETTINGS_RAIL_ENTRY_ID) ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
+          className={`right-rail-ico right-rail-settings-btn${activePanelId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
+          aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
+          aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
           aria-label={t("settings.title")}
           title={t("settings.title")}
           onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
@@ -351,11 +344,11 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           <GearGlyph />
         </button>
         <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
-        {/* 스택 개편 후 아이콘은 배타 탭이 아니라 고정(pin) 토글이다 — 여러 개가 동시에 켜진다.
+        {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
             설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
         <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
           {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={pinnedIds.includes(entry.id)} />
+            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
           ))}
         </div>
         {pluginRuns.map((run) => run.kind === "action"
@@ -377,7 +370,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           : (
             <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
               {run.bindings.map(({ entry }) => (
-                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={pinnedIds.includes(entry.id)} />
+                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
               ))}
             </div>
           ))}
@@ -388,31 +381,21 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 
 interface RailSectionProps {
   readonly binding: RailEntryBinding;
-  readonly collapsed: boolean;
   readonly baseCtx: RailPanelContext;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly language: ConsoleLocale;
 }
 
-/** 스택의 한 칸 — 헤더(접기·닫기) + 상주 본문. 접힘은 본문을 숨길 뿐 마운트를 유지한다:
- *  파일 트리·diff·Codex의 내부 상태가 섹션 접기마다 리셋되면 스택은 배타 탭보다 나쁘다. */
-function RailSection({ binding, collapsed, baseCtx, connection, connectionLostAt, language }: RailSectionProps) {
+/** 카드의 독점 상주자 — 헤더(제목·닫기) + 본문. 패널은 하나만 상주하므로 접기는 없다:
+ *  안 볼 패널은 접는 게 아니라 닫거나 다른 패널로 교체한다. */
+function RailSection({ binding, baseCtx, connection, connectionLostAt, language }: RailSectionProps) {
   const t = useT();
   const title = resolveLocalizedText(binding.entry.title, language);
   return (
-    <section className={`right-rail-section${collapsed ? " is-collapsed" : ""}`}>
+    <section className="right-rail-section">
       <header className="right-rail-section-head">
-        <button
-          type="button"
-          className="right-rail-section-toggle"
-          aria-expanded={!collapsed}
-          aria-controls={`rail-panel-${binding.entry.id}`}
-          onClick={() => toggleRailSectionCollapsed(binding.entry.id)}
-        >
-          <span className="right-rail-section-caret" aria-hidden="true" />
-          <span className="right-rail-section-title">{title}</span>
-        </button>
+        <span className="right-rail-section-title">{title}</span>
         <button
           type="button"
           className="right-rail-section-close"
@@ -423,7 +406,11 @@ function RailSection({ binding, collapsed, baseCtx, connection, connectionLostAt
             // 위치를 잃는다(Codex 리뷰). 같은 패널의 레일 아이콘은 언핀 후에도 남는 안정
             // 좌표이므로 먼저 그리로 옮긴다.
             if (event.currentTarget === document.activeElement) {
-              document.getElementById(`rail-tab-${binding.entry.id}`)?.focus();
+              // 설정은 탭 목록에 서지 않는다 — 문(톱니)이 닫힌 뒤에도 남는 안정 좌표다.
+              const focusId = binding.entry.id === SETTINGS_RAIL_ENTRY_ID
+                ? "rail-settings-toggle"
+                : `rail-tab-${binding.entry.id}`;
+              document.getElementById(focusId)?.focus();
             }
             closeRailPanel(binding.entry.id);
           }}
@@ -431,7 +418,7 @@ function RailSection({ binding, collapsed, baseCtx, connection, connectionLostAt
           <CloseGlyph />
         </button>
       </header>
-      <div className="right-rail-section-body" hidden={collapsed} inert={collapsed || undefined}>
+      <div className="right-rail-section-body">
         <RailPanelBody binding={binding} ctx={baseCtx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
       </div>
     </section>
@@ -493,7 +480,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
     }
   }, [staleVisible]);
 
-  // 스택의 모든 섹션은 region이다. 설정은 탭이 아니라 문(톱니 토글)이 열므로 문을 라벨로
+  // 독점 섹션도 region이다. 설정은 탭이 아니라 문(톱니 토글)이 열므로 문을 라벨로
   // 삼고, 나머지 섹션은 자기 레일 탭(rail-tab-*)을 라벨로 삼는다.
   const doorSurface = binding.entry.id === SETTINGS_RAIL_ENTRY_ID;
   return (
@@ -553,7 +540,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       id={`rail-tab-${entry.id}`}
       className={`right-rail-ico${isActive ? " is-active" : ""}`}
       type="button"
-      // 스택 개편 후 패널 아이콘은 배타 탭이 아니라 고정 토글이다 — 켜짐은 pressed로 말한다.
+      // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={isActive}
       aria-label={title}
       disabled={entry.activate !== undefined && context.theaterId === null}
@@ -568,5 +555,3 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
 function CloseGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
-
-/* 패널 접기 아이콘 — 우측 영역을 선으로 구분한 패널 모양(#44 시안, 우측 미러). */

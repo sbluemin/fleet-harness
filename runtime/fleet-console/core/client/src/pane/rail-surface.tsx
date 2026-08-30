@@ -83,12 +83,37 @@ export const RailSurface = memo(function RailSurface({
   const ownedIdsRef = useRef(ownedIds);
   ownedIdsRef.current = ownedIds;
   const previousEntryRef = useRef<string | null>(null);
+  // 확장 폭 소유권 — 아래 폭 효과와 나눠 쓴다. 엔트리가 바뀌면 소유권도 떠나는 표면의 것이라
+  // 여기서 함께 걷는다: 남겨 두면 도착 렌더에서 standing 0을 본 폭 효과가 이미 도착 패널의
+  // 것이 된 창구로 null을 쏘고, 자식(도착 본문) 마운트 효과가 부모 효과보다 먼저 돌아 그
+  // 본문이 막 요청한 폭을 덮는다(Codex P2). 떠난 표면 몫의 정리는 창구 소유자(호스트)의
+  // 계약이므로 여기서 창구를 부르지는 않는다.
+  const ownsExtraRef = useRef(false);
   useEffect(() => {
     const previous = previousEntryRef.current;
     previousEntryRef.current = entryId;
     if (previous === null || previous === entryId) return;
+    ownsExtraRef.current = false;
     resetSurfacePanes(paneIndexRef.current, ownedIdsRef.current);
   }, [entryId]);
+
+  // 떠나는 표면의 잔재 정리(departing sweep) — 독점 레일에서 패널 교체·닫기는 이 표면의
+  // 언마운트로 온다. 자기 소유 중 **비-keepAlive detail만** 닫는다: primary 인스턴스는 주소
+  // 기억으로 남고(재열림 연속성 계약), keepAlive는 세워 둔 채 떠나야 돌아왔을 때 그 자리가
+  // 다시 선다(구 unpin 계약 승계). 남기면 keepAlive 없이 닫힌 detail이 재열림에서 옛 params째
+  // 되살아난다(닫기=언마운트 계약). React는 물러나는 트리의 passive cleanup을 도착 트리의
+  // mount effect보다 먼저 돌리므로 도착 본문이 마운트에서 여는 detail은 여기 걸리지 않고,
+  // StrictMode 예행에서도 효과가 세운 열은 재설치가 다시 세운다.
+  const panesRef = useRef(binding.panes);
+  panesRef.current = binding.panes;
+  useEffect(() => () => {
+    for (const pane of panesRef.current) {
+      if (pane.role === "primary" || pane.keepAlive === true) continue;
+      // 호스트가 닫는 모든 경로는 onClose를 통보한다(sdk/pane 계약) — 캡션 닫기와 같은 문.
+      // 빼먹으면 플러그인은 그 문서가 여전히 열려 있다 믿고 다음 상태 발행에서 되살린다.
+      closePane(pane.id, pane.onClose ? { onClose: pane.onClose } : {});
+    }
+  }, []);
 
   const primary = useMemo(
     () => binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0],
@@ -156,7 +181,6 @@ export const RailSurface = memo(function RailSurface({
     (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? descriptor.defaultWidth ?? MIN_PANE_PX),
     0,
   );
-  const ownsExtraRef = useRef(false);
   useEffect(() => {
     if (standing.length > 0) {
       ownsExtraRef.current = true;

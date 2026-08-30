@@ -1962,11 +1962,13 @@ describe("Instrument core design contract", () => {
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
     expect(settingsPane).not.toContain("toggleRailPanelBehavior");
-    // 스택 상주 계약: 고정 목록이 단일 activeId를 대체하고, 섹션 본문은 접혀도 마운트를 유지한다.
-    expect(railStore).toContain("fleet-console.rail.pinnedPanels");
+    // 독점 상주 계약: 카드에는 패널 하나만 상주한다 — 단일 activeId가 고정 목록을 대체하고
+    // 섹션 접기는 퇴역했다(안 볼 패널은 접는 게 아니라 닫거나 교체한다).
+    expect(railStore).toContain("fleet-console.rail.activePanelId");
     expect(railStore).not.toContain("panelBehavior");
-    expect(rightRail).toContain("toggleRailSectionCollapsed");
-    expect(rightRail).toContain('hidden={collapsed} inert={collapsed || undefined}');
+    expect(rightRail).not.toContain("toggleRailSectionCollapsed");
+    expect(rail).not.toContain(".right-rail-section-toggle");
+    expect(rail).not.toContain(".right-rail-section-caret");
     // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail has no
     // panel head at all — its settings live behind the gear at the top of the icon column,
     // so the body owns the whole slot and no chrome can summon itself over it. The retired

@@ -411,7 +411,10 @@ describe("the manage door after the settings page retired", () => {
 
   it("summons the settings surface at connectivity from the home list", async () => {
     __resetPaneStoreForTests();
-    for (const id of [...getRailStoreSnapshot().pinnedPanelIds]) closeRailPanel(id);
+    {
+      const active = getRailStoreSnapshot().activePanelId;
+      if (active !== null) closeRailPanel(active);
+    }
     setRailChromeExpanded(false);
     stubHomeConsole();
 
@@ -419,7 +422,7 @@ describe("the manage door after the settings page retired", () => {
     await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
     await act(async () => { manageLink().click(); });
 
-    expect(getRailStoreSnapshot().pinnedPanelIds).toContain("settings");
+    expect(getRailStoreSnapshot().activePanelId).toBe("settings");
     expect(getRailStoreSnapshot().railChromeExpanded).toBe(true);
     expect(getPaneStoreSnapshot().rail[0]?.paneId).toBe("settings");
     expect(getPaneStoreSnapshot().rail[0]?.params).toEqual({ section: "connectivity" });

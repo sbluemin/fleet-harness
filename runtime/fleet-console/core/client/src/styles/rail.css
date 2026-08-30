@@ -11,7 +11,7 @@
 
 /* 부유 유리 카드 — 전면 해도 개편으로 레일은 그리드 열이 아니라 캔버스 위에 뜬 카드다.
    구 push/overlay 이원은 퇴역했다: 밀어낼 그리드 트랙이 더는 없고, "가리지 않는다"는 push의
-   기대는 아레나 인셋(캔버스 기하가 열린 스택 폭을 항상 제외)이 승계한다. */
+   기대는 아레나 인셋(캔버스 기하가 열린 카드 폭을 항상 제외)이 승계한다. */
 .right-rail {
   position: absolute;
   top: var(--space-3);
@@ -94,10 +94,10 @@
   pointer-events: none;
 }
 
-/* ── 스택 섹션 ─────────────────────────────────────────────────────
-   여러 패널이 병렬 상주한다(P3). 펼친 섹션들이 남은 높이를 균분하고, 접힌 섹션은 헤더만
-   남는다. 본문은 접혀도 마운트를 유지한다 — 숨김은 [hidden]+inert가 진다(right-rail.tsx). */
-.right-rail-stack {
+/* ── 독점 섹션 ─────────────────────────────────────────────────────
+   카드에는 패널이 하나만 상주한다 — 헤더(제목·닫기)와 본문이 슬롯 전체를 갖는다.
+   z-index 1은 슬롯 재질(::before, z 0) 위로 헤더까지 함께 띄운다(구 스택 래퍼의 몫 승계). */
+.right-rail-section {
   position: relative;
   z-index: 1;
   display: flex;
@@ -105,22 +105,6 @@
   min-height: 0;
   min-width: 240px;
   overflow: hidden;
-}
-
-.right-rail-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 0;
-  min-height: 0;
-  border-top: 1px solid var(--surface-rim);
-}
-
-.right-rail-section:first-child {
-  border-top: none;
-}
-
-.right-rail-section.is-collapsed {
-  flex: 0 0 auto;
 }
 
 .right-rail-section-head {
@@ -131,52 +115,20 @@
   padding: 3px 6px 3px 4px;
 }
 
-.right-rail-section-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* 제목은 더는 접기 버튼이 아니다 — 정적 라벨이 섹션의 정체만 말한다. */
+.right-rail-section-title {
   flex: 1;
   min-width: 0;
   padding: 3px 5px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  text-align: left;
-  cursor: pointer;
-}
-
-.right-rail-section-toggle:hover,
-.right-rail-section-toggle:focus-visible {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-  outline: none;
-}
-
-.right-rail-section-caret {
-  flex: none;
-  width: 0;
-  height: 0;
-  border-left: 4px solid currentColor;
-  border-top: 3.5px solid transparent;
-  border-bottom: 3.5px solid transparent;
-  transition: transform var(--duration-fast) var(--ease-spring);
-}
-
-.right-rail-section-toggle[aria-expanded="true"] .right-rail-section-caret {
-  transform: rotate(90deg);
-}
-
-.right-rail-section-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .right-rail-section-close {

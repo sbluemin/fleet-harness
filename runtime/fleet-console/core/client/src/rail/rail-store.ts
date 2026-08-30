@@ -1,17 +1,15 @@
 import { useSyncExternalStore } from "react";
 
-/* 레일은 단일 활성 패널 슬롯에서 다중 고정(pin) 스택으로 개편됐다(전면 해도 개편 P3).
-   - pinnedPanelIds: 카드에 상주하는 패널들. 순서가 곧 스택 순서다. localStorage에 영속.
-   - collapsedPanelIds: 접힌 섹션. 세션 메모리 전용 — 새 페이지 로드는 전부 펼침으로 시작한다
-     (사이드바 STATUS 축과 같은 비영속 계약).
-   - push/overlay 이원은 퇴역했다: 부유 카드 레일에는 밀어낼 그리드 트랙이 없다. 구 push의
-     "콘텐츠를 가리지 않는다"는 기대는 아레나 인셋이 승계한다 — 열린 패널 폭이 캔버스 아레나에서
-     항상 제외되므로 fit-all·Tactical 슬롯·War Room 무대가 패널을 피해 계산된다. */
+/* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
+   - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
+   - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 누르면 닫히고, 다른 패널을 누르면 교체된다.
+   - push/overlay 이원의 퇴역과 아레나 인셋 승계는 스택 시절 그대로다 — 열린 패널 폭이 캔버스
+     아레나에서 항상 제외되므로 fit-all·Tactical 슬롯·War Room 무대가 패널을 피해 계산된다. */
 interface RailStore {
-  readonly pinnedPanelIds: readonly string[];
-  readonly collapsedPanelIds: readonly string[];
+  readonly activePanelId: string | null;
   readonly railChromeExpanded: boolean;
-  readonly panelExtraWidths: Readonly<Record<string, number>>;
+  /** 활성 패널의 확장 폭 요구(px) — 독점 슬롯이라 요구도 하나다. 패널 교체·닫힘에 0으로 리셋. */
+  readonly panelExtraWidth: number;
   readonly overlayAlpha: RailOverlayAlpha;
   /** 레일 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
   readonly railOccupiedPx: number;
@@ -24,17 +22,16 @@ export const RAIL_OVERLAY_ALPHA_MAX = 100;
 export const RAIL_OVERLAY_ALPHA_DEFAULT = 100;
 
 type Listener = () => void;
-const PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
-const LEGACY_PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
+const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
+const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const PREFS_OVERLAY_ALPHA = "fleet-console.rail.overlayAlpha";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 let store: RailStore = {
-  pinnedPanelIds: readStoredPinnedPanels(),
-  collapsedPanelIds: [],
+  activePanelId: readStoredActivePanelId(),
   railChromeExpanded: readStoredChromeExpanded(),
-  panelExtraWidths: {},
+  panelExtraWidth: 0,
   overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
 };
@@ -48,30 +45,23 @@ export function getRailStoreSnapshot(): RailStore {
   return store;
 }
 
-/** 아이콘 클릭의 토글 — 고정돼 있으면 내리고, 아니면 고정하고 펼친다. */
+/** 아이콘 클릭의 배타 토글 — 켜진 패널이면 닫고, 아니면 그 패널로 교체한다. */
 export function toggleRailPanel(id: string): void {
-  if (store.pinnedPanelIds.includes(id)) {
-    unpinRailPanel(id);
+  if (store.activePanelId === id) {
+    deactivateRailPanel();
     return;
   }
-  pinRailPanel(id);
+  activateRailPanel(id);
 }
 
-/** Ensure-open(팔레트·플러그인 capability): 고정을 보장하고 접혀 있으면 펼친다. 절대 닫지 않는다. */
+/** Ensure-open(팔레트·플러그인 capability): 그 패널이 활성임을 보장한다. 절대 닫지 않는다. */
 export function openRailPanel(id: string): void {
-  pinRailPanel(id);
+  activateRailPanel(id);
 }
 
 export function closeRailPanel(id: string): void {
-  unpinRailPanel(id);
-}
-
-export function toggleRailSectionCollapsed(id: string): void {
-  if (!store.pinnedPanelIds.includes(id)) return;
-  const collapsed = store.collapsedPanelIds.includes(id)
-    ? store.collapsedPanelIds.filter((panelId) => panelId !== id)
-    : [...store.collapsedPanelIds, id];
-  setStore({ ...store, collapsedPanelIds: collapsed });
+  if (store.activePanelId !== id) return;
+  deactivateRailPanel();
 }
 
 export function setRailChromeExpanded(expanded: boolean): void {
@@ -91,17 +81,14 @@ export function setRailOverlayAlpha(alpha: number): void {
   saveStoredOverlayAlpha(clamped);
 }
 
-// 폭 요구는 고정된 패널 전원이 말할 수 있다 — 단일 활성 가드는 스택에서 뒷섹션의 확장 요구를
-// 버리는 결함이었다(감사 blocker). 소비 측은 펼쳐진 고정 패널의 최댓값을 취한다.
+// 폭 요구는 활성 패널만 말할 수 있다 — 독점 슬롯에서 화면 밖 패널의 요구는 실체가 없다.
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
-  if (!store.pinnedPanelIds.includes(panelId)) return;
+  if (store.activePanelId !== panelId) return;
   const raw = (px === null || !Number.isFinite(px)) ? 0 : px;
   const normalized = Math.max(0, Math.round(raw));
   const clamped = typeof window !== "undefined" ? Math.min(normalized, Math.max(0, window.innerWidth - 548)) : normalized;
-  // 미등록 상태에서 0 요청도 항목을 심는다 — undefined와 0을 같다고 치면 첫 정규화 요청이
-  // 스냅샷에 흔적을 남기지 않아 상태 검사가 어긋난다.
-  if (store.panelExtraWidths[panelId] !== undefined && clamped === store.panelExtraWidths[panelId]) return;
-  setStore({ ...store, panelExtraWidths: { ...store.panelExtraWidths, [panelId]: clamped } });
+  if (clamped === store.panelExtraWidth) return;
+  setStore({ ...store, panelExtraWidth: clamped });
 }
 
 /** RightRail이 레이아웃 후 자기 점유 폭을 보고한다 — Operations 페이지의 아레나 계산 원료. */
@@ -111,20 +98,16 @@ export function reportRailOccupiedPx(px: number): void {
   setStore({ ...store, railOccupiedPx: normalized });
 }
 
-export function useRailPinnedPanelIds(): readonly string[] {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).pinnedPanelIds;
-}
-
-export function useRailCollapsedPanelIds(): readonly string[] {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).collapsedPanelIds;
+export function useRailActivePanelId(): string | null {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).activePanelId;
 }
 
 export function useRailChromeExpanded(): boolean {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railChromeExpanded;
 }
 
-export function useRailPanelExtraWidths(): Readonly<Record<string, number>> {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidths;
+export function useRailPanelExtraWidth(): number {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }
 
 export function useRailOverlayAlpha(): RailOverlayAlpha {
@@ -135,58 +118,66 @@ export function useRailOccupiedPx(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railOccupiedPx;
 }
 
-function pinRailPanel(id: string): void {
-  const pinned = store.pinnedPanelIds.includes(id) ? store.pinnedPanelIds : [...store.pinnedPanelIds, id];
-  const collapsed = store.collapsedPanelIds.filter((panelId) => panelId !== id);
-  if (pinned === store.pinnedPanelIds && collapsed.length === store.collapsedPanelIds.length) return;
-  setStore({ ...store, pinnedPanelIds: pinned, collapsedPanelIds: collapsed });
-  saveStoredPinnedPanels(pinned);
+function activateRailPanel(id: string): void {
+  if (store.activePanelId === id) return;
+  // 교체는 이전 패널의 확장 폭 요구도 함께 내린다 — 화면에 없는 요구가 아레나를 점유하면 안 된다.
+  setStore({ ...store, activePanelId: id, panelExtraWidth: 0 });
+  saveStoredActivePanelId(id);
 }
 
-function unpinRailPanel(id: string): void {
-  if (!store.pinnedPanelIds.includes(id)) return;
-  const pinned = store.pinnedPanelIds.filter((panelId) => panelId !== id);
-  const { [id]: _dropped, ...extraWidths } = store.panelExtraWidths;
-  setStore({
-    ...store,
-    pinnedPanelIds: pinned,
-    collapsedPanelIds: store.collapsedPanelIds.filter((panelId) => panelId !== id),
-    panelExtraWidths: extraWidths,
-  });
-  saveStoredPinnedPanels(pinned);
+function deactivateRailPanel(): void {
+  if (store.activePanelId === null) return;
+  setStore({ ...store, activePanelId: null, panelExtraWidth: 0 });
+  saveStoredActivePanelId(null);
 }
 
-function readStoredPinnedPanels(): readonly string[] {
+function readStoredActivePanelId(): string | null {
   try {
-    const raw = localStorage.getItem(PREFS_PINNED_PANELS);
-    if (raw !== null) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === "string" && id !== "");
-      return [];
+    const stored = localStorage.getItem(PREFS_ACTIVE_PANEL);
+    if (stored !== null) {
+      // 스택 키가 남아 있으면 함께 걷는다 — 활성 키가 지워진 뒤 옛 스택이 되살아나면 안 된다.
+      try { localStorage.removeItem(LEGACY_PREFS_PINNED_PANELS); } catch { /* ignore */ }
+      const active = normalizeStoredPanelId(stored);
+      // 1기 슬롯 값(diff/history/alerts)은 같은 키에 살아 있다. 정규화만 하고 다시 쓰지 않으면
+      // 매 로드가 history 소스를 되심고, alerts는 닫힌 레일을 유령 키로 남긴다(출시본 1회성 승격).
+      if (active !== stored) {
+        try {
+          if (active === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
+          else localStorage.setItem(PREFS_ACTIVE_PANEL, active);
+        } catch { /* best-effort migration */ }
+      }
+      return active;
     }
-    // 단일 활성 슬롯 시절의 기억을 스택의 첫 고정으로 승격한다(1회성 마이그레이션).
-    const legacy = readLegacyStoredPanelId();
-    const pinned = legacy === null ? [] : [legacy];
+    // 스택 시절의 기억을 독점 슬롯으로 승격한다 — 첫 고정(최상단 섹션)이 살아남는다(1회성 마이그레이션).
+    const raw = localStorage.getItem(LEGACY_PREFS_PINNED_PANELS);
+    if (raw === null) return null;
+    let active: string | null = null;
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const first = parsed.find((id): id is string => typeof id === "string" && id !== "");
+      active = first === undefined ? null : normalizeStoredPanelId(first);
+    }
     try {
-      localStorage.setItem(PREFS_PINNED_PANELS, JSON.stringify(pinned));
-      localStorage.removeItem(LEGACY_PREFS_ACTIVE_PANEL);
+      if (active === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
+      else localStorage.setItem(PREFS_ACTIVE_PANEL, active);
+      localStorage.removeItem(LEGACY_PREFS_PINNED_PANELS);
     } catch { /* best-effort migration */ }
-    return pinned;
-  } catch { return []; }
+    return active;
+  } catch { return null; }
 }
 
-function readLegacyStoredPanelId(): string | null {
-  try {
-    const stored = localStorage.getItem(LEGACY_PREFS_ACTIVE_PANEL);
-    if (stored === "diff" || stored === "history") {
-      try {
-        if (stored === "history") localStorage.setItem(PREFS_REPOSITORY_SOURCE, "history");
-      } catch { /* best-effort migration */ }
-      return "repository";
-    }
-    if (stored === "alerts") return null;
-    return stored;
-  } catch { return null; }
+/* 단일 활성 슬롯 1기 시절 값 정규화 — diff/history는 repository 패널로 흡수됐고(history는
+   Repository 소스 시드 유지), alerts 패널은 퇴역했다. 스택 시절 값은 현대 id라 그대로 통과한다. */
+function normalizeStoredPanelId(stored: string): string | null {
+  if (stored === "") return null;
+  if (stored === "diff" || stored === "history") {
+    try {
+      if (stored === "history") localStorage.setItem(PREFS_REPOSITORY_SOURCE, "history");
+    } catch { /* best-effort migration */ }
+    return "repository";
+  }
+  if (stored === "alerts") return null;
+  return stored;
 }
 
 function readStoredChromeExpanded(): boolean {
@@ -206,8 +197,11 @@ function clampRailOverlayAlpha(alpha: number): RailOverlayAlpha {
   return Math.min(RAIL_OVERLAY_ALPHA_MAX, Math.max(RAIL_OVERLAY_ALPHA_MIN, Math.round(alpha)));
 }
 
-function saveStoredPinnedPanels(pinned: readonly string[]): void {
-  try { localStorage.setItem(PREFS_PINNED_PANELS, JSON.stringify(pinned)); } catch { /* ignore */ }
+function saveStoredActivePanelId(id: string | null): void {
+  try {
+    if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
+    else localStorage.setItem(PREFS_ACTIVE_PANEL, id);
+  } catch { /* ignore */ }
 }
 
 function saveStoredChromeExpanded(expanded: boolean): void {
