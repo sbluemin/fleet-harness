@@ -1433,23 +1433,29 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the Operation list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
-    // 공급자 마크는 실행 표면(Quick Launch·실행 메뉴)에만 남는다 — 목록 표면(사이드바 칩·
-    // 커맨드 밴드·검색 팔레트)의 이름 왼쪽 슬롯은 활동 상태가 소유한다. 목록에서 먼저 읽혀야
-    // 하는 것은 무엇으로 띄웠는지가 아니라 지금 무엇을 하고 있는지다. 마지막 소비자였던
-    // 팔레트가 떠나면서 .operation-provider-mark 대조표는 퇴역했다 — 실행 표면의 톤은
-    // --launch-provider-tone 축이 맡는다(아래 provider tone 테스트가 그 축을 고정한다).
+    // 공급자 마크는 새 Operation의 실행 좌표를 고르는 표면에만 남는다 — 이미 존재하는 Operation을
+    // 고르는 목록(사이드바 칩·커맨드 밴드·검색 팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은
+    // 활동 상태가 소유한다. 목록에서 먼저 읽혀야 하는 것은 무엇으로 띄웠는지가 아니라 지금 무엇을
+    // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .operation-provider-mark 대조표는
+    // 퇴역했다 — 실행 좌표의 톤은 --launch-provider-tone 축이 맡는다(아래 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
+    const quickLaunch = source("components/quick-launch.tsx");
     // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
     expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
     expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
     expect(source("components/operation-search.tsx")).not.toContain("operation-provider-mark");
-    // 팔레트 Operation 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동 뱃지를
-    // 되살리면 같은 사실이 한 행에서 두 번 발화된다(Quick Launch 멘션 덱은 마크 없는 다른 표면).
+    expect(quickLaunch).not.toContain("launchProviderGlyph(entry.launchProvider)");
+    expect(quickLaunch).not.toContain("launchProviderGlyph(mentionTarget.entry.launchProvider)");
+    // 팔레트와 Quick Launch 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
+    // 뱃지를 되살리면 같은 사실이 한 행에서 두 번 발화된다.
     expect(source("components/operation-search.tsx")).toContain("<OperationNameMark");
     expect(source("components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
     expect(source("components/operation-search.tsx")).not.toContain("operation-search-status--");
+    expect(quickLaunch).toContain("<OperationNameMark");
+    expect(quickLaunch).toContain("resolveOperationMarkVisual");
+    expect(quickLaunch).not.toContain("operation-search-status--");
   });
 
   it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {
@@ -4097,9 +4103,10 @@ describe("Effort track interaction grammar", () => {
       /\.quick-launch-command-group\.is-banded \.quick-launch-command-row \{\s*padding-left: calc\(var\(--space-2\) \+ 22px\);/,
     );
 
-    // '@' 멘션 덱의 행 마크는 남는다 — 그쪽 밴드는 Theater 이름이라 공급자를 말하지 않고,
-    // 행 글리프가 유일한 출처 표식이다. 모델 덱과 같은 이유로 지우면 그쪽이 회귀한다.
-    expect(composer).toContain("launchProviderGlyph(entry.launchProvider)");
+    // '@' 멘션 덱은 실행 좌표가 아니라 기존 Operation 목록이다. 공급자 밴드가 없는 대신
+    // Cmd+K와 같은 활동 상태 마크가 이름 왼쪽 슬롯을 소유한다.
+    expect(composer).not.toContain("launchProviderGlyph(entry.launchProvider)");
+    expect(composer).toContain("<OperationNameMark");
   });
 
   it("pins the shared effort track's pointer preview motion", () => {

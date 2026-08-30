@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -6,7 +6,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
-import { operationActivityLabel } from "../operation-activity.js";
+import { resolveOperationMarkVisual } from "../operation-activity.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -17,6 +17,8 @@ import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
+import { OperationNameMark } from "./operation-name-mark.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
 import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
@@ -95,6 +97,9 @@ export function QuickLaunch() {
   const navigate = useNavigate();
   const location = useLocation();
   const registry = usePluginRegistry();
+  // Cmd+K·사이드바·커맨드 밴드와 같은 마크 축. 미확인 완료도 어느 Operation을 고르는
+  // 표면인가에 따라 사라지지 않아야 하므로 멘션 덱이 같은 외부 원장을 구독한다.
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
 
   const cardRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1430,15 +1435,17 @@ export function QuickLaunch() {
                       onClick={() => { if (selectable) pickMention({ kind: "operation", entry }); }}
                     >
                       <span className="quick-launch-mark" aria-hidden="true">{theaterInitials(entry.theaterLabel)}</span>
-                      {entry.launchProvider ? (
-                        <span className={`quick-launch-kind-icon is-${entry.launchProvider}`} aria-hidden="true">
-                          {launchProviderGlyph(entry.launchProvider)}
-                        </span>
-                      ) : null}
+                      <span className="quick-launch-mention-operation-mark">
+                        <OperationNameMark
+                          operation={entry}
+                          status={resolveOperationMarkVisual({
+                            activity: entry.activity,
+                            operationId: entry.operationId,
+                            idleArrivalIds,
+                          })}
+                        />
+                      </span>
                       <span className="quick-launch-mention-name">{entry.operationName}</span>
-                      {entry.activity !== "idle" ? (
-                        <span className={`operation-search-status operation-search-status--${entry.activity}`}>{operationActivityLabel(entry.activity)}</span>
-                      ) : null}
                     </button>
                   );
                 })}
@@ -1591,11 +1598,8 @@ export function QuickLaunch() {
         <ComposerField className="quick-launch-field" inert={showStrip || undefined}>
           {mentionTarget ? (
             <span className="quick-launch-mention" title={mentionTargetName(mentionTarget)}>
-              {mentionTarget.kind === "operation" && mentionTarget.entry.launchProvider ? (
-                <span className={`quick-launch-kind-icon is-${mentionTarget.entry.launchProvider}`} aria-hidden="true">
-                  {launchProviderGlyph(mentionTarget.entry.launchProvider)}
-                </span>
-              ) : null}
+              {/* Operation은 선택 뒤에도 공급자 출처를 되살리지 않는다 — 이름과 하단 행선지 태그가
+                  대상을 말한다. 플러그인 대상의 mark는 공급자가 아니라 그 대상 자체의 정체성이다. */}
               {mentionTarget.kind === "plugin" && mentionTarget.row.renderMark ? (
                 <span className="quick-launch-mention-mark" aria-hidden="true">{mentionTarget.row.renderMark()}</span>
               ) : null}
