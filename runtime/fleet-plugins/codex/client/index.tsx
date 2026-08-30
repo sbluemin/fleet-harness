@@ -6,6 +6,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 import { bindCodexHost, setConsoleLocale, setConsoleTheme } from "./host.js";
 import { refreshCodexLocale } from "./codex-host.js";
 import { codexEntry, codexPane } from "./codex-panel.js";
+import { codexReaderPane } from "./codex-reader-pane.js";
 import { codexReadingSurface } from "./reading-surface.js";
 import { useCodexReaderUrlSync } from "./use-codex-reader-url.js";
 import { applyCodexChanged, applyCodexWatchState } from "./codex/live.js";
@@ -17,7 +18,7 @@ import "./codex/styles/components.css";
 const codexPlugin = definePlugin({
   id: "codex",
   railEntries: [codexEntry],
-  panes: [codexPane],
+  panes: [codexPane, codexReaderPane],
   expandedSurfaces: [codexReadingSurface],
   // 리더 주소는 패널이 닫혀 있어도 살아 있어야 한다 — 새로고침·공유 링크·뒤로가기가
   // 패널을 여는 쪽이지, 패널이 열려 있어야 도는 것이 아니다.

@@ -13203,58 +13203,19 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   min-height: 0;
 }
 
-.codex-rail-host > .codex-host,
-.codex-nav-pane > .codex-host {
+.codex-rail-host > .codex-host {
   height: 100%;
   min-height: 0;
 }
 
-.codex-rail-host.is-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 248px;
-  grid-template-rows: minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
-
+/* 문서 열. 2단 격자와 분할선·경계선은 표면이 지므로 여기 없다 — 이 상자는 자기 열의
+   높이만 채운다. */
 .codex-doc-pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid var(--surface-rim);
-}
-
-.codex-doc-pane-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.codex-doc-expand {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: 1px solid var(--brass-deep);
-  border-radius: var(--radius-xs);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: background var(--duration-base);
-}
-
-.codex-doc-expand:hover,
-.codex-doc-expand:focus-visible {
-  background: oklch(from var(--brass) l c h / 0.08);
+  height: 100%;
 }
 
 .codex-doc-scroll {
@@ -13404,13 +13365,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .codex-doc-toc-inline .toc-level-3 {
   padding-left: calc(var(--space-3) + var(--space-4));
-}
-
-.codex-nav-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* ── v5: 사이드바 브랜드 푸터 — GNB 퇴역 후 콘솔 크롬의 상주 진입점 ── */

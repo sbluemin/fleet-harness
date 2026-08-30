@@ -14,7 +14,7 @@ import {
   subscribeCodexReaderHistory,
 } from "./codex-host.js";
 import { useT } from "./i18n/index.js";
-import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./codex-panel.js";
+import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
 import { getState as getCodexState, loadInitialData, subscribeState as subscribeCodexState } from "./codex/state.js";
 import type { SearchEntry } from "./codex/api.js";

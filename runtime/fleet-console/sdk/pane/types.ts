@@ -167,17 +167,6 @@ export interface PaneContext {
    * 착지하는 일이 계약 수준에서 막힌다.
    */
   readonly signal: AbortSignal;
-  /**
-   * @deprecated 표면에 폭을 더 달라고 요청한다(px). `null`이면 요청을 거둔다.
-   *
-   * **갈라진 페인은 이것을 쓰지 않는다.** detail 열이 서면 표면이 그 열의 `defaultWidth`만큼
-   * 스스로 자리를 넓히고, 그 뒤의 폭은 분할선이 정한다. 남아 있는 이유는 아직 한 본문 안에서
-   * 두 열을 그리는 플러그인 때문이며, 그 마지막 하나가 갈라지면 이 문은 닫힌다.
-   *
-   * 표면은 서 있는 detail이 없을 때 이 값을 건드리지 않는다 — 그래야 아직 갈라지지 않은
-   * 본문의 요구를 호스트가 0으로 덮지 않는다.
-   */
-  readonly requestExtraWidth?: (px: number | null) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }

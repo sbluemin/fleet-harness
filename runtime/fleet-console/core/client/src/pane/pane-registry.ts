@@ -31,6 +31,14 @@ import { settingsPanes, settingsRailEntry } from "../settings/settings-pane.js";
 export interface HostPaneContext extends PaneContext {
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
   readonly legacyLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  /**
+   * 옛 `railPanels`가 자기 폭을 요구하던 창구.
+   *
+   * 계약에서는 사라졌다 — 이제 detail 열이 서면 표면이 스스로 자리를 넓힌다. 여기 남은
+   * 이유는 아직 옛 모양으로 등록된 본문이 그 요구를 잃지 않게 하기 위해서이며, 그래서
+   * 공개 `PaneContext`가 아니라 호스트 안쪽에만 있다.
+   */
+  readonly requestExtraWidth?: (px: number | null) => void;
 }
 
 export interface RailEntryBinding {

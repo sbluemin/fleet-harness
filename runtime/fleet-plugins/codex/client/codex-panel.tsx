@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { getT, useT } from "./i18n/index.js";
@@ -15,7 +15,6 @@ import {
   refreshCodexHealth,
   refreshCodexLocale,
   restoreCodexReaderSession,
-  saveReaderScroll,
   setNavigatorTagFilter,
   setNavigatorTheater,
   setOnRequestOpenReader,
@@ -23,51 +22,21 @@ import {
   teardownCodex,
   teardownReaderNodes,
 } from "./codex-host.js";
+import { CODEX_READER_PANE_ID, shouldStandReaderColumn } from "./codex-reader-pane.js";
+import {
+  lastCodexScope,
+  lastResolvedCodexWorkspace,
+  publishResolvedWorkspace,
+  rememberCodexScope,
+  type CodexWorkspaceState,
+} from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
-import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 import { fetchSearch } from "./codex/api.js";
 import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface CodexWorkspaceState {
-  readonly contextKey: string;
-  readonly hasWiki: boolean;
-  readonly id: string | null;
-}
-
-let lastCodexContextKey: string | null = null;
-let lastResolvedWorkspace: CodexWorkspaceState | null = null;
-const workspaceListeners = new Set<() => void>();
-
-function publishResolvedWorkspace(next: CodexWorkspaceState): void {
-  lastResolvedWorkspace = next;
-  for (const listener of workspaceListeners) listener();
-}
-
-/**
- * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
- * 레일 패널이 해석해 둔 12-hex id여야 /console/codex/w/ 라우터가 인식한다.
- *
- * 공유 링크로 곧장 들어오면 그 해석이 아직 진행 중이라 여기서 null이 나온다. 그때
- * Theater id로 대신 요청하면 라우터가 workspace_not_found로 거절하고, 해석이 끝나도
- * 아무도 다시 부르지 않아 리더가 에러 화면에 머문다 — 그래서 해석 결과는 구독 가능한
- * 값이어야 하고, 소비자는 null인 동안 마운트를 미뤄야 한다.
- */
-export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | null {
-  const contextKey = theaterId ?? "";
-  if (lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey && lastResolvedWorkspace.hasWiki) {
-    return lastResolvedWorkspace.id;
-  }
-  return null;
-}
-
-export function subscribeCodexWorkspace(listener: () => void): () => void {
-  workspaceListeners.add(listener);
-  return () => workspaceListeners.delete(listener);
-}
 
 function hasCodexEntryInUrl(): boolean {
   if (typeof window === "undefined") return false;
@@ -80,20 +49,18 @@ export const codexEntry: RailEntryDescriptor = {
   id: "codex",
   title: (locale) => getT(locale)("rail.codex.title"),
   icon: () => <CodexIcon />,
-  panes: ["codex"],
+  panes: ["codex", CODEX_READER_PANE_ID],
 };
 
-/**
- * 네비게이터와 문서 창이 아직 한 본문 안에서 2단을 이룬다. 확대 표면은 이미 별도
- * 기여이므로 여기서는 레일 쪽만 다룬다.
- */
+/** 카탈로그 — 표면이 열리면 이 열이 선다. 문서는 옆에 서는 별개의 열이다. */
 export const codexPane: PaneDescriptor = {
   id: "codex",
   role: "primary",
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language ?? "en")("rail.codex.title"),
-  render: (ctx) => <CodexRailPanel theaterId={ctx.theaterId} requestExtraWidth={ctx.requestExtraWidth} />,
+  render: (ctx) => <CodexRailPanel ctx={ctx} />,
   defaultWidth: 420,
+  minWidth: 248,
   search: async ({ query, theaterId, limit, signal, language }) => {
     if (!theaterId) return [];
     const response = await fetchSearch(theaterId, { q: query, limit, signal });
@@ -116,36 +83,18 @@ export const codexPane: PaneDescriptor = {
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-function CodexRailPanel({
-  theaterId,
-  requestExtraWidth,
-}: {
-  readonly theaterId: string | null;
-  readonly requestExtraWidth?: (px: number | null) => void;
-}) {
-  const t = useT();
-  const history = useSyncExternalStore(
-    subscribeCodexReaderHistory,
-    getCodexReaderHistoryState,
-    getCodexReaderHistoryState,
-  );
+function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
+  const theaterId = ctx.theaterId;
   const locale = useConsoleLocale();
   const state = useReaderState();
   const navRef = useRef<HTMLDivElement>(null);
-  const readRef = useRef<HTMLDivElement>(null);
-  const tocRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
-  const outlineRef = useRef<HTMLElement>(null);
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
   const contextKey = theaterId ?? "";
-  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(
-    lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey
-      ? lastResolvedWorkspace
-      : null,
-  );
-  const [outlineCollapsed, setOutlineCollapsed] = useState(readOutlineCollapsed);
-  const [activeSection, setActiveSection] = useState("");
+  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(() => {
+    const known = lastResolvedCodexWorkspace();
+    return known && known.contextKey === contextKey ? known : null;
+  });
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
@@ -155,18 +104,14 @@ function CodexRailPanel({
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
 
-  // 축소 리더가 서면 레일에 문서 열 폭을 더 달라고 한다 — 예전에는 코어가 Codex를
-  // 알아보고 더해 주던 값이다. 요구하지 않으면 문서가 172px로 눌린다.
-  const splitExtraWidth = useCodexSplitExtraWidth();
+  // 문서 열은 여기서 세우고 여기서 거둔다. 두 조건은 서로 배타적이라(읽을 것이 있고 확대가
+  // 아닐 때만 열이 선다) 한쪽이 다른 쪽을 되돌리는 다툼이 생기지 않는다. 폭은 표면이 진다 —
+  // 예전의 `requestExtraWidth`는 detail이 자기 `defaultWidth`를 들고 서는 것으로 대체됐다.
+  const panes = ctx.panes;
   useEffect(() => {
-    requestExtraWidth?.(splitExtraWidth);
-    // 패널이 사라지면 요구도 거둔다 — 남겨 두면 레일이 넓어진 채로 굳는다.
-    return () => requestExtraWidth?.(null);
-  }, [requestExtraWidth, splitExtraWidth]);
-
-  const readerKey = reader
-    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
-    : null;
+    if (shouldStandReaderColumn(state)) panes.open({ paneId: CODEX_READER_PANE_ID, focus: false });
+    else panes.close(CODEX_READER_PANE_ID);
+  }, [panes, state]);
 
   // 실제 Theater가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
   //
@@ -175,11 +120,12 @@ function CodexRailPanel({
   // 버린다 — 공유 링크가 확대로 들어와도 축소로 되돌아가던 원인이 이것이었다.
   useEffect(() => {
     latestContextKeyRef.current = contextKey;
-    const settledFromUnknown = lastCodexContextKey === "";
-    if (lastCodexContextKey !== null && !settledFromUnknown && lastCodexContextKey !== contextKey) {
+    const previousScope = lastCodexScope();
+    const settledFromUnknown = previousScope === "";
+    if (previousScope !== null && !settledFromUnknown && previousScope !== contextKey) {
       closeCodexReader();
     }
-    lastCodexContextKey = contextKey;
+    rememberCodexScope(contextKey);
     if (!theaterId) {
       const nextWorkspace = { contextKey, hasWiki: false, id: null };
       publishResolvedWorkspace(nextWorkspace);
@@ -204,9 +150,6 @@ function CodexRailPanel({
   useEffect(() => {
     if (workspace?.contextKey === contextKey && !workspace.hasWiki) teardownCodex();
   }, [contextKey, workspace]);
-
-  // 패널 DOM이 detach되기 전에 현재 reader 위치를 싱글톤에 저장한다.
-  useLayoutEffect(() => () => saveReaderScroll(), []);
 
   // navigator 마운트 + onRequest 등록 — hasReader 전환 시 navRef 컨테이너가 바뀌므로 재배치
   // locale을 deps에 넣어 로케일 전환 시 effect를 다시 돌린다(싱글톤은 재배치만; 문구는 refreshCodexLocale).
@@ -254,49 +197,6 @@ function CodexRailPanel({
   // 창으로 돌아왔을 때의 재검증 — SSE가 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다.
   useEffect(() => installCodexLiveRevalidation(), []);
 
-  // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
-  useEffect(() => {
-    if (!shouldMountCodex || !workspaceId || !hasReader || expanded) return;
-    if (!readRef.current || !tocRef.current || !dockRef.current || !reader) return;
-    const kind = reader.kind;
-    const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
-    mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
-      initialEntryId: kind === "entry" ? reader.entryId : "",
-      kind,
-      subId,
-      theaterId: workspaceId,
-      sessionTheaterId: theaterId,
-      onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
-      onClose: () => closeCodexReader(),
-      onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
-      onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
-      onTagClick: (tag) => setNavigatorTagFilter(tag),
-      onDecided: () => {
-        void loadInitialData();
-        refreshCodexHealth();
-        openCodexReader({ kind: "drydock", patchId: undefined });
-      },
-    });
-  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey, locale]);
-
-  // 접힌 아웃라인 스파인이 현재 섹션명을 되비추도록 스크롤 스파이의 활성 전환을 구독한다.
-  useEffect(() => {
-    const outline = outlineRef.current;
-    if (!outline) return;
-    const onActive = (event: Event) => {
-      const detail = (event as CustomEvent<{ text?: string }>).detail;
-      setActiveSection(detail?.text ?? "");
-    };
-    outline.addEventListener("codex-toc-active", onActive);
-    // 덱(확대) 동안의 활성 전환 이벤트는 이 리스너 밖에서 지나간다 — 재부착 시점에
-    // 재배치된 TOC의 활성 표식에서 상태를 다시 읽어 낡은 섹션명이 남지 않게 한다.
-    // (리더 마운트 effect가 먼저 선언되어 TOC 재배치가 이 시점엔 끝나 있다.)
-    const active = outline.querySelector<HTMLElement>('.codex-doc-toc-inline [aria-current="location"]');
-    setActiveSection(active?.textContent ?? "");
-    return () => outline.removeEventListener("codex-toc-active", onActive);
-    // 아웃라인이 (재)마운트되는 모든 전이에서 다시 걸려야 한다 — 리더 마운트 effect와 같은 의존성.
-  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey]);
-
   // 로케일 변경 시 imperative DOM 문구를 갱신한다(문서·스크롤 보존).
   useEffect(() => {
     if (localeRef.current === locale) return;
@@ -313,96 +213,7 @@ function CodexRailPanel({
     return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
 
-  if (!hasReader || expanded) {
-    return <div ref={navRef} className="codex-rail-host" />;
-  }
-
-  return (
-    <div className="codex-rail-host is-split">
-      <div className="codex-doc-pane">
-        <div className="codex-doc-pane-head">
-          <ReaderHistoryButtons history={history} />
-          <button
-            className="codex-doc-expand"
-            type="button"
-            aria-label={t("rail.codex.expandAria")}
-            data-codex-expand="true"
-            onClick={expandCodexReader}
-          >
-            {t("rail.codex.expand")}
-          </button>
-          <button
-            className="codex-reading-sheet-close"
-            type="button"
-            aria-label={t("rail.codex.closePaneAria")}
-            onClick={closeCodexReader}
-          >
-            ✕
-          </button>
-        </div>
-        <section
-          ref={outlineRef}
-          className="codex-doc-outline"
-          data-codex-outline
-          data-collapsed={outlineCollapsed}
-          data-toc-count="0"
-        >
-          <button
-            className="codex-doc-outline-toggle"
-            type="button"
-            aria-expanded={!outlineCollapsed}
-            onClick={() => {
-              const next = !outlineCollapsed;
-              setOutlineCollapsed(next);
-              writeOutlineCollapsed(next);
-            }}
-          >
-            <span className="codex-doc-outline-label">
-              <span>{t("codex.nav.outline")} · <span data-codex-outline-count>0</span></span>
-              {outlineCollapsed && activeSection ? (
-                <span className="codex-doc-outline-current" title={activeSection}>{activeSection}</span>
-              ) : null}
-            </span>
-            <span className="codex-doc-outline-chevron" aria-hidden="true">⌄</span>
-          </button>
-          <div ref={tocRef} className="codex-doc-toc-inline" />
-        </section>
-        <div ref={readRef} className="codex-doc-scroll" />
-        <div ref={dockRef} className="codex-reader-composer" />
-      </div>
-      <div ref={navRef} className="codex-nav-pane" />
-    </div>
-  );
-}
-
-function ReaderHistoryButtons({
-  history,
-}: {
-  readonly history: { readonly canGoBack: boolean; readonly canGoForward: boolean };
-}) {
-  const t = useT();
-  return (
-    <div className="codex-reader-history">
-      <button
-        className="codex-reader-history-btn"
-        type="button"
-        aria-label={t("codex.nav.backAria")}
-        disabled={!history.canGoBack}
-        onClick={() => navigateCodexReaderHistory(-1)}
-      >
-        ←
-      </button>
-      <button
-        className="codex-reader-history-btn"
-        type="button"
-        aria-label={t("codex.nav.forwardAria")}
-        disabled={!history.canGoForward}
-        onClick={() => navigateCodexReaderHistory(1)}
-      >
-        →
-      </button>
-    </div>
-  );
+  return <div ref={navRef} className="codex-rail-host" />;
 }
 
 function CodexEmpty({
