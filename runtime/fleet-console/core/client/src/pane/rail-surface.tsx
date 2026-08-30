@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -8,6 +8,8 @@ import type { PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../plugin-capabilities.js";
+import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-surface.js";
+import { PaneBody } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import type { HostPaneContext, RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, useFocusedPaneId, useRailPanes } from "./pane-store.js";
@@ -127,9 +129,12 @@ interface PaneHostProps {
 /**
  * 페인 한 칸 — 캡션과 본문.
  *
+ * **캡션은 detail 페인에만 선다.** primary는 표면과 수명을 같이하므로 닫을 것도 확대할 것도
+ * 없고, 무엇인지는 레일 아이콘이 이미 말한다 — 거기에 이름 한 줄을 더 세우면 30px을 낭비하고
+ * 같은 말을 두 번 하게 된다. aside도 본문에 종속된 부속 열이라 같은 이유로 캡션이 없다.
+ *
  * 보이지 않는 keepAlive 페인도 렌더는 계속된다. 대신 `inert`와 `aria-hidden`으로 포커스와
- * 보조기술에서 빼고, 본문은 `ctx.visible`로 그 사실을 알아 폴링을 스스로 멈춘다. 언마운트하지
- * 않는 것이 요점이다 — 언마운트하면 PTY와 읽던 자리가 사라진다.
+ * 보조기술에서 빼고, 본문은 `ctx.visible`로 그 사실을 알아 폴링을 스스로 멈춘다.
  */
 function PaneHost({
   descriptor,
@@ -146,53 +151,27 @@ function PaneHost({
   onLaunchOperation,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  abortRef.current ??= new AbortController();
+  const [captionCtx, setCaptionCtx] = useState<HostPaneContext | null>(null);
 
-  // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. 이 cleanup이 없으면 signal은 영원히
-  // 열린 채로 남아, 닫힌 페인의 요청과 watcher가 계속 돌면서 다음 페인 위에 착지한다.
-  // `keepAlive` 페인은 닫혀도 언마운트되지 않으므로 여기 오지 않는다 — 살아 있으니까.
-  useEffect(() => {
-    const controller = abortRef.current!;
-    return () => { controller.abort(); };
-  }, []);
-
-  const handleOpen = useCallback((request: PaneOpenRequest) => { openPane(request); }, []);
-  const handleClose = useCallback((paneId?: string) => {
-    closePane(paneId ?? descriptor.id, { keepAlive: descriptor.keepAlive === true });
+  const handleClose = useCallback(() => {
+    closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
   }, [descriptor.id, descriptor.keepAlive]);
 
-  const ctx = useMemo<HostPaneContext>(() => ({
-    paneId: descriptor.id,
-    instanceId,
-    params,
-    role: descriptor.role,
-    mount: "rail",
-    // 실제 폭은 표면이 정한다. 본문은 컨테이너 쿼리로 스스로 열화하므로, 측정값을 흘리는 것보다
-    // 0을 주고 CSS에 맡기는 편이 렌더 루프를 만들지 않는다.
-    width: bodyRef.current?.clientWidth ?? 0,
-    visible,
-    focused,
-    theaterId,
-    api,
-    lifecycle: HOST_CAPABILITIES.lifecycle,
-    preferences: HOST_CAPABILITIES.preferences,
-    panes: {
-      open: handleOpen,
-      close: handleClose,
-      replaceParams: (next) => { openPane({ paneId: descriptor.id, params: next, focus: false }); },
-      isOpen: (paneId) => paneId === descriptor.id ? visible : false,
-    },
-    signal: abortRef.current!.signal,
-    requestExtraWidth: onRequestExtraWidth,
-    language,
-    theme,
-    legacySurfaces: surfaces,
-    legacyLaunchOperation: onLaunchOperation,
-  }), [api, descriptor.id, descriptor.role, focused, handleClose, handleOpen, instanceId, language, onLaunchOperation, onRequestExtraWidth, params, surfaces, theaterId, theme, visible]);
+  const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
+    openPane({ paneId: descriptor.id, params: next, focus: false });
+  }, [descriptor.id]);
 
-  const title = resolveLocalizedText(descriptor.title(ctx), language);
-  const hasCaption = descriptor.hideCaption !== true;
+  // 확대는 페인마다 만드는 기능이 아니라 표면 계약의 공통 동작이다 — 호스트 내장 표면이
+  // paneId를 받아 같은 본문을 캔버스 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
+  // 같은 방식으로 선다.
+  const canExpand = descriptor.mounts.includes("expanded");
+  const handleExpand = useCallback(() => {
+    surfaces?.open({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...params, paneId: descriptor.id } });
+    closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
+  }, [descriptor.id, descriptor.keepAlive, params, surfaces]);
+
+  const hasCaption = descriptor.role === "detail" && descriptor.hideCaption !== true;
+  const title = captionCtx ? resolveLocalizedText(descriptor.title(captionCtx), language) : "";
 
   return (
     <div
@@ -209,12 +188,34 @@ function PaneHost({
           title={title}
           paneId={descriptor.id}
           focused={focused}
-          actions={descriptor.captionActions?.(ctx) as ReactNode}
-          {...(descriptor.role === "primary" ? {} : { onClose: () => handleClose() })}
+          actions={captionCtx ? descriptor.captionActions?.(captionCtx) as ReactNode : null}
+          {...(canExpand && surfaces ? { onExpand: handleExpand } : {})}
+          onClose={handleClose}
         />
       ) : null}
       <div className="rail-pane-body" ref={bodyRef} aria-labelledby={hasCaption ? `pane-caption-${descriptor.id}` : undefined}>
-        {descriptor.render(ctx)}
+        <PaneBody
+          descriptor={descriptor}
+          mount="rail"
+          instanceId={instanceId}
+          params={params}
+          visible={visible}
+          focused={focused}
+          width={bodyRef.current?.clientWidth ?? 0}
+          theaterId={theaterId}
+          api={api}
+          lifecycle={HOST_CAPABILITIES.lifecycle}
+          preferences={HOST_CAPABILITIES.preferences}
+          language={language}
+          theme={theme}
+          onClose={handleClose}
+          onReplaceParams={handleReplaceParams}
+          onOpen={openPane}
+          {...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth })}
+          legacySurfaces={surfaces}
+          legacyLaunchOperation={onLaunchOperation}
+          onContext={setCaptionCtx}
+        />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
+import { expandedPaneSurface } from "./pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
 export interface PluginLoadFailure {
@@ -192,7 +193,9 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
 export function useExpandedSurfaceDescriptors(): ReadonlyMap<string, ExpandedSurfaceDescriptor> {
   const { expandedSurfaces } = usePluginRegistry();
   return useMemo(
-    () => new Map(expandedSurfaces.map((descriptor) => [descriptor.id, descriptor])),
+    // 페인 호스트는 코어 기여다 — 어떤 detail 페인이든 확대할 수 있게 하는 공통 표면이라,
+    // 플러그인마다 자기 확대 표면을 만들 필요를 없앤다.
+    () => new Map([expandedPaneSurface, ...expandedSurfaces].map((descriptor) => [descriptor.id, descriptor])),
     [expandedSurfaces],
   );
 }

@@ -40,7 +40,13 @@ export interface PaneDescriptor {
    * 무엇을 먼저 접을지를 정한다.
    */
   readonly role: PaneRole;
-  /** 이 페인이 설 수 있는 마운트. 둘 다 적으면 확대 이동이 가능한 페인이 된다. */
+  /**
+   * 이 페인이 설 수 있는 마운트.
+   *
+   * `"expanded"`를 함께 적으면 캡션에 확대 버튼이 선다. 확대는 페인이 따로 구현하는 기능이
+   * 아니다 — 호스트 내장 표면이 같은 본문을 캔버스 위에 세우고, 페인은 `ctx.mount`로 자기가
+   * 어디에 있는지만 안다.
+   */
   readonly mounts: readonly PaneMount[];
   /**
    * 캡션에 설 이름. 페인 종류가 아니라 **지금 그 페인이 담은 것**을 말하므로 항상 컨텍스트를
@@ -59,10 +65,15 @@ export interface PaneDescriptor {
    */
   readonly captionActions?: (ctx: PaneContext) => ReactNode;
   /**
-   * 캡션 없이 본문만 그린다. Operation companion의 `hideCaption`과 같은 뜻이며, 캡션 한 줄이
-   * 세로 예산을 먹는 것이 손해인 페인(계기판처럼 자기 머리를 이미 가진 본문)을 위한 것이다.
+   * detail 페인의 캡션까지 끈다.
    *
-   * 캡션이 없으면 닫기·확대도 없다. 그 페인은 자기를 닫지 못하므로, 표면이 닫힐 때 함께 닫힌다.
+   * 캡션은 role이 정한다 — **detail에만 선다.** primary는 표면과 수명을 같이하므로 닫을 것도
+   * 확대할 것도 없고, 무엇인지는 레일 아이콘이 이미 말한다. aside도 본문에 종속된 부속 열이라
+   * 같은 이유로 캡션이 없다. 확대 표면에서는 호스트 슬롯 머리가 그 일을 하므로 페인은 자기
+   * 캡션을 세우지 않는다.
+   *
+   * 이 값은 그 규칙의 예외다: 자기 머리를 이미 가진 detail 본문이 이름 줄을 두 번 세우지
+   * 않게 한다. 끄면 닫기·확대 버튼도 함께 사라지므로, 그 페인은 자기를 닫지 못한다.
    */
   readonly hideCaption?: boolean;
   /**
