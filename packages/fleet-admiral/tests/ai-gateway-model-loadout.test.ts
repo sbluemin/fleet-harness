@@ -443,7 +443,11 @@ describe("gateway_models tool doctrine", () => {
     // agentTypes가 생긴 이유이므로, 두 철자의 구분은 반드시 description에 있어야 한다.
     expect(description).toContain("Two spellings, never interchangeable");
     expect(description).toContain("subagent_type");
+    expect(description).toContain("opts.agentType");
     expect(description).toContain("opts.model");
+    // 게이트 퇴역과 함께 agentTypes는 두 디스패치 표면을 모두 섬긴다 — 옛 "상대 자리에서
+    // 거부된다" 서술이 되살아나면 로스터가 delegation 스킬 정책과 모순된다.
+    expect(description).not.toContain("refused where the other belongs");
     // 세션 중 노출한 모델은 이름이 해석되지 않는다. 이것을 모르면 stale roster를 의심하며
     // 같은 실패를 반복한다.
     expect(description).toContain("registered once at session start");

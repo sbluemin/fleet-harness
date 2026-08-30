@@ -157,20 +157,8 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-report"] }] },
     ]);
-    // 위임 게이트는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
-    expect(hooksJson.hooks.PreToolUse).toEqual([
-      {
-        matcher: "Agent|Workflow",
-        hooks: [{
-          type: "command",
-          command: process.execPath,
-          args: [
-            "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
-            "gate-delegation",
-          ],
-        }],
-      },
-    ]);
+    // 위임 디스패치 게이트는 퇴역했다 — input-waiting 훅이 없으면 PreToolUse 자체가 렌더되지 않는다.
+    expect(hooksJson.hooks.PreToolUse).toBeUndefined();
     // Workflow 뒤에는 접수증 계약을 붙인다. delegation 스킬 전후에는 훅을 걸지 않는다 —
     // Claude Code의 `if`는 퍼미션 룰로 평가되고 Skill 도구에는 룰 콘텐츠 매처가 없어
     // `Skill(<name>)` 조건이 항상 거짓이 된다.

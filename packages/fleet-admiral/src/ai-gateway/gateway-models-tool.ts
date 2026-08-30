@@ -2,8 +2,8 @@
  * ai-gateway/gateway-models-tool — live roster of the gateway models a host may
  * assign to workflow stages.
  *
- * The host reads this before a handoff; dispatch enforcement remains in the
- * gateway model guard hook.
+ * The host reads this before a handoff; identity choice is the delegation
+ * skill's semantic policy, and no hook gates a dispatch.
  */
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
@@ -45,7 +45,7 @@ const GATEWAY_MODELS_DOCTRINE = {
   description:
     `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
     + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`
-    + ` Two spellings, never interchangeable: agentTypes names an identity for the Agent tool's subagent_type, while modelId is the model as a value for a workflow stage's opts.model — each is refused where the other belongs.`
+    + ` Two spellings, never interchangeable: agentTypes names a registered identity — the Agent tool's subagent_type and a workflow stage's opts.agentType both resolve it from the same registry — while modelId is the model as a value for a field that takes a model rather than a name, such as a workflow stage's opts.model. Neither spelling converts into the other.`
     + ` Names are registered once at session start while this roster is re-read live, so a model or reasoning rung exposed mid-session appears here under a name that will not resolve until a new session.`,
   promptSnippet:
     `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's provider priority.`,

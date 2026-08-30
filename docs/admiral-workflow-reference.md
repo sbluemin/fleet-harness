@@ -45,10 +45,10 @@ Forbidden patterns:
 2. Keep Admiral runtime policy under `packages/fleet-admiral`; use `assets/hooks/` and `assets/skills/` only as the embedded hook and skill authoring sources.
 3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
 4. Use the embedded `professional-pushback` skill when a requested approach has a material technical flaw and `delegation` to plan the smallest useful evidence graph and integrate its results.
-5. Keep Fleet pin syntax out of the semantic skill, but require the roster lookup there: the skill's preflight makes the host call `gateway_models` itself, and the pre-dispatch hook then judges the pin's spelling only. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.
+5. Keep Fleet pin syntax out of the semantic skill, but require the roster lookup there: the skill's preflight makes the host call `gateway_models` itself, and per-dispatch identity choice is the skill's semantic policy — no pre-dispatch hook judges a pin. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.
 6. Keep graph mechanics in the live Workflow tool contract rather than repeating them in the skill; after meaningful returns, prune branches that can no longer change the host decision.
 7. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
-8. Keep Workflow-receipt handling and pin enforcement in the model guard hook; do not duplicate them in another skill.
+8. Keep Workflow-receipt handling in the model guard hook; do not duplicate it in a skill.
 9. For mutating runs, inspect actual diffs and changed files against the settled host decisions before acceptance.
 
 ## 5. Compatibility Invariants

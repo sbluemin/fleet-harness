@@ -51,11 +51,12 @@ SDK 0.3.212 as 24,632 against 18,272. Both launch surfaces — the Console termi
 and the standalone `fleet` launcher — read that one option, and it binds new sessions only.
 
 The delegation contract that used to live in the Standing Orders is now split between
-one on-demand skill, the live Workflow tool, the `gateway_models` tool, and embedded
-hooks. `fleet:delegation` owns semantic execution-graph decisions and opens with a
-preflight that requires a `gateway_models` call; the Workflow tool owns graph mechanics;
-`gateway_models` owns the identity roster and reports its own spellings and constraints.
-The host reads that roster itself.
+one on-demand skill, the live Workflow tool, the `gateway_models` tool, and one embedded
+hook. `fleet:delegation` owns semantic execution-graph decisions and per-dispatch
+identity choice, and opens with a preflight that requires a `gateway_models` call; the
+Workflow tool owns graph mechanics and its own dispatch options; `gateway_models` owns
+the identity roster and reports its own spellings and constraints. The host reads that
+roster itself.
 
 Routing into the skill is owned by the skill's own `description`: it names the concrete
 triggers — calling an agent, using the dynamic Workflow tool, orchestrating parallel or
@@ -67,14 +68,28 @@ retired instead of kept as standing per-turn context.
 
 The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, validates the resulting pin and
-handles Workflow receipts. Every judgment is made from one stdin payload. One script
-serves both roles, selected by its first argument:
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, handles Workflow receipts and the
+SessionStart version stamp, selected by its first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and a pin whose spelling this run cannot resolve. |
+| `plugin-version` | SessionStart | — | Records the rendered Fleet plugin version in session context. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
+
+There is no PreToolUse dispatch gate. The retired `gate-delegation` hook could judge only
+a pin's spelling — whether a name resolves was always the dispatcher's judgment — and its
+pseudo-parser repeatedly blocked valid scripts: a `response_model:` configuration key read
+as a stage pin, a human-readable `meta.phases` label blamed for a healthy stage, a
+whitespace-before-colon spelling skipping validation. What retired it was the live
+Workflow contract itself: `agent()` accepts an `agentType` pin resolved from the same
+registry as the Agent tool, and documents omitting `model` — inheriting the session model
+— as the normal default, so "every stage must pin a model" had become a doctrine the
+runtime's own grammar contradicts. Per-dispatch identity choice is now the delegation
+skill's semantic policy: an unnamed dispatch inherits the session model, deliberately or
+not, and making that choice conscious is the skill's job, not a spelling gate's.
+Retired subcommands (`remind`, `gate-delegation`) still exit zero without judging, because
+the shared plugin tree is replaced in place and a live session executes the new script
+from its next event while its loaded `hooks.json` may still name them.
 
 No hook is attached before or after the delegation skill, and none may be. Claude Code
 evaluates a hook's `if` as a permission rule and matches its rule content through the
@@ -86,22 +101,7 @@ never fired once, no receipt was ever written, and the gate refused every gatewa
 while the pin contract itself never reached the host. The roster now reaches the host
 through its own attention — the skill description's triggers and the skill preflight.
 
-`gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
-`claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
-context by design, so moving it to another model removes the point of that surface.
-Gateway `fleet:*` identities pass on their prefix. For `Workflow` it blocks `agentType` in
-a script, a malformed `opts.model`, and any `agent()` stage that pins no model at all.
-Bare lineage aliases and name-only saved workflows retain their existing behavior because
-they do not claim a live Fleet roster identity. The gate judges spelling only; whether a
-name resolves in this session is the dispatcher's judgment, and mirroring it here would
-age the same fact in two places. The hook does not rewrite the script: assigning one model
-to every stage would erase the model spread that is the whole reason to use that surface,
-so the block carries the instruction and the host does the assignment. That instruction
-states what to do at each roster size, because a session exposing one model cannot spread
-stages across several and answered an unsatisfiable demand by fusing providers and a
-reasoning rung into one `opts.model` string.
-
-Two properties of the harness make this shape necessary, both measured on
+Two properties of the harness keep the identity roster necessary, both measured on
 Claude Code 2.1.235:
 
 - The `Agent` tool's `model` parameter is a closed zod enum (`sonnet|opus|haiku|fable`),
@@ -123,8 +123,8 @@ once per identity would put the same table in the session window twenty times ov
 
 Runtime state is read through direct owners:
 
-- Delegation gate and workflow receipt: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
+- Workflow receipt and version stamp: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions and per-dispatch identity choice; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
 - Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`

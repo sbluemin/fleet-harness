@@ -447,7 +447,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(pluginRoot).toBe(path.join(root, "harness", "claude"));
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
-    // 위임 규율은 시스템 프롬프트가 아니라 이 훅이 싣는다.
+    // Workflow 접수증 계약은 시스템 프롬프트가 아니라 이 훅이 싣는다.
     expect(existsSync(path.join(pluginRoot!, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
 
     await spec.cleanup?.();

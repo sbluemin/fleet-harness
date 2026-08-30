@@ -164,10 +164,12 @@ describe("agent CLI shared plugin store", () => {
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: Record<string, unknown>;
     };
+    // PreToolUse에는 입력 대기 신호만 남는다 — 위임 디스패치 게이트는 퇴역했다(정체성 선택은
+    // delegation 스킬의 의미 정책, 철자와 로스터는 gateway_models 소유).
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
-      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
     ]);
+    expect(JSON.stringify(hooksJson)).not.toContain("gate-delegation");
     expect(hooksJson.hooks.PostToolUse).toEqual([{
       matcher: "Workflow",
       hooks: [{

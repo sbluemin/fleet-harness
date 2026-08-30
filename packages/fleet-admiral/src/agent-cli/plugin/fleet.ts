@@ -90,18 +90,13 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  const preToolUse = [
-    ...(inputWaitingExec
-      ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
-      : []),
-    {
-      // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
-      // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
-      // 보내지 않는다.
-      matcher: "Agent|Workflow",
-      hooks: [claudeCommandHook(modelGuardHook("gate-delegation"))],
-    },
-  ];
+  // 위임 디스패치 게이트는 두지 않는다. 옛 gate-delegation은 핀 철자만 볼 수 있었는데 그
+  // 유사 파서가 멀쩡한 스크립트를 반복해서 막았고, 살아 있는 Workflow 계약은 agentType 핀과
+  // 세션 모델 상속을 정식 지원해 "모든 스테이지 강제 핀" 독트린 자체가 낡았다. 정체성 선택은
+  // delegation 스킬의 의미 정책이, 철자와 로스터는 gateway_models가 소유한다.
+  const preToolUse = inputWaitingExec
+    ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
+    : [];
   // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
   // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
   // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
@@ -126,7 +121,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
           hooks: stopExecs.map(claudeCommandHook),
         }],
       } : {}),
-      PreToolUse: preToolUse,
+      ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
       PostToolUse: postToolUse,
       ...(inputWaitingExec ? {
         Notification: [{
