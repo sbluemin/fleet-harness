@@ -2,7 +2,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection } from "./agent/index.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
-import { shellSurface } from "./shell/index.js";
+import { PersistentShellHost, shellSurface } from "./shell/index.js";
 import { preloadTerminalFallbackFonts } from "./shared/terminal-fallback-fonts.js";
 import { connectTerminalSettings } from "./shared/terminal-preferences.js";
 import "./assets/fonts/symbols-nerd-font-mono.css";
@@ -23,6 +23,9 @@ const terminalPlugin = definePlugin({
   notificationKinds: [agentAttentionNotification],
   railPanels: [globalShellPanel],
   expandedSurfaces: [shellSurface],
+  // Shell은 한 번 열린 뒤 슬롯을 닫아도 xterm과 WebSocket을 보존한다. 표면 본문은 portal
+  // 목적지만 내주고, 실제 소유자는 콘솔 수명에 붙는 이 상주 기여다.
+  persistentComponents: [{ id: "terminal-shell-host", render: (ctx) => <PersistentShellHost language={ctx.language} theme={ctx.theme} /> }],
   install: (ctx) => { void preloadTerminalFallbackFonts(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
   closeOperation: async (operationId) => {
     const operation = await fetchOperation(operationId);

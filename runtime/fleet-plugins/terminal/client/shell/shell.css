@@ -1,0 +1,25 @@
+.global-shell-mount,
+.global-shell-persistent-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 닫힌 Shell은 DOM과 WebSocket을 보존하되 화면·접근성 트리·입력에서 완전히 빠진다.
+   display:none은 ResizeObserver를 0×0으로 떨어뜨려 xterm fit을 흔드므로 마지막 가시 크기를
+   visibility:hidden 주차장에 유지한다. */
+.global-shell-parking {
+  position: fixed;
+  inset: auto auto 0 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.global-shell-parking .global-shell-persistent-host {
+  width: 100%;
+  height: 100%;
+}
