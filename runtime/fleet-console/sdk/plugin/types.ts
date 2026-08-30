@@ -1,12 +1,13 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
+import type { PaneDescriptor } from "../pane/types.js";
 import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
-import type { RailPanelDescriptor } from "../rail/types.js";
+import type { RailEntryDescriptor, RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
@@ -86,7 +87,18 @@ export interface FleetClientPlugin {
   readonly operationKinds?: readonly OperationKindDescriptor[];
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
+  /**
+   * @deprecated 진입점·본문·검색·기본폭을 한 객체에 묶는 옛 계약. `railEntries` + `panes`로
+   * 나눠 등록하라. 호스트는 당분간 둘 다 받아 하나의 레지스트리로 합성한다.
+   */
   readonly railPanels?: readonly RailPanelDescriptor[];
+  /** 우측 레일의 아이콘 진입점. 무엇을 여는지는 `panes` 또는 `activate`가 말한다. */
+  readonly railEntries?: readonly RailEntryDescriptor[];
+  /**
+   * 표면 안의 열. 레일 표면과 확대 표면 어디에나 설 수 있고, 등록은 서로 독립이다 —
+   * 어느 페인이 언제 서는지는 등록이 아니라 `panes.open` 호출이 정한다.
+   */
+  readonly panes?: readonly PaneDescriptor[];
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   /**
    * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은

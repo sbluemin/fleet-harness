@@ -1,7 +1,7 @@
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import { describe, expect, it, vi } from "vitest";
 
-import { globalShellPanel } from "../client/global-shell/rail-panel.js";
+import { globalShellEntry } from "../client/global-shell/rail-panel.js";
 import { shellSurface } from "../client/shell/index.js";
 
 describe("Shell rail launcher", () => {
@@ -12,7 +12,7 @@ describe("Shell rail launcher", () => {
 
     expect(surfaces.open).toHaveBeenCalledWith({ surfaceId: "shell" });
     expect(surfaces.launchOperation).not.toHaveBeenCalled();
-    expect(globalShellPanel.render).toBeUndefined();
+    expect(globalShellEntry.panes).toBeUndefined();
   });
 
   // 같은 자리를 다시 누르는 것은 "치워라"는 뜻이다 — 예전에는 스토어의 reuse 규칙에
@@ -39,7 +39,7 @@ describe("Shell rail launcher", () => {
   });
 
   it("is inert when the host does not provide the surfaces capability", () => {
-    expect(() => globalShellPanel.activate?.({} as RailPanelContext)).not.toThrow();
+    expect(() => globalShellEntry.activate?.({} as RailPanelContext)).not.toThrow();
   });
 
   it("declares a Shell surface wide enough to stay a usable terminal", () => {
@@ -57,6 +57,6 @@ function press({ showing }: { readonly showing: boolean }) {
     isOpen: vi.fn(() => showing),
     launchOperation: vi.fn(),
   };
-  globalShellPanel.activate?.({ surfaces, launchOperation: surfaces.launchOperation } as unknown as RailPanelContext);
+  globalShellEntry.activate?.({ surfaces, launchOperation: surfaces.launchOperation } as unknown as RailPanelContext);
   return surfaces;
 }

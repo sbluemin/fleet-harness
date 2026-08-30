@@ -1,10 +1,11 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { ledgerPanel } from "./rail-panel.js";
+import { ledgerEntry, ledgerPane } from "./rail-panel.js";
 
 const ledgerPlugin = definePlugin({
   id: "ledger",
-  railPanels: [ledgerPanel],
+  railEntries: [ledgerEntry],
+  panes: [ledgerPane],
 });
 
 export const plugins = [ledgerPlugin] as const;

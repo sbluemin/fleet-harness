@@ -1,7 +1,8 @@
 import type { OperationActivityVisual } from "./operation-activity.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
-import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import type { LocalizedText } from "@fleet-console/sdk/i18n";
+import type { PaneSearchProvider, PaneSearchResult } from "@fleet-console/sdk/pane";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { launchProviderFromModelId, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
@@ -41,7 +42,7 @@ export interface OperationSearchGroup {
 export interface RailSearchGroup {
   readonly panelId: string;
   readonly panelTitle: string;
-  readonly results: readonly RailSearchResult[];
+  readonly results: readonly PaneSearchResult[];
 }
 
 export const RAIL_SEARCH_DEBOUNCE_MS = 150;
@@ -50,8 +51,21 @@ export const RAIL_SEARCH_PROVIDER_LIMIT = 8;
 
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 
+/**
+ * 팔레트가 검색 공급자에게 요구하는 최소 형태.
+ *
+ * 옛 계약에서는 패널 하나가 id·이름·검색을 함께 들고 있었지만, 새 계약에서 검색은 페인에
+ * 붙고 이름은 엔트리가 말한다. 팔레트는 그 둘을 합친 결과만 알면 되므로 서술자 타입 대신
+ * 이 최소 형태를 받는다 — 그래야 두 계약이 같은 목록에 함께 설 수 있다.
+ */
+export interface PaletteSearchPanel {
+  readonly id: string;
+  readonly title: LocalizedText;
+  readonly search?: PaneSearchProvider;
+}
+
 export async function searchRailPanels(
-  panels: readonly RailPanelDescriptor[],
+  panels: readonly PaletteSearchPanel[],
   query: string,
   theaterId: string,
   signal: AbortSignal,
@@ -71,12 +85,12 @@ export async function searchRailPanels(
 }
 
 async function searchRailPanel(
-  panel: RailPanelDescriptor,
+  panel: PaletteSearchPanel,
   query: string,
   theaterId: string,
   parentSignal: AbortSignal,
   language: ConsoleLocale,
-): Promise<readonly RailSearchResult[] | null> {
+): Promise<readonly PaneSearchResult[] | null> {
   if (!panel.search || parentSignal.aborted) return null;
   const controller = new AbortController();
   let stopSearch: (() => void) | null = null;

@@ -85,6 +85,11 @@
       "import": "./rail/types.ts",
       "default": "./rail/types.ts"
     },
+    "./pane": {
+      "types": "./pane/types.ts",
+      "import": "./pane/types.ts",
+      "default": "./pane/types.ts"
+    },
     "./expanded-surface": {
       "types": "./expanded-surface/types.ts",
       "import": "./expanded-surface/types.ts",

@@ -15,7 +15,7 @@ vi.mock("../client/reader-store.js", async (importOriginal) => ({
   openCodexReader: searchMocks.openReader,
 }));
 
-import { codexPanel } from "../client/codex-panel.js";
+import { codexPane } from "../client/codex-panel.js";
 
 const request = { query: "tide", theaterId: "theater-a", limit: 10, signal: new AbortController().signal, language: "en" as const };
 
@@ -31,11 +31,11 @@ describe("Codex entries in the console palette", () => {
   // 코어 팔레트가 Codex를 알아보고 항목을 받아 오던 자리를 지웠다. 그 일을 이 provider가
   // 잇지 않으면 팔레트에서 위키 항목이 아예 나오지 않는다 — 코어는 이제 Codex를 모른다.
   it("declares a search provider so the palette can reach the wiki", () => {
-    expect(codexPanel.search).toBeTypeOf("function");
+    expect(codexPane.search).toBeTypeOf("function");
   });
 
   it("turns entries into palette rows", async () => {
-    const results = await codexPanel.search!(request);
+    const results = await codexPane.search!(request);
 
     expect(searchMocks.fetchSearch).toHaveBeenCalledWith("theater-a", expect.objectContaining({ q: "tide", limit: 10 }));
     expect(results.map((row) => ({ id: row.id, title: row.title }))).toEqual([
@@ -45,7 +45,7 @@ describe("Codex entries in the console palette", () => {
 
   // 팔레트에서 열면 패널이 아직 서 있지 않을 수 있다 — 공유 링크와 같은 함정이다.
   it("raises the panel as well as opening the document", async () => {
-    const [row] = await codexPanel.search!(request);
+    const [row] = await codexPane.search!(request);
 
     row!.activate();
 
@@ -56,7 +56,7 @@ describe("Codex entries in the console palette", () => {
   // 리더를 직접 세우면 패널이 마운트 직후 Theater 확정 전에 한 번 닫으면서 그 문서를 지운다.
   // 실측에서 팔레트로 연 문서가 그렇게 사라졌다 — 주소로 열어야 그 구간을 넘는다.
   it("opens through the address rather than seating the reader directly", async () => {
-    const [row] = await codexPanel.search!(request);
+    const [row] = await codexPane.search!(request);
 
     row!.activate();
 
@@ -64,7 +64,7 @@ describe("Codex entries in the console palette", () => {
   });
 
   it("asks for nothing when no Theater is active", async () => {
-    const results = await codexPanel.search!({ ...request, theaterId: null as never });
+    const results = await codexPane.search!({ ...request, theaterId: null as never });
 
     expect(results).toEqual([]);
     expect(searchMocks.fetchSearch).not.toHaveBeenCalled();

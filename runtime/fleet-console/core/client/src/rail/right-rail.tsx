@@ -4,12 +4,11 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
 
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
-import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
@@ -19,7 +18,8 @@ import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { requestRailPanelExtraWidth, toggleRailPanel, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth } from "./rail-store.js";
 import { RailSettingsMenu } from "./rail-settings-menu.js";
-import { useRailPanels } from "./rail-registry.js";
+import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
+import { RailSurface } from "../pane/rail-surface.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -121,22 +121,23 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const previousPanelBehaviorRef = useRef(panelBehavior);
-  const pluginContributions = useRailPanels();
-  const builtInPanels = BUILT_IN_RAIL_PANELS;
-  const pluginPanels = pluginContributions.filter((panel) => panel.render !== undefined);
-  const pluginActions = pluginContributions.filter((panel) => panel.activate !== undefined && panel.render === undefined);
+  const bindings = useRailEntries();
+  // 페인을 세우는 엔트리와 그냥 실행하는 엔트리. 옛 판별 유니온이 하던 구분을, 이제는
+  // "이 엔트리가 세우는 페인이 있는가"라는 사실 하나가 대신한다.
+  const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
+  const actionEntries = bindings.filter((binding) => binding.panes.length === 0);
   // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
   const { instances: openSurfaces } = useExpandedSurfaces();
   const openSurfaceIds = useMemo(
     () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
     [openSurfaces],
   );
-  const allPanels = [...builtInPanels, ...pluginPanels];
-  const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
-  const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
-  const hasPanel = activePanel !== null;
-  // 폭 요구는 패널이 스스로 말한다 — 코어가 특정 패널 id를 알아보던 자리를 없앴다.
-  const extraWidth = (activePanel?.preferredExtraWidth ?? 0) + useRailPanelExtraWidth();
+  const activeBinding = paneEntries.find((binding) => binding.entry.id === activeId) ?? null;
+  const activePrimary = activeBinding?.panes.find((pane) => pane.role === "primary") ?? activeBinding?.panes[0] ?? null;
+  const activePanelTitle = activeBinding ? resolveLocalizedText(activeBinding.entry.title, language) : "";
+  const hasPanel = activeBinding !== null;
+  // 폭 요구는 페인이 스스로 말한다 — 코어가 특정 패널 id를 알아보던 자리를 없앴다.
+  const extraWidth = useRailPanelExtraWidth();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth));
   const extraWidthRef = useRef(extraWidth);
@@ -144,11 +145,11 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
 
-  const migrationPendingRef = useRef(activePanel === null);
-  const interpretedPanelIdRef = useRef(activePanel?.id ?? null);
+  const migrationPendingRef = useRef(activeBinding === null);
+  const interpretedPanelIdRef = useRef(activeBinding?.entry.id ?? null);
   const [panelWidth, setPanelWidthState] = useState(() => {
-    const storedWidths = readStoredPanelWidthsWithLegacyMigration(activePanel?.id ?? null);
-    return resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
+    const storedWidths = readStoredPanelWidthsWithLegacyMigration(activeBinding?.entry.id ?? null);
+    return resolvePanelWidth(activeId, activePrimary?.defaultWidth, maxPanelWidth, storedWidths);
   });
   const desiredWidthRef = useRef(panelWidth);
   const panelWidthRef = useRef(panelWidth);
@@ -165,9 +166,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   }, []);
 
   useLayoutEffect(() => {
-    const nextPanelId = activePanel?.id ?? null;
+    const nextPanelId = activeBinding?.entry.id ?? null;
     if (interpretedPanelIdRef.current === nextPanelId) {
-      if (isDragging || activePanel === null || activeId === null) return;
+      if (isDragging || activeBinding === null || activeId === null) return;
       const rememberedWidth = readStoredPanelWidths()[activeId];
       if (rememberedWidth === undefined || rememberedWidth > maxPanelWidth || rememberedWidth === desiredWidthRef.current) return;
       desiredWidthRef.current = rememberedWidth;
@@ -176,16 +177,16 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       return;
     }
     interpretedPanelIdRef.current = nextPanelId;
-    const canMigrate = activePanel !== null;
+    const canMigrate = activeBinding !== null;
     const storedWidths = migrationPendingRef.current && canMigrate
       ? readStoredPanelWidthsWithLegacyMigration(activeId)
       : readStoredPanelWidths();
     if (canMigrate) migrationPendingRef.current = false;
-    const next = resolvePanelWidth(activeId, activePanel?.defaultWidth, maxPanelWidth, storedWidths);
+    const next = resolvePanelWidth(activeId, activePrimary?.defaultWidth, maxPanelWidth, storedWidths);
     desiredWidthRef.current = next;
     panelWidthRef.current = next;
     setPanelWidthState(next);
-  }, [activeId, activePanel?.id, activePanel?.defaultWidth, isDragging, maxPanelWidth]);
+  }, [activeId, activeBinding?.entry.id, activePrimary?.defaultWidth, isDragging, maxPanelWidth]);
 
   useLayoutEffect(() => {
     const desiredWidth = isDragging ? panelWidthRef.current : desiredWidthRef.current;
@@ -279,11 +280,11 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     if (panelId === null) return;
     clearStoredPanelWidth(panelId);
     const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current));
-    const next = resolvePanelWidth(panelId, activePanel?.defaultWidth, currentMaxWidth, Object.create(null) as Record<string, number>);
+    const next = resolvePanelWidth(panelId, activePrimary?.defaultWidth, currentMaxWidth, Object.create(null) as Record<string, number>);
     desiredWidthRef.current = next;
     panelWidthRef.current = next;
     setPanelWidthState(next);
-  }, [activePanel?.defaultWidth]);
+  }, [activePrimary?.defaultWidth]);
 
   const baseCtx: RailPanelContext = useMemo(() => ({
     theaterId,
@@ -317,7 +318,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           ? { "--right-rail-overlay-alpha": overlayAlpha / 100 } as CSSProperties
           : undefined}
       >
-        {activePanel && (
+        {activeBinding && (
           <div
             className="right-rail-resize-handle"
             onPointerDown={handleResizeDragStart}
@@ -326,14 +327,14 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
             aria-orientation="vertical"
             tabIndex={0}
             aria-label={t("rail.chrome.resizePanel", { title: activePanelTitle })}
-            aria-controls={`rail-panel-${activePanel.id}`}
+            aria-controls={`rail-panel-${activeBinding.entry.id}`}
             aria-valuenow={Math.round(panelWidth)}
             aria-valuemin={MIN_PANEL_WIDTH}
             aria-valuemax={maxPanelWidth}
           />
         )}
-        {activePanel && (
-          <RailPanelBody activePanel={activePanel} activeId={activeId} ctx={ctx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
+        {activeBinding && (
+          <RailPanelBody binding={activeBinding} activeId={activeId} ctx={ctx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
@@ -342,30 +343,30 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         <RailSettingsMenu
           panelBehavior={panelBehavior}
           overlayAlpha={overlayAlpha}
-          activePanelTitle={activePanel === null ? null : activePanelTitle}
+          activePanelTitle={activeBinding === null ? null : activePanelTitle}
           railChromeExpanded={railChromeExpanded}
           onResetWidth={handleResetPanelWidth}
         />
         <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
-          {builtInPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
+          {paneEntries.filter((binding) => binding.core).map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activeId === entry.id} />
           ))}
         </div>
-        {pluginActions.map((panel) => (
+        {actionEntries.map(({ entry }) => (
           <RailIcon
-            key={panel.id}
-            panel={panel}
+            key={entry.id}
+            entry={entry}
             context={baseCtx}
             language={language}
             // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
             // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
-            isActive={panel.surfaceId !== undefined && openSurfaceIds.has(panel.surfaceId)}
+            isActive={entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)}
           />
         ))}
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
-          {pluginPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
+          {paneEntries.filter((binding) => !binding.core).map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activeId === entry.id} />
           ))}
         </div>
       </nav>
@@ -374,7 +375,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 }
 
 interface RailPanelBodyProps {
-  readonly activePanel: RailPanelDescriptor;
+  readonly binding: RailEntryBinding;
   readonly activeId: string | null;
   readonly ctx: RailPanelContext;
   readonly connection: ConnectionState;
@@ -385,7 +386,7 @@ interface RailPanelBodyProps {
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 폭·알파와 무관한
 // props만 받는 memo 경계로 리사이즈/알파 드래그 중 본문 재렌더를 건너뛰고, 경량 헤더는
 // 경계 밖에서 자유롭게 재렌더한다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, connection, connectionLostAt, language }: RailPanelBodyProps) {
+const RailPanelBody = memo(function RailPanelBody({ binding, activeId, ctx, connection, connectionLostAt, language }: RailPanelBodyProps) {
   const t = useT();
   const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
   const staleVisible = connection !== "live" && connectionLostAt !== null;
@@ -426,9 +427,18 @@ const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, 
   }, [staleVisible]);
 
   return (
-    <div ref={panelBodyRef} id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
+    <div ref={panelBodyRef} id={`rail-panel-${binding.entry.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
       <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
-        {activePanel.render?.(ctx)}
+        <RailSurface
+          binding={binding}
+          theaterId={ctx.theaterId}
+          api={ctx.api}
+          language={language}
+          theme={ctx.theme}
+          surfaces={ctx.surfaces}
+          onRequestExtraWidth={ctx.requestExtraWidth}
+          onLaunchOperation={ctx.launchOperation}
+        />
       </div>
       {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
       {staleVisible ? (
@@ -443,35 +453,35 @@ const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, 
 });
 
 interface RailIconProps {
-  readonly panel: RailPanelDescriptor;
+  readonly entry: RailEntryDescriptor;
   readonly context: RailPanelContext;
   readonly language: ConsoleLocale;
   readonly isActive: boolean;
 }
 
-function RailIcon({ panel, context, language, isActive }: RailIconProps) {
+function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const handleClick = useCallback(() => {
-    if (panel.activate) {
+    if (entry.activate) {
       if (context.theaterId === null) return;
-      panel.activate(context);
+      entry.activate(context);
       return;
     }
-    toggleRailPanel(panel.id);
-  }, [context, panel]);
-  const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
-  const title = resolveLocalizedText(panel.title, language);
+    toggleRailPanel(entry.id);
+  }, [context, entry]);
+  const icon = typeof entry.icon === "function" ? entry.icon() : entry.icon;
+  const title = resolveLocalizedText(entry.title, language);
 
   return (
     <button
-      id={`rail-tab-${panel.id}`}
+      id={`rail-tab-${entry.id}`}
       className={`right-rail-ico${isActive ? " is-active" : ""}`}
       type="button"
-      role={panel.activate ? "button" : "tab"}
-      aria-selected={panel.activate ? undefined : isActive}
+      role={entry.activate ? "button" : "tab"}
+      aria-selected={entry.activate ? undefined : isActive}
       // 표면을 여닫는 동작은 탭이 아니라 토글 버튼이다 — 켜짐은 pressed로 말한다.
-      aria-pressed={panel.activate && panel.surfaceId !== undefined ? isActive : undefined}
+      aria-pressed={entry.activate && entry.surfaceId !== undefined ? isActive : undefined}
       aria-label={title}
-      disabled={panel.activate !== undefined && context.theaterId === null}
+      disabled={entry.activate !== undefined && context.theaterId === null}
       title={title}
       onClick={handleClick}
     >

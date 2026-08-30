@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
+import { openExpandedSurface } from "../expanded-surface/store.js";
+import { EXPANDED_PANE_SURFACE_ID } from "../pane/expanded-pane-surface.js";
+import { useRailEntries } from "../pane/pane-registry.js";
+import { openPane } from "../pane/pane-store.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
@@ -14,6 +19,7 @@ import {
   groupOperationSearchEntries,
   RAIL_SEARCH_DEBOUNCE_MS,
   searchRailPanels,
+  type PaletteSearchPanel,
   searchTokens,
   type RailSearchGroup,
 } from "../operation-search.js";
@@ -52,7 +58,7 @@ import type { ConsoleState } from "../types.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
-  readonly railPanels: readonly RailPanelDescriptor[];
+  readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly FleetClientPlugin[];
   // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
@@ -75,6 +81,7 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
+  const railBindings = useRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
@@ -199,11 +206,12 @@ export function OperationSearch({
     closeOperationSearch();
   };
 
-  const selectRailResult = async (panelId: string, result: RailSearchResult) => {
+  const selectRailResult = async (panelId: string, result: PaneSearchResult) => {
     // activate가 plugin-local 논리 타깃을 먼저 기록한 뒤에만 host route/rail을 연다.
     previousFocusRef.current = null;
+    let target: PaneTarget | void;
     try {
-      await result.activate();
+      target = await result.activate();
     } catch {
       return;
     }
@@ -211,7 +219,21 @@ export function OperationSearch({
     // activate가 방금 기록한 것이 바로 그 쿼리다 — 주소로 문서를 여는 플러그인은 자기가
     // 세운 주소가 이 한 줄에 지워져 아무 일도 일어나지 않는다(실측: 팔레트로 연 Codex 항목).
     navigate({ pathname: "/operations", search: window.location.search });
-    openRailPanel(panelId);
+    // 계약을 따르는 공급자는 열 자리를 값으로 돌려준다. 그 경우 부작용에 기대지 않고 여기서
+    // 직접 착지시킨다 — 싱글턴을 쓰지 않는 외부 공급자는 이 경로가 없으면 결과를 열지 못한다.
+    if (target) {
+      const owner = railBindings.find((binding) => binding.panes.some((pane) => pane.id === target!.paneId));
+      const descriptor = owner?.panes.find((pane) => pane.id === target!.paneId);
+      const mount = target.mount ?? descriptor?.mounts[0] ?? "rail";
+      if (mount === "expanded") {
+        openExpandedSurface({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...target.params, paneId: target.paneId } });
+      } else {
+        openRailPanel(owner?.entry.id ?? panelId);
+        openPane({ paneId: target.paneId, ...(target.params ? { params: target.params } : {}) });
+      }
+    } else {
+      openRailPanel(panelId);
+    }
     setRailChromeExpanded(true);
     closeOperationSearch();
   };

@@ -3,9 +3,11 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type { OperationKindDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
-import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
+import { expandedPaneSurface } from "./pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
 export interface PluginLoadFailure {
@@ -22,6 +24,8 @@ export interface PluginRegistry {
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
+  readonly railEntries: readonly RailEntryDescriptor[];
+  readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
@@ -143,6 +147,30 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       railPanels.push(panel);
     }
   }
+  // 새 계약. 엔트리와 페인은 같은 이름공간 규칙을 따른다 — 접두 없이 선착순이며, 옛 패널과
+  // id가 겹치면 여기 등록된 쪽이 이긴다(투영은 pane-registry가 그때 버린다).
+  const railEntryIds = new Set<string>();
+  const railEntries: RailEntryDescriptor[] = [];
+  const paneIds = new Set<string>();
+  const panes: PaneDescriptor[] = [];
+  for (const plugin of plugins) {
+    for (const entry of plugin.railEntries ?? []) {
+      if (railEntryIds.has(entry.id)) {
+        console.warn(`Skipping rail entry with duplicate id: ${entry.id}`);
+        continue;
+      }
+      railEntryIds.add(entry.id);
+      railEntries.push(entry);
+    }
+    for (const pane of plugin.panes ?? []) {
+      if (paneIds.has(pane.id)) {
+        console.warn(`Skipping pane with duplicate id: ${pane.id}`);
+        continue;
+      }
+      paneIds.add(pane.id);
+      panes.push(pane);
+    }
+  }
   return {
     plugins,
     failures,
@@ -151,6 +179,8 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),
     railPanels,
+    railEntries,
+    panes,
     floatingWidgets: plugins.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
@@ -163,7 +193,9 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
 export function useExpandedSurfaceDescriptors(): ReadonlyMap<string, ExpandedSurfaceDescriptor> {
   const { expandedSurfaces } = usePluginRegistry();
   return useMemo(
-    () => new Map(expandedSurfaces.map((descriptor) => [descriptor.id, descriptor])),
+    // 페인 호스트는 코어 기여다 — 어떤 detail 페인이든 확대할 수 있게 하는 공통 표면이라,
+    // 플러그인마다 자기 확대 표면을 만들 필요를 없앤다.
+    () => new Map([expandedPaneSurface, ...expandedSurfaces].map((descriptor) => [descriptor.id, descriptor])),
     [expandedSurfaces],
   );
 }
