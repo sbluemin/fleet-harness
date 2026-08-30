@@ -5311,14 +5311,19 @@ body[data-side-bar-animating="true"] .canvas-operation {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  /* 유리 게이트가 닫히면(--glass-backdrop-soft: none) 틴트가 반투명 채널 값 그대로 남아
+  /* 유리 게이트가 닫히면(--glass-backdrop-strong: none) 틴트가 반투명 채널 값 그대로 남아
      전면 캔버스의 격자가 60% 비쳐 보인다 — 불투명 언더레이를 최하층에 깔아 게이트 닫힘이
      곧 불투명 폴백이 되게 한다(레일 오버레이 슬롯과 같은 판독성 계약). */
   background:
     linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+  /* soft(12px)가 아니라 strong(24px)이다. 이 카드 뒤에는 캔버스 위브(48px 눈금·12px 도트)가
+     그대로 깔리는데, soft는 48px 주기의 대비를 ~73%나 남겨 그 잔물결이 근흑색 틴트 위에서
+     8-bit 계단 모자이크(가짜 격자)로 양자화된다(2026-08-31 실측 + 사용자 보고). strong은
+     같은 주기를 ~29%까지 눌러 위브가 유리 뒤에서 재질로만 남는다 — 우측 레일 슬롯이 같은
+     채널로 이미 검증한 값이다. soft로 되돌리려면 위브 위 실측을 다시 통과할 것. */
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   pointer-events: none;
 }
 
