@@ -8626,9 +8626,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
-/* .operation-provider-mark 대조표는 퇴역했다 — 목록 표면(사이드바 칩·커맨드 밴드·팔레트)의
-   이름 왼쪽 슬롯은 활동 상태(tenant-beacon)가 소유하고, 공급자 글리프가 남는 실행 표면
-   (Quick Launch·실행 메뉴)의 톤은 --launch-provider-tone 축이 이미 맡는다. */
+/* .operation-provider-mark 대조표는 퇴역했다 — 기존 Operation을 고르는 목록 표면(사이드바 칩·
+   커맨드 밴드·팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은 활동 상태(tenant-beacon)가 소유한다.
+   새 Operation의 실행 좌표를 고르는 표면의 공급자 톤은 --launch-provider-tone 축이 맡는다. */
 
 .operation-launch-variant-entry {
   padding: 1px var(--space-1);
@@ -10297,34 +10297,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-/* Quick Launch 멘션 덱 행의 활동 뱃지. 상태 채널은 signal 토큰만 쓴다(디자인 불변식).
-   팔레트 Operation 행은 이 뱃지를 떠나 사이드바와 같은 tenant-beacon 마크로 말한다. */
-.operation-search-status {
-  flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.operation-search-status--awaiting {
-  border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim));
-  color: var(--coral-ink);
-}
-
-.operation-search-status--running {
-  border-color: color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
-  color: var(--warn-ink);
-}
-
-.operation-search-status--ended {
-  color: var(--ink-muted);
 }
 
 .operation-search-result mark,
@@ -14475,6 +14447,16 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-mention-row.is-dim {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Cmd+K Operation 행의 16px 마크 슬롯과 같은 활동 축. Theater 이니셜 다음에 붙어도
+   8px 비콘이 자기 치수를 유지하고, 공급자 글리프가 있던 14px 열보다 좁게 이름을 당긴다. */
+.quick-launch-mention-operation-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 10px;
+  height: 16px;
 }
 
 .quick-launch-mention-name {

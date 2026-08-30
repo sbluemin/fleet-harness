@@ -20,8 +20,8 @@ export interface OperationSearchEntry {
   readonly pluginId: string;
   readonly activity: OperationActivityVisual;
   /**
-   * 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이다. Quick Launch 멘션 덱은
-   * 글리프로, 팔레트는 메타 캡션 텍스트로 그린다 — 목록 표면의 이름 왼쪽 슬롯은 활동 상태 소유.
+   * 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이다. Operation 목록 표면에서는
+   * 메타 캡션에만 남는다 — 이름 왼쪽 슬롯은 활동 상태가 소유한다.
    */
   readonly launchProvider: LaunchProviderGlyphId | null;
 }
