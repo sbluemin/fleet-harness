@@ -141,7 +141,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 레일 카드가 사이드바 카드를 덮는다(Codex 리뷰 확정). 아레나 좌측 인셋과 같은 산식이다.
   const sideBar = useSideBarState();
   const sideBarOccupiedPx = sideBar.collapsed ? 0 : sideBar.width + 24;
-  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - extraWidth - sideBarOccupiedPx));
+  // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
+  // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
+  const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
+  const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);
 
   // 저장 폭은 클램프 없이 desired로 보존한다 — init에서 클램프한 값을 desired로 심으면
   // 큰 화면에서 저장한 폭이 좁은 창 로드 한 번에 소실되어, 창을 다시 넓혀도 복원되지
@@ -186,7 +189,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 
   // 아레나 계산의 원료 — 레일이 캔버스 위에서 점유하는 실측 폭을 스토어로 보고한다.
   // fit-all·Tactical 슬롯·War Room 무대가 이 값으로 열린 스택을 피해 계산된다.
-  const slotWidth = hasPanel ? cardWidth + extraWidth : 0;
+  // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
+  // 가산 extra(예: Codex 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
+  // (Codex 리뷰 확정). extra는 best-effort다: 페인 본문은 컨테이너 쿼리로 스스로 열화한다.
+  const slotWidth = hasPanel
+    ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
+    : 0;
   useLayoutEffect(() => {
     reportRailOccupiedPx(railChromeExpanded ? RAIL_ICON_STRIP_WIDTH + slotWidth : 0);
   }, [railChromeExpanded, slotWidth]);

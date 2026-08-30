@@ -352,8 +352,12 @@ export function OperationsCanvas({
     const rect = canvasRef.current?.getBoundingClientRect();
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
+    // 표시 앵커는 아레나 안으로 끌어들인다 — 사이드바 왼쪽 12px 거터의 우클릭은 캔버스에
+    // 닿지만, 그 자리에서 열면 메뉴가 더 높은 층의 부유 카드 밑에 그려져 보이지 않는 채
+    // 포커스만 쥔다(Codex 리뷰 확정). 발사 월드 좌표는 원 커서 기준을 유지한다.
+    const displayAnchor = { x: Math.max(anchor.x, arenaInsets.left + 12), y: anchor.y };
     // 월드 환산은 아레나 원점을 더한 screenViewport로 — 저장 좌표는 아레나-상대다.
-    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, screenViewport) });
+    setContextMenu({ anchor: displayAnchor, canvasPoint: screenToCanvas(anchor, screenViewport) });
     onRefreshCatalog?.();
   };
 
@@ -365,8 +369,10 @@ export function OperationsCanvas({
     // 컨테이닝 블록이 되어 캔버스에 재앵커한다(실측). 뷰포트 좌표를 그대로 넘기면 메뉴가 커서에서
     // 캔버스 왼쪽 여백만큼 밀리고, 오른쪽 끝에서는 캔버스 폭으로 클램프돼 커서와 크게 어긋난다.
     const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
+    // 표시 앵커의 아레나 좌측 클램프는 Cruise 경로와 같은 이유다 — 발사 좌표는 원 커서 기준.
+    const displayLocal = { x: Math.max(local.x, arenaInsets.left + 12), y: local.y };
     setContextMenu({
-      anchor: local,
+      anchor: displayLocal,
       // 실행 좌표는 그 Theater의 world 좌표여야 한다 — canvasPointToGeometry는 받은 점을 world로
       // 취급한다. War Room은 전 Theater를 한 판에 얹으므로 화면-local을 그대로 넘기면 그 Theater를
       // 다시 열었을 때 패널이 보이는 자리 밖에 놓인다. 로드된 Theater가 아닐 수 있으니 저장된
