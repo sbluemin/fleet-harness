@@ -303,6 +303,12 @@ export function OperationsCanvas({
     if (state.theaters.length === 0) setContextMenu(null);
   }, [state.theaters.length]);
 
+  // 아레나 원점이 움직이면(사이드바 접기 등) 열려 있던 실행 메뉴의 화면 앵커와 열 때 환산한
+  // 월드 좌표가 벌어진다 — 실행이 메뉴 밑이 아니라 옛 지점에 떨어지므로 메뉴를 걷는다(적대 리뷰).
+  useEffect(() => {
+    setContextMenu(null);
+  }, [arenaInsets.left, arenaInsets.top]);
+
   const handleContextMenuLaunchKind = (
     pluginId: string,
     kind: OperationLaunchKind,

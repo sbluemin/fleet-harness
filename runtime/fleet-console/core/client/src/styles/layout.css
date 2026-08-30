@@ -1052,6 +1052,17 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   max-width: min(560px, calc(100% - 24px));
   border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
   border-radius: var(--radius-xs);
+  /* 부유 오버레이의 판독성 계약 — 구 그리드 행 시절의 10% coral 틴트는 전면 캔버스 위에서
+     터미널 글자와 겹쳐 읽을 수 없다(적대 리뷰 확정). 불투명 언더레이 위에 coral 워시를 얹는다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--coral) 12%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--coral) 12%, var(--glass-tint-pillar))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -33,13 +33,18 @@
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
-/* 레일 유리도 자식 없는 ::before가 진다 — 루트 backdrop-filter의 containing block 함정 회피. */
+/* 레일 유리도 자식 없는 ::before가 진다 — 루트 backdrop-filter의 containing block 함정 회피.
+   가로 범위는 아이콘 열(44px)로 한정한다: 카드 전폭으로 깔면 슬롯 재질 뒤에 한 겹 더 상주해
+   투명도 슬라이더가 캔버스 대신 이 층에 막히고 기본 상태에서도 이중 틴트가 된다(적대 리뷰 확정).
+   모서리는 카드 루트의 overflow: hidden + radius가 잘라 주므로 여기서 다시 굴리지 않는다. */
 .right-rail::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 44px;
   z-index: -1;
-  border-radius: inherit;
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep));

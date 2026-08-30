@@ -3485,7 +3485,8 @@
 
 .canvas-triage-sweep {
   position: absolute;
-  inset: 0;
+  /* 진입 연출도 아레나 위에서 논다 — 전면 인셋 0이면 스윕 광이 부유 카드 뒤를 지나간다. */
+  inset: var(--arena-top, 0px) var(--arena-right, 0px) var(--arena-bottom, 0px) var(--arena-left, 0px);
   z-index: 78;
   pointer-events: none;
   background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--brass) 5%, transparent) 68%, color-mix(in oklch, var(--brass) 20%, transparent));
@@ -3498,7 +3499,9 @@
    미룬 항목에는 붙지 않는다 — 사용자가 이미 본 신호를 다시 흔드는 소음이 된다. */
 .canvas-mode-curtain {
   position: absolute;
-  inset: 0;
+  /* 커튼 스크림·타이틀의 무대는 아레나다 — 전면 인셋 0이면 타이틀이 보이는 무대의 중심이
+     아니라 캔버스 중심(사이드바 뒤 절반 포함)에 서고 비네트가 유리 카드를 흐린다. */
+  inset: var(--arena-top, 0px) var(--arena-right, 0px) var(--arena-bottom, 0px) var(--arena-left, 0px);
   z-index: var(--z-curtain);
   display: flex;
   flex-direction: column;
@@ -3580,7 +3583,9 @@
 
 .canvas-triage-clear {
   position: absolute;
-  inset: 58px 26px 74px;
+  /* 덱과 같은 아레나 기준 — 전면 캔버스에서 박스 기준 인셋은 CLEAR 카피를 프레임 중심이
+     아니라 캔버스 중심에 앉히고 왼쪽 26px가 부유 카드 밑으로 들어간다(적대 리뷰 확정). */
+  inset: calc(var(--arena-top, 0px) + 58px) calc(var(--arena-right, 0px) + 26px) calc(var(--arena-bottom, 0px) + 74px) calc(var(--arena-left, 0px) + 26px);
   z-index: 80;
   display: flex;
   flex-direction: column;
@@ -5403,7 +5408,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-head-count {
-  color: var(--brass-ink);
+  /* 수량은 정적 메타데이터다 — brass는 위치/포커스 채널이라 휴지 숫자에 쓸 수 없다. */
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);

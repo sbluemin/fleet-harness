@@ -428,7 +428,14 @@ export function OperationsSideBar({
   const visibleEntries = groupedSections.flatMap((section) =>
     collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
   );
-  const currentOrder = allEntries.map((entry) => entry.operation.id);
+  // 재정렬 기준 순서는 인라인 필터와 무관한 활성 Theater 전체 목록이다 — 필터된 표시 목록으로
+  // 순서를 커밋하면 숨은 Operation이 operationOrder에서 통째로 탈락해 필터 해제 후 정렬이
+  // 영구 유실된다(적대 리뷰 확정 결함). 세그먼트 재배치 헬퍼들은 전체 순서를 전제로
+  // hidden 보존을 수행하므로, 표시(allEntries)와 기준(currentOrder)의 원천을 분리한다.
+  const currentOrder = sortOperationsByOrder(
+    operations.filter((operation) => operation.theaterId === activeTheaterId),
+    canvas.operationOrder,
+  ).map((operation) => operation.id);
   const statusSignature = operations
     .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationRuntime)}`)
     .join("\0");
@@ -506,6 +513,12 @@ export function OperationsSideBar({
       setSideBarCollapsed(false);
       return false;
     }
+    // 인라인 필터가 대상 칩을 숨기고 있으면 필터를 걷는다 — 칩이 마운트되지 않으면
+    // 팔레트에서 온 이름 변경·그룹 배정 액션이 조용히 증발한다(적대 리뷰 확정).
+    if (normalizedOperationFilter !== "" && !operation.title.toLowerCase().includes(normalizedOperationFilter)) {
+      setOperationFilter("");
+      return false;
+    }
     if (collapsedTheaters.includes(operation.theaterId)) {
       setTheaterCollapsed(operation.theaterId, false);
       return false;
@@ -527,7 +540,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, normalizedOperationFilter, operationRuntime, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -598,8 +611,10 @@ export function OperationsSideBar({
   }, [launchMenuRequest]);
 
 
+  // 메뉴 주인 조회는 표시 목록이 아니라 전체 목록에서 한다 — 메뉴가 열린 채 필터가 바뀌어
+  // 칩이 목록에서 빠져도 메뉴가 close 콜백 없이 즉사하지 않는다.
   const contextMenuOperation = activeContextMenu?.kind === "chip"
-    ? allEntries.find((entry) => entry.operation.id === activeContextMenu.operationId)?.operation ?? null
+    ? operations.find((operation) => operation.id === activeContextMenu.operationId) ?? null
     : null;
   const contextMenuGroup = activeContextMenu?.kind === "group"
     ? groups.find((g) => g.id === activeContextMenu.groupId) ?? null
