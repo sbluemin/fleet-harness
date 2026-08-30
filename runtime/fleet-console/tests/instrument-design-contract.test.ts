@@ -2604,12 +2604,16 @@ describe("Instrument core design contract", () => {
     expect(surface).toContain("...base, background: resolvePanelSurface(");
 
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
-    // 필드(라이트 종이·게이트 닫힘)에서도 글리프를 투명 위에 그려 GPU가 감마 미보정 sRGB로
-    // 재합성하게 만들고, 획 잉크가 18.2% 사라진다(dpr=2 실측). 상수로 되돌리면 그 회귀가 재발한다.
+    // 필드(게이트 닫힘)에서도 글리프를 투명 위에 그려 아틀라스가 서브픽셀 AA를 잃게 만든다.
+    // 상수로 되돌리면 그 회귀가 재발한다.
     const options = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8");
     expect(options).not.toMatch(/^\s*allowTransparency:/m);
     expect(surface).toContain("allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
-    expect(surface).toContain("terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
+    expect(surface).toMatch(/const translucent = terminalFieldIsTranslucent\(terminalTheme\.background \?\? ""\);/);
+    expect(surface).toContain("terminal.options.allowTransparency = translucent;");
+    // 서브픽셀 AA 보정은 그 투명도 판정과 **같은 자리**에서 갱신되어야 한다 — 따로 놀면 유리를
+    // 껐을 때 웨이트만 남아 과보정이 된다(게이트는 terminalFontWeightsFor가 소유한다).
+    expect(surface).toContain("terminalFontWeightsFor(activeTheme, translucent, terminalRenderer)");
     // 뷰포트 인라인 배경이 먼저다 — 순서가 뒤집히면 xterm의 :not(.allow-transparency) 규칙이
     // background-color:#000을 한 프레임 드러낸다.
     const applyBlock = surface.slice(surface.indexOf("const applyTerminalTheme = () => {"));

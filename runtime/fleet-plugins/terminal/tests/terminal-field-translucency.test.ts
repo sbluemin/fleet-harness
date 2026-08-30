@@ -7,7 +7,7 @@ vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class Unicode11Addon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class WebglAddon {} }));
 
-import { resolvePanelSurface, terminalFieldIsTranslucent } from "../client/shared/terminal-surface.js";
+import { resolvePanelSurface, terminalFieldIsTranslucent, terminalFontWeightsFor } from "../client/shared/terminal-surface.js";
 
 /* 유리 게이트를 CSS 채널 계산값으로만 연다 — 제품과 같은 판정 경로를 타야 의미가 있다. */
 const openGlassGate = () => document.documentElement.style.setProperty("--glass-backdrop-strong", "blur(24px) saturate(1.7)");
@@ -95,5 +95,38 @@ describe("resolved terminal field drives allowTransparency", () => {
     expect(terminalFieldIsTranslucent(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)"))).toBe(false);
     setTerminalTint("rgb(250, 249, 246)");
     expect(terminalFieldIsTranslucent(resolvePanelSurface("whites", "oklch(98.2% 0.004 100)"))).toBe(false);
+  });
+});
+
+/* 서브픽셀 AA 보정의 게이트. 손실은 **세 조건이 동시에 설 때만** 생기므로, 하나라도 빠지면 보정도
+   빠져야 한다 — 걸린 채로 남으면 과보정이고, 그건 손실만큼이나 눈에 띈다.
+   실측(같은 배경, 렌더러만 교체): 라이트 WebGL은 DOM보다 획 잉크 9.5%가 적고, 웨이트 500을
+   물리면 그 차이가 1.5%로 줄어든다. 유리를 끄면 보정 없는 불투명 기준값으로 정확히 돌아온다.
+   다크는 부호가 반대(WebGL이 DOM보다 4.0% 많음)라 같은 보정을 걸면 더 두꺼워지기만 한다. */
+describe("terminalFontWeightsFor", () => {
+  const DEFAULTS = { fontWeight: "normal", fontWeightBold: "bold" };
+
+  it("compensates only light + translucent field + webgl", () => {
+    expect(terminalFontWeightsFor("whites", true, "webgl")).toEqual({ fontWeight: 500, fontWeightBold: 800 });
+  });
+
+  it("leaves every other combination on the font's own weights", () => {
+    // DOM은 실제 배경 위에 그려 서브픽셀 AA가 살아 있다 — 여기에 걸면 이중 보정이다.
+    expect(terminalFontWeightsFor("whites", true, "dom")).toEqual(DEFAULTS);
+    // 불투명 필드는 아틀라스가 배경을 알고 굽는다 — 잃은 것이 없으므로 되돌릴 것도 없다.
+    expect(terminalFontWeightsFor("whites", false, "webgl")).toEqual(DEFAULTS);
+    // 다크는 같은 왜곡이 반대 부호라 보정이 악화시킨다.
+    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+      expect(terminalFontWeightsFor(theme, true, "webgl")).toEqual(DEFAULTS);
+    }
+  });
+
+  /* 터미널 폰트는 사용자가 고른다. 고른 폰트에 500/800이 없어도 CSS 폰트 매칭이 각각 400/700으로
+     물러나므로 가짜 볼드가 생기지 않는다 — 이 성질이 깨지는 값(예: 목표 600)으로 바꾸면 안 된다. */
+  it("uses weights that fall back cleanly on fonts without them", () => {
+    const { fontWeight, fontWeightBold } = terminalFontWeightsFor("whites", true, "webgl");
+    expect(fontWeight).toBeGreaterThan(400);
+    expect(fontWeight).toBeLessThanOrEqual(500);
+    expect(fontWeightBold).toBeGreaterThanOrEqual(800);
   });
 });

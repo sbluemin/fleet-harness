@@ -3,7 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
+import { Terminal as XtermTerminal, type FontWeight, type ITheme } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
@@ -22,7 +22,7 @@ import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { getT } from "../i18n/index.js";
-import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
+import { terminalInactiveFlushMs, useTerminalPrefs, type TerminalRenderer } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
@@ -186,6 +186,36 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
+/* 서브픽셀 AA 보정 — 라이트 + 투명 필드 + WebGL 세 조건이 **동시에** 설 때만 선다.
+   WebGL 렌더러는 글리프를 미리 구운 아틀라스에서 가져오는데, 필드가 투명하면 아틀라스의 임시 캔버스가
+   alpha:true로 만들어지고(TextureAtlas.ts) xterm이 배경색을 NULL_COLOR로 넘긴다 — 배경을 아틀라스에
+   구우면 AA 가장자리에서 배경이 두 번 합성되기 때문이다(상류 주석). 배경을 모르면 브라우저는 서브픽셀
+   AA를 포기하고 회색조 커버리지만 내는데, 서브픽셀 AA는 **밝은 바탕의 어두운 글자 스템을 두껍게** 하는
+   쪽으로 작동하므로 그 손실이 극성마다 부호가 갈린다. 같은 투명 필드에서 렌더러만 바꿔 실측하면
+   라이트는 DOM보다 획 잉크 9.5%가 적고, 다크는 오히려 13.4%가 많다 — 다크가 멀쩡해 보이는 이유는
+   손실이 없어서가 아니라 같은 왜곡이 유리한 방향으로 작용해서다.
+   상류는 이걸 고칠 계획이 없다: allowTransparency가 서브픽셀 AA를 일괄로 끄는 것은 설계 결정이고
+   (xterm.js #1327 리뷰), 증상 이슈 #4212는 2022년부터 help wanted로 열려 있다. 그래서 손실분을
+   폰트 웨이트 한 단으로 되돌린다.
+
+   웨이트 값은 폰트가 그 단을 갖지 않아도 안전하게 물러난다. CSS 폰트 매칭은 목표 500에 대해
+   [500] -> 그 아래를 내림차순으로 찾으므로 {400,700}만 가진 폰트는 400(현행)으로 떨어지고,
+   목표 800은 >=800이 없으면 700으로 떨어진다 — 어느 쪽도 가짜 볼드를 만들지 않는다.
+   터미널 폰트는 사용자가 고르므로 이 성질이 조건이다. */
+const SUBPIXEL_COMPENSATED_WEIGHT = 500;
+const SUBPIXEL_COMPENSATED_WEIGHT_BOLD = 800;
+
+export function terminalFontWeightsFor(
+  theme: TerminalThemeId,
+  fieldIsTranslucent: boolean,
+  renderer: TerminalRenderer,
+): { readonly fontWeight: FontWeight; readonly fontWeightBold: FontWeight } {
+  if (renderer !== "webgl" || !fieldIsTranslucent || terminalPolarityFor(theme) !== "light") {
+    return { fontWeight: "normal", fontWeightBold: "bold" };
+  }
+  return { fontWeight: SUBPIXEL_COMPENSATED_WEIGHT, fontWeightBold: SUBPIXEL_COMPENSATED_WEIGHT_BOLD };
+}
+
 export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
@@ -327,6 +357,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         theme: terminalTheme,
         allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? ""),
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
+        ...terminalFontWeightsFor(activeTheme, terminalFieldIsTranslucent(terminalTheme.background ?? ""), terminalRenderer),
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
@@ -676,14 +707,20 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
       // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
       syncTerminalViewportBackground(container, terminalTheme);
-      terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? "");
+      const translucent = terminalFieldIsTranslucent(terminalTheme.background ?? "");
+      terminal.options.allowTransparency = translucent;
       terminal.options.theme = terminalTheme;
       terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
+      // 보정은 필드 투명도와 한 벌로 움직여야 한다 — 유리를 끄면 서브픽셀 AA가 돌아오므로
+      // 웨이트가 남아 있으면 그때는 과보정이 된다.
+      const weights = terminalFontWeightsFor(activeTheme, translucent, terminalRenderer);
+      terminal.options.fontWeight = weights.fontWeight;
+      terminal.options.fontWeightBold = weights.fontWeightBold;
     };
     applyTerminalTheme();
     // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
     // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
-  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface]);
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface, terminalRenderer]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
