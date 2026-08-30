@@ -75,12 +75,6 @@ const PLUGIN_FIXTURES: Record<string, unknown>[] = [
     id: "ledger",
     title: "LEDGER",
     icon: "L",
-    render: () => null,
-  },
-  {
-    id: "ledger",
-    title: "LEDGER",
-    icon: "L",
     // 마운트 효과에서 자기 detail을 여는 본문 — 팔레트 착지 직후의 파일 문서 열, Codex 리더가
     // 실제로 하는 일이다(Codex 3차 P1 판별 픽스처).
     details: [{ id: "ledger-doc", title: "DOC" }],
