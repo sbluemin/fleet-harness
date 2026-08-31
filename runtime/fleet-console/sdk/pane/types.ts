@@ -108,6 +108,21 @@ export interface PaneDescriptor {
    */
   readonly defaultWidth?: number;
   /**
+   * 처음 설 때의 폭을 픽셀 대신 **등급**으로 말한다. 호스트가 등급 → px를 해석한다.
+   *
+   * 픽셀을 직접 고르면 그 값이 자기 본문의 `@container` 문턱과 어긋나도 아무도 잡지 못한다 —
+   * 설정 페인이 360을 선언했는데 테마 격자가 2열이 되는 문턱은 420이어서, 기본 상태에서 그
+   * 격자가 한 번도 2열로 서지 못한 일이 실제로 있었다. 등급은 그 어긋남을 구조적으로 막는다:
+   * 픽셀표와 브레이크포인트가 호스트 한 곳에 함께 있고, 계약 테스트가 둘의 관계를 지킨다.
+   *
+   * - `narrow` — 폭이 판독을 거의 바꾸지 않는 목록.
+   * - `standard` — 계량기·행 카드가 한 줄에 서야 하는 본문.
+   * - `wide` — 안에서 2열 격자가 서야 하는 본문.
+   *
+   * `defaultWidth`를 함께 선언하면 픽셀이 이긴다. 새 페인은 등급만 쓰는 것이 좋다.
+   */
+  readonly widthClass?: PaneWidthClass;
+  /**
    * 닫아도 본문을 살려 둔다.
    *
    * 계약의 기본은 닫기=언마운트다. 그런데 콘솔에는 그러면 안 되는 본문이 있다 — PTY와
@@ -129,6 +144,11 @@ export interface PaneDescriptor {
    */
   readonly search?: PaneSearchProvider;
 }
+
+/**
+ * 페인이 처음 설 때 원하는 폭의 등급. px 해석은 호스트가 소유한다.
+ */
+export type PaneWidthClass = "narrow" | "standard" | "wide";
 
 export type PaneRole = "primary" | "detail" | "aside";
 

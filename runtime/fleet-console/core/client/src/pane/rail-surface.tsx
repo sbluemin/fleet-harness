@@ -13,6 +13,7 @@ import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";
 import { clampPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
+import { resolvePaneDefaultWidth } from "../rail/pane-width.js";
 import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
@@ -166,7 +167,7 @@ export const RailSurface = memo(function RailSurface({
   const primaryWidth = clampPrimaryWidth(
     paneWidths[primary?.id ?? ""]
       ?? (soloWidthRef.current > 0 ? soloWidthRef.current : undefined)
-      ?? primary?.defaultWidth
+      ?? (primary === null ? undefined : resolvePaneDefaultWidth(primary))
       ?? MIN_PANE_PX,
     limits,
   );
@@ -178,7 +179,7 @@ export const RailSurface = memo(function RailSurface({
   // **서 있는 detail이 없을 때는 값을 건드리지 않는다.** 아직 한 본문 안에서 두 열을 그리는
   // 플러그인이 같은 창구로 폭을 요구하고 있어서, 0을 써 버리면 그 요구를 덮는다.
   const desiredExtra = standing.reduce(
-    (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? descriptor.defaultWidth ?? MIN_PANE_PX),
+    (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? resolvePaneDefaultWidth(descriptor)),
     0,
   );
   useEffect(() => {
@@ -375,7 +376,7 @@ function PaneHost({
     focused,
     // 폭은 표면이 정한다. 본문은 컨테이너 쿼리로 스스로 열화하므로, 측정값을 렌더마다 흘리면
     // 컨텍스트가 매번 새로 만들어져 본문이 다시 그려진다.
-    width: width ?? descriptor.defaultWidth ?? 0,
+    width: width ?? (descriptor.defaultWidth ?? (descriptor.widthClass === undefined ? 0 : resolvePaneDefaultWidth(descriptor))),
     theaterId,
     api,
     lifecycle: HOST_CAPABILITIES.lifecycle,

@@ -122,8 +122,10 @@ export const settingsPanes: readonly PaneDescriptor[] = [
     id: SETTINGS_PANE_ID,
     role: "primary",
     mounts: ["rail"],
-    // 칩 폭과 카드 행이 함께 서는 최소선. 옛 페이지 폭의 전제는 컨테이너 쿼리가 대신 받는다.
-    defaultWidth: 360,
+    // 안에서 테마 격자가 2열로 서야 하는 본문이다. 픽셀을 직접 고르던 시절의 360은 자기
+    // 컨테이너 문턱(components.css의 `@container (max-width: 420px)`) 아래여서, 기본 상태의
+    // 설정 페인이 그 격자를 한 번도 2열로 세우지 못했다. 등급이 그 어긋남을 대신 막는다.
+    widthClass: "wide",
     title: () => (locale: ConsoleLocale) => getT(locale)("settings.title"),
     render: (ctx) => <SettingsPaneBody ctx={ctx} />,
     search: settingsSearchProvider,
