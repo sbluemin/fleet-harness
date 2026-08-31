@@ -39,9 +39,18 @@ const ANALYSIS_ARTIFACT_CSP_DIRECTIVES = [
 export const ANALYSIS_ARTIFACT_CSP = `${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.join("; ")}; frame-ancestors 'self'`;
 
 /**
- * 내려받은 사본에는 응답 헤더가 따라가지 않는다. 같은 리소스 정책을 문서 안에 실어, 파일이
- * 어디에서 열리든 오프라인 보장이 유지되게 한다. meta는 sandbox·frame-ancestors를 지원하지
- * 않으므로 리소스 지시어만 싣는다.
+ * 내려받은 사본에는 응답 헤더가 따라가지 않으므로 같은 리소스 정책을 문서 안에 싣는다.
+ *
+ * 경계를 정확히 적어 둔다. 이 meta가 막는 것은 **리소스 로드와 폼 제출**이다 — 원격 이미지·폰트·
+ * 스크립트·fetch, 그리고 form-action. 막지 못하는 것은 **문서 네비게이션**이다: CSP에는 top-level
+ * 이동을 막는 지시어가 없고(`navigate-to`는 폐기됐다), meta는 `sandbox`를 실을 수 없다. 그래서
+ * `<meta http-equiv="refresh">`나 인라인 스크립트의 `location` 할당은 내려받은 파일에서 여전히
+ * 나갈 수 있다.
+ *
+ * 그걸 막으려면 내보낼 때 스크립트를 걷어내야 하는데, 인라인 `<script>`와 `<canvas>`는 아티팩트가
+ * 지원하는 표현 수단이다. 완전한 격리가 필요한 표면은 미리보기이고 거기는 응답 헤더의 sandbox가
+ * 전부 막는다. 내려받은 파일은 사용자가 스스로 저장하고 스스로 여는 로컬 문서이므로, 여기서는
+ * 심층 방어까지가 몫이다.
  */
 const ANALYSIS_ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.filter((directive) => !directive.startsWith("sandbox")).join("; ")}">`;
 const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon", "whites"]);
