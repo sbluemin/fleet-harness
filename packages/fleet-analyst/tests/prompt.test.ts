@@ -40,7 +40,11 @@ it("snapshots the approved observer, evidence, and artifact contract", () => {
       ANALYST_SYSTEM_PROMPT.includes("must not infer causation from agreement language or final success alone"),
     artifact: ANALYST_SYSTEM_PROMPT.includes("publish_artifact"),
     artifactArguments: ANALYST_SYSTEM_PROMPT.includes('"html"') && ANALYST_SYSTEM_PROMPT.includes("not `content`"),
-    visibleArtifact: ANALYST_SYSTEM_PROMPT.includes("explicit high-contrast foreground and background colors"),
+    visibleArtifact: ANALYST_SYSTEM_PROMPT.includes("# Artifact design")
+      && ANALYST_SYSTEM_PROMPT.includes("var(--fleet-ink, #e8e8e8)")
+      && ANALYST_SYSTEM_PROMPT.includes("never branch on prefers-color-scheme")
+      && ANALYST_SYSTEM_PROMPT.includes("<cite>e91</cite>")
+      && !ANALYST_SYSTEM_PROMPT.includes("do not rely on inherited Console theme variables"),
     size: ANALYST_SYSTEM_PROMPT.includes("50KiB"),
   }).toMatchInlineSnapshot(`
     {

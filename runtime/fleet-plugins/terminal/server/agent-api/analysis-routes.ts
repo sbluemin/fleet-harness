@@ -13,7 +13,46 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
-export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
+const ANALYSIS_ARTIFACT_CSP_DIRECTIVES = [
+  "sandbox allow-scripts",
+  `default-src 'self' data: blob:`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:`,
+  `style-src 'self' 'unsafe-inline' data: blob:`,
+  `img-src 'self' data: blob:`,
+  `font-src 'self' data: blob:`,
+  "connect-src 'none'",
+  // form-action은 default-src로 폴백하지 않는다 — 빠뜨리면 내려받은 사본에서 폼 자동 제출이 열린다.
+  "form-action 'none'",
+  `frame-src 'self' data: blob:`,
+  `media-src 'self' data: blob:`,
+  `worker-src 'self' data: blob:`,
+];
+
+/**
+ * 아티팩트 문서의 격리 정책.
+ *
+ * 아티팩트는 관찰 대상 세션의 신뢰할 수 없는 transcript에서 나온다. 인젝션이 심은 원격 참조
+ * 하나면 미리보기가 바깥으로 요청을 보내 "이 세션이 분석 중"이라는 사실을 알린다. 그래서
+ * 오프라인 보장은 프롬프트의 권고가 아니라 여기서 강제한다 — 원격 스킴은 전부 닫고, 인라인과
+ * data:/blob:만 연다. `frame-ancestors`는 Console이 iframe으로 감쌀 수 있어야 하므로 남는다.
+ */
+export const ANALYSIS_ARTIFACT_CSP = `${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.join("; ")}; frame-ancestors 'self'`;
+
+/**
+ * 내려받은 사본에는 응답 헤더가 따라가지 않으므로 같은 리소스 정책을 문서 안에 싣는다.
+ *
+ * 경계를 정확히 적어 둔다. 이 meta가 막는 것은 **리소스 로드와 폼 제출**이다 — 원격 이미지·폰트·
+ * 스크립트·fetch, 그리고 form-action. 막지 못하는 것은 **문서 네비게이션**이다: CSP에는 top-level
+ * 이동을 막는 지시어가 없고(`navigate-to`는 폐기됐다), meta는 `sandbox`를 실을 수 없다. 그래서
+ * `<meta http-equiv="refresh">`나 인라인 스크립트의 `location` 할당은 내려받은 파일에서 여전히
+ * 나갈 수 있다.
+ *
+ * 그걸 막으려면 내보낼 때 스크립트를 걷어내야 하는데, 인라인 `<script>`와 `<canvas>`는 아티팩트가
+ * 지원하는 표현 수단이다. 완전한 격리가 필요한 표면은 미리보기이고 거기는 응답 헤더의 sandbox가
+ * 전부 막는다. 내려받은 파일은 사용자가 스스로 저장하고 스스로 여는 로컬 문서이므로, 여기서는
+ * 심층 방어까지가 몫이다.
+ */
+const ANALYSIS_ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.filter((directive) => !directive.startsWith("sandbox")).join("; ")}">`;
 const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon", "whites"]);
 const ANALYSIS_ARTIFACT_LIGHT_THEMES = new Set(["whites"]);
 const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
@@ -140,17 +179,92 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const hairline = safeArtifactColor(query.get("hairline"), foreground);
   const accent = safeArtifactColor(query.get("accent"), foreground);
   const muted = safeArtifactColor(query.get("muted"), foreground);
+  const positive = safeArtifactColor(query.get("positive"), foreground);
+  const warn = safeArtifactColor(query.get("warn"), foreground);
+  const critical = safeArtifactColor(query.get("critical"), foreground);
+  const focus = safeArtifactColor(query.get("focus"), accent);
   const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseStylesheet = `<style>:root{--fleet-canvas:${canvas};--fleet-surface:${surface};--fleet-ink:${foreground};--fleet-muted:${muted};--fleet-hairline:${hairline};--fleet-accent:${accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}</style>`;
+  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ canvas, surface, foreground, muted, hairline, accent, positive, warn, critical, focus })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
     const bodyTag = withArtifactAttribute(documentTags.bodyTag.source, "style", `${canvasStyle}margin:0!important;`, ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES);
     // 베이스 시트는 항상 재작성된 <html> 시작 태그 직후에 둔다 — 파서가 head로 hoist하므로
     // <template> 안의 가짜 <head> 같은 decoy가 주입을 삼키는 경로가 성립하지 않는다.
-    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseStylesheet}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
+    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseHead}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
   }
-  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseStylesheet}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseHead}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+}
+
+/** 색과 무관한 조판 바닥 — 토큰만 갈아끼우면 되도록 상수로 고정한다. */
+const ARTIFACT_BASE_RULES = [
+  `*,*::before,*::after{box-sizing:border-box}`,
+  `body{font-family:var(--fleet-sans);font-size:14px;line-height:1.6;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;padding:20px 22px 28px}`,
+  `h1,h2,h3,h4,h5,h6{margin:1.7em 0 .55em;line-height:1.25;text-wrap:balance;letter-spacing:-.012em;font-weight:600}`,
+  `h1{font-size:1.5rem}`,
+  `h2{font-size:1.12rem}`,
+  `h3{font-size:1rem}`,
+  `h4,h5,h6{font-size:.92rem}`,
+  `:is(body,main,section,article,aside,li,td,th,details)>:first-child{margin-top:0}`,
+  `p{margin:0 0 .85em}`,
+  `p,li{max-width:68ch}`,
+  `:is(td,th,figcaption) p{max-width:none}`,
+  `ul,ol{margin:0 0 .95em;padding-left:1.3em}`,
+  `li{margin:.28em 0}`,
+  `strong,b{font-weight:620;color:var(--fleet-ink)}`,
+  `small{font-size:.84em;color:var(--fleet-muted)}`,
+  `a{color:var(--fleet-accent);text-underline-offset:2px}`,
+  `img,svg,canvas{max-width:100%}`,
+  `img{height:auto}`,
+  `table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.94em}`,
+  `th{text-align:left;font-weight:600;font-size:.82em;letter-spacing:.02em;color:var(--fleet-muted);padding:7px 10px;border-bottom:1px solid var(--fleet-hairline)}`,
+  `td{padding:7px 10px;border-bottom:1px solid var(--fleet-hairline);vertical-align:top}`,
+  `tr:last-child td{border-bottom:0}`,
+  `code{font-family:var(--fleet-mono);font-size:.9em;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}`,
+  `pre{font-family:var(--fleet-mono);font-size:.88em;line-height:1.5;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}`,
+  `pre code{background:none;border:none;padding:0;font-size:1em}`,
+  `blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}`,
+  `hr{border:none;border-top:1px solid var(--fleet-hairline);margin:1.5em 0}`,
+  // 증거 인용은 구조 정보다 — 본문 리듬을 끊지 않도록 조용한 첨자 칩으로 눌러 둔다.
+  `cite{display:inline-block;font-style:normal;font-family:var(--fleet-mono);font-size:.72em;line-height:1.35;vertical-align:.3em;color:var(--fleet-muted);background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:3px;padding:0 3px;margin-left:3px;white-space:nowrap;text-decoration:none}`,
+  `cite+cite{margin-left:2px}`,
+  `details{border:1px solid var(--fleet-hairline);border-radius:8px;padding:10px 12px;margin:0 0 .9em}`,
+  `summary{cursor:pointer;font-weight:600;color:var(--fleet-ink)}`,
+  `summary::marker{color:var(--fleet-muted)}`,
+  // 넓은 표·코드·다이어그램의 가로 스크롤 그릇 — 페이지 자체가 옆으로 흐르지 않게 한다.
+  `.fleet-scroll{overflow-x:auto;max-width:100%}`,
+  // 포커스는 signal이 아니라 위치 채널이다 — Console과 같은 brass 계열을 쓴다.
+  `:focus-visible{outline:2px solid var(--fleet-focus);outline-offset:2px}`,
+  `::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`,
+  `@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}`,
+].join("");
+
+/**
+ * 아티팩트 문서의 바닥 스타일시트.
+ *
+ * 아티팩트를 쓰는 것은 게이트웨이 너머의 임의 모델이므로, 판독 품질을 프롬프트 준수에만
+ * 맡기지 않는다. 호스트가 타이포·표·코드·인용의 바닥을 깔고 Console 테마 토큰을 넘겨,
+ * 모델은 그 위에서 위계와 구조만 결정하면 되게 한다. 이 시트는 문서 맨 앞(<html> 직후)에
+ * 들어가므로 모델이 뒤에서 같은 선택자로 덮을 수 있다 — 바닥이지 감옥이 아니다.
+ *
+ * 폰트는 시스템 스택만 쓴다. iframe은 Console의 @font-face를 상속하지 않고, 외부 폰트
+ * 호스트를 부르는 것은 아티팩트의 격리 계약(프로세스 메모리 전용·바깥으로 신호 없음)을
+ * 깨기 때문이다.
+ */
+function artifactBaseStylesheet(tokens: {
+  readonly canvas: string;
+  readonly surface: string;
+  readonly foreground: string;
+  readonly muted: string;
+  readonly hairline: string;
+  readonly accent: string;
+  readonly positive: string;
+  readonly warn: string;
+  readonly critical: string;
+  readonly focus: string;
+}): string {
+  const root = `:root{--fleet-canvas:${tokens.canvas};--fleet-surface:${tokens.surface};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-hairline:${tokens.hairline};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif;--fleet-mono:ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace}`;
+  return `<style>${root}${ARTIFACT_BASE_RULES}</style>`;
 }
 
 type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };
