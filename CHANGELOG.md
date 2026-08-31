@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.80.0] - 2026-08-31
+
+### fleet-console
+
+#### Added
+- Chat view sessions can now publish Artifacts, and the composer deck lists the artifact skills alongside the rest.
+- Launch a Claude Operation straight into the chat view from the right-click menu. Each model row carries a start-surface mark you can click, or reach with the Left arrow, and the menu remembers the surface for the next time it opens. Rows whose launch kind cannot start a chat carry no mark, and the menu keeps its own choice rather than following Quick Launch.
+
+#### Changed
+- Session Analyst artifacts now render on the Console theme with a typographic base, so headings, tables, code, and evidence citations read as part of the product instead of an unstyled page.
+- Chat message box now matches the reading width you chose, and a new control in the composer row widens it to the whole panel.
+- Remember Activity Rail panel width per tool, so widening one panel no longer widens every other panel, and a tool you have never resized keeps opening at the width its own panel declares.
+- Open Settings wide enough for its theme grid to stand in two columns by default.
+
+#### Fixed
+- Downloading an artifact saves a standalone document that keeps its theme and styling; copying still yields the analyst's original source.
+- Let slow Windows starts reach readiness and clean up failed startup processes without leaving a background Console behind.
+- Reset only the active panel's width when you double-click the rail resize handle, leaving every other tool's remembered width in place.
+- Mark the active Theater in the sidebar with a brass spine, a filled initial badge, and a brighter name, so hovering another Theater no longer looks more active than the one you are working in.
+
 ## [1.79.0] - 2026-08-30
 
 ### fleet-cli
