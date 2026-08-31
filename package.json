@@ -9,7 +9,7 @@
   "author": "sbluemin",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "build": "pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build",
+    "build": "pnpm -r --filter=\"!fleet-harness\" --filter=\"!@dotobokuri/fleet-desktop\" build",
     "check:claude-agent-sdk-boundary": "node scripts/check-claude-agent-sdk-boundary.mjs",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:core-unified-agent-absent": "node scripts/check-core-unified-agent-absent.mjs",
@@ -22,9 +22,9 @@
     "desktop:package:dir": "pnpm --filter @dotobokuri/fleet-desktop package:dir",
     "desktop:package:unsigned": "pnpm --filter @dotobokuri/fleet-desktop package:unsigned",
     "fleet": "node scripts/run-isolated.mjs fleet",
-    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build",
-    "test": "pnpm -r --no-bail --filter '!fleet-harness' test",
-    "typecheck": "pnpm -r --filter '!fleet-harness' typecheck"
+    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter=\"!fleet-harness\" --filter=\"!@dotobokuri/fleet-desktop\" build",
+    "test": "pnpm -r --no-bail --filter=\"!fleet-harness\" test",
+    "typecheck": "pnpm -r --filter=\"!fleet-harness\" typecheck"
   },
   "bin": {
     "fleet": "./runtime/fleet-console/dist/fleet.mjs"
