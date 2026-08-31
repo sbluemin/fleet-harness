@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow, OperationLaunchView } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
+import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../launch-start-surface.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortGaugeGlyph, EffortTrack, effortLadderPosition, gatedEffortNames } from "../components/effort-track.js";
 import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
+import { ChatBubbleIcon, TerminalViewIcon } from "../components/start-view-glyphs.js";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -82,6 +84,10 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
   // 행마다 고른 강도. 트랙은 값만 정하고 실행은 모델 행이 일으키므로, 그 사이를 이 상태가 잇는다.
   const [rowEfforts, setRowEfforts] = useState<Readonly<Record<string, string | null>>>({});
+  // 이 메뉴가 여는 표면. 강도와 달리 **행마다가 아니라 메뉴 하나에 하나**다 — 세 행의 표식이
+  // 함께 뒤집히는 것이 곧 "이건 한 값"이라는 설명이 된다. 열 때 기억에서 씨앗을 받고, 바꾸면
+  // 즉시 되쓴다(다음에 열릴 메뉴가 이어받는 값이 곧 요구사항의 "기본값"이다).
+  const [startSurface, setStartSurface] = useState<OperationLaunchView>(readLaunchStartSurface);
   const [effortPosition, setEffortPosition] = useState<{
     readonly id: string;
     readonly left: number;
@@ -351,6 +357,57 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // Shell은 더 이상 Operation이 아니라 확대 표면이므로 실행 카탈로그에 아예 없다.
   const launchCatalog = catalog.filter((plugin) => plugin.kinds.length > 0);
 
+  // 표면을 뒤집는다. 기억은 즉시 되쓴다 — 발사까지 미루면 메뉴를 닫은 사용자가 자기가 바꾼 값을
+  // 잃고, 다음에 열리는 메뉴가 옛 표면으로 되돌아간다.
+  const toggleStartSurface = useCallback(() => {
+    setStartSurface((previous) => {
+      const next = previous === "chat" ? "terminal" : "chat";
+      writeLaunchStartSurface(next);
+      return next;
+    });
+  }, []);
+
+  /**
+   * 행 앞에 서는 표면 표식이자, 그 표면을 뒤집는 자리.
+   *
+   * 버튼 안의 span이라 초점 대상이 아니다 — 강도 손잡이와 같은 구조이고 같은 이유다: 행 자체가
+   * 실행 버튼이라 그 안에 두 번째 버튼을 중첩할 수 없다. 키보드 경로는 행에서의 ArrowLeft이고,
+   * 오른쪽 끝의 ArrowRight(강도 트랙)와 좌우로 마주 선다.
+   *
+   * 채팅을 선언하지 않은 종류에는 서지 않는다. 못 여는 표면을 고를 수 있는 척하는 표식은
+   * 그 자체가 결함이고, 그 판정은 카탈로그가 이미 싣고 온 `launchViews`가 소유한다.
+   *
+   * **모델 행에만 선다.** 이 목록의 왼쪽 홈통은 표식 한 자리이고(아래 CSS 계약), 실행 종류 행은
+   * 그 자리를 자기 아이콘에 이미 내주었다 — 둘을 함께 세우면 글자 열이 갈린다. 지금 채팅을
+   * 선언하는 종류는 모두 모델 밴드로 펼쳐지므로 실제 카탈로그에 빈 곳은 없다. 변형 없이 채팅을
+   * 선언하는 종류가 생기는 날, 그 행에 표식을 세울 자리를 먼저 정하는 것이 이 규칙을 넓히는 값이다.
+   */
+  const renderStartSurfaceMark = (kind: OperationLaunchKind) => {
+    if (!supportsChatStart(kind)) return null;
+    const chat = startSurface === "chat";
+    return (
+      <span
+        className="operation-launch-surface-mark"
+        data-launch-start-surface={startSurface}
+        title={t(chat ? "launchVariants.startView.switchToTerminal" : "launchVariants.startView.switchToChat")}
+        onClick={(event) => {
+          // 표식은 실행이 아니라 표면을 바꾼다. 행 버튼까지 함께 발화하면 좌표를 고치려던
+          // 클릭이 그대로 출격이 된다(강도 손잡이가 같은 규율을 쓴다).
+          event.preventDefault();
+          event.stopPropagation();
+          toggleStartSurface();
+        }}
+      >
+        {chat ? <ChatBubbleIcon /> : <TerminalViewIcon />}
+        {/* 표면 이름은 시각적으로만 접어 행의 접근 이름에 남긴다 — 아이콘만으로는 스크린리더가
+            이 행이 무엇으로 열리는지 말하지 못한다(종류 설명이 쓰는 --quiet와 같은 기법). */}
+        <span className="operation-launch-surface-mark-name">
+          {t(chat ? "launchVariants.startView.chat" : "launchVariants.startView.terminal")}
+        </span>
+      </span>
+    );
+  };
+
   // 모델 행은 자기 행 키만 들고 다닌다(강도 상자·고른 단이 그 키에 매달린다). 실행은 여전히
   // 실행 종류가 일으키므로, 키에서 그 종류로 되돌아오는 길을 카탈로그 한 번 훑어 만들어 둔다.
   const variantRows = useMemo(() => {
@@ -407,6 +464,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         event.preventDefault();
         moveFocus(null, 0, "last");
         return;
+      case "ArrowLeft": {
+        // 왼쪽은 행 앞의 표면 표식과 마주 본다(오른쪽은 강도 트랙). 표식이 실제로 선 행에서만
+        // 듣는다 — 판정을 여기서 다시 세우지 않고 DOM에 이미 선 표식을 묻는 이유는, 포인터와
+        // 키보드가 같은 조건에서 같은 값을 바꾸도록 착지를 하나로 두기 위해서다.
+        if (!target.closest<HTMLElement>(MENU_ITEM_SELECTOR)?.querySelector(".operation-launch-surface-mark")) return;
+        event.preventDefault();
+        toggleStartSurface();
+        return;
+      }
       case "ArrowRight": {
         // 모델 행에서만 오른쪽이 열 것을 가진다 — 그 행의 강도 트랙이다.
         const entry = target.closest<HTMLElement>(".operation-launch-variant-entry");
@@ -644,8 +710,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                                 // 열렸는지는 aria-controls가 가리킨다.
                                 aria-expanded={rowHasEffort ? effortOpen : undefined}
                                 aria-controls={effortOpen ? EFFORT_POPUP_ID : undefined}
-                                onClick={() => onLaunchKind(plugin.id, kind, chosenChip?.launch ?? row.launch)}
+                                onClick={() => onLaunchKind(plugin.id, kind, withStartSurface(chosenChip?.launch ?? row.launch, kind, startSurface))}
                               >
+                                {renderStartSurfaceMark(kind)}
                                 <span className="operation-launch-variant-row-label">{row.label}</span>
                                 {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
                                 {/* 강도 손잡이. 지금 실린 강도를 되비치는 표식이면서, 트랙을 여는 자리이기도 하다 —
@@ -752,7 +819,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 // 같은 노브를 다시 눌러 실행한 순간에만 팁을 졸업시킨다. 선택·피처 투어 건너뛰기는
                 // 제스처를 익힌 증거가 아니다.
                 if (!effortConfirmTipSeen) void persistEffortConfirmTipSeen();
-                onLaunchKind(effortTarget.pluginId, effortTarget.kind, chip.launch);
+                // 트랙에서 확정하는 실행도 같은 표면으로 나간다 — 두 발사 경로가 다른 표면을 쓰면
+                // 같은 행이 어떻게 눌렸는지에 따라 다른 곳에서 태어난다.
+                onLaunchKind(effortTarget.pluginId, effortTarget.kind, withStartSurface(chip.launch, effortTarget.kind, startSurface));
               }}
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}

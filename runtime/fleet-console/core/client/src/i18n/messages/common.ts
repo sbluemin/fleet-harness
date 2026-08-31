@@ -82,6 +82,10 @@ export const commonEn = {
   "launchVariants.effort.apexToggle": "Show {tiers}",
   "launchVariants.effort.apexCollapse": "Hide {tiers}",
   "launchVariants.effort.confirmTip": "Press the knob again to launch.",
+  "launchVariants.startView.terminal": "Terminal view",
+  "launchVariants.startView.chat": "Chat view",
+  "launchVariants.startView.switchToChat": "Start in chat view (Left arrow)",
+  "launchVariants.startView.switchToTerminal": "Start in terminal view (Left arrow)",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -167,4 +171,8 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchVariants.effort.apexToggle": "{tiers} 펼치기",
   "launchVariants.effort.apexCollapse": "{tiers} 접기",
   "launchVariants.effort.confirmTip": "노브를 다시 누르면 실행됩니다.",
+  "launchVariants.startView.terminal": "터미널뷰",
+  "launchVariants.startView.chat": "채팅뷰",
+  "launchVariants.startView.switchToChat": "채팅뷰로 시작 (왼쪽 방향키)",
+  "launchVariants.startView.switchToTerminal": "터미널뷰로 시작 (왼쪽 방향키)",
 };
