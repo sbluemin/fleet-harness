@@ -44,7 +44,7 @@ Severity never decides disposition. A reviewer's P1 on a path nothing reaches is
 
 ## Stopping
 
-Stop when a hunting round produces no finding that survives verification; two consecutive dry rounds end the run. A reviewer can always generate another suggestion, so waiting for it to fall silent is an unbounded loop.
+Stop when a full hunting round produces no finding that survives verification — one dry round ends the run. A reviewer can always generate another suggestion, so waiting for it to fall silent is an unbounded loop.
 
 ## Gotchas
 

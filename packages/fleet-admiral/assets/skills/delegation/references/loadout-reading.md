@@ -11,7 +11,7 @@ The tool returns facts as JSON and stops there: nothing in the payload recommend
 
 ## Reading an allowance
 
-- **Read the window that belongs to the model.** Where `constraints.quotaScope` names a pool, take the window whose `scope` matches; otherwise the provider's scope-less window. A window marked `isAggregate` sums sibling pools — it can read healthy while the model's own pool is spent, so it stays out of headroom math.
+- **Read every window that binds the model.** Where `constraints.quotaScope` names a pool, the window whose `scope` matches is the binding one; otherwise every non-aggregate window in the entry binds at once — a provider can meter a session clock beside a weekly or monthly one — and the most restrictive verdict among them governs the dispatch, however healthy the other cadences read. A window marked `isAggregate` sums sibling pools — it can read healthy while the model's own pool is spent, so it stays out of headroom math.
 - **`pressure` is the verdict, and it outranks arithmetic of your own.** `ok` is usable at any percentage; `elevated` is a reason to rebalance toward a lighter provider, not a prohibition; send nothing to `critical` unless every alternative is worse. Re-deriving risk from the raw figures to overrule the verdict is how a healthy provider gets abandoned.
 - **Percentages compare only within one clock.** Break a tie between windows sharing a `cadence` by the lower `usedPercent`, and never compare across cadences — a weekly window at 49% early in its week burns hotter than a monthly one at 78% near its reset. `paceRatio` above 1.0 states that directly: the window is being spent faster than its clock refills it.
 - **`recoveryHalfLifeMs` prices the drain** — the average lockout bought by emptying this pool now: weeks for a monthly window, hours for a session one. `projectedExhaustionAt` appears only when a computable average burn lands before the reset, so its absence states "lasts to reset" only while `paceRatio` sits beside it; with no pace figure the absence is the frame rule above — could not tell, never safe.
@@ -35,7 +35,7 @@ Three constraint fields answer three different questions, and none implies anoth
 
 ## Names
 
-`agentTypes` maps each reasoning rung this session registered to the name that selects it (`none` when the model has no effort control), and `modelId` is the model as a value for a field that takes a model rather than a name — including matching the session's own model back to the roster. Which dispatch field takes which spelling is the tool description's contract; take both verbatim from the reading, never reconstructed.
+`agentTypes` maps each exposed reasoning rung to the name that selects the identity (`none` when the model has no effort control), and `modelId` is the model as a value for a field that takes a model rather than a name — including matching the session's own model back to the roster. The names are candidate selectors, not proof of registration: they are derived live from the exposure while the agent registry froze at session start, so confirm a name is one this session actually carries before dispatching on it. Which dispatch field takes which spelling is the tool description's contract; take both verbatim from the reading, never reconstructed.
 
 ## Gotchas
 
