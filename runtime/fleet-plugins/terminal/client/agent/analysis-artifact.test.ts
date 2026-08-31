@@ -43,7 +43,7 @@ describe("artifact frame", () => {
     expect(panel).not.toContain("allow-same-origin");
     expect(panel).not.toContain("safeArtifactSrcdoc");
     expect(panel).not.toContain("srcDoc=");
-    expect(panel).toContain("src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)}");
+    expect(panel).toContain("src={analysisArtifactUrl(artifact.id, theme, getArtifactColors())}");
   });
 
   it("includes the active theme and exact computed Console canvas tokens for all themes", () => {

@@ -27,6 +27,7 @@ describe("Session Analyst artifact export", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("disables export without an active artifact", () => {
@@ -85,16 +86,19 @@ describe("Session Analyst artifact export", () => {
     mounted.unmount();
   });
 
-  it("downloads active HTML with a sanitized title", () => {
-    storeState = withArtifact({ title: "  Résumé / Q&A  " });
-    const { createObjectURL, revokeObjectURL, click } = stubDownload();
+  it("downloads the host-wrapped document with a sanitized title", async () => {
+    storeState = withArtifact({ title: "  Résumé / Q&A  ", html: "<main>author source</main>" });
+    const { createObjectURL, revokeObjectURL, click, fetchDocument } = stubDownload();
     const mounted = mountPanel();
     const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
 
     act(() => exportButton.click());
-    act(() => [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Download HTML")!.click());
+    await clickMenuItem(mounted.container, "Download HTML");
 
+    // 내려받은 파일은 자립해야 한다 — 테마 토큰과 바닥 스타일을 실은 호스트 문서를 저장한다.
+    expect(fetchDocument).toHaveBeenCalledWith(expect.stringContaining("/plugins/terminal/analysis/artifacts/artifact-active"));
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    await expect(downloadedText(createObjectURL)).resolves.toBe(HOST_DOCUMENT);
     expect(click).toHaveBeenCalledOnce();
     const anchor = click.mock.instances[0] as HTMLAnchorElement;
     expect(anchor.download).toBe("Résumé-Q-A.html");
@@ -104,13 +108,26 @@ describe("Session Analyst artifact export", () => {
     mounted.unmount();
   });
 
-  it("falls back to artifact.html for a punctuation-only title", () => {
+  it("falls back to the author source when the host document cannot be fetched", async () => {
+    storeState = withArtifact({ title: "Offline", html: "<main>author source</main>" });
+    const { createObjectURL, click } = stubDownload(async () => { throw new Error("offline"); });
+    const mounted = mountPanel();
+
+    act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!.click());
+    await clickMenuItem(mounted.container, "Download HTML");
+
+    await expect(downloadedText(createObjectURL)).resolves.toBe("<main>author source</main>");
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe("Offline.html");
+    mounted.unmount();
+  });
+
+  it("falls back to artifact.html for a punctuation-only title", async () => {
     storeState = withArtifact({ title: "..." });
     const { click } = stubDownload();
     const mounted = mountPanel();
 
     act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!.click());
-    act(() => mounted.container.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click());
+    await clickMenuItem(mounted.container, "Download HTML");
 
     expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe("artifact.html");
     mounted.unmount();
@@ -345,11 +362,26 @@ function keydown(key: string): KeyboardEvent {
 
 // 반환 타입은 추론에 맡긴다 — `vi.spyOn`의 인스턴스화 표현식은 접근자 오버로드를 먼저 집어
 // 메서드 키인 "click"을 제약 위반으로 판정한다.
-function stubDownload() {
+const HOST_DOCUMENT = "<!doctype html><html><head><style>:root{--fleet-ink:#efefef}</style></head><body><main>hosted</main></body></html>";
+
+function stubDownload(fetchImpl?: () => Promise<unknown>) {
   const createObjectURL = vi.fn(() => "blob:artifact");
   const revokeObjectURL = vi.fn();
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-  return { createObjectURL, revokeObjectURL, click };
+  const fetchDocument = vi.fn(fetchImpl ?? (async () => ({ ok: true, text: async () => HOST_DOCUMENT })));
+  vi.stubGlobal("fetch", fetchDocument);
+  return { createObjectURL, revokeObjectURL, click, fetchDocument };
+}
+
+async function clickMenuItem(container: HTMLElement, label: string): Promise<void> {
+  await act(async () => {
+    [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === label)!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+async function downloadedText(createObjectURL: ReturnType<typeof vi.fn>): Promise<string> {
+  return await (createObjectURL.mock.calls[0]![0] as Blob).text();
 }

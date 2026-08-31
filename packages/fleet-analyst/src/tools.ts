@@ -101,7 +101,7 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
   },
   [ANALYST_TOOL_IDS.publishArtifact]: {
     id: ANALYST_TOOL_IDS.publishArtifact,
-    description: "Publishes one newest-first, in-memory analysis artifact and emits it to the client event stream. The served document injects a base stylesheet exposing CSS variables --fleet-canvas, --fleet-surface, --fleet-ink, --fleet-muted, --fleet-hairline, --fleet-accent matching the user's console theme. Prefer these variables (with sensible fallbacks, e.g. var(--fleet-surface, #f5f5f5)) over hard-coded colors so the artifact reads correctly in both dark and light consoles.",
+    description: "Publishes one newest-first, in-memory analysis artifact and emits it to the client event stream. The served document injects a base stylesheet that sets page padding, type, tables, code, details, and citation chips, and exposes the console theme as CSS variables: --fleet-canvas, --fleet-surface, --fleet-ink, --fleet-muted, --fleet-hairline, --fleet-accent, --fleet-positive, --fleet-warn, --fleet-critical, --fleet-focus, --fleet-sans, --fleet-mono. Take every color and face from those variables with a literal fallback, e.g. var(--fleet-surface, #f5f5f5), so the artifact reads correctly in every console theme. See the Artifact design section of the system prompt for the full contract.",
     promptSnippet: "Use publish_artifact with the exact title and html parameters for a self-contained structured explanation with evidence citations.",
     whenToUse: ["When a timeline, comparison, risk review, or visual brief is clearer than chat alone.", "After collecting cited evidence for the artifact."],
     whenNotToUse: ["Do not use it for raw transcript dumps, secrets, external resources, or oversized HTML."],

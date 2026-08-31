@@ -2,7 +2,7 @@ import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/pl
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { AnalysisArtifact } from "./analysis-types.js";
 
-import { analysisArtifactUrl, clearAnalysisArtifacts } from "./analysis-api.js";
+import { analysisArtifactUrl, clearAnalysisArtifacts, type ArtifactThemeColors } from "./analysis-api.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { getT } from "../i18n/index.js";
 import { useAnalysisStore } from "./analysis-store.js";
@@ -102,10 +102,17 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
     };
   }, []);
 
-  const downloadActive = () => {
+  const downloadActive = async () => {
     if (!active) return;
     closeExport(true);
-    const blob = new Blob([active.html], { type: "text/html" });
+    // 내려받은 파일은 그 자체로 서야 한다 — 호스트가 테마 토큰과 바닥 스타일을 주입한 문서를
+    // 받아 저장한다. 모델이 쓴 원본이 필요하면 "Copy source"가 그 몫이다. 문서를 못 받으면
+    // 조용히 원본으로 물러난다: 내려받기 자체가 실패하는 것보다 낫다.
+    const standalone = await fetch(analysisArtifactUrl(active.id, context.theme, getArtifactColors()))
+      .then((response) => (response.ok ? response.text() : null))
+      .catch(() => null);
+    if (disposed.current) return;
+    const blob = new Blob([standalone ?? active.html], { type: "text/html" });
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     const sanitized = active.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "").replace(/^\.+/, "");
@@ -137,11 +144,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const openActiveInNewTab = () => {
     if (!active) return;
     closeExport(true);
-    const { canvas, foreground, surface, hairline, accent, muted } = getArtifactColors();
-    const url = surface || hairline || accent || muted
-      ? analysisArtifactUrl(active.id, context.theme, canvas, foreground, surface, hairline, accent, muted)
-      : analysisArtifactUrl(active.id, context.theme, canvas, foreground);
-    window.open(url, "_blank", "noopener");
+    window.open(analysisArtifactUrl(active.id, context.theme, getArtifactColors()), "_blank", "noopener");
   };
   const handleExportMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
@@ -195,7 +198,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
           <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}>{t("terminal.artifacts.export")}</button>
           {exportOpen ? (
             <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
-              <button type="button" role="menuitem" onClick={downloadActive}>{t("terminal.artifacts.exportDownload")}</button>
+              <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t("terminal.artifacts.exportDownload")}</button>
               <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
               <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
             </div>
@@ -217,10 +220,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 function ActiveArtifact({ artifact, theme, language }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme; readonly language: ConsoleLocale }) {
   if (!artifact.id) return null;
   const t = getT(language);
-  const { canvas, foreground, surface, hairline, accent, muted } = getArtifactColors();
-  const frame = surface || hairline || accent || muted
-    ? <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground, surface, hairline, accent, muted)} sandbox="allow-scripts" />
-    : <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />;
+  const frame = <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, getArtifactColors())} sandbox="allow-scripts" />;
   return (
     <article aria-label={t("terminal.artifacts.selectedPreview")}>
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} language={language} /></header>
@@ -229,17 +229,22 @@ function ActiveArtifact({ artifact, theme, language }: { readonly artifact: Anal
   );
 }
 
-function getArtifactColors(): { readonly canvas: string; readonly foreground: string; readonly surface: string; readonly hairline: string; readonly accent: string; readonly muted: string } {
+function getArtifactColors(): ArtifactThemeColors {
   const consoleStyle = getComputedStyle(document.documentElement);
-  const canvas = consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas";
-  const foreground = consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText";
+  const token = (name: string) => consoleStyle.getPropertyValue(name).trim();
   return {
-    canvas,
-    foreground,
-    surface: consoleStyle.getPropertyValue("--ink-deep").trim(),
-    hairline: consoleStyle.getPropertyValue("--hairline").trim(),
-    accent: consoleStyle.getPropertyValue("--aurora").trim(),
-    muted: consoleStyle.getPropertyValue("--ink-muted").trim(),
+    canvas: token("--ink-veil") || "Canvas",
+    foreground: token("--ink-pearl") || "CanvasText",
+    surface: token("--ink-deep"),
+    hairline: token("--hairline"),
+    accent: token("--aurora"),
+    muted: token("--ink-muted"),
+    // 신호 3색은 ink 티어를 뽑는다 — 라이트 테마에서 본문 대비(AA)를 지키는 것은 base가 아니라 ink다.
+    positive: token("--positive-ink"),
+    warn: token("--warn-ink"),
+    critical: token("--coral-ink"),
+    // 포커스/위치 채널은 brass다 — signal 토큰을 포커스 링에 쓰면 채널이 섞인다.
+    focus: token("--brass"),
   };
 }
 

@@ -24,12 +24,31 @@ let pendingRecreateTimer: ReturnType<typeof setTimeout> | null = null;
 let recreateDelayMs = RECREATE_BASE_DELAY_MS;
 const operations = new Map<string, OperationRecord>();
 
-export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, canvas: string, foreground: string, surface?: string, hairline?: string, accent?: string, muted?: string): string {
-  const query = new URLSearchParams({ theme, canvas, foreground });
-  if (surface) query.set("surface", surface);
-  if (hairline) query.set("hairline", hairline);
-  if (accent) query.set("accent", accent);
-  if (muted) query.set("muted", muted);
+/**
+ * 아티팩트 문서에 넘기는 Console 테마 색. canvas/foreground만 필수이고 나머지는 서버가
+ * foreground로 폴백한다 — 값이 비면 아예 싣지 않아 서버 폴백이 그대로 서게 둔다.
+ */
+export type ArtifactThemeColors = {
+  readonly canvas: string;
+  readonly foreground: string;
+  readonly surface?: string;
+  readonly hairline?: string;
+  readonly accent?: string;
+  readonly muted?: string;
+  readonly positive?: string;
+  readonly warn?: string;
+  readonly critical?: string;
+  readonly focus?: string;
+};
+
+const ARTIFACT_OPTIONAL_COLORS = ["surface", "hairline", "accent", "muted", "positive", "warn", "critical", "focus"] as const;
+
+export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, colors: ArtifactThemeColors): string {
+  const query = new URLSearchParams({ theme, canvas: colors.canvas, foreground: colors.foreground });
+  for (const key of ARTIFACT_OPTIONAL_COLORS) {
+    const value = colors[key];
+    if (value) query.set(key, value);
+  }
   return `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}?${query.toString()}`;
 }
 

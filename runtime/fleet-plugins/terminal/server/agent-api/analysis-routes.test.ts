@@ -45,13 +45,17 @@ function registerAnalysis(router: { readonly ctx: unknown }, deps: Partial<Analy
   });
 }
 
-function artifactBaseCss(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string }): string {
-  return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`;
+function artifactTokens(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string; readonly positive?: string; readonly warn?: string; readonly critical?: string; readonly focus?: string }): string {
+  const positive = colors.positive ?? colors.foreground;
+  const warn = colors.warn ?? colors.foreground;
+  const critical = colors.critical ?? colors.foreground;
+  const focus = colors.focus ?? colors.accent;
+  return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent};--fleet-positive:${positive};--fleet-warn:${warn};--fleet-critical:${critical};--fleet-focus:${focus};--fleet-sans:`;
 }
 
 describe("Session Analyst server contract", () => {
   it("serializes all Console theme colors into artifact URLs", () => {
-    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", "#101820", "#f2f4f7", "#18212b", "#35404d", "#65d1ff", "#96a0ad"), "http://fleet.invalid");
+    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", { canvas: "#101820", foreground: "#f2f4f7", surface: "#18212b", hairline: "#35404d", accent: "#65d1ff", muted: "#96a0ad", positive: "#5fd39a", warn: "#e5c07b", critical: "#f2777a", focus: "#d9a441" }), "http://fleet.invalid");
 
     expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact%2Fid");
     expect(Object.fromEntries(url.searchParams)).toEqual({
@@ -62,6 +66,10 @@ describe("Session Analyst server contract", () => {
       hairline: "#35404d",
       accent: "#65d1ff",
       muted: "#96a0ad",
+      positive: "#5fd39a",
+      warn: "#e5c07b",
+      critical: "#f2777a",
+      focus: "#d9a441",
     });
   });
 
@@ -628,7 +636,7 @@ describe("Session Analyst server contract", () => {
     expect(response.body).toContain(`<body style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;margin:0!important;">${html}</body>`);
     expect(response.body).toContain("<script>globalThis.__artifactRan = true</script>");
     const fragmentDocument = new DOMParser().parseFromString(response.body, "text/html");
-    const fragmentCss = artifactBaseCss({
+    const fragmentCss = artifactTokens({
       canvas: "oklch(33% 0.006 252)",
       surface: "#18202b",
       foreground: "oklch(95% 0.003 250)",
@@ -637,8 +645,18 @@ describe("Session Analyst server contract", () => {
       accent: "#65d1ff",
     });
     expect(fragmentDocument.documentElement.getAttribute("data-theme")).toBe("carbon");
-    expect(response.body).toContain(`<head><style>${fragmentCss}</style></head><body`);
-    expect(fragmentDocument.head.querySelector("style")?.textContent).toBe(fragmentCss);
+    expect(response.body).toContain(`<head><style>${fragmentCss}`);
+    expect(fragmentDocument.head.querySelector("style")?.textContent).toContain(fragmentCss);
+    // 조판 바닥은 계약이다 — 모델이 스타일을 한 줄도 주지 않아도 아티팩트는 읽혀야 한다.
+    const fragmentStyle = fragmentDocument.head.querySelector("style")?.textContent ?? "";
+    expect(fragmentStyle).toContain("cite{display:inline-block");
+    expect(fragmentStyle).toContain(".fleet-scroll{overflow-x:auto");
+    expect(fragmentStyle).toContain("font-variant-numeric:tabular-nums");
+    expect(fragmentStyle).toContain("prefers-reduced-motion:reduce");
+    // Console 테마는 OS 테마와 독립이다. 바닥이 prefers-color-scheme으로 갈라지면 반대 테마를 칠한다.
+    expect(fragmentStyle).not.toContain("prefers-color-scheme");
+    // 아티팩트는 바깥으로 신호를 내지 않는다 — 폰트든 스크립트든 원격 출처가 있으면 안 된다.
+    expect(fragmentStyle).not.toContain("//");
     expect(fragmentDocument.body.querySelector("main")?.textContent).toBe("ArtifactglobalThis.__artifactRan = true");
     expect(response.headers).toMatchObject({
       "Content-Type": "text/html; charset=utf-8",
@@ -655,7 +673,7 @@ describe("Session Analyst server contract", () => {
 
     const legacyResponse = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid?canvas=%23101010&foreground=%23efefef");
     const legacyDocument = new DOMParser().parseFromString(legacyResponse.body, "text/html");
-    expect(legacyDocument.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+    expect(legacyDocument.head.querySelector("style")?.textContent).toContain(artifactTokens({
       canvas: "#101010",
       surface: "#101010",
       foreground: "#efefef",
@@ -685,7 +703,7 @@ describe("Session Analyst server contract", () => {
     expect(afterStop.body).toContain(html);
     expect(afterStop.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;');
     const defaultDocument = new DOMParser().parseFromString(afterStop.body, "text/html");
-    expect(defaultDocument.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+    expect(defaultDocument.head.querySelector("style")?.textContent).toContain(artifactTokens({
       canvas: "Canvas",
       surface: "Canvas",
       foreground: "CanvasText",
@@ -737,7 +755,7 @@ describe("Session Analyst server contract", () => {
       const headStyles = document.head.querySelectorAll("style");
       expect(headStyles).toHaveLength(2);
       expect(document.head.firstElementChild).toBe(headStyles[0]);
-      expect(headStyles[0]?.textContent).toBe(artifactBaseCss({
+      expect(headStyles[0]?.textContent).toContain(artifactTokens({
         canvas: "#123456",
         surface: "#18202b",
         foreground: "#f0f0f0",
@@ -745,7 +763,10 @@ describe("Session Analyst server contract", () => {
         hairline: "#35404d",
         accent: "#65d1ff",
       }));
-      expect(headStyles[0]?.textContent).not.toContain("!important");
+      // 바닥 시트는 모델 스타일을 짓밟지 않는다 — !important는 사용자 모션 설정 존중에만 허용된다.
+      const motionIndex = headStyles[0]?.textContent?.indexOf("@media (prefers-reduced-motion") ?? -1;
+      expect(motionIndex).toBeGreaterThan(0);
+      expect(headStyles[0]?.textContent?.slice(0, motionIndex)).not.toContain("!important");
       expect(headStyles[1]?.textContent).toContain("background:linear-gradient(white,white)!important");
       expect(document.documentElement.getAttribute("data-theme")).toBe(theme);
       expect(document.documentElement).toMatchObject({ lang: "en", className: "artifact-root" });
@@ -810,7 +831,7 @@ describe("Session Analyst server contract", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("instrument");
     expect(document.documentElement.style.getPropertyValue("background-color")).toBe("canvas");
     expect(document.documentElement.style.getPropertyValue("color")).toBe("canvastext");
-    expect(document.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+    expect(document.head.querySelector("style")?.textContent).toContain(artifactTokens({
       canvas: "Canvas",
       surface: "Canvas",
       foreground: "CanvasText",

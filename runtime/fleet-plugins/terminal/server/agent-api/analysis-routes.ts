@@ -140,8 +140,12 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const hairline = safeArtifactColor(query.get("hairline"), foreground);
   const accent = safeArtifactColor(query.get("accent"), foreground);
   const muted = safeArtifactColor(query.get("muted"), foreground);
+  const positive = safeArtifactColor(query.get("positive"), foreground);
+  const warn = safeArtifactColor(query.get("warn"), foreground);
+  const critical = safeArtifactColor(query.get("critical"), foreground);
+  const focus = safeArtifactColor(query.get("focus"), accent);
   const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseStylesheet = `<style>:root{--fleet-canvas:${canvas};--fleet-surface:${surface};--fleet-ink:${foreground};--fleet-muted:${muted};--fleet-hairline:${hairline};--fleet-accent:${accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}</style>`;
+  const baseStylesheet = artifactBaseStylesheet({ canvas, surface, foreground, muted, hairline, accent, positive, warn, critical, focus });
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
@@ -151,6 +155,77 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
     return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseStylesheet}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
   }
   return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseStylesheet}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+}
+
+/** 색과 무관한 조판 바닥 — 토큰만 갈아끼우면 되도록 상수로 고정한다. */
+const ARTIFACT_BASE_RULES = [
+  `*,*::before,*::after{box-sizing:border-box}`,
+  `body{font-family:var(--fleet-sans);font-size:14px;line-height:1.6;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;padding:20px 22px 28px}`,
+  `h1,h2,h3,h4,h5,h6{margin:1.7em 0 .55em;line-height:1.25;text-wrap:balance;letter-spacing:-.012em;font-weight:600}`,
+  `h1{font-size:1.5rem}`,
+  `h2{font-size:1.12rem}`,
+  `h3{font-size:1rem}`,
+  `h4,h5,h6{font-size:.92rem}`,
+  `:is(body,main,section,article,aside,li,td,th,details)>:first-child{margin-top:0}`,
+  `p{margin:0 0 .85em}`,
+  `p,li{max-width:68ch}`,
+  `:is(td,th,figcaption) p{max-width:none}`,
+  `ul,ol{margin:0 0 .95em;padding-left:1.3em}`,
+  `li{margin:.28em 0}`,
+  `strong,b{font-weight:620;color:var(--fleet-ink)}`,
+  `small{font-size:.84em;color:var(--fleet-muted)}`,
+  `a{color:var(--fleet-accent);text-underline-offset:2px}`,
+  `img,svg,canvas{max-width:100%}`,
+  `img{height:auto}`,
+  `table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.94em}`,
+  `th{text-align:left;font-weight:600;font-size:.82em;letter-spacing:.02em;color:var(--fleet-muted);padding:7px 10px;border-bottom:1px solid var(--fleet-hairline)}`,
+  `td{padding:7px 10px;border-bottom:1px solid var(--fleet-hairline);vertical-align:top}`,
+  `tr:last-child td{border-bottom:0}`,
+  `code{font-family:var(--fleet-mono);font-size:.9em;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}`,
+  `pre{font-family:var(--fleet-mono);font-size:.88em;line-height:1.5;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}`,
+  `pre code{background:none;border:none;padding:0;font-size:1em}`,
+  `blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}`,
+  `hr{border:none;border-top:1px solid var(--fleet-hairline);margin:1.5em 0}`,
+  // 증거 인용은 구조 정보다 — 본문 리듬을 끊지 않도록 조용한 첨자 칩으로 눌러 둔다.
+  `cite{display:inline-block;font-style:normal;font-family:var(--fleet-mono);font-size:.72em;line-height:1.35;vertical-align:.3em;color:var(--fleet-muted);background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:3px;padding:0 3px;margin-left:3px;white-space:nowrap;text-decoration:none}`,
+  `cite+cite{margin-left:2px}`,
+  `details{border:1px solid var(--fleet-hairline);border-radius:8px;padding:10px 12px;margin:0 0 .9em}`,
+  `summary{cursor:pointer;font-weight:600;color:var(--fleet-ink)}`,
+  `summary::marker{color:var(--fleet-muted)}`,
+  // 넓은 표·코드·다이어그램의 가로 스크롤 그릇 — 페이지 자체가 옆으로 흐르지 않게 한다.
+  `.fleet-scroll{overflow-x:auto;max-width:100%}`,
+  // 포커스는 signal이 아니라 위치 채널이다 — Console과 같은 brass 계열을 쓴다.
+  `:focus-visible{outline:2px solid var(--fleet-focus);outline-offset:2px}`,
+  `::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`,
+  `@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}`,
+].join("");
+
+/**
+ * 아티팩트 문서의 바닥 스타일시트.
+ *
+ * 아티팩트를 쓰는 것은 게이트웨이 너머의 임의 모델이므로, 판독 품질을 프롬프트 준수에만
+ * 맡기지 않는다. 호스트가 타이포·표·코드·인용의 바닥을 깔고 Console 테마 토큰을 넘겨,
+ * 모델은 그 위에서 위계와 구조만 결정하면 되게 한다. 이 시트는 문서 맨 앞(<html> 직후)에
+ * 들어가므로 모델이 뒤에서 같은 선택자로 덮을 수 있다 — 바닥이지 감옥이 아니다.
+ *
+ * 폰트는 시스템 스택만 쓴다. iframe은 Console의 @font-face를 상속하지 않고, 외부 폰트
+ * 호스트를 부르는 것은 아티팩트의 격리 계약(프로세스 메모리 전용·바깥으로 신호 없음)을
+ * 깨기 때문이다.
+ */
+function artifactBaseStylesheet(tokens: {
+  readonly canvas: string;
+  readonly surface: string;
+  readonly foreground: string;
+  readonly muted: string;
+  readonly hairline: string;
+  readonly accent: string;
+  readonly positive: string;
+  readonly warn: string;
+  readonly critical: string;
+  readonly focus: string;
+}): string {
+  const root = `:root{--fleet-canvas:${tokens.canvas};--fleet-surface:${tokens.surface};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-hairline:${tokens.hairline};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif;--fleet-mono:ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace}`;
+  return `<style>${root}${ARTIFACT_BASE_RULES}</style>`;
 }
 
 type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };
