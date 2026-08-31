@@ -17,6 +17,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const [listOpen, setListOpen] = React.useState(false);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportCopied, setExportCopied] = React.useState(false);
+  const [exportFailed, setExportFailed] = React.useState(false);
   const listId = React.useId();
   const exportId = React.useId();
   const listShell = React.useRef<HTMLDivElement>(null);
@@ -24,6 +25,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const exportTrigger = React.useRef<HTMLButtonElement>(null);
   const exportMenu = React.useRef<HTMLDivElement>(null);
   const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const disposed = React.useRef(false);
   // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
   // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
@@ -33,17 +35,22 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   }, [newestId]);
   const active = artifacts.find((artifact) => artifact.id === activeId) ?? artifacts.at(-1) ?? null;
   const count = artifacts.length;
-  const clearCopied = () => {
+  const clearExportFeedback = () => {
     if (copiedTimer.current !== null) {
       clearTimeout(copiedTimer.current);
       copiedTimer.current = null;
     }
+    if (failedTimer.current !== null) {
+      clearTimeout(failedTimer.current);
+      failedTimer.current = null;
+    }
     setExportCopied(false);
+    setExportFailed(false);
   };
   const closeExport = (restoreFocus = false) => {
     exportGeneration.current += 1;
     setExportOpen(false);
-    clearCopied();
+    clearExportFeedback();
     if (restoreFocus) exportTrigger.current?.focus();
   };
   React.useEffect(() => {
@@ -86,7 +93,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
     // active 아티팩트 교체는 메뉴를 닫지 않으므로, 여기서 세대를 올려 이전 아티팩트를
     // 대상으로 출발한 clipboard 완료가 새 아티팩트에 "Copied"로 오귀속되지 않게 한다.
     exportGeneration.current += 1;
-    clearCopied();
+    clearExportFeedback();
   }, [exportOpen, active?.id]);
   React.useEffect(() => {
     if (exportOpen) exportMenu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
@@ -99,20 +106,36 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
         clearTimeout(copiedTimer.current);
         copiedTimer.current = null;
       }
+      if (failedTimer.current !== null) {
+        clearTimeout(failedTimer.current);
+        failedTimer.current = null;
+      }
     };
   }, []);
 
   const downloadActive = async () => {
     if (!active) return;
-    closeExport(true);
-    // 내려받은 파일은 그 자체로 서야 한다 — 호스트가 테마 토큰과 바닥 스타일을 주입한 문서를
-    // 받아 저장한다. 모델이 쓴 원본이 필요하면 "Copy source"가 그 몫이다. 문서를 못 받으면
-    // 조용히 원본으로 물러난다: 내려받기 자체가 실패하는 것보다 낫다.
+    const generation = exportGeneration.current;
+    // 내보내는 것은 호스트가 감싼 문서뿐이다 — 테마와 바닥 스타일만이 아니라 오프라인 계약을
+    // 싣는 meta 정책도 거기에 있다. 못 받았다고 보호 없는 원본을 대신 저장하면, 내려받은 사본이
+    // 계약 밖으로 나간다. 그래서 물러나지 않고 저장을 포기하고 그 사실을 알린다.
+    // 모델이 쓴 원본이 필요하면 "Copy source"가 그 몫이다.
     const standalone = await fetch(analysisArtifactUrl(active.id, context.theme, getArtifactColors()))
       .then((response) => (response.ok ? response.text() : null))
       .catch(() => null);
-    if (disposed.current) return;
-    const blob = new Blob([standalone ?? active.html], { type: "text/html" });
+    if (disposed.current || generation !== exportGeneration.current) return;
+    if (standalone === null) {
+      setExportFailed(true);
+      if (failedTimer.current !== null) clearTimeout(failedTimer.current);
+      failedTimer.current = setTimeout(() => {
+        failedTimer.current = null;
+        if (disposed.current) return;
+        setExportFailed(false);
+      }, 2_000);
+      return;
+    }
+    closeExport(true);
+    const blob = new Blob([standalone], { type: "text/html" });
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     const sanitized = active.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "").replace(/^\.+/, "");
@@ -198,7 +221,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
           <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}>{t("terminal.artifacts.export")}</button>
           {exportOpen ? (
             <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
-              <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t("terminal.artifacts.exportDownload")}</button>
+              <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button>
               <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
               <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
             </div>

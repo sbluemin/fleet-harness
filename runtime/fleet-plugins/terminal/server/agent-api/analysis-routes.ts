@@ -21,6 +21,8 @@ const ANALYSIS_ARTIFACT_CSP_DIRECTIVES = [
   `img-src 'self' data: blob:`,
   `font-src 'self' data: blob:`,
   "connect-src 'none'",
+  // form-action은 default-src로 폴백하지 않는다 — 빠뜨리면 내려받은 사본에서 폼 자동 제출이 열린다.
+  "form-action 'none'",
   `frame-src 'self' data: blob:`,
   `media-src 'self' data: blob:`,
   `worker-src 'self' data: blob:`,

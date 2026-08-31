@@ -674,6 +674,9 @@ describe("Session Analyst server contract", () => {
     expect(response.headers["Content-Security-Policy"]).not.toContain("https:");
     expect(response.headers["Content-Security-Policy"]).not.toContain("http:");
     expect(response.headers["Content-Security-Policy"]).toContain("connect-src 'none'");
+    // form-action은 default-src로 폴백하지 않는다 — 헤더 sandbox가 없는 내려받은 사본에서 폼 제출이 남는다.
+    expect(response.headers["Content-Security-Policy"]).toContain("form-action 'none'");
+    expect(ARTIFACT_META_CSP).toContain("form-action 'none'");
     // 내려받은 사본에는 헤더가 따라가지 않으므로 같은 리소스 정책이 문서 안에도 실린다.
     expect(response.body).toContain(ARTIFACT_META_CSP);
     expect(ARTIFACT_META_CSP).not.toContain("sandbox");

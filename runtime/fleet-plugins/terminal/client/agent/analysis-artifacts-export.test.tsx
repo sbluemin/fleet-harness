@@ -108,7 +108,7 @@ describe("Session Analyst artifact export", () => {
     mounted.unmount();
   });
 
-  it("falls back to the author source when the host document cannot be fetched", async () => {
+  it("refuses to export the author source when the host document cannot be fetched", async () => {
     storeState = withArtifact({ title: "Offline", html: "<main>author source</main>" });
     const { createObjectURL, click } = stubDownload(async () => { throw new Error("offline"); });
     const mounted = mountPanel();
@@ -116,8 +116,28 @@ describe("Session Analyst artifact export", () => {
     act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!.click());
     await clickMenuItem(mounted.container, "Download HTML");
 
-    await expect(downloadedText(createObjectURL)).resolves.toBe("<main>author source</main>");
-    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe("Offline.html");
+    // 보호되지 않은 원본을 대신 저장하면 내려받은 사본이 오프라인 계약 밖으로 나간다.
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+    // 조용히 실패하지 않는다 — 메뉴는 열린 채 그 자리에서 사실을 말한다.
+    expect(mounted.container.querySelector('[role="menu"]')?.textContent).toContain("Download unavailable");
+    mounted.unmount();
+  });
+
+  it("clears the download failure notice when the menu is reopened", async () => {
+    storeState = withArtifact({ title: "Offline" });
+    stubDownload(async () => ({ ok: false, text: async () => "" }));
+    const mounted = mountPanel();
+    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
+
+    act(() => exportButton.click());
+    await clickMenuItem(mounted.container, "Download HTML");
+    expect(mounted.container.querySelector('[role="menu"]')?.textContent).toContain("Download unavailable");
+
+    act(() => exportButton.click());
+    act(() => exportButton.click());
+
+    expect(mounted.container.querySelector('[role="menu"]')?.textContent).toContain("Download HTML");
     mounted.unmount();
   });
 
