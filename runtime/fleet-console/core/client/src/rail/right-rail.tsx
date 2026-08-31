@@ -18,6 +18,14 @@ import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth } from "./rail-store.js";
+import {
+  MIN_PANEL_WIDTH,
+  clearStoredPanelWidth,
+  readStoredPanelWidths,
+  resolvePaneDefaultWidth,
+  saveStoredPanelWidth,
+  type StoredPanelWidths,
+} from "./pane-width.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
@@ -30,65 +38,17 @@ interface RightRailProps {
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
 const STABLE_RAIL_SURFACES = createHostCapabilities().surfaces;
-const MIN_PANEL_WIDTH = 240;
-const DEFAULT_PANEL_WIDTH = 312;
 /** 아이콘 열 폭 — rail.css .right-rail-icons와 한 값. */
 const RAIL_ICON_STRIP_WIDTH = 44;
-/* 카드 폭은 패널별이 아니라 카드 단일 값이다 — 어느 패널이 상주하든 카드는 한 폭을 기억한다.
-   구 패널별 기억(panelWidths)은 첫 로드에 최댓값으로 승격해 카드 폭으로 흡수한다(1회성). */
-const PREFS_CARD_WIDTH = "fleet-console.rail.cardWidth";
-const LEGACY_PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
-const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
-
-function readStoredCardWidth(): number | null {
-  try {
-    const raw = localStorage.getItem(PREFS_CARD_WIDTH);
-    if (raw !== null) {
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) && parsed >= MIN_PANEL_WIDTH ? Math.round(parsed) : null;
-    }
-    // 1회성 마이그레이션: 패널별 기억·단일 레거시 키의 최댓값을 카드 폭으로 승격한다.
-    const candidates: number[] = [];
-    const legacyWidths = localStorage.getItem(LEGACY_PREFS_PANEL_WIDTHS);
-    if (legacyWidths !== null) {
-      const parsed: unknown = JSON.parse(legacyWidths);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        for (const value of Object.values(parsed)) {
-          if (typeof value === "number" && Number.isFinite(value) && value >= MIN_PANEL_WIDTH) candidates.push(Math.round(value));
-        }
-      }
-    }
-    const legacySingle = Number(localStorage.getItem(LEGACY_PREFS_PANEL_WIDTH));
-    if (Number.isFinite(legacySingle) && legacySingle >= MIN_PANEL_WIDTH) candidates.push(Math.round(legacySingle));
-    if (candidates.length === 0) return null;
-    const migrated = Math.max(...candidates);
-    try {
-      localStorage.setItem(PREFS_CARD_WIDTH, String(migrated));
-      localStorage.removeItem(LEGACY_PREFS_PANEL_WIDTHS);
-      localStorage.removeItem(LEGACY_PREFS_PANEL_WIDTH);
-    } catch { /* best-effort migration */ }
-    return migrated;
-  } catch { return null; }
-}
-
-function saveStoredCardWidth(width: number): void {
-  try { localStorage.setItem(PREFS_CARD_WIDTH, String(Math.round(width))); } catch { /* ignore */ }
-}
-
-function clearStoredCardWidth(): void {
-  try { localStorage.removeItem(PREFS_CARD_WIDTH); } catch { /* ignore */ }
-}
-
 /** 엔트리의 대표 페인 — 폭 기본값 등 표면 차원의 힌트를 primary가 말한다(pane 계약). */
-function primaryPaneOf(binding: RailEntryBinding) {
+function primaryPaneOf(binding: RailEntryBinding | null) {
+  if (binding === null) return null;
   return binding.panes.find((pane) => pane.role === "primary") ?? binding.panes[0] ?? null;
 }
 
-function defaultCardWidthFor(bindings: readonly RailEntryBinding[]): number {
-  return bindings.reduce(
-    (max, binding) => Math.max(max, Math.round(primaryPaneOf(binding)?.defaultWidth ?? DEFAULT_PANEL_WIDTH)),
-    MIN_PANEL_WIDTH,
-  );
+/** 이 도구가 손대지 않은 상태에서 서는 폭 — 대표 페인이 선언한 픽셀 또는 등급. */
+function declaredWidthOf(binding: RailEntryBinding | null): number {
+  return Math.max(MIN_PANEL_WIDTH, resolvePaneDefaultWidth(primaryPaneOf(binding)));
 }
 
 export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
@@ -148,23 +108,28 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);
 
+  // 폭은 카드가 아니라 도구가 기억한다. 조절한 도구만 자기 값을 갖고, 손대지 않은 도구는
+  // 계속 자기 선언값으로 열린다 — 그래야 페인이 기본값을 고쳤을 때 그 개선이 사용자에게 닿는다.
+  const [storedWidths, setStoredWidths] = useState<StoredPanelWidths>(() => readStoredPanelWidths(activePanelId));
+  const storedWidthsRef = useRef(storedWidths);
+  storedWidthsRef.current = storedWidths;
+
   // 저장 폭은 클램프 없이 desired로 보존한다 — init에서 클램프한 값을 desired로 심으면
   // 큰 화면에서 저장한 폭이 좁은 창 로드 한 번에 소실되어, 창을 다시 넓혀도 복원되지
   // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
-  const [initialWidths] = useState(() => {
-    const stored = readStoredCardWidth();
-    const fallback = defaultCardWidthFor(activeBinding !== null ? [activeBinding] : paneEntries);
-    const desired = Math.max(MIN_PANEL_WIDTH, stored ?? fallback);
-    return { desired, rendered: Math.min(maxPanelWidth, desired) };
-  });
-  const [cardWidth, setCardWidthState] = useState(initialWidths.rendered);
-  const desiredWidthRef = useRef(initialWidths.desired);
-  const cardWidthRef = useRef(initialWidths.rendered);
+  const desiredWidth = activeBinding === null
+    ? declaredWidthOf(null)
+    : Math.max(MIN_PANEL_WIDTH, storedWidths[activeBinding.entry.id] ?? declaredWidthOf(activeBinding));
+  const [cardWidth, setCardWidthState] = useState(() => Math.min(maxPanelWidth, desiredWidth));
+  const cardWidthRef = useRef(cardWidth);
   const [isDragging, setIsDragging] = useState(false);
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
   const sideBarOccupiedRef = useRef(sideBarOccupiedPx);
   sideBarOccupiedRef.current = sideBarOccupiedPx;
+  // 조절은 언제나 **화면에 선 도구**의 몫이다 — 핸들러는 안정 참조로 두고 대상만 ref로 읽는다.
+  const activePaneIdRef = useRef<string | null>(null);
+  activePaneIdRef.current = activeBinding?.entry.id ?? null;
 
   useLayoutEffect(() => {
     const onResize = () => {
@@ -176,13 +141,15 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   }, []);
 
   // 뷰포트 클램프 — 좁아지면 즉시 줄이고, 다시 넓어지면 기억한 폭으로 복귀한다(기존 계약 유지).
+  // 같은 effect가 도구 전환도 받는다: desired는 활성 도구가 정하므로 도구가 바뀌면 그 도구의
+  // 폭으로 카드가 다시 선다. 드래그 중에는 포인터가 폭의 주인이라 desired를 보지 않는다.
   useLayoutEffect(() => {
-    const desiredWidth = isDragging ? cardWidthRef.current : desiredWidthRef.current;
-    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, desiredWidth));
+    const target = isDragging ? cardWidthRef.current : desiredWidth;
+    const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, target));
     if (next === cardWidthRef.current) return;
     cardWidthRef.current = next;
     setCardWidthState(next);
-  }, [isDragging, maxPanelWidth]);
+  }, [isDragging, maxPanelWidth, desiredWidth]);
 
   useLayoutEffect(() => {
     if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
@@ -218,9 +185,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
-      desiredWidthRef.current = cardWidthRef.current;
       setIsDragging(false);
-      saveStoredCardWidth(desiredWidthRef.current);
+      const panelId = activePaneIdRef.current;
+      if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, cardWidthRef.current));
     };
 
     document.addEventListener("pointermove", onMove);
@@ -251,22 +218,19 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 
     event.preventDefault();
     next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, Math.round(next)));
-    desiredWidthRef.current = next;
     cardWidthRef.current = next;
     setCardWidthState(next);
-    saveStoredCardWidth(desiredWidthRef.current);
+    const panelId = activePaneIdRef.current;
+    if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, next));
   }, []);
 
-  // 메뉴의 "패널 폭 초기화" — 기억을 지우고 활성 패널의 선언 기본값으로 되돌린다.
+  // 가장자리 더블클릭의 "패널 폭 초기화" — 그 도구의 기억만 지운다. 폭은 그 뒤 클램프
+  // effect가 선언 기본값에서 다시 세운다(기억을 지우는 것이 곧 되돌리는 것이다).
   const handleResetCardWidth = useCallback(() => {
-    clearStoredCardWidth();
-    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
-    const next = Math.max(MIN_PANEL_WIDTH, Math.min(currentMaxWidth, defaultCardWidthFor(activeBinding !== null ? [activeBinding] : paneEntries)));
-    desiredWidthRef.current = next;
-    cardWidthRef.current = next;
-    setCardWidthState(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePanelId, paneEntries.length]);
+    const panelId = activePaneIdRef.current;
+    if (panelId === null) return;
+    setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
+  }, []);
 
   const baseCtx: RailPanelContext = useMemo(() => ({
     theaterId,

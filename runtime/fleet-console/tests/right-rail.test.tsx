@@ -372,29 +372,74 @@ describe("Right Rail card width", () => {
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
   });
 
-  it("migrates the legacy per-panel width map to one card width (max) and drops the legacy keys", () => {
+  it("opens every untouched panel at its own declared width", () => {
+    // 기억이 없는 도구는 언제나 자기 선언값으로 선다 — 이웃의 폭도, 전체 최댓값도 아니다.
+    renderRail();
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
+    act(() => openRailPanel("codex"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
+    act(() => openRailPanel("repository"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
+  });
+
+  it("keeps a resized panel's width off every other panel", () => {
+    // 이번 개편의 계약 그 자체 — 한 도구를 넓혀도 나머지는 자기 선언값 그대로 열린다.
+    renderRail();
+    const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");
+    act(() => {
+      handle!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
+    });
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("424px");
+
+    act(() => openRailPanel("codex"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
+
+    act(() => openRailPanel("repository"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("424px");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ repository: 424 });
+  });
+
+  it("restores the per-panel width map and drops the retired single-width keys", () => {
     window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 380, codex: 452 }));
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "900");
     renderRail();
 
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("380px");
+    act(() => openRailPanel("codex"));
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("452px");
-    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBe("452");
-    expect(window.localStorage.getItem("fleet-console.rail.panelWidths")).toBeNull();
+    // 도구별 지도가 있으면 카드 단일 값은 주인이 없다 — 남겨 두면 다음 로드가 되심는다.
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
+  });
+
+  it("hands the retired card width to the last active panel only", () => {
+    // 그 폭은 사용자가 그 도구를 보면서 정한 값이다. 화면에 없던 도구가 물려받을 근거는 없다.
+    window.localStorage.setItem("fleet-console.rail.activePanelId", "codex");
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
+    act(() => openRailPanel("codex"));
+    renderRail();
+
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("500px");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ codex: 500 });
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
+
+    act(() => openRailPanel("repository"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
   });
 
   it("falls back without crashing for a corrupted stored width", () => {
-    window.localStorage.setItem("fleet-console.rail.cardWidth", "not-a-number");
+    window.localStorage.setItem("fleet-console.rail.panelWidths", "not-json");
     renderRail();
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
   });
 
-  it("keyboard resize persists the card width under the card key", () => {
+  it("keyboard resize persists the width under the active panel's key", () => {
     renderRail();
     const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");
     expect(handle?.getAttribute("aria-valuenow")).toBe("360");
     act(() => {
       handle!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     });
-    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBe("376");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ repository: 376 });
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("376px");
   });
 
@@ -411,12 +456,12 @@ describe("Right Rail card width", () => {
   it("keeps an over-viewport stored width as the desired target and restores it when the window widens", () => {
     // 좁은 창 로드에서 렌더 폭만 클램프하고 저장 폭은 desired로 남긴다 — init 클램프를
     // desired로 심으면 큰 화면에서 저장한 폭이 재로드 한 번에 소실된다(Codex 리뷰 계약).
-    window.localStorage.setItem("fleet-console.rail.cardWidth", "900");
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 900 }));
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
     renderRail();
     // 1200 − 148 − 304 = 748로 클램프되어 렌더.
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("748px");
-    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBe("900");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ repository: 900 });
 
     act(() => {
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 1600 });
@@ -494,8 +539,8 @@ describe("Right Rail settings gear", () => {
     expect(document.activeElement).toBe(gearButton());
   });
 
-  it("resets the card width to the active panel's default on a divider double-click", () => {
-    window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
+  it("resets only the active panel's width on a divider double-click", () => {
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 500, codex: 452 }));
     renderRail();
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("500px");
 
@@ -503,8 +548,9 @@ describe("Right Rail settings gear", () => {
     const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");
     act(() => handle!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 
-    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
+    // 이웃의 기억은 남는다 — 초기화는 지금 선 도구의 몫이다.
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ codex: 452 });
   });
 
   it("leaves no portaled rail menu behind", () => {

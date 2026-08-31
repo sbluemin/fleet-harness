@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import {
+  DEFAULT_PANEL_WIDTH,
+  MIN_PANEL_WIDTH,
+  PANE_CONTAINER_INSET_ALLOWANCE,
+  PANE_WIDTH_CLASS_PX,
+  resolvePaneDefaultWidth,
+} from "../core/client/src/rail/pane-width.js";
+
 const CONSOLE_ROOT = new URL("../", import.meta.url);
 const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
 const PRODUCT_SOURCE_ROOTS = [
@@ -4394,5 +4402,70 @@ describe("War Room deck panel grammar", () => {
     expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
       sidebar.indexOf('className="triage-side-bar-minimized-shelf"'),
     );
+  });
+});
+
+/* 폭 등급은 픽셀 발명을 막으려고 도입됐다 — 그 약속을 지키는 자리가 여기다.
+   설정 페인이 `defaultWidth: 360`을 선언하던 시절, 자기 테마 격자가 2열이 되는 문턱은 420이라
+   기본 상태에서 그 격자가 한 번도 2열로 서지 못했다. 등급표와 브레이크포인트가 서로를 모르면
+   그 어긋남은 또 난다. 아래 계약이 둘을 한 자리에서 맞춰 본다. */
+describe("Pane width class contract", () => {
+  const components = source("styles/components.css");
+  const settingsPane = source("settings/settings-pane.tsx");
+
+  /**
+   * 설정 페인의 **테마 격자**를 1열로 접는 컨테이너 문턱들.
+   *
+   * 페인 안의 모든 문턱을 재지 않는 이유는, 그중 일부는 레일 폭에서 접히는 것이 정상이기
+   * 때문이다(폰트 브라우저의 2단은 640px 문턱이라 레일 카드가 어떤 등급으로도 못 넘는다).
+   * 기본 폭이 반드시 넘어야 하는 것은 그 페인이 **처음 보여 주는 것**의 문턱이고, 설정에서는
+   * 테마 격자가 그것이다 — 실제로 어긋났던 자리도 여기다.
+   */
+  function themeGridCollapseBreakpoints(): number[] {
+    const found: number[] = [];
+    const pattern = /@container\s*\(max-width:\s*(\d+)px\)\s*\{/g;
+    for (let match = pattern.exec(components); match !== null; match = pattern.exec(components)) {
+      // 블록 끝까지 훑어 이 절이 테마 격자를 겨냥하는지 본다(중첩 규칙 포함).
+      let depth = 1;
+      let index = match.index + match[0].length;
+      while (index < components.length && depth > 0) {
+        const ch = components[index];
+        if (ch === "{") depth += 1;
+        else if (ch === "}") depth -= 1;
+        index += 1;
+      }
+      const block = components.slice(match.index, index);
+      if (block.includes(".settings-pane .theme-grid")) found.push(Number(match[1]));
+    }
+    return found;
+  }
+
+  it("keeps the settings pane on the width class instead of an invented pixel", () => {
+    // 픽셀을 되살리면 브레이크포인트와 다시 어긋날 수 있다 — 이 페인은 등급으로만 말한다.
+    expect(settingsPane).toContain('widthClass: "wide",');
+    expect(settingsPane).not.toMatch(/defaultWidth:\s*\d+/);
+  });
+
+  it("clears the settings theme-grid collapse breakpoint with the wide class", () => {
+    const breakpoints = themeGridCollapseBreakpoints();
+    // 문턱이 사라지면 이 계약은 아무것도 지키지 않는다 — 존재부터 확인한다.
+    expect(breakpoints.length).toBeGreaterThan(0);
+    for (const breakpoint of breakpoints) {
+      // 카드 폭에서 페인 컨테이너 폭까지의 인셋만큼 여유를 얹고 비교한다.
+      expect(PANE_WIDTH_CLASS_PX.wide).toBeGreaterThan(breakpoint + PANE_CONTAINER_INSET_ALLOWANCE);
+    }
+  });
+
+  it("keeps the class ladder ordered and above the card floor", () => {
+    expect(PANE_WIDTH_CLASS_PX.narrow).toBeGreaterThan(MIN_PANEL_WIDTH);
+    expect(PANE_WIDTH_CLASS_PX.standard).toBeGreaterThan(PANE_WIDTH_CLASS_PX.narrow);
+    expect(PANE_WIDTH_CLASS_PX.wide).toBeGreaterThan(PANE_WIDTH_CLASS_PX.standard);
+  });
+
+  it("lets a declared pixel win over the class and falls back to the host default", () => {
+    expect(resolvePaneDefaultWidth({ defaultWidth: 392, widthClass: "wide" })).toBe(392);
+    expect(resolvePaneDefaultWidth({ widthClass: "narrow" })).toBe(PANE_WIDTH_CLASS_PX.narrow);
+    expect(resolvePaneDefaultWidth({})).toBe(DEFAULT_PANEL_WIDTH);
+    expect(resolvePaneDefaultWidth(null)).toBe(DEFAULT_PANEL_WIDTH);
   });
 });
