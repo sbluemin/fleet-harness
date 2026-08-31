@@ -8,8 +8,10 @@ Every seat's role belongs to one of two regimes, and the regime decides what fil
 
 | Regime | Roles | The test | What fills a seat |
 |---|---|---|---|
-| **Judgment** | decompose, propose, decide, judge, synthesize | the output is an opinion the run commits to, with no external answer key | the top quality band reachable — benchmark evidence first, the capability-class prior where unmeasured |
+| **Judgment** | decompose, propose, judge, synthesize | the output is an opinion the run commits to, with no external answer key | the top quality band reachable — benchmark evidence first, the capability-class prior where unmeasured |
 | **Mechanical** | map, scan, extract, transform, implement, verify | the output is checkable — against the codebase, the sent literals, or a concrete failing scenario | allowance, by the distribution rules below |
+
+A judgment seat returns a committed opinion **as evidence** — a proposal, a scored verdict, a merged draft. No seat carries decision authority: the final choice, trade-off arbitration, and the user-facing synthesis stay on the host, as the delegation skill's own rules state, which is why deciding is not a delegable role at all.
 
 `verify` is mechanical deliberately: refuting a concrete finding is closed work that measurement separated no models on, and a verifier seat buys quality with lineage mixing, not rank. Scoring an open artifact on axes is not verify — that is `judge`, and it is judgment.
 

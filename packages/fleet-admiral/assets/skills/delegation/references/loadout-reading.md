@@ -14,7 +14,7 @@ The tool returns facts as JSON and stops there: nothing in the payload recommend
 - **Read the window that belongs to the model.** Where `constraints.quotaScope` names a pool, take the window whose `scope` matches; otherwise the provider's scope-less window. A window marked `isAggregate` sums sibling pools — it can read healthy while the model's own pool is spent, so it stays out of headroom math.
 - **`pressure` is the verdict, and it outranks arithmetic of your own.** `ok` is usable at any percentage; `elevated` is a reason to rebalance toward a lighter provider, not a prohibition; send nothing to `critical` unless every alternative is worse. Re-deriving risk from the raw figures to overrule the verdict is how a healthy provider gets abandoned.
 - **Percentages compare only within one clock.** Break a tie between windows sharing a `cadence` by the lower `usedPercent`, and never compare across cadences — a weekly window at 49% early in its week burns hotter than a monthly one at 78% near its reset. `paceRatio` above 1.0 states that directly: the window is being spent faster than its clock refills it.
-- **`recoveryHalfLifeMs` prices the drain** — the average lockout bought by emptying this pool now: weeks for a monthly window, hours for a session one. `projectedExhaustionAt` appears only when the current burn lands before the reset; its absence means "lasts to reset", not "unknown".
+- **`recoveryHalfLifeMs` prices the drain** — the average lockout bought by emptying this pool now: weeks for a monthly window, hours for a session one. `projectedExhaustionAt` appears only when a computable average burn lands before the reset, so its absence states "lasts to reset" only while `paceRatio` sits beside it; with no pace figure the absence is the frame rule above — could not tell, never safe.
 - **`amounts` are plain counts, never money.**
 
 ## Reading quality evidence
@@ -48,5 +48,5 @@ Three constraint fields answer three different questions, and none implies anoth
   **Why:** One subscription can bill through separate pools; the `isAggregate` sum reads comfortable while the pool the model draws from is nearly spent.
 
 - **Symptom:** A model just enabled in the Console appears in the reading, but dispatching to it fails with an unknown name.
-  **Action:** Dispatch only to identities this session registered at startup; reaching the new model needs a new session.
-  **Why:** The tool's own description carries the registration rule — the roster re-reads live while names are frozen at session start — so the gap is a registration boundary, not a stale roster.
+  **Action:** Select it by `modelId` where the dispatching surface takes a model as a value; a registered *name* for it exists only in a new session.
+  **Why:** The tool's own description carries the registration rule — the roster re-reads live while names are frozen at session start — so the gap is a name-registration boundary, not a stale roster and not an unreachable model; `modelId` exists in the payload precisely for this case.
