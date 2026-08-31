@@ -58,6 +58,20 @@ Workflow tool owns graph mechanics and its own dispatch options; `gateway_models
 the identity roster and reports its own spellings and constraints. The host reads that
 roster itself.
 
+The skill's SKILL.md body stays a compact case router; the deep doctrine the retired
+tool doctrine and gateway workflow skills once carried lives on demand under the skill's
+`references/` directory — reading a `gateway_models` payload (allowance verdicts,
+benchmark evidence, lineage, spend priority), seat and effort assignment, surface choice
+and in-flight conduct, and the recurring run shapes (research, review, decide, and the
+mechanical implementation exception). A reference loads only when its case is live, so
+the depth returns without recreating an always-on prompt layer, and it is rewritten
+against the current contracts: no pin mandate, no `agentType` prohibition, no prefix
+spelling rules, no Standing Orders ceremony.
+`packages/fleet-admiral/tests/embedded-skill-assets.test.ts` binds the references to the
+live loadout payload: every field the references teach must still exist in a
+representative `buildGatewayLoadout` serialization, so the docs and the payload cannot
+age apart silently.
+
 Routing into the skill is owned by the skill's own `description`: it names the concrete
 triggers — calling an agent, using the dynamic Workflow tool, orchestrating parallel or
 multi-agent work, delegating work to another model — and instructs loading the skill
@@ -124,7 +138,7 @@ once per identity would put the same table in the session window twenty times ov
 Runtime state is read through direct owners:
 
 - Workflow receipt and version stamp: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions and per-dispatch identity choice; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
+- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions and per-dispatch identity choice, with its case-routed deep doctrine under `delegation/references/`; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
 - Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`

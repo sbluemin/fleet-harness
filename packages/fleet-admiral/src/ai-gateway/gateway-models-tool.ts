@@ -40,8 +40,8 @@ const GATEWAY_MODELS_DOCTRINE = {
   title: "gateway_models Tool Guidelines",
   // MCP로 실제 전달되는 필드는 description 하나다(core-agent specToMcpTool). whenToUse·
   // usageGuidelines에 적은 문장은 모델에 도달하지 않으므로, 틀리면 조용히 실패하는 두 규칙은
-  // 여기에 둔다. 나머지 판정 규칙은 응답 본문을 보면 알 수 있어 싣지 않는다 — 길어질수록
-  // 읽히지 않고, 읽히지 않으면 없는 것과 같다.
+  // 여기에 둔다. 나머지 판정 규칙 — 응답을 어떻게 읽고 판단하는가 — 은 delegation 스킬의
+  // references가 온디맨드로 소유한다. 여기에 겹쳐 실으면 같은 사실이 두 곳에서 따로 늙는다.
   description:
     `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
     + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`
