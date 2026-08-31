@@ -83,6 +83,21 @@ function drop(key: string): void {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
 }
 
+/** 저장된 지도. 키가 없거나 읽을 수 없으면 `null` — 부르는 쪽은 둘을 똑같이 "없음"으로 다룬다. */
+function readWidthMap(): Record<string, number> | null {
+  const raw = localStorage.getItem(PREFS_PANEL_WIDTHS);
+  if (raw === null) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const widths: Record<string, number> = {};
+  for (const [id, value] of Object.entries(parsed)) {
+    const px = sanitize(value);
+    if (id !== "" && px !== null) widths[id] = px;
+  }
+  return widths;
+}
+
 /**
  * 저장된 도구별 폭을 읽는다. 단일 폭 시절의 값은 여기서 **1회** 승계된다.
  *
@@ -94,16 +109,11 @@ function drop(key: string): void {
  */
 export function readStoredPanelWidths(activePanelId: string | null): StoredPanelWidths {
   try {
-    const raw = localStorage.getItem(PREFS_PANEL_WIDTHS);
-    if (raw !== null) {
-      const parsed: unknown = JSON.parse(raw);
-      const widths: Record<string, number> = {};
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        for (const [id, value] of Object.entries(parsed)) {
-          const px = sanitize(value);
-          if (id !== "" && px !== null) widths[id] = px;
-        }
-      }
+    // 읽을 수 없는 지도는 **없는 것으로 친다.** 여기서 통째로 포기하면 함께 남아 있던 멀쩡한
+    // 단일 폭이 영원히 가려지고, 깨진 지도 자체도 걷히지 않는다(v1.79.0의 마이그레이션이
+    // 깨진 지도를 만나면 그대로 두었으므로 둘이 공존하는 상태가 실제로 존재한다).
+    const widths = readWidthMap();
+    if (widths !== null) {
       // 옛 단일 키가 함께 남아 있으면 걷는다 — 도구별 지도가 있는 한 그 값은 주인이 없다.
       drop(LEGACY_PREFS_CARD_WIDTH);
       drop(LEGACY_PREFS_PANEL_WIDTH);
@@ -114,7 +124,11 @@ export function readStoredPanelWidths(activePanelId: string | null): StoredPanel
       ?? sanitize(Number(localStorage.getItem(LEGACY_PREFS_PANEL_WIDTH)));
     drop(LEGACY_PREFS_CARD_WIDTH);
     drop(LEGACY_PREFS_PANEL_WIDTH);
-    if (legacy === null || activePanelId === null) return {};
+    if (legacy === null || activePanelId === null) {
+      // 승계할 값이 없어도 읽을 수 없던 지도는 걷는다 — 남겨 두면 다음 로드도 같은 자리에서 막힌다.
+      drop(PREFS_PANEL_WIDTHS);
+      return {};
+    }
     const migrated = { [activePanelId]: legacy };
     write(migrated);
     return migrated;

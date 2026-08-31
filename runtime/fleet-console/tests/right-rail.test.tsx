@@ -432,6 +432,42 @@ describe("Right Rail card width", () => {
     expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("360px");
   });
 
+  it("treats a malformed map as absent so the retired card width still lands", () => {
+    // v1.79.0의 마이그레이션은 깨진 지도를 만나면 아무것도 못 하고 그대로 뒀다 — 그 뒤 사용자가
+    // 폭을 조절했다면 깨진 지도와 멀쩡한 카드 폭이 함께 남는다. 깨진 지도가 그 값을 영원히
+    // 가리면 안 되고, 그 지도 자체도 걷혀야 한다.
+    window.localStorage.setItem("fleet-console.rail.panelWidths", "{oops");
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
+    renderRail();
+
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("500px");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ repository: 500 });
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
+  });
+
+  it("saves a drag under the panel that owned the handle, not the one that arrived mid-drag", () => {
+    // 드래그는 수백 ms 이상 지속되는 제스처다. 그 사이 플러그인의 `panels.open`이나 라우트
+    // 변경이 다른 패널을 세울 수 있고, 그때 끌던 폭이 도착한 패널의 기억으로 새면 안 된다.
+    renderRail();
+    const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");
+    act(() => {
+      handle!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 800 }));
+    });
+    act(() => {
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 760 }));
+    });
+    // 끄는 도중 다른 패널이 선다.
+    act(() => openRailPanel("codex"));
+    act(() => {
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: 760 }));
+    });
+
+    const stored = JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths") ?? "{}");
+    expect(stored).toEqual({ repository: 400 });
+    // 도착한 패널은 자기 선언값 그대로다.
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
+  });
+
   it("keyboard resize persists the width under the active panel's key", () => {
     renderRail();
     const handle = container.querySelector<HTMLElement>(".right-rail-resize-handle");

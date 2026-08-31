@@ -172,6 +172,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = cardWidthRef.current;
+    // 끌기의 주인은 손잡이를 잡은 그 도구다 — 시작점의 다른 값들과 함께 여기서 고정한다.
+    // 제스처가 지속되는 동안 플러그인의 `panels.open`이나 라우트 변경이 다른 패널을 세울 수
+    // 있고, 놓는 순간의 활성 도구를 읽으면 끌던 폭이 도착한 도구의 기억으로 샌다.
+    const dragPanelId = activePaneIdRef.current;
     setIsDragging(true);
 
     const onMove = (ev: PointerEvent) => {
@@ -186,8 +190,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       setIsDragging(false);
-      const panelId = activePaneIdRef.current;
-      if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, cardWidthRef.current));
+      if (dragPanelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, dragPanelId, cardWidthRef.current));
     };
 
     document.addEventListener("pointermove", onMove);
