@@ -17,6 +17,7 @@ import {
 } from "@fleet-console/sdk/composer";
 
 import { getT } from "../../i18n/index.js";
+import { nextChatComposerWidth, setChatComposerWidth, useChatComposerWidth, useChatReadingWidth } from "../../shared/terminal-preferences.js";
 import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
@@ -145,6 +146,12 @@ export function AgentChatComposer({
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
+  /* 입력창 폭 — 기본은 읽기 폭을 따르고, 이 글리프가 그 연동을 끊어 패널 전폭으로 넓힌다.
+     읽기 폭이 이미 전체면 두 값이 같은 폭이 되므로, 문을 지우는 대신 켜진 채로 물러나 세운다. */
+  const readingWidth = useChatReadingWidth();
+  const composerWidth = useChatComposerWidth();
+  const composerWidthLocked = readingWidth === "full";
+  const composerWidthOn = composerWidthLocked || composerWidth === "panel";
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
@@ -680,6 +687,29 @@ export function AgentChatComposer({
             </span>
           )}
           <span className="agent-chat-composer-actions">
+            {/* 입력창 폭 글리프 — 쓰는 자리에서 폭을 정하는 유일한 문이다(설정에는 표면이 없다).
+                기본은 읽기 폭 따름이고, 켜면 이 콘솔의 모든 채팅 입력창이 패널 전폭으로 선다
+                — 읽기 폭 선호와 같은 자리에 서버 영속하는 전역 값이기 때문이다. */}
+            <button
+              type="button"
+              className="agent-chat-composer-width"
+              onClick={() => {
+                if (composerWidthLocked) return;
+                setChatComposerWidth(nextChatComposerWidth(composerWidth));
+              }}
+              aria-pressed={composerWidthOn}
+              aria-disabled={composerWidthLocked}
+              aria-label={t(composerWidthLocked
+                ? "terminal.chat.composerWidthLockedAria"
+                : composerWidthOn ? "terminal.chat.composerWidthFollowAria" : "terminal.chat.composerWidthPanelAria")}
+              title={t(composerWidthLocked
+                ? "terminal.chat.composerWidthLocked"
+                : composerWidthOn ? "terminal.chat.composerWidthFollow" : "terminal.chat.composerWidthPanel")}
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+                <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25M2.5 8h11" />
+              </svg>
+            </button>
             {/* 백그라운드 작업 글리프 — attach의 왼쪽 또래다. 살아 있는 잡이 있는 동안에만 서고,
                 눌러서 Work 면을 연다. 도는 중이면 aurora 오브, 정착만 남으면 중립 링이며, 배지도
                 글자도 없이 카운트는 접근성 레이블이 진다. 면이 열려 있으면 서지 않는다. */}
