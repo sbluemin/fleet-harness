@@ -83,7 +83,15 @@ function drop(key: string): void {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
 }
 
-/** 저장된 지도. 키가 없거나 읽을 수 없으면 `null` — 부르는 쪽은 둘을 똑같이 "없음"으로 다룬다. */
+/**
+ * 저장된 지도. 쓸 수 있는 항목을 하나도 내놓지 못하면 `null` — 부르는 쪽은 그것을 "없음"과
+ * 똑같이 다룬다.
+ *
+ * 경계가 "읽을 수 있는가"가 아니라 "무엇이라도 말하는가"인 이유는, 권위의 근거가 형식이 아니라
+ * 내용이기 때문이다. 항목이 하나도 안 남는 지도는 아무것도 말하지 않으므로, 그것을 권위로 받아
+ * 함께 남아 있던 멀쩡한 단일 폭을 버릴 근거가 없다. 항목이 하나라도 살아남으면 그 지도는 정보를
+ * 담고 있고, 그때는 승계로 되돌아가지 않는다.
+ */
 function readWidthMap(): Record<string, number> | null {
   const raw = localStorage.getItem(PREFS_PANEL_WIDTHS);
   if (raw === null) return null;
@@ -95,7 +103,7 @@ function readWidthMap(): Record<string, number> | null {
     const px = sanitize(value);
     if (id !== "" && px !== null) widths[id] = px;
   }
-  return widths;
+  return Object.keys(widths).length === 0 ? null : widths;
 }
 
 /**

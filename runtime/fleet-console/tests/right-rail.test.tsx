@@ -445,6 +445,32 @@ describe("Right Rail card width", () => {
     expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
   });
 
+  it("treats a map with no usable entry as absent so the retired card width still lands", () => {
+    // 문법은 멀쩡한데 쓸 수 있는 항목이 하나도 없는 지도는 아무것도 말하지 않는다 — 그것을
+    // 권위로 받으면 함께 남은 멀쩡한 단일 폭을 근거 없이 버린다. v1.79.0의 리더는 후보를 하나도
+    // 못 찾으면 removeItem 앞에서 조기 반환해 그 지도를 남겼으므로, 이 공존도 실제로 존재한다.
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: "oops" }));
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
+    renderRail();
+
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("500px");
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.rail.panelWidths")!)).toEqual({ repository: 500 });
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
+  });
+
+  it("keeps a partly valid map authoritative instead of falling back", () => {
+    // 항목 하나라도 쓸 수 있으면 그 지도는 정보를 담고 있다 — 그때는 승계로 되돌아가지 않는다.
+    // "쓸 수 있는 항목이 하나라도 있는가"가 경계이고, 이 경계는 더 밀리지 않는다.
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 480, codex: "oops" }));
+    window.localStorage.setItem("fleet-console.rail.cardWidth", "500");
+    renderRail();
+
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("480px");
+    act(() => openRailPanel("codex"));
+    expect(railRoot().style.getPropertyValue("--right-rail-panel-width")).toBe("420px");
+    expect(window.localStorage.getItem("fleet-console.rail.cardWidth")).toBeNull();
+  });
+
   it("saves a drag under the panel that owned the handle, not the one that arrived mid-drag", () => {
     // 드래그는 수백 ms 이상 지속되는 제스처다. 그 사이 플러그인의 `panels.open`이나 라우트
     // 변경이 다른 패널을 세울 수 있고, 그때 끌던 폭이 도착한 패널의 기억으로 새면 안 된다.
