@@ -13,7 +13,35 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
-export const ANALYSIS_ARTIFACT_CSP = "sandbox allow-scripts; default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; style-src 'self' 'unsafe-inline' data: blob: https: http:; img-src 'self' data: blob: https: http:; font-src 'self' data: blob: https: http:; connect-src *; frame-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' data: blob:; frame-ancestors 'self'";
+const ANALYSIS_ARTIFACT_CSP_DIRECTIVES = [
+  "sandbox allow-scripts",
+  `default-src 'self' data: blob:`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:`,
+  `style-src 'self' 'unsafe-inline' data: blob:`,
+  `img-src 'self' data: blob:`,
+  `font-src 'self' data: blob:`,
+  "connect-src 'none'",
+  `frame-src 'self' data: blob:`,
+  `media-src 'self' data: blob:`,
+  `worker-src 'self' data: blob:`,
+];
+
+/**
+ * 아티팩트 문서의 격리 정책.
+ *
+ * 아티팩트는 관찰 대상 세션의 신뢰할 수 없는 transcript에서 나온다. 인젝션이 심은 원격 참조
+ * 하나면 미리보기가 바깥으로 요청을 보내 "이 세션이 분석 중"이라는 사실을 알린다. 그래서
+ * 오프라인 보장은 프롬프트의 권고가 아니라 여기서 강제한다 — 원격 스킴은 전부 닫고, 인라인과
+ * data:/blob:만 연다. `frame-ancestors`는 Console이 iframe으로 감쌀 수 있어야 하므로 남는다.
+ */
+export const ANALYSIS_ARTIFACT_CSP = `${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.join("; ")}; frame-ancestors 'self'`;
+
+/**
+ * 내려받은 사본에는 응답 헤더가 따라가지 않는다. 같은 리소스 정책을 문서 안에 실어, 파일이
+ * 어디에서 열리든 오프라인 보장이 유지되게 한다. meta는 sandbox·frame-ancestors를 지원하지
+ * 않으므로 리소스 지시어만 싣는다.
+ */
+const ANALYSIS_ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.filter((directive) => !directive.startsWith("sandbox")).join("; ")}">`;
 const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon", "whites"]);
 const ANALYSIS_ARTIFACT_LIGHT_THEMES = new Set(["whites"]);
 const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
@@ -145,16 +173,16 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const critical = safeArtifactColor(query.get("critical"), foreground);
   const focus = safeArtifactColor(query.get("focus"), accent);
   const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseStylesheet = artifactBaseStylesheet({ canvas, surface, foreground, muted, hairline, accent, positive, warn, critical, focus });
+  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ canvas, surface, foreground, muted, hairline, accent, positive, warn, critical, focus })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
     const bodyTag = withArtifactAttribute(documentTags.bodyTag.source, "style", `${canvasStyle}margin:0!important;`, ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES);
     // 베이스 시트는 항상 재작성된 <html> 시작 태그 직후에 둔다 — 파서가 head로 hoist하므로
     // <template> 안의 가짜 <head> 같은 decoy가 주입을 삼키는 경로가 성립하지 않는다.
-    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseStylesheet}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
+    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseHead}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
   }
-  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseStylesheet}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseHead}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
 }
 
 /** 색과 무관한 조판 바닥 — 토큰만 갈아끼우면 되도록 상수로 고정한다. */

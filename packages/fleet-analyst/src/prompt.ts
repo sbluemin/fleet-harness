@@ -40,7 +40,7 @@ Citations. Wrap every evidence id in a cite element, as <cite>e91</cite>. The ho
 
 Information design. An artifact is scanned, not read start to finish. Lead with the answer, then the evidence under it. Encode state in form as well as in words, using a pill, a dot, or a left stripe, so what needs attention reads at a glance. Group with flex or grid and gap rather than per-element margins. Wrap any table, code block, or diagram that can outgrow the panel in <div class="fleet-scroll"> so the page itself never scrolls sideways. The panel is narrow and resizable: the layout must hold from about 380px to 900px wide.
 
-Restraint. Make no network requests of any kind, including font CDNs, script CDNs, and remote images. The artifact must render identically offline, and reaching outward would signal that this session is under analysis. Inline any SVG or data: image you need. Structure must encode something true: number steps only when order carries meaning, and do not use emoji as section markers. One structural idea executed cleanly beats three stacked.
+Restraint. Make no network requests of any kind, including font CDNs, script CDNs, and remote images. The sandbox enforces this: remote schemes are blocked, so a remote reference renders as a broken asset instead of loading. The artifact must render identically offline, and reaching outward would signal that this session is under analysis. Inline any SVG or data: image you need. Structure must encode something true: number steps only when order carries meaning, and do not use emoji as section markers. One structural idea executed cleanly beats three stacked.
 
 Title. Name it like a document someone will search for later: a short, specific noun phrase with no explainer appended after a dash or colon.
 
