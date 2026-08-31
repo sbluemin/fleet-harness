@@ -7,10 +7,11 @@
 .agent-chat {
   /* 로그 컬럼의 공유 measure — 턴·디스패치·시스템 줄이 전부 이 폭의 중앙 컬럼 안에 산다. */
   --agent-chat-measure: 100ch;
-  /* 컴포저 전용 폭. 읽기 폭 프리셋(기본/넓게/전체)이 이 값을 갈지 않는다 — 전체 폭으로 읽는
-     사람도 쓰는 자리는 같은 폭이라야, 프리셋을 바꿀 때마다 입력창이 화면을 가로질러 넓어지지
-     않는다. 값 자체는 기본 프리셋과 같은 100ch다. */
-  --agent-chat-composer-measure: 100ch;
+  /* 컴포저 폭. 기본은 읽기 폭을 그대로 따라간다 — 읽는 자리와 쓰는 자리가 갈리면 넓게 읽는
+     사람이 정작 긴 지시를 좁은 창에 쓰게 되고, 여섯 줄이라는 가시 상한이 그만큼 빨리 닫힌다.
+     연동을 끊고 패널 전폭까지 넓히는 것은 컴포저 바의 폭 글리프가 지는 수동 선택이며(아래
+     data-composer-width), 설정에는 표면을 두지 않는다. */
+  --agent-chat-composer-measure: var(--agent-chat-measure);
   position: absolute;
   inset: 0;
   display: flex;
@@ -45,6 +46,12 @@
 
 .agent-chat[data-reading-width="full"] {
   --agent-chat-measure: 100%;
+}
+
+/* 입력창 폭 오버라이드 — 읽기 폭과의 연동을 끊고 패널 전폭을 쓴다. 로그 컬럼은 건드리지
+   않는다: 넓게 쓰고 싶은 것과 넓게 읽고 싶은 것은 같은 요구가 아니다. */
+.agent-chat[data-composer-width="panel"] {
+  --agent-chat-composer-measure: 100%;
 }
 
 /* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
@@ -1125,9 +1132,9 @@
 }
 
 .agent-chat-composer-frame {
-  /* 기본 읽기 폭과 같은 폭에 정렬한다 — 대화가 measure 안에서 접히는데 쓰는 자리만 패널
+  /* 읽는 컬럼과 같은 폭에 정렬한다 — 대화가 measure 안에서 접히는데 쓰는 자리만 패널
      전폭이면 시선이 매번 줄 끝에서 되돌아온다. 좁아지면 그대로 따라 줄어든다(상한일 뿐
-     고정폭이 아니다). 읽기 폭 프리셋과 달리 이 상한은 고정이다. */
+     고정폭이 아니다). 폭 글리프를 켜면 이 상한만 패널 전폭으로 풀린다. */
   max-width: var(--agent-chat-composer-measure);
   margin-inline: auto;
   border: 1px solid var(--hairline-strong);
@@ -1388,6 +1395,62 @@
 .agent-chat-composer-attach:hover {
   color: var(--brass-ink);
   background: var(--brass-glow);
+}
+
+/* 입력창 폭 글리프 — 첨부와 같은 또래이고 같은 문법을 쓴다(투명 바탕·tertiary 잉크·hover는
+   brass=위치). 상자는 표식이 아니라 글리프 규격이 정한다: 이웃이 16px 표식에 7px 패딩으로
+   30px이므로 여기도 30px을 못박아, 한 줄에 선 글리프들이 서로 다른 클릭 과녁을 갖지 않게 한다.
+   [doctrine] 불리언 ON은 컨트롤 워시 + brass 글리프다(theme.css의 컨트롤 문법) — 신호 토큰은
+   빌리지 않는다. 폭은 상태가 아니라 사용자가 고른 자리이기 때문이다. */
+.agent-chat-composer-width {
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 7px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  transition:
+    color var(--duration-base) var(--ease-spring),
+    background var(--duration-base) var(--ease-spring);
+}
+
+.agent-chat-composer-width svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-chat-composer-width:hover {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
+}
+
+.agent-chat-composer-width[aria-pressed="true"] {
+  color: var(--brass-ink);
+  background: var(--control-wash);
+}
+
+/* 읽기 폭이 이미 전체면 따름과 전폭이 같은 값이라 누를 것이 없다. 문을 지우는 대신 켜진 채로
+   물러나 세운다 — 초점은 여전히 받고(이유를 읽을 수 있어야 한다), 눌러도 아무 일이 없다는 것을
+   커서와 잉크가 먼저 말한다. */
+.agent-chat-composer-width[aria-disabled="true"] {
+  cursor: default;
+  opacity: var(--control-disabled-opacity);
+}
+
+.agent-chat-composer-width[aria-disabled="true"]:hover {
+  color: var(--brass-ink);
+  background: var(--control-wash);
+}
+
+.agent-chat-composer-width:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
 }
 
 /* 백그라운드 작업 글리프 — attach의 왼쪽에 선 또래 글리프다. 떠 있던 잡 스트립을 대신해 이
@@ -2109,6 +2172,9 @@
   .agent-chat-composer-bar { padding-left: var(--space-3); }
   .agent-chat-composer-actions { gap: var(--space-1); }
   .agent-chat-composer-stop { padding: 5px; }
+  /* 폭 글리프는 좌표(모델 칩)보다 먼저 자리를 내준다 — 이 폭에서 컴포저는 이미 패널의 95%라
+     전폭으로 넓힐 여지가 없고, 좌표는 유일한 실행 표시라 끝까지 남는다. */
+  .agent-chat-composer-width { display: none; }
 }
 
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */

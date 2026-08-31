@@ -167,7 +167,10 @@ describe("chat context meter", () => {
     const order = Array.from(actions?.children ?? [])
       .map((child) => child.className || child.tagName)
       .filter((name) => name !== "INPUT");
+    // 폭 글리프는 이 무리의 맨 앞이다 — 자주 쓰는 첨부·발사를 자기 자리에서 밀지 않고,
+    // 좁은 패널에서 가장 먼저 물러나는 것도 이 자리에 서기 때문이다.
     expect(order).toEqual([
+      "agent-chat-composer-width",
       "agent-chat-composer-attach",
       "agent-chat-ctx",
       "agent-chat-composer-send",

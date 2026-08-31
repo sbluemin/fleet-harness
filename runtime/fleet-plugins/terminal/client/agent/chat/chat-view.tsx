@@ -3,7 +3,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 
 import { getT, type TerminalMessageKey } from "../../i18n/index.js";
-import { useChatReadingWidth, useTerminalFontFamily, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
+import { useChatComposerWidth, useChatReadingWidth, useTerminalFontFamily, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
 import { readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
@@ -66,6 +66,7 @@ export function AgentChatView({
   const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
   // 읽기 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   const readingWidth = useChatReadingWidth();
+  const composerWidth = useChatComposerWidth();
   const terminalFontFamily = useTerminalFontFamily();
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
@@ -375,6 +376,7 @@ export function AgentChatView({
     <section
       className="agent-chat"
       data-reading-width={readingWidth}
+      data-composer-width={composerWidth}
       /* 터미널 글꼴을 Chat 로컬 토큰으로만 흘린다 — 전역 --font-mono를 덮으면 Codex·파일 탐색기·
          마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
       style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}

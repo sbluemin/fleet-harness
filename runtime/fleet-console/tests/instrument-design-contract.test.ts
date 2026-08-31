@@ -2853,16 +2853,38 @@ describe("Instrument core design contract", () => {
     // 자리는 그대로 in-flow다 — 컴포저가 떠서 대화의 마지막 줄을 덮으면 안 된다.
     expect(composerBlock).toContain("flex: none;");
     expect(composerBlock).not.toContain("position: absolute");
-    // 쓰는 자리는 기본 읽기 폭에 정렬한다 — 상한일 뿐 고정폭이 아니라 좁아지면 따라 줄어든다.
-    // 읽기 폭 프리셋은 이 상한을 갈지 않는다: 전체 폭으로 읽는 사람도 쓰는 자리는 같은 폭이라야
-    // 프리셋을 바꿀 때마다 입력창이 화면을 가로지르지 않는다.
+    // 쓰는 자리는 읽는 컬럼에 정렬한다 — 상한일 뿐 고정폭이 아니라 좁아지면 따라 줄어든다.
+    // 컴포저 상한은 읽기 폭 변수를 그대로 받는다: 넓게 읽는 사람이 정작 긴 지시를 좁은 창에
+    // 쓰게 되면 여섯 줄이라는 가시 상한이 그만큼 빨리 닫힌다.
     const composerFrameBlock = chat.match(/^\.agent-chat-composer-frame \{[^}]*\}/m)?.[0] ?? "";
     expect(composerFrameBlock).toContain("max-width: var(--agent-chat-composer-measure);");
     expect(composerFrameBlock).toContain("margin-inline: auto;");
+    const chatRootMeasure = chatRootBlock.match(/--agent-chat-composer-measure: ([^;]+);/)?.[1] ?? "";
+    expect(chatRootMeasure).toBe("var(--agent-chat-measure)");
     for (const preset of ["wide", "full"]) {
       const presetBlock = chat.match(new RegExp(`\\.agent-chat\\[data-reading-width="${preset}"\\] \\{[^}]*\\}`))?.[0] ?? "";
       expect(presetBlock, preset).toContain("--agent-chat-measure:");
+      // 프리셋은 읽기 폭 변수 하나만 갈고, 컴포저는 그 변수를 경유해 따라온다 — 상한을 두 곳에서
+      // 쓰면 프리셋과 오버라이드가 서로를 덮는 순서 싸움이 된다.
       expect(presetBlock, preset).not.toContain("--agent-chat-composer-measure");
+    }
+    // 연동을 끊는 것은 사용자가 고른 오버라이드 하나뿐이고, 그것은 로그 컬럼을 건드리지 않는다.
+    const composerOverrideBlock = chat.match(/\.agent-chat\[data-composer-width="panel"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(composerOverrideBlock).toContain("--agent-chat-composer-measure: 100%;");
+    expect(composerOverrideBlock).not.toContain("--agent-chat-measure:");
+    // 폭 글리프는 첨부·작업과 같은 또래다 — 같은 상자(30px)와 같은 문법(투명 바탕·tertiary 잉크).
+    // 상자를 못박지 않으면 한 줄에 선 글리프들이 서로 다른 클릭 과녁을 갖는다.
+    const composerWidthBlock = chat.match(/^\.agent-chat-composer-width \{[^}]*\}/m)?.[0] ?? "";
+    for (const decl of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;", "width: 30px;", "height: 30px;"]) {
+      expect(composerWidthBlock, decl).toContain(decl);
+    }
+    // 불리언 ON은 컨트롤 워시 + brass 글리프다(theme.css 컨트롤 문법) — 폭은 상태가 아니므로
+    // signal token(aurora/warn/coral/positive)을 빌리지 않는다.
+    const composerWidthOnBlock = chat.match(/\.agent-chat-composer-width\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(composerWidthOnBlock).toContain("background: var(--control-wash);");
+    expect(composerWidthOnBlock).toContain("color: var(--brass-ink);");
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive"]) {
+      expect(composerWidthOnBlock, signal).not.toContain(signal);
     }
     // 실행 중에는 현재 턴의 중지와 다음 턴의 예약을 분리해 함께 세운다. 중지는 행동이지 오류
     // 상태가 아니므로 중립 잉크를 쓰고, signal token은 빌리지 않는다.
