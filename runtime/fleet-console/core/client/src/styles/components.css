@@ -5588,10 +5588,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding: 2px 0;
 }
 
+/* 활성 Theater는 구역 왼쪽의 2px brass 스파인으로 표시한다. 이전의 상하 1px rim은 목록 안
+   다른 구분선과 같은 무게(실측 대비 1.28~1.42:1)라 활성 신호로 읽히지 않았고, 헤더 채움은
+   호버와 같은 값이어서(4테마 전부 ΔL 0.000) 커서를 얹은 비활성 Theater가 활성보다 강해졌다.
+   스파인은 호버가 쓰지 않는 채널이며 헤더가 아니라 **구역**에 붙으므로 헤더가 스크롤 밖으로
+   밀려나도 아래 칩들의 소속이 유지된다.
+   [왜 ::before가 아니라 background인가] 이 섹션의 ::before/::after는 드래그 재정렬의
+   drop-before/drop-after 표시가 이미 점유하고 있다 — 활성 Theater를 끌면 두 규칙이 같은
+   의사요소를 다투므로 스파인은 배경 레이어로 그린다. */
 .side-bar-theater-section--active {
-  border-top: 1px solid var(--surface-rim);
-  border-bottom: 1px solid var(--surface-rim);
-  background: transparent;
+  background: linear-gradient(var(--brass), var(--brass)) 0 4px / 2px calc(100% - 8px) no-repeat;
 }
 
 /* 행 안의 Theater 선택 버튼. 남은 자리를 채우되 아코디언은 오른쪽의 독립 버튼이 맡는다. */
@@ -5651,10 +5657,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
   user-select: none;
 }
 
+/* 호버는 행 배경 채움 하나만 쓴다. rim 테두리까지 얹으면 활성(테두리 없음)보다 강해져
+   "커서가 있는 곳"이 "지금 열려 있는 곳"을 덮는다 — focus-visible은 아래에서 자기 brass
+   테두리를 따로 지므로 여기서 테두리를 빼도 포커스 표식은 남는다.
+   [왜 ink-deep이 아니라 ink-mid인가] 테두리를 뺀 자리를 채움이 이어받아야 한다. ink-deep은
+   사이드바 바탕과 ΔL 0.035(대비 1.02:1)뿐이라 테두리가 사라지면 호버가 통째로 안 보였다
+   (실측). 활성이 배경 채널을 비웠으므로 이 한 단은 활성을 침범하지 않는다. */
 .side-bar-theater-header:hover,
 .side-bar-theater-header:focus-visible {
-  background: var(--ink-deep);
-  border-color: var(--surface-rim);
+  background: var(--ink-mid);
   color: var(--text-secondary);
   outline: none;
 }
@@ -5664,10 +5675,19 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--brass-glow);
 }
 
+/* 활성 헤더는 배경 채움을 호버에게 완전히 넘긴다. 위치(활성)와 순간(호버)이 같은 채널을
+   공유하는 한 어느 쪽을 올려도 다른 쪽이 뭉개지므로, 활성은 스파인·배지·이름 명도로만
+   말한다. 활성 행은 aria-disabled라 눌리지 않으므로 호버 피드백이 없는 편이 정직하다. */
 .side-bar-theater-header.is-active {
   color: var(--text-secondary);
   border-color: transparent;
-  background: var(--ink-deep);
+  background: transparent;
+}
+
+/* 이름만 최고 명도로 올린다 — 행 전체를 올리면 chevron·+·⋯ 컨트롤까지 함께 밝아져
+   활성 Theater의 컨트롤이 다른 Theater보다 눈에 띄는 역전이 생긴다. */
+.side-bar-theater-header.is-active .side-bar-theater-name {
+  color: var(--text-primary);
 }
 
 .side-bar-theater-anchor {
@@ -5683,6 +5703,19 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+/* 활성 Theater의 이니셜 배지는 brass로 채워 반전한다. 배지는 좌측 정렬선 위에 있어 목록을
+   훑는 눈이 가장 먼저 닿는 자리이고, 스파인과 달리 헤더 행 안에서 읽히므로 둘이 같은 사실을
+   서로 다른 거리에서 말한다. 채움 위 글자는 brass 전용 텍스트 티어를 쓴다 — 라이트에서
+   자기 채움 위 AA를 보장하는 유일한 값이다. 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지
+   않는다. */
+.side-bar-theater-header.is-active .side-bar-theater-anchor {
+  background: var(--brass);
+  color: var(--text-on-brass);
 }
 
 .side-bar-ghost-theater-row {
@@ -6366,7 +6399,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 @media (prefers-reduced-motion: reduce) {
   .side-bar-group-header,
-  .side-bar-theater-header {
+  .side-bar-theater-header,
+  .side-bar-theater-anchor {
     transition: none;
   }
 

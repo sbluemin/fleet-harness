@@ -1934,6 +1934,53 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toMatch(/side-bar-theater-anchor[\s\S]{0,400}side-bar-status-axis-live-tick/);
   });
 
+  it("pins the active Theater marker to channels the hover state does not use", () => {
+    const components = source("styles/components.css");
+    // 위치(어느 Theater가 열려 있나)와 순간(커서가 어디 있나)은 서로 다른 채널을 쓴다. 한때
+    // 둘 다 행 배경 채움이었고 값까지 같아(4테마 전부 ΔL 0.000) 호버한 비활성 Theater가
+    // 활성보다 강했다 — 호버에만 rim 테두리가 더 붙었기 때문이다.
+    const activeSection = components.match(/\.side-bar-theater-section--active \{[^}]*\}/)?.[0] ?? "";
+    const headerHover = components.match(/\.side-bar-theater-header:hover,\n\.side-bar-theater-header:focus-visible \{[^}]*\}/)?.[0] ?? "";
+    const activeHeader = components.match(/\.side-bar-theater-header\.is-active \{[^}]*\}/)?.[0] ?? "";
+    const activeAnchor = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-anchor \{[^}]*\}/)?.[0] ?? "";
+    const activeName = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-name \{[^}]*\}/)?.[0] ?? "";
+
+    // 활성은 구역 왼쪽 2px brass 스파인이 나른다. 헤더가 아니라 구역에 붙으므로 헤더가 스크롤
+    // 밖으로 밀려나도 아래 칩들의 소속이 유지된다.
+    expect(activeSection).toContain("linear-gradient(var(--brass), var(--brass))");
+    expect(activeSection).toContain("2px calc(100% - 8px)");
+    // 옛 상하 rim은 목록의 다른 구분선과 같은 무게라 활성 신호로 읽히지 않았다 — 되살아나면
+    // 스파인과 두 겹으로 말하게 된다.
+    expect(activeSection).not.toContain("border-top");
+    expect(activeSection).not.toContain("border-bottom");
+    // 스파인은 배경 레이어로 그린다: 이 섹션의 ::before/::after는 드래그 drop 표시가 점유한다.
+    expect(components).not.toMatch(/\.side-bar-theater-section--active::(before|after)/);
+
+    // 호버는 배경 채움 하나만 쓴다. 테두리가 돌아오면 다시 활성보다 강해진다.
+    expect(headerHover).toContain("background: var(--ink-mid);");
+    expect(headerHover).not.toContain("border-color");
+    // focus-visible은 자기 brass 테두리를 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
+    // 지우면 안 된다.
+    expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color: color-mix\(in oklch, var\(--brass\) 55%/);
+
+    // 활성 헤더는 배경 채널을 호버에게 완전히 넘긴다.
+    expect(activeHeader).toContain("background: transparent;");
+    expect(activeHeader).not.toContain("var(--ink-deep)");
+
+    // 가까이서는 배지 반전이, 멀리서는 스파인이 같은 사실을 말한다. 채움 위 글자는 라이트에서
+    // AA를 보장하는 brass 전용 텍스트 티어여야 한다.
+    expect(activeAnchor).toContain("background: var(--brass);");
+    expect(activeAnchor).toContain("color: var(--text-on-brass);");
+
+    // 이름만 최고 명도로 올린다 — 행 전체를 올리면 활성 Theater의 행 컨트롤이 다른 Theater의
+    // 것보다 밝아지는 역전이 생긴다.
+    expect(activeName).toContain("color: var(--text-primary);");
+
+    // 배지가 색 전환을 지므로 reduced-motion에서 함께 멎어야 한다.
+    const reducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*$/)?.[0] ?? "";
+    expect(reducedMotion).toMatch(/\.side-bar-theater-anchor \{\s*transition: none;/);
+  });
+
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
     const rightRail = source("rail/right-rail.tsx");
