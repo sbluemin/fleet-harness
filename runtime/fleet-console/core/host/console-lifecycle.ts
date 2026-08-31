@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -30,12 +31,39 @@ import { createConsoleServer } from "./server.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 
+export interface ConsoleDaemonProcess {
+  readonly pid?: number;
+  once(event: "error", listener: (error: Error) => void): this;
+  once(event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  unref(): void;
+}
+
+export type ConsoleDaemonSpawner = (
+  execPath: string,
+  args: readonly string[],
+  options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true },
+) => ConsoleDaemonProcess;
+
 export interface ConsoleDaemonLifecycleDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly serverModulePath?: string;
-  readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true }) => void;
+  /**
+   * 게시된 ./cli 소비자가 쓰던 legacy seam. 반환값이 없으므로 소유 프로세스 정리는 보장하지 못하지만,
+   * 기존 injector가 깨지지 않도록 유지한다. 새 테스트와 런타임 구현은 spawnDaemon을 사용한다.
+   */
+  readonly spawnDetached?: (
+    execPath: string,
+    args: readonly string[],
+    options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true },
+  ) => void;
+  readonly spawnDaemon?: ConsoleDaemonSpawner;
   readonly sleep?: (ms: number) => Promise<void>;
+  readonly now?: () => number;
+  readonly startupTimeoutMs?: number;
+  readonly pollIntervalMs?: number;
+  readonly cleanupGraceMs?: number;
   readonly health?: ReturnType<typeof createConsoleHealthClient>;
 }
 
@@ -82,6 +110,21 @@ export interface BuildConsoleHelpTextOptions {
 
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
+const STARTUP_TIMEOUT_MS = 60_000;
+const STARTUP_POLL_INTERVAL_MS = 100;
+const CHILD_CLEANUP_GRACE_MS = 500;
+
+type ConsoleDaemonChildFailure =
+  | { readonly kind: "error"; readonly detail: string }
+  | { readonly kind: "exit"; readonly detail: string };
+
+interface ConsoleDaemonChildObservation {
+  failure: ConsoleDaemonChildFailure | null;
+  exited: boolean;
+  readonly failurePromise: Promise<ConsoleDaemonChildFailure>;
+  readonly exitPromise: Promise<void>;
+}
+
 // background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
 // hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
 // 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
@@ -177,17 +220,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const childEnv = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? env : withNodeSystemCa(env);
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
-  // 데몬은 stdio를 버리고 뜨므로 자식의 stderr는 어디에도 보이지 않는다. spawn 오류를 여기서
-  // 기억해 두지 않으면 시작 실패의 원인이 영영 사라지고 "healthy 하지 않다"는 결과만 남는다.
-  let lastSpawnError: string | null = null;
-  const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => {
-    const child = spawn(bin, [...args], options);
-    child.once("error", (error) => {
-      lastSpawnError = error instanceof Error ? error.message : String(error);
-    });
-    child.unref();
-  });
+  const spawnDaemon = deps.spawnDaemon ?? ((bin, args, options) => spawn(bin, [...args], options));
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const now = deps.now ?? (() => performance.now());
+  const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? STARTUP_TIMEOUT_MS);
+  const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? STARTUP_POLL_INTERVAL_MS);
+  const cleanupGraceMs = Math.max(0, deps.cleanupGraceMs ?? CHILD_CLEANUP_GRACE_MS);
   const paths = createConsolePaths({ env });
   const lock = createConsoleLock();
   const health = deps.health ?? createConsoleHealthClient();
@@ -202,9 +240,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     });
   }
 
-  async function probe() {
+  async function probe(timeoutMs?: number, signal?: AbortSignal) {
     const payload = readTrustedLock();
-    const probeResult = await health.probe(payload);
+    const probeResult = await health.probe(payload, {
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(signal === undefined ? {} : { signal }),
+    });
     return { ...probeResult, buildStale: payload ? stale.isBuildStale(payload, serverModulePath) : false };
   }
 
@@ -238,23 +279,240 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) await stop();
-    lastSpawnError = null;
-    spawnDetached(execPath, [serverModulePath, "serve"], withHidden({ detached: true, env: childEnv, stdio: "ignore" as const }));
-    let lastProbeError: string | null = null;
-    for (let i = 0; i < 30; i += 1) {
-      await sleep(100);
-      const next = await probe();
-      if (next.healthy && next.lock) return next.lock.endpoint;
-      if (next.error) lastProbeError = next.error;
+
+    let child: ConsoleDaemonProcess | null;
+    try {
+      const spawnOptions = withHidden({ detached: true as const, env: childEnv, stdio: "ignore" as const });
+      if (deps.spawnDaemon) {
+        child = deps.spawnDaemon(execPath, [serverModulePath, "serve"], spawnOptions);
+      } else if (deps.spawnDetached) {
+        deps.spawnDetached(execPath, [serverModulePath, "serve"], spawnOptions);
+        child = null;
+      } else {
+        child = spawnDaemon(execPath, [serverModulePath, "serve"], spawnOptions);
+      }
+    } catch (error) {
+      throw new Error(describeDaemonStartFailure({
+        spawnError: describeUnknownError(error),
+        childError: null,
+        readinessError: null,
+        probeError: null,
+        cleanupError: null,
+        healthyEndpoint: null,
+        dataDir: paths.dir,
+        startupTimeoutMs,
+      }));
     }
-    throw new Error(describeDaemonStartFailure({
-      spawnError: lastSpawnError,
-      probeError: lastProbeError,
-      dataDir: paths.dir,
-    }));
+
+    const observation = child ? observeChild(child) : createUnobservedChild();
+    const readinessController = new AbortController();
+    void observation.failurePromise.then(() => readinessController.abort());
+    const deadline = now() + startupTimeoutMs;
+    let lastProbeError: string | null = null;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      child?.unref();
+    };
+
+    try {
+      while (now() < deadline && !observation.failure) {
+        const remainingBeforeSleep = deadline - now();
+        const failure = await Promise.race([
+          sleep(Math.min(pollIntervalMs, remainingBeforeSleep)).then(() => null),
+          observation.failurePromise,
+        ]);
+        if (failure) break;
+        const remaining = deadline - now();
+        if (remaining <= 0) break;
+        let next: Awaited<ReturnType<typeof probe>>;
+        try {
+          next = await probe(remaining, readinessController.signal);
+        } catch (error) {
+          // writeLock은 O_EXCL로 파일을 만든 뒤 JSON을 쓰므로 poll이 잠깐 빈/부분 lock을 볼 수 있다.
+          // 시작 전 stale lock은 위의 cleanUntrusted probe가 이미 정리했다. 시작 중 read 오류는
+          // 쓰고 있는 lock을 지우거나 child를 죽이지 말고 deadline 안에서 다시 확인한다.
+          lastProbeError = describeUnknownError(error);
+          continue;
+        }
+        if (next.healthy && next.lock) {
+          if (observation.failure && next.lock.pid === child?.pid) break;
+          if (child?.pid !== undefined && next.lock.pid === child.pid) {
+            release();
+            return next.lock.endpoint;
+          }
+          const cleanupError = await cleanupOwnedChild(child, observation);
+          release();
+          if (!cleanupError) return next.lock.endpoint;
+          throw new Error(describeDaemonStartFailure({
+            spawnError: null,
+            childError: null,
+            readinessError: null,
+            probeError: null,
+            cleanupError,
+            healthyEndpoint: next.lock.endpoint,
+            dataDir: paths.dir,
+            startupTimeoutMs,
+          }));
+        }
+        if (next.error) lastProbeError = next.error;
+      }
+
+      // 자식이 먼저 끝난 경우 남은 예산 안에서 concurrent healthy owner를 한 번 더 확인한다.
+      const finalRemaining = deadline - now();
+      let finalProbe: Awaited<ReturnType<typeof probe>> | null = null;
+      if (finalRemaining > 0) {
+        try {
+          finalProbe = await probe(finalRemaining);
+        } catch (error) {
+          lastProbeError = describeUnknownError(error);
+        }
+      }
+      if (finalProbe?.healthy && finalProbe.lock && finalProbe.lock.pid !== child?.pid) {
+        const cleanupError = await cleanupOwnedChild(child, observation);
+        release();
+        if (!cleanupError) return finalProbe.lock.endpoint;
+        throw new Error(describeDaemonStartFailure({
+          spawnError: null,
+          childError: null,
+          readinessError: null,
+          probeError: null,
+          cleanupError,
+          healthyEndpoint: finalProbe.lock.endpoint,
+          dataDir: paths.dir,
+          startupTimeoutMs,
+        }));
+      }
+      if (finalProbe?.error) lastProbeError = finalProbe.error;
+
+      const startupFailure = observation.failure;
+      const cleanupError = await cleanupOwnedChild(child, observation);
+      release();
+      throw new Error(describeDaemonStartFailure({
+        spawnError: startupFailure?.kind === "error" ? startupFailure.detail : null,
+        childError: startupFailure?.kind === "exit" ? startupFailure.detail : null,
+        readinessError: null,
+        probeError: lastProbeError,
+        cleanupError,
+        healthyEndpoint: null,
+        dataDir: paths.dir,
+        startupTimeoutMs,
+      }));
+    } catch (error) {
+      if (released) throw error;
+      const startupFailure = observation.failure;
+      readinessController.abort();
+      let cleanupError: string | null;
+      try {
+        cleanupError = await cleanupOwnedChild(child, observation);
+      } catch (cleanupFailure) {
+        cleanupError = describeUnknownError(cleanupFailure);
+      } finally {
+        release();
+      }
+      throw new Error(describeDaemonStartFailure({
+        spawnError: startupFailure?.kind === "error" ? startupFailure.detail : null,
+        childError: startupFailure?.kind === "exit" ? startupFailure.detail : null,
+        readinessError: describeUnknownError(error),
+        probeError: lastProbeError,
+        cleanupError,
+        healthyEndpoint: null,
+        dataDir: paths.dir,
+        startupTimeoutMs,
+      }));
+    }
   }
 
   return { ensureDaemon, probe, runServer, stop };
+
+  function observeChild(child: ConsoleDaemonProcess): ConsoleDaemonChildObservation {
+    let resolveFailure!: (failure: ConsoleDaemonChildFailure) => void;
+    let resolveExit!: () => void;
+    const observation: ConsoleDaemonChildObservation = {
+      failure: null,
+      exited: false,
+      failurePromise: new Promise<ConsoleDaemonChildFailure>((resolve) => { resolveFailure = resolve; }),
+      exitPromise: new Promise<void>((resolve) => { resolveExit = resolve; }),
+    };
+    child.once("error", (error) => {
+      if (observation.failure) return;
+      const failure = { kind: "error", detail: describeUnknownError(error) } as const;
+      observation.failure = failure;
+      resolveFailure(failure);
+    });
+    child.once("exit", (code, signal) => {
+      observation.exited = true;
+      resolveExit();
+      if (observation.failure) return;
+      const detail = signal ? `exited after ${signal}` : `exited with status ${code ?? "unknown"}`;
+      const failure = { kind: "exit", detail } as const;
+      observation.failure = failure;
+      resolveFailure(failure);
+    });
+    return observation;
+  }
+
+  function createUnobservedChild(): ConsoleDaemonChildObservation {
+    return {
+      failure: null,
+      exited: false,
+      failurePromise: new Promise<ConsoleDaemonChildFailure>(() => {}),
+      exitPromise: new Promise<void>(() => {}),
+    };
+  }
+
+  async function cleanupOwnedChild(child: ConsoleDaemonProcess | null, observation: ConsoleDaemonChildObservation): Promise<string | null> {
+    if (!child) return null;
+    const errors: string[] = [];
+    if (child.pid === undefined && !observation.failure) {
+      errors.push("the spawned process did not expose a pid");
+    }
+    if (child.pid !== undefined && !observation.exited) {
+      try {
+        child.kill("SIGTERM");
+      } catch (error) {
+        errors.push(`SIGTERM failed: ${describeUnknownError(error)}`);
+      }
+      await waitForChildExit(observation);
+    }
+    if (child.pid !== undefined && !observation.exited) {
+      try {
+        child.kill("SIGKILL");
+      } catch (error) {
+        errors.push(`SIGKILL failed: ${describeUnknownError(error)}`);
+      }
+      await waitForChildExit(observation);
+    }
+    if (child.pid !== undefined && observation.exited) {
+      try {
+        lock.removeLock(paths.lockFile, child.pid);
+      } catch (error) {
+        errors.push(`owned lock cleanup failed: ${describeUnknownError(error)}`);
+      }
+    } else if (child.pid !== undefined) {
+      errors.push("the spawned process did not exit after SIGKILL");
+    }
+    return errors.length > 0 ? errors.join("; ") : null;
+  }
+
+  async function waitForChildExit(observation: ConsoleDaemonChildObservation): Promise<void> {
+    if (observation.exited) return;
+    if (!deps.sleep) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, cleanupGraceMs);
+        void observation.exitPromise.then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      return;
+    }
+    await Promise.race([
+      observation.exitPromise,
+      sleep(cleanupGraceMs),
+    ]);
+  }
 
   function readTrustedLock(options: { readonly cleanUntrusted?: boolean } = {}): ConsoleLockPayload | null {
     try {
@@ -405,10 +663,14 @@ export async function main(): Promise<void> {
   process.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
 }
 
-function resolveDefaultServerModulePath(): string {
-  const builtPath = new URL("../dist/cli.mjs", import.meta.url).pathname;
+export function resolveDefaultServerModulePath(moduleUrl: string = import.meta.url): string {
+  const builtPath = fileURLToPath(new URL("../dist/cli.mjs", moduleUrl));
   if (fs.existsSync(builtPath)) return builtPath;
-  return fileURLToPath(import.meta.url);
+  return fileURLToPath(moduleUrl);
+}
+
+function describeUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function readHookSessionId(env: NodeJS.ProcessEnv): string {
