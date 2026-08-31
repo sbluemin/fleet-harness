@@ -8793,6 +8793,57 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding-left: calc(var(--space-2) + 14px + var(--space-2) - var(--space-1));
 }
 
+/* 시작 표면 표식 — 이 행이 무엇으로 태어나는지 상시 말하고, 누르면 그 표면을 뒤집는다.
+   값은 메뉴 하나에 하나이므로 한 번 뒤집으면 밴드의 모든 행이 함께 바뀐다.
+
+   새 홈통을 열지 않는다. 위 규칙이 모델 행을 들여쓴 것은 왼쪽 홈통이 표식 자리이기 때문이고,
+   표식이 실제로 서면 그 자리를 채우므로 들여쓰기를 되돌린다 — 둘을 함께 두면 모델 이름만 한 칸
+   더 밀려 같은 메뉴 안에서 글자 열이 셋으로 갈린다. 폭은 그 홈통과 같은 14px여야 라벨의 x가
+   표식 유무와 무관하게 한 자리에 남는다.
+
+   [doctrine] 채널은 `--apex`다. 채팅 시작은 신호(상태)도 위치도 아닌 "기본 밖의 선택"이며,
+   Quick Launch의 `.quick-launch-card.is-chat-start`가 같은 이유로 이미 같은 채널을 쓴다. */
+.operation-launch-surface-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.operation-launch-surface-mark svg {
+  width: 13px;
+  height: 13px;
+}
+
+.operation-launch-surface-mark[data-launch-start-surface="chat"] {
+  color: var(--apex);
+}
+
+.operation-launch-surface-mark:hover {
+  color: var(--text-primary);
+}
+
+.canvas-context-menu .operation-launch-variant-row:has(.operation-launch-surface-mark) {
+  padding-left: calc(var(--space-2) - var(--space-1));
+}
+
+/* 표면 이름은 시각적으로만 접어 행의 접근 이름에 남긴다 — 아이콘 하나로는 보조기술이 이 행이
+   어디서 태어나는지 말하지 못한다. 종류 설명의 --quiet와 같은 기법이다. */
+.operation-launch-surface-mark-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
    표식이 둘일 때 여백이 그 사이에서 나뉘어 ★가 행 한가운데 뜬다. */
 .operation-launch-variant-row-label,

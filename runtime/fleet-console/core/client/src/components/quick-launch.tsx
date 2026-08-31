@@ -21,6 +21,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
+import { ChatBubbleIcon, TerminalViewIcon } from "./start-view-glyphs.js";
 import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
@@ -1967,40 +1968,6 @@ function EffortCommandIcon() {
       <path d="M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="5" cy="8" r="1.4" fill="currentColor" />
       <circle cx="11" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-/**
- * 채팅 표식의 말풍선 — 한 제품에서 채팅을 가리키는 그림은 하나여야 한다. 커맨드 아이콘
- * 격자(16)에 맞춰, 꼬리는 왼쪽 아래로, 몸통은 둥근 모서리 하나로 읽히게 그린다.
- */
-function ChatBubbleIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M5.1 12.5h-.3a2.4 2.4 0 0 1-2.4-2.4V6.1a2.4 2.4 0 0 1 2.4-2.4h6.4a2.4 2.4 0 0 1 2.4 2.4v4a2.4 2.4 0 0 1-2.4 2.4H7.7l-2.6 2.1z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** 터미널 시작. 셸 프롬프트의 갈매기 하나 — 채팅 말풍선과 같은 격자·같은 굵기로 마주 세운다. */
-function TerminalViewIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M4 5.2 7 8l-3 2.8M8.6 11.2h3.6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
