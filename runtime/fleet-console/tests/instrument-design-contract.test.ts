@@ -507,12 +507,17 @@ describe("Instrument core design contract", () => {
   it("keeps the interaction control recipe theme-owned", () => {
     const theme = source("styles/theme.css");
     const root = theme.match(/^:root \{[\s\S]*?^\}/m)?.[0] ?? "";
-    // Quiet Controls C′: 지속 상태는 accent가 아니라 세 문장으로 갈린다 — 배타 선택 =
-    // 극저대비 워시(wash) + 잉크 대비 + 2px brass 다텀, 독립 ON = 잉크(tint),
+    // Quiet Controls C′: rest는 침묵이 아니라 낮은 목소리다(2026-09-01 저장소 실측 재가) —
+    // 동사·컨트롤은 rest 채널(--control-rest)로 쉬는 몸을 알리고, 입력 필드는 우물 대신
+    // --control-field로 표면 위에 떠오른다. 지속 상태는 accent가 아니라 세 문장으로 갈린다 —
+    // 배타 선택 = 극저대비 워시(wash) + 잉크 대비 + 2px brass 다텀, 독립 ON = 잉크(tint),
     // 불리언 ON = 워시 + brass 글리프. 열림·focus-within은 open-rim이 진다.
     for (const token of [
       "--control-hover-fill",
       "--control-hover-rim",
+      "--control-rest",
+      "--control-rest-hover",
+      "--control-field",
       "--control-wash",
       "--control-wash-hover",
       "--control-tint-fill",
@@ -530,6 +535,8 @@ describe("Instrument core design contract", () => {
     for (const name of ["maritime", "carbon", "whites"]) {
       const blocks = theme.match(new RegExp(`^:root\\[data-theme="${name}"\\] \\{[\\s\\S]*?\\n\\}`, "gm")) ?? [];
       expect(blocks.some((block) => block.includes("--control-wash:") && block.includes("--control-wash-hover:"))).toBe(true);
+      // rest·field도 같은 극성 재조율 대상이다 — 라이트의 field는 잉크 워시가 아니라 종이보다 밝은 실색.
+      expect(blocks.some((block) => block.includes("--control-rest:") && block.includes("--control-field:"))).toBe(true);
     }
     // 옛 selected recipe(테두리+채움+brass 글자 동시 발화)와 융기(thumb) recipe는 퇴역했다 — 부활 금지.
     expect(theme).not.toContain("--control-selected-fill");
