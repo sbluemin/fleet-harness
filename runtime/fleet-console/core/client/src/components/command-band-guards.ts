@@ -1,8 +1,3 @@
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
-
-import { resolveOperationActivity } from "../operation-activity.js";
-import type { OperationNode } from "../types.js";
-
 // 맵 컨트롤(모드 스위치+트레이)은 중앙 트랙의 단독 승객이다 — Theater›Operation 브레드크럼과
 // 스위처 메뉴는 사이드바가 이미 말하는 문장이라 퇴역했고, 그 가드들도 함께 물러났다.
 // 중앙은 Console 전체 정중앙에 고정하므로 좌우 여백 하한은 좌·우 클러스터의 실측 콘텐츠 폭 중
@@ -26,35 +21,4 @@ export function commandBandCenterGutter(leftContentEnd: number, rightContentWidt
 export function commandBandCenterFits(bandWidth: number, gutter: number, centerContentWidth: number): boolean {
   if (bandWidth <= 0 || centerContentWidth <= 0) return true;
   return bandWidth - gutter * 2 >= centerContentWidth;
-}
-
-// Pulse 이행 1단계 — 읽기 전용 상태 캡슐의 집계. 마크 원장(활동 축)을 그대로 센다:
-// running과 background를 합치거나 미확인 도착(idle+arrival)을 대기로 승격하면 사이드바
-// 상태축과 숫자가 갈라져 "같은 원장의 두 창" 계약이 깨진다. 그래서 승격 없는
-// resolveOperationActivity 원값만 읽고, Theater를 가르지 않는다 — 캡슐은 함대 전체의 집계다
-// (War Room도 Theater 구분 없이 올린다).
-export interface CommandBandPulseCounts {
-  readonly running: readonly string[];
-  readonly awaiting: readonly string[];
-}
-
-export function commandBandPulseCounts(
-  operations: readonly OperationNode[],
-  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
-): CommandBandPulseCounts {
-  const running: string[] = [];
-  const awaiting: string[] = [];
-  for (const operation of operations) {
-    const activity = resolveOperationActivity(operation, operationRuntime);
-    if (activity === "running") running.push(operation.title);
-    else if (activity === "awaiting") awaiting.push(operation.title);
-  }
-  return { running, awaiting };
-}
-
-// 캡슐 title/aria 한 줄 — 낱말은 화면이 아니라 여기(팁·접근성)로 물러난다. 이름은 넷까지만
-// 잇고 나머지는 줄임표로 접는다: title은 원장 조회가 아니라 확인용 창이다.
-export function commandBandPulseNames(titles: readonly string[]): string {
-  const shown = titles.slice(0, 4).join(", ");
-  return titles.length > 4 ? `${shown}…` : shown;
 }
