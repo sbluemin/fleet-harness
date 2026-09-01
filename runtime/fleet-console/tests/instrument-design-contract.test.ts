@@ -2249,7 +2249,10 @@ describe("Instrument core design contract", () => {
     // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
     // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
     // 레이아웃이면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
-    expect(commandBand).toContain("if (!formationView || formationLayout !== layout) selectFormationLayout(layout);");
+    expect(commandBand).toContain("if (!getFormationView() || getFormationLayout() !== layout) selectFormationLayout(layout);");
+    // War Room 이탈이 활성 Theater를 복귀시키는 창에서 formation을 쓰면 표기가 옛 Theater에
+    // 남는다(canvas-store는 passive 로드까지 이전 Theater를 가리킨다) — 로드를 동기로 앞당긴다.
+    expect(commandBand).toContain("if (returnTheaterId !== null && returnTheaterId !== getLoadedTheaterId()) loadForTheater(returnTheaterId);");
     // 눌림은 "지금 활성"만 말한다 — 비활성 모드 캡슐에서 기억된 레이아웃을 눌림으로 칠하지 않는다.
     expect(commandBand).toContain('aria-pressed={canvasMode === "tactical" && formationLayout === layout.id}');
     // Tactical은 Theater별 상태라 활성 Theater로, War Room은 전역 모드라 등록된 Theater 존재로 게이트한다.

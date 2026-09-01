@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../api.js";
-import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
+import { animateViewportTo, clearFormationView, fitAllOperations, getFormationLayout, getFormationView, getLoadedTheaterId, loadForTheater, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
@@ -12,7 +12,7 @@ import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useUpdateProgress } from "../update-progress-store.js";
-import { toggleOperationSearch } from "../store.js";
+import { getState, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { useViewMode } from "../view-mode-store.js";
@@ -139,9 +139,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 꺼버리는데,
   // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
   // 레이아웃으로 서 있으면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
+  // 판정은 렌더 시점 값이 아니라 라이브 게터로 한다 — 아래 이탈 경로가 로드를 앞당긴 뒤에는
+  // 렌더 값이 이전 Theater의 것이라 토글-오프 함정을 다시 연다.
   const selectTacticalLayout = (layout: FormationLayout) => {
-    if (triageActive) setTriageActive(false);
-    if (!formationView || formationLayout !== layout) selectFormationLayout(layout);
+    if (triageActive) {
+      setTriageActive(false);
+      // War Room 이탈은 활성 Theater를 마지막 무대 Theater로 복귀시킬 수 있는데(triage-store),
+      // canvas-store의 formation 상태는 passive effect의 loadForTheater가 돌 때까지 이전
+      // Theater를 가리킨다. 그 창에서 formation을 쓰면 표기가 옛 Theater에 남고 복귀 Theater는
+      // Cruise로 착지한다 — 로드를 동기로 앞당겨 복귀 Theater의 상태 위에서 진입한다(effect의
+      // 같은 id 재로드는 수렴한다).
+      const returnTheaterId = getState().activeTheaterId;
+      if (returnTheaterId !== null && returnTheaterId !== getLoadedTheaterId()) loadForTheater(returnTheaterId);
+    }
+    if (!getFormationView() || getFormationLayout() !== layout) selectFormationLayout(layout);
   };
   // Esc는 캡슐에서 낱말로 되돌아오는 계단이다 — 포커스가 세그먼트로 돌아가면 focus-within이
   // 유지되어 캡슐은 열린 채 남고, Tab 이탈이 문을 닫는다.
