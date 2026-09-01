@@ -2176,6 +2176,11 @@ describe("Instrument core design contract", () => {
     expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
     expect(triageSidebarSource).toContain("<SideBarCollapseControl />");
     expect(railPanelSource).toContain('className="right-rail-ico right-rail-collapse"');
+    // Doctrine: the window verb carries an explicit glyph size, for the same reason the gear
+    // does — it first shipped with only a viewBox and filled the 32px control, twice the gear.
+    // It matches the sidebar collapse control's glyph (same chevron/pin, same 16px) so both
+    // edges read as one grammar.
+    expect(rail).toMatch(/\.right-rail-collapse svg \{[^}]*width: 16px;[^}]*height: 16px;/);
     // 접힘 순간 포커스는 접힌 뒤에도 남는 안정 좌표(그 패널의 엣지 독 트리거)로 넘어간다.
     expect(sidebarPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock")');
     expect(railPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".rail-edge-dock")');

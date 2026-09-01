@@ -290,6 +290,16 @@
   display: block;
 }
 
+/* 창 동사(접기·열어 두기)도 같은 이유로 크기를 적는다 — 처음 출하 때 viewBox만 든 채
+   버튼을 통째로 채워(30px) 톱니의 두 배로 보였다. 값은 좌측 사이드바 접기 컨트롤의 같은
+   글리프(.side-bar-collapse svg: 16px)와 맞춘다: 양쪽 가장자리의 셰브런·핀은 같은 그림이고
+   같은 크기로 읽혀야 한 문법이다. 윤곽선 글리프라 톱니(15px)보다 1px 커도 잉크는 더 가볍다. */
+.right-rail-collapse svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
 /* 열린 상태는 톱니만의 문법을 따로 두지 않는다 — 레일 아이콘 하나가 켜졌다는 사실은
    열 전체에서 한 가지 모습으로만 말해야 한다(.right-rail-ico.is-active: 어두운 면·
    rim-strong 테두리·좌측 brass 바). 톱니가 탭이 아니라는 사실은 role/aria가 이미
