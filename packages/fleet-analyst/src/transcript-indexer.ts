@@ -278,7 +278,9 @@ function redactPosixAbsolutePaths(value: string): string {
     const start = fileUrl ? index + "file://".length : index;
     if (value[start] !== "/") { index += 1; continue; }
     const prior = value[start - 1];
-    if (!fileUrl && ((prior && /[A-Za-z0-9_./…-]/.test(prior)) || value[start + 1] === "/")) { index = start + 1; continue; }
+    // `<` 바로 뒤의 슬래시는 경로가 아니라 닫는 태그다 — `</cite>`를 경로로 오인해
+    // `<…/cite>`로 바꿔치면 채팅의 인용이 원문 잔해로 새어 나간다(2026-09-01 라이브 실측).
+    if (!fileUrl && ((prior && /[A-Za-z0-9_./…<-]/.test(prior)) || value[start + 1] === "/")) { index = start + 1; continue; }
     const quote = prior === '"' || prior === "'" ? prior : "";
     let end = start + 1;
     if (quote) {

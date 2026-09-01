@@ -4,11 +4,13 @@ const EVIDENCE_PROBE = /\[e\d+\]/;
    이스케이프해 "e1</cite>" 같은 원문이 그대로 노출된다(2026-09-01 라이브 턴 실측).
    sanitize 뒤의 텍스트 노드에서 그 잔해를 [eN]으로 정규화한 뒤 같은 칩 경로를 태운다.
    "e2e" 같은 일상 토큰은 cite 문맥이 없으면 건드리지 않는다. */
-const CITE_RESIDUE = /<cite>\s*(e\d{1,4})\s*<\/cite>|\b(e\d{1,4})\s*<\/cite>|<cite>\s*(e\d{1,4})\b/g;
+/* `<…/cite>`는 경로 편집기가 `</cite>`를 절대경로로 오인해 남긴 흉터다 — 편집기는 고쳤지만
+   이미 스토어에 봉인된 역사 턴의 텍스트에는 남아 있으므로 여기서도 같은 칩으로 흡수한다. */
+const CITE_RESIDUE = /<cite>\s*(e\d{1,4})\s*<…?\/cite>|\b(e\d{1,4})\s*<…?\/cite>|<cite>\s*(e\d{1,4})\b/g;
 /* 사전 프로브는 직렬화된 HTML 문자열을 본다 — 온전한 요소는 원문 <cite>로, 이스케이프 잔해는
    &lt;cite&gt;로 서 있으므로 두 형태를 모두 물어야 조기 반환이 잔해를 삼키지 않는다.
    (DOMParser를 지나면 텍스트 노드에서는 둘 다 <cite> 리터럴로 디코드된다.) */
-const CITE_RESIDUE_PROBE = /<\/?cite>|&lt;\/?cite&gt;/;
+const CITE_RESIDUE_PROBE = /<…?\/?cite>|&lt;…?\/?cite&gt;/;
 
 const CITE_REFERENCE = /^e\d{1,4}$/;
 
@@ -22,7 +24,8 @@ export function decorateEvidenceHtml(html: string, title: string): string {
   // 텍스트 워커에는 "eN"만 보이므로, 요소 자체를 같은 칩으로 승격한다.
   for (const cite of Array.from(doc.body.querySelectorAll("cite"))) {
     if (cite.closest("code, pre, a")) continue;
-    const reference = cite.textContent?.trim() ?? "";
+    // 경로 편집기 흉터(`<…/cite>` 꼬리)가 요소 안에 남은 역사 턴도 같은 칩으로 승격한다.
+    const reference = (cite.textContent ?? "").replace(/\s*<…?\/cite>\s*$/, "").trim();
     if (!CITE_REFERENCE.test(reference)) continue;
     cite.replaceWith(evidenceChip(doc, reference, title));
   }

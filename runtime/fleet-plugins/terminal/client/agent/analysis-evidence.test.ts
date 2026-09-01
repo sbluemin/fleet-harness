@@ -42,6 +42,17 @@ describe("evidence citation decoration", () => {
     expect(decorateEvidenceHtml(html, "t")).toContain("<cite>The Art of Computer Programming</cite>");
   });
 
+  it("absorbs the path-redactor scar left inside historical cite elements", () => {
+    // 편집기가 </cite>를 …/cite로 바꿔치던 시절 스토어에 봉인된 역사 턴의 형태 —
+    // sanitize를 지나면 <cite>e1&lt;…/cite&gt;</cite>가 된다(2026-09-01 라이브 DOM 덤프).
+    const out = decorateEvidenceHtml("<p>요청 <cite>e1&lt;…/cite&gt;</cite> 그리고 e3&lt;…/cite&gt; 확인.</p>", "cited");
+    const doc = new DOMParser().parseFromString(out, "text/html");
+    const chips = [...doc.querySelectorAll("button.session-analyst__ev")];
+    expect(chips.map((chip) => chip.textContent)).toEqual(["e1", "e3"]);
+    expect(doc.querySelector("cite")).toBeNull();
+    expect(out).not.toContain("/cite");
+  });
+
   it("decorates inputs that carry only escaped cite residue", () => {
     // 온전한 <cite>나 [eN]이 하나도 없어도 사전 프로브가 이스케이프 잔해를 잡아야 한다 —
     // 다른 트리거가 프로브를 대신 만족시켜 주는 우연에 기대면 이 입력은 원문으로 샌다.

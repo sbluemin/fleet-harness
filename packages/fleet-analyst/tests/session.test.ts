@@ -307,6 +307,17 @@ it("keeps assistant text and reasoning on separate event kinds", () => {
   expect(toAnalystEvents({ kind: "thinking", text: "hmm" })).toEqual([{ type: "thought", text: "hmm" }]);
 });
 
+it("keeps closing tags intact while still shortening real absolute paths", () => {
+  // 경로 편집기가 `</cite>`의 `/cite`를 절대경로로 오인해 `<…/cite>`로 바꿔치던
+  // 라이브 결함(2026-09-01)의 회귀 가드 — 닫는 태그는 경로가 아니다.
+  expect(toAnalystEvents({ kind: "text", text: "Confirmed the build <cite>e12</cite> and more <cite>e14</cite>." })).toEqual([
+    { type: "chunk", text: "Confirmed the build <cite>e12</cite> and more <cite>e14</cite>." },
+  ]);
+  expect(toAnalystEvents({ kind: "text", text: "Read /Users/sbluemin/workspace/fleet-harness/runtime/notes.md today." })).toEqual([
+    { type: "chunk", text: "Read …/runtime/notes.md today." },
+  ]);
+});
+
 it("maps result errors without detail to the analysis fallback and success to complete", () => {
   expect(toAnalystEvents(resultEvent(true))).toEqual([
     { type: "error", error: { code: "analysis_error", message: "Analysis turn failed" } },
