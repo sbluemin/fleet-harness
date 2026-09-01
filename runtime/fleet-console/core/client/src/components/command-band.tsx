@@ -62,6 +62,10 @@ const MODE_TOOLS_LABEL_KEY: Readonly<Record<CanvasMode, CoreMessageKey>> = {
 // 보이지 않는 사본을 짚는다.
 const FINE_POINTER_QUERY = "(hover: hover) and (pointer: fine)";
 
+// layout.css .command-band-mode-echo-rack의 right: calc(100% + 10px)와 같은 값 — 에코 랙의
+// fit 예약 폭(간격+랙 폭) 계산에 쓴다. CSS와 함께 움직여야 한다.
+const ECHO_RACK_GAP_PX = 10;
+
 function useFinePointer(): boolean {
   const [finePointer, setFinePointer] = useState(
     () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(FINE_POINTER_QUERY).matches,
@@ -93,6 +97,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   const stationKeeping = useStationKeeping();
   const triageDeckZoomLive = useTriageDeckZoomLive();
+  // 라이브 줌 수치가 아니라 "이탈 여부"만 measure effect를 다시 돌린다 — 핀치 중 매 프레임
+  // 관찰자를 재구성하지 않기 위해서다. 배지 텍스트 폭 변화는 tabular-nums로 상수다.
+  const densityEchoVisible = triageDeckZoomLive !== 1.0;
   const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
   const selectCanvasMode = (mode: CanvasMode) => {
     if (mode === canvasMode) return;
@@ -211,6 +218,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
   const mapControlsRef = useRef<HTMLDivElement>(null);
+  const echoRackRef = useRef<HTMLDivElement>(null);
   const bandLeftRef = useRef<HTMLDivElement>(null);
   const bandRightRef = useRef<HTMLDivElement>(null);
   const edgeRevealRef = useRef<HTMLButtonElement>(null);
@@ -326,12 +334,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       const bandRight = bandRightRef.current;
       setRightContentWidth(bandRight === null ? 0 : Math.max(0, ...Array.from(bandRight.children, (child) => (child instanceof HTMLElement ? width - child.offsetLeft : 0))));
       // 플로우 자식의 범위로 잰다 — 자식이 flex:none이라 중앙 트랙이 좁게 눌린 프레임에서도
-      // 자연 폭을 돌려주고(눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하지 않음), 다이얼·에코
+      // 자연 폭을 돌려주고(눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하지 않음), 다이얼
       // 같은 절대 배치 자손의 오버플로는 배제한다. scrollWidth는 그 오버플로까지 세어(스위치의
-      // scrollable overflow가 전파됨) 에코 배지 등장이 is-center-flow 판정을 흔든다 — 실측으로
+      // scrollable overflow가 전파됨) 에코 배지 등장이 스위치를 다시 밀게 한다 — 실측으로
       // 213→247 부풂을 확인하고 물렸다.
+      //
+      // 에코 랙만은 fit 판정에 다시 예약한다: 랙은 중앙 배치 폭(플로우)에 들지 않아 스위치를
+      // 밀지 않지만, 스위치 우측 굴터 공간을 실제로 점유하므로 예약 없이는 경계 폭에서 우측
+      // 클러스터 위로 겹친다(브라우저 크롬은 모바일 전환이 선행하지만, 데스크톱 셸의 OS 컨트롤
+      // 예약이 우측 폭을 키우면 도달한다). 배지가 있을 때 폴백이 조금 일찍 올 뿐, 중앙에 있는
+      // 동안 스위치가 움직이지 않는다는 계약은 그대로다.
       const mapControls = mapControlsRef.current;
-      setCenterContentWidth(mapControls === null ? 0 : Math.max(0, ...Array.from(mapControls.children, (child) => (child instanceof HTMLElement ? child.offsetLeft - mapControls.offsetLeft + child.offsetWidth : 0))));
+      const echoRack = echoRackRef.current;
+      const echoReserve = echoRack === null ? 0 : ECHO_RACK_GAP_PX + echoRack.offsetWidth;
+      setCenterContentWidth(mapControls === null ? 0 : echoReserve + Math.max(0, ...Array.from(mapControls.children, (child) => (child instanceof HTMLElement ? child.offsetLeft - mapControls.offsetLeft + child.offsetWidth : 0))));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -344,8 +360,12 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
+    // 에코 랙은 mapControls 크기를 바꾸지 않는 절대 배치라 RO가 등장을 못 듣는다 — 마운트는
+    // 아래 deps의 배지 조건이, 폭 변화(폰트 로드)는 직접 관찰이 measure를 다시 부른다.
+    const echoRack = echoRackRef.current;
+    if (echoRack) observer.observe(echoRack);
     return () => observer.disconnect();
-  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen, finePointer]);
+  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen, finePointer, stationKeeping, densityEchoVisible]);
 
   useEffect(() => {
     if (state.channel === "local") return;
@@ -482,9 +502,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           {/* 이탈-상태 에코 — 기본값을 벗어난 도구 상태만 축약 배지로 남는다(평시 침묵). 다이얼이
               hover 뒤로 접은 상태 가시성을 여기서 되갚는다. coarse 포인터는 트레이가 이미 말한다.
               스위치 직우는 검색의 안정 앵커 자리(#983)라, 랙은 스위치 좌측에 절대 배치로 걸린다. */}
-          {finePointer && (stationKeeping || triageDeckZoomLive !== 1.0) ? <div className="command-band-mode-echo-rack">
+          {finePointer && (stationKeeping || densityEchoVisible) ? <div ref={echoRackRef} className="command-band-mode-echo-rack">
             {stationKeeping ? <span className="command-band-mode-echo" role="img" aria-label={t("chrome.commandBand.stationKeeping")} title={t("chrome.commandBand.stationKeeping")}><StationKeepingIcon /></span> : null}
-            {triageDeckZoomLive !== 1.0 ? <span className="command-band-mode-echo" role="img" aria-label={t("canvas.triage.densityChipTitle")} title={t("canvas.triage.densityChipTitle")}>{triageDeckZoomLive.toFixed(1)}×</span> : null}
+            {densityEchoVisible ? <span className="command-band-mode-echo" role="img" aria-label={t("canvas.triage.densityChipTitle")} title={t("canvas.triage.densityChipTitle")}>{triageDeckZoomLive.toFixed(1)}×</span> : null}
           </div> : null}
         </div> : null}
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>

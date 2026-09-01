@@ -2234,7 +2234,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand.match(/className="command-band-mode-tool/g)?.length).toBe(commandBand.match(/onMouseDown=\{suppressToolFocus\}/g)?.length);
     // 이탈-상태 에코 — 다이얼이 hover 뒤로 접은 상태 가시성은 기본값 이탈 배지가 되갚는다
     // (평시 침묵). 배지가 플로우에 들면 등장·퇴장이 중앙을 다시 민다.
-    expect(commandBand).toContain("{finePointer && (stationKeeping || triageDeckZoomLive !== 1.0) ? <div className=\"command-band-mode-echo-rack\">");
+    expect(commandBand).toContain("{finePointer && (stationKeeping || densityEchoVisible) ? <div ref={echoRackRef} className=\"command-band-mode-echo-rack\">");
+    // 에코 랙은 중앙 배치 폭에는 들지 않되(스위치 부동) fit 판정에는 예약된다 — 예약이 없으면
+    // 데스크톱 셸의 OS 컨트롤 예약 폭에서 배지가 우측 클러스터 위로 겹친다(Codex P2).
+    expect(commandBand).toContain("const echoReserve = echoRack === null ? 0 : ECHO_RACK_GAP_PX + echoRack.offsetWidth;");
     // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
     // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
     // 레이아웃이면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
