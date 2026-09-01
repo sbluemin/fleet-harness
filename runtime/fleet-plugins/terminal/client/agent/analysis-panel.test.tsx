@@ -43,7 +43,13 @@ describe("Session Analyst contract", () => {
     // 떠 있던 칩 줄이 캡션으로 옮겨간 뒤 본문은 어느 모드에서도 그 자리를 비워 두지 않는다 —
     // 한 경로만 남으면 그 화면만 빈 띠를 이고 미리보기 높이를 잃는다.
     expect(css).not.toMatch(/padding(-top)?: calc\(var\(--space-\d\) \+ 34px\)/);
-    expect(css).toContain(".session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column;");
+    // 컴포저는 상태와 무관하게 한 조립이다 — 입력 위층 + 좌표 레일 아래층(채팅뷰 문법).
+    expect(css).toMatch(/\.session-analyst__composer-surface \{[^}]*flex-direction: column;/);
+    expect(css).toContain(".session-analyst__composer-rail");
+    // 초기 진입은 채팅뷰 settle 문법이다 — 받침의 비율 전환이 컴포저를 내려앉힌다.
+    expect(css).toMatch(/\.session-analyst__settle \{[^}]*transition: flex-grow/);
+    expect(css).toContain(".session-analyst__chat-pane.is-initial .session-analyst__settle { flex-grow: 0.8; }");
+    expect(css).not.toContain("analyst-composer-dock");
     // 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다.
     expect(css).toMatch(/\.session-analyst__saved \{[^}]*inline-size: [\d.]+em;/);
     // 모델은 Quick Launch 칩, 강도는 공용 트랙이다.

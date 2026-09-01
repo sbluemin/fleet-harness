@@ -54,7 +54,10 @@ export function disposeAnalysisStore(operationId: string): void {
 // re-arm 전용 조회 API — dispose된 Operation의 store를 재생성하지 않아야 한다(orphan 방지).
 
 const CONNECT_WAIT_MS = 2_000;
-const RESPONSE_TIMEOUT_MS = 120_000;
+/* 무활동 상한 — 총량 상한이 아니다. v1의 120s 고정 상한은 이벤트가 계속 흘러도 턴을 죽여
+   아티팩트 저작 같은 긴 턴이 주 희생자였다(2026-09-01 결정으로 제거). 이 값은 이벤트 수신마다
+   재무장되므로, 살아 있는 턴은 얼마든지 길어질 수 있고 SSE가 조용히 끊긴 고착만 걸린다. */
+const ANALYSIS_INACTIVITY_TIMEOUT_MS = 180_000;
 
 function createAnalysisStore(operationId: string, api: ClientApiCapability, initialSettings?: ClientSettingsCapability, initialLanguage?: "en" | "ko"): AnalysisStore {
   let state = initialAnalysisState;
@@ -118,13 +121,14 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     clearTimeout(watchdog);
     watchdog = null;
   };
-  // SSE가 끊겨 complete/error를 영영 못 받으면 busy가 고착되므로 상한을 둔다.
+  // SSE가 끊겨 complete/error를 영영 못 받으면 busy가 고착되므로 무활동 감시를 둔다 —
+  // 이벤트가 올 때마다 재무장하고, 침묵이 상한을 넘겼을 때만 턴을 닫는다.
   const armWatchdog = () => {
     disarmWatchdog();
     watchdog = setTimeout(() => {
       watchdog = null;
       dispatch({ type: "error", message: "Analysis response timed out.", now: Date.now() });
-    }, RESPONSE_TIMEOUT_MS);
+    }, ANALYSIS_INACTIVITY_TIMEOUT_MS);
   };
 
   const invalidateRun = () => {
@@ -162,6 +166,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
         return;
       }
       if (event.type === "complete" || event.type === "error") disarmWatchdog();
+      // 살아 있는 턴의 이벤트는 감시를 재무장한다 — 긴 분석·아티팩트 저작은 침묵이 아니다.
+      else if (watchdog !== null) armWatchdog();
       const queued = event.type === "complete" ? state.queue[0] : undefined;
       dispatch({ type: "event", event, now: Date.now() });
       if (queued !== undefined && !state.busy && !disposed && generation === streamGeneration) {

@@ -256,19 +256,69 @@ function getArtifactColors(): ArtifactThemeColors {
   const consoleStyle = getComputedStyle(document.documentElement);
   const token = (name: string) => consoleStyle.getPropertyValue(name).trim();
   return {
-    canvas: token("--ink-veil") || "Canvas",
-    foreground: token("--ink-pearl") || "CanvasText",
-    surface: token("--ink-deep"),
+    // v2 브리지 — 깊이 방향을 콘솔과 맞춘다: 바닥은 패널면, 카드는 raised, 웰은 sea-core.
+    // v1은 ink-veil/ink-deep을 보내 다크 테마에서 "밝은 바닥 위 검은 카드"로 역전됐고,
+    // maritime·carbon에서는 hairline이 바닥과 같은 값이라 테두리가 소멸했다.
+    ground: token("--surface-panel") || "Canvas",
+    foreground: token("--text-primary") || "CanvasText",
+    card: token("--surface-panel-raised"),
+    inset: token("--canvas-sea-core"),
     hairline: token("--hairline"),
+    hairlineStrong: token("--hairline-strong"),
     accent: token("--aurora"),
-    muted: token("--ink-muted"),
+    muted: token("--text-secondary"),
+    faint: token("--text-tertiary"),
     // 신호 3색은 ink 티어를 뽑는다 — 라이트 테마에서 본문 대비(AA)를 지키는 것은 base가 아니라 ink다.
     positive: token("--positive-ink"),
     warn: token("--warn-ink"),
     critical: token("--coral-ink"),
     // 포커스/위치 채널은 brass다 — signal 토큰을 포커스 링에 쓰면 채널이 섞인다.
     focus: token("--brass"),
+    ...consoleFontSources(),
   };
+}
+
+/**
+ * 콘솔 번들의 @font-face에서 본문·모노 서체의 same-origin 자산 경로를 읽는다.
+ * 아티팩트 iframe은 콘솔의 @font-face를 상속하지 않으므로, 문서가 같은 파일을 스스로
+ * 선언해야 콘솔 서체를 잇는다. 변수 폰트는 서브셋별 규칙이 여럿이라 라틴 서브셋
+ * (U+0000 범위를 쥔 규칙)을 고른다 — 한글은 콘솔과 동일하게 시스템 폴백이 진다.
+ */
+function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont"> {
+  try {
+    let sans: string | undefined;
+    let mono: string | undefined;
+    const pick = (rule: CSSFontFaceRule): string | undefined => {
+      const src = rule.style.getPropertyValue("src");
+      const raw = /url\(["']?([^"')]+)["']?\)/.exec(src)?.[1];
+      if (!raw) return undefined;
+      const url = new URL(raw, window.location.href);
+      if (url.origin !== window.location.origin || !url.pathname.endsWith(".woff2")) return undefined;
+      return url.pathname;
+    };
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSFontFaceRule)) continue;
+        const family = rule.style.getPropertyValue("font-family");
+        // 브라우저는 범위 표기의 선행 0을 접는다 — "U+0000-00FF"가 "U+0-FF"로 읽힌다.
+        const unicodeRange = rule.style.getPropertyValue("unicode-range");
+        if (unicodeRange && !/u\+0{1,4}(-|\b)/i.test(unicodeRange)) continue;
+        if (!sans && /manrope/i.test(family)) sans = pick(rule);
+        if (!mono && /jetbrains/i.test(family)) mono = pick(rule);
+        if (sans && mono) break;
+      }
+      if (sans && mono) break;
+    }
+    return { ...(sans ? { sansFont: sans } : {}), ...(mono ? { monoFont: mono } : {}) };
+  } catch {
+    return {};
+  }
 }
 
 function ArtifactTime({ createdAt, language }: { readonly createdAt: number; readonly language: ConsoleLocale }) {

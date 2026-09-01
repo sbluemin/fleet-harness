@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisReducer, initialAnalysisState, MAX_ANALYSIS_ARTIFACTS } from "./analysis-state.js";
+import { analysisReducer, initialAnalysisState, MAX_ANALYSIS_ARTIFACTS, splitAnalystLedger } from "./analysis-state.js";
 
 const catalog = { clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [{ id: "sonnet", label: "Sonnet", effortLevels: ["low", "high"], defaultEffort: "high" }] }] };
 
@@ -138,10 +138,43 @@ describe("shared analysis store reducer", () => {
 
     const writing = analysisReducer(tooling, { type: "event", event: { type: "chunk", text: "First" }, now: 1_040 });
     const streamed = analysisReducer(writing, { type: "event", event: { type: "chunk", text: " reply" }, now: 1_050 });
-    expect(streamed).toMatchObject({ phase: "writing", latestActivity: { kind: "writing" }, entries: [{ role: "user", text: "Review this" }, { role: "analyst", text: "First reply" }] });
+    expect(streamed).toMatchObject({
+      phase: "writing",
+      latestActivity: { kind: "writing" },
+      entries: [
+        { role: "user", text: "Review this" },
+        { role: "analyst", segments: [{ text: "", steps: [{ title: "wiki_read", status: "running" }] }, { text: "First reply", steps: [] }] },
+      ],
+    });
 
     const complete = analysisReducer(streamed, { type: "event", event: { type: "complete" }, now: 2_000 });
     expect(complete).toMatchObject({ busy: false, phase: "complete", runEndedAt: 2_000 });
+  });
+
+  it("opens a new segment after tools so process narration never merges into the answer", () => {
+    const sent = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Summarize", now: 1_000 });
+    const narrated = analysisReducer(sent, { type: "event", event: { type: "chunk", text: "Reading the outline first." }, now: 1_010 });
+    const tooled = analysisReducer(narrated, { type: "event", event: { type: "tool", title: "session_outline", status: "in_progress" }, now: 1_020 });
+    const toolDone = analysisReducer(tooled, { type: "event", event: { type: "tool", title: "session_outline", status: "completed" }, now: 1_030 });
+    const answered = analysisReducer(toolDone, { type: "event", event: { type: "chunk", text: "The session did X." }, now: 1_040 });
+
+    const analyst = answered.entries.at(-1);
+    if (analyst?.role !== "analyst") throw new Error("expected analyst entry");
+    // 같은 구간 안의 같은 제목은 상태 갱신이다 — 스텝이 두 줄로 불어나지 않는다.
+    expect(analyst.segments).toEqual([
+      { text: "Reading the outline first.", steps: [{ title: "session_outline", status: "completed" }] },
+      { text: "The session did X.", steps: [] },
+    ]);
+    // 원장 분리: 과정 = 도구가 붙은 구간, 답 = 도구가 뒤따르지 않은 꼬리 텍스트 구간.
+    expect(splitAnalystLedger(analyst.segments)).toEqual({
+      process: [{ text: "Reading the outline first.", steps: [{ title: "session_outline", status: "completed" }] }],
+      answer: { text: "The session did X.", steps: [] },
+    });
+    // 꼬리 구간에 도구가 붙는 순간 답 후보는 과정으로 승격된다.
+    const reopened = analysisReducer(answered, { type: "event", event: { type: "tool", title: "session_read", status: "pending" }, now: 1_050 });
+    const reopenedAnalyst = reopened.entries.at(-1);
+    if (reopenedAnalyst?.role !== "analyst") throw new Error("expected analyst entry");
+    expect(splitAnalystLedger(reopenedAnalyst.segments).answer).toBeNull();
   });
 
   it("orders artifacts newest first and preserves conversation and artifacts when stopped", () => {

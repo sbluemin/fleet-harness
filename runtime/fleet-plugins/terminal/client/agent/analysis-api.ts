@@ -25,27 +25,34 @@ let recreateDelayMs = RECREATE_BASE_DELAY_MS;
 const operations = new Map<string, OperationRecord>();
 
 /**
- * 아티팩트 문서에 넘기는 Console 테마 색. canvas/foreground만 필수이고 나머지는 서버가
- * foreground로 폴백한다 — 값이 비면 아예 싣지 않아 서버 폴백이 그대로 서게 둔다.
+ * 아티팩트 문서에 넘기는 Console 테마 좌표(v2). ground/foreground만 필수이고 나머지는 서버가
+ * 단계적으로 폴백한다 — 값이 비면 아예 싣지 않아 서버 폴백이 그대로 서게 둔다.
+ * ground/card는 콘솔 패널면 기준이다(v1의 ink-veil/ink-deep은 깊이 방향을 역전시켰다).
  */
 export type ArtifactThemeColors = {
-  readonly canvas: string;
+  readonly ground: string;
   readonly foreground: string;
-  readonly surface?: string;
+  readonly card?: string;
+  readonly inset?: string;
   readonly hairline?: string;
+  readonly hairlineStrong?: string;
   readonly accent?: string;
   readonly muted?: string;
+  readonly faint?: string;
   readonly positive?: string;
   readonly warn?: string;
   readonly critical?: string;
   readonly focus?: string;
+  /** 콘솔 번들 @font-face에서 읽은 same-origin 서체 경로 — 문서가 콘솔 서체를 잇는다. */
+  readonly sansFont?: string;
+  readonly monoFont?: string;
 };
 
-const ARTIFACT_OPTIONAL_COLORS = ["surface", "hairline", "accent", "muted", "positive", "warn", "critical", "focus"] as const;
+const ARTIFACT_OPTIONAL_PARAMS = ["card", "inset", "hairline", "hairlineStrong", "accent", "muted", "faint", "positive", "warn", "critical", "focus", "sansFont", "monoFont"] as const;
 
 export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, colors: ArtifactThemeColors): string {
-  const query = new URLSearchParams({ theme, canvas: colors.canvas, foreground: colors.foreground });
-  for (const key of ARTIFACT_OPTIONAL_COLORS) {
+  const query = new URLSearchParams({ theme, ground: colors.ground, foreground: colors.foreground });
+  for (const key of ARTIFACT_OPTIONAL_PARAMS) {
     const value = colors[key];
     if (value) query.set(key, value);
   }

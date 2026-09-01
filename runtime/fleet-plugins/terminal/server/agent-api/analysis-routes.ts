@@ -173,18 +173,26 @@ function handleArtifact(ctx: FleetPluginServerContext, req: http.IncomingMessage
 function artifactDocument(html: string, requestUrl: string | undefined): string {
   const query = new URL(requestUrl ?? "/", "http://fleet.invalid").searchParams;
   const theme = safeArtifactTheme(query.get("theme"));
-  const canvas = safeArtifactColor(query.get("canvas"), "Canvas");
+  // v2 브리지는 콘솔 패널면 기준의 ground/card를 보낸다. 옛 이름(canvas/surface)은 내보내기·
+  // 북마크로 살아남은 v1 URL의 폴백으로만 남는다 — v1은 ink-veil/ink-deep을 보냈으므로 그대로
+  // 그리면 깊이 역전이 재현되지만, 최소한 색은 성립한다.
+  const ground = safeArtifactColor(query.get("ground"), safeArtifactColor(query.get("canvas"), "Canvas"));
   const foreground = safeArtifactColor(query.get("foreground"), "CanvasText");
-  const surface = safeArtifactColor(query.get("surface"), canvas);
+  const card = safeArtifactColor(query.get("card"), safeArtifactColor(query.get("surface"), ground));
+  const inset = safeArtifactColor(query.get("inset"), ground);
   const hairline = safeArtifactColor(query.get("hairline"), foreground);
+  const hairlineStrong = safeArtifactColor(query.get("hairlineStrong"), hairline);
   const accent = safeArtifactColor(query.get("accent"), foreground);
   const muted = safeArtifactColor(query.get("muted"), foreground);
+  const faint = safeArtifactColor(query.get("faint"), muted);
   const positive = safeArtifactColor(query.get("positive"), foreground);
   const warn = safeArtifactColor(query.get("warn"), foreground);
   const critical = safeArtifactColor(query.get("critical"), foreground);
   const focus = safeArtifactColor(query.get("focus"), accent);
-  const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ canvas, surface, foreground, muted, hairline, accent, positive, warn, critical, focus })}`;
+  const sansFont = safeArtifactFontPath(query.get("sansFont"));
+  const monoFont = safeArtifactFontPath(query.get("monoFont"));
+  const canvasStyle = `background-color:${ground}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
+  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
@@ -196,46 +204,91 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseHead}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
 }
 
-/** 색과 무관한 조판 바닥 — 토큰만 갈아끼우면 되도록 상수로 고정한다. */
+/** 색과 무관한 조판 바닥 v2 — 토큰만 갈아끼우면 되도록 상수로 고정한다.
+ *
+ * v1과 달라진 방향: ① 페이지는 중앙 measure를 진다 — 전폭 드로어에서 본문이 좌측에 응집하지
+ * 않도록 body의 직계 블록을 880px 컬럼으로 모은다(모델이 스스로 margin을 쥔 요소는 그 뜻이
+ * 이긴다 — 바닥이지 감옥이 아니다). ② 섹션 머리는 색이 아니라 형태로 말한다 — h2는 조용한
+ * 키커, 잉크·웨이트가 위계를 진다. accent는 링크·인용에만 남는다. ③ 면은 카드·인셋 두 층만
+ * 쓴다 — 카드(fleet-card 계열)는 ground보다 한 단 들리고, 코드·웰은 한 단 가라앉는다. */
 const ARTIFACT_BASE_RULES = [
   `*,*::before,*::after{box-sizing:border-box}`,
-  `body{font-family:var(--fleet-sans);font-size:14px;line-height:1.6;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;padding:20px 22px 28px}`,
-  `h1,h2,h3,h4,h5,h6{margin:1.7em 0 .55em;line-height:1.25;text-wrap:balance;letter-spacing:-.012em;font-weight:600}`,
-  `h1{font-size:1.5rem}`,
-  `h2{font-size:1.12rem}`,
-  `h3{font-size:1rem}`,
-  `h4,h5,h6{font-size:.92rem}`,
+  `body{font-family:var(--fleet-sans);font-size:14px;line-height:1.65;letter-spacing:-.004em;-webkit-font-smoothing:antialiased;padding:30px clamp(20px,4.5vw,48px) 46px}`,
+  `body>*{max-width:880px;margin-inline:auto}`,
+  `h1,h3,h4,h5,h6{margin:1.6em 0 .5em;line-height:1.25;text-wrap:balance;letter-spacing:-.014em;font-weight:700;color:var(--fleet-ink)}`,
+  `h1{font-size:1.42rem;margin-top:.2em}`,
+  // 섹션 머리 = 키커: 모노 소형 대문자 + 오른쪽으로 사라지는 헤어라인. 색은 쓰지 않는다.
+  `h2{display:flex;align-items:center;gap:10px;margin:2.1em 0 .75em;font-family:var(--fleet-mono);font-size:.74rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--fleet-muted)}`,
+  `h2::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--fleet-hairline),transparent)}`,
+  `h3{font-size:.98rem}`,
+  `h4,h5,h6{font-size:.9rem}`,
   `:is(body,main,section,article,aside,li,td,th,details)>:first-child{margin-top:0}`,
   `p{margin:0 0 .85em}`,
-  `p,li{max-width:68ch}`,
+  `p,li{max-width:72ch}`,
   `:is(td,th,figcaption) p{max-width:none}`,
   `ul,ol{margin:0 0 .95em;padding-left:1.3em}`,
-  `li{margin:.28em 0}`,
-  `strong,b{font-weight:620;color:var(--fleet-ink)}`,
-  `small{font-size:.84em;color:var(--fleet-muted)}`,
+  `li{margin:.3em 0}`,
+  `strong,b{font-weight:650;color:var(--fleet-ink)}`,
+  `small{font-size:.84em;color:var(--fleet-faint)}`,
   `a{color:var(--fleet-accent);text-underline-offset:2px}`,
   `img,svg,canvas{max-width:100%}`,
   `img{height:auto}`,
-  `table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.94em}`,
-  `th{text-align:left;font-weight:600;font-size:.82em;letter-spacing:.02em;color:var(--fleet-muted);padding:7px 10px;border-bottom:1px solid var(--fleet-hairline)}`,
-  `td{padding:7px 10px;border-bottom:1px solid var(--fleet-hairline);vertical-align:top}`,
+  `table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.93em}`,
+  `th{text-align:left;font-family:var(--fleet-mono);font-weight:500;font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;color:var(--fleet-faint);padding:8px 12px;border-bottom:1px solid var(--fleet-hairline)}`,
+  `td{padding:8px 12px;border-bottom:1px solid color-mix(in oklch,var(--fleet-hairline) 55%,transparent);vertical-align:top}`,
   `tr:last-child td{border-bottom:0}`,
-  `code{font-family:var(--fleet-mono);font-size:.9em;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}`,
-  `pre{font-family:var(--fleet-mono);font-size:.88em;line-height:1.5;background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}`,
+  `td:first-child{color:var(--fleet-ink);font-weight:600}`,
+  `code{font-family:var(--fleet-mono);font-size:.88em;background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:4px;padding:.03em .32em}`,
+  `pre{font-family:var(--fleet-mono);font-size:.86em;line-height:1.55;background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:10px;padding:13px 15px;overflow-x:auto}`,
   `pre code{background:none;border:none;padding:0;font-size:1em}`,
   `blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}`,
-  `hr{border:none;border-top:1px solid var(--fleet-hairline);margin:1.5em 0}`,
-  // 증거 인용은 구조 정보다 — 본문 리듬을 끊지 않도록 조용한 첨자 칩으로 눌러 둔다.
-  `cite{display:inline-block;font-style:normal;font-family:var(--fleet-mono);font-size:.72em;line-height:1.35;vertical-align:.3em;color:var(--fleet-muted);background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:3px;padding:0 3px;margin-left:3px;white-space:nowrap;text-decoration:none}`,
+  `hr{border:none;height:1px;background:linear-gradient(90deg,var(--fleet-hairline),transparent);margin:1.6em 0}`,
+  // 증거 인용은 구조 정보다 — accent 틴트의 조용한 첨자 칩. accent가 남는 유일한 표면이다.
+  `cite{display:inline-block;font-style:normal;font-family:var(--fleet-mono);font-size:.68em;line-height:1.4;vertical-align:.32em;color:var(--fleet-accent);background:color-mix(in oklch,var(--fleet-accent) 9%,transparent);border:1px solid color-mix(in oklch,var(--fleet-accent) 30%,var(--fleet-hairline));border-radius:4px;padding:0 4px;margin-left:4px;white-space:nowrap;text-decoration:none}`,
   `cite+cite{margin-left:2px}`,
-  `details{border:1px solid var(--fleet-hairline);border-radius:8px;padding:10px 12px;margin:0 0 .9em}`,
-  `summary{cursor:pointer;font-weight:600;color:var(--fleet-ink)}`,
-  `summary::marker{color:var(--fleet-muted)}`,
+  `details{border:1px solid var(--fleet-hairline);border-radius:10px;background:var(--fleet-card);padding:10px 13px;margin:0 0 .9em}`,
+  `summary{cursor:pointer;font-weight:650;color:var(--fleet-ink)}`,
+  `summary::marker{color:var(--fleet-faint)}`,
+  // ── 호스트 제공 컴포넌트 — 모델은 구조만 결정하고 면 품질은 바닥이 보장한다. ──
+  `.fleet-kicker{font-family:var(--fleet-mono);font-size:.68rem;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--fleet-faint);margin:0 0 .5em}`,
+  `.fleet-lede{color:var(--fleet-muted);font-size:.95em;margin:0 0 1em;max-width:72ch}`,
+  `.fleet-meta{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 1.4em;padding:0;list-style:none}`,
+  `.fleet-meta>*{font-family:var(--fleet-mono);font-size:.72rem;color:var(--fleet-muted);border:1px solid var(--fleet-hairline);border-radius:6px;background:color-mix(in oklch,var(--fleet-card) 60%,transparent);padding:3px 9px}`,
+  `.fleet-card{background:var(--fleet-card);border:1px solid var(--fleet-hairline);border-radius:10px;padding:13px 15px;margin:0 0 .9em}`,
+  `.fleet-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 .95em}`,
+  `.fleet-kpi{background:var(--fleet-card);border:1px solid var(--fleet-hairline);border-radius:10px;padding:11px 13px}`,
+  `.fleet-kpi b,.fleet-kpi strong{display:block;font-size:1.3rem;font-weight:750;letter-spacing:-.015em;color:var(--fleet-ink);font-variant-numeric:tabular-nums}`,
+  `.fleet-kpi span,.fleet-kpi small{font-family:var(--fleet-mono);font-size:.66rem;letter-spacing:.08em;color:var(--fleet-faint)}`,
+  `.fleet-timeline{list-style:none;margin:0 0 .95em;padding:0}`,
+  `.fleet-timeline>li{position:relative;padding:0 0 .95em 22px;margin:0}`,
+  `.fleet-timeline>li::before{content:"";position:absolute;left:5px;top:15px;bottom:-3px;width:2px;border-radius:2px;background:var(--fleet-hairline)}`,
+  `.fleet-timeline>li:last-child::before{display:none}`,
+  `.fleet-timeline>li::after{content:"";position:absolute;left:1px;top:5px;width:8px;height:8px;border-radius:50%;border:2px solid var(--fleet-faint);background:var(--fleet-canvas)}`,
+  `.fleet-timeline>li[data-state="done"]::after{border-color:var(--fleet-positive)}`,
+  `.fleet-timeline>li[data-state="active"]::after{border-color:var(--fleet-accent)}`,
+  `.fleet-callout{display:grid;grid-template-columns:3px minmax(0,1fr);gap:12px;border:1px solid var(--fleet-hairline);border-radius:10px;background:var(--fleet-card);padding:11px 13px;margin:0 0 .7em}`,
+  `.fleet-callout::before{content:"";border-radius:2px;background:var(--fleet-hairline-strong)}`,
+  `.fleet-callout[data-tone="warn"]{border-color:color-mix(in oklch,var(--fleet-warn) 26%,var(--fleet-hairline));background:color-mix(in oklch,var(--fleet-warn) 6%,var(--fleet-card))}`,
+  `.fleet-callout[data-tone="warn"]::before{background:var(--fleet-warn)}`,
+  `.fleet-callout[data-tone="critical"]{border-color:color-mix(in oklch,var(--fleet-critical) 26%,var(--fleet-hairline));background:color-mix(in oklch,var(--fleet-critical) 6%,var(--fleet-card))}`,
+  `.fleet-callout[data-tone="critical"]::before{background:var(--fleet-critical)}`,
+  `.fleet-callout[data-tone="positive"]{border-color:color-mix(in oklch,var(--fleet-positive) 26%,var(--fleet-hairline));background:color-mix(in oklch,var(--fleet-positive) 6%,var(--fleet-card))}`,
+  `.fleet-callout[data-tone="positive"]::before{background:var(--fleet-positive)}`,
+  `.fleet-callout>:last-child{margin-bottom:0}`,
+  `.fleet-status{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--fleet-muted);margin-right:7px;vertical-align:1px}`,
+  `.fleet-status[data-tone="positive"]{background:var(--fleet-positive)}`,
+  `.fleet-status[data-tone="warn"]{background:var(--fleet-warn)}`,
+  `.fleet-status[data-tone="critical"]{background:var(--fleet-critical)}`,
+  // 표는 카드 그릇에 앉힌다 — 모델이 fleet-table로 감싸면 테두리·radius·스크롤을 바닥이 진다.
+  `.fleet-table{border:1px solid var(--fleet-hairline);border-radius:10px;background:var(--fleet-card);overflow-x:auto;margin:0 0 .95em}`,
+  `.fleet-table table{margin:0}`,
+  `.fleet-table th{padding-top:10px}`,
   // 넓은 표·코드·다이어그램의 가로 스크롤 그릇 — 페이지 자체가 옆으로 흐르지 않게 한다.
   `.fleet-scroll{overflow-x:auto;max-width:100%}`,
   // 포커스는 signal이 아니라 위치 채널이다 — Console과 같은 brass 계열을 쓴다.
   `:focus-visible{outline:2px solid var(--fleet-focus);outline-offset:2px}`,
-  `::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`,
+  // 선택 하이라이트도 위치 채널이다 — accent 채움은 상태를 주장하는 것처럼 읽힌다.
+  `::selection{background:color-mix(in oklch,var(--fleet-focus) 30%,transparent)}`,
   `@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}`,
 ].join("");
 
@@ -252,19 +305,43 @@ const ARTIFACT_BASE_RULES = [
  * 깨기 때문이다.
  */
 function artifactBaseStylesheet(tokens: {
-  readonly canvas: string;
-  readonly surface: string;
+  readonly ground: string;
+  readonly card: string;
+  readonly inset: string;
   readonly foreground: string;
   readonly muted: string;
+  readonly faint: string;
   readonly hairline: string;
+  readonly hairlineStrong: string;
   readonly accent: string;
   readonly positive: string;
   readonly warn: string;
   readonly critical: string;
   readonly focus: string;
+  readonly sansFont?: string;
+  readonly monoFont?: string;
 }): string {
-  const root = `:root{--fleet-canvas:${tokens.canvas};--fleet-surface:${tokens.surface};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-hairline:${tokens.hairline};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif;--fleet-mono:ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace}`;
-  return `<style>${root}${ARTIFACT_BASE_RULES}</style>`;
+  // 콘솔 자기 자산의 same-origin 서체 — 외부 신호 0. 응답 헤더의 sandbox가 문서를 opaque
+  // origin으로 만들므로 폰트 fetch는 CORS 경로를 탄다(정적 서버가 woff2에 ACAO를 싣는 이유).
+  // 내려받은 사본에서는 상대 경로가 죽고 폴백 스택이 선다 — 오프라인 계약은 그대로다.
+  const sansFace = tokens.sansFont ? `@font-face{font-family:"Fleet Console Sans";src:url("${tokens.sansFont}") format("woff2");font-weight:100 999;font-style:normal;font-display:swap}` : "";
+  const monoFace = tokens.monoFont ? `@font-face{font-family:"Fleet Console Mono";src:url("${tokens.monoFont}") format("woff2");font-weight:100 999;font-style:normal;font-display:swap}` : "";
+  const sansStack = `${tokens.sansFont ? `"Fleet Console Sans",` : ""}ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif`;
+  const monoStack = `${tokens.monoFont ? `"Fleet Console Mono",` : ""}ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace`;
+  const root = `:root{--fleet-canvas:${tokens.ground};--fleet-surface:${tokens.card};--fleet-card:${tokens.card};--fleet-inset:${tokens.inset};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-faint:${tokens.faint};--fleet-hairline:${tokens.hairline};--fleet-hairline-strong:${tokens.hairlineStrong};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:${sansStack};--fleet-mono:${monoStack}}`;
+  return `<style>${sansFace}${monoFace}${root}${ARTIFACT_BASE_RULES}</style>`;
+}
+
+/**
+ * 서체 자산 경로 검증 — 클라이언트가 콘솔 번들의 @font-face에서 읽어 넘긴 same-origin 상대
+ * 경로만 통과시킨다. 스킴·호스트가 실리면 버린다(오프라인 계약: 아티팩트 문서는 자기 origin
+ * 밖을 부르지 않는다).
+ */
+const SAFE_ARTIFACT_FONT_PATH = /^\/[A-Za-z0-9_\-./]{1,200}\.woff2$/;
+
+function safeArtifactFontPath(value: string | null): string | undefined {
+  if (!value || !SAFE_ARTIFACT_FONT_PATH.test(value) || value.includes("..") || value.includes("//")) return undefined;
+  return value;
 }
 
 type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };
