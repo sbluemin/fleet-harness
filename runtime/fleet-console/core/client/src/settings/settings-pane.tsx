@@ -5,6 +5,7 @@ import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-con
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 
+import { SettingsHelp } from "../components/settings-help.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "../global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -284,8 +285,11 @@ function RemoteSummaryCard({ remote, onManage }: {
       <p className="global-settings-card-title">{t("settings.remote.title")}</p>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{remote.enabled ? t("settings.remote.on") : t("settings.remote.off")}</p>
-          <p className="global-settings-help">{t("settings.remote.help")}</p>
+          <p className="global-settings-resp-title">
+            {remote.enabled ? t("settings.remote.on") : t("settings.remote.off")}
+            {/* 제목이 켬/끔 상태 문구라, 팁의 접근성 이름은 섹션 이름(원격 접속)으로 짓는다. */}
+            <SettingsHelp title={t("settings.remote.title")}>{t("settings.remote.help")}</SettingsHelp>
+          </p>
         </div>
         <button type="button" className="settings-pane-manage" onClick={onManage}>
           {t("settings.pane.manageRemote")}
@@ -309,9 +313,9 @@ function RailOpacityRow() {
       <div className="global-settings-row-text">
         <p className="global-settings-resp-title">
           {t("settings.theme.railOpacity")}
+          <SettingsHelp title={t("settings.theme.railOpacity")}>{t("settings.theme.railOpacityHelp")}</SettingsHelp>
           <SettingsScope kind="live" />
         </p>
-        <p className="global-settings-help">{t("settings.theme.railOpacityHelp")}</p>
       </div>
       <div className="settings-slider-field">
         <input

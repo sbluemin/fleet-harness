@@ -576,6 +576,9 @@ describe("Instrument core design contract", () => {
       ".segmented-option:hover:not(:disabled):not(.is-active)",
       '.fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"])',
       '.fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"])',
+      // 설정 도움말 '?' 글리프 — hover/open이 같은 컨트롤 레시피를 소비한다(위치 채널, 신호 토큰 금지).
+      '.settings-help-tip__glyph:hover:not([aria-expanded="true"])',
+      '.settings-help-tip__glyph[aria-expanded="true"]',
     ]) expect(components).toContain(selector);
     for (const token of [
       "var(--control-hover-fill)",

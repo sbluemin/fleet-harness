@@ -663,6 +663,87 @@
 .settings-scope.is-restart i { background: var(--warn); }
 .settings-scope.is-sessions i { background: var(--aurora); }
 
+/* 설정 설명의 단일 공개 문법 — 제목 옆 '?'가 hover 미리보기·클릭 고정 말풍선을 연다.
+   글리프는 공유 컨트롤 문법을 소비한다(hover=control-hover, 열림=control-open/tint,
+   포커스=control-focus-ring). 이 버튼은 상태가 아니라 위치이므로 신호 토큰을 쓰지 않고,
+   말풍선은 fc-select 팝업과 같은 부유면 문법(ink-deep 유리·hairline·shadow-floating)을 쓴다. */
+.settings-help-tip {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.settings-help-tip__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  cursor: help;
+}
+
+.settings-help-tip__glyph:hover:not([aria-expanded="true"]) {
+  color: var(--text-secondary);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.settings-help-tip__glyph:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+.settings-help-tip__glyph[aria-expanded="true"] {
+  color: var(--control-tint-ink);
+  background: var(--control-tint-fill);
+  border-color: var(--control-open-rim);
+}
+
+.settings-help-tip__bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -12px;
+  z-index: var(--z-select-popover);
+  display: grid;
+  gap: var(--space-2);
+  width: min(340px, calc(100vw - 32px));
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.6;
+  text-align: left;
+  cursor: auto;
+  white-space: normal;
+}
+
+/* 본문 CSS의 display가 UA의 [hidden]을 이기므로 숨김은 여기서 직접 진다. */
+.settings-help-tip__bubble[hidden] { display: none; }
+
+.settings-help-tip__bubble[data-placement="up"] {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.settings-help-tip__bubble p { margin: 0; }
+
 /* 겉모습 카드의 컨트롤 열. 축소판 미리보기는 페인 이전과 함께 은퇴했다 — 설정이 콘솔
    옆에 서므로 콘솔 자체가 미리보기이고, 모형은 페이지가 콘솔을 가리던 시절의 보철이었다. */
 .appearance-controls {
@@ -739,22 +820,6 @@
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   line-height: 1.6;
-}
-
-/* Agent CLI 테마 안내 — 터미널 출력색은 CLI가 소유하므로 콘솔 테마 전환 시 CLI 테마도 다시 고르라는 부가 주석. 이탤릭+'*'로 본문 도움말과 구분한다. */
-.global-settings-theme-cli-note {
-  margin-top: var(--space-2);
-  font-style: italic;
-}
-
-.global-settings-foot {
-  margin: 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 40%, transparent);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  line-height: 1.55;
 }
 
 .operations-mutation-error {
@@ -1663,7 +1728,8 @@
 }
 
 .remote-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
-.remote-card-title { margin: 0; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-bold); }
+/* 제목이 '?' 팁을 품으므로 인라인 플렉스로 정렬한다 — 글자만 있는 제목의 흐름은 그대로다. */
+.remote-card-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .remote-card-help { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.55; }
 .remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-mono); font-size: var(--t-sm); }
 

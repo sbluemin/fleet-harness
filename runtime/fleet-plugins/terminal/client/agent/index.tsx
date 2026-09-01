@@ -13,7 +13,7 @@ import {
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../shared/terminal-preferences.js";
@@ -49,6 +49,8 @@ import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./ty
 interface SettingToggleRowProps {
   readonly title: string;
   readonly help: string;
+  /** 카드 공통 각주처럼 이 행에도 해당하는 두 번째 문단 — 팁 안에서 help 뒤에 선다. */
+  readonly helpMore?: string;
   readonly onLabel: string;
   readonly offLabel: string;
   readonly value: boolean;
@@ -736,6 +738,20 @@ function GeneralSection() {
  * 마지막인 이유는 한 번 맞춰 놓으면 다시 볼 일이 거의 없기 때문이다. 휴면은 자식이 아니라
  * Console이 하는 일이라 하네스별 카드가 아니라 공통 카드에 눕는다.
  */
+/** 이 플러그인 설정 표면의 '?' — 접근성 이름("{제목} 도움말")을 터미널 카탈로그에서 조립한다. */
+function SettingsHelp({ title, id, children }: {
+  readonly title: string;
+  readonly id?: string;
+  readonly children: React.ReactNode;
+}) {
+  const t = getT(useTerminalLocale());
+  return (
+    <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title })} id={id}>
+      {children}
+    </SettingsHelpTip>
+  );
+}
+
 function HarnessSection() {
   // 카드를 Fragment로 직접 반환한다 — 간격은 호스트의 .global-settings-detail이 진다.
   return (
@@ -766,20 +782,30 @@ function ClaudeCodeHarnessCard() {
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
-      <p className="global-settings-card-title">{t("terminal.settings.harnessClaudeCode")}</p>
+      {/* 카드 각주(실행 중인 세션의 정책 유지)는 카드 전체의 이야기라 카드 제목 팁이 진다. */}
+      <p className="global-settings-card-title">
+        {t("terminal.settings.harnessClaudeCode")}
+        <SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>
+      </p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <>
           {/* 행 제목이 컨트롤의 이름이 되도록 그룹으로 묶는다 — 토글 자신이 말하는 것은
-              켬/끔뿐이라, 무엇을 켜는지는 이 연결이 없으면 화면 밖에서 사라진다. */}
+              켬/끔뿐이라, 무엇을 켜는지는 이 연결이 없으면 화면 밖에서 사라진다. id는 제목
+              글자만 감싼 span이 진다: 팁 버튼이 라벨 안에 서면 그 접근성 이름까지 그룹
+              이름에 딸려 들어간다. */}
           <div className="global-settings-row" role="group" aria-labelledby="claude-code-skip-permissions-label">
             <div className="global-settings-row-text">
-              <p className="global-settings-resp-title" id="claude-code-skip-permissions-label">
-                {t("terminal.settings.skipPermissionsTitle")}
+              <p className="global-settings-resp-title">
+                <span id="claude-code-skip-permissions-label">{t("terminal.settings.skipPermissionsTitle")}</span>
+                <SettingsHelp title={t("terminal.settings.skipPermissionsTitle")}>
+                  <p>{t("terminal.settings.skipPermissionsHelp")}</p>
+                  {/* 적용 표면 칩은 도움말의 훑어 읽기 판본이므로 설명과 함께 팁 안에 선다. */}
+                  <HarnessSurfaceList />
+                </SettingsHelp>
                 <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
               </p>
-              <p className="global-settings-help">{t("terminal.settings.skipPermissionsHelp")}</p>
-              <HarnessSurfaceList />
+              {/* 위험은 설명이 아니라 상태다 — 켜져 있는 동안 인라인에 남는다. */}
               {state.claudeCodeSkipPermissions ? (
                 <p className="harness-hazard" role="note">{t("terminal.settings.skipPermissionsWarn")}</p>
               ) : null}
@@ -795,11 +821,11 @@ function ClaudeCodeHarnessCard() {
           </div>
           <div className="global-settings-row">
             <div className="global-settings-row-text">
-              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">
-                {t("terminal.settings.claudeSystemPromptTitle")}
+              <p className="global-settings-resp-title">
+                <span id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</span>
+                <SettingsHelp title={t("terminal.settings.claudeSystemPromptTitle")}>{t("terminal.settings.claudeSystemPromptHelp")}</SettingsHelp>
                 <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
               </p>
-              <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptHelp")}</p>
             </div>
             <Select
               aria-labelledby="claude-code-system-prompt-label"
@@ -815,7 +841,6 @@ function ClaudeCodeHarnessCard() {
               )}
             />
           </div>
-          <p className="global-settings-foot">{t("terminal.settings.harnessFoot")}</p>
         </>
       ) : (
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
@@ -848,8 +873,10 @@ function ChatReadingWidthSettingsCard() {
     <section className="global-settings-card" aria-label={t("terminal.settings.chatReadingWidthAria")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title" id="terminal-chat-reading-width-label">{t("terminal.settings.chatReadingWidthTitle")}</p>
-          <p className="global-settings-help">{t("terminal.settings.chatReadingWidthHelp")}</p>
+          <p className="global-settings-resp-title">
+            <span id="terminal-chat-reading-width-label">{t("terminal.settings.chatReadingWidthTitle")}</span>
+            <SettingsHelp title={t("terminal.settings.chatReadingWidthTitle")}>{t("terminal.settings.chatReadingWidthHelp")}</SettingsHelp>
+          </p>
         </div>
         <Select
           aria-labelledby="terminal-chat-reading-width-label"
@@ -923,12 +950,12 @@ function AgentSessionsSettingsCard() {
       {state ? (
         <div className="global-settings-row">
           <div className="global-settings-row-text">
-            <p className="global-settings-resp-title" id="idle-agent-sessions-label">
-              {t("terminal.settings.idleAgent")}
+            <p className="global-settings-resp-title">
+              <span id="idle-agent-sessions-label">{t("terminal.settings.idleAgent")}</span>
+              <SettingsHelp title={t("terminal.settings.idleAgent")} id="idle-agent-sessions-help">
+                {t("terminal.settings.idleAgentHelp")}
+              </SettingsHelp>
               <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
-            </p>
-            <p className="global-settings-help" id="idle-agent-sessions-help">
-              {t("terminal.settings.idleAgentHelp")}
             </p>
           </div>
           <Select
@@ -994,9 +1021,14 @@ function AgentCliAvailabilityCard() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
       <div className="agent-cli-head">
-        <p className="global-settings-resp-title">{t("terminal.settings.agentCliAvailable")}</p>
+        <p className="global-settings-resp-title">
+          {t("terminal.settings.agentCliAvailable")}
+          <SettingsHelp title={t("terminal.settings.agentCliAvailable")}>
+            <p>{t("terminal.settings.agentCliHelp")}</p>
+            <p>{t("terminal.settings.agentCliFoot")}</p>
+          </SettingsHelp>
+        </p>
       </div>
-      <p className="global-settings-help">{t("terminal.settings.agentCliHelp")}</p>
       {error ? <p className="settings-error">{error}</p> : null}
       <div className="agent-cli-list">
         {clis.map((cli) => (
@@ -1008,7 +1040,6 @@ function AgentCliAvailabilityCard() {
           />
         ))}
       </div>
-      <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
     </section>
   );
 }
@@ -1170,8 +1201,13 @@ function AiGatewayCompactTimingCard() {
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title" id="compact-timing-label">{t("terminal.settings.compactTiming")}</p>
-          <p className="global-settings-help">{t("terminal.settings.compactTimingHelp")}</p>
+          <p className="global-settings-resp-title">
+            <span id="compact-timing-label">{t("terminal.settings.compactTiming")}</span>
+            <SettingsHelp title={t("terminal.settings.compactTiming")}>
+              <p>{t("terminal.settings.compactTimingHelp")}</p>
+              <p>{t("terminal.settings.compactTimingFoot")}</p>
+            </SettingsHelp>
+          </p>
         </div>
         <div className="segmented" role="group" aria-labelledby="compact-timing-label">
           <SegmentedThumb />
@@ -1191,9 +1227,13 @@ function AiGatewayCompactTimingCard() {
       </div>
       {previewModels.length > 0 ? (
         <div className="compact-timing-preview">
-          <label className="compact-timing-preview-label" htmlFor="compact-timing-preview">
-            {t("terminal.settings.compactTimingPreview")}
-          </label>
+          {/* 팁은 라벨 밖 형제로 둔다 — 라벨 안의 버튼은 자기 접근성 이름을 셀렉트 이름에 싣는다. */}
+          <div className="compact-timing-preview-head">
+            <label className="compact-timing-preview-label" htmlFor="compact-timing-preview">
+              {t("terminal.settings.compactTimingPreview")}
+            </label>
+            <SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>
+          </div>
           <Select
             id="compact-timing-preview"
             value={preview?.id ?? ""}
@@ -1204,7 +1244,6 @@ function AiGatewayCompactTimingCard() {
             onChange={(id) => setPreviewId(id)}
             disabled={saving}
           />
-          <p className="global-settings-help">{t("terminal.settings.compactTimingPreviewHelp")}</p>
         </div>
       ) : null}
       <div className="compact-timing-track-wrap">
@@ -1288,7 +1327,6 @@ function AiGatewayCompactTimingCard() {
                 ? t("terminal.settings.compactTimingCustomNote", { percent: String(typeof liveCeiling === "number" ? liveCeiling : shownPercent) })
                 : t(policy === "early" ? "terminal.settings.compactTimingEarlyNote" : "terminal.settings.compactTimingLateNote")}
       </p>
-      <p className="global-settings-foot">{t("terminal.settings.compactTimingFoot")}</p>
     </section>
   );
 }
@@ -1314,6 +1352,7 @@ function AiGatewayDiagnosticsCard() {
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayDiagnostics")}
         help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
+        helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
         onLabel={t("terminal.settings.enabled")}
         offLabel={t("terminal.settings.off")}
         value={state.cursorDiagnosticsEnabled}
@@ -1326,13 +1365,13 @@ function AiGatewayDiagnosticsCard() {
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
+        helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
         onLabel={t("terminal.settings.enabled")}
         offLabel={t("terminal.settings.off")}
         value={state.wireLogEnabled}
         disabled={saving}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
       />
-      <p className="global-settings-foot">{t("terminal.settings.aiGatewayDiagnosticsFoot")}</p>
     </section>
   );
 }
@@ -1430,9 +1469,14 @@ function AiGatewayModelsCard() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
       <div className="agent-cli-head">
-        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayModels")}</p>
+        <p className="global-settings-resp-title">
+          {t("terminal.settings.aiGatewayModels")}
+          <SettingsHelp title={t("terminal.settings.aiGatewayModels")}>
+            <p>{t("terminal.settings.aiGatewayModelsHelp")}</p>
+            <p>{t("terminal.settings.aiGatewayModelsFoot")}</p>
+          </SettingsHelp>
+        </p>
       </div>
-      <p className="global-settings-help">{t("terminal.settings.aiGatewayModelsHelp")}</p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {enabled.length === 0 ? (
         <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
@@ -1451,7 +1495,6 @@ function AiGatewayModelsCard() {
           onSetHostOnly={setModelHostOnly}
         />
       ))}
-      <p className="global-settings-foot">{t("terminal.settings.aiGatewayModelsFoot")}</p>
     </section>
   );
 }
@@ -1898,15 +1941,19 @@ function ModelAuthBlock() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.auth.modelSignInAria")}>
       <div className="model-auth-head">
-        <p className="global-settings-resp-title">{t("terminal.auth.modelSignInTitle")}</p>
-        <p className="global-settings-help">{t("terminal.auth.modelSignInHelp")}</p>
+        <p className="global-settings-resp-title">
+          {t("terminal.auth.modelSignInTitle")}
+          <SettingsHelp title={t("terminal.auth.modelSignInTitle")}>
+            <p>{t("terminal.auth.modelSignInHelp")}</p>
+            <p>{t("terminal.auth.signInFoot")}</p>
+          </SettingsHelp>
+        </p>
       </div>
       {store.error ? <p className="global-settings-error" role="alert">{store.error}</p> : null}
       {store.loading && !store.state ? <p className="global-settings-help">{t("terminal.auth.loadingSignIn")}</p> : null}
       {store.state?.providers.map((provider) => (
         <ProviderRow key={provider.provider} provider={provider} busy={store.busyProvider === provider.provider} />
       ))}
-      <p className="global-settings-foot">{t("terminal.auth.signInFoot")}</p>
     </section>
   );
 }
@@ -1962,12 +2009,16 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
   );
 }
 
-function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
+function SettingToggleRow({ title, help, helpMore, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">{title}</p>
-        <p className="global-settings-help">{help}</p>
+        <p className="global-settings-resp-title">
+          {title}
+          <SettingsHelp title={title}>
+            {helpMore === undefined ? help : <><p>{help}</p><p>{helpMore}</p></>}
+          </SettingsHelp>
+        </p>
       </div>
       <button
         type="button"
@@ -2347,9 +2398,12 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
             {t("terminal.settings.terminalFont")}
+            {/* 닫힌 팁도 DOM에 남으므로 아래 피커의 aria-describedby가 이 id를 계속 가리킨다. */}
+            <SettingsHelp title={t("terminal.settings.terminalFont")} id="terminal-font-help">
+              {t("terminal.settings.terminalFontHelp")}
+            </SettingsHelp>
             <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
           </p>
-          <p className="global-settings-help" id="terminal-font-help">{t("terminal.settings.terminalFontHelp")}</p>
         </div>
       </div>
       <div aria-describedby="terminal-font-help">
@@ -2391,10 +2445,15 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
       </div>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.cjkFallback")}</p>
-          <p className="global-settings-help" id="terminal-cjk-fallback-help">{t("terminal.settings.cjkFallbackHelp")}</p>
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.cjkFallback")}
+            <SettingsHelp title={t("terminal.settings.cjkFallback")} id="terminal-cjk-fallback-help">
+              {t("terminal.settings.cjkFallbackHelp")}
+            </SettingsHelp>
+          </p>
           {/* 조건부로 나타나는 컨트롤 대신, 조건부인 것은 이 한 줄이다 — 선택지가 사라지면 정작
-              필요할 때 찾을 수 없고, 판정이 틀리면 설정이 통째로 증발한다. */}
+              필요할 때 찾을 수 없고, 판정이 틀리면 설정이 통째로 증발한다. 커버리지 판독은
+              상태이므로 팁이 아니라 인라인에 남는다. */}
           {primaryCjkScripts === null ? null : (
             <p className="global-settings-help" role="status">
               {primaryCjkScripts.length ? t("terminal.settings.cjkPrimaryCovered") : t("terminal.settings.cjkPrimaryUncovered")}
@@ -2449,8 +2508,14 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
     <section className="global-settings-card" aria-label={t("terminal.settings.terminalDrawingAria")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.terminalRenderer")}</p>
-          <p className="global-settings-help">{t("terminal.settings.terminalRendererHelp")}</p>
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.terminalRenderer")}
+            {/* 카드 각주(즉시 적용·브라우저 저장)는 두 행 모두의 사실이라 각 행 팁이 나눠 진다. */}
+            <SettingsHelp title={t("terminal.settings.terminalRenderer")}>
+              <p>{t("terminal.settings.terminalRendererHelp")}</p>
+              <p>{t("terminal.settings.terminalDrawingFoot")}</p>
+            </SettingsHelp>
+          </p>
         </div>
         <div className="segmented" role="group" aria-label={t("terminal.settings.terminalRendererAria")}>
           <SegmentedThumb />
@@ -2472,8 +2537,13 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
       </div>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.inactiveFlush")}</p>
-          <p className="global-settings-help">{t("terminal.settings.inactiveFlushHelp")}</p>
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.inactiveFlush")}
+            <SettingsHelp title={t("terminal.settings.inactiveFlush")}>
+              <p>{t("terminal.settings.inactiveFlushHelp")}</p>
+              <p>{t("terminal.settings.terminalDrawingFoot")}</p>
+            </SettingsHelp>
+          </p>
         </div>
         <div className="segmented" role="group" aria-label={t("terminal.settings.inactiveFlushAria")}>
           <SegmentedThumb />
@@ -2493,7 +2563,6 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
           })}
         </div>
       </div>
-      <p className="global-settings-foot">{t("terminal.settings.terminalDrawingFoot")}</p>
     </section>
   );
 }

@@ -12,6 +12,22 @@ export interface SettingsCardProps {
 export interface SettingsRowProps {
   readonly label: string;
   readonly hint?: string;
+  /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
+  readonly helpTip?: React.ReactNode;
+  readonly children: React.ReactNode;
+}
+
+export interface SettingsHelpTipProps {
+  /**
+   * '?' 버튼의 접근성 이름. 호출자가 자기 카탈로그로 "{제목} 도움말" 꼴을 조립해 넘긴다 —
+   * SDK는 로케일을 모르므로 여기서 문장을 만들지 않는다.
+   */
+  readonly ariaLabel: string;
+  /**
+   * 말풍선이 항상 DOM에 남을 때의 안정 id. 닫힌 동안 hidden이어도 aria-describedby IDREF
+   * 계산에는 포함되므로, 기존에 도움말 문단 id를 참조하던 배선이 그대로 이 팁을 가리킬 수 있다.
+   */
+  readonly id?: string;
   readonly children: React.ReactNode;
 }
 
@@ -81,6 +97,134 @@ export function SettingsScope({ kind, label }: { readonly kind: SettingsScopeKin
   );
 }
 
+/**
+ * 행·카드 제목 옆의 '?' — 설정 설명의 단일 공개 문법.
+ *
+ * 설명은 매 방문마다 화면을 차지하는 대신 요구가 있는 순간에만 선다: hover(또는 키보드
+ * 포커스 후 Enter/Space)는 미리보기를 열고, 클릭·탭은 고정한다. 고정 중에는 본문을 선택할
+ * 수 있고, Esc와 바깥 클릭이 닫는다 — Esc는 캡처 단계에서 preventDefault로 소비하므로
+ * 설정 페인의 "Esc=페인 닫기"보다 먼저 서고, 페인은 계약대로 물러선다.
+ *
+ * 말풍선은 닫힌 동안에도 hidden으로 DOM에 남는다. aria-labelledby/aria-describedby의
+ * IDREF 계산은 hidden 노드도 포함하므로, 버튼은 언제나 설명을 서술로 갖고, 도움말 문단
+ * id를 참조하던 기존 배선은 id를 이 팁에 넘겨 그대로 잇는다.
+ *
+ * 배치는 열릴 때 한 번 잰다 — 담긴 카드(없으면 뷰포트) 오른쪽 모서리를 넘으면 왼쪽으로
+ * 밀고, 뷰포트 바닥을 넘는데 위쪽에 자리가 있으면 위로 뒤집는다(fc-select 팝업의
+ * data-placement 문법). 전역 등록부는 두지 않는다 — 다른 팁을 여는 pointerdown이 곧
+ * 앞선 팁의 바깥 클릭이라, 한 번에 하나만 열리는 규칙이 조정 없이 성립한다.
+ */
+export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProps): React.ReactElement {
+  const autoId = React.useId();
+  const bubbleId = id ?? autoId;
+  const wrapRef = React.useRef<HTMLSpanElement | null>(null);
+  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  const closeTimer = React.useRef<number | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [pinned, setPinned] = React.useState(false);
+  const [placement, setPlacement] = React.useState<"down" | "up">("down");
+  const [shiftX, setShiftX] = React.useState(0);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const close = React.useCallback(() => {
+    setOpen(false);
+    setPinned(false);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setPlacement("down");
+      setShiftX(0);
+      return;
+    }
+    const bubble = bubbleRef.current;
+    const wrap = wrapRef.current;
+    if (!bubble || !wrap) return;
+    const rect = bubble.getBoundingClientRect();
+    const edge = wrap.closest("section")?.getBoundingClientRect().right ?? window.innerWidth;
+    setShiftX(Math.min(0, Math.round(Math.min(edge, window.innerWidth) - 8 - rect.right)));
+    if (rect.bottom > window.innerHeight - 8 && wrap.getBoundingClientRect().top > rect.height + 16) {
+      setPlacement("up");
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (wrapRef.current && event.target instanceof Node && wrapRef.current.contains(event.target)) return;
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open, close]);
+
+  React.useEffect(() => clearCloseTimer, []);
+
+  return (
+    <span
+      ref={wrapRef}
+      className="settings-help-tip"
+      onMouseEnter={() => {
+        clearCloseTimer();
+        setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (pinned) return;
+        // 글리프와 말풍선 사이의 8px 틈을 건너는 손을 즉시 닫기가 끊지 않도록 한 박자 늦춘다.
+        clearCloseTimer();
+        closeTimer.current = window.setTimeout(() => {
+          closeTimer.current = null;
+          setOpen(false);
+        }, 120);
+      }}
+    >
+      <button
+        type="button"
+        className="settings-help-tip__glyph"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-describedby={bubbleId}
+        onClick={() => {
+          if (pinned) {
+            close();
+            return;
+          }
+          clearCloseTimer();
+          setOpen(true);
+          setPinned(true);
+        }}
+      >
+        ?
+      </button>
+      <div
+        ref={bubbleRef}
+        className="settings-help-tip__bubble"
+        role="tooltip"
+        id={bubbleId}
+        hidden={!open}
+        data-placement={placement}
+        style={shiftX === 0 ? undefined : { marginLeft: `${shiftX}px` }}
+      >
+        {children}
+      </div>
+    </span>
+  );
+}
+
 export function SettingsCard({ title, description, children }: SettingsCardProps): React.ReactElement {
   return (
     <section className="fc-settings-card">
@@ -91,13 +235,18 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
   return (
     <div className="fc-settings-row" role="group" aria-labelledby={labelId} aria-describedby={hint ? hintId : undefined}>
       <div className="fc-settings-row__copy">
-        <div className="fc-settings-row__label" id={labelId}>{label}</div>
+        {/* id는 라벨 글자만 감싼 span이 진다 — 팁 버튼이 라벨 요소 안에 서면 aria-labelledby
+            이름 계산에 버튼의 접근성 이름까지 딸려 들어가 그룹 이름이 "라벨 + 라벨 도움말"이 된다. */}
+        <div className="fc-settings-row__label">
+          <span id={labelId}>{label}</span>
+          {helpTip}
+        </div>
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
       </div>
       <div className="fc-settings-row__control">{children}</div>
