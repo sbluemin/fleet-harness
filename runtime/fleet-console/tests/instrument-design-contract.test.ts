@@ -2196,11 +2196,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("command-band-dock-divider");
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
-    expect(commandBand).toContain("onClick={() => enterCruiseThen(() => animateViewportTo({ x: 0, y: 0, zoom: 1 }))}");
-    // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다. Helm Dial(2026-09 재가): 모드
-    // 전용 도구는 상주 트레이 대신 제 낱말 아래 캡슐로 내려온다 — 소속 없는 도구 줄이 만들던
-    // 무경고 모드 이탈(2026-08 격자 클릭 사고)은 소속 낱말이 해소하고, 캡슐 도구 클릭은
-    // "그 모드로 진입 + 도구 적용"으로 명시적이다.
+    expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
+    // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다 — 모드별 도구를 밴드에 상시
+    // 늘어놓으면 다른 모드의 도구를 눌러 무경고로 모드를 이탈시킬 수 있다(2026-08 격자 클릭 사고).
     expect(commandBand).toContain('className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}');
     // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다 — 세그먼트에 아이콘을 더하면 클러스터가
     // 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 사라진다(2026-08 실측).
@@ -2210,51 +2208,20 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toMatch(/<mode\.Icon \/>/);
     expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
     expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
-    // 다이얼은 hover가 실재하는 입력에서만 문이 된다 — coarse 포인터는 상주 트레이 유지
-    // (등가 경로 없는 접기 금지). React에서 갈라 렌더해 투어 앵커가 문서에 한 벌만 존재한다.
-    // 검색이 중앙 상주가 되며(#983) 트레이는 Operations 뷰 게이트를 함께 지닌다.
-    expect(commandBand).toContain('const FINE_POINTER_QUERY = "(hover: hover) and (pointer: fine)";');
-    expect(commandBand).toContain('{finePointer ? <div className="command-band-mode-dial" role="group"');
-    expect(commandBand).toContain('{operationsViewVisible && !finePointer ? <div className="command-band-mode-tray"');
-    // SegmentedThumb는 셀 좌표계를 탄다 — 셀이 position:relative를 갖는 순간 세그먼트의
-    // offsetLeft는 셀 기준이 되어 스위치 좌표로 쓸 수 없다.
-    expect(commandBand).toContain('<SegmentedThumb activeSelector=".command-band-mode-cell.is-active" />');
-    // 캡슐은 닫혀도 DOM에 존속한다(투어 앵커 판정 + focus-within 키보드 개방). 투어 활성화
-    // 계약("War Room에서 항상 + War Room에서만")은 앵커 속성을 활성 모드에서만 부착해 지킨다.
-    expect(commandBand).toContain('{...(canvasMode === "warRoom" ? { "data-war-room-tool": "spotlight" } : {})}');
-    expect(commandBand).toContain('{...(canvasMode === "warRoom" ? { "data-war-room-tool": "density" } : {})}');
-    expect(commandBand).toContain("onClick={() => enterWarRoomThen(cycleTriageDeckZoomPreset)}");
-    expect(commandBand).toContain("onClick={() => enterWarRoomThen(() => setTriageSpotlightEnabled(!triageSpotlightEnabled))}");
+    // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
+    // 검색이 중앙 상주가 되며 트레이는 Operations 뷰 게이트를 각자 지닌다(모드 스위치와 동일).
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "cruise" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "tactical" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "warRoom" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
+    expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
     // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
     expect(commandBand).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
     expect(commandBand).toContain('<span className="command-band-mode-tray-divider" aria-hidden="true" />');
-    // 도구도 세그먼트처럼 mousedown을 preventDefault한다 — 클릭이 포커스를 남기면 focus-within이
-    // 캡슐을 계속 열어 두고, 열린 채 남은 캡슐이 이웃 캡슐의 클릭 지점을 덮는다(실입력 실측 사고).
-    expect(commandBand).toContain("const suppressToolFocus = (event: { preventDefault(): void }) => {");
-    expect(commandBand.match(/className="command-band-mode-tool/g)?.length).toBe(commandBand.match(/onMouseDown=\{suppressToolFocus\}/g)?.length);
-    // 같은 문법의 반대면: preventDefault는 이전 포커스를 보존하므로, 키보드로 들어간 캡슐
-    // 포커스가 다른 셀 클릭 뒤에도 그 캡슐을 열어 둔다 — 포인터 mousedown만 다이얼 안 포커스를
-    // 내보낸다. click 경로에 걸면 Enter/Space 활성화가 방금 조작한 도구의 키보드 위치까지
-    // 파괴한다(다이얼 밖 포커스는 War Room 무대 지명의 근거라 건드리지 않는다).
-    expect(commandBand).toContain("const releaseDialFocus = () => {");
-    expect(commandBand).toContain("onMouseDown={(event) => { event.preventDefault(); releaseDialFocus(); }}");
-    expect(commandBand).not.toMatch(/onClick=\{[^}]*releaseDialFocus/);
-    // 이탈-상태 에코 — 다이얼이 hover 뒤로 접은 상태 가시성은 기본값 이탈 배지가 되갚는다
-    // (평시 침묵). 배지가 플로우에 들면 등장·퇴장이 중앙을 다시 민다.
-    expect(commandBand).toContain("{finePointer && (stationKeeping || densityEchoVisible) ? <div ref={echoRackRef} className=\"command-band-mode-echo-rack\">");
-    // 에코 랙은 중앙 배치 폭에는 들지 않되(스위치 부동) fit 판정에는 예약된다 — 예약이 없으면
-    // 데스크톱 셸의 OS 컨트롤 예약 폭에서 배지가 우측 클러스터 위로 겹친다(Codex P2). 대칭
-    // 판정식이 한쪽 돌출을 가리려면 예약은 두 배다.
-    expect(commandBand).toContain("const echoReserve = echoRack === null ? 0 : 2 * (ECHO_RACK_GAP_PX + echoRack.offsetWidth);");
     // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
-    // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
-    // 레이아웃이면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
-    expect(commandBand).toContain("if (!getFormationView() || getFormationLayout() !== layout) selectFormationLayout(layout);");
-    // War Room 이탈이 활성 Theater를 복귀시키는 창에서 formation을 쓰면 표기가 옛 Theater에
-    // 남는다(canvas-store는 passive 로드까지 이전 Theater를 가리킨다) — 로드를 동기로 앞당긴다.
-    expect(commandBand).toContain("if (returnTheaterId !== null && returnTheaterId !== getLoadedTheaterId()) loadForTheater(returnTheaterId);");
-    // 눌림은 "지금 활성"만 말한다 — 비활성 모드 캡슐에서 기억된 레이아웃을 눌림으로 칠하지 않는다.
-    expect(commandBand).toContain('aria-pressed={canvasMode === "tactical" && formationLayout === layout.id}');
+    // 모드 이탈 권한은 Cruise 세그먼트만 갖는다.
+    expect(commandBand).toContain("onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}");
+    expect(commandBand).toContain("aria-pressed={formationLayout === layout.id}");
     // Tactical은 Theater별 상태라 활성 Theater로, War Room은 전역 모드라 등록된 Theater 존재로 게이트한다.
     expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
@@ -2274,20 +2241,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-mode-switch {");
     expect(layout).toContain(".command-band-mode-seg {");
-    expect(layout).toContain(".command-band-mode-cell {");
     expect(layout).toContain(".command-band-mode-tray-divider {");
-    // Helm Dial 캡슐 — strong 계열 유리(환경 팝오버와 같은 재질), 절대 배치, 세 개의 문
-    // (hover 의도 지연 · focus-within 즉시 · 투어 하이라이트 즉시).
-    expect(layout).toContain(".command-band-mode-dial {");
-    expect(layout).toMatch(/\.command-band-mode-dial \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
-    // visibility가 히트 판정을 가시성과 동기한다 — pointer-events만으로는 의도 지연 동안
-    // 투명 캡슐이 이웃 캡슐의 클릭을 먹는다(실입력 실측 사고).
-    expect(layout).toMatch(/\.command-band-mode-dial \{[^}]*visibility: hidden;/);
-    expect(layout).toMatch(/\.command-band-mode-dial \{[^}]*visibility 0s linear 200ms;/);
-    expect(layout).toContain('.command-band-mode-dial:has(.is-feature-tour-anchor)');
-    expect(layout).toContain(".command-band-mode-cell:focus-within > .command-band-mode-dial,");
-    // 에코 배지는 플로우 밖 절대 배치다 — 플로우에 들면 등장·퇴장이 중앙 소요 폭에 되먹인다.
-    expect(layout).toMatch(/\.command-band-mode-echo-rack \{\s*position: absolute;/);
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
@@ -2549,7 +2503,6 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".operations-side-bar,");
     expect(reducedMotionBlock).toContain(".right-rail,");
     expect(reducedMotionBlock).toContain(".command-band-map-controls,");
-    expect(reducedMotionBlock).toContain(".command-band-mode-dial,");
     expect(reducedMotionBlock).toContain(".command-band-left {");
     expect(reducedMotionBlock).toContain("transition: none !important;");
   });

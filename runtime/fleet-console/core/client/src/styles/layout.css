@@ -622,10 +622,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
-   Helm Dial(2026-09 재가): 모드 전용 도구는 상주 트레이 대신 제 낱말 아래 캡슐로 내려온다
-   (fine 포인터). 캡슐·에코는 절대 배치라 중앙 소요 폭(scrollWidth)에 들지 않는다 — 스위치는
-   모드가 바뀌어도 움직이지 않는다(트레이 시절 실측: War Room 전환마다 5.5px 밀림). coarse
-   포인터는 hover가 없으므로 상주 트레이 문법을 유지한다.
+   모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
    C′ 문법: 상자를 걷고 워시+다텀이 선택을 말한다 — 그룹 경계는 간격이 진다. */
 .command-band-mode-switch {
   position: relative;
@@ -633,23 +630,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   flex: none;
   align-items: center;
   gap: var(--space-1);
-}
-
-.command-band-mode-cell {
-  position: relative;
-  display: flex;
-}
-
-/* 낱말→캡슐 사이 공극은 열림 동안 셀의 히트 영역으로 잇는다 — 포인터가 7px 협곡을 건너는
-   동안 hover가 끊겨 캡슐이 닫히면 문이 아니라 함정이다. */
-.command-band-mode-cell:hover::before,
-.command-band-mode-cell:focus-within::before {
-  position: absolute;
-  top: 100%;
-  right: -6px;
-  left: -6px;
-  height: 9px;
-  content: "";
 }
 
 /* 24px 높이의 좁은 세그먼트는 다텀도 한 치수 좁게 선다. */
@@ -723,126 +703,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   }
 }
 
-/* Helm Dial 캡슐 — 밴드에 앵커된 떠 있는 면이므로 환경 팝오버·시스템 메뉴와 같은 strong
-   계열 유리를 쓴다. 닫힘 = 투명+무포인터이되 DOM에 존속한다: display:none이면 투어 앵커
-   판정과 focus-within 키보드 개방이 함께 죽는다. 여는 문은 셋뿐이다 — hover(의도 지연),
-   focus-within(즉시), 투어 하이라이트(즉시). */
-.command-band-mode-dial {
-  --dial-align-x: -50%;
-  position: absolute;
-  z-index: 45;
-  top: calc(100% + 7px);
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 5px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
-  /* visibility가 히트 판정을 가시성과 동기한다 — pointer-events만으로는 :hover 즉시 auto가
-     되어, 의도 지연 동안 아직 투명한 캡슐이 이웃 캡슐의 클릭을 먹는다(실입력 실측: 대각선
-     마우스 경로가 스친 이웃 셀의 보이지 않는 캡슐이 SK 클릭을 삼킴). 닫힘 시에는 페이드가
-     끝나는 200ms 뒤에 숨겨 급단절을 피한다. */
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(var(--dial-align-x), -4px);
-  /* 기본 60ms는 닫힘 관용(이탈 후 잠깐의 되돌아옴을 용서), 열림 지연은 아래 hover 규칙이 진다. */
-  transition: opacity var(--duration-fast) ease 60ms, transform var(--duration-fast) var(--ease-spring) 60ms, visibility 0s linear 200ms;
-}
-
-/* 첫/끝 셀의 캡슐은 클러스터 안쪽으로 정렬한다 — 스위치 밖 돌출을 줄여 중앙 근방을 지킨다. */
-.command-band-mode-cell[data-canvas-mode="cruise"] > .command-band-mode-dial {
-  --dial-align-x: 0%;
-  left: 0;
-}
-
-.command-band-mode-cell[data-canvas-mode="warRoom"] > .command-band-mode-dial {
-  --dial-align-x: 0%;
-  right: 0;
-  left: auto;
-}
-
-/* hover 의도 지연 — 모드 전환 클릭길 위에서 캡슐이 어른거리지 않게 한 박자 늦게 연다.
-   visibility도 같은 지연을 타므로 지연 창 동안에는 히트 대상도 아니다. */
-.command-band-mode-cell:hover > .command-band-mode-dial {
-  transition-delay: 160ms, 160ms, 160ms;
-}
-
-.command-band-mode-cell:hover > .command-band-mode-dial,
-.command-band-mode-cell:focus-within > .command-band-mode-dial,
-.command-band-mode-dial:has(.is-feature-tour-anchor) {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translate(var(--dial-align-x), 0);
-}
-
-/* 키보드 진입과 화면 안내 하이라이트는 의도 확인이 필요 없다 — 즉시 연다. Tab 흐름:
-   세그먼트에 포커스가 앉는 순간 focus-within이 캡슐을 보이게 하므로, 닫힘 상태의
-   visibility:hidden이 도구를 Tab에서 숨겨도 다음 Tab이 자연히 캡슐 안으로 들어간다. */
-.command-band-mode-cell:focus-within > .command-band-mode-dial,
-.command-band-mode-dial:has(.is-feature-tour-anchor) {
-  transition-delay: 0ms, 0ms, 0ms;
-}
-
-.command-band-mode-dial-label {
-  padding: 0 6px 0 5px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-}
-
-/* 이탈-상태 에코 — 기본값을 벗어난 도구 상태만 스위치 곁에 남는다(평시 침묵). 면은 불리언 ON
-   문법(워시+brass 글리프)의 잔향이다. 플로우 밖 절대 배치: 등장·퇴장이 중앙 소요 폭에
-   되먹이면 스위치가 다시 밀린다. */
-/* 스위치 직우는 검색 버튼의 안정 앵커 자리다(#983) — 랙은 반대쪽(좌측)에 건다. 좌측 돌출도
-   중앙 소요 폭 측정(플로우 자식 범위)에는 들지 않아 스위치는 움직이지 않는다. */
-.command-band-mode-echo-rack {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 10px);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  transform: translateY(-50%);
-}
-
-.command-band-mode-echo {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--control-wash);
-  color: var(--brass-ink);
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
-}
-
-.command-band-mode-echo svg {
-  display: block;
-  width: 12px;
-  height: 12px;
-}
-
-/* coarse 포인터 상주 트레이 — hover 없는 입력의 등가 경로. 활성 모드의 도구만 마운트한다. */
 .command-band-mode-tray {
   display: flex;
   flex: none;
@@ -972,7 +832,6 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   .operations-side-bar,
   .right-rail,
   .command-band-map-controls,
-  .command-band-mode-dial,
   .command-band-left {
     transition: none !important;
   }
