@@ -41,4 +41,14 @@ describe("evidence citation decoration", () => {
     const html = "<p>See <cite>The Art of Computer Programming</cite> for context.</p>";
     expect(decorateEvidenceHtml(html, "t")).toContain("<cite>The Art of Computer Programming</cite>");
   });
+
+  it("decorates inputs that carry only escaped cite residue", () => {
+    // 온전한 <cite>나 [eN]이 하나도 없어도 사전 프로브가 이스케이프 잔해를 잡아야 한다 —
+    // 다른 트리거가 프로브를 대신 만족시켜 주는 우연에 기대면 이 입력은 원문으로 샌다.
+    const out = decorateEvidenceHtml("<p><em>e12&lt;/cite&gt;</em> and &lt;cite&gt;e14&lt;/cite&gt;</p>", "cited");
+    const doc = new DOMParser().parseFromString(out, "text/html");
+    const chips = [...doc.querySelectorAll("button.session-analyst__ev")];
+    expect(chips.map((chip) => chip.textContent)).toEqual(["e12", "e14"]);
+    expect(out).not.toContain("&lt;/cite&gt;");
+  });
 });

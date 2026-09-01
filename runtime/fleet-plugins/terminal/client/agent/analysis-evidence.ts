@@ -5,7 +5,10 @@ const EVIDENCE_PROBE = /\[e\d+\]/;
    sanitize 뒤의 텍스트 노드에서 그 잔해를 [eN]으로 정규화한 뒤 같은 칩 경로를 태운다.
    "e2e" 같은 일상 토큰은 cite 문맥이 없으면 건드리지 않는다. */
 const CITE_RESIDUE = /<cite>\s*(e\d{1,4})\s*<\/cite>|\b(e\d{1,4})\s*<\/cite>|<cite>\s*(e\d{1,4})\b/g;
-const CITE_RESIDUE_PROBE = /<\/?cite>/;
+/* 사전 프로브는 직렬화된 HTML 문자열을 본다 — 온전한 요소는 원문 <cite>로, 이스케이프 잔해는
+   &lt;cite&gt;로 서 있으므로 두 형태를 모두 물어야 조기 반환이 잔해를 삼키지 않는다.
+   (DOMParser를 지나면 텍스트 노드에서는 둘 다 <cite> 리터럴로 디코드된다.) */
+const CITE_RESIDUE_PROBE = /<\/?cite>|&lt;\/?cite&gt;/;
 
 const CITE_REFERENCE = /^e\d{1,4}$/;
 
