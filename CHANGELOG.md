@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.81.0] - 2026-09-01
+
+### fleet-console
+
+#### Added
+- A collapsed panel leaves a slim brass filament on the screen edge: hovering it peeks the panel over the canvas without moving anything, and clicking it (or the pin inside the peek) docks the panel back open.
+
+#### Changed
+- Session Analyst artifacts now share the Console's design language: pages sit on the panel ground with raised cards, quiet section kickers, the Console's own typefaces, a centered reading column, and a host component set that keeps every artifact consistent across all four themes.
+- The Session Analyst chat now speaks the chat view's ledger grammar: process sentences stack as segments while one tool row updates in place during streaming, finished turns fold into one line with every step inside, and the confirmed answer stands alone under its own seam instead of merging with interim narration.
+- The analyst composer now uses the chat view's assembly, with the input above a coordinates rail that stays after the first question, and the initial centered composer settles to the bottom when streaming starts, the same motion the chat view uses.
+- The Cruise / Tactical / War Room mode switch now sits at the true center of the command band, falling back to the left cluster only when the window is too narrow to keep it centered.
+- Session search moved to the center of the command band, right of the mode switch, and stays there on every view as the one global entry point.
+- Collapsing the sidebar and the Activity Rail now belongs to each panel itself: a collapse control inside the panel folds it away, and the same Cmd+B / Cmd+Alt+B shortcuts keep toggling the same states.
+- Repository controls rest on a visible fill-and-border body: primary verbs, inspector segments, view toggles, depth steppers, and row actions no longer appear as bare text until hover, and inputs float above the surface instead of sinking into darker wells.
+- Repository panel bands unify on one surface: the identity cap, tabs, toolbars, tree column, and inspector shelf share a single subtle wash instead of mismatched darker stripes, while file status letters become tinted chips and ref badges soften into capsules. Selection keeps the familiar neutral wash with the side spine.
+- Move every setting's description behind a '?' glyph beside its title: hover previews the help bubble, click or tap pins it for reading, and Esc or clicking outside closes it. State warnings, errors, and live readouts stay inline.
+
+#### Fixed
+- The effort track no longer leaves a brass sliver behind the knob at the lowest rung on surfaces without an auto slot, so the lowest setting reads as cleanly as the rest of the ladder.
+- Long analyses no longer die at two minutes: the fixed 120-second response cap became an inactivity watchdog that rearms on every streamed event, so artifact authoring and other long turns keep running as long as they keep reporting.
+- Evidence citations in analyst chat replies no longer surface as raw cite markup when the model uses the artifact citation form; they render as the same evidence chips everywhere.
+
+#### Removed
+- The Theater and Operation breadcrumb switcher left the command band center; the sidebar remains the single place for switching and renaming them.
+- The two panel collapse buttons left the command band; the band keeps only identity, canvas mode, search, and system controls.
+- Retire the sidebar card header and its inline operation filter: the Theater label, the Theater count, and the header new-Theater button are gone, and the list starts at the group/status switch. New Theater stays available from the row at the bottom of the list and from the command band.
+
 ## [1.80.0] - 2026-08-31
 
 ### fleet-console

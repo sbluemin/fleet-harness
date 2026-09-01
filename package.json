@@ -1,6 +1,6 @@
 {
   "name": "fleet-harness",
-  "version": "1.80.0",
+  "version": "1.81.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git"
