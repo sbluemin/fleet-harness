@@ -5,7 +5,10 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandCenterFits, commandBandCenterGutter } from "../core/client/src/components/command-band-guards.js";
+import type { OperationRuntimeState } from "../sdk/plugin/types.js";
+
+import { commandBandCenterFits, commandBandCenterGutter, commandBandPulseCounts, commandBandPulseNames } from "../core/client/src/components/command-band-guards.js";
+import type { OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
   it("disables Fit all panels until Operations hydrate", () => {
@@ -82,5 +85,74 @@ describe("Command Band center visibility measurements", () => {
     expect(commandBandCenterFits(gutter * 2 + 290, gutter, 290)).toBe(true);
     // 모자라면 감추는 대신 좌측 플로우로 되돌린다 — 모드 스위치는 접을 수 없다.
     expect(commandBandCenterFits(gutter * 2 + 290 - 1, gutter, 290)).toBe(false);
+  });
+});
+
+describe("Command Band pulse capsules (read-only, phase 1)", () => {
+  const op = (id: string, title: string, payload: Record<string, unknown> = {}): OperationNode => ({
+    id,
+    theaterId: `theater-${id}`,
+    type: "agent",
+    pluginId: "terminal",
+    title,
+    payload,
+    geometry: null,
+    ts: { createdAt: 1, updatedAt: 1 },
+  });
+  const live = (activity: "idle" | "running" | "awaiting" | "background"): OperationRuntimeState => ({ lifecycle: "live", activity });
+
+  it("counts the raw activity ledger without promotion or merging", () => {
+    const runtime: Record<string, OperationRuntimeState> = {
+      a: live("running"),
+      b: live("running"),
+      c: live("awaiting"),
+      // background는 running에 합치지 않는다 — 사이드바 상태축과 숫자가 갈라진다.
+      d: live("background"),
+      e: live("idle"),
+      f: { lifecycle: "dormant" },
+    };
+    const counts = commandBandPulseCounts(
+      [op("a", "codex-review"), op("b", "doc-sweep"), op("c", "seed-op-2"), op("d", "bg-sweep"), op("e", "idle-op"), op("f", "gone-op")],
+      runtime,
+    );
+    expect(counts.running).toEqual(["codex-review", "doc-sweep"]);
+    expect(counts.awaiting).toEqual(["seed-op-2"]);
+  });
+
+  it("treats unobserved and restored-dormant operations as non-signal", () => {
+    // 런타임 미관측 = idle 폴백, 복원 마커 = ended — 어느 쪽도 캡슐에 오르지 않는다.
+    const counts = commandBandPulseCounts(
+      [op("x", "fresh-op"), op("y", "restored-op", { restoredDormant: true }), op("z", "resumable-op", { resumeAvailable: true })],
+      {},
+    );
+    expect(counts.running).toEqual([]);
+    expect(counts.awaiting).toEqual([]);
+  });
+
+  it("crosses theaters — capsules aggregate the whole fleet like the War Room queue", () => {
+    const counts = commandBandPulseCounts(
+      [op("a", "alpha"), op("b", "beta")],
+      { a: live("awaiting"), b: live("awaiting") },
+    );
+    expect(counts.awaiting).toEqual(["alpha", "beta"]);
+  });
+
+  it("folds the tooltip name list at four titles", () => {
+    expect(commandBandPulseNames(["a", "b"])).toBe("a, b");
+    expect(commandBandPulseNames(["a", "b", "c", "d", "e"])).toBe("a, b, c, d…");
+  });
+
+  it("keeps the capsules wordless and read-only in the band source", () => {
+    const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
+
+    // 낱말(RUNNING/AWAITING)은 화면에 싣지 않는다 — 비콘+숫자, 이름은 title·aria-label로.
+    expect(source).toContain('<span className="tenant-beacon is-turn-running" aria-hidden="true" />');
+    expect(source).toContain('<span className="tenant-beacon is-awaiting" aria-hidden="true" />');
+    expect(source).toContain("{pulse.running.length}");
+    expect(source).toContain("{pulse.awaiting.length}");
+    // 읽기 전용 — 클릭 문(상태 응답 진입)은 2단계 재가 전까지 달지 않는다.
+    expect(source).not.toMatch(/command-band-pulse[^\n]*onClick/);
+    // 0건 캡슐은 부재다 — 빈 숫자는 소음이다.
+    expect(source).toContain("{pulse.running.length > 0 || pulse.awaiting.length > 0 ?");
   });
 });

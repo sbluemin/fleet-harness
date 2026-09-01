@@ -764,6 +764,33 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-mode-tool:active:not(:disabled) { transform: translateY(1px); }
 .command-band-mode-tool:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
+/* Pulse 이행 1단계 — 읽기 전용 상태 캡슐. 밴드에서 처음으로 정보를 말하는 자리다: 낱말 없이
+   비콘(활동 축 선언을 그대로 입는 .tenant-beacon)+숫자만 싣고, 이름은 title·aria-label이 진다.
+   조작면이 아니므로 워시·호버 문법을 빌리지 않는다 — 면이 없는 것이 "읽기 전용"의 표기다. */
+.command-band-pulse {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.command-band-pulse-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 7px;
+  cursor: default;
+}
+
+.command-band-pulse-count {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
 /* window-policy.ts와 합의한 44px 밴드/76px 신호등 인셋 — 변경 시 데스크톱 셸과 동기한다. */
 html[data-desktop-shell="true"] .command-band {
   -webkit-app-region: drag;

@@ -7,7 +7,7 @@ import { fetchConsoleEnvironment } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
+import { commandBandCenterFits, commandBandCenterGutter, commandBandPulseCounts, commandBandPulseNames } from "./command-band-guards.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -141,6 +141,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 되돌아오는 폭이 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
   const centerControlsCentered = commandBandCenterFits(bandWidth, centerGutter, centerContentWidth);
   const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;
+  // Pulse 이행 1단계 — 읽기 전용 캡슐. 사이드바 마크와 같은 원장(활동 축 원값)을 세고, 낱말은
+  // title·aria-label로 물러난다. 클릭 문(상태 응답 진입)은 2단계 재가 전까지 달지 않는다.
+  const pulse = commandBandPulseCounts(state.operations, state.operationRuntime);
+  const pulseRunningLabel = t("chrome.commandBand.pulseRunning", { count: pulse.running.length, names: commandBandPulseNames(pulse.running) });
+  const pulseAwaitingLabel = t("chrome.commandBand.pulseAwaiting", { count: pulse.awaiting.length, names: commandBandPulseNames(pulse.awaiting) });
   // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
   // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
   const discardEnvironmentState = () => {
@@ -425,6 +430,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               title={t(layout.titleKey)}
             ><layout.Icon /></button>
           ))}
+        </div> : null}
+        {/* Pulse 이행 1단계 — 읽기 전용 상태 캡슐. 낱말 없이 비콘+숫자만 싣고(이름은 title·aria),
+            마크는 사이드바 칩·지도 점과 같은 활동 축 선언(.tenant-beacon)을 그대로 입는다 —
+            밴드 전용 색·조형을 만들면 같은 원장이 두 문법으로 갈라진다. 0건 캡슐은 부재다. */}
+        {pulse.running.length > 0 || pulse.awaiting.length > 0 ? <div className="command-band-pulse" role="group" aria-label={t("chrome.commandBand.pulseSummary")}>
+          <span className="command-band-mode-tray-divider" aria-hidden="true" />
+          {pulse.running.length > 0 ? <span className="command-band-pulse-capsule" role="img" title={pulseRunningLabel} aria-label={pulseRunningLabel}>
+            <span className="tenant-beacon is-turn-running" aria-hidden="true" />
+            <span className="command-band-pulse-count">{pulse.running.length}</span>
+          </span> : null}
+          {pulse.awaiting.length > 0 ? <span className="command-band-pulse-capsule" role="img" title={pulseAwaitingLabel} aria-label={pulseAwaitingLabel}>
+            <span className="tenant-beacon is-awaiting" aria-hidden="true" />
+            <span className="command-band-pulse-count">{pulse.awaiting.length}</span>
+          </span> : null}
         </div> : null}
         </div> : null}
       </div>
