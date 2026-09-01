@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../i18n/index.js";
 import { railShortcutLabel, sideBarShortcutLabel } from "../shortcuts.js";
@@ -64,6 +64,11 @@ interface EdgeDockProps {
 }
 
 function EdgeDock({ side, peeking, label, triggerClassName, panelSelector, onPeek, onExpand }: EdgeDockProps) {
+  // 독이 pointerleave 없이 사라지는 언마운트(뷰포트 전환의 모바일 셸 교체, /operations 이탈)는
+  // 스토어의 픽을 지울 이벤트를 남기지 않는다 — 복귀 화면에 호버 없는 상시 오버레이가 박제되지
+  // 않도록 언마운트가 직접 픽을 끝낸다(Codex P2). 펼침·핀 경로의 언마운트에서는 스토어가 이미
+  // 픽을 지운 뒤라 no-op이다.
+  useEffect(() => () => { onPeek(false); }, [onPeek]);
   const handlePointerLeave = (event: ReactPointerEvent<HTMLButtonElement>) => {
     // 독 → 패널로 건너가는 이동은 픽의 연속이다. 그 외(캔버스·상하 이탈)는 픽을 끝낸다 —
     // 패널 쪽 이탈은 패널 자신의 pointerleave가 대칭으로 끝낸다.

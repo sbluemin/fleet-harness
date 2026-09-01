@@ -1,5 +1,5 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -17,6 +17,7 @@ import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
+import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
 import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
@@ -86,9 +87,17 @@ export function TriageSideBar({
   // 그대로여서 useMinimized 계열 구독이 발화하지 않으므로, 스냅샷 자체를 구독해 어느 Theater가
   // 바뀌든 다시 읽는다 — 선반 복원처럼 선별 스토어를 건드리지 않는 경로가 있어 그 emit에 얹힐 수 없다.
   useCanvasState();
-  // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드의 사이드바 토글이
+  // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — ⌘B와 패널 접기 컨트롤이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
+  const rootRef = useRef<HTMLElement | null>(null);
+  const previousCollapsedRef = useRef(sideBar.collapsed);
+  // Map 사이드바와 같은 접힘 포커스 인계 — 접히는 순간 포커스가 카드 안에 있으면 inert에
+  // 버려지기 전에 엣지 독 트리거로 넘긴다(Codex P2).
+  useLayoutEffect(() => {
+    if (!previousCollapsedRef.current && sideBar.collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
+    previousCollapsedRef.current = sideBar.collapsed;
+  }, [sideBar.collapsed]);
   const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [launchMenu, setLaunchMenu] = useState<{
@@ -198,6 +207,7 @@ export function TriageSideBar({
   };
   return (
     <aside
+      ref={rootRef}
       className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
