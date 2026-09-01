@@ -19,9 +19,12 @@ describe("AnalystTools", () => {
       description: expect.stringContaining("Required before answering any question about current work"),
     });
     expect(byId.get("publish_artifact")).toMatchObject({
-      description: expect.stringContaining("--fleet-canvas, --fleet-surface, --fleet-ink, --fleet-muted, --fleet-hairline, --fleet-accent"),
+      description: expect.stringContaining("--fleet-canvas (page ground), --fleet-card (raised card), --fleet-inset (sunken code and wells), --fleet-ink, --fleet-muted, --fleet-faint, --fleet-hairline, --fleet-hairline-strong, --fleet-accent"),
     });
-    expect(byId.get("publish_artifact")?.description).toContain("var(--fleet-surface, #f5f5f5)");
+    expect(byId.get("publish_artifact")?.description).toContain("var(--fleet-card, #1b2129)");
+    // v2 계약: 도구 표면도 시스템 프롬프트와 같은 토큰·컴포넌트 어휘를 말해야 한다(#973 교훈의 거울상).
+    expect(byId.get("publish_artifact")?.description).toContain("fleet-timeline");
+    expect(byId.get("publish_artifact")?.description).not.toContain("var(--fleet-surface");
     expect(await byId.get("session_read")!.execute({ ref: "e1", radius: 999 })).toMatchObject({ events: [{ ref: "e1" }] });
     expect(await byId.get("publish_artifact")!.execute({ title: "A", html: "<p>x</p>" })).toMatchObject({ artifact: { title: "A" } });
     await expect(byId.get("publish_artifact")!.execute({ title: "A", html: "x".repeat(50 * 1024 + 1) })).rejects.toThrow("50 KiB"); expect(events).toEqual(["artifact"]);
