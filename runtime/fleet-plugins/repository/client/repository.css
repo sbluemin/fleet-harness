@@ -1995,7 +1995,10 @@
 .repository-staging-bulk:disabled { opacity: 0.4; cursor: default; }
 .repository-staging-rows { padding: 2px 0 8px; }
 .repository-staging-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin: 0 4px; padding: 0; border-radius: var(--radius-xs); transition: background 0.1s; }
-.repository-staging-row:hover { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
+/* 스테이징 행은 .repository-file-row와 같은 요소에 서므로(staging-view.tsx), 선택(.is-cur)을
+   제외하지 않으면 같은 특이도의 후순위 hover가 brass 선택 필을 잉크로 덮는다 — 행 액션을
+   쓰는 순간 선택 표시가 사라지는 회귀(Codex P2 재현 확인). */
+.repository-staging-row:hover:not(.is-cur) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
 .repository-staging-row-main {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
