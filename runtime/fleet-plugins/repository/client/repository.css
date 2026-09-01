@@ -92,11 +92,13 @@
   flex: 1;
 }
 
+/* 입력 필드는 우물이 아니다 — 원료 잉크 알파로 표면보다 어둡게 파는 문법은 2026-09-01
+   소프트 그래파이트 재가로 퇴역했다. 필드는 --control-field로 표면 위에 반 칸 떠오른다. */
 .repository-filter-input,
 .history-filter-input {
   flex: 1;
   min-width: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+  background: var(--control-field);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
@@ -141,12 +143,14 @@
   background: color-mix(in oklch, var(--surface-band) 55%, transparent);
 }
 
+/* 메타 라벨은 계기판 어휘(mono·uppercase·광폭 자간)를 걷고 본문 서체의 낮은 목소리로 선다 —
+   2026-09-01 소프트 그래파이트 재가. 데이터(sha·시각·경로)만 mono로 남는다. */
 .repository-toolbar-label {
   flex: 1;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
   color: var(--text-tertiary);
 }
 
@@ -291,11 +295,10 @@
 
 .repository-section-name {
   flex: 1;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
 }
 
@@ -324,16 +327,20 @@
 }
 
 /* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
+/* 라운드 행 문법(소프트 그래파이트) — 행의 hover·선택 면은 좌우 4px 인셋의 라운드 필이다.
+   스파인 대신 면이 말하고, 선택 면은 위치 채널(brass)의 저알파 워시를 입는다. */
 .repository-file-row {
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: 18px 1fr auto;
   align-items: center;
   gap: 0 8px;
-  width: 100%;
+  width: calc(100% - 8px);
   min-width: 0;
-  padding: 5px 12px;
+  margin: 0 4px;
+  padding: 6px 10px;
   background: none;
   border: none;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -343,15 +350,22 @@
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-/* 선택은 중립 잉크 워시와 brass 스파인으로 표시해 위치만 brass가 말하게 한다. */
+/* 선택 = 위치 채널의 저알파 라운드 필 — 2026-09-01 소프트 그래파이트 재가로 스파인 문법 퇴역. */
 .repository-file-row.is-cur {
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
+  background: color-mix(in oklab, var(--brass) 10%, transparent);
 }
 
+/* 상태 글리프는 맨글자가 아니라 칩이다 — currentColor 틴트 한 겹이 글자 색과 같은 신호
+   채널에서 흐르므로 상태별 규칙을 늘리지 않고도 M/A/D/U가 스캔 단위로 읽힌다. */
 .repository-status-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: calc(var(--radius-xs) - 2px);
+  background: color-mix(in oklab, currentColor 14%, transparent);
   font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   text-align: center;
 }
@@ -416,10 +430,12 @@
   grid-template-columns: 12px 15px 1fr;
   align-items: center;
   gap: 0 6px;
-  width: 100%;
-  padding: 4px 12px;
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  padding: 4px 10px;
   background: none;
   border: none;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -469,18 +485,20 @@
 }
 
 /* ── 기타 공통 ── */
+/* rest = 낮은 목소리(2-cue): 워시 한 겹 + 헤어라인이 쉬는 상태에서도 몸을 알린다. */
 .repository-refresh-btn {
-  background: none;
+  background: var(--control-rest);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   cursor: pointer;
   font-size: var(--t-xs);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   padding: 3px 8px;
 }
 
 .repository-refresh-btn:hover {
-  color: var(--text-secondary);
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
 }
 
 /* 잘림은 "조용한 메모"가 아니라 상태다 — File Explorer(.fexp-truncated-badge)와 같은 warn 처리를
@@ -779,8 +797,8 @@
   padding: 3px 8px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
+  background: var(--control-rest);
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -788,7 +806,8 @@
 
 .history-order-toggle:hover {
   border-color: color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
-  color: var(--text-secondary);
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
 }
 
 .history-order-toggle:focus-visible {
@@ -814,10 +833,13 @@
 
 .history-commit-row {
   position: relative;
-  width: 100%;
+  /* 라운드 행 문법 — 좌우 4px 인셋. 전 행이 같은 만큼 밀리므로 그래프 레인의 세로 연속성은 유지된다. */
+  width: calc(100% - 8px);
   min-width: 0;
-  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
-  height: 28px;
+  margin: 0 4px;
+  border-radius: var(--radius-xs);
+  /* 높이는 graph-gutter의 ROW_HEIGHT(30px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
+  height: 30px;
   color: inherit;
   transition: background 0.1s;
 }
@@ -844,8 +866,7 @@
 }
 
 .history-commit-row.is-selected {
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
+  background: color-mix(in oklab, var(--brass) 10%, transparent);
 }
 
 /* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 강등 — 그래프/배지는 유지.
@@ -877,24 +898,27 @@
   display: none;
 }
 
-/* Fork 문법의 ref 뱃지 — 알약이 아니라 아이콘 칸과 라벨 칸이 구분선으로 나뉜 라운드 사각이고,
-   라벨은 볼드 sans로 훑어 읽힌다. 색조는 --badge-tone 하나로만 흐르며 테두리·아이콘·바탕이 그 톤을 공유한다.
-   기본 톤은 중성이고, 종류가 고정된 축(체크아웃 위치=brass, 태그=plum)만 아래 규칙이 덮어쓴다.
-   나머지 브랜치·원격·워크트리는 커밋 행이 자기 레인 색을 인라인으로 주입한다 —
-   장식적 구분 채도는 그래프 레인과 같은 --id-* 정체성 봉투에서만 오고, 상태 신호 채널을 침범하지 않는다. */
+/* Fork 문법의 ref 뱃지 — 아이콘 칸과 라벨 칸이 구분선으로 나뉜 캡슐. 색조는 --badge-tone
+   하나로만 흐르며 테두리·아이콘·바탕이 그 톤을 공유한다. 기본 톤은 중성이고, 종류가 고정된
+   축(체크아웃 위치=brass, 태그=plum)만 아래 규칙이 덮어쓴다. 나머지 브랜치·원격·워크트리는
+   커밋 행이 자기 레인 색을 인라인으로 주입한다 — 장식적 구분 채도는 그래프 레인과 같은
+   --id-* 정체성 봉투에서만 오고, 상태 신호 채널을 침범하지 않는다.
+   [독트린 예외 기록] radius-pill은 "도트·비콘·상태 캡슐 전용"이며 ref 뱃지는 상태 캡슐 축에
+   선다 — 2026-09-01 소프트 그래파이트 재가로 고알파 사각(82%/22%/bold)에서 저알파 캡슐
+   (45%/14%/medium)로 낮췄다: 뱃지가 커밋 제목보다 큰 목소리를 내지 않게 하는 감쇠다. */
 .history-badge {
   --badge-tone: var(--ink-fog);
   display: inline-flex;
   align-items: stretch;
   flex: none;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--badge-tone) 82%, transparent);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--badge-tone) 22%, transparent);
+  border: 1px solid color-mix(in oklch, var(--badge-tone) 45%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--badge-tone) 14%, transparent);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   line-height: 1.5;
 }
@@ -902,8 +926,8 @@
 .history-badge-mark {
   display: inline-flex;
   align-items: center;
-  padding: 0 3px;
-  border-right: 1px solid color-mix(in oklch, var(--badge-tone) 65%, transparent);
+  padding: 0 3px 0 5px;
+  border-right: 1px solid color-mix(in oklch, var(--badge-tone) 40%, transparent);
   color: color-mix(in oklch, var(--badge-tone) 88%, var(--text-primary));
 }
 
@@ -912,7 +936,7 @@
 }
 
 .history-badge-label {
-  padding: 0 5px;
+  padding: 0 7px 0 5px;
 }
 
 .history-badge-icon {
@@ -1052,7 +1076,7 @@
   height: 22px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--t-sm);
@@ -1136,8 +1160,8 @@
 .history-divider { touch-action: none; }
 .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto minmax(0, auto) 7ch auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
-   유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
-   grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. 본문 마커는 조건부 셀이라
+   유령 2행 트랙(0px 30px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 30px 트랙 중앙으로 반 행 어긋난다.
+   grid-row: 1로 전 셀을 단일 30px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. 본문 마커는 조건부 셀이라
    나머지 셀도 열을 명시해야 마커가 없는 행에서 뒤 셀들이 한 칸씩 당겨지지 않는다. */
 .history-graph-gutter { grid-column: 1; grid-row: 1; }
 /* Fork 문법 — refs 뱃지가 제목 앞(그래프 뒤)에서 커밋의 정체를 먼저 알린다.
@@ -1165,21 +1189,21 @@
 .history-author time { margin-left: auto; }
 .history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
-.history-sha-copy, .history-parent { border-radius: var(--radius-xs); background: none; cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); padding: 3px 8px; }
+.history-sha-copy, .history-parent { border-radius: var(--radius-xs); background: var(--control-rest); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--text-secondary); }.history-sha-copy span { color: var(--text-tertiary); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive-ink); }
 .history-parent { border: 1px solid var(--surface-rim); color: var(--text-secondary); }
 /* min-width/열 minmax가 없으면 섹션의 자동 최소 크기가 min-content(가장 긴 경로)로 굳어
    grid 트랙을 무시하고 옆 diff 열 위로 넘친다 — 폭 조절이 화면에 반영되지 않는 원인. */
 .history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
-.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
+.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: .02em; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
    숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
    제목은 어느 폭에서도 한 줄을 유지한다(기본 규칙의 nowrap+ellipsis): 행 높이는 그래프 gutter의
-   ROW_HEIGHT(28px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
+   ROW_HEIGHT(30px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
 @container (max-width: 760px) {
   .history-commit-author { display: none; }
   .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto 7ch auto; }
@@ -1220,8 +1244,10 @@
 /* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
    brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
 .repository-identity span { min-width: 0; overflow: hidden; color: var(--brass-ink); flex: 0 1 auto; font-family: var(--font-mono); font-size: var(--t-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.repository-sync-button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; flex: none; font: inherit; font-size: var(--t-sm); }
-.repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
+/* 패널의 주 동사(가져오기·Pull·Push·Stash) — 완전 투명 rest는 "시각 신호 0개"로 실측 기각됐다.
+   rest부터 워시+헤어라인의 2-cue로 서고, hover는 한 단 무거워질 뿐 문법이 바뀌지 않는다. */
+.repository-sync-button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 10px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; flex: none; font: inherit; font-size: var(--t-sm); }
+.repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim-strong); background: var(--control-rest-hover); color: var(--text-primary); }
 .repository-sync-button:disabled { cursor: default; opacity: .7; }
 /* 아이콘은 ↻와 ✓를 같은 자리에 겹쳐 두는 13px 슬롯이다 — 글리프를 교체하면 버튼 폭이 흔들려
    옆의 라벨이 밀린다. 회전은 계속 슬롯 자체에 걸어 두 글리프가 같은 축을 돈다. */
@@ -1241,7 +1267,7 @@
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
-.repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: .1em; text-transform: uppercase; }
+.repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: .04em; }
 .repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-sm); padding: 0 3px; }
 .repository-depth-step:hover:not(:disabled) { color: var(--text-primary); }
 .repository-depth-step:disabled { opacity: .4; cursor: default; }
@@ -1249,7 +1275,7 @@
 .repository-scan-count { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-list { padding: var(--space-2); display: grid; gap: 2px; }
 .repository-ref-group { display: grid; gap: 2px; }
-.repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-regular); letter-spacing: .18em; text-transform: uppercase; }
+.repository-ref-group-label { padding: 8px 10px 2px; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: .04em; }
 .repository-ref-row { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
 .repository-ref-row:disabled { cursor: default; }
@@ -1329,9 +1355,10 @@
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: .14em;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: .02em;
   cursor: pointer;
   text-align: left;
 }
@@ -1362,10 +1389,12 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
-  min-height: 26px;
-  padding: 4px 10px 4px 18px;
+  width: calc(100% - 8px);
+  min-height: 28px;
+  margin: 0 4px;
+  padding: 4px 8px 4px 14px;
   border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -1398,9 +1427,8 @@
 }
 
 .repository-ws-tree-row.is-active {
-  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  background: color-mix(in oklab, var(--brass) 10%, transparent);
   color: var(--text-primary);
-  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .repository-ws-tree-row.is-current {
@@ -1547,9 +1575,10 @@
 .repository-ws-ref-subhead {
   padding: 4px 10px 2px 20px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
-  letter-spacing: .12em;
+  font-weight: var(--weight-medium);
+  letter-spacing: .04em;
 }
 
 .repository-ws-tree-error {
@@ -1684,8 +1713,8 @@
 }
 
 /* ── Compare 뷰 ── */
-.repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); cursor: pointer; flex: none; font-size: var(--t-sm); }
-.repository-compare-swap:hover:not(:disabled) { color: var(--text-secondary); }
+.repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; flex: none; font-size: var(--t-sm); }
+.repository-compare-swap:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-secondary); }
 .repository-compare-meta { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
 .repository-compare-meta span { color: var(--text-secondary); }
 
@@ -1714,7 +1743,7 @@
 .history-commit-row:focus-within .history-row-compare { display: inline-flex; }
 .history-row-compare:hover,
 .history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); color: var(--text-primary); outline: none; }
-.history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 2px 0 0 var(--aurora); }
+.history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 12%, transparent); }
 .history-commit-row.is-picked .history-commit-sha { color: var(--aurora); }
 .repository-pin-chip { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent); border-radius: var(--radius-xs); color: var(--aurora); cursor: pointer; }
 .repository-pin-chip:hover { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
@@ -1938,9 +1967,10 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
-  letter-spacing: 0.08em;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
   color: var(--text-tertiary);
   border-bottom: 1px solid var(--hairline);
   position: sticky;
@@ -1964,14 +1994,18 @@
 }
 .repository-staging-bulk:disabled { opacity: 0.4; cursor: default; }
 .repository-staging-rows { padding: 2px 0 8px; }
-.repository-staging-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 0; }
+.repository-staging-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin: 0 4px; padding: 0; border-radius: var(--radius-xs); transition: background 0.1s; }
+/* 스테이징 행은 .repository-file-row와 같은 요소에 서므로(staging-view.tsx), 선택(.is-cur)을
+   제외하지 않으면 같은 특이도의 후순위 hover가 brass 선택 필을 잉크로 덮는다 — 행 액션을
+   쓰는 순간 선택 표시가 사라지는 회귀(Codex P2 재현 확인). */
+.repository-staging-row:hover:not(.is-cur) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
 .repository-staging-row-main {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
-  padding: 3px 4px 3px 10px;
+  padding: 4px 4px 4px 8px;
   border: none;
   background: transparent;
   color: inherit;
@@ -1987,7 +2021,7 @@
   font-size: var(--t-xs);
   line-height: 1;
   color: var(--text-secondary);
-  background: var(--ink-mid);
+  background: var(--control-rest);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
   padding: 2px 6px;
@@ -2017,7 +2051,7 @@
   font: inherit;
   font-size: var(--t-sm);
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+  background: var(--control-field);
   border: 1px solid var(--hairline-strong);
   padding: 6px 10px;
   resize: none;
@@ -2259,8 +2293,8 @@
   padding: 5px 8px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  /* 입력 재질은 커밋 상자와 같은 결 — 원료 잉크 단독 배경은 디자인 계약이 금지한다. */
-  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+  /* 입력 재질은 커밋 상자와 같은 결 — 필드 채널 하나를 함께 소비한다. */
+  background: var(--control-field);
   color: var(--text-primary);
   font-size: var(--t-sm);
 }

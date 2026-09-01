@@ -152,29 +152,68 @@ describe("Repository signal mixing", () => {
 });
 
 describe("Repository design grammar", () => {
-  it("reserves brass for location while selections use neutral ink", () => {
+  // 2026-09-01 소프트 그래파이트 재가 — 선택은 스파인이 아니라 위치 채널(brass)의 저알파
+  // 라운드 필이다. 스파인(inset 2px) 문법은 이 패널에서 퇴역했고, 필의 알파는 10%로 통일해
+  // 선택 면이 hover(잉크 9%)보다 한 단 무거우면서도 신호 채널을 침범하지 않게 한다.
+  it("paints selection as a low-alpha brass fill without spines", () => {
     expect(blockOf(".repository-ref-row.is-current")).toContain("var(--text-primary)");
     expect(blockOf(".repository-ref-row.is-current")).not.toContain("var(--brass)");
     expect(blockOf(".repository-ref-row.is-current:hover")).not.toContain("var(--brass)");
     expect(blockOf(".repository-ref-row.is-current .repository-ref-sub")).toContain("var(--brass-ink)");
 
     const selectedFile = blockOf(".repository-file-row.is-cur");
-    expect(selectedFile).toContain("color-mix(in oklch, var(--ink-fog) 12%, transparent)");
-    expect(selectedFile).toContain("inset 2px 0 0 var(--brass)");
+    expect(selectedFile).toContain("var(--brass) 10%");
+    expect(selectedFile).not.toContain("inset 2px 0 0");
     expect(blockOf(".repository-file-row.is-cur .repository-file-fn")).toContain("var(--text-primary)");
 
     const selectedCommit = blockOf(".history-commit-row.is-selected");
-    expect(selectedCommit).toContain("var(--ink-fog) 12%");
-    expect(selectedCommit).not.toContain("var(--brass) 14%");
+    expect(selectedCommit).toContain("var(--brass) 10%");
+    expect(selectedCommit).not.toContain("inset 2px 0 0");
 
-    // 워크스페이스 트리의 활성(중앙 뷰) 행 — brass 스파인 + 옅은 wash + 1차 텍스트.
     const activeTreeRow = blockOf(".repository-ws-tree-row.is-active");
     expect(activeTreeRow).toContain("var(--text-primary)");
-    expect(activeTreeRow).toContain("var(--brass) 7%");
-    expect(activeTreeRow).toContain("inset 2px 0 0 var(--brass)");
+    expect(activeTreeRow).toContain("var(--brass) 10%");
+    expect(activeTreeRow).not.toContain("inset 2px 0 0");
 
     expect(blockOf(".history-badge--tag")).not.toContain("var(--brass)");
     expect(blockOf(".history-badge--head")).toContain("var(--brass)");
+  });
+
+  // 라운드 행 문법 — 행은 좌우 4px 인셋 위에서 라운드 필로 hover·선택을 말한다. 커밋 행은
+  // 전 행이 같은 만큼 밀려야 그래프 레인의 세로 연속성이 유지되고, 높이는 ROW_HEIGHT와 동기다.
+  it("keeps rows on the rounded inset grammar with the graph row height in sync", () => {
+    for (const selector of [".repository-file-row", ".repository-folder-row", ".repository-ws-tree-row", ".history-commit-row"]) {
+      const body = blockOf(selector);
+      expect(body, selector).toContain("border-radius: var(--radius-xs)");
+      expect(body, selector).toContain("margin: 0 4px");
+      expect(body, selector).toContain("calc(100% - 8px)");
+    }
+    expect(blockOf(".history-commit-row")).toContain("height: 30px");
+  });
+
+  // rest는 침묵이 아니라 낮은 목소리다 — 주 동사와 보조 컨트롤은 쉬는 상태에서도
+  // rest 채널 + 헤어라인의 2-cue로 몸을 알리고, 입력 필드는 우물 대신 field 채널로 떠오른다.
+  it("gives every verb, control, and input a resting body", () => {
+    const verb = blockOf(".repository-sync-button");
+    expect(verb).toContain("background: var(--control-rest)");
+    expect(verb).toContain("border: 1px solid var(--surface-rim)");
+    expect(verb).not.toContain("background: transparent");
+    for (const selector of [".history-order-toggle", ".repository-refresh-btn", ".repository-reload-state", ".repository-compare-swap", ".repository-stage-action"]) {
+      expect(blockOf(selector), selector).toContain("var(--control-rest)");
+    }
+    for (const selector of [".repository-filter-input", ".repository-stash-popover-input"]) {
+      expect(blockOf(selector), selector).toContain("var(--control-field)");
+    }
+    expect(blocksOf(".repository-commit-subject").concat(blocksOf(".repository-commit-body")).some((body) => body.includes("var(--control-field)"))).toBe(true);
+    expect(css).not.toContain("var(--ink-abyss) 35%");
+  });
+
+  // 상태 글리프는 맨글자가 아니라 칩이다 — currentColor 틴트라 상태별 규칙 없이 신호 채널을 따른다.
+  it("wraps status glyphs in currentColor-tinted chips", () => {
+    const glyph = blockOf(".repository-status-glyph");
+    expect(glyph).toContain("currentColor 14%");
+    expect(glyph).toContain("width: 17px");
+    expect(glyph).toContain("height: 17px");
   });
 
   it("uses core surface tokens for panel material", () => {
@@ -195,7 +234,7 @@ describe("Repository design grammar", () => {
     for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
 
     for (const selector of [".repository-filter-input", ".history-filter-input"]) {
-      expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
+      expect(blockOf(selector), selector).toContain("var(--control-field)");
     }
     // 뷰 토글은 상자 없는 세그먼트다(Quiet Controls C′) — 선택은 워시+다텀이 말하고 그룹 경계는 간격이 진다.
     expect(blockOf(".repository-view-toggle")).not.toContain("background");
@@ -241,7 +280,9 @@ describe("Repository design grammar", () => {
   // 2026-08-05 재가 — in-history compare 앵커와 수동 Sync 표면화의 신호 채널 문법.
   // pin/pick은 상태이므로 aurora(신호), 실패는 coral, 성공 요약은 positive — brass는 위치/포커스 전용으로 남는다.
   it("keeps the anchor-compare and sync surfaces on the signal channel, never brass", () => {
-    expect(blockOf(".history-commit-row.is-picked")).toContain("inset 2px 0 0 var(--aurora)");
+    const picked = blockOf(".history-commit-row.is-picked");
+    expect(picked).toContain("var(--aurora) 12%");
+    expect(picked).not.toContain("var(--brass)");
     expect(blockOf(".history-row-compare")).toContain("var(--aurora)");
     expect(blockOf(".history-row-compare")).not.toContain("var(--brass)");
     expect(blockOf(".repository-sync-toast.is-error")).toContain("var(--coral)");
@@ -283,7 +324,7 @@ describe("Repository design grammar", () => {
     expect(sectionHead).toContain("border: 0");
     expect(sectionHead).toContain("background: transparent");
     expect(sectionHead).toContain("color: var(--text-tertiary)");
-    expect(sectionHead).toContain("font-family: var(--font-mono)");
+    expect(sectionHead).toContain("font-family: var(--font-body)");
     expect(sectionHead).toContain("cursor: pointer");
     expect(sectionHead).toContain("text-align: left");
 
@@ -312,23 +353,24 @@ describe("Repository design grammar", () => {
     expect(css).not.toMatch(/\.repository-scan-depth\b/);
   });
 
-  // 2026-08-07 재가 — Fork 문법의 ref 뱃지. 색조는 --badge-tone 한 채널로만 흐르고, 종류가 고정된 축만
-  // CSS가 소유한다(체크아웃 위치=brass, 태그=plum). 나머지는 커밋 행이 자기 레인 색을 주입한다.
+  // 2026-08-07 재가, 2026-09-01 소프트 그래파이트 재조율 — Fork 문법의 ref 뱃지. 색조는
+  // --badge-tone 한 채널로만 흐르고, 종류가 고정된 축만 CSS가 소유한다(체크아웃 위치=brass,
+  // 태그=plum). 고알파 사각(82%/22%/bold)은 저알파 캡슐(45%/14%/medium)로 낮아졌다 —
+  // 뱃지가 커밋 제목보다 큰 목소리를 내지 않게 하는 감쇠이며, radius-pill 소비는 규칙 옆
+  // 독트린 주석에 기록된 상태 캡슐 축의 예외다.
   it("routes every ref badge color through one tone channel, with location on brass", () => {
     const badge = blockOf(".history-badge");
     expect(badge).toContain("--badge-tone:");
     for (const property of ["border", "background", "border-right"]) {
       expect(blocksOf(".history-badge").concat(blocksOf(".history-badge-mark")).some((body) => body.includes(`${property}:`) && body.includes("var(--badge-tone)")), property).toBe(true);
     }
-    // 알약이 아니라 라운드 사각 + 볼드 sans — Fork가 뱃지를 라벨이 아닌 표식으로 읽히게 하는 축.
-    expect(badge).not.toContain("border-radius: var(--radius-pill)");
-    expect(badge).toContain("border-radius: var(--radius-xs)");
+    expect(badge).toContain("border-radius: var(--radius-pill)");
     expect(badge).toContain("font-family: var(--font-body)");
     expect(badge).toContain("font-size: var(--t-xs)");
-    expect(badge).toContain("font-weight: var(--weight-bold)");
-    expect(badge).toContain("var(--badge-tone) 82%");
-    expect(badge).toContain("var(--badge-tone) 22%");
-    expect(blockOf(".history-badge-mark")).toContain("var(--badge-tone) 65%");
+    expect(badge).toContain("font-weight: var(--weight-medium)");
+    expect(badge).toContain("var(--badge-tone) 45%");
+    expect(badge).toContain("var(--badge-tone) 14%");
+    expect(blockOf(".history-badge-mark")).toContain("var(--badge-tone) 40%");
     expect(blockOf(".history-badge-remote-mark")).toContain("var(--badge-tone)");
 
     for (const selector of [".history-badge--head", ".history-badge.is-current"]) {

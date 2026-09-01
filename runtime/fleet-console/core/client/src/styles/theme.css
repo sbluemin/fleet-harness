@@ -397,7 +397,9 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
 
-  /* 상호작용 컨트롤의 상태 recipe(Quiet Controls C′) — rest는 각 소비처의 중립 면이 맡고,
+  /* 상호작용 컨트롤의 상태 recipe(Quiet Controls C′) — rest는 침묵이 아니라 낮은 목소리다:
+     동사·컨트롤은 쉬는 상태에서도 극저대비 rest 채널(--control-rest + 헤어라인)로 자기 몸을
+     알린다. 완전 투명 rest는 2026-09-01 저장소 실측(주 동사 4종의 시각 신호 0개)으로 기각됐다.
      focus는 입력 수단의 별도 외곽 링이다. "지속" 상태는 accent가 아니라 세 문장으로 갈린다:
      배타 선택 = 극저대비 중립 워시(--control-wash) + 잉크 대비 + 2px brass 다텀 한 점,
      독립 ON = 잉크(--control-tint-* 저채도 워시), 불리언 ON = 워시 + brass 글리프.
@@ -406,9 +408,16 @@
      hover는 기존 brass 예고를 유지한다. 열림(aria-expanded·is-open)과 필드 focus-within은
      지속이 아니라 순간이므로 --control-open-rim이 진다. 선택이 brass를 다텀 한 점으로만
      소비하므로 "brass = 위치·포커스·호버" 채널 계약은 좁아진다. 워시 리터럴은 각 테마
-     블록이 자기 잉크 위에서 재조율한다 — 다크는 화이트 워시, 라이트는 잉크 워시로 극이 뒤집힌다. */
+     블록이 자기 잉크 위에서 재조율한다 — 다크는 화이트 워시, 라이트는 잉크 워시로 극이 뒤집힌다.
+     rest 사다리는 wash 사다리와 겹치지 않는다: rest(5%) < wash-selected(7%) — 쉬는 몸이
+     선택된 면보다 무거워지면 두 상태가 뒤집혀 읽힌다. field는 입력 필드의 면이다 — 원료 잉크
+     우물(ink-abyss 알파)로 표면보다 어둡게 파는 문법은 같은 실측으로 퇴역했고, 필드는 표면
+     위로 반 칸 떠오른다(라이트는 종이보다 밝은 쪽). */
   --control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);
   --control-hover-rim: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
+  --control-rest: oklch(96% 0.01 90 / 5%);
+  --control-rest-hover: oklch(96% 0.01 90 / 9%);
+  --control-field: oklch(96% 0.01 90 / 4.5%);
   --control-wash: oklch(96% 0.01 90 / 7%);
   --control-wash-hover: oklch(96% 0.01 90 / 4%);
   --control-tint-fill: color-mix(in oklab, var(--brass) 9%, transparent);
@@ -538,6 +547,9 @@
   --hairline-strong: oklch(48% 0.03 248);
 
   /* Quiet Controls 워시 — pearl(hue 88) 화이트를 얹어 감청 위에서도 워시가 차갑게 식지 않는다. */
+  --control-rest: oklch(96% 0.012 88 / 5.5%);
+  --control-rest-hover: oklch(96% 0.012 88 / 9.5%);
+  --control-field: oklch(96% 0.012 88 / 5%);
   --control-wash: oklch(96% 0.012 88 / 8%);
   --control-wash-hover: oklch(96% 0.012 88 / 4.5%);
 
@@ -651,6 +663,9 @@
   --hairline-strong: oklch(45% 0.005 252);
 
   /* Quiet Controls 워시 — 무채 화이트 한 겹. 선택마저 무채가 되고 구리색은 다텀·focus·글리프에만 남는다. */
+  --control-rest: oklch(95% 0.003 250 / 5%);
+  --control-rest-hover: oklch(95% 0.003 250 / 9%);
+  --control-field: oklch(95% 0.003 250 / 4.5%);
   --control-wash: oklch(95% 0.003 250 / 7%);
   --control-wash-hover: oklch(95% 0.003 250 / 4%);
 
@@ -818,7 +833,12 @@
   --hairline-strong: oklch(76% 0.014 100);
 
   /* Quiet Controls 워시 — 종이 위 잉크 극. 다크의 화이트 워시를 그대로 반전하면 백지 위
-     백워시라 지각 불가이므로, 라이트만 어두운 잉크를 낮은 알파로 얹는다. */
+     백워시라 지각 불가이므로, 라이트만 어두운 잉크를 낮은 알파로 얹는다.
+     rest도 같은 극 — field만은 알파 워시가 아니라 종이보다 밝은 실색이다: 어두운 잉크 워시를
+     입력 필드에 깔면 라이트에서 필드가 "파인 우물"로 되돌아간다(다크 우물 퇴역과 같은 이유). */
+  --control-rest: oklch(30% 0.015 95 / 4.5%);
+  --control-rest-hover: oklch(30% 0.015 95 / 7.5%);
+  --control-field: oklch(99.3% 0.003 95);
   --control-wash: oklch(30% 0.015 95 / 6.5%);
   --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
 
