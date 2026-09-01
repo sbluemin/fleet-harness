@@ -38,13 +38,20 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__chip-count.is-pulsing { animation: analyst-artifact-count-pulse var(--duration-slow) var(--ease-glide); }
 .session-analyst__modechip button.is-authoring .session-analyst__chip-count { border: 1px dashed var(--aurora); background: transparent; animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 
-.session-analyst__workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; overflow: hidden; background: transparent; }
-.session-analyst__chat-pane.is-initial .session-analyst__workspace { display: flex; flex-direction: column; justify-content: center; overflow: auto; padding: var(--space-3) 18px 22px; }
+/* 워크스페이스는 flex 열이다 — 받침(settle)의 비율 전환이 컴포저를 움직여야 하므로
+   grid 행 고정 대신 flex-grow가 세로를 나눈다(채팅뷰 .agent-chat-settle과 동형). */
+.session-analyst__workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: transparent; }
 /* 캡션 밴드가 머리를 지므로 본문은 상단을 비워 둘 이유가 없다 — 첫 줄이 곧바로 시작한다. */
-.session-analyst__chat { overflow-x: hidden; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; padding: var(--space-3) 18px 16px; background: transparent; }
-.session-analyst__chat-pane.is-initial .session-analyst__chat { flex: none; overflow: visible; padding: 0; }
-.session-analyst__hero-wrap { margin: auto 0; display: grid; gap: var(--space-4); }
-.session-analyst__chat-pane.is-initial .session-analyst__hero-wrap { margin: 0; }
+.session-analyst__chat { flex: 1 1 0; overflow-x: hidden; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; padding: var(--space-3) 18px 16px; background: transparent; }
+/* 받침 — 첫 질문 전 0.8을 쥐어 초대+컴포저를 중앙에 세우고, 스트리밍이 시작되면 0으로 줄며
+   컴포저가 하단에 내려앉는다. 높이가 아니라 비율을 전환하므로 어떤 패널 높이에서도 같은 자리다. */
+.session-analyst__settle { flex: 0 1 0; min-height: 0; transition: flex-grow var(--duration-slow) var(--ease-spring); }
+.session-analyst__chat-pane.is-initial .session-analyst__settle { flex-grow: 0.8; }
+/* 초대는 로그 바닥에 붙는다 — 로그 한가운데 띄우면 컴포저와의 사이가 패널 높이만큼 벌어진다.
+   min-height: min-content가 받침과의 세로 싸움에서 초대를 지킨다(채팅뷰 is-inviting과 동형) —
+   낮은 패널에서는 받침이 먼저 줄고, 그래도 모자라면 이 영역이 스크롤을 연다. */
+.session-analyst__hero-wrap { margin: auto 0 0; display: grid; gap: var(--space-4); }
+.session-analyst__chat-pane.is-initial .session-analyst__chat { min-height: min-content; overflow-y: auto; justify-content: flex-end; }
 .session-analyst__hero { text-align: center; padding: 0 var(--space-2); }
 .session-analyst__sigil { display: block; color: var(--aurora-ink); font-size: var(--t-xl); line-height: 1; opacity: .85; margin-bottom: var(--space-3); }
 .session-analyst__hero h2 { margin: 0 0 var(--space-2); font-family: var(--font-display); font-weight: var(--weight-medium); font-size: var(--t-xl); letter-spacing: .005em; }
@@ -125,11 +132,25 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__receipt > summary::-webkit-details-marker { display: none; }
 .session-analyst__receipt-chev { font-size: var(--t-xs); line-height: 1; color: var(--text-tertiary); transition: transform var(--duration-fast); }
 .session-analyst__receipt[open] .session-analyst__receipt-chev { transform: rotate(180deg); }
-.session-analyst__receipt-body { padding: var(--space-1) 0 0 var(--space-3); }
-/* 펼친 스텝도 카드가 아니라 줄이다 — 접힌 줄이 문장이 된 이상 그 안이 카드면 문법이 갈린다. */
-.session-analyst__receipt-step { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; margin-top: var(--space-1); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
-.session-analyst__receipt-step strong { color: var(--text-secondary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-analyst__receipt-step small { color: var(--text-tertiary); white-space: nowrap; }
+.session-analyst__receipt-body { padding: var(--space-2) 0 0 var(--space-3); }
+/* fold 없이 서는 결말 한 줄(스텝 없는 완결 턴). */
+.session-analyst__receipt.is-flat { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+
+/* ── 원장 — 구간(문장+스텝)이 도착한 순서대로 쌓인다. 진행 중에도, fold 안에서도 같은 문법. ── */
+.session-analyst__ledger { display: grid; gap: var(--space-3); margin-top: var(--space-2); }
+.session-analyst__ledger.is-aftermath { margin-top: var(--space-2); opacity: .88; }
+.session-analyst__seg { min-width: 0; display: grid; gap: var(--space-2); }
+/* 과정 문장은 답보다 한 단 조용하다 — 밀도는 원장, 서체는 본문. */
+.session-analyst__seg-text.markdown-body { min-width: 0; max-width: 100%; margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.6; overflow-wrap: anywhere; }
+.session-analyst__seg-text.markdown-body p { margin: 0 0 var(--space-1); }
+.session-analyst__seg-text.markdown-body > :last-child { margin-bottom: 0; }
+.session-analyst__steps { display: grid; gap: 5px; }
+.session-analyst__step { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); padding: 5px 10px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.session-analyst__step-mark { flex: none; font-size: var(--t-2xs); line-height: 1; color: var(--positive-ink); }
+.session-analyst__step[data-tone="live"] .session-analyst__step-mark { color: var(--aurora-ink); animation: analyst-chip-dot-pulse 1.6s ease-in-out infinite; }
+.session-analyst__step[data-tone="fail"] .session-analyst__step-mark { color: var(--coral-ink); }
+.session-analyst__step strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.session-analyst__step small { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); white-space: nowrap; }
 
 /* 좌→우 명도 물결 — 채팅 원장의 `.agent-chat-live-text`와 한 벌이다. 값이 갈라지면 같은
    사실을 두 면이 다른 속도로 말하게 되므로 그라데이션·크기·주기를 그대로 옮겼다.
@@ -222,15 +243,13 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__author-open { flex: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; padding: 5px 9px; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); white-space: nowrap; cursor: pointer; }
 .session-analyst__author-open:hover { background: color-mix(in oklch, var(--positive) 10%, transparent); }
 
-/* ── 컴포저 — radius-pill은 컨트롤 금지 관례라 radius-md 면으로 정렬한다. ── */
-.session-analyst__composer { position: relative; min-width: 0; background: transparent; }
-.session-analyst__composer.is-initial { flex: none; margin-top: 12px; padding: 0; }
-.session-analyst__composer.is-docked { padding: 10px 14px 14px; }
-.session-analyst__composer.is-docking { animation: analyst-composer-dock var(--duration-slow) var(--ease-glide) both; }
-.session-analyst__composer-surface { position: relative; display: flex; align-items: flex-end; gap: 7px; min-width: 0; min-height: 44px; flex: 1; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: 5px 6px 5px 10px; transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide); }
-/* 첫 질문 전에는 입력과 선택이 한 면 안에 위아래로 앉는다 — 테두리 하나, 포커스 링 하나. */
-.session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px 7px; }
-.session-analyst__composer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+/* ── 컴포저 — 채팅뷰 조립: 한 면 안에 입력 위층 + 좌표 레일 아래층(radius-pill은 컨트롤
+   금지 관례라 radius-md 면으로 정렬). 초기/도킹 두 상태가 같은 DOM·같은 면을 쓴다 —
+   자리는 받침(settle)이 바꾼다. ── */
+.session-analyst__composer { position: relative; min-width: 0; flex: none; background: transparent; padding: 6px 14px 14px; }
+.session-analyst__chat-pane.is-initial .session-analyst__composer { padding-top: 12px; }
+.session-analyst__composer-surface { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; min-height: 44px; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: 8px 8px 7px 10px; transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide); }
+.session-analyst__composer-rail { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 /* 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다. */
 .session-analyst__saved { flex: none; inline-size: 4.5em; text-align: center; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 1; }
 .session-analyst__slash-hint { flex: none; border: 1px dashed var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); padding: 5px 8px; font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
@@ -284,7 +303,8 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__composer.is-working .session-analyst__composer-surface { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised)); }
 .session-analyst__composer.is-working textarea { opacity: 1; color: var(--text-primary); -webkit-text-fill-color: var(--text-primary); }
 .session-analyst__composer.is-working textarea::placeholder { color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); }
-.session-analyst__composer.is-working .session-analyst__composer-tools { opacity: .34; }
+/* 도는 동안 좌표는 물러나되 전송·중단은 물러나지 않는다 — 중단이 이 순간의 주 동작이다. */
+.session-analyst__composer.is-working .session-analyst__composer-rail > :not(.session-analyst__send) { opacity: .34; }
 .session-analyst__sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ── Artifacts 컴패니언 — 같은 창 면 + 슬림 툴바(72px 밴드 폐기). ── */
@@ -328,7 +348,8 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__artifact-title { overflow: hidden; color: var(--text-secondary); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__artifacts article time { margin-left: auto; }
 .session-analyst__artifacts article p[role="alert"] { margin: 0; padding: var(--space-3); color: var(--coral-ink); font-size: var(--t-sm); }
-.session-analyst__artifacts iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: var(--ink-veil); }
+/* 아티팩트 문서의 바닥은 패널면과 융합한다(v2 브리지) — 시트가 다른 회색으로 떠 보이지 않는다. */
+.session-analyst__artifacts iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface-panel); }
 
 @keyframes analyst-orbit { to { transform: rotate(360deg); } }
 @keyframes analyst-orbit-pulse { from { opacity: .7; transform: scale(.92); } to { opacity: 0; transform: scale(1.12); } }
@@ -338,7 +359,6 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 @keyframes analyst-answer-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-stage-enter { from { opacity: .2; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-receipt-settle { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes analyst-composer-dock { from { opacity: .72; transform: translateY(-7rem); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-artifact-count-pulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.32); } }
 @keyframes analyst-author-slide { from { transform: translateX(-100%); } to { transform: translateX(294%); } }
 @keyframes analyst-authoring-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
@@ -346,8 +366,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 @container (max-width: 24rem) {
   .session-analyst__suggestions { grid-template-columns: 1fr; }
   .session-analyst__chat { padding: var(--space-2) 12px 12px; }
-  .session-analyst__chat-pane.is-initial .session-analyst__workspace { padding: var(--space-2) 12px 16px; }
-  .session-analyst__composer.is-docked { padding: 8px 10px 10px; }
+  .session-analyst__composer { padding: 6px 10px 10px; }
   .session-analyst__queue, .session-analyst__followups { padding-right: 10px; padding-left: 10px; }
   .session-analyst__slash { right: 10px; left: 10px; }
   .session-analyst__composer-surface { gap: 4px; padding-left: 6px; }
@@ -361,7 +380,8 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
   .session-analyst__pulse-copy strong.session-analyst__live-text { animation: none; background-image: none; color: var(--text-secondary); }
   .session-analyst__turn-head .session-analyst__live-text { color: var(--text-tertiary); }
 
-  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
+  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node, .session-analyst__settle { transition: none; }
+  .session-analyst__step[data-tone="live"] .session-analyst__step-mark { animation: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
 }

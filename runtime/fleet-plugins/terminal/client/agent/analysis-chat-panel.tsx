@@ -14,7 +14,7 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { createPortal } from "react-dom";
 import "@fleet-console/markdown/styles.css";
 
-import type { AnalysisActivity, AnalysisEntry, AnalysisState } from "./analysis-state.js";
+import { splitAnalystLedger, type AnalysisActivity, type AnalysisEntry, type AnalysisSegment, type AnalysisState, type AnalysisToolStep } from "./analysis-state.js";
 import type { AnalysisModel } from "./analysis-types.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
@@ -83,15 +83,11 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   // 1Hz 티커는 이 패널에 단 하나 — 역사 턴마다 타이머가 쌓이지 않게 여기서 한 번 계산해 내려보낸다.
   const liveElapsedMs = useElapsedMs(state);
   const decorateEvidence = React.useCallback((html: string) => decorateEvidenceHtml(html, evidenceTitle), [evidenceTitle]);
-  // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
-  // 유지하면 뒤따르는 connected/chunk 렌더가 진행 중인 CSS 애니메이션을 끊지 않는다.
-  const interactedAtMount = React.useRef(hasInteracted).current;
-  const animateDock = hasInteracted && !interactedAtMount;
   React.useLayoutEffect(() => {
     const chat = chatRef.current;
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
-  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
+  }, [hasInteracted, state.entries, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -250,7 +246,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             </div>
           </div>
         ) : null}
-        <form className={`session-analyst__composer ${hasInteracted ? "is-docked" : "is-initial"}${animateDock ? " is-docking" : ""}${state.busy ? " is-working" : ""}`} aria-busy={state.busy} onSubmit={(event) => { event.preventDefault(); void submit(state.draft, true); }}>
+        <form className={`session-analyst__composer${state.busy ? " is-working" : ""}`} aria-busy={state.busy} onSubmit={(event) => { event.preventDefault(); void submit(state.draft, true); }}>
           {slashOpen ? (
             <div id={slashListboxId} className="session-analyst__slash" role="listbox" aria-label={t("terminal.analyst.commands")}>
               <span className="session-analyst__slash-heading">{t("terminal.analyst.commands")}</span>
@@ -322,78 +318,81 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 void submit(state.draft, true);
               }}
             />
-            {hasInteracted ? actions : (
-              /* 첫 질문 전에는 선택 컨트롤이 같은 면 안 하단 줄에 선다 — 별도 테두리 상자로
-                 띄우면 컴포저가 두 장으로 갈리고, 그 두 장이 서로 다른 면처럼 읽힌다. */
-              <div className="session-analyst__composer-tools" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
-                {/* 공급자 축은 고를 것이 둘 이상일 때만 컨트롤이 된다 — 항상 한 줄만 뜨는 메뉴는
-                    자리를 차지하면서 아무것도 바꾸지 못한다. 값은 계속 선택에 실린다. */}
-                {(state.catalog?.clis.length ?? 0) > 1 ? (
-                  <span className="session-analyst__select">
-                    <Select
-                      compact
-                      label={t("terminal.analyst.cli")}
-                      value={state.cliId}
-                      disabled={state.started || state.selectionLocked || !state.catalog}
-                      options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
-                      onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
-                    />
-                  </span>
-                ) : null}
-                <AnalystModelChip
-                  models={cli?.models ?? []}
-                  value={state.model}
-                  disabled={state.started || state.selectionLocked || !model}
-                  label={t("terminal.analyst.model")}
-                  menuLabel={t("terminal.analyst.modelMenu")}
-                  etcLabel={t("terminal.analyst.modelGroup.etc")}
-                  onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
-                />
-                {model && model.effortLevels.length > 0 ? (
-                  <span className="session-analyst__effort" inert={state.started || state.selectionLocked || undefined}>
-                    <EffortTrack
-                      row={analystEffortRow(model)}
-                      value={state.effort}
-                      onChange={(effort) => {
-                        if (effort !== null) dispatch({ type: "select-effort", effort });
-                      }}
-                      autoLabel={t("terminal.analyst.effortAuto")}
-                      autoSlot={false}
-                      ariaLabel={t("terminal.analyst.effort")}
-                      autoValueText={t("terminal.analyst.effortAutoValue")}
-                      className="session-analyst__effort-track"
-                    />
-                  </span>
-                ) : (
-                  <span className="session-analyst__effort-na">{t("terminal.analyst.na")}</span>
-                )}
-                {/* 슬래시 목록은 placeholder 문구에만 있었다 — 읽고 지나가면 다시 만날 길이 없다. */}
-                <button
-                  type="button"
-                  className="session-analyst__slash-hint"
-                  aria-label={t("terminal.analyst.commands")}
-                  onClick={() => {
-                    dispatch({ type: "set-draft", draft: "/" });
-                    setSlashDismissed(false);
-                    setSlashSelection(0);
-                    window.requestAnimationFrame(() => textareaRef.current?.focus());
-                  }}
-                >{t("terminal.analyst.slashHint")}</button>
-                <span
-                  className="session-analyst__saved"
-                  aria-live="polite"
-                  aria-atomic="true"
-                  style={{
-                    opacity: state.selectionSaved ? 1 : 0,
-                    transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
-                  }}
-                >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
-                {actions}
-              </div>
-            )}
+            {/* 좌표 레일 — 채팅뷰 컴포저와 같은 조립: 한 면 안에 입력 위층 + 컨트롤 아래층.
+               좌표(모델·강도·슬래시)는 왼쪽, 전송·중단은 오른쪽. 첫 질문 뒤에도 그대로 선다 —
+               잠긴 선택은 disabled가 말한다(두 벌 레이아웃은 한쪽만 고쳐지는 자리가 된다). */}
+            <div className="session-analyst__composer-rail" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
+              {/* 공급자 축은 고를 것이 둘 이상일 때만 컨트롤이 된다 — 항상 한 줄만 뜨는 메뉴는
+                  자리를 차지하면서 아무것도 바꾸지 못한다. 값은 계속 선택에 실린다. */}
+              {(state.catalog?.clis.length ?? 0) > 1 ? (
+                <span className="session-analyst__select">
+                  <Select
+                    compact
+                    label={t("terminal.analyst.cli")}
+                    value={state.cliId}
+                    disabled={state.started || state.selectionLocked || !state.catalog}
+                    options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
+                    onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
+                  />
+                </span>
+              ) : null}
+              <AnalystModelChip
+                models={cli?.models ?? []}
+                value={state.model}
+                disabled={state.started || state.selectionLocked || !model}
+                label={t("terminal.analyst.model")}
+                menuLabel={t("terminal.analyst.modelMenu")}
+                etcLabel={t("terminal.analyst.modelGroup.etc")}
+                onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
+              />
+              {model && model.effortLevels.length > 0 ? (
+                <span className="session-analyst__effort" inert={state.started || state.selectionLocked || undefined}>
+                  <EffortTrack
+                    row={analystEffortRow(model)}
+                    value={state.effort}
+                    onChange={(effort) => {
+                      if (effort !== null) dispatch({ type: "select-effort", effort });
+                    }}
+                    autoLabel={t("terminal.analyst.effortAuto")}
+                    autoSlot={false}
+                    ariaLabel={t("terminal.analyst.effort")}
+                    autoValueText={t("terminal.analyst.effortAutoValue")}
+                    className="session-analyst__effort-track"
+                  />
+                </span>
+              ) : (
+                <span className="session-analyst__effort-na">{t("terminal.analyst.na")}</span>
+              )}
+              {/* 슬래시 목록은 placeholder 문구에만 있었다 — 읽고 지나가면 다시 만날 길이 없다. */}
+              <button
+                type="button"
+                className="session-analyst__slash-hint"
+                aria-label={t("terminal.analyst.commands")}
+                onClick={() => {
+                  dispatch({ type: "set-draft", draft: "/" });
+                  setSlashDismissed(false);
+                  setSlashSelection(0);
+                  window.requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
+              >{t("terminal.analyst.slashHint")}</button>
+              <span
+                className="session-analyst__saved"
+                aria-live="polite"
+                aria-atomic="true"
+                style={{
+                  opacity: state.selectionSaved ? 1 : 0,
+                  transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
+                }}
+              >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
+              {actions}
+            </div>
           </div>
           {state.busy ? <div className="session-analyst__composer-hint">{t("terminal.analyst.queueHint")}</div> : null}
         </form>
+        {/* 받침 — 채팅뷰 settle과 동형. 첫 질문 전에는 flex-grow 0.8로 초대·컴포저를 중앙에
+           세우고, 스트리밍이 시작되면 0으로 줄며 컴포저가 하단에 내려앉는다(비율 전환이라
+           어떤 패널 높이에서도 같은 자리). */}
+        <div className="session-analyst__settle" aria-hidden="true" />
       </div>
       )}
     </section>
@@ -477,13 +476,14 @@ export function AnalystCaption({ context }: { readonly context: OperationRenderC
   );
 }
 
-/* 분석가 턴 — 스파인 노드가 상태를, 헤드가 시간축을, 영수증이 과정을 말한다.
-   entry=null이면 아직 chunk가 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
+/* 분석가 턴 — 채팅뷰 원장 문법: 스파인 노드가 상태를, 구간(문장+스텝)이 과정을,
+   응답 seam 아래가 확정 답을 말한다. 끝난 턴의 과정은 fold 한 줄로 접힌다.
+   entry=null이면 아직 아무 이벤트도 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
    entry.receipt만으로 그린다 — 전역 상태는 다음 send에서 이미 초기화됐다. */
 function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEvidence }: {
   readonly state: AnalysisState;
   readonly language: ConsoleLocale;
-  readonly entry: AnalysisEntry | null;
+  readonly entry: (AnalysisEntry & { readonly role: "analyst" }) | null;
   readonly isLast: boolean;
   readonly liveElapsedMs: number;
   readonly decorateEvidence: (html: string) => string;
@@ -495,6 +495,13 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
   const liveStopped = isLast && state.phase === "stopped";
   const isError = liveError || receipt?.outcome === "error";
   const isStopped = liveStopped || receipt?.outcome === "stopped";
+  const { process, answer } = splitAnalystLedger(entry?.segments ?? []);
+  const hasLedger = process.length > 0;
+  const stepCount = receipt ? receipt.tools.length : state.tools.length;
+  const stepsLabel = stepCount === 0 ? null : stepCount === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: stepCount });
+  const foldSummary = receipt?.outcome === "complete"
+    ? `${t("terminal.analyst.turnAnswered", { elapsed: formatElapsed(receipt.durationMs) })}${stepsLabel ? ` · ${stepsLabel}` : ""}`
+    : null;
   return (
     <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}${!isError && isStopped ? " is-stopped" : ""}`}>
       <span className="session-analyst__turn-spine" aria-hidden="true"><span className="session-analyst__turn-node" /></span>
@@ -506,7 +513,35 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
             <span className="session-analyst__live-text">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</span>
           </div>
         ) : null}
-        {working || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
+        {/* 살아 있는 턴의 과정은 접지 않는다 — 원장이 곧 진행 표시다. */}
+        {working && hasLedger ? (
+          <div className="session-analyst__ledger">
+            {process.map((segment, index) => (
+              <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={index === process.length - 1 && answer === null} />
+            ))}
+          </div>
+        ) : null}
+        {/* 끝난 턴의 과정은 fold 한 줄로 접힌다 — 채팅 원장의 접힘과 같은 문법. */}
+        {!working && foldSummary !== null ? (
+          hasLedger ? (
+            <details className="session-analyst__receipt">
+              <summary aria-label={t("terminal.chat.receiptAria")}>
+                <span className="session-analyst__receipt-label">{foldSummary}</span>
+                <span className="session-analyst__receipt-chev" aria-hidden="true">⌄</span>
+              </summary>
+              <div className="session-analyst__receipt-body">
+                {process.map((segment, index) => (
+                  <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={false} />
+                ))}
+              </div>
+            </details>
+          ) : (
+            <div className="session-analyst__receipt is-flat"><span className="session-analyst__receipt-label">{foldSummary}</span></div>
+          )
+        ) : null}
+        {/* 이벤트가 아직 없을 때만 펄스가 선다 — 원장이 서면 원장이 진행을 말한다. */}
+        {(working && !hasLedger && answer === null) || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
+        {working && hasLedger ? <span className="session-analyst__truth-mark">{t("terminal.analyst.lastConfirmedOnly")}</span> : null}
         {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {!liveStopped && !working && receipt?.outcome === "stopped" ? (
           <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>
@@ -514,11 +549,18 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
         {!liveError && !working && receipt?.outcome === "error" ? (
           <div className="session-analyst__stopped is-error" role="status">{`${receipt.error ? translateServerMessage(language, receipt.error) : t("terminal.analyst.state.needsAttention")} · ${formatElapsed(receipt.durationMs)}`}</div>
         ) : null}
-        {!working && receipt?.outcome === "complete" ? <TurnReceipt language={language} durationMs={receipt.durationMs} tools={receipt.tools} /> : null}
-        {entry !== null && entry.text !== "" ? (
+        {/* 실패·중단 턴의 과정도 역사에 남는다 — "무엇까지는 확인됐나"가 이 원장의 몫이다. */}
+        {!working && receipt && receipt.outcome !== "complete" && hasLedger ? (
+          <div className="session-analyst__ledger is-aftermath">
+            {process.map((segment, index) => (
+              <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={false} />
+            ))}
+          </div>
+        ) : null}
+        {answer !== null ? (
           <div className="session-analyst__answer">
             <div className="session-analyst__answer-kicker" aria-hidden="true">{t("terminal.chat.answerLabel")}</div>
-            <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={working} language={language} transformHtml={decorateEvidence} />
+            <StreamedMarkdown className="session-analyst__response markdown-body" text={answer.text} streaming={working} language={language} transformHtml={decorateEvidence} />
           </div>
         ) : null}
       </div>
@@ -526,6 +568,40 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
   );
 }
 
+/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 문장은 공유 마크다운이, 스텝은 상태 글리프가 진다. */
+function LedgerSegment({ segment, language, decorateEvidence, live }: {
+  readonly segment: AnalysisSegment;
+  readonly language: ConsoleLocale;
+  readonly decorateEvidence: (html: string) => string;
+  readonly live: boolean;
+}) {
+  return (
+    <div className="session-analyst__seg">
+      {segment.text !== "" ? (
+        <StreamedMarkdown className="session-analyst__seg-text markdown-body" text={segment.text} streaming={false} language={language} transformHtml={decorateEvidence} />
+      ) : null}
+      {segment.steps.length > 0 ? (
+        <div className="session-analyst__steps">
+          {segment.steps.map((step) => <LedgerStep key={step.title} step={step} live={live} />)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LedgerStep({ step, live }: { readonly step: AnalysisToolStep; readonly live: boolean }) {
+  const status = step.status.toLowerCase();
+  const running = live && /pend|progress|running|start/.test(status);
+  const failed = /fail|error|denied|reject/.test(status);
+  const tone = running ? "live" : failed ? "fail" : "done";
+  return (
+    <div className="session-analyst__step" data-tone={tone}>
+      <span className="session-analyst__step-mark" aria-hidden="true">{running ? "●" : failed ? "✕" : "✓"}</span>
+      <strong>{step.title}</strong>
+      <small>{step.status}</small>
+    </div>
+  );
+}
 
 /* 진행 펄스 행 — 마지막 확인 활동만 말한다는 정직성 마이크로카피가 함께 붙는다. */
 function TurnPulse({ state, language, elapsedMs }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly elapsedMs: number }) {
@@ -559,38 +635,6 @@ function StoppedReceipt({ state, language, elapsedMs }: { readonly state: Analys
   const elapsed = formatElapsed(elapsedMs);
   const activity = activityLabel(state.latestActivity, language);
   return <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
-}
-
-/* 완료 영수증 — 접힌 한 줄("✓ 12s · 3 steps"), 펼치면 이 턴이 밟은 도구 단계.
-   값은 봉인된 턴 메타데이터에서 온다 — 전역 상태는 다음 턴에서 초기화된다. */
-function TurnReceipt({ language, durationMs, tools }: { readonly language: ConsoleLocale; readonly durationMs: number; readonly tools: readonly { readonly title: string; readonly status: string }[] }) {
-  const t = getT(language);
-  const elapsed = formatElapsed(durationMs);
-  const steps = tools;
-  const stepsLabel = steps.length === 0 ? null : steps.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: steps.length });
-  // 끝난 턴은 한 문장으로 접힌다 — 채팅 원장의 접힘과 같은 문법이다. 예전에는 이 시간이 두 번
-  // 섰다: 머리의 "{elapsed} 만에 응답"과 알약의 "✓ {elapsed} · N스텝". 같은 사실을 두 모양으로
-  // 말하면 둘 중 무엇이 이 턴의 결말인지 읽는 쪽이 정해야 한다.
-  const answered = t("terminal.analyst.turnAnswered", { elapsed });
-  const summary = stepsLabel ? `${answered} · ${stepsLabel}` : answered;
-  return (
-    <details className="session-analyst__receipt">
-      <summary aria-label={t("terminal.chat.receiptAria")}>
-        <span className="session-analyst__receipt-label">{summary}</span>
-        <span className="session-analyst__receipt-chev" aria-hidden="true">⌄</span>
-      </summary>
-      {steps.length > 0 ? (
-        <div className="session-analyst__receipt-body">
-          {steps.map((tool) => (
-            <div className="session-analyst__receipt-step" key={tool.title}>
-              <strong>{tool.title}</strong>
-              <small>{tool.status}</small>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </details>
-  );
 }
 
 function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {

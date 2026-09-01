@@ -32,8 +32,8 @@ function artifactUrl(frame: HTMLIFrameElement): URL {
 }
 
 afterEach(() => {
-  document.documentElement.style.removeProperty("--ink-veil");
-  document.documentElement.style.removeProperty("--ink-pearl");
+  document.documentElement.style.removeProperty("--surface-panel");
+  document.documentElement.style.removeProperty("--text-primary");
 });
 
 describe("artifact frame", () => {
@@ -46,9 +46,9 @@ describe("artifact frame", () => {
     expect(panel).toContain("src={analysisArtifactUrl(artifact.id, theme, getArtifactColors())}");
   });
 
-  it("includes the active theme and exact computed Console canvas tokens for all themes", () => {
-    document.documentElement.style.setProperty("--ink-veil", "oklch(23.5% 0.02 245)");
-    document.documentElement.style.setProperty("--ink-pearl", "oklch(94% 0.008 90)");
+  it("includes the active theme and exact computed Console panel tokens for all themes", () => {
+    document.documentElement.style.setProperty("--surface-panel", "oklch(23.5% 0.02 245)");
+    document.documentElement.style.setProperty("--text-primary", "oklch(94% 0.008 90)");
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -59,7 +59,7 @@ describe("artifact frame", () => {
       expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact-late");
       expect(Object.fromEntries(url.searchParams)).toEqual({
         theme,
-        canvas: "oklch(23.5% 0.02 245)",
+        ground: "oklch(23.5% 0.02 245)",
         foreground: "oklch(94% 0.008 90)",
       });
     }
@@ -69,8 +69,8 @@ describe("artifact frame", () => {
   });
 
   it("opens a creation-ordered header listbox and keeps one selected preview", () => {
-    document.documentElement.style.setProperty("--ink-veil", "rgb(11, 12, 13)");
-    document.documentElement.style.setProperty("--ink-pearl", "rgb(241, 242, 243)");
+    document.documentElement.style.setProperty("--surface-panel", "rgb(11, 12, 13)");
+    document.documentElement.style.setProperty("--text-primary", "rgb(241, 242, 243)");
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -101,7 +101,7 @@ describe("artifact frame", () => {
     expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact-early");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       theme: "instrument",
-      canvas: "rgb(11, 12, 13)",
+      ground: "rgb(11, 12, 13)",
       foreground: "rgb(241, 242, 243)",
     });
     act(() => iframe.dispatchEvent(new Event("load", { bubbles: true })));
@@ -131,9 +131,9 @@ describe("artifact frame", () => {
     container.remove();
   });
 
-  it("regenerates the artifact URL when the Console theme canvas changes", () => {
-    document.documentElement.style.setProperty("--ink-veil", "rgb(31, 32, 33)");
-    document.documentElement.style.setProperty("--ink-pearl", "rgb(221, 222, 223)");
+  it("regenerates the artifact URL when the Console theme panel ground changes", () => {
+    document.documentElement.style.setProperty("--surface-panel", "rgb(31, 32, 33)");
+    document.documentElement.style.setProperty("--text-primary", "rgb(221, 222, 223)");
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -141,15 +141,15 @@ describe("artifact frame", () => {
     act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("maritime") })));
     const maritimeUrl = container.querySelector("iframe")?.getAttribute("src") ?? "";
 
-    document.documentElement.style.setProperty("--ink-veil", "rgb(41, 42, 43)");
-    document.documentElement.style.setProperty("--ink-pearl", "rgb(211, 212, 213)");
+    document.documentElement.style.setProperty("--surface-panel", "rgb(41, 42, 43)");
+    document.documentElement.style.setProperty("--text-primary", "rgb(211, 212, 213)");
     act(() => root.render(createElement(AnalystArtifactsPanel, { context: operationContext("carbon") })));
     const carbonUrl = container.querySelector("iframe")?.getAttribute("src") ?? "";
 
     expect(carbonUrl).not.toBe(maritimeUrl);
     expect(Object.fromEntries(new URL(carbonUrl, "http://console.test").searchParams)).toEqual({
       theme: "carbon",
-      canvas: "rgb(41, 42, 43)",
+      ground: "rgb(41, 42, 43)",
       foreground: "rgb(211, 212, 213)",
     });
 

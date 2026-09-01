@@ -109,7 +109,7 @@ describe("Session Analyst entry chip readiness", () => {
     expect(getAnalysisStore(OPERATION_ID, api)).toBe(store);
     expect(store.getSnapshot().entries).toMatchObject([
       { role: "user", text: "Remember this conversation" },
-      { role: "analyst", text: "Retained answer" },
+      { role: "analyst", segments: [{ text: "Retained answer", steps: [] }] },
     ]);
     expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
   });

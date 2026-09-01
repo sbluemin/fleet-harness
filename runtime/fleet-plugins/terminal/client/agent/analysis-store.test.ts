@@ -135,7 +135,7 @@ describe("per-operation analysis store", () => {
     ]);
     expect(harness.subscribe).not.toHaveBeenCalled();
     harness.emit(operationId, { type: "chunk", text: "Looks good" });
-    expect(second.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", text: "Looks good" });
+    expect(second.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", segments: [{ text: "Looks good", steps: [] }] });
     harness.emit(operationId, { type: "complete" });
     expect(first.getSnapshot().busy).toBe(false);
 
@@ -732,8 +732,8 @@ describe("per-operation analysis store", () => {
     expect(harness.subscribe).not.toHaveBeenCalled();
     harness.emit(operationIds[0]!, { type: "chunk", text: "alpha" });
     harness.emit(operationIds[5]!, { type: "chunk", text: "zeta" });
-    expect(stores[0]!.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", text: "alpha" });
-    expect(stores[5]!.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", text: "zeta" });
+    expect(stores[0]!.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", segments: [{ text: "alpha", steps: [] }] });
+    expect(stores[5]!.getSnapshot().entries.at(-1)).toMatchObject({ role: "analyst", segments: [{ text: "zeta", steps: [] }] });
     expect(stores[1]!.getSnapshot().entries.filter((entry) => entry.role === "analyst")).toHaveLength(0);
     disposeAnalysisStore(operationIds[0]!);
     expect(harness.streamOpen()).toBe(true);

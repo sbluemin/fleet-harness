@@ -202,7 +202,7 @@ describe("Session Analyst artifact export", () => {
     act(() => [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Open in new tab")!.click());
 
     expect(open).toHaveBeenCalledWith(
-      "/plugins/terminal/analysis/artifacts/artifact-active?theme=dark&canvas=Canvas&foreground=CanvasText",
+      "/plugins/terminal/analysis/artifacts/artifact-active?theme=dark&ground=Canvas&foreground=CanvasText",
       "_blank",
       "noopener",
     );

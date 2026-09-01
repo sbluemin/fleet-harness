@@ -5,14 +5,30 @@ export const MAX_ANALYSIS_ARTIFACTS = 32;
 
 /* 턴이 끝나는 순간 그 턴의 결과를 엔트리에 봉인한다 — 전역 상태는 다음 send에서 초기화되므로,
    역사 턴의 헤드·영수증·노드 상태는 이 메타데이터만이 정직하게 말할 수 있다. */
+export interface AnalysisToolStep { readonly title: string; readonly status: string; }
 export interface AnalysisTurnReceipt {
   readonly outcome: "complete" | "stopped" | "error";
   readonly durationMs: number;
-  readonly tools: readonly { readonly title: string; readonly status: string }[];
+  readonly tools: readonly AnalysisToolStep[];
   /* 실패 턴의 사유 — 전역 error는 다음 send가 지우므로 역사 턴은 이 값만 말할 수 있다. */
   readonly error?: string;
 }
-export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; readonly at?: number; readonly receipt?: AnalysisTurnReceipt; }
+/* 구간 = 모델의 문장 하나와 그 문장으로 한 일(채팅뷰 원장과 같은 단위). 텍스트가 흐르는 동안은
+   같은 구간에 붙고, 도구가 한 번이라도 낀 뒤의 텍스트는 새 구간을 연다 — 중간 서술과 최종 답이
+   한 덩어리로 병합되던 v1(`last.text + text`)의 봉합 자국이 여기서 사라진다. */
+export interface AnalysisSegment { readonly text: string; readonly steps: readonly AnalysisToolStep[]; }
+export type AnalysisEntry =
+  | { readonly role: "user"; readonly text: string; readonly at?: number }
+  | { readonly role: "analyst"; readonly segments: readonly AnalysisSegment[]; readonly at?: number; readonly receipt?: AnalysisTurnReceipt };
+
+/* 원장을 과정과 확정 답으로 가른다. 답 = 도구가 뒤따르지 않은 마지막 텍스트 구간.
+   스트리밍 중에도 같은 규칙이다 — 꼬리 구간에 도구가 붙는 순간 그 구간은 과정으로 승격되고,
+   다음 텍스트가 새 답 후보를 연다. */
+export function splitAnalystLedger(segments: readonly AnalysisSegment[]): { readonly process: readonly AnalysisSegment[]; readonly answer: AnalysisSegment | null } {
+  const last = segments.at(-1);
+  if (last && last.text !== "" && last.steps.length === 0) return { process: segments.slice(0, -1), answer: last };
+  return { process: segments, answer: null };
+}
 export type AnalysisPhase = "idle" | "starting" | "reasoning" | "tool" | "writing" | "complete" | "stopped" | "error";
 export type AnalysisActivity =
   | { readonly kind: "starting"; readonly connected: boolean }
@@ -167,6 +183,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
       phase: "tool",
       latestActivity: { kind: "tool", title: event.title, status: event.status },
       tools: [...state.tools.filter((tool) => tool.title !== event.title), { title: event.title, status: event.status }],
+      entries: attachAnalystToolStep(state.entries, event.title, event.status, action.now),
       ...(isArtifactAuthoring ? { artifactAuthoring: state.artifactAuthoring ?? { startedAt: action.now }, artifactPublished: null } : {}),
     };
   }
@@ -236,12 +253,36 @@ function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt
   // 봉인하지 않으면 다음 send가 전역 상태를 초기화한 뒤 그 턴 전체가 역사에서 사라진다.
   if (last?.role !== "analyst") {
     if (last?.role !== "user") return state.entries;
-    return [...state.entries, { role: "analyst", text: "", at: now, receipt }];
+    return [...state.entries, { role: "analyst", segments: [], at: now, receipt }];
   }
   return [...state.entries.slice(0, -1), { ...last, receipt }];
 }
 
 function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string, now: number): readonly AnalysisEntry[] {
   const last = entries.at(-1);
-  return last?.role === "analyst" ? [...entries.slice(0, -1), { ...last, text: last.text + text }] : [...entries, { role: "analyst", text, at: now }];
+  if (last?.role !== "analyst") return [...entries, { role: "analyst", segments: [{ text, steps: [] }], at: now }];
+  const segment = last.segments.at(-1);
+  // 도구가 낀 구간 뒤의 텍스트는 새 구간이다 — 과정 문장과 답이 다시는 병합되지 않는다.
+  const segments = !segment
+    ? [{ text, steps: [] as readonly AnalysisToolStep[] }]
+    : segment.steps.length > 0
+      ? [...last.segments, { text, steps: [] as readonly AnalysisToolStep[] }]
+      : [...last.segments.slice(0, -1), { ...segment, text: segment.text + text }];
+  return [...entries.slice(0, -1), { ...last, segments }];
+}
+
+/* 도구 스텝은 지금 열려 있는 구간에 붙는다 — 문장 없이 도구부터 시작한 턴은 빈 문장의
+   구간을 연다(채팅뷰의 문장 없는 스텝 줄과 동형). 같은 구간 안의 같은 제목은 상태 갱신이다. */
+function attachAnalystToolStep(entries: readonly AnalysisEntry[], title: string, status: string, now: number): readonly AnalysisEntry[] {
+  const last = entries.at(-1);
+  if (last?.role !== "analyst") {
+    if (last?.role !== "user") return entries;
+    return [...entries, { role: "analyst", segments: [{ text: "", steps: [{ title, status }] }], at: now }];
+  }
+  const segment = last.segments.at(-1) ?? { text: "", steps: [] as readonly AnalysisToolStep[] };
+  const steps = [...segment.steps.filter((step) => step.title !== title), { title, status }];
+  const segments = last.segments.length === 0
+    ? [{ ...segment, steps }]
+    : [...last.segments.slice(0, -1), { ...segment, steps }];
+  return [...entries.slice(0, -1), { ...last, segments }];
 }

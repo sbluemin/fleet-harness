@@ -45,33 +45,42 @@ function registerAnalysis(router: { readonly ctx: unknown }, deps: Partial<Analy
   });
 }
 
-function artifactTokens(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string; readonly positive?: string; readonly warn?: string; readonly critical?: string; readonly focus?: string }): string {
+function artifactTokens(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string; readonly inset?: string; readonly faint?: string; readonly hairlineStrong?: string; readonly positive?: string; readonly warn?: string; readonly critical?: string; readonly focus?: string }): string {
+  // v2 파생 폴백 — 레거시(canvas/surface) URL은 ground/card로 흡수되고 새 티어는 단계 폴백한다.
+  const inset = colors.inset ?? colors.canvas;
+  const faint = colors.faint ?? colors.muted;
+  const hairlineStrong = colors.hairlineStrong ?? colors.hairline;
   const positive = colors.positive ?? colors.foreground;
   const warn = colors.warn ?? colors.foreground;
   const critical = colors.critical ?? colors.foreground;
   const focus = colors.focus ?? colors.accent;
-  return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent};--fleet-positive:${positive};--fleet-warn:${warn};--fleet-critical:${critical};--fleet-focus:${focus};--fleet-sans:`;
+  return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-card:${colors.surface};--fleet-inset:${inset};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-faint:${faint};--fleet-hairline:${colors.hairline};--fleet-hairline-strong:${hairlineStrong};--fleet-accent:${colors.accent};--fleet-positive:${positive};--fleet-warn:${warn};--fleet-critical:${critical};--fleet-focus:${focus};--fleet-sans:`;
 }
 
 const ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="${ANALYSIS_ARTIFACT_CSP.split("; ").filter((directive) => !directive.startsWith("sandbox") && !directive.startsWith("frame-ancestors")).join("; ")}">`;
 
 describe("Session Analyst server contract", () => {
-  it("serializes all Console theme colors into artifact URLs", () => {
-    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", { canvas: "#101820", foreground: "#f2f4f7", surface: "#18212b", hairline: "#35404d", accent: "#65d1ff", muted: "#96a0ad", positive: "#5fd39a", warn: "#e5c07b", critical: "#f2777a", focus: "#d9a441" }), "http://fleet.invalid");
+  it("serializes all Console theme coordinates into artifact URLs", () => {
+    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", { ground: "#101820", foreground: "#f2f4f7", card: "#18212b", inset: "#0c1014", hairline: "#35404d", hairlineStrong: "#4a5764", accent: "#65d1ff", muted: "#96a0ad", faint: "#7d8894", positive: "#5fd39a", warn: "#e5c07b", critical: "#f2777a", focus: "#d9a441", sansFont: "/console/assets/manrope-latin.woff2", monoFont: "/console/assets/jetbrains-latin.woff2" }), "http://fleet.invalid");
 
     expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact%2Fid");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       theme: "carbon",
-      canvas: "#101820",
+      ground: "#101820",
       foreground: "#f2f4f7",
-      surface: "#18212b",
+      card: "#18212b",
+      inset: "#0c1014",
       hairline: "#35404d",
+      hairlineStrong: "#4a5764",
       accent: "#65d1ff",
       muted: "#96a0ad",
+      faint: "#7d8894",
       positive: "#5fd39a",
       warn: "#e5c07b",
       critical: "#f2777a",
       focus: "#d9a441",
+      sansFont: "/console/assets/manrope-latin.woff2",
+      monoFont: "/console/assets/jetbrains-latin.woff2",
     });
   });
 
