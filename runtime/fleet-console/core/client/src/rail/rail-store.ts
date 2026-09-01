@@ -13,6 +13,8 @@ interface RailStore {
   readonly overlayAlpha: RailOverlayAlpha;
   /** 레일 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
   readonly railOccupiedPx: number;
+  /** 접힌 레일을 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정, railOccupiedPx에 불참한다. */
+  readonly railPeeking: boolean;
 }
 
 export type RailOverlayAlpha = number;
@@ -34,6 +36,7 @@ let store: RailStore = {
   panelExtraWidth: 0,
   overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
+  railPeeking: false,
 };
 
 export function subscribeRailStore(listener: Listener): () => void {
@@ -66,8 +69,16 @@ export function closeRailPanel(id: string): void {
 
 export function setRailChromeExpanded(expanded: boolean): void {
   if (store.railChromeExpanded === expanded) return;
-  setStore({ ...store, railChromeExpanded: expanded });
+  // dock 상태 전환은 어느 방향이든 픽을 끝낸다 — 펼침(고정)은 픽의 승격이고, 새 접힘은 픽 없이 시작한다.
+  setStore({ ...store, railChromeExpanded: expanded, railPeeking: false });
   saveStoredChromeExpanded(expanded);
+}
+
+/** 엣지 독 호버가 접힌 레일을 오버레이로 되부른다 — 펼쳐져 있으면 픽이 설 자리가 없다. */
+export function setRailPeeking(peeking: boolean): void {
+  const next = peeking && !store.railChromeExpanded;
+  if (store.railPeeking === next) return;
+  setStore({ ...store, railPeeking: next });
 }
 
 export function toggleRailChrome(): void {
@@ -116,6 +127,10 @@ export function useRailOverlayAlpha(): RailOverlayAlpha {
 
 export function useRailOccupiedPx(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railOccupiedPx;
+}
+
+export function useRailPeeking(): boolean {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railPeeking;
 }
 
 function activateRailPanel(id: string): void {

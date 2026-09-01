@@ -20,6 +20,7 @@ import { operationAccentFromNode } from "../canvas/operation-accent.js";
 import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
+import { RailEdgeDock, SideBarEdgeDock } from "../components/panel-edge-docks.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { TriageSideBar } from "../sidebar/triage-side-bar.js";
@@ -799,6 +800,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         />
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
+      {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
+          같은 접힘 상태를 쓰므로 독도 모드와 무관하게 이 페이지가 한 번만 세운다. */}
+      <SideBarEdgeDock />
+      <RailEdgeDock />
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

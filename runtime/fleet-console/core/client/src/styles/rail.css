@@ -362,6 +362,16 @@
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
 }
 
+/* Periscope 픽 — 접힌 레일을 엣지 독 호버가 오버레이로 되부른다. dock 상태(railChromeExpanded)와
+   railOccupiedPx 보고는 그대로라 아레나·fit-all은 접힘 기하를 유지하고, 카드만 원폭으로 떠오른다.
+   brass 믹스 테두리는 사이드바 픽과 같은 위치/호버 채널이다(components.css 참조). */
+.right-rail.is-closed.is-peeking {
+  width: calc(44px + var(--right-rail-panel-width, 0px));
+  border-color: color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
+  visibility: visible;
+  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+}
+
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .right-rail,

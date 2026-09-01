@@ -2158,24 +2158,39 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("--console-gnb-height");
     expect(layout).not.toContain("is-focus-mode");
     expect(theme).toContain("--chrome-band-height: 44px;");
-    expect(commandBand).toContain('className="command-band-button command-band-sidebar-toggle"');
     expect(commandBand).toContain("<BrandHome />");
     expect(commandBand).toContain("<CommandBandSystemCluster />");
-    expect(commandBand).toContain("onClick={handleSideBarToggle}");
     expect(commandBand).toContain('className="command-band-button command-band-search"');
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
     expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
-    expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
-    expect(commandBand).toContain("onClick={handleRailToggle}");
-    // 두 패널 토글은 라우트가 아니라 뷰 모드로만 걸린다 — /operations 밖에서도 밴드에 상주하고,
-    // 눌리면 Operations로 돌아가 그 표면을 펼친다(사라지는 조작 표면 + 무음 단축키 금지).
-    expect(commandBand).toContain("const panelTogglesVisible = viewMode.effective !== \"mobile\";");
-    expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-sidebar-toggle\"");
-    expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-rail-toggle\"");
-    // 맵 컨트롤은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역) — 좌측 클러스터가 아니라
-    // .command-band-center 안에 플로우 자식으로 선다.
+    // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 접기는 각 패널 자신의 컨트롤이,
+    // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. ⌘B·⌘⌥B 의미는
+    // 불변이고 /operations 밖의 "돌아가 펼침"은 단축키 핸들러가 계속 소유한다.
+    expect(commandBand).not.toContain("command-band-sidebar-toggle");
+    expect(commandBand).not.toContain("command-band-rail-toggle");
+    expect(commandBand).not.toContain("panelTogglesVisible");
+    const sidebarPanelSource = source("sidebar/operations-side-bar.tsx");
+    const triageSidebarSource = source("sidebar/triage-side-bar.tsx");
+    const railPanelSource = source("rail/right-rail.tsx");
+    const edgeDocks = source("components/panel-edge-docks.tsx");
+    expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
+    expect(triageSidebarSource).toContain("<SideBarCollapseControl />");
+    expect(railPanelSource).toContain('className="right-rail-ico right-rail-collapse"');
+    // 접힘 순간 포커스는 접힌 뒤에도 남는 안정 좌표(그 패널의 엣지 독 트리거)로 넘어간다.
+    expect(sidebarPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock")');
+    expect(railPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".rail-edge-dock")');
+    // 픽은 오버레이다 — dock 상태(collapsed/railChromeExpanded)와 아레나 인셋 보고를 건드리지
+    // 않고 카드만 되부른다. 필라멘트·픽 테두리의 brass 믹스는 상태가 아니라 위치/호버 채널이다.
+    expect(components).toContain(".operations-side-bar.is-closed.is-peeking {");
+    expect(rail).toContain(".right-rail.is-closed.is-peeking {");
+    expect(components).toContain(".panel-edge-dock-filament {");
+    // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
+    expect(edgeDocks).toContain("data-canvas-blocker");
+    // 맵 컨트롤(모드 스위치+검색+트레이)은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역). 검색은
+    // 전역 진입구라 유틸리티 뷰에서도 중앙에 남고, 모드 스위치·트레이만 Operations 뷰에 게이트된다.
     expect(commandBand).toContain(`      <div className="command-band-center">
-        {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
+        <div ref={mapControlsRef} className="command-band-map-controls">
+        {operationsViewVisible ? <div className="command-band-mode-switch"`);
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
     expect(commandBand).not.toContain("command-band-dock-divider");
@@ -2194,9 +2209,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
     expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
     // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
-    expect(commandBand).toContain('{canvasMode === "cruise" ? <div className="command-band-mode-tray"');
-    expect(commandBand).toContain('{canvasMode === "tactical" ? <div className="command-band-mode-tray"');
-    expect(commandBand).toContain('{canvasMode === "warRoom" ? <div className="command-band-mode-tray"');
+    // 검색이 중앙 상주가 되며 트레이는 Operations 뷰 게이트를 각자 지닌다(모드 스위치와 동일).
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "cruise" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "tactical" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{operationsViewVisible && canvasMode === "warRoom" ? <div className="command-band-mode-tray"');
     expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
     expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
     // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
@@ -3482,7 +3498,9 @@ describe("Instrument core design contract", () => {
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
     expect(commandBand).not.toContain("command-band-operation-attribute");
     expect(commandBand).not.toContain("command-band-operation-status");
-    expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
+    // 패널 토글 글리프(사이드바 프레임 rect)는 Periscope에서 토글과 함께 퇴역했다 —
+    // 밴드에 패널 프레임 아이콘이 되살아나면 접기 조작이 밴드로 되돌아온 회귀다.
+    expect(commandBand).not.toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
   });
 

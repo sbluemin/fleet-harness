@@ -217,10 +217,30 @@ export function takeKeyboardShortcutsReturnFocus(): HTMLElement | null {
   return taken;
 }
 
-export function focusCommandBandToggleWhenPanelContainsActiveElement(panel: HTMLElement | null, toggleSelector: string): void {
+// 패널이 접히는 순간 포커스가 그 안에 있으면, 접힘 뒤에도 남는 안정 좌표(그 패널의 엣지 독
+// 트리거)로 넘긴다 — 옛 좌표는 밴드 토글이었고, 토글이 패널 소유로 이관되며 독이 승계했다.
+export function focusEdgeDockWhenPanelContainsActiveElement(panel: HTMLElement | null, dockSelector: string): void {
   const activeElement = document.activeElement;
   if (panel === null || !(activeElement instanceof Node) || !panel.contains(activeElement)) return;
-  document.querySelector<HTMLButtonElement>(toggleSelector)?.focus();
+  document.querySelector<HTMLButtonElement>(dockSelector)?.focus();
+}
+
+// ⌘(mac 계열) / Ctrl(그 외) — 패널 접기 컨트롤의 라벨이 단축키를 함께 말할 때 쓴다.
+// 구 command-band 토글에서 이관된 판별식이며, UI 컴포넌트가 아니라 여기(단축키 정책)가 거처다.
+function resolveModLabel(): string {
+  const userAgentDataPlatform = (navigator as Navigator & { readonly userAgentData?: { readonly platform?: string } }).userAgentData?.platform;
+  const platform = userAgentDataPlatform ?? navigator.platform;
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+}
+
+export function sideBarShortcutLabel(): string {
+  const modLabel = resolveModLabel();
+  return `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
+}
+
+export function railShortcutLabel(): string {
+  const modLabel = resolveModLabel();
+  return `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
 }
 
 // ─── editing guard — when typing swallows an Operations shortcut ───────────────

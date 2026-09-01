@@ -5461,18 +5461,61 @@ body[data-side-bar-animating="true"] .canvas-operation {
   line-height: 1.45;
 }
 
-/* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
-   .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
-   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다.
-   카드의 첫 요소이므로 위 여백은 이 스트립이 진다 — 좌우보다 한 단 넓게 잡아야
-   세그먼트 워시가 카드 상단 라운드에 붙지 않는다. */
-.operations-side-bar-axis {
-  position: relative;
+/* 카드 최상단 스트립 — 좌측은 축 스위치(또는 빈 자리), 우단은 패널 자신의 접기 컨트롤이다
+   (Periscope: 접기는 밴드가 아니라 패널의 동사). 카드의 첫 요소이므로 위 여백은 이 스트립이
+   진다 — 좌우보다 한 단 넓게 잡아야 세그먼트 워시가 카드 상단 라운드에 붙지 않는다. */
+.side-bar-top-strip {
   display: flex;
   flex: none;
   align-items: center;
   gap: var(--space-1);
   margin: var(--space-2) var(--space-1) 2px;
+}
+
+.side-bar-top-strip-spacer {
+  flex: 1;
+}
+
+/* 접기/열어 두기 컨트롤 — 밴드 아이콘 버튼과 같은 24px 유령 버튼 문법(hover는 링+필,
+   accent는 brass 위치 채널이 아니라 중립 잉크 승격만). */
+.side-bar-collapse {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-collapse svg {
+  width: 16px;
+  height: 16px;
+}
+
+.side-bar-collapse:hover,
+.side-bar-collapse:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+/* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
+   .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
+   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다.
+   바깥 여백은 top-strip이 소유한다. */
+.operations-side-bar-axis {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .operations-side-bar-axis-seg {
@@ -13028,6 +13071,128 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-color: transparent;
   visibility: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
+}
+
+/* ── Periscope 픽 — 접힌 카드를 엣지 독 호버가 오버레이로 되부른다 ─────────────────
+   dock 상태(collapsed)는 그대로라 아레나 인셋·fit-all은 접힘 기하를 유지하고, 카드만
+   원폭으로 떠오른다. 테두리의 brass 믹스는 상태가 아니라 "호버가 소환한 표면"의 위치/호버
+   채널이다(전체화면 밴드 엣지 리빌과 같은 문법). */
+.operations-side-bar.is-closed.is-peeking {
+  width: var(--side-bar-width, 280px);
+  border-color: color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
+  visibility: visible;
+  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+}
+
+/* ── 엣지 독 — 접힌 패널이 남기는 유일한 문 ──────────────────────────────────────
+   3px brass 필라멘트(위치 채널)가 상시 서고, 16px 투명 트리거가 호버=픽·클릭=고정을 받는다.
+   카드와 같은 --z-rail 층·같은 세로 인셋에 서서 "카드가 있던 자리의 가장자리"로 읽힌다.
+   픽 중에는 카드(12px 인셋)가 트리거 위를 일부 덮지만 독이 DOM 순서상 위라 클릭은 여전히
+   고정으로 간다 — 픽에서 한 번의 클릭이 곧 열어 두기가 되는 지름길이다. */
+.panel-edge-dock {
+  position: absolute;
+  top: var(--space-3);
+  bottom: var(--space-3);
+  width: 16px;
+  z-index: var(--z-rail, 10);
+}
+
+.panel-edge-dock.is-left {
+  left: 0;
+}
+
+.panel-edge-dock.is-right {
+  right: 0;
+}
+
+.panel-edge-dock-trigger {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.panel-edge-dock-filament {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  /* 바닥 믹스를 26%까지만 낮춘다 — 카드 전고(800px+)로 늘어난 그라데이션에서 바닥이 이보다
+     내려가면 중간 높이부터 문이 사실상 보이지 않는다(2026-09 실측: 14% 바닥은 육안 소실). */
+  background: linear-gradient(
+    color-mix(in oklch, var(--brass) 58%, transparent),
+    color-mix(in oklch, var(--brass) 26%, transparent)
+  );
+  opacity: 0.65;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.panel-edge-dock.is-left .panel-edge-dock-filament {
+  left: 0;
+}
+
+.panel-edge-dock.is-right .panel-edge-dock-filament {
+  right: 0;
+}
+
+.panel-edge-dock:hover .panel-edge-dock-filament,
+.panel-edge-dock.is-peeking .panel-edge-dock-filament,
+.panel-edge-dock-trigger:focus-visible ~ .panel-edge-dock-filament {
+  opacity: 1;
+}
+
+/* 셰브런은 호버·포커스에서만 떠오른다 — 쉼 상태의 문은 필라멘트 하나로 말한다. */
+.panel-edge-dock-glyph {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 30px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-band);
+  color: var(--text-secondary);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--duration-fast) var(--ease-glide);
+  pointer-events: none;
+}
+
+.panel-edge-dock.is-left .panel-edge-dock-glyph {
+  left: 2px;
+}
+
+.panel-edge-dock.is-right .panel-edge-dock-glyph {
+  right: 2px;
+}
+
+.panel-edge-dock-glyph svg {
+  width: 10px;
+  height: 10px;
+}
+
+.panel-edge-dock:hover .panel-edge-dock-glyph,
+.panel-edge-dock-trigger:focus-visible .panel-edge-dock-glyph {
+  opacity: 1;
+}
+
+/* 포커스 링 대신 필라멘트 점등 + 셰브런 부상으로 답한다 — 16px 투명 스트립에 그리는
+   외곽 링은 아무 형체도 두르지 못한 채 허공에 뜬다. */
+.panel-edge-dock-trigger:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operations-side-bar.is-closed.is-peeking,
+  .panel-edge-dock-filament,
+  .panel-edge-dock-glyph {
+    transition-duration: 0.01ms;
+  }
 }
 
 .operations-center-stage {

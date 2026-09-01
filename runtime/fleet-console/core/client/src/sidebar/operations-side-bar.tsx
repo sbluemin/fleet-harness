@@ -11,7 +11,7 @@ import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
+import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
@@ -27,9 +27,11 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
+import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
 import {
   consumeStatusLandings,
   setSideBarCollapsed,
+  setSideBarPeeking,
   setSideBarStatusAxis,
   setTheaterCollapsed,
   getStatusTransitionTick,
@@ -380,7 +382,7 @@ export function OperationsSideBar({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
 
   useLayoutEffect(() => {
-    if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
+    if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
     previousCollapsedRef.current = collapsed;
   }, [collapsed]);
 
@@ -911,23 +913,33 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}`}
+      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}
       data-resizing={resizing ? "true" : undefined}
       data-canvas-blocker
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
-      inert={collapsed}
+      inert={collapsed && !sideBar.peeking}
       onContextMenu={openNewMenuAtCursor}
+      onPointerLeave={(event) => {
+        // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝난다. 엣지 독으로 되돌아가는
+        // 이동만 픽의 연속으로 본다(독 쪽 이탈은 독이 대칭으로 판정한다).
+        if (!collapsed || !sideBar.peeking) return;
+        const next = event.relatedTarget;
+        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
+        setSideBarPeeking(false);
+      }}
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
       {/* 축은 목록 전체를 다시 쓰는 하나짜리 세션 스위치다 — Theater 행에 두면 배치가 국소라고
           말하면서 효과는 전역이라 읽는 사람이 스코프를 오해한다. 목록 위 고정 스트립에
           한 번만 서고, 눌림이 아니라 낱말로 현재 축을 말한다. Theater가 없으면 정리할
-          목록도 없으므로 스트립도 서지 않는다. */}
-      {theaters.length > 0 ? (
+          목록도 없으므로 스트립도 서지 않는다. 스트립 우단은 패널 자신의 접기 컨트롤이
+          맡는다(Periscope — 밴드 토글 퇴역). */}
+      <div className="side-bar-top-strip">
+        {theaters.length > 0 ? (
         <div className="operations-side-bar-axis" role="group" aria-label={t("sidebar.axis.aria")}>
           <SegmentedThumb />
           <button
@@ -951,7 +963,9 @@ export function OperationsSideBar({
             {t("sidebar.axis.status")}
           </button>
         </div>
-      ) : null}
+        ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
+        <SideBarCollapseControl />
+      </div>
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {

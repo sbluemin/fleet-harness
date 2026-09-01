@@ -1,5 +1,5 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -17,7 +17,9 @@ import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
-import { useSideBarState } from "./operations-side-bar-store.js";
+import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
+import { setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
+import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
@@ -85,9 +87,17 @@ export function TriageSideBar({
   // 그대로여서 useMinimized 계열 구독이 발화하지 않으므로, 스냅샷 자체를 구독해 어느 Theater가
   // 바뀌든 다시 읽는다 — 선반 복원처럼 선별 스토어를 건드리지 않는 경로가 있어 그 emit에 얹힐 수 없다.
   useCanvasState();
-  // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드의 사이드바 토글이
+  // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — ⌘B와 패널 접기 컨트롤이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
+  const rootRef = useRef<HTMLElement | null>(null);
+  const previousCollapsedRef = useRef(sideBar.collapsed);
+  // Map 사이드바와 같은 접힘 포커스 인계 — 접히는 순간 포커스가 카드 안에 있으면 inert에
+  // 버려지기 전에 엣지 독 트리거로 넘긴다(Codex P2).
+  useLayoutEffect(() => {
+    if (!previousCollapsedRef.current && sideBar.collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
+    previousCollapsedRef.current = sideBar.collapsed;
+  }, [sideBar.collapsed]);
   const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [launchMenu, setLaunchMenu] = useState<{
@@ -197,15 +207,29 @@ export function TriageSideBar({
   };
   return (
     <aside
-      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}`}
+      ref={rootRef}
+      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${sideBar.width}px` } as CSSProperties}
-      inert={sideBar.collapsed}
+      inert={sideBar.collapsed && !sideBar.peeking}
       aria-label={t("triageSidebar.aria")}
       onContextMenu={openLaunchMenuAtCursor}
+      onPointerLeave={(event) => {
+        // Map 사이드바와 같은 픽 종료 계약 — 카드를 떠나면 끝나고, 엣지 독으로의 이동만 연속이다.
+        if (!sideBar.collapsed || !sideBar.peeking) return;
+        const next = event.relatedTarget;
+        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
+        setSideBarPeeking(false);
+      }}
     >
+      {/* 접기 컨트롤은 두 사이드바가 같은 문법으로 소유한다 — 선별 사이드바에는 축 스트립이
+          없으므로 스트립은 컨트롤 하나를 우단에 세우는 자리로만 선다. */}
+      <div className="side-bar-top-strip">
+        <span className="side-bar-top-strip-spacer" aria-hidden="true" />
+        <SideBarCollapseControl />
+      </div>
       {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·유휴는 War Room이 읽는
           축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
           "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}

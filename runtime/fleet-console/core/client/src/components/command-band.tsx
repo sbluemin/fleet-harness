@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
@@ -12,19 +12,11 @@ import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useUpdateProgress } from "../update-progress-store.js";
-import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
-import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import { toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
-
-interface NavigatorWithUserAgentData extends Navigator {
-  readonly userAgentData?: {
-    readonly platform?: string;
-  };
-}
 
 interface CommandBandProps {
   readonly operationsViewVisible: boolean;
@@ -62,38 +54,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const t = useT();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
-  const sideBar = useSideBarState();
-  const railChromeExpanded = useRailChromeExpanded();
   const viewMode = useViewMode();
   const operationsViewVisible = requestedOperationsViewVisible && viewMode.effective !== "mobile";
-  const modLabel = resolveModLabel();
-  const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
-  const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
-  const navigate = useNavigate();
-  // 두 패널 토글은 데스크톱 밴드에 상주한다 — 사라졌다 나타나는 조작 표면은 밴드를 불안정하게 읽히게 하고,
-  // 버튼이 없는 동안에도 ⌘B·⌘⌥B는 계속 발화해 보이지 않는 영속 상태만 바꿨다(2026-08 실측).
-  // /operations 밖에서는 접을 표면 자체가 없으므로 팔레트 toggle-rail과 같은 경로로 Operations로 돌아가 펼친다.
-  const panelTogglesVisible = viewMode.effective !== "mobile";
-  const sideBarToggleExpands = !operationsViewVisible || sideBar.collapsed;
-  const sideBarToggleLabel = t(sideBarToggleExpands ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut });
-  const railToggleExpands = !operationsViewVisible || !railChromeExpanded;
-  const railToggleLabel = t(railToggleExpands ? "chrome.commandBand.expandActivityRail" : "chrome.commandBand.collapseActivityRail", { shortcut: railShortcut });
-  const handleSideBarToggle = useCallback(() => {
-    if (operationsViewVisible) {
-      setSideBarCollapsed(!sideBar.collapsed);
-      return;
-    }
-    navigate("/operations");
-    setSideBarCollapsed(false);
-  }, [navigate, operationsViewVisible, sideBar.collapsed]);
-  const handleRailToggle = useCallback(() => {
-    if (operationsViewVisible) {
-      toggleRailChrome();
-      return;
-    }
-    navigate("/operations");
-    setRailChromeExpanded(true);
-  }, [navigate, operationsViewVisible]);
+  // 패널 접기 토글은 밴드에서 퇴역했다(Periscope 문법) — 접기는 각 패널의 자기 컨트롤이,
+  // 접힌 뒤의 복귀는 화면 엣지 독(brass 필라멘트 + 호버 픽)이 진다. ⌘B·⌘⌥B는 의미 불변이며
+  // /operations 밖의 "돌아가 펼침"은 단축키 핸들러(app.tsx resolvePanelShortcut)가 계속 소유한다.
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const triageActive = useTriageActive();
@@ -132,7 +97,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
-  // 맵 컨트롤(모드 스위치+트레이)은 중앙 트랙의 단독 승객이다(Theater›Operation 브레드크럼
+  // 맵 컨트롤(모드 스위치+검색+트레이)은 중앙 트랙의 단독 승객이다(Theater›Operation 브레드크럼
   // 퇴역). 중앙은 Console 전체 정중앙에 고정하므로 여백 하한은 좌·우 클러스터의 실측 콘텐츠
   // 폭 중 큰 쪽에서 잰다 — 한쪽만 예약하면 중앙이 viewport 중앙에서 밀리거나 우측과 겹친다.
   const centerGutter = commandBandCenterGutter(leftContentEnd, rightContentWidth);
@@ -342,18 +307,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             {t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}
           </span>
         ) : null}
-        {panelTogglesVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={handleSideBarToggle} aria-label={sideBarToggleLabel} title={sideBarToggleLabel}>
-          <PanelToggleIcon side="left" />
-        </button> : null}
-        <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
-          <SearchIcon />
-        </button>
       </div>
       {/* 맵 컨트롤은 중앙 트랙의 단독 승객이다 — Theater›Operation 브레드크럼은 사이드바가
-          이미 말하는 문장이라 퇴역했고, 캔버스 모드가 밴드의 정중앙을 가져간다. */}
+          이미 말하는 문장이라 퇴역했고, 캔버스 모드가 밴드의 정중앙을 가져간다. 전역 명령의
+          진입구인 검색은 모드 스위치 직우에 상주한다: 트레이 폭은 모드마다 ±11px 출렁이지만
+          스위치 폭은 고정이라 직우가 유일한 안정 앵커다(2026-09 실측). 유틸리티 라우트에서는
+          맵 컨트롤이 내려가고 검색이 중앙 트랙의 단독 승객으로 남는다. */}
       <div className="command-band-center">
-        {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
-        <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
+        <div ref={mapControlsRef} className="command-band-map-controls">
+        {operationsViewVisible ? <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
           <SegmentedThumb />
           {CANVAS_MODES.map((mode) => (
             <button
@@ -371,8 +333,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               {mode.label}
             </button>
           ))}
-        </div>
-        {canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
+        </div> : null}
+        <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
+          <SearchIcon />
+        </button>
+        {operationsViewVisible && canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
           <button type="button" className="command-band-mode-tool" onClick={fitAllOperations} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
@@ -387,7 +352,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             onClick={() => setStationKeeping(!stationKeeping)}
           ><StationKeepingIcon /></button>
         </div> : null}
-        {canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
+        {operationsViewVisible && canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 트레이 순서가 바뀌어도
               앵커가 조용히 사라지지 않도록 의미 속성으로 표시한다. */}
@@ -410,7 +375,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             onClick={cycleTriageDeckZoomPreset}
           ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
         </div> : null}
-        {canvasMode === "tactical" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.tacticalTools")}>
+        {operationsViewVisible && canvasMode === "tactical" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.tacticalTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           {TACTICAL_LAYOUTS.map((layout) => (
             <button
@@ -426,7 +391,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             ><layout.Icon /></button>
           ))}
         </div> : null}
-        </div> : null}
+        </div>
       </div>
       <div ref={bandRightRef} className="command-band-right">
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
@@ -434,9 +399,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </button> : null}
         <ViewModeToggle className="command-band-button command-band-viewmode" />
         <CommandBandSystemCluster />
-        {panelTogglesVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={handleRailToggle} aria-label={railToggleLabel} title={railToggleLabel}>
-          <PanelToggleIcon side="right" />
-        </button> : null}
       </div>
       </header>
     </>
@@ -500,12 +462,6 @@ function BrandMarkIcon() {
   );
 }
 
-function resolveModLabel(): string {
-  const userAgentDataPlatform = (navigator as NavigatorWithUserAgentData).userAgentData?.platform;
-  const platform = userAgentDataPlatform ?? navigator.platform;
-  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
-}
-
 function SearchIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
@@ -550,15 +506,6 @@ function FormationRowsIcon() {
 
 
 
-
-function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="1.75" y="3" width="12.5" height="10" rx="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d={side === "left" ? "M6.4 3v10" : "M9.6 3v10"} stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
 
 function PinIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6M6.2 2.5v3l2.1 2.1v1H7.1V13.5l.9 1M9.8 2.5v3L7.7 7.6v1h1.2V13.5L8 14.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;

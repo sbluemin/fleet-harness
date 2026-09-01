@@ -28,7 +28,7 @@ describe("two-state SideBar store", () => {
     store.setSideBarCollapsed(true);
     store.setSideBarCollapsed(false);
 
-    expect(store.getSideBarState()).toEqual({ width: 356, collapsed: false });
+    expect(store.getSideBarState()).toEqual({ width: 356, collapsed: false, peeking: false });
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
   });
 
