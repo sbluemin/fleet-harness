@@ -152,28 +152,28 @@ describe("Repository signal mixing", () => {
 });
 
 describe("Repository design grammar", () => {
-  // 2026-09-01 소프트 그래파이트 재가 — 선택은 스파인이 아니라 위치 채널(brass)의 저알파
-  // 라운드 필이다. 스파인(inset 2px) 문법은 이 패널에서 퇴역했고, 필의 알파는 10%로 통일해
-  // 선택 면이 hover(잉크 9%)보다 한 단 무거우면서도 신호 채널을 침범하지 않게 한다.
-  it("paints selection as a low-alpha brass fill without spines", () => {
+  // 2026-09-01 실기 재가 — brass 저알파 필 선택은 행 전체가 위치색으로 물들어 과하다는
+  // 판정으로 하루 만에 퇴역했다. 선택은 중립 잉크 워시 + brass 스파인으로 말하고,
+  // 라운드 행 기하(4px 인셋)는 유지한다.
+  it("paints selection as a neutral wash with a brass spine on rounded rows", () => {
     expect(blockOf(".repository-ref-row.is-current")).toContain("var(--text-primary)");
     expect(blockOf(".repository-ref-row.is-current")).not.toContain("var(--brass)");
     expect(blockOf(".repository-ref-row.is-current:hover")).not.toContain("var(--brass)");
     expect(blockOf(".repository-ref-row.is-current .repository-ref-sub")).toContain("var(--brass-ink)");
 
     const selectedFile = blockOf(".repository-file-row.is-cur");
-    expect(selectedFile).toContain("var(--brass) 10%");
-    expect(selectedFile).not.toContain("inset 2px 0 0");
+    expect(selectedFile).toContain("var(--ink-fog) 12%");
+    expect(selectedFile).toContain("inset 2px 0 0 var(--brass)");
     expect(blockOf(".repository-file-row.is-cur .repository-file-fn")).toContain("var(--text-primary)");
 
     const selectedCommit = blockOf(".history-commit-row.is-selected");
-    expect(selectedCommit).toContain("var(--brass) 10%");
-    expect(selectedCommit).not.toContain("inset 2px 0 0");
+    expect(selectedCommit).toContain("var(--ink-fog) 12%");
+    expect(selectedCommit).toContain("inset 2px 0 0 var(--brass)");
 
     const activeTreeRow = blockOf(".repository-ws-tree-row.is-active");
     expect(activeTreeRow).toContain("var(--text-primary)");
-    expect(activeTreeRow).toContain("var(--brass) 10%");
-    expect(activeTreeRow).not.toContain("inset 2px 0 0");
+    expect(activeTreeRow).toContain("var(--brass) 7%");
+    expect(activeTreeRow).toContain("inset 2px 0 0 var(--brass)");
 
     expect(blockOf(".history-badge--tag")).not.toContain("var(--brass)");
     expect(blockOf(".history-badge--head")).toContain("var(--brass)");
@@ -198,7 +198,7 @@ describe("Repository design grammar", () => {
     expect(verb).toContain("background: var(--control-rest)");
     expect(verb).toContain("border: 1px solid var(--surface-rim)");
     expect(verb).not.toContain("background: transparent");
-    for (const selector of [".history-order-toggle", ".repository-refresh-btn", ".repository-reload-state", ".repository-compare-swap", ".repository-stage-action"]) {
+    for (const selector of [".history-order-toggle", ".repository-refresh-btn", ".repository-reload-state", ".repository-compare-swap", ".repository-stage-action", ".history-segmented button", ".repository-toggle-btn", ".repository-depth-step", ".repository-ws-peek-main", ".repository-ws-peek-close"]) {
       expect(blockOf(selector), selector).toContain("var(--control-rest)");
     }
     for (const selector of [".repository-filter-input", ".repository-stash-popover-input"]) {
@@ -288,7 +288,7 @@ describe("Repository design grammar", () => {
   // pin/pick은 상태이므로 aurora(신호), 실패는 coral, 성공 요약은 positive — brass는 위치/포커스 전용으로 남는다.
   it("keeps the anchor-compare and sync surfaces on the signal channel, never brass", () => {
     const picked = blockOf(".history-commit-row.is-picked");
-    expect(picked).toContain("var(--aurora) 12%");
+    expect(picked).toContain("inset 2px 0 0 var(--aurora)");
     expect(picked).not.toContain("var(--brass)");
     expect(blockOf(".history-row-compare")).toContain("var(--aurora)");
     expect(blockOf(".history-row-compare")).not.toContain("var(--brass)");
