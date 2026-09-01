@@ -174,8 +174,6 @@ export const canvasEn = {
   "sidebar.chip.closeArmed": "Close?",
 
   // ── sidebar 헤더/필터 (전면 해도 개편 P2) ────────────────────────────────
-  "sidebar.filter.placeholder": "Filter operations…",
-  "sidebar.filter.aria": "Filter operations by title",
 
   // ── rail ────────────────────────────────────────────────────────────────
   "pane.caption.expand": "Expand",
@@ -367,8 +365,6 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.chip.closeTitle": "Operation 닫기",
   "sidebar.chip.closeArmed": "닫을까요?",
 
-  "sidebar.filter.placeholder": "Operation 필터…",
-  "sidebar.filter.aria": "Operation 제목으로 필터",
 
   "pane.caption.expand": "확대",
   "pane.caption.close": "페인 닫기",

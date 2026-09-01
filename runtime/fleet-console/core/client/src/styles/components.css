@@ -5461,106 +5461,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
   line-height: 1.45;
 }
 
-/* ── 카드 헤더 + 인라인 필터 (전면 해도 개편 P2) ───────────────────────────
-   부유 카드가 자기 이름·수량·도구를 갖는 자기 완결 계기 문법. 필터는 가리기 전용이고
-   이동은 ⌘K가 진다 — 두 필터가 같은 열에서 역할을 다투지 않게 placeholder가 구분한다. */
-.side-bar-head {
-  display: flex;
-  align-items: center;
-  flex: none;
-  gap: 6px;
-  padding: var(--space-2) var(--space-3) 2px;
-}
-
-.side-bar-head-label {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.side-bar-head-count {
-  /* 수량은 정적 메타데이터다 — brass는 위치/포커스 채널이라 휴지 숫자에 쓸 수 없다. */
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
-}
-
-.side-bar-head-tool {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin-left: auto;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.side-bar-head-tool svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.side-bar-head-tool:hover:not(:disabled),
-.side-bar-head-tool:focus-visible {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-  outline: none;
-}
-
-.side-bar-head-tool:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: not-allowed;
-}
-
-.side-bar-filter {
-  flex: none;
-  padding: 2px var(--space-2) var(--space-1);
-}
-
-.side-bar-filter-input {
-  width: 100%;
-  height: 24px;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.side-bar-filter-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.side-bar-filter-input:focus-visible {
-  border-color: var(--control-open-rim);
-  outline: none;
-}
-
-
 /* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
    .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
-   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다. */
+   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다.
+   카드의 첫 요소이므로 위 여백은 이 스트립이 진다 — 좌우보다 한 단 넓게 잡아야
+   세그먼트 워시가 카드 상단 라운드에 붙지 않는다. */
 .operations-side-bar-axis {
   position: relative;
   display: flex;
   flex: none;
   align-items: center;
   gap: var(--space-1);
-  margin: var(--space-1) var(--space-1) 2px;
+  margin: var(--space-2) var(--space-1) 2px;
 }
 
 .operations-side-bar-axis-seg {
