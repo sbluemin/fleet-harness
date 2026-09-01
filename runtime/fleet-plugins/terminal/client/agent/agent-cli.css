@@ -777,6 +777,13 @@
   gap: var(--space-2);
 }
 
+/* 라벨과 '?' 팁이 한 줄에 선다 — 팁이 라벨 안에 서면 버튼의 접근성 이름이 셀렉트 이름에 실린다. */
+.compact-timing-preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .compact-timing-preview-label {
   color: var(--text-tertiary);
   font-family: var(--font-mono);

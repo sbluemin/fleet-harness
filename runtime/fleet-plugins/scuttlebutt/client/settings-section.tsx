@@ -2,6 +2,7 @@ import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import {
   ExperimentalBadge,
   SettingsCard,
+  SettingsHelpTip,
   SettingsRow,
   SettingsSlider,
   SettingsToggle,
@@ -89,7 +90,14 @@ function ScuttlebuttSettingsSection() {
         </>
       }
     >
-      <SettingsRow label={t("settings.section.roster")} hint={t("settings.section.rosterHint")}>
+      <SettingsRow
+        label={t("settings.section.roster")}
+        helpTip={
+          <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.roster") })}>
+            {t("settings.section.rosterHint")}
+          </SettingsHelpTip>
+        }
+      >
         <div className="scuttlebutt-settings-roster">
           {AIDES.map((aide) => (
             <SettingsToggle
@@ -104,7 +112,14 @@ function ScuttlebuttSettingsSection() {
       </SettingsRow>
       {/* 근무 중인 부관의 크기만 낸다 — 퇴근한 부관의 슬라이더는 아무것도 바꾸지 않는 줄이다. */}
       {onDuty.length > 0 ? (
-        <SettingsRow label={t("settings.section.size")} hint={t("settings.section.sizeHint")}>
+        <SettingsRow
+          label={t("settings.section.size")}
+          helpTip={
+            <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.size") })}>
+              {t("settings.section.sizeHint")}
+            </SettingsHelpTip>
+          }
+        >
           <div className="scuttlebutt-settings-sizes">
             {onDuty.map((aide) => {
               const shown = settings.sizes[aide];
@@ -142,7 +157,14 @@ function ScuttlebuttSettingsSection() {
           </div>
         </SettingsRow>
       ) : null}
-      <SettingsRow label={t("settings.section.departure")} hint={t("settings.section.departureHint")}>
+      <SettingsRow
+        label={t("settings.section.departure")}
+        helpTip={
+          <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.departure") })}>
+            {t("settings.section.departureHint")}
+          </SettingsHelpTip>
+        }
+      >
         <SettingsToggle
           label={t("settings.section.departureToggle")}
           checked={settings.departureBell}

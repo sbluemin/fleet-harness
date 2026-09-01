@@ -10,6 +10,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 
 import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
+import { SettingsHelp } from "../components/settings-help.js";
 import { PairDeviceDialog } from "../components/pair-device-dialog.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../global-settings-store.js";
@@ -337,15 +338,19 @@ export function ThemeCard({
   };
   return (
     <section className="global-settings-card appearance-card" aria-label={t("settings.theme.aria")}>
-      <p className="global-settings-card-title">{t("settings.theme.title")}</p>
+      {/* CLI 테마 각주는 카드 전체의 이야기라 카드 제목 팁이 진다 — 행 팁은 자기 줄만 말한다. */}
+      <p className="global-settings-card-title">
+        {t("settings.theme.title")}
+        <SettingsHelp title={t("settings.theme.title")}>{t("settings.theme.cliNote")}</SettingsHelp>
+      </p>
       <div className="appearance-controls">
           <div className="global-settings-row is-stack">
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title">
                 {t("settings.theme.label")}
+                <SettingsHelp title={t("settings.theme.label")}>{t("settings.theme.help")}</SettingsHelp>
                 <SettingsScope kind="live" />
               </p>
-              <p className="global-settings-help">{t("settings.theme.help")}</p>
             </div>
             {/* 라이트와 다크가 같은 카드 문법을 쓴다. 모드 버튼 뒤에 다크 셋을 감추면 라이트를
                 쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 한다. */}
@@ -379,12 +384,12 @@ export function ThemeCard({
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title">
                 {t("settings.theme.liquidGlass")}
+                {/* 도움말은 문단을 쌓지 않고 문장을 갈아 끼운다 — 기본 문안은 "끄면 원래대로"라고
+                    말하므로, 끌 수 없는 라이트 자리에 그대로 두면 거짓이 된다. */}
+                <SettingsHelp title={t("settings.theme.liquidGlass")}>
+                  {t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")}
+                </SettingsHelp>
                 <SettingsScope kind="live" />
-              </p>
-              {/* 도움말은 줄마다 한 문단이다 — 두 번째 문단을 쌓지 않고 문장을 갈아 끼운다.
-                  기본 문안은 "끄면 원래대로"라고 말하므로, 끌 수 없는 자리에 그대로 두면 거짓이 된다. */}
-              <p className="global-settings-help">
-                {t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")}
               </p>
             </div>
             <SettingsSwitch
@@ -399,9 +404,9 @@ export function ThemeCard({
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title">
                 {t("settings.theme.panelFade")}
+                <SettingsHelp title={t("settings.theme.panelFade")}>{t("settings.theme.panelFadeHelp")}</SettingsHelp>
                 <SettingsScope kind="live" />
               </p>
-              <p className="global-settings-help">{t("settings.theme.panelFadeHelp")}</p>
             </div>
             {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
                 것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다. */}
@@ -432,7 +437,6 @@ export function ThemeCard({
               행 자체는 데스크톱 페인이 주입한다 — 레일이 없는 모바일에 죽은 슬라이더를 세우지 않기 위해. */}
           {extras}
       </div>
-      <p className="global-settings-foot global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
     </section>
   );
 }
@@ -493,9 +497,9 @@ export function TypographyCard({
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
             {t("settings.typography.label")}
+            <SettingsHelp title={t("settings.typography.label")}>{t("settings.typography.help")}</SettingsHelp>
             <SettingsScope kind="live" />
           </p>
-          <p className="global-settings-help">{t("settings.typography.help")}</p>
         </div>
         <button
           type="button"
@@ -572,9 +576,9 @@ export function LanguageCard({
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
             {t("settings.language.label")}
+            <SettingsHelp title={t("settings.language.label")}>{t("settings.language.help")}</SettingsHelp>
             <SettingsScope kind="live" />
           </p>
-          <p className="global-settings-help">{t("settings.language.help")}</p>
         </div>
         <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
           <SegmentedThumb />
@@ -811,12 +815,17 @@ function RemoteHostsCard() {
   return (
     <div className="remote-card" data-remote-card="hosts">
       <div className="remote-card-head">
-        <p className="remote-card-title">{t("settings.remote.hosts.title")}</p>
+        <p className="remote-card-title">
+          {t("settings.remote.hosts.title")}
+          <SettingsHelp title={t("settings.remote.hosts.title")}>
+            <p>{t("settings.remote.hosts.help")}</p>
+            <p>{t("settings.remote.hosts.pinned")}</p>
+          </SettingsHelp>
+        </p>
         <button ref={addRef} type="button" className="remote-create" onClick={() => setAddOpen(true)}>
           {t("chrome.hosts.add")}
         </button>
       </div>
-      <p className="remote-card-help">{t("settings.remote.hosts.help")}</p>
 
       {hosts.length === 0 ? (
         <p className="remote-hosts-empty">{t("settings.remote.hosts.empty")}</p>
@@ -827,8 +836,6 @@ function RemoteHostsCard() {
           ))}
         </ul>
       )}
-
-      <p className="remote-card-help">{t("settings.remote.hosts.pinned")}</p>
       {addOpen ? <AddHostDialog openerRef={addRef} onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
@@ -994,10 +1001,10 @@ function RemoteListenerCard({
   return (
     <div className="remote-card" data-remote-card="listener">
       <div className="remote-card-head">
-        <div>
-          <p className="remote-card-title">{t("settings.remote.accept.title")}</p>
-          <p className="remote-card-help">{t("settings.remote.accept.help")}</p>
-        </div>
+        <p className="remote-card-title">
+          {t("settings.remote.accept.title")}
+          <SettingsHelp title={t("settings.remote.accept.title")}>{t("settings.remote.accept.help")}</SettingsHelp>
+        </p>
         <RemoteListenerLozenge status={status} listening={listening} ready={presentation.ready} />
       </div>
 
@@ -1041,10 +1048,10 @@ function RemoteListenerCard({
       {isWarnableLocalPort(draft.listenPort) ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
 
       <div className="remote-public-endpoint-head">
-        <div>
-          <p className="remote-card-title">{t("settings.remote.publicEndpoint.title")}</p>
-          <p className="remote-card-help">{t("settings.remote.publicEndpoint.help")}</p>
-        </div>
+        <p className="remote-card-title">
+          {t("settings.remote.publicEndpoint.title")}
+          <SettingsHelp title={t("settings.remote.publicEndpoint.title")}>{t("settings.remote.publicEndpoint.help")}</SettingsHelp>
+        </p>
         <button type="button" role="switch" aria-checked={draft.publicEndpointEnabled}
           aria-label={t("settings.remote.publicEndpoint.title")}
           className={`settings-switch ${draft.publicEndpointEnabled ? "is-on" : ""}`}
@@ -1324,7 +1331,10 @@ function RemoteIdentityCard({
   return (
     <div className="remote-card" data-remote-card="identity">
       <div className="remote-card-head">
-        <p className="remote-card-title">{t("settings.remote.identity.title")}</p>
+        <p className="remote-card-title">
+          {t("settings.remote.identity.title")}
+          <SettingsHelp title={t("settings.remote.identity.title")}>{t("settings.remote.identity.help")}</SettingsHelp>
+        </p>
         <button
           type="button"
           className={`remote-rotate ${armed ? "is-armed" : ""}`}
@@ -1338,7 +1348,6 @@ function RemoteIdentityCard({
           {busy === "rotate" ? t("settings.remote.rotate.busy") : armed ? t("settings.remote.rotate.arm") : t("settings.remote.rotate")}
         </button>
       </div>
-      <p className="remote-card-help">{t("settings.remote.identity.help")}</p>
       <code className="remote-fingerprint">{status?.fingerprint ?? t("settings.remote.identity.none")}</code>
     </div>
   );
@@ -1403,12 +1412,16 @@ function RemoteLinksCard({
   return (
     <div className="remote-card" data-remote-card="links">
       <div className="remote-card-head">
-        <p className="remote-card-title">{t("settings.remote.links.title")}</p>
+        <p className="remote-card-title">
+          {t("settings.remote.links.title")}
+          <SettingsHelp title={t("settings.remote.links.title")}>
+            {renderMessage(t("settings.remote.links.rule"), { minutes: REMOTE_GRANT_TTL_MINUTES })}
+          </SettingsHelp>
+        </p>
         <button type="button" className="remote-create" disabled={busy !== null} onClick={onCreate}>
           {busy === "create" ? t("settings.remote.creating") : t("settings.remote.create")}
         </button>
       </div>
-      <p className="remote-card-help">{renderMessage(t("settings.remote.links.rule"), { minutes: REMOTE_GRANT_TTL_MINUTES })}</p>
 
       {link ? (
         <>
@@ -1538,10 +1551,8 @@ function ConsolePortSettings({
       <div className="global-settings-row-text">
         <p className="global-settings-resp-title">
           {t("settings.port.label")}
+          <SettingsHelp title={t("settings.port.label")}>{t("settings.port.help")}</SettingsHelp>
           <SettingsScope kind="restart" />
-        </p>
-        <p className="global-settings-help">
-          {t("settings.port.help")}
         </p>
       </div>
       <div className="console-port-control">

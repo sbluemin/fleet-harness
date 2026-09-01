@@ -4,6 +4,8 @@ import { loadApiCatalog, useApiCatalogStore } from "../backend-api-catalog.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import type { ApiCatalogEntry } from "../types.js";
 
+import { SettingsHelp } from "./settings-help.js";
+
 export interface ApiCatalogGroup {
   readonly label: string;
   readonly entries: readonly ApiCatalogEntry[];
@@ -49,7 +51,11 @@ export function BackendApiSection() {
       <div className={`backend-api-control settings-disclosure-control ${expanded ? "is-expanded" : ""}`}>
         <div className="settings-disclosure-head">
           <div className="backend-api-head">
-            <p className="global-settings-resp-title">{t("chrome.backendApi.title")}</p>
+            <p className="global-settings-resp-title">
+              {t("chrome.backendApi.title")}
+              <SettingsHelp title={t("chrome.backendApi.title")}>{t("chrome.backendApi.foot")}</SettingsHelp>
+            </p>
+            {/* 라우트·그룹 수는 설명이 아니라 카탈로그의 현재 값이다 — 읽어 낸 데이터는 인라인에 남는다. */}
             <p className="global-settings-help">
               {routeCount > 0
                 ? t(routeSummaryKey(routeCount, visibleGroupCount), { count: routeCount, groupCount: visibleGroupCount })
@@ -89,8 +95,6 @@ export function BackendApiSection() {
           {store.state && visibleGroupCount === 0 ? <p className="global-settings-help">{t("chrome.backendApi.noRoutes")}</p> : null}
         </div>
       ) : null}
-
-      <p className="global-settings-foot">{t("chrome.backendApi.foot")}</p>
     </section>
   );
 }
