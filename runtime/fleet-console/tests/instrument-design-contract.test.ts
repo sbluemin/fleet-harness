@@ -2230,19 +2230,22 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('<span className="command-band-mode-tray-divider" aria-hidden="true" />');
     // 도구도 세그먼트처럼 mousedown을 preventDefault한다 — 클릭이 포커스를 남기면 focus-within이
     // 캡슐을 계속 열어 두고, 열린 채 남은 캡슐이 이웃 캡슐의 클릭 지점을 덮는다(실입력 실측 사고).
-    expect(commandBand).toContain("const suppressToolFocus = (event: { preventDefault(): void }) => event.preventDefault();");
+    expect(commandBand).toContain("const suppressToolFocus = (event: { preventDefault(): void }) => {");
     expect(commandBand.match(/className="command-band-mode-tool/g)?.length).toBe(commandBand.match(/onMouseDown=\{suppressToolFocus\}/g)?.length);
     // 같은 문법의 반대면: preventDefault는 이전 포커스를 보존하므로, 키보드로 들어간 캡슐
-    // 포커스가 다른 셀 클릭 뒤에도 그 캡슐을 열어 둔다 — 스위치 클릭이 다이얼 안 포커스만
-    // 내보낸다(다이얼 밖 포커스는 War Room 무대 지명의 근거라 건드리지 않는다).
+    // 포커스가 다른 셀 클릭 뒤에도 그 캡슐을 열어 둔다 — 포인터 mousedown만 다이얼 안 포커스를
+    // 내보낸다. click 경로에 걸면 Enter/Space 활성화가 방금 조작한 도구의 키보드 위치까지
+    // 파괴한다(다이얼 밖 포커스는 War Room 무대 지명의 근거라 건드리지 않는다).
     expect(commandBand).toContain("const releaseDialFocus = () => {");
-    expect(commandBand).toContain('onClick={() => { releaseDialFocus(); selectCanvasMode(mode.id); }}');
+    expect(commandBand).toContain("onMouseDown={(event) => { event.preventDefault(); releaseDialFocus(); }}");
+    expect(commandBand).not.toMatch(/onClick=\{[^}]*releaseDialFocus/);
     // 이탈-상태 에코 — 다이얼이 hover 뒤로 접은 상태 가시성은 기본값 이탈 배지가 되갚는다
     // (평시 침묵). 배지가 플로우에 들면 등장·퇴장이 중앙을 다시 민다.
     expect(commandBand).toContain("{finePointer && (stationKeeping || densityEchoVisible) ? <div ref={echoRackRef} className=\"command-band-mode-echo-rack\">");
     // 에코 랙은 중앙 배치 폭에는 들지 않되(스위치 부동) fit 판정에는 예약된다 — 예약이 없으면
-    // 데스크톱 셸의 OS 컨트롤 예약 폭에서 배지가 우측 클러스터 위로 겹친다(Codex P2).
-    expect(commandBand).toContain("const echoReserve = echoRack === null ? 0 : ECHO_RACK_GAP_PX + echoRack.offsetWidth;");
+    // 데스크톱 셸의 OS 컨트롤 예약 폭에서 배지가 우측 클러스터 위로 겹친다(Codex P2). 대칭
+    // 판정식이 한쪽 돌출을 가리려면 예약은 두 배다.
+    expect(commandBand).toContain("const echoReserve = echoRack === null ? 0 : 2 * (ECHO_RACK_GAP_PX + echoRack.offsetWidth);");
     // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
     // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
     // 레이아웃이면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).

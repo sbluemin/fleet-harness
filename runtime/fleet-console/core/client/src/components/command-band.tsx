@@ -115,9 +115,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (formationView) clearFormationView();
   };
   // 클릭은 포커스를 남기지 않는 문법(preventDefault) 탓에, 키보드로 들어간 캡슐 포커스가 다른
-  // 셀 클릭 뒤에도 살아남아 그 캡슐을 focus-within으로 계속 열어 둔다 — 스위치 클릭이 소비되는
-  // 순간 다이얼 안의 포커스만 내보낸다. 다이얼 밖 포커스(예: War Room 무대 지명의 근거가 되는
-  // 패널 포커스)는 건드리지 않는다.
+  // 셀 클릭 뒤에도 살아남아 그 캡슐을 focus-within으로 계속 열어 둔다 — 포인터 mousedown이
+  // 소비되는 순간 다이얼 안의 포커스만 내보낸다. mousedown 경로에만 거는 이유: Enter/Space
+  // 활성화는 click만 만들므로, 키보드 사용자가 방금 조작한 도구의 포커스(가시적 위치)는
+  // 보존된다. 다이얼 밖 포커스(예: War Room 무대 지명의 근거가 되는 패널 포커스)도 건드리지
+  // 않는다.
   const releaseDialFocus = () => {
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest(".command-band-mode-dial") !== null) active.blur();
@@ -127,12 +129,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 전제였던 "소속 없는 도구 줄"(2026-08 격자 클릭 사고)은 존재하지 않는다. 모드 전이의
   // 소유권은 여전히 이 클러스터 하나다.
   const enterCruiseThen = (action: () => void) => {
-    releaseDialFocus();
     if (canvasMode !== "cruise") selectCanvasMode("cruise");
     action();
   };
   const enterWarRoomThen = (action: () => void) => {
-    releaseDialFocus();
     if (canvasMode !== "warRoom") enterTriage(focusedTriageOperationId(document.activeElement));
     action();
   };
@@ -140,7 +140,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
   // 레이아웃으로 서 있으면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
   const selectTacticalLayout = (layout: FormationLayout) => {
-    releaseDialFocus();
     if (triageActive) setTriageActive(false);
     if (!formationView || formationLayout !== layout) selectFormationLayout(layout);
   };
@@ -162,7 +161,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 도구도 세그먼트처럼 mousedown을 preventDefault한다 — 클릭이 도구에 포커스를 남기면
   // focus-within이 캡슐을 계속 열어 두고, 열린 채 남은 캡슐이 이웃 캡슐의 클릭 지점을 덮는다
   // (실입력 검증에서 SK 클릭이 tactical 도구에 착지한 사고). 키보드 포커스(Tab)는 그대로다.
-  const suppressToolFocus = (event: { preventDefault(): void }) => event.preventDefault();
+  const suppressToolFocus = (event: { preventDefault(): void }) => {
+    event.preventDefault();
+    releaseDialFocus();
+  };
   const modeTools = (mode: CanvasMode): ReactElement => {
     if (mode === "cruise") {
       return (<>
@@ -357,7 +359,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       // 동안 스위치가 움직이지 않는다는 계약은 그대로다.
       const mapControls = mapControlsRef.current;
       const echoRack = echoRackRef.current;
-      const echoReserve = echoRack === null ? 0 : ECHO_RACK_GAP_PX + echoRack.offsetWidth;
+      // fit 판정은 소요 폭을 좌우 대칭으로 나눠 앉히므로, 스위치 오른쪽으로만 뻗는 랙의
+      // 한쪽 돌출을 가리려면 예약을 두 배로 넣어야 한다 — 한 배만 넣으면 경계 폭에서 랙
+      // 절반이 여전히 우측 굴터를 침범한다.
+      const echoReserve = echoRack === null ? 0 : 2 * (ECHO_RACK_GAP_PX + echoRack.offsetWidth);
       setCenterContentWidth(mapControls === null ? 0 : echoReserve + Math.max(0, ...Array.from(mapControls.children, (child) => (child instanceof HTMLElement ? child.offsetLeft - mapControls.offsetLeft + child.offsetWidth : 0))));
     };
     measure();
@@ -496,8 +501,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 aria-pressed={canvasMode === mode.id}
                 aria-label={t(mode.titleKey)}
                 title={t(mode.titleKey)}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => { releaseDialFocus(); selectCanvasMode(mode.id); }}
+                onMouseDown={(event) => { event.preventDefault(); releaseDialFocus(); }}
+                onClick={() => selectCanvasMode(mode.id)}
               >
                 {mode.label}
               </button>
