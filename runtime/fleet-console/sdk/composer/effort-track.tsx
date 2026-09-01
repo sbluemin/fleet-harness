@@ -277,10 +277,12 @@ export function EffortTrack({
         onPointerCancel={(event) => endGesture(event, { confirm: false })}
       >
         {/* 자동은 폭 0이다. 손잡이 여백(EDGE)만큼이라도 남기면 트랙 왼쪽 끝에 brass 조각이 비쳐,
-            비운 상태가 최소 강도를 고른 것처럼 보인다. */}
+            비운 상태가 최소 강도를 고른 것처럼 보인다. 자동 슬롯이 없는 표면(분석가·Cowork)의
+            최소 단도 같은 이유로 0이다 — 첫 스톱이 곧 왼쪽 끝이라, EDGE 채움은 손잡이 뒤로
+            비어져 나온 brass 초승달로만 남는다(2026-09-01 실측). */}
         <span
           className="effort-track-fill"
-          style={{ width: isAuto ? 0 : leftAt(index) }}
+          style={{ width: isAuto || (!autoSlot && index === 0) ? 0 : leftAt(index) }}
           aria-hidden="true"
         />
         <span className="effort-track-stops" aria-hidden="true">

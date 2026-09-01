@@ -138,6 +138,9 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 /* ── 원장 — 구간(문장+스텝)이 도착한 순서대로 쌓인다. 진행 중에도, fold 안에서도 같은 문법. ── */
 .session-analyst__ledger { display: grid; gap: var(--space-3); margin-top: var(--space-2); }
+/* 도는 턴에서는 어포던스를 재운다 — 스트리밍으로 자라는 콘텐츠가 정지한 포인터 아래를 지나며
+   다이어그램의 zoom-in(+)·버튼의 pointer(손)로 커서가 깜빡인다. 완료되면 되살아난다. */
+.session-analyst__message--analyst.is-working .session-analyst__turn-main :is(a, button, img, .diagram-block, .code-block) { pointer-events: none; }
 .session-analyst__ledger.is-aftermath { margin-top: var(--space-2); opacity: .88; }
 .session-analyst__seg { min-width: 0; display: grid; gap: var(--space-2); }
 /* 과정 문장은 답보다 한 단 조용하다 — 밀도는 원장, 서체는 본문. */
@@ -293,7 +296,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__effort { display: inline-flex; min-width: 0; }
 .session-analyst__effort[inert] { opacity: .42; }
 .session-analyst__effort-na { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
-.session-analyst__send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; margin-left: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
+/* 중단·전송 묶음이 레일 오른쪽 끝을 진다 — 버튼 각각이 auto 마진을 쥐면 남는 폭이 둘 사이에도
+   갈라져 중단이 레일 한가운데 뜬다. */
+.session-analyst__actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.session-analyst__send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
 .session-analyst__send:not(:disabled) { border-color: var(--brass); background: var(--brass); color: var(--text-on-brass); }
 .session-analyst__send:hover:not(:disabled) { box-shadow: 0 0 14px var(--brass-glow); }
 .session-analyst__send:disabled { opacity: .42; cursor: default; }
@@ -304,7 +310,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__composer.is-working textarea { opacity: 1; color: var(--text-primary); -webkit-text-fill-color: var(--text-primary); }
 .session-analyst__composer.is-working textarea::placeholder { color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); }
 /* 도는 동안 좌표는 물러나되 전송·중단은 물러나지 않는다 — 중단이 이 순간의 주 동작이다. */
-.session-analyst__composer.is-working .session-analyst__composer-rail > :not(.session-analyst__send) { opacity: .34; }
+.session-analyst__composer.is-working .session-analyst__composer-rail > :not(.session-analyst__actions) { opacity: .34; }
 .session-analyst__sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ── Artifacts 컴패니언 — 같은 창 면 + 슬림 툴바(72px 밴드 폐기). ── */

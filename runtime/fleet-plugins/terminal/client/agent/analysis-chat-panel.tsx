@@ -148,8 +148,10 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   }, [dispatch, language, t]);
 
   // 중단·전송은 초기 툴 줄과 도킹된 줄에서 같은 버튼이다 — 두 벌로 갈라 두면 한쪽만 고쳐지는 자리가 된다.
+  // 중단·전송은 한 묶음으로 레일 오른쪽 끝에 붙는다 — 각자 auto 마진을 쥐면 남는 폭이
+  // 둘 사이에도 갈라져 중단 버튼이 레일 한가운데 떠 버린다(2026-09-01 실측).
   const actions = (
-    <>
+    <span className="session-analyst__actions">
       {state.busy ? (
         <button type="button" className="session-analyst__send session-analyst__stop" aria-label={t("terminal.analyst.stop")} onClick={() => void stop()}>
           <span aria-hidden="true" />
@@ -158,7 +160,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
       <button type="submit" className="session-analyst__send" aria-label={t(state.busy ? "terminal.analyst.queueQuestion" : "terminal.analyst.send")} disabled={!state.draft.trim()}>
         <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
       </button>
-    </>
+    </span>
   );
 
   const lastAnalystIndex = state.entries.reduce((last, entry, index) => entry.role === "analyst" ? index : last, -1);
@@ -513,12 +515,22 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
             <span className="session-analyst__live-text">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</span>
           </div>
         ) : null}
-        {/* 살아 있는 턴의 과정은 접지 않는다 — 원장이 곧 진행 표시다. */}
+        {/* 살아 있는 턴의 과정은 접지 않는다 — 원장이 곧 진행 표시다. 도구는 줄을 쌓지 않고
+           마지막 한 줄이 제자리에서 갱신된다: 스트리밍 중 도구 행렬이 자라면 문장이 밀려나고,
+           끝난 뒤 fold를 펼치면 어차피 전체가 나온다. */}
         {working && hasLedger ? (
           <div className="session-analyst__ledger">
             {process.map((segment, index) => (
-              <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={index === process.length - 1 && answer === null} />
+              <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={index === process.length - 1 && answer === null} stepsMode="none" />
             ))}
+            {(() => {
+              const liveStep = process.flatMap((segment) => segment.steps).at(-1);
+              return liveStep ? (
+                <div className="session-analyst__steps">
+                  <LedgerStep step={liveStep} live />
+                </div>
+              ) : null;
+            })()}
           </div>
         ) : null}
         {/* 끝난 턴의 과정은 fold 한 줄로 접힌다 — 채팅 원장의 접힘과 같은 문법. */}
@@ -568,19 +580,21 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
   );
 }
 
-/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 문장은 공유 마크다운이, 스텝은 상태 글리프가 진다. */
-function LedgerSegment({ segment, language, decorateEvidence, live }: {
+/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 문장은 공유 마크다운이, 스텝은 상태 글리프가 진다.
+   stepsMode="none"은 라이브 원장 전용이다 — 도구는 턴 말미의 단일 행이 대신 말한다. */
+function LedgerSegment({ segment, language, decorateEvidence, live, stepsMode = "all" }: {
   readonly segment: AnalysisSegment;
   readonly language: ConsoleLocale;
   readonly decorateEvidence: (html: string) => string;
   readonly live: boolean;
+  readonly stepsMode?: "all" | "none";
 }) {
   return (
     <div className="session-analyst__seg">
       {segment.text !== "" ? (
         <StreamedMarkdown className="session-analyst__seg-text markdown-body" text={segment.text} streaming={false} language={language} transformHtml={decorateEvidence} />
       ) : null}
-      {segment.steps.length > 0 ? (
+      {stepsMode === "all" && segment.steps.length > 0 ? (
         <div className="session-analyst__steps">
           {segment.steps.map((step) => <LedgerStep key={step.title} step={step} live={live} />)}
         </div>
