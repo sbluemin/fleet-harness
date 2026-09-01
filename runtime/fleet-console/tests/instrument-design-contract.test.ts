@@ -2210,6 +2210,20 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
+    // Pulse 이행 1단계 — 읽기 전용 상태 캡슐. 마크는 사이드바 칩·지도 점과 같은 활동 축 선언
+    // (.tenant-beacon)을 그대로 입는다: 밴드 전용 색·조형을 만들면 같은 원장이 두 문법으로
+    // 갈라진다. 낱말은 화면에 싣지 않고(비콘+숫자), 이름은 title·aria-label이 진다.
+    // 조작면이 아니므로 워시·호버 문법도 빌리지 않는다 — 면이 없는 것이 읽기 전용의 표기다.
+    expect(commandBand).toContain("commandBandPulseCounts(state.operations, state.operationRuntime)");
+    expect(commandBand).toContain('className="command-band-pulse"');
+    expect(commandBand).toContain('<span className="tenant-beacon is-turn-running" aria-hidden="true" />');
+    expect(commandBand).toContain('<span className="tenant-beacon is-awaiting" aria-hidden="true" />');
+    expect(commandBand).not.toMatch(/command-band-pulse[^\n]*onClick/);
+    expect(layout).toContain(".command-band-pulse {");
+    const pulseCapsuleBlock = layout.match(/\.command-band-pulse-capsule \{[^}]*\}/)?.[0] ?? "";
+    expect(pulseCapsuleBlock).not.toContain("background");
+    expect(pulseCapsuleBlock).toContain("cursor: default;");
+    expect(layout).not.toContain(".command-band-pulse-capsule:hover");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
