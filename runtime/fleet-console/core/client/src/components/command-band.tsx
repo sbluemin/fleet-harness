@@ -114,15 +114,25 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     }
     if (formationView) clearFormationView();
   };
+  // 클릭은 포커스를 남기지 않는 문법(preventDefault) 탓에, 키보드로 들어간 캡슐 포커스가 다른
+  // 셀 클릭 뒤에도 살아남아 그 캡슐을 focus-within으로 계속 열어 둔다 — 스위치 클릭이 소비되는
+  // 순간 다이얼 안의 포커스만 내보낸다. 다이얼 밖 포커스(예: War Room 무대 지명의 근거가 되는
+  // 패널 포커스)는 건드리지 않는다.
+  const releaseDialFocus = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest(".command-band-mode-dial") !== null) active.blur();
+  };
   // Helm Dial — 캡슐 도구 클릭은 "그 모드로 진입 + 도구 적용"이 한 제스처다. 도구가 제 모드의
   // 낱말 아래에서만 나오므로 어느 모드의 손잡이인지가 소속으로 명시되고, 무경고 모드 이탈의
   // 전제였던 "소속 없는 도구 줄"(2026-08 격자 클릭 사고)은 존재하지 않는다. 모드 전이의
   // 소유권은 여전히 이 클러스터 하나다.
   const enterCruiseThen = (action: () => void) => {
+    releaseDialFocus();
     if (canvasMode !== "cruise") selectCanvasMode("cruise");
     action();
   };
   const enterWarRoomThen = (action: () => void) => {
+    releaseDialFocus();
     if (canvasMode !== "warRoom") enterTriage(focusedTriageOperationId(document.activeElement));
     action();
   };
@@ -130,6 +140,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
   // 레이아웃으로 서 있으면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
   const selectTacticalLayout = (layout: FormationLayout) => {
+    releaseDialFocus();
     if (triageActive) setTriageActive(false);
     if (!formationView || formationLayout !== layout) selectFormationLayout(layout);
   };
@@ -486,7 +497,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 aria-label={t(mode.titleKey)}
                 title={t(mode.titleKey)}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => selectCanvasMode(mode.id)}
+                onClick={() => { releaseDialFocus(); selectCanvasMode(mode.id); }}
               >
                 {mode.label}
               </button>

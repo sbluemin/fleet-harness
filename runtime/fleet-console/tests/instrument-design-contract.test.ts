@@ -2232,6 +2232,11 @@ describe("Instrument core design contract", () => {
     // 캡슐을 계속 열어 두고, 열린 채 남은 캡슐이 이웃 캡슐의 클릭 지점을 덮는다(실입력 실측 사고).
     expect(commandBand).toContain("const suppressToolFocus = (event: { preventDefault(): void }) => event.preventDefault();");
     expect(commandBand.match(/className="command-band-mode-tool/g)?.length).toBe(commandBand.match(/onMouseDown=\{suppressToolFocus\}/g)?.length);
+    // 같은 문법의 반대면: preventDefault는 이전 포커스를 보존하므로, 키보드로 들어간 캡슐
+    // 포커스가 다른 셀 클릭 뒤에도 그 캡슐을 열어 둔다 — 스위치 클릭이 다이얼 안 포커스만
+    // 내보낸다(다이얼 밖 포커스는 War Room 무대 지명의 근거라 건드리지 않는다).
+    expect(commandBand).toContain("const releaseDialFocus = () => {");
+    expect(commandBand).toContain('onClick={() => { releaseDialFocus(); selectCanvasMode(mode.id); }}');
     // 이탈-상태 에코 — 다이얼이 hover 뒤로 접은 상태 가시성은 기본값 이탈 배지가 되갚는다
     // (평시 침묵). 배지가 플로우에 들면 등장·퇴장이 중앙을 다시 민다.
     expect(commandBand).toContain("{finePointer && (stationKeeping || densityEchoVisible) ? <div ref={echoRackRef} className=\"command-band-mode-echo-rack\">");
