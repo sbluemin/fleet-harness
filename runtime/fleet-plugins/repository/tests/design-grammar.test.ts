@@ -216,22 +216,29 @@ describe("Repository design grammar", () => {
     expect(glyph).toContain("height: 17px");
   });
 
+  // 2026-09-01 밴드 정합 재가 — 패널 안의 면은 하나다. 캡·툴바가 캔버스 톤(--surface-band)과
+  // 유리(--surface-glass 70%)를 제각각 섞으면 창 하나가 명도가 다른 띠들로 갈라져 읽힌다
+  // (identity "검은 띠" 실측 지적). 캡·툴바는 전부 같은 위스퍼 워시(--ink-fog 5%) 한 단만 얹고,
+  // 스크롤을 가리는 스티키 헤더만 패널 채널을 쓴다.
   it("uses core surface tokens for panel material", () => {
     expect(css).not.toContain("background: var(--ink-deep)");
+    // 캔버스 톤은 이 패널에서 퇴역했다 — 남은 언급은 독트린 주석뿐이어야 한다.
+    expect(css).not.toContain("var(--surface-band)");
 
-    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery"]) {
-      expect(blockOf(selector), selector).toContain("var(--surface-band) 55%");
+    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery", ".repository-identity", ".repository-checkout-tabs", ".repository-ws-peek"]) {
+      expect(blockOf(selector), selector).toContain("var(--ink-fog) 5%");
     }
-    for (const selector of [".repository-identity", ".repository-ws-tree"]) {
-      expect(blockOf(selector), selector).toContain("var(--surface-band) 72%");
+    expect(blockOf(".repository-ws-tree")).toContain("background: transparent");
+    for (const selector of [".repository-hunk-head", ".repository-staging-head"]) {
+      expect(blockOf(selector), selector).toContain("var(--glass-tint-panel)");
     }
     expect(css).not.toContain(".repository-scan-foot");
     expect(blockOf(".repository-ref-mark")).toContain("var(--brass-ink)");
     expect(blockOf(".repository-ref-hl")).toContain("var(--brass-ink)");
-    // .history-inspector-shelf은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 glass를 소비해야 한다.
+    // .history-inspector-shelf은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 같은 면(투명)에 남아야 한다.
     const detailPanes = blocksOf(".history-inspector-shelf").filter((body) => body.includes("background"));
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
-    for (const body of detailPanes) expect(body).toContain("var(--surface-glass) 70%");
+    for (const body of detailPanes) expect(body).toContain("background: transparent");
 
     for (const selector of [".repository-filter-input", ".history-filter-input"]) {
       expect(blockOf(selector), selector).toContain("var(--control-field)");

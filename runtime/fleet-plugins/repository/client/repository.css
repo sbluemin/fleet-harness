@@ -80,7 +80,7 @@
   min-width: 0;
   padding: 5px 8px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 
 .repository-filter,
@@ -140,7 +140,7 @@
   gap: 6px;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 
 /* 메타 라벨은 계기판 어휘(mono·uppercase·광폭 자간)를 걷고 본문 서체의 낮은 목소리로 선다 —
@@ -524,7 +524,10 @@
   padding: 0 10px;
   border-bottom: 1px solid var(--surface-rim);
   min-height: 46px;
-  background: var(--surface-glass);
+  /* 스티키 헤더는 스크롤 내용을 가려야 한다 — 스테이징 헤더와 같은 패널 채널을 소비한다(밴드 정합). */
+  background: var(--glass-tint-panel);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
 }
 
 .repository-hunk-filename {
@@ -686,7 +689,7 @@
 
 /* ── @@ 요약 라벨 행 ── */
 .repository-line-hunk-label {
-  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 
 .repository-line-label {
@@ -698,7 +701,7 @@
 
 /* ── 다중 파일 패치 파일 경계 행 ── */
 .repository-line-file-label {
-  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
   border-top: 1px solid var(--surface-rim);
   border-bottom: 1px solid var(--surface-rim);
 }
@@ -772,7 +775,7 @@
   min-width: 0;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-band) 55%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 
 .history-count {
@@ -1101,7 +1104,7 @@
   align-items: flex-start;
   gap: 8px;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 
 .history-pagination-error {
@@ -1113,7 +1116,7 @@
   grid-column: 1;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  background: color-mix(in oklch, var(--surface-glass) 70%, transparent);
+  background: transparent;
 }
 
 .history-detail-head {
@@ -1155,7 +1158,7 @@
 /* Segmented Commit Inspector — master graph/list remains above the detail. */
 .history-root { grid-template-rows: minmax(0, 1fr); }
 .history-list-pane { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--surface-rim); }
-.history-inspector-shelf { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
+.history-inspector-shelf { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: transparent; }
 .history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
 .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto minmax(0, auto) 7ch auto; gap: 0 7px; }
@@ -1237,7 +1240,13 @@
 
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); flex: none; }
+/* ── 밴드 정합(2026-09-01 재가) — 패널 안의 면은 하나다 ─────────────────────────
+   캡·툴바가 캔버스 톤(--surface-band 72%/55%)과 유리(--surface-glass 70%)를 제각각
+   섞으면 창 하나가 명도가 다른 띠 여러 장으로 갈라져 읽힌다(identity 밴드가 "검은 띠"로
+   실측 지적됨). 구획은 헤어라인이 말하고, 캡·툴바는 전부 같은 위스퍼 워시 한 단
+   (--ink-fog 5%)만 얹는다 — 테마 시그니처 색감은 fog가 테마별로 조율되므로 그대로 흐른다.
+   스크롤 내용을 가려야 하는 스티키 헤더만 패널 채널(--glass-tint-panel)을 쓴다. */
+.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 5%, transparent); color: var(--text-secondary); flex: none; }
 .repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
 .repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
@@ -1266,7 +1275,7 @@
 }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
-.repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
+.repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 5%, transparent); }
 .repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: .04em; }
 .repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-sm); padding: 0 3px; }
 .repository-depth-step:hover:not(:disabled) { color: var(--text-primary); }
@@ -1320,7 +1329,8 @@
   min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-band) 72%, transparent);
+  /* 열 구분은 오른쪽 헤어라인이 진다 — 열 전체를 어둡게 칠하면 면이 갈라진다(밴드 정합). */
+  background: transparent;
 }
 
 .repository-ws-tree .repository-discovery {
@@ -1631,7 +1641,8 @@
 
 .repository-ws-history > .history-inspector-shelf {
   grid-row: 3;
-  background: var(--surface-glass);
+  /* 셸프도 같은 면이다 — 위 디바이더가 구획을 말한다(밴드 정합). */
+  background: transparent;
 }
 
 .repository-ws-history > .history-divider {
@@ -1876,6 +1887,8 @@
   gap: 2px;
   padding: 4px 10px 0;
   border-bottom: 1px solid var(--hairline);
+  /* identity 캡과 같은 위스퍼 한 단 — 캡 구역(identity+탭)이 하나의 띠로 이어진다(밴드 정합). */
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
   overflow-x: auto;
   scrollbar-width: none;
   flex: none;
@@ -2174,7 +2187,7 @@
   min-width: 0;
   padding: 4px 8px;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklab, var(--surface-glass) 70%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
 }
 .repository-ws-peek-main {
   flex: 1;
