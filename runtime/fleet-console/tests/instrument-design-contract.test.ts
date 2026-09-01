@@ -552,8 +552,6 @@ describe("Instrument core design contract", () => {
     for (const selector of [
       '.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])',
       '.command-band-mode-tool:hover:not(:disabled):not([aria-pressed="true"])',
-      ".command-band-segment-trigger:hover:not(.is-open)",
-      ".command-band-menu-item:hover:not(:disabled):not(.is-active)",
     ]) expect(layout).toContain(selector);
     expect(components).toContain(".host-switcher-panel > button:hover:not(:disabled):not(.is-current)");
     expect(components).toContain('.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"])');
@@ -1935,7 +1933,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("      status: activity,");
     expect(sidebar).not.toContain("status: resolveOperationDisplayActivity({");
     expect(chip).toContain("const markVisual = mark ?? status;");
-    expect(commandBand).toContain("status={resolveOperationMarkVisual({");
+    // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
+    expect(commandBand).not.toContain("resolveOperationMarkVisual");
     expect(watchDeck).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
@@ -2109,7 +2108,9 @@ describe("Instrument core design contract", () => {
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
-    expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
+    // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
+    // 환경 팝오버만 남는다.
+    expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
     // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
@@ -2164,8 +2165,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("const panelTogglesVisible = viewMode.effective !== \"mobile\";");
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-sidebar-toggle\"");
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-rail-toggle\"");
-    // 맵 컨트롤은 좌측 클러스터의 플로우 자식이다(캡·앵커 퇴역) — 검색 버튼 뒤에 이어 선다.
-    expect(commandBand).toContain(`        </button>
+    // 맵 컨트롤은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역) — 좌측 클러스터가 아니라
+    // .command-band-center 안에 플로우 자식으로 선다.
+    expect(commandBand).toContain(`      <div className="command-band-center">
         {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
@@ -2221,12 +2223,12 @@ describe("Instrument core design contract", () => {
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
     // 전면 해도 개편: 사이드바-가장자리 추종 앵커는 캡 계약과 함께 퇴역했다 — 클러스터는
-    // 흐름 배치이고 하한은 좌측 클러스터 실측 콘텐츠 끝 하나에서 나온다. 앵커 변수가
+    // 흐름 배치이고 하한은 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 나온다. 앵커 변수가
     // 되살아나면 모드 스위치가 존재하지 않는 열 경계에 다시 정박한다.
     expect(layout).not.toContain("--command-band-map-anchor");
     expect(commandBand).not.toContain("commandBandMapControlsAnchor");
-    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(leftContentEnd);");
-    expect(commandBand).toContain("commandBandCenterFits(bandWidth, centerGutter)");
+    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(leftContentEnd, rightContentWidth);");
+    expect(commandBand).toContain("commandBandCenterFits(bandWidth, centerGutter, centerContentWidth)");
     expect(layout).not.toContain("command-band-dock-divider");
     expect(layout).not.toContain(".command-band-mode-switch {\n  position: absolute;");
     // 구 문법(모드 전용 도구를 밴드에 상시 노출)의 잔재는 남기지 않는다.
@@ -2236,7 +2238,8 @@ describe("Instrument core design contract", () => {
     // Console 전체 폭을 좌우 대칭으로 나눈다.
     expect(commandBand).not.toContain("--command-band-left-width");
     expect(layout).toContain("grid-template-columns: minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);");
-    const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
+    // is-center-flow 오버라이드 블록이 아니라 기본 블록을 잡아야 한다 — 행 시작 앵커로 좁힌다.
+    const commandBandCenterBlock = layout.match(/^\.command-band-center \{[^}]*\}/m)?.[0] ?? "";
     const commandBandLeftBlocks = [...layout.matchAll(/\.command-band-left \{[^}]*\}/g)].map((match) => match[0]);
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
     expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);\n}");
@@ -2248,16 +2251,17 @@ describe("Instrument core design contract", () => {
     expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 3;"))).toBe(true);
     expect(commandBand).not.toContain("stageLeftWidth");
     expect(commandBand).not.toContain("stageRightWidth");
-    // 브레드크럼을 접은 뒤에도 여백 하한을 주입하면 고정 트랙 합이 밴드 폭을 넘어 우측 컨트롤이
+    // 중앙 정렬을 포기한 뒤에도 여백 하한을 주입하면 고정 트랙 합이 밴드 폭을 넘어 우측 컨트롤이
     // 화면 밖으로 밀린다. 주입값과 판정값을 분리해 고정한다.
-    expect(commandBand).toContain("const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;");
+    expect(commandBand).toContain("const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;");
     expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
-    expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
-    // 접힘은 편집 중이던 input을 언마운트하는데 blur가 발화하지 않는다 — 취소를 빼면 다시 넓혔을 때
-    // 포커스 없는 스테일 draft로 되살아나 키보드로 빠져나올 수 없다.
-    expect(commandBand).toContain("    if (!rename.renaming) return;\n    renameTargetOperationIdRef.current = null;\n    rename.cancel();");
-    // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
-    // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
+    // 모드 스위치는 캔버스 모드의 유일한 조작면이다 — 좁은 폭에서 감추는 대신 좌측 플로우로
+    // 되돌린다. 클래스는 JS 실측 판정만 받아 입는다.
+    expect(commandBand).toContain('${centerControlsCentered ? "" : " is-center-flow"}');
+    expect(layout).toContain(".command-band.is-center-flow {\n  grid-template-columns: max-content max-content minmax(0, 1fr);\n}");
+    expect(layout).toContain(".command-band.is-center-flow .command-band-center {");
+    // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어 밴드 앵커
+    // 팝업(z-index:45)이 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
     expect(layout).not.toContain("container-type");
     expect(layout).not.toContain("--command-band-left-width");
     expect(commandBandCenterBlock).toContain("justify-content: center;");
@@ -2277,8 +2281,6 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band a,');
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band input {');
     expect(layout).toContain('html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {');
-    expect(commandBand).toContain("onDoubleClick={beginRename}");
-    expect(commandBand).toContain("commandBandRenameCommitTarget");
     expect(commandBand).not.toContain("shouldCloseCommandBandContextDeck");
     expect(commandBand).not.toContain("data-carrier");
     expect(commandBand).not.toContain("<PathContextDeck");
@@ -2372,7 +2374,9 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
     expect(layout).not.toContain(".command-band-context-separator {");
-    expect(layout).toContain(".command-band-theater-cluster {");
+    // Theater›Operation 브레드크럼은 퇴역했다 — 사이드바가 이미 말하는 문장이고, 중앙 트랙은
+    // 캔버스 모드 컨트롤이 가져갔다.
+    expect(layout).not.toContain(".command-band-theater-cluster");
     expect(layout).not.toContain("--command-band-carrier");
     expect(commandBand).toContain("useFullscreenCommandBand");
     // 엣지 스트립은 자동 은닉일 때만 존재한다 — 도킹 중에 남기면 스테이지 최상단을 가로챈다.
@@ -2412,10 +2416,6 @@ describe("Instrument core design contract", () => {
     expect(modePressedBlock).toContain("color: var(--text-primary);");
     expect(layout).toMatch(/\.command-band-mode-seg\[aria-pressed="true"\]::after \{[^}]*background: var\(--brass\);/);
     expect(layout).toContain('.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])');
-    // 열린 스위처는 hover보다 지속적인 open 면(잉크 워시)을 갖고 caret이 방향을 바꾼다.
-    const openTriggerBlock = layout.match(/\.command-band-segment-trigger\.is-open \{[^}]*\}/)?.[0] ?? "";
-    expect(openTriggerBlock).toContain("border-color: var(--control-open-rim);");
-    expect(layout).toContain(".command-band-segment-trigger.is-open .command-band-trigger-caret { transform: rotate(180deg); }");
   });
 
   it("keeps long What's new content inside the scrollable body without shrinking controls", () => {
@@ -3470,10 +3470,11 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain('glanceVisible ? "is-glance" : ""');
     expect(canvas).toContain('window.addEventListener("blur", clearGlance)');
     expect(canvas).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
-    expect(source("styles/layout.css")).toContain(".command-band-operation-status { margin-right: 2px; }");
+    // 밴드의 활성 Operation 표시는 브레드크럼과 함께 퇴역했다 — 상태 마크·속성 칩 모두 없다.
+    expect(source("styles/layout.css")).not.toContain(".command-band-operation-status");
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
     expect(commandBand).not.toContain("command-band-operation-attribute");
-    expect(commandBand).toContain('className="command-band-operation-status"');
+    expect(commandBand).not.toContain("command-band-operation-status");
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
   });

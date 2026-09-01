@@ -208,10 +208,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   min-height: 0;
 }
 
-/* 중앙 브레드크럼은 Quick Launch와 같은 Console 전체 수평축에 놓는다.
+/* 중앙 맵 컨트롤(모드 스위치+트레이)은 Quick Launch와 같은 Console 전체 수평축에 놓는다.
    좌우 여백 트랙은 동일 하한 + 동일 1fr이라 좌측 사이드바와 우측 레일의 비대칭에 끌려가지 않는다.
-   하한은 좌측 맵 컨트롤의 viewport 끝에서 계산해 주입한다(--command-band-center-gutter).
-   중앙이 그 하한 사이에 들어가지 못하는 폭에서는 브레드크럼을 접는다. */
+   하한은 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 계산해 주입한다(--command-band-center-gutter).
+   중앙이 그 하한 사이에 들어가지 못하는 폭에서는 좌측 플로우(is-center-flow)로 되돌린다. */
 .command-band {
   --command-band-center-gutter: 44px;
   position: relative;
@@ -355,6 +355,18 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band.is-utility {
   grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);
+}
+
+/* 중앙 트랙이 모드 컨트롤을 좌우 대칭으로 품지 못하는 폭에서는 감추는 대신 좌측 플로우로
+   되돌린다 — 모드 스위치는 캔버스 모드의 유일한 조작면이라 접을 수 없다. 판정은 JS 실측
+   (밴드 폭 − 여백 하한×2 < 컨트롤 자연 폭)이고, 이 클래스는 그 결과만 받아 입는다. */
+.command-band.is-center-flow {
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+}
+
+.command-band.is-center-flow .command-band-center {
+  justify-content: flex-start;
+  padding-inline-start: 0;
 }
 
 .command-band-left,
@@ -599,15 +611,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   color: var(--brass-ink);
 }
 
-/* 맵 컨트롤 클러스터(모드 스위치 + 모드 도구)는 좌측 클러스터의 플로우 형제로 합류했다 —
-   구 절대 배치 + 사이드바-가장자리 추종 앵커는 밴드 좌측이 사이드바의 일부라는 캡 계약의
-   산물이었고, 캡 퇴역과 함께 고정 흐름 위치로 돌아온다. 개별 절대 위치 + 매직 오프셋
-   금지(116px 사고)와 "한 컨테이너의 플로우 형제" 계약은 그대로 유지한다. */
+/* 맵 컨트롤 클러스터(모드 스위치 + 모드 도구)는 중앙 트랙의 단독 승객이다(브레드크럼 퇴역).
+   컨테이너 플로우 배치 계약은 그대로다 — 개별 절대 위치 + 매직 오프셋 금지(116px 사고)와
+   "한 컨테이너의 플로우 형제" 계약은 중앙 트랙 안에서도 유지한다. 중앙 정렬을 흔드는
+   비대칭 마진은 두지 않는다 — 간격은 트랙 padding이 진다. */
 .command-band-map-controls {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-inline-start: var(--space-2);
 }
 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
@@ -686,8 +697,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   .command-band-mode-seg[aria-pressed="true"],
   .command-band-mode-switch:has(> .segmented-thumb.is-placed) .command-band-mode-seg[aria-pressed="true"],
   .command-band-button[aria-pressed="true"],
-  .command-band-mode-tool[aria-pressed="true"],
-  .command-band-menu-item.is-active {
+  .command-band-mode-tool[aria-pressed="true"] {
     background: SelectedItem;
     color: SelectedItemText;
   }
@@ -753,252 +763,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-mode-tool:active:not(:disabled) { transform: translateY(1px); }
 .command-band-mode-tool:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
-
-.command-band-theater-cluster {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.command-band-theater-segment {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: 24px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.command-band-theater-mark {
-  padding: 1px 4px;
-  border-radius: var(--radius-xs);
-  background: var(--brass-glow);
-  color: var(--brass-ink);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
-}
-
-.command-band-theater-separator { color: var(--text-tertiary); }
-
-.command-band-operation-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  line-height: inherit;
-  font-family: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.command-band-rename-input {
-  min-width: 0;
-  width: min(28ch, 34vw);
-  padding: 2px 6px;
-  border: 1px solid color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  background: var(--ink-deep);
-  color: var(--text-primary);
-  line-height: inherit;
-  font-family: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-}
-
-.command-band-operation-status { margin-right: 2px; }
-
-/* ===== Command Band 세그먼트 드롭다운 전환기 — 메뉴 문법은 components.css .theater-menu 계열의 밴드 스코프 미러 ===== */
-.command-band-switcher {
-  position: relative;
-  display: flex;
-  min-width: 0;
-}
-
-.command-band-segment-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.command-band-segment-trigger:hover:not(.is-open),
-.command-band-segment-trigger:focus-visible:not(.is-open) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-}
-
-.command-band-segment-trigger.is-open {
-  border-color: var(--control-open-rim);
-  background: var(--control-tint-fill);
-  color: var(--text-primary);
-}
-
-.command-band-segment-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.command-band-trigger-caret {
-  display: grid;
-  place-items: center;
-  flex: none;
-  color: var(--text-tertiary);
-  opacity: 0.75;
-  transition: transform var(--duration-fast) var(--ease-spring);
-}
-
-.command-band-segment-trigger.is-open .command-band-trigger-caret { transform: rotate(180deg); }
-.command-band-trigger-caret svg { display: block; width: 10px; height: 10px; }
-
-.command-band-operation-placeholder {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.command-band-menu {
-  position: absolute;
-  z-index: 45;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  min-width: 236px;
-  max-width: min(340px, calc(100vw - 24px));
-  max-height: min(60vh, 420px);
-  overflow-y: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(components.css whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
-}
-
-.command-band-menu-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
-  text-align: left;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.command-band-menu-item:hover:not(:disabled):not(.is-active),
-.command-band-menu-item:focus-visible:not(.is-active) {
-  border-color: var(--control-hover-rim);
-  color: var(--text-primary);
-  background: var(--control-hover-fill);
-}
-
-.command-band-menu-item.is-active {
-  color: var(--text-primary);
-  background: var(--control-wash);
-}
-
-.command-band-menu-item.is-active::before {
-  position: absolute;
-  top: var(--space-2);
-  bottom: var(--space-2);
-  left: 0;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  content: "";
-}
-
-.command-band-menu-action { color: var(--text-secondary); }
-.command-band-menu-action:hover:not(:disabled),
-.command-band-menu-action:focus-visible { color: var(--brass-ink); }
-
-.command-band-menu-action:disabled {
-  color: color-mix(in oklch, var(--brass-bright) 45%, transparent);
-  background: transparent;
-  cursor: wait;
-}
-
-.command-band-menu-check {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--brass-ink);
-}
-
-.command-band-menu-check svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-}
-
-.command-band-menu-item .command-band-theater-mark { flex: none; }
-
-.command-band-menu-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.command-band-menu-meta {
-  margin-left: auto;
-  padding-left: var(--space-2);
-  flex: none;
-  color: var(--text-tertiary);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.command-band-menu-divider {
-  height: 1px;
-  margin: var(--space-2) var(--space-1);
-  background: var(--surface-rim);
-}
-
-.command-band-menu-empty {
-  margin: 0;
-  padding: var(--space-2);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
-}
 
 /* window-policy.ts와 합의한 44px 밴드/76px 신호등 인셋 — 변경 시 데스크톱 셸과 동기한다. */
 html[data-desktop-shell="true"] .command-band {

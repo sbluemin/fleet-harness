@@ -1,28 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
-import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
+import { fetchConsoleEnvironment } from "../api.js";
+import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
+import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
-import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
+import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
-import { OperationNameMark } from "./operation-name-mark.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useUpdateProgress } from "../update-progress-store.js";
-import { resolveOperationActivity, resolveOperationMarkVisual } from "../operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
-import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
-import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
+import { toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
-import { useInlineRename } from "../use-inline-rename.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
@@ -47,12 +40,8 @@ interface CanvasModeSegment {
   readonly titleKey: CoreMessageKey;
 }
 
-// 카탈로그가 아직 도착하지 않은 첫 페인트의 빈 색인. 리터럴을 useState에 직접 넘기면 렌더마다
-// 새 Map이 생겨 아래 effect의 의존이 흔들린다.
-const NO_LAUNCH_MODEL_LABELS: ReadonlyMap<string, string> = new Map();
-
 // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다. 세그먼트에 아이콘을 함께 두면 클러스터가
-// 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 통째로 사라진다(2026-08 실측).
+// 375px까지 벌어져 좁은 밴드에서 중앙 정렬이 조기에 무너진다(2026-08 실측).
 const CANVAS_MODES: readonly CanvasModeSegment[] = [
   { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },
   { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },
@@ -105,7 +94,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     navigate("/operations");
     setRailChromeExpanded(true);
   }, [navigate, operationsViewVisible]);
-  const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const triageActive = useTriageActive();
@@ -126,62 +114,33 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     }
     if (formationView) clearFormationView();
   };
-  const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
-  const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
-  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
-  const activeSession = activeOperation?.payload.session && typeof activeOperation.payload.session === "object" && !Array.isArray(activeOperation.payload.session)
-    ? activeOperation.payload.session as Record<string, unknown>
-    : null;
-  const activeLaunchModel = typeof activeSession?.model === "string" ? activeSession.model : null;
-  // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
-  // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
-  // Shell만은 예외다 — 활동 축을 발행하지 않으므로 그 자리를 종류 글리프가 가져간다.
-  // 마크는 사이드바 칩·지도 점과 같은 마크 축을 읽는다 — 미확인 도착은 AWAITING이 아니라 "unseen"
-  // 이므로 초록 느린 점등으로 그려진다. raw 활동만 보면 목록은 도착이라는 그 패널을 밴드만 유휴라
-  // 부르고(War Room 무대 승격은 acknowledged: false라 도착 표식이 살아남는다), 표시 활동을 그대로
-  // 쓰면 이번엔 안 본 채 끝난 것이 사람을 기다리는 중과 같은 파랑으로 서 버린다.
-  const activeOperationStatusMark = activeOperation
-    ? <OperationNameMark
-        operation={activeOperation}
-        status={resolveOperationMarkVisual({
-          activity: resolveOperationActivity(activeOperation, state.operationRuntime),
-          operationId: activeOperation.id,
-          idleArrivalIds,
-        })}
-        className="command-band-operation-status"
-      />
-    : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
   const mapControlsRef = useRef<HTMLDivElement>(null);
   const bandLeftRef = useRef<HTMLDivElement>(null);
+  const bandRightRef = useRef<HTMLDivElement>(null);
   const edgeRevealRef = useRef<HTMLButtonElement>(null);
   const pointerWithinRef = useRef({ edge: false, band: false });
-  const renameTargetOperationIdRef = useRef<string | null>(null);
-  const theaterTriggerRef = useRef<HTMLButtonElement>(null);
-  const operationTriggerRef = useRef<HTMLButtonElement>(null);
-  const switcherRef = useRef<HTMLDivElement>(null);
-  const switcherMenuRef = useRef<HTMLDivElement>(null);
-  const [switcherMenu, setSwitcherMenu] = useState<CommandBandSwitcherMenu | null>(null);
-  const [switcherMenuLeft, setSwitcherMenuLeft] = useState(0);
   const [bandWidth, setBandWidth] = useState(0);
   const [leftContentEnd, setLeftContentEnd] = useState(0);
+  const [rightContentWidth, setRightContentWidth] = useState(0);
+  const [centerContentWidth, setCenterContentWidth] = useState(0);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
-  // 맵 컨트롤은 좌측 클러스터의 플로우 형제다(캡·앵커 퇴역). 브레드크럼은 Console 전체
-  // 정중앙에 고정하므로 여백 하한은 좌측 클러스터의 실측 콘텐츠 끝에서 잰다.
-  const centerGutter = commandBandCenterGutter(leftContentEnd);
-  const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth, centerGutter);
-  // 브레드크럼을 접은 뒤에는 지킬 중앙 트랙이 없다. 하한을 그대로 두면 고정 트랙 합이 밴드 폭을
-  // 넘어 우측 컨트롤이 화면 밖으로 밀린다. 판정용 centerGutter는 그대로 두어 되돌아오는 폭이
-  // 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
-  const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;
+  // 맵 컨트롤(모드 스위치+트레이)은 중앙 트랙의 단독 승객이다(Theater›Operation 브레드크럼
+  // 퇴역). 중앙은 Console 전체 정중앙에 고정하므로 여백 하한은 좌·우 클러스터의 실측 콘텐츠
+  // 폭 중 큰 쪽에서 잰다 — 한쪽만 예약하면 중앙이 viewport 중앙에서 밀리거나 우측과 겹친다.
+  const centerGutter = commandBandCenterGutter(leftContentEnd, rightContentWidth);
+  // 중앙이 하한 사이에 들어가지 못하는 폭에서는 감추는 대신 좌측 플로우로 되돌린다 — 모드
+  // 스위치는 캔버스 모드의 유일한 조작면이라 접을 수 없다. 판정용 centerGutter는 그대로 두어
+  // 되돌아오는 폭이 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
+  const centerControlsCentered = commandBandCenterFits(bandWidth, centerGutter, centerContentWidth);
+  const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;
   // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
   // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
   const discardEnvironmentState = () => {
@@ -207,25 +166,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
   // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
   const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;
-  // 브레드크럼 표시 대상(P0 가드 결과) 기준으로 판정한다 — activeOperationId가 그대로여도
-  // Theater 전환으로 Operation 세그먼트가 숨으면 숨은 rename이 살아남아 복귀 시 스테일 draft가 부활한다.
-  const displayedOperationId = activeOperation?.id ?? null;
-  // 커밋 판정은 ref로 읽는다 — Theater 전환 렌더가 input을 언마운트하며 동기로 blur 커밋을
-  // 쏘는데, 이때 클로저의 이전 렌더 state는 여전히 일치해 스테일 draft가 커밋된다(실브라우저 재현).
-  const displayedOperationIdRef = useRef<string | null>(null);
-  displayedOperationIdRef.current = displayedOperationId;
-  const rename = useInlineRename({
-    currentTitle: activeOperation?.title ?? "",
-    onCommit: (title) => {
-      const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationIdRef.current);
-      renameTargetOperationIdRef.current = null;
-      if (!operationId) return;
-      void renameOperation(operationId, title)
-        .then(() => fetchOperations(null))
-        .then(hydrateOperations)
-        .catch(() => { void fetchOperations(null).then(hydrateOperations); });
-    },
-  });
 
   // 도킹하면 엣지 스트립이 display:none으로 사라지는데 Chromium은 activeElement를 그 위에
   // 그대로 남긴다. 그 포커스가 남아 있으면 canAutoHide가 영원히 거짓이라, 나중에 도킹을 풀어도
@@ -235,36 +175,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     const edge = edgeRevealRef.current;
     if (edge !== null && document.activeElement === edge) edge.blur();
   }, [edgeRevealActive]);
-
-  // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 스위처 메뉴에
-  // 올라올 때만 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation).
-  //
-  // 의존은 활성 좌표 하나다. 해결 여부를 의존에 실으면 조회가 성공해 좌표가 해결되는 순간이 곧
-  // 다음 조회의 방아쇠가 되어, 카탈로그가 매번 수행하는 Agent CLI 탐지를 시작마다 두 번 돌린다.
-  // 조회 이력을 ref에 적어 두지도 않는다 — 개발 채널의 StrictMode는 이 effect를
-  // setup→cleanup→setup으로 돌리는데, 그때 두 번째 setup이 첫 setup이 적어 둔 이력을 보고 물러나
-  // 색인이 영영 비고, 중단된 요청이 뒤늦게 그 이력을 지워도 되돌릴 렌더가 없다.
-  useEffect(() => {
-    // 좌표가 없는 Operation은 색인이 필요 없다 — 첫 페인트(빈 색인)에서만 읽어 둔다.
-    const needsCatalog = activeLaunchModel === null
-      ? launchModelLabels.size === 0
-      : !launchModelLabels.has(activeLaunchModel);
-    if (!needsCatalog) return;
-    const controller = new AbortController();
-    fetchOperationCatalog(controller.signal)
-      .then((catalog) => {
-        if (!controller.signal.aborted) setLaunchModelLabels(commandBandLaunchModelLabels(catalog));
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [activeLaunchModel]);
-
-  useEffect(() => {
-    if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
-    // 표시 대상이 어긋나면(패널 전환·Theater 전환 포함) 이전 초안을 버려 이름이 넘어가지 않게 한다.
-    renameTargetOperationIdRef.current = null;
-    rename.cancel();
-  }, [rename, displayedOperationId]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -306,72 +216,24 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     };
   }, [environmentOpen]);
 
-  useEffect(() => {
-    if (switcherMenu === null) return;
-    const triggerRef = switcherMenu === "theater" ? theaterTriggerRef : operationTriggerRef;
-    const closeOnPointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || triggerRef.current?.contains(target) || switcherMenuRef.current?.contains(target)) return;
-      setSwitcherMenu(null);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setSwitcherMenu(null);
-      triggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOnPointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnPointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [switcherMenu]);
-
-  // 메뉴 열림 중 사이드바 등 외부 경로로 활성 Theater/Operation이 바뀌면 메뉴를 닫는다.
-  // (메뉴 내 선택은 상태 변경 전에 동기적으로 닫으므로 여기서는 no-op이다.)
-  useEffect(() => {
-    setSwitcherMenu(null);
-  }, [state.activeTheaterId, state.activeOperationId]);
-
-  // 접힌 브레드크럼은 트리거째 사라진다 — 열려 있던 메뉴가 고아로 남지 않게 같이 닫는다.
-  // 편집 중이던 rename도 여기서 취소한다: 포커스된 input이 언마운트돼도 blur가 발화하지 않아
-  // (실브라우저 실측) 다시 넓히면 스테일 draft가 포커스 없이 되살아나고, 그 상태에서는
-  // Escape·Enter가 닿지 않아 input을 다시 클릭하기 전까지 편집을 끝낼 수 없다.
-  useEffect(() => {
-    if (centerBreadcrumbVisible) return;
-    setSwitcherMenu(null);
-    if (!rename.renaming) return;
-    renameTargetOperationIdRef.current = null;
-    rename.cancel();
-  }, [centerBreadcrumbVisible, rename]);
-
-  // Operation 메뉴는 자기 트리거 아래 정렬(래퍼 offsetLeft), Theater 메뉴는 좌단 기준 —
-  // 어느 쪽이든 좁은 viewport에서 우측이 화면을 넘지 않도록 실측 clamp하고 resize 시 재측정한다.
-  useLayoutEffect(() => {
-    if (switcherMenu === null) return;
-    const measure = () => {
-      const wrapper = switcherRef.current;
-      const menu = switcherMenuRef.current;
-      if (!wrapper || !menu) return;
-      const desiredLeft = switcherMenu === "operation" ? operationTriggerRef.current?.offsetLeft ?? 0 : 0;
-      setSwitcherMenuLeft(commandBandMenuClampedLeft(desiredLeft, wrapper.getBoundingClientRect().left, menu.getBoundingClientRect().width, window.innerWidth));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [switcherMenu]);
-
-  // 좌측 클러스터(모드 스위치·트레이 포함)의 실측 콘텐츠 끝이 브레드크럼 여백 하한의 원료다.
-  // 사이드바 폭이 아니라 클러스터 폭이 하한을 정하므로 viewport 미디어쿼리로는 판정할 수 없다.
-  // 자식 우단 최대값을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 모드 트레이의
-  // 모드별 폭 변동이 모두 하한을 움직인다. offsetParent 좌표계는 밴드와 동일하다.
+  // 좌·우 클러스터의 실측 콘텐츠 폭이 중앙 여백 하한의 원료이고, 맵 컨트롤의 자연 폭이 중앙
+  // 소요 폭이다. 사이드바 폭이 아니라 클러스터 폭이 하한을 정하므로 viewport 미디어쿼리로는
+  // 판정할 수 없다. 자식 끝을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 모드 트레이의
+  // 모드별 폭 변동이 모두 하한·소요 폭을 움직인다. offsetParent 좌표계는 밴드와 동일하다.
   useLayoutEffect(() => {
     const band = commandBandRef.current;
     if (!band || typeof ResizeObserver === "undefined") return;
     const measure = () => {
-      setBandWidth(band.clientWidth);
+      const width = band.clientWidth;
+      setBandWidth(width);
       const bandLeft = bandLeftRef.current;
       setLeftContentEnd(bandLeft === null ? 0 : Math.max(0, ...Array.from(bandLeft.children, (child) => (child instanceof HTMLElement ? child.offsetLeft + child.offsetWidth : 0))));
+      const bandRight = bandRightRef.current;
+      setRightContentWidth(bandRight === null ? 0 : Math.max(0, ...Array.from(bandRight.children, (child) => (child instanceof HTMLElement ? width - child.offsetLeft : 0))));
+      // scrollWidth를 읽는다 — 중앙 트랙이 소요 폭보다 좁게 눌린 프레임에서도 자연 폭을
+      // 돌려주므로, 눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하는 일이 없다.
+      const mapControls = mapControlsRef.current;
+      setCenterContentWidth(mapControls === null ? 0 : mapControls.scrollWidth);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -379,11 +241,13 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     const mapControls = mapControlsRef.current;
     if (mapControls) observer.observe(mapControls);
     // 칩·트레이 폭 변화도 하한을 움직인다 — 자식을 직접 관찰하고, 자식의 등장/퇴장은
-    // 아래 deps가 effect를 다시 돌려 관찰 대상을 갱신한다.
+    // 아래 deps가 effect를 다시 돌려 관찰 대상을 갱신한다(모드 전환·fullscreen 핀 포함).
     const bandLeft = bandLeftRef.current;
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
+    const bandRight = bandRightRef.current;
+    if (bandRight) for (const child of bandRight.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [operationsViewVisible, state.channel, state.connection]);
+  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen]);
 
   useEffect(() => {
     if (state.channel === "local") return;
@@ -402,61 +266,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
       .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
   };
-
-  const beginRename = () => {
-    if (!activeOperation) return;
-    setSwitcherMenu(null);
-    renameTargetOperationIdRef.current = activeOperation.id;
-    rename.begin();
-  };
-
-  const toggleSwitcherMenu = (menu: CommandBandSwitcherMenu) => {
-    setEnvironmentOpen(false);
-    discardEnvironmentState();
-    setSwitcherMenu((open) => (open === menu ? null : menu));
-  };
-
-  // Tab 등으로 포커스가 스위처 밖으로 나가면 메뉴를 닫는다 — 포커스는 자연 Tab 대상에 남기고
-  // 트리거 복귀는 Escape 전용으로 유지한다.
-  const handleSwitcherFocusOut = (event: FocusEvent<HTMLDivElement>) => {
-    if (switcherMenu === null || !commandBandSwitcherFocusLeft(event.currentTarget, event.relatedTarget)) return;
-    setSwitcherMenu(null);
-  };
-
-  const selectTheaterFromMenu = (theaterId: string) => {
-    setSwitcherMenu(null);
-    theaterTriggerRef.current?.focus();
-    // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 Formation/companion이 부활하지 않는다.
-    if (theaterId !== state.activeTheaterId) {
-      if (triageActive) visitTriageTheater(theaterId);
-      else setActiveTheater(theaterId);
-    }
-  };
-
-  const selectOperationFromMenu = (operationId: string) => {
-    setSwitcherMenu(null);
-    operationTriggerRef.current?.focus();
-    focusOperation(operationId);
-  };
-
-  const addTheaterFromMenu = () => {
-    setSwitcherMenu(null);
-    theaterTriggerRef.current?.focus();
-    // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내 사이드바를
-    // 되살린 뒤 요청해야 지연 실행 없이 즉시 열린다(종료가 이전 대기 요청을 폐기하므로 순서 고정).
-    if (triageActive) setTriageActive(false);
-    requestSideBarAddTheater();
-  };
-
-  const launchOperationFromMenu = () => {
-    if (!activeTheater) return;
-    setSwitcherMenu(null);
-    operationTriggerRef.current?.focus();
-    if (triageActive) setTriageActive(false);
-    requestSideBarTheaterLaunch(activeTheater.id);
-  };
-
-  const theaterOperations = commandBandTheaterOperations(state.operations, state.groups, state.activeTheaterId, canvas.operationOrder);
 
   const hideAfterInteractionLeaves = () => {
     if (canAutoHide()) fullscreen.hideAfterLeave();
@@ -506,7 +315,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       />
       <header
         ref={commandBandRef}
-        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}${fullscreen.isFullscreen && fullscreen.isDocked ? " is-docked" : ""}`}
+        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${centerControlsCentered ? "" : " is-center-flow"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}${fullscreen.isFullscreen && fullscreen.isDocked ? " is-docked" : ""}`}
         style={{
           "--command-band-center-gutter": `${injectedCenterGutter}px`,
         } as CSSProperties}
@@ -520,7 +329,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div ref={bandLeftRef} className="command-band-left">
         <BrandHome />
         {state.channel === "local" ? <div className="command-band-environment">
-          <button ref={environmentTriggerRef} type="button" className={`command-band-local-chip${state.controlHolder !== null ? " is-shared" : ""}`} aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
+          <button ref={environmentTriggerRef} type="button" className={`command-band-local-chip${state.controlHolder !== null ? " is-shared" : ""}`} aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
           <span className="command-band-local-chip-label">{state.controlHolder !== null ? t("chrome.control.shared") : desktopShell ? desktopChipLabel : t("chrome.commandBand.local")}</span>
           </button>
@@ -539,6 +348,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
           <SearchIcon />
         </button>
+      </div>
+      {/* 맵 컨트롤은 중앙 트랙의 단독 승객이다 — Theater›Operation 브레드크럼은 사이드바가
+          이미 말하는 문장이라 퇴역했고, 캔버스 모드가 밴드의 정중앙을 가져간다. */}
+      <div className="command-band-center">
         {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
         <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
           <SegmentedThumb />
@@ -615,78 +428,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div> : null}
         </div> : null}
       </div>
-      {centerBreadcrumbVisible ? <div className="command-band-center">
-        {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" data-keep-operation-active onBlur={handleSwitcherFocusOut}>
-          <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>
-            <button
-              ref={theaterTriggerRef}
-              type="button"
-              className={`command-band-theater-segment command-band-segment-trigger${switcherMenu === "theater" ? " is-open" : ""}`}
-              aria-haspopup="menu"
-              aria-expanded={switcherMenu === "theater"}
-              title={t("chrome.commandBand.switchTheater")}
-              onClick={() => toggleSwitcherMenu("theater")}
-            >
-              <span className="command-band-theater-mark">{theaterInitials(activeTheater.label)}</span>
-              <span className="command-band-segment-label">{activeTheater.label}</span>
-              <CommandBandTriggerCaret />
-            </button>
-            <span className="command-band-theater-separator" aria-hidden="true">›</span>
-            {activeOperation ? <>
-              {rename.renaming ? <>
-                {activeOperationStatusMark}
-                <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={t("chrome.commandBand.renameOperationAria", { title: activeOperation.title })} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} />
-              </> : <button
-                ref={operationTriggerRef}
-                type="button"
-                className={`command-band-operation-name command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
-                aria-haspopup="menu"
-                aria-expanded={switcherMenu === "operation"}
-                title={t("chrome.commandBand.switchOperationRename")}
-                onClick={() => toggleSwitcherMenu("operation")}
-                onDoubleClick={beginRename}
-              >
-                {activeOperationStatusMark}
-                <span className="command-band-segment-label">{activeOperation.title}</span>
-                <CommandBandTriggerCaret />
-              </button>}
-            </> : <button
-              ref={operationTriggerRef}
-              type="button"
-              className={`command-band-operation-placeholder command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
-              aria-haspopup="menu"
-              aria-expanded={switcherMenu === "operation"}
-              title={t("chrome.commandBand.selectOperation")}
-              onClick={() => toggleSwitcherMenu("operation")}
-            >
-              <span className="command-band-segment-label">{t("chrome.commandBand.selectOperationEllipsis")}</span>
-              <CommandBandTriggerCaret />
-            </button>}
-          </div>
-          {switcherMenu === "theater" ? <CommandBandTheaterMenu
-            theaters={state.theaters}
-            operations={state.operations}
-            activeTheaterId={state.activeTheaterId}
-            addingTheater={state.addingTheater}
-            onSelectTheater={selectTheaterFromMenu}
-            onAddTheater={addTheaterFromMenu}
-            style={{ left: switcherMenuLeft }}
-            containerRef={switcherMenuRef}
-          /> : null}
-          {switcherMenu === "operation" ? <CommandBandOperationMenu
-            operations={theaterOperations}
-            activeOperationId={activeOperation?.id ?? null}
-            launchModelLabels={launchModelLabels}
-            theaterLabel={activeTheater.label}
-            onSelectOperation={selectOperationFromMenu}
-            onRenameOperation={activeOperation ? beginRename : null}
-            onNewOperation={launchOperationFromMenu}
-            style={{ left: switcherMenuLeft }}
-            containerRef={switcherMenuRef}
-          /> : null}
-        </div> : null}
-      </div> : null}
-      <div className="command-band-right">
+      <div ref={bandRightRef} className="command-band-right">
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
