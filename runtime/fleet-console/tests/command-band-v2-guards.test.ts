@@ -50,8 +50,11 @@ describe("Command Band breadcrumb retirement", () => {
   it("mounts the map controls as the sole passenger of the center track", () => {
     const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
 
+    // 중앙 트랙은 맵 컨트롤 컨테이너가 상시 승객이고, 모드 스위치·트레이만 Operations 뷰에
+    // 게이트된다 — 검색은 라우트와 무관한 전역 진입구라 유틸리티 뷰에서도 중앙에 남는다.
     expect(source).toContain(`      <div className="command-band-center">
-        {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
+        <div ref={mapControlsRef} className="command-band-map-controls">
+        {operationsViewVisible ? <div className="command-band-mode-switch"`);
   });
 });
 

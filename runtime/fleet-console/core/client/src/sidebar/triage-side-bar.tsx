@@ -17,7 +17,8 @@ import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
-import { useSideBarState } from "./operations-side-bar-store.js";
+import { setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
+import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
@@ -197,15 +198,28 @@ export function TriageSideBar({
   };
   return (
     <aside
-      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}`}
+      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${sideBar.width}px` } as CSSProperties}
-      inert={sideBar.collapsed}
+      inert={sideBar.collapsed && !sideBar.peeking}
       aria-label={t("triageSidebar.aria")}
       onContextMenu={openLaunchMenuAtCursor}
+      onPointerLeave={(event) => {
+        // Map 사이드바와 같은 픽 종료 계약 — 카드를 떠나면 끝나고, 엣지 독으로의 이동만 연속이다.
+        if (!sideBar.collapsed || !sideBar.peeking) return;
+        const next = event.relatedTarget;
+        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
+        setSideBarPeeking(false);
+      }}
     >
+      {/* 접기 컨트롤은 두 사이드바가 같은 문법으로 소유한다 — 선별 사이드바에는 축 스트립이
+          없으므로 스트립은 컨트롤 하나를 우단에 세우는 자리로만 선다. */}
+      <div className="side-bar-top-strip">
+        <span className="side-bar-top-strip-spacer" aria-hidden="true" />
+        <SideBarCollapseControl />
+      </div>
       {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·유휴는 War Room이 읽는
           축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
           "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}

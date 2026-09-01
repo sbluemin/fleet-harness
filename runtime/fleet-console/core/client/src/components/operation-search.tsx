@@ -38,7 +38,7 @@ import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
-import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
+import { getRailStoreSnapshot, openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/interaction.js";
@@ -376,15 +376,26 @@ export function OperationSearch({
       }
       case "toggle-rail": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // 닫힘 cleanup의 포커스 복원 타깃을 command-band의 rail 토글로 재지정한다(미발견 시 복원 억제).
-        previousFocusRef.current = document.querySelector<HTMLElement>(".command-band-rail-toggle");
+        // 구 복원 좌표(밴드 rail 토글)는 퇴역했다 — 복원을 억제하고 도착지가 받는다: 접히면
+        // 엣지 독, 펼치면 레일의 접기 컨트롤. 두 좌표 모두 이 커밋의 재렌더 뒤에야 서므로
+        // 프레임을 하나 넘긴다(open-settings와 같은 계약, 미발견 시 포커스 생략).
+        previousFocusRef.current = null;
+        const railCollapsing = getRailStoreSnapshot().railChromeExpanded;
         toggleRailChrome();
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(railCollapsing ? ".rail-edge-dock" : ".right-rail-collapse")?.focus();
+        });
         break;
       }
       case "toggle-sidebar": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        previousFocusRef.current = document.querySelector<HTMLElement>(".command-band-sidebar-toggle");
-        setSideBarCollapsed(!getSideBarState().collapsed);
+        // toggle-rail과 같은 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
+        previousFocusRef.current = null;
+        const sideBarCollapsing = !getSideBarState().collapsed;
+        setSideBarCollapsed(sideBarCollapsing);
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(sideBarCollapsing ? ".side-bar-edge-dock" : ".side-bar-collapse")?.focus();
+        });
         break;
       }
       case "toggle-command-band-dock": {

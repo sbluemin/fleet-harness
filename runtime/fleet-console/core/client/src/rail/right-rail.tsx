@@ -9,7 +9,7 @@ import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/r
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
+import { focusEdgeDockWhenPanelContainsActiveElement, railShortcutLabel } from "../shortcuts.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
@@ -17,7 +17,7 @@ import { getState, subscribe } from "../store.js";
 import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth } from "./rail-store.js";
+import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPeeking } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -68,6 +68,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const activePanelId = useRailActivePanelId();
   const extraWidth = useRailPanelExtraWidth();
   const railChromeExpanded = useRailChromeExpanded();
+  const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const bindings = useRailEntries();
@@ -152,7 +153,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   }, [isDragging, maxPanelWidth, desiredWidth]);
 
   useLayoutEffect(() => {
-    if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-rail-toggle");
+    if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".rail-edge-dock");
     previousRailChromeExpandedRef.current = railChromeExpanded;
   }, [railChromeExpanded]);
 
@@ -248,12 +249,19 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${isDragging ? " is-dragging" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${railPeeking ? " is-peeking" : ""}${isDragging ? " is-dragging" : ""}`}
       data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
       role="complementary"
       aria-label={t("rail.chrome.aria")}
-      inert={!railChromeExpanded}
+      inert={!railChromeExpanded && !railPeeking}
       style={{ "--right-rail-panel-width": `${slotWidth}px` } as CSSProperties}
+      onPointerLeave={(event) => {
+        // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝나고, 엣지 독으로의 이동만 연속이다.
+        if (railChromeExpanded || !railPeeking) return;
+        const next = event.relatedTarget;
+        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
+        setRailPeeking(false);
+      }}
     >
       <div
         className="right-rail-panel-slot"
@@ -295,9 +303,23 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
-        {/* 설정은 열 최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과
-            작업 패널을 고르는 일은 다른 종류의 동작이다. 톱니는 이제 메뉴가 아니라 설정
-            표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
+        {/* 창 동사(접기·열어 두기)는 도구 위, 열 최상단에 선다 — 카드 자신을 다루는 일은
+            카드 안의 어떤 도구보다 먼저다(Periscope: 밴드 토글 퇴역, 접기는 패널 소유).
+            픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서 접기는
+            무의미하고 남는 결정은 고정뿐이다. */}
+        <button
+          type="button"
+          className="right-rail-ico right-rail-collapse"
+          aria-label={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcutLabel() })}
+          title={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcutLabel() })}
+          onClick={() => setRailChromeExpanded(railPeeking ? true : false)}
+        >
+          {railPeeking ? <RailKeepOpenGlyph /> : <RailCollapseGlyph />}
+        </button>
+        {/* 설정은 창 동사 아래, 도구 열의 머리에 서고 디바이더가 패널 탭과 갈라 놓는다 —
+            콘솔을 다스리는 일과 작업 패널을 고르는 일은 다른 종류의 동작이다. 톱니는 이제
+            메뉴가 아니라 설정 표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로
+            "지금 여기"를 말한다. */}
         <button
           id="rail-settings-toggle"
           type="button"
@@ -521,4 +543,13 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
 
 function CloseGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+}
+
+// 접기 방향(우측 엣지)을 가리키는 단일 셰브런 — 엣지 독 트리거의 펼침 셰브런과 한 쌍이다.
+function RailCollapseGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 3.6 10.6 8l-4.4 4.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function RailKeepOpenGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.5h5.6M6.4 2.5v3.1L4.6 7.7v1h6.8v-1L9.6 5.6V2.5M8 8.7v4.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }

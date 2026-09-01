@@ -11,6 +11,8 @@ import type { OperationNode } from "../types.js";
 interface SideBarState {
   readonly width: number;
   readonly collapsed: boolean;
+  /** 접힌 카드를 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정이며 아레나 인셋에 불참한다. */
+  readonly peeking: boolean;
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
@@ -27,6 +29,7 @@ const statusSectionCollapseListeners = new Set<() => void>();
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
   collapsed: readInitialCollapsed(),
+  peeking: false,
 };
 let collapsedTheaterIds = readInitialCollapsedTheaters();
 // STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
@@ -84,10 +87,19 @@ export function setSideBarWidth(width: number): void {
 
 export function setSideBarCollapsed(collapsed: boolean): void {
   if (sideBarState.collapsed === collapsed) return;
-  sideBarState = { ...sideBarState, collapsed };
+  // dock 상태 전환은 어느 방향이든 픽을 끝낸다 — 펼침(고정)은 픽의 승격이고, 새 접힘은 픽 없이 시작한다.
+  sideBarState = { ...sideBarState, collapsed, peeking: false };
   try {
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
   } catch { /* ignore */ }
+  notifyListeners();
+}
+
+/** 엣지 독 호버가 접힌 사이드바를 오버레이로 되부른다 — 접혀 있지 않으면 픽이 설 자리가 없다. */
+export function setSideBarPeeking(peeking: boolean): void {
+  const next = peeking && sideBarState.collapsed;
+  if (sideBarState.peeking === next) return;
+  sideBarState = { ...sideBarState, peeking: next };
   notifyListeners();
 }
 

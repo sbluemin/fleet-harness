@@ -133,6 +133,9 @@ export const canvasEn = {
   "sidebar.theater.collapse": "Collapse {theater}",
   "sidebar.theater.switchTo": "Switch to {theater}",
   "sidebar.axis.aria": "Sidebar organisation",
+  "sidebar.chrome.collapse": "Collapse sidebar ({shortcut})",
+  "sidebar.chrome.keepOpen": "Keep sidebar open ({shortcut})",
+  "sidebar.chrome.edgeExpand": "Expand sidebar ({shortcut})",
   "sidebar.axis.group": "Groups",
   "sidebar.axis.groupTitle": "Sort all Theaters by group (Alt+S)",
   "sidebar.axis.status": "Status",
@@ -186,6 +189,9 @@ export const canvasEn = {
   "rail.chrome.resizeCard": "Resize Activity Rail",
   "rail.chrome.closePanel": "Close {title}",
   "rail.chrome.resetWidth": "Reset panel width",
+  "rail.chrome.collapse": "Collapse Activity Rail ({shortcut})",
+  "rail.chrome.keepOpen": "Keep Activity Rail open ({shortcut})",
+  "rail.chrome.edgeExpand": "Expand Activity Rail ({shortcut})",
   "rail.theater.fallback": "Theater",
 
 } as const;
@@ -325,6 +331,9 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.theater.collapse": "{theater} 접기",
   "sidebar.theater.switchTo": "{theater}(으)로 전환",
   "sidebar.axis.aria": "사이드바 정렬 축",
+  "sidebar.chrome.collapse": "사이드바 접기 ({shortcut})",
+  "sidebar.chrome.keepOpen": "사이드바 열어 두기 ({shortcut})",
+  "sidebar.chrome.edgeExpand": "사이드바 펼치기 ({shortcut})",
   "sidebar.axis.group": "그룹",
   "sidebar.axis.groupTitle": "모든 Theater를 그룹별로 정렬 (Alt+S)",
   "sidebar.axis.status": "상태",
@@ -376,6 +385,9 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "rail.chrome.resizeCard": "Activity Rail 폭 조절",
   "rail.chrome.closePanel": "{title} 닫기",
   "rail.chrome.resetWidth": "패널 폭 초기화",
+  "rail.chrome.collapse": "Activity Rail 접기 ({shortcut})",
+  "rail.chrome.keepOpen": "Activity Rail 열어 두기 ({shortcut})",
+  "rail.chrome.edgeExpand": "Activity Rail 펼치기 ({shortcut})",
   "rail.theater.fallback": "Theater",
 
 };

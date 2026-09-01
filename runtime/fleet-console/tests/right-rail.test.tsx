@@ -537,14 +537,16 @@ describe("Right Rail card width", () => {
 /* 톱니는 메뉴가 아니라 설정 표면의 문이다 — 옛 컨텍스트 메뉴 계약(플로팅·불투명도·폭·닫기)은
    설정 페인과 직접 조작으로 해체됐고, 여기 남는 것은 문의 계약이다. */
 describe("Right Rail settings gear", () => {
-  it("puts the settings gear first in the icon column, split from the panel toggles by a divider", () => {
+  it("stacks the column as window verb, then gear, then a divider before the panel toggles", () => {
     renderRail();
     const children = [...(container.querySelector(".right-rail-icons")?.children ?? [])];
-    expect(children[0]).toBe(gearButton());
-    expect(children[1]?.matches(".right-rail-divider")).toBe(true);
-    expect(children[1]?.getAttribute("role")).toBe("separator");
+    // 창 동사(접기)는 도구 위, 열 최상단에 선다 — 카드 자신을 다루는 일은 도구보다 먼저다(Periscope).
+    expect(children[0]?.matches(".right-rail-collapse")).toBe(true);
+    expect(children[1]).toBe(gearButton());
+    expect(children[2]?.matches(".right-rail-divider")).toBe(true);
+    expect(children[2]?.getAttribute("role")).toBe("separator");
     // 디바이더 다음부터가 패널 토글이다 — 콘솔을 다스리는 일과 패널을 고르는 일의 경계.
-    expect(children[2]?.matches(".right-rail-tabs")).toBe(true);
+    expect(children[3]?.matches(".right-rail-tabs")).toBe(true);
   });
 
   it("carries no hover-reveal chrome, so the body owns the whole slot", () => {
@@ -654,9 +656,9 @@ describe("Right Rail icon order", () => {
     renderRail();
     const labels = [...container.querySelectorAll<HTMLButtonElement>(".right-rail-icons .right-rail-ico")]
       .map((button) => button.getAttribute("aria-label"));
-    // 톱니(첫 아이콘)를 뺀 나머지가 합성 순서 그대로다 — 코어 페인들 뒤에 플러그인들이
-    // 등록 순서로 선다. 동작(SHELL·PLAIN)이 페인들 앞으로 끌려 나오면 이 목록이 깨진다.
-    expect(labels.slice(1)).toEqual(["REPOSITORY", "CODEX", "ALERTS", "FILES", "SHELL", "PLAIN", "LEDGER"]);
+    // 창 동사(접기)와 톱니(두 아이콘)를 뺀 나머지가 합성 순서 그대로다 — 코어 페인들 뒤에
+    // 플러그인들이 등록 순서로 선다. 동작(SHELL·PLAIN)이 페인들 앞으로 끌려 나오면 이 목록이 깨진다.
+    expect(labels.slice(2)).toEqual(["REPOSITORY", "CODEX", "ALERTS", "FILES", "SHELL", "PLAIN", "LEDGER"]);
   });
 });
 
