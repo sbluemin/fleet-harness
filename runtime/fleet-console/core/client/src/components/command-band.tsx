@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
@@ -50,11 +50,39 @@ const TACTICAL_LAYOUTS: readonly {
   { id: "rows", titleKey: "chrome.commandBand.tacticalRows", Icon: FormationRowsIcon },
 ];
 
+const MODE_TOOLS_LABEL_KEY: Readonly<Record<CanvasMode, CoreMessageKey>> = {
+  cruise: "chrome.commandBand.cruiseTools",
+  tactical: "chrome.commandBand.tacticalTools",
+  warRoom: "chrome.commandBand.warRoomTools",
+};
+
+// Helm Dial은 hover가 실재하는 입력에서만 문이 된다 — 터치·coarse 포인터는 상주 트레이를
+// 유지한다(등가 경로 없는 접기 금지). React에서 갈라 렌더하는 이유: 트레이와 다이얼을 CSS로만
+// 갈라 이중 마운트하면 [data-war-room-tool] 투어 앵커가 문서에 두 벌 생겨, 화면 안내가
+// 보이지 않는 사본을 짚는다.
+const FINE_POINTER_QUERY = "(hover: hover) and (pointer: fine)";
+
+function useFinePointer(): boolean {
+  const [finePointer, setFinePointer] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(FINE_POINTER_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(FINE_POINTER_QUERY);
+    const sync = () => setFinePointer(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return finePointer;
+}
+
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const viewMode = useViewMode();
+  const finePointer = useFinePointer();
   const operationsViewVisible = requestedOperationsViewVisible && viewMode.effective !== "mobile";
   // 패널 접기 토글은 밴드에서 퇴역했다(Periscope 문법) — 접기는 각 패널의 자기 컨트롤이,
   // 접힌 뒤의 복귀는 화면 엣지 독(brass 필라멘트 + 호버 픽)이 진다. ⌘B·⌘⌥B는 의미 불변이며
@@ -78,6 +106,106 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       return;
     }
     if (formationView) clearFormationView();
+  };
+  // Helm Dial — 캡슐 도구 클릭은 "그 모드로 진입 + 도구 적용"이 한 제스처다. 도구가 제 모드의
+  // 낱말 아래에서만 나오므로 어느 모드의 손잡이인지가 소속으로 명시되고, 무경고 모드 이탈의
+  // 전제였던 "소속 없는 도구 줄"(2026-08 격자 클릭 사고)은 존재하지 않는다. 모드 전이의
+  // 소유권은 여전히 이 클러스터 하나다.
+  const enterCruiseThen = (action: () => void) => {
+    if (canvasMode !== "cruise") selectCanvasMode("cruise");
+    action();
+  };
+  const enterWarRoomThen = (action: () => void) => {
+    if (canvasMode !== "warRoom") enterTriage(focusedTriageOperationId(document.activeElement));
+    action();
+  };
+  // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 꺼버리는데,
+  // 모드 이탈 권한은 Cruise 세그먼트만 갖는다. War Room에서 내려올 때 formation이 이미 그
+  // 레이아웃으로 서 있으면 triage 해제만으로 목적지에 닿았으므로 역시 부르지 않는다(토글-오프 함정).
+  const selectTacticalLayout = (layout: FormationLayout) => {
+    if (triageActive) setTriageActive(false);
+    if (!formationView || formationLayout !== layout) selectFormationLayout(layout);
+  };
+  // Esc는 캡슐에서 낱말로 되돌아오는 계단이다 — 포커스가 세그먼트로 돌아가면 focus-within이
+  // 유지되어 캡슐은 열린 채 남고, Tab 이탈이 문을 닫는다.
+  const handleDialEscape = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    const seg = event.currentTarget.querySelector<HTMLButtonElement>(".command-band-mode-seg");
+    const active = document.activeElement;
+    if (seg === null || !(active instanceof Node) || !event.currentTarget.contains(active) || active === seg) return;
+    event.stopPropagation();
+    seg.focus();
+  };
+  // 트레이(coarse)와 다이얼(fine)은 같은 도구 정의를 쓴다 — 두 벌이 되는 순간 드리프트가
+  // 시작된다. data-war-room-tool은 화면 안내가 짚는 자리이므로 활성 모드에서만 부착한다:
+  // 캡슐이 세 모드 모두 상시 마운트되어도 "War Room에서 항상 + War Room에서만"이라는 투어
+  // 활성화 계약이 그대로 성립한다.
+  //
+  // 도구도 세그먼트처럼 mousedown을 preventDefault한다 — 클릭이 도구에 포커스를 남기면
+  // focus-within이 캡슐을 계속 열어 두고, 열린 채 남은 캡슐이 이웃 캡슐의 클릭 지점을 덮는다
+  // (실입력 검증에서 SK 클릭이 tactical 도구에 착지한 사고). 키보드 포커스(Tab)는 그대로다.
+  const suppressToolFocus = (event: { preventDefault(): void }) => event.preventDefault();
+  const modeTools = (mode: CanvasMode): ReactElement => {
+    if (mode === "cruise") {
+      return (<>
+        <button type="button" className="command-band-mode-tool" onMouseDown={suppressToolFocus} onClick={() => enterCruiseThen(() => animateViewportTo({ x: 0, y: 0, zoom: 1 }))} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
+        <button type="button" className="command-band-mode-tool" onMouseDown={suppressToolFocus} onClick={() => enterCruiseThen(fitAllOperations)} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
+        <button
+          type="button"
+          className="command-band-mode-tool"
+          data-cruise-tool="station-keeping"
+          aria-pressed={stationKeeping}
+          disabled={state.activeTheaterId === null || !state.operationsHydrated}
+          aria-label={t("chrome.commandBand.stationKeeping")}
+          title={t("chrome.commandBand.stationKeeping")}
+          onMouseDown={suppressToolFocus}
+          onClick={() => enterCruiseThen(() => setStationKeeping(!stationKeeping))}
+        ><StationKeepingIcon /></button>
+      </>);
+    }
+    if (mode === "tactical") {
+      return (<>
+        {TACTICAL_LAYOUTS.map((layout) => (
+          <button
+            key={layout.id}
+            type="button"
+            className="command-band-mode-tool"
+            onMouseDown={suppressToolFocus}
+            onClick={() => selectTacticalLayout(layout.id)}
+            disabled={state.activeTheaterId === null}
+            // 눌림은 "지금 활성"만 말한다 — Cruise에서 열어본 캡슐이 기억된 레이아웃을
+            // 눌림으로 칠하면 아직 서 있지 않은 formation을 서 있다고 말하게 된다.
+            aria-pressed={canvasMode === "tactical" && formationLayout === layout.id}
+            aria-label={t(layout.titleKey)}
+            title={t(layout.titleKey)}
+          ><layout.Icon /></button>
+        ))}
+      </>);
+    }
+    return (<>
+      <button
+        type="button"
+        className="command-band-mode-tool"
+        {...(canvasMode === "warRoom" ? { "data-war-room-tool": "spotlight" } : {})}
+        aria-pressed={triageSpotlightEnabled}
+        disabled={state.theaters.length === 0}
+        aria-label={t("canvas.triage.spotlightTitle")}
+        title={t("canvas.triage.spotlightTitle")}
+        onMouseDown={suppressToolFocus}
+        onClick={() => enterWarRoomThen(() => setTriageSpotlightEnabled(!triageSpotlightEnabled))}
+      ><SpotlightIcon /></button>
+      <button
+        type="button"
+        className="command-band-mode-tool is-valued"
+        {...(canvasMode === "warRoom" ? { "data-war-room-tool": "density" } : {})}
+        aria-pressed={triageDeckZoomLive !== 1.0}
+        disabled={state.theaters.length === 0}
+        aria-label={t("canvas.triage.densityChipTitle")}
+        title={t("canvas.triage.densityChipTitle")}
+        onMouseDown={suppressToolFocus}
+        onClick={() => enterWarRoomThen(cycleTriageDeckZoomPreset)}
+      ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
+    </>);
   };
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
@@ -183,8 +311,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
 
   // 좌·우 클러스터의 실측 콘텐츠 폭이 중앙 여백 하한의 원료이고, 맵 컨트롤의 자연 폭이 중앙
   // 소요 폭이다. 사이드바 폭이 아니라 클러스터 폭이 하한을 정하므로 viewport 미디어쿼리로는
-  // 판정할 수 없다. 자식 끝을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 모드 트레이의
-  // 모드별 폭 변동이 모두 하한·소요 폭을 움직인다. offsetParent 좌표계는 밴드와 동일하다.
+  // 판정할 수 없다. 자식 끝을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 coarse 포인터
+  // 상주 트레이의 모드별 폭 변동이 모두 하한·소요 폭을 움직인다. fine 포인터에서는 다이얼·에코가
+  // 절대 배치라 소요 폭이 스위치 상수로 고정된다 — 모드 전환이 더는 중앙을 밀지 않는다.
+  // offsetParent 좌표계는 밴드와 동일하다.
   useLayoutEffect(() => {
     const band = commandBandRef.current;
     if (!band || typeof ResizeObserver === "undefined") return;
@@ -195,10 +325,13 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       setLeftContentEnd(bandLeft === null ? 0 : Math.max(0, ...Array.from(bandLeft.children, (child) => (child instanceof HTMLElement ? child.offsetLeft + child.offsetWidth : 0))));
       const bandRight = bandRightRef.current;
       setRightContentWidth(bandRight === null ? 0 : Math.max(0, ...Array.from(bandRight.children, (child) => (child instanceof HTMLElement ? width - child.offsetLeft : 0))));
-      // scrollWidth를 읽는다 — 중앙 트랙이 소요 폭보다 좁게 눌린 프레임에서도 자연 폭을
-      // 돌려주므로, 눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하는 일이 없다.
+      // 플로우 자식의 범위로 잰다 — 자식이 flex:none이라 중앙 트랙이 좁게 눌린 프레임에서도
+      // 자연 폭을 돌려주고(눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하지 않음), 다이얼·에코
+      // 같은 절대 배치 자손의 오버플로는 배제한다. scrollWidth는 그 오버플로까지 세어(스위치의
+      // scrollable overflow가 전파됨) 에코 배지 등장이 is-center-flow 판정을 흔든다 — 실측으로
+      // 213→247 부풂을 확인하고 물렸다.
       const mapControls = mapControlsRef.current;
-      setCenterContentWidth(mapControls === null ? 0 : mapControls.scrollWidth);
+      setCenterContentWidth(mapControls === null ? 0 : Math.max(0, ...Array.from(mapControls.children, (child) => (child instanceof HTMLElement ? child.offsetLeft - mapControls.offsetLeft + child.offsetWidth : 0))));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -212,7 +345,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen]);
+  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen, finePointer]);
 
   useEffect(() => {
     if (state.channel === "local") return;
@@ -316,80 +449,50 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div className="command-band-center">
         <div ref={mapControlsRef} className="command-band-map-controls">
         {operationsViewVisible ? <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
-          <SegmentedThumb />
+          <SegmentedThumb activeSelector=".command-band-mode-cell.is-active" />
           {CANVAS_MODES.map((mode) => (
-            <button
+            <div
               key={mode.id}
-              type="button"
-              className="command-band-mode-seg"
+              className={`command-band-mode-cell${canvasMode === mode.id ? " is-active" : ""}`}
               data-canvas-mode={mode.id}
-              disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}
-              aria-pressed={canvasMode === mode.id}
-              aria-label={t(mode.titleKey)}
-              title={t(mode.titleKey)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectCanvasMode(mode.id)}
+              onKeyDown={handleDialEscape}
             >
-              {mode.label}
-            </button>
+              <button
+                type="button"
+                className="command-band-mode-seg"
+                data-canvas-mode={mode.id}
+                disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}
+                aria-pressed={canvasMode === mode.id}
+                aria-label={t(mode.titleKey)}
+                title={t(mode.titleKey)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectCanvasMode(mode.id)}
+              >
+                {mode.label}
+              </button>
+              {/* Helm Dial — 캡슐은 닫혀도 DOM에 존속한다: display:none이면 투어 앵커 판정과
+                  focus-within 키보드 개방이 함께 죽는다. 절대 배치라 중앙 소요 폭(scrollWidth)에는
+                  들지 않는다(포지셔닝된 자손의 오버플로는 조상 측정으로 전파되지 않음을 실측 확인). */}
+              {finePointer ? <div className="command-band-mode-dial" role="group" aria-label={t(MODE_TOOLS_LABEL_KEY[mode.id])}>
+                <span className="command-band-mode-dial-label" aria-hidden="true">{mode.label}</span>
+                {modeTools(mode.id)}
+              </div> : null}
+            </div>
           ))}
+          {/* 이탈-상태 에코 — 기본값을 벗어난 도구 상태만 축약 배지로 남는다(평시 침묵). 다이얼이
+              hover 뒤로 접은 상태 가시성을 여기서 되갚는다. coarse 포인터는 트레이가 이미 말한다.
+              스위치 직우는 검색의 안정 앵커 자리(#983)라, 랙은 스위치 좌측에 절대 배치로 걸린다. */}
+          {finePointer && (stationKeeping || triageDeckZoomLive !== 1.0) ? <div className="command-band-mode-echo-rack">
+            {stationKeeping ? <span className="command-band-mode-echo" role="img" aria-label={t("chrome.commandBand.stationKeeping")} title={t("chrome.commandBand.stationKeeping")}><StationKeepingIcon /></span> : null}
+            {triageDeckZoomLive !== 1.0 ? <span className="command-band-mode-echo" role="img" aria-label={t("canvas.triage.densityChipTitle")} title={t("canvas.triage.densityChipTitle")}>{triageDeckZoomLive.toFixed(1)}×</span> : null}
+          </div> : null}
         </div> : null}
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
           <SearchIcon />
         </button>
-        {operationsViewVisible && canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
+        {operationsViewVisible && !finePointer ? <div className="command-band-mode-tray" role="group" aria-label={t(MODE_TOOLS_LABEL_KEY[canvasMode])}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
-          <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
-          <button type="button" className="command-band-mode-tool" onClick={fitAllOperations} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
-          <button
-            type="button"
-            className="command-band-mode-tool"
-            data-cruise-tool="station-keeping"
-            aria-pressed={stationKeeping}
-            disabled={state.activeTheaterId === null || !state.operationsHydrated}
-            aria-label={t("chrome.commandBand.stationKeeping")}
-            title={t("chrome.commandBand.stationKeeping")}
-            onClick={() => setStationKeeping(!stationKeeping)}
-          ><StationKeepingIcon /></button>
-        </div> : null}
-        {operationsViewVisible && canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
-          <span className="command-band-mode-tray-divider" aria-hidden="true" />
-          {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 트레이 순서가 바뀌어도
-              앵커가 조용히 사라지지 않도록 의미 속성으로 표시한다. */}
-          <button
-            type="button"
-            className="command-band-mode-tool"
-            data-war-room-tool="spotlight"
-            aria-pressed={triageSpotlightEnabled}
-            aria-label={t("canvas.triage.spotlightTitle")}
-            title={t("canvas.triage.spotlightTitle")}
-            onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
-          ><SpotlightIcon /></button>
-          <button
-            type="button"
-            className="command-band-mode-tool is-valued"
-            data-war-room-tool="density"
-            aria-pressed={triageDeckZoomLive !== 1.0}
-            aria-label={t("canvas.triage.densityChipTitle")}
-            title={t("canvas.triage.densityChipTitle")}
-            onClick={cycleTriageDeckZoomPreset}
-          ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
-        </div> : null}
-        {operationsViewVisible && canvasMode === "tactical" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.tacticalTools")}>
-          <span className="command-band-mode-tray-divider" aria-hidden="true" />
-          {TACTICAL_LAYOUTS.map((layout) => (
-            <button
-              key={layout.id}
-              type="button"
-              className="command-band-mode-tool"
-              // 이미 켜진 레이아웃을 다시 누르면 selectFormationLayout이 모드를 꺼버린다 —
-              // 모드 이탈은 Cruise 세그먼트만 소유하므로 같은 레이아웃 클릭은 무시한다.
-              onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}
-              aria-pressed={formationLayout === layout.id}
-              aria-label={t(layout.titleKey)}
-              title={t(layout.titleKey)}
-            ><layout.Icon /></button>
-          ))}
+          {modeTools(canvasMode)}
         </div> : null}
         </div>
       </div>
