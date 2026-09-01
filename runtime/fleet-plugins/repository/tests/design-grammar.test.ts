@@ -179,16 +179,17 @@ describe("Repository design grammar", () => {
     expect(blockOf(".history-badge--head")).toContain("var(--brass)");
   });
 
-  // 라운드 행 문법 — 행은 좌우 4px 인셋 위에서 라운드 필로 hover·선택을 말한다. 커밋 행은
-  // 전 행이 같은 만큼 밀려야 그래프 레인의 세로 연속성이 유지되고, 높이는 ROW_HEIGHT와 동기다.
-  it("keeps rows on the rounded inset grammar with the graph row height in sync", () => {
+  // 2026-09-01 실기 재가 — #979의 라운드 인셋 행(좌우 4px 여백+라운드)은 이전 문법과 달라
+  // 보인다는 판정으로 퇴역했다. 행은 풀블리드로 서고 스파인이 패널 가장자리에 붙으며,
+  // 커밋 행 높이는 그래프 ROW_HEIGHT(28px)와 동기다.
+  it("keeps rows full-bleed with the graph row height in sync", () => {
     for (const selector of [".repository-file-row", ".repository-folder-row", ".repository-ws-tree-row", ".history-commit-row"]) {
       const body = blockOf(selector);
-      expect(body, selector).toContain("border-radius: var(--radius-xs)");
-      expect(body, selector).toContain("margin: 0 4px");
-      expect(body, selector).toContain("calc(100% - 8px)");
+      expect(body, selector).not.toContain("margin: 0 4px");
+      expect(body, selector).not.toContain("calc(100% - 8px)");
+      expect(body, selector).not.toContain("border-radius: var(--radius-xs)");
     }
-    expect(blockOf(".history-commit-row")).toContain("height: 30px");
+    expect(blockOf(".history-commit-row")).toContain("height: 28px");
   });
 
   // rest는 침묵이 아니라 낮은 목소리다 — 주 동사와 보조 컨트롤은 쉬는 상태에서도

@@ -327,20 +327,16 @@
 }
 
 /* ── 파일 행 (리스트뷰 + 트리 리프 공유) ── */
-/* 라운드 행 문법(소프트 그래파이트) — 행의 hover·선택 면은 좌우 4px 인셋의 라운드 필이다.
-   스파인 대신 면이 말하고, 선택 면은 위치 채널(brass)의 저알파 워시를 입는다. */
 .repository-file-row {
   display: grid;
   grid-template-columns: 18px 1fr auto;
   align-items: center;
   gap: 0 8px;
-  width: calc(100% - 8px);
+  width: 100%;
   min-width: 0;
-  margin: 0 4px;
-  padding: 6px 10px;
+  padding: 5px 12px;
   background: none;
   border: none;
-  border-radius: var(--radius-xs);
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -432,12 +428,10 @@
   grid-template-columns: 12px 15px 1fr;
   align-items: center;
   gap: 0 6px;
-  width: calc(100% - 8px);
-  margin: 0 4px;
-  padding: 4px 10px;
+  width: 100%;
+  padding: 4px 12px;
   background: none;
   border: none;
-  border-radius: var(--radius-xs);
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -838,13 +832,10 @@
 
 .history-commit-row {
   position: relative;
-  /* 라운드 행 문법 — 좌우 4px 인셋. 전 행이 같은 만큼 밀리므로 그래프 레인의 세로 연속성은 유지된다. */
-  width: calc(100% - 8px);
+  width: 100%;
   min-width: 0;
-  margin: 0 4px;
-  border-radius: var(--radius-xs);
-  /* 높이는 graph-gutter의 ROW_HEIGHT(30px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
-  height: 30px;
+  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
+  height: 28px;
   color: inherit;
   transition: background 0.1s;
 }
@@ -1166,8 +1157,8 @@
 .history-divider { touch-action: none; }
 .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto minmax(0, auto) 7ch auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
-   유령 2행 트랙(0px 30px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 30px 트랙 중앙으로 반 행 어긋난다.
-   grid-row: 1로 전 셀을 단일 30px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. 본문 마커는 조건부 셀이라
+   유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
+   grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. 본문 마커는 조건부 셀이라
    나머지 셀도 열을 명시해야 마커가 없는 행에서 뒤 셀들이 한 칸씩 당겨지지 않는다. */
 .history-graph-gutter { grid-column: 1; grid-row: 1; }
 /* Fork 문법 — refs 뱃지가 제목 앞(그래프 뒤)에서 커밋의 정체를 먼저 알린다.
@@ -1211,7 +1202,7 @@
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
    숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
    제목은 어느 폭에서도 한 줄을 유지한다(기본 규칙의 nowrap+ellipsis): 행 높이는 그래프 gutter의
-   ROW_HEIGHT(30px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
+   ROW_HEIGHT(28px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
 @container (max-width: 760px) {
   .history-commit-author { display: none; }
   .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto 7ch auto; }
@@ -1404,12 +1395,10 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  width: calc(100% - 8px);
-  min-height: 28px;
-  margin: 0 4px;
-  padding: 4px 8px 4px 14px;
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 10px 4px 18px;
   border: 0;
-  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -2013,7 +2002,7 @@
 }
 .repository-staging-bulk:disabled { opacity: 0.4; cursor: default; }
 .repository-staging-rows { padding: 2px 0 8px; }
-.repository-staging-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin: 0 4px; padding: 0; border-radius: var(--radius-xs); transition: background 0.1s; }
+.repository-staging-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 0; transition: background 0.1s; }
 /* 스테이징 행은 .repository-file-row와 같은 요소에 서므로(staging-view.tsx), 선택(.is-cur)을
    제외하지 않으면 같은 특이도의 후순위 hover가 brass 선택 필을 잉크로 덮는다 — 행 액션을
    쓰는 순간 선택 표시가 사라지는 회귀(Codex P2 재현 확인). */
