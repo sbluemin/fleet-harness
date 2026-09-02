@@ -24,7 +24,7 @@ import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { clearMaximizedOperationId, loadForTheater, setMaximizedOperationId, setState as setCanvasState, setViewport } from "../core/client/src/canvas/canvas-store.js";
 import { resetIdleArrivalForTests } from "../core/client/src/operation-marks.js";
 import { claimTheaterBootMinimization, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
-import { getState } from "../core/client/src/store.js";
+import { getState, setActiveOperation } from "../core/client/src/store.js";
 import { resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -143,12 +143,19 @@ describe("Cruise fleet map", () => {
     expect(onFocus).toHaveBeenCalledWith("operation-b");
   });
 
-  it("mounts a theater from its nameplate without folding the panels the map just showed", () => {
+  it("mounts a theater from its nameplate without folding panels or retaining the prior Theater's active Operation", () => {
     renderCanvas();
-    act(() => setViewport({ x: 0, y: 0, zoom: 0.1 }));
+    act(() => {
+      setActiveOperation(OPERATION.id);
+      setViewport({ x: 0, y: 0, zoom: 0.1 });
+    });
+    expect(getState().activeOperationId).toBe(OPERATION.id);
     const pick = container!.querySelector<HTMLButtonElement>('[data-fleet-map-zone-pick="theater-b"]')!;
     act(() => { pick.click(); });
     expect(getState().activeTheaterId).toBe(THEATER_B);
+    // 표석은 Theater를 바꾸는 선택이다 — 이전 Theater의 숨은 패널이 활성으로 남으면 그 패널의
+    // companion 단축키가 계속 노출·실행된다.
+    expect(getState().activeOperationId).toBeNull();
     // 부팅 최소화의 "처음 여는 한 번"은 표석 클릭이 소비했다 — 페이지 effect는 접을 목록을 받지 못한다.
     expect(claimTheaterBootMinimization(THEATER_B)).toBe(false);
   });

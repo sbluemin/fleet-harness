@@ -1205,6 +1205,9 @@ export function OperationsCanvas({
             // 판이 보여 준 패널이 그대로 올라와야 "마운트"다 — 그 Theater를 이 세션에서 처음 여는
             // 것이라면 부팅 최소화가 전 패널을 접어 빈 캔버스로 맞이하므로, 그 한 번을 여기서 소비한다.
             claimTheaterBootMinimization(theaterId);
+            // Theater를 바꾸는 표석 선택은 이전 Theater의 Operation 선택을 함께 걷는다 — 숨은
+            // 패널이 active로 남으면 그 패널의 companion 단축키가 계속 노출·실행된다.
+            clearActiveOperation();
             setActiveTheater(theaterId);
           }}
           onOperationContextMenu={onOpenOperationMenu}
