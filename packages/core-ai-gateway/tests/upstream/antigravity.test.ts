@@ -550,7 +550,11 @@ describe("antigravity request wire", () => {
       type: "array",
       prefixItems: [{
         description: "value",
-        anyOf: [{ type: "string" }, {}, { $ref: "#/$defs/value" }],
+        anyOf: [
+          { type: "string" },
+          {},
+          { description: "referenced", $ref: "#/$defs/value" },
+        ],
       }],
       items: false,
     })).toMatchObject({

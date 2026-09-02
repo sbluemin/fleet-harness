@@ -190,7 +190,10 @@ function geminiOpenValueApproximation(depth = 2): Record<string, unknown> {
 function sanitizeGeminiItems(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) return geminiOpenValueApproximation();
   const schema = sanitizeGeminiSchema(value);
-  return Object.keys(schema).length === 0 ? geminiOpenValueApproximation() : schema;
+  const hasStructure = typeof schema.type === "string"
+    || isRecord(schema.properties)
+    || Array.isArray(schema.anyOf);
+  return hasStructure ? schema : geminiOpenValueApproximation();
 }
 
 function schemaAlternatives(schema: Record<string, unknown>): Record<string, unknown>[] {
