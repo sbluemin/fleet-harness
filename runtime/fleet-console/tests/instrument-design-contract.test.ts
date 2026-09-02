@@ -2853,9 +2853,11 @@ describe("Instrument core design contract", () => {
     const thinkingDotsBlock = chat.match(/\.agent-chat-thinking-dots > span \{[^}]*\}/)?.[0] ?? "";
     expect(thinkingDotsBlock).toContain("width: 1ch;");
     expect(thinkingDotsBlock).toContain("opacity: 0;");
-    expect(thinkingDotsBlock).toContain("animation: agent-chat-thinking-dot 1.2s steps(1, end) infinite;");
-    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*opacity: 1;\s*animation: none;\s*\}/);
-    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot \{\s*0%, 33\.332% \{ opacity: 0; \}\s*33\.333%, 100% \{ opacity: 1; \}\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*opacity: 1;\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(2\) \{\s*animation: agent-chat-thinking-dot-mid 1\.2s steps\(1, end\) infinite;\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(3\) \{\s*animation: agent-chat-thinking-dot-end 1\.2s steps\(1, end\) infinite;\s*\}/);
+    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-mid \{\s*0%, 33\.332% \{ opacity: 0; \}\s*33\.333%, 100% \{ opacity: 1; \}\s*\}/);
+    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-end \{\s*0%, 66\.665% \{ opacity: 0; \}\s*66\.666%, 100% \{ opacity: 1; \}\s*\}/);
     expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-thinking-dots > span \{\s*animation: none;\s*\}/);
     // 흐르는 글의 표식 — 캐럿은 secondary 잉크(채널 없음)로 마지막 블록 끝에 서고, 끝단
     // 옅어짐은 알파 마스크다. 둘 다 흐르는 동안만 걸리고 감속 모션에서 점멸·마스크가 걷힌다.

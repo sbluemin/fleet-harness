@@ -484,25 +484,28 @@
 .agent-chat-thinking-dots > span {
   width: 1ch;
   opacity: 0;
-  animation: agent-chat-thinking-dot 1.2s steps(1, end) infinite;
 }
 
 .agent-chat-thinking-dots > span:first-child {
   opacity: 1;
-  animation: none;
 }
 
 .agent-chat-thinking-dots > span:nth-child(2) {
-  animation-delay: -0.8s;
+  animation: agent-chat-thinking-dot-mid 1.2s steps(1, end) infinite;
 }
 
 .agent-chat-thinking-dots > span:nth-child(3) {
-  animation-delay: -0.4s;
+  animation: agent-chat-thinking-dot-end 1.2s steps(1, end) infinite;
 }
 
-@keyframes agent-chat-thinking-dot {
+@keyframes agent-chat-thinking-dot-mid {
   0%, 33.332% { opacity: 0; }
   33.333%, 100% { opacity: 1; }
+}
+
+@keyframes agent-chat-thinking-dot-end {
+  0%, 66.665% { opacity: 0; }
+  66.666%, 100% { opacity: 1; }
 }
 
 /* 도는 구간의 집계 줄. 예전에는 최근 여덟 스텝이 전폭 행으로 흘러가는 것이 "일하는 중"의
