@@ -2847,6 +2847,16 @@ describe("Instrument core design contract", () => {
     expect(chatView0).not.toContain('<div className="agent-chat-step is-running">\n          <span className="agent-chat-step-orbit"');
     expect(chatView0).toContain("const alive = live && (tails.length > 0 || thinking);");
     expect(chatView0).toContain('{alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}');
+    // 생각의 점은 한 칸씩 차오르고 되돌아간다. 바깥 폭은 3칸으로 고정해 줄이 흔들리지 않고,
+    // 장식 점은 라이브 리전의 매 박자 재낭독을 막기 위해 접근성 트리에서 빠진다.
+    expect(chatView0).toContain('className="agent-chat-thinking-dots" aria-hidden="true"');
+    const thinkingDotsBlock = chat.match(/\.agent-chat-thinking-dots > span \{[^}]*\}/)?.[0] ?? "";
+    expect(thinkingDotsBlock).toContain("width: 1ch;");
+    expect(thinkingDotsBlock).toContain("opacity: 0;");
+    expect(thinkingDotsBlock).toContain("animation: agent-chat-thinking-dot 1.2s steps(1, end) infinite;");
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*opacity: 1;\s*animation: none;\s*\}/);
+    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot \{\s*0%, 33\.332% \{ opacity: 0; \}\s*33\.333%, 100% \{ opacity: 1; \}\s*\}/);
+    expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-thinking-dots > span \{\s*animation: none;\s*\}/);
     // 흐르는 글의 표식 — 캐럿은 secondary 잉크(채널 없음)로 마지막 블록 끝에 서고, 끝단
     // 옅어짐은 알파 마스크다. 둘 다 흐르는 동안만 걸리고 감속 모션에서 점멸·마스크가 걷힌다.
     const chatCaretBlock = chat.match(/\.agent-chat-stream\.is-streaming > :last-child:not\(ol, ul, pre\)::after,[\s\S]*?\}/)?.[0] ?? "";

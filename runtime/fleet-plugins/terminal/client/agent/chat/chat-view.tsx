@@ -1101,7 +1101,10 @@ function Tally({
                 {clauses.length > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
                 <span className="agent-chat-tally-clause">
                   <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={AGENT_CHAT_THINK_FAMILY} /></span>
-                  <span>{t("terminal.chat.stepThinking")}</span>
+                  <span className="agent-chat-thinking-label">
+                    <span>{t("terminal.chat.stepThinking")}</span>
+                    <span className="agent-chat-thinking-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+                  </span>
                 </span>
               </>
             ) : null}
