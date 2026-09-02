@@ -127,8 +127,8 @@ describe("chat panel composer", () => {
     mount();
     expect(input()).not.toBeNull();
     expect(container?.querySelector(".agent-chat-composer-rest")).toBeNull();
-    // 되찾은 세로는 입력 행수로 돌아간다 — 크롬이 85%를 쓰던 자리다.
-    expect(input()?.rows).toBe(3);
+    // Quick Launch와 같은 한 줄 intrinsic 높이에서 시작하고, CSS 46px 하한 위로 내용만큼 자란다.
+    expect(input()?.rows).toBe(1);
     // 좌표는 컨트롤 행이 진다.
     expect(container?.querySelector(".agent-chat-composer-bar .coord-stub")).not.toBeNull();
   });

@@ -559,7 +559,7 @@ export function AgentChatComposer({
             <ComposerInput
               ref={inputRef}
               className="agent-chat-composer-input"
-              rows={3}
+              rows={1}
               value={draft}
               placeholder={placeholder}
               aria-label={t("terminal.chat.composerInputAria")}

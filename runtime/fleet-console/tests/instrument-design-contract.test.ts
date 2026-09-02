@@ -2680,6 +2680,17 @@ describe("Instrument core design contract", () => {
     const ledgeBlock = chat.match(/^\.agent-chat-ledge \{[^}]*\}/m)?.[0] ?? "";
     expect(ledgeBlock).toContain("flex: none;");
     expect(ledgeBlock).not.toContain("position: absolute");
+    // 선반과 composer frame은 같은 measure와 가운데 좌표를 공유한다. 선반만 패널 전폭으로
+    // 돌아가면 두 표면이 다시 갈라져 보이므로, 좁은 패널 gutter까지 이 계약에 포함한다.
+    expect(ledgeBlock).toContain("width: min(var(--agent-chat-composer-measure), calc(100% - var(--space-3) - var(--space-3)));");
+    expect(ledgeBlock).toContain("margin-inline: auto;");
+    // 2-layout은 유지하고 위쪽 입력 면만 Quick Launch와 같은 한 줄 intrinsic textarea + 46px
+    // 하한으로 맞춘다. rows=3이면 첫 입력 순간 SDK의 scrollHeight가 59px로 되튀어 하한이 무효다.
+    const compactComposerInputBlock = chat.match(/^\.agent-chat-composer-input \{[^}]*\}/m)?.[0] ?? "";
+    expect(compactComposerInputBlock).toContain("min-height: 46px;");
+    expect(compactComposerInputBlock).toContain("max-height: calc(1.5em * 6);");
+    expect(chatComposer0).toContain("rows={1}");
+    expect(chatComposer0).not.toContain("rows={3}");
     expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}`}');
     expect(chatView0).toContain("{hasJobs ? (");
     // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 그 상태 전체가 여닫는 표면이다.

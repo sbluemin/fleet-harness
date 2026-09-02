@@ -1264,10 +1264,10 @@
   font-size: var(--t-md);
   line-height: 1.5;
   padding: 0;
-  /* 세 줄에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가 지는 이유는 자동 높이가
-     매 입력마다 scrollHeight를 인라인 height로 쓰기 때문이다 — rows 속성만 두면 첫 렌더에서
-     한 줄로 깎여, 안내를 컨트롤 행으로 올려 되찾은 세로가 그대로 사라진다. */
-  min-height: calc(1.5em * 3);
+  /* Quick Launch와 같은 46px에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가
+     지는 이유는 자동 높이가 매 입력마다 scrollHeight를 인라인 height로 쓰기 때문이다 — rows
+     속성만 두면 첫 렌더에서 한 줄로 깎인다. 아래 컨트롤 행은 별도 layout으로 그대로 남는다. */
+  min-height: 46px;
   max-height: calc(1.5em * 6);
 }
 
@@ -2613,19 +2613,29 @@
 
 .agent-chat-ledge.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
 
-/* 선반. 로그의 가로 여백과 같은 들여쓰기로 시작해 대화의 한 줄처럼 읽히되, 위 헤어라인이
-   로그와 컴포저 사이의 자기 자리를 말한다. 잡이 하나라도 있는 동안만 서고 떠다니지 않는다. */
+/* 선반. 컴포저 프레임과 같은 읽기 폭·가운데 좌표를 써 하나의 하단 작업 자리로 읽히되,
+   독립된 헤어라인 이음새는 유지한다. 좁은 패널에서는 양쪽 composer gutter를 따라 줄어들고,
+   잡이 하나라도 있는 동안만 서며 떠다니지 않는다. */
 .agent-chat-ledge {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: min(var(--agent-chat-composer-measure), calc(100% - var(--space-3) - var(--space-3)));
   min-height: 32px;
+  margin-inline: auto;
   padding: 0 var(--space-3) 0 clamp(var(--space-4), 4vw, var(--space-8));
   border-top: 1px solid var(--hairline);
   font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
+  /* measure의 ch가 composer frame과 같은 14px 문맥에서 계산되게 하고, 보이는 선반 글자는
+     아래 자식 규칙에서 기존 t-xs를 유지한다. */
+  font-size: var(--font-body-size);
   color: var(--text-secondary);
+}
+
+.agent-chat-ledge > .agent-chat-strip-count,
+.agent-chat-ledge-name {
+  font-size: var(--t-xs);
 }
 
 .agent-chat-ledge-name {
@@ -2652,6 +2662,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: var(--t-xs);
   cursor: pointer;
   transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
 }
