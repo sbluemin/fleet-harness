@@ -29,6 +29,8 @@ interface FleetMapProps {
   readonly geometryFor: (operation: OperationNode) => OperationGeometry | null;
   /** 점을 고르면 그 Operation으로 내려간다 — 포커스 경로가 Theater 전환과 줌 복귀를 함께 진다. */
   readonly onPick: (operationId: string) => void;
+  /** 구역 표석을 고르면 그 Theater를 올린다(활성 Theater 전환). */
+  readonly onSelectTheater?: (theaterId: string) => void;
   readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onTheaterContextMenu?: (theaterId: string, anchor: { readonly x: number; readonly y: number }) => void;
 }
@@ -49,6 +51,7 @@ export function FleetMap({
   leaving,
   geometryFor,
   onPick,
+  onSelectTheater,
   onOperationContextMenu,
   onTheaterContextMenu,
 }: FleetMapProps) {
@@ -91,6 +94,7 @@ export function FleetMap({
   // 구역의 빈 자리 우클릭은 그 Theater의 실행 메뉴다 — 점은 자기 메뉴를 열고 여기 닿지 않는다.
   const openTheaterMenu = (theaterId: string, event: ReactMouseEvent<HTMLElement>) => {
     if (event.defaultPrevented || event.target instanceof Element && event.target.closest("[data-fleet-map-dot]")) return;
+    // 표석 위의 우클릭도 그 Theater의 메뉴다 — 표석은 구역의 일부다.
     event.preventDefault();
     event.stopPropagation();
     onTheaterContextMenu?.(theaterId, { x: event.clientX, y: event.clientY });
@@ -163,15 +167,28 @@ export function FleetMap({
               } as CSSProperties}
             >
               {/* 구역의 이름표는 원주 대신 구역 중앙에 선다 — 점선 원주를 걷어낸 판에서
-                  "여기가 어느 Theater인가"를 말하는 것은 그 자리에 놓인 문구 자체다. */}
+                  "여기가 어느 Theater인가"를 말하는 것은 그 자리에 놓인 문구 자체다.
+                  표석은 그 Theater로 가는 문이기도 하다 — 겨누면 brass로 밝아지고 누르면 그
+                  Theater가 올라온다. 점처럼 캔버스 제스처에서 제외한다. */}
               <header className="canvas-fleet-map-zone-head">
-                <span className="canvas-fleet-map-zone-title">
-                  <span className="canvas-fleet-map-zone-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
-                  <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
-                </span>
-                <span className="canvas-fleet-map-zone-counts">
-                  {t("canvas.fleetMap.zoneCount", { count: band.operations.length })}
-                </span>
+                <button
+                  type="button"
+                  className="canvas-fleet-map-zone-pick"
+                  data-fleet-map-zone-pick={band.theater.id}
+                  data-canvas-blocker
+                  aria-pressed={band.theater.id === activeTheaterId}
+                  aria-label={t("canvas.fleetMap.zoneAria", { label: band.theater.label })}
+                  tabIndex={leaving ? -1 : 0}
+                  onClick={() => onSelectTheater?.(band.theater.id)}
+                >
+                  <span className="canvas-fleet-map-zone-title">
+                    <span className="canvas-fleet-map-zone-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
+                    <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
+                  </span>
+                  <span className="canvas-fleet-map-zone-counts">
+                    {t("canvas.fleetMap.zoneCount", { count: band.operations.length })}
+                  </span>
+                </button>
               </header>
               <div className="canvas-fleet-map-field">
                 {renderDots(band)}

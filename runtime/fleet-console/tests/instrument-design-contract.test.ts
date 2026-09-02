@@ -4397,6 +4397,23 @@ describe("War Room deck panel grammar", () => {
     expect(deck).toContain('className="canvas-triage-deck-pick"');
   });
 
+  it("keeps the fleet map under the canvas launch menu and marks its nameplates on the brass channel", () => {
+    // 판이 메뉴를 덮으면 메뉴는 보이는데 눌리지 않는다 — 판(20)은 캔버스 실행 메뉴(30) 아래,
+    // 월드(무 z-index)와 미니맵(14) 위에 선다.
+    const plate = components.match(/\.canvas-fleet-map \{[^}]*\}/)?.[0] ?? "";
+    expect(plate).toContain("z-index: 20;");
+    const launch = components.match(/\.operation-launch-control--canvas \{[^}]*\}/)?.[0] ?? "";
+    expect(launch).toContain("z-index: 30;");
+    // 표석의 hover/focus는 위치 채널(brass)만 쓴다 — 신호 토큰이 끼면 상태로 읽힌다.
+    const nameplate = components.match(/\.canvas-fleet-map-zone-pick:hover,\n\.canvas-fleet-map-zone-pick:focus-visible \{[^}]*\}/)?.[0] ?? "";
+    expect(nameplate).toContain("var(--brass)");
+    expect(nameplate).not.toMatch(/--(?:aurora|warn|coral|positive)\b/);
+    // 지도의 점과 표석은 캔버스 제스처에서 제외된다 — 바다만 팬·휠을 통과시킨다.
+    const fleetMap = source("canvas/fleet-map.tsx");
+    expect(fleetMap.match(/data-canvas-blocker/g)?.length).toBe(2);
+    expect(fleetMap).not.toContain('<div\n      className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}\n      data-canvas-blocker');
+  });
+
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {
     const sidebar = source("sidebar/triage-side-bar.tsx");
     const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";

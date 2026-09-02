@@ -9,7 +9,8 @@ interface CanvasInteractionOptions {
   // pan(드래그)은 즉시 적용한다.
   readonly onViewportChange: (viewport: CanvasViewport) => void;
   // 휠 줌은 보간 경로로 보낸다(스토어 rAF tween).
-  readonly onZoom: (viewport: CanvasViewport) => void;
+  /** 목표 viewport와 그 계산의 앵커가 된 화면 점(캔버스-local). */
+  readonly onZoom: (viewport: CanvasViewport, screen: CanvasPoint) => void;
   readonly onCreate: (rect: CanvasRect, anchor: CanvasPoint) => void;
   readonly onConsumePointerDown?: () => void;
   readonly onClick?: () => void;
@@ -140,7 +141,7 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
       x: screen.x - canvas.x * zoom,
       y: screen.y - canvas.y * zoom,
       zoom,
-    });
+    }, screen);
   };
 
   const finishPointer = (event: ReactPointerEvent<HTMLDivElement>, commit: boolean) => {

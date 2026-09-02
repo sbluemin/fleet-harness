@@ -3765,7 +3765,9 @@
   position: absolute;
   /* 덱과 같은 자리 — 아레나 인셋 위 26px, 가로는 부유 카드에 12px 가산으로 다가선다. */
   inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
-  z-index: 40;
+  /* 캔버스 실행 메뉴(.operation-launch-control--canvas, 30) 아래 — 판이 메뉴를 덮으면 메뉴는
+     보이는데 눌리지 않는다(핸드오프 1차 결함). 월드(무 z-index)와 미니맵(14)보다는 위. */
+  z-index: 20;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
@@ -3847,17 +3849,27 @@
 }
 
 /* 이름표는 구역 한가운데의 표석이다 — 점들 아래에 깔려 판의 지명처럼 읽히고, 점이 그 위를
-   지나가도 신호(dot)가 항상 이긴다. */
+   지나가도 신호(dot)가 항상 이긴다. 헤더 자신은 포인터를 통과시키고, 안의 표석 버튼만 받는다. */
 .canvas-fleet-map-zone-head {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 0;
+  max-width: 84%;
+  pointer-events: none;
+}
+
+/* 표석은 그 Theater로 가는 문이다 — 겨누면 위치 채널(brass)로 밝아지고, 활성 Theater는 이미
+   그 자리라 링 없이 brass 잉크만 진하다. 포커스 링은 hover와 같은 마크다. */
+.canvas-fleet-map-zone-pick {
   display: grid;
   justify-items: center;
   gap: 5px;
-  max-width: 84%;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
   white-space: nowrap;
   color: var(--brass-ink);
   font-family: var(--font-mono);
@@ -3866,7 +3878,29 @@
   letter-spacing: 0.12em;
   text-align: center;
   text-transform: uppercase;
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    background-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-fleet-map-zone-pick:hover,
+.canvas-fleet-map-zone-pick:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: var(--brass-bright);
+  outline: none;
+}
+
+.canvas-fleet-map-zone-pick:hover .canvas-fleet-map-zone-label,
+.canvas-fleet-map-zone-pick:focus-visible .canvas-fleet-map-zone-label {
+  color: var(--brass-bright);
+}
+
+.canvas-fleet-map-zone-pick[aria-pressed="true"] {
+  color: var(--brass-bright);
 }
 
 .canvas-fleet-map-zone-title {
@@ -4308,7 +4342,8 @@
      여기서 끊는다 — 판은 서거나 없거나 둘 중 하나로 즉시 떨어진다. */
   .operations-canvas-world,
   .canvas-fleet-map-dot,
-  .canvas-fleet-map-dot-label {
+  .canvas-fleet-map-dot-label,
+  .canvas-fleet-map-zone-pick {
     transition: none;
   }
 }

@@ -20,6 +20,73 @@ export function resolveFleetMapActive(previous: boolean, zoom: number): boolean 
   return previous ? zoom <= FLEET_MAP_EXIT_ZOOM : zoom < FLEET_MAP_ENTER_ZOOM;
 }
 
+/** 판이 서 있는 동안 보이는 패널들의 월드 중심 — 지도 위의 줌은 커서가 아니라 이 점을 앵커로
+ *  잡는다. 판 위의 커서는 월드와 아무 관계가 없어, 커서 앵커로 확대하면 함대가 화면 밖으로
+ *  흘러간 채 패널이 돌아온다(핸드오프 1차 피드백). 최소화된 패널은 화면에 없으니 제외한다. */
+export function resolveFleetContentCenter(
+  operations: Readonly<Record<string, OperationGeometry>>,
+  minimized: readonly string[],
+): { readonly x: number; readonly y: number } | null {
+  const hidden = new Set(minimized);
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const [operationId, geometry] of Object.entries(operations)) {
+    if (hidden.has(operationId)) continue;
+    minX = Math.min(minX, geometry.x);
+    minY = Math.min(minY, geometry.y);
+    maxX = Math.max(maxX, geometry.x + geometry.width);
+    maxY = Math.max(maxY, geometry.y + geometry.height);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+}
+
+/** 월드의 한 점을 아레나의 한 화면 점(아레나-상대) 아래에 놓는 저장 viewport. 화면 점을 주지
+ *  않으면 아레나 중앙이다. */
+export function anchorViewportToPoint(
+  point: { readonly x: number; readonly y: number },
+  zoom: number,
+  arena: { readonly width: number; readonly height: number },
+  screen?: { readonly x: number; readonly y: number },
+): { readonly x: number; readonly y: number; readonly zoom: number } {
+  const at = screen ?? { x: arena.width / 2, y: arena.height / 2 };
+  return {
+    x: at.x - point.x * zoom,
+    y: at.y - point.y * zoom,
+    zoom,
+  };
+}
+
+export interface FleetMapZoomCandidate {
+  readonly operationId: string;
+  /** 판 위 점의 화면 좌표(캔버스-local). */
+  readonly screen: { readonly x: number; readonly y: number };
+  /** 그 Operation의 월드 중심. */
+  readonly center: { readonly x: number; readonly y: number };
+}
+
+/** 판 위에서 확대할 때의 앵커 — 커서에 가장 가까운 점의 Operation. 판은 함대의 축소판이라
+ *  커서가 겨눈 점이 곧 "여기로 내려가겠다"는 뜻이고, 그 Operation을 커서 아래 두고 키우면
+ *  판이 걷힌 뒤에도 커서 주위로 계속 자란다. 후보가 없으면(활성 Theater가 비었으면) null —
+ *  호출부는 함대 중심을 아레나 중앙에 둔다. */
+export function resolveFleetMapZoomAnchor(
+  candidates: readonly FleetMapZoomCandidate[],
+  cursor: { readonly x: number; readonly y: number },
+): FleetMapZoomCandidate | null {
+  let nearest: FleetMapZoomCandidate | null = null;
+  let best = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const distance = Math.hypot(candidate.screen.x - cursor.x, candidate.screen.y - cursor.y);
+    if (distance < best) {
+      best = distance;
+      nearest = candidate;
+    }
+  }
+  return nearest;
+}
+
 // 마커 배치 — 충분한 2D canvas geometry는 필드 [8,92]%×[10,86]%로 투영하고, geometry가 부족하거나
 // 거의 한 줄이면 전 Operation을 id 해시 기반 전면 산포로 바꾼다.
 // Math.random 금지: 렌더마다 위치가 흔들리면 지도가 아니라 애니메이션이다.

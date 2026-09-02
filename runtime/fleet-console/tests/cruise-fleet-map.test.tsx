@@ -23,6 +23,8 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDesc
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { clearMaximizedOperationId, loadForTheater, setMaximizedOperationId, setState as setCanvasState, setViewport } from "../core/client/src/canvas/canvas-store.js";
 import { resetIdleArrivalForTests } from "../core/client/src/operation-marks.js";
+import { claimTheaterBootMinimization, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
+import { getState } from "../core/client/src/store.js";
 import { resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -60,6 +62,7 @@ beforeEach(() => {
     minimized: [],
   });
   resetIdleArrivalForTests();
+  resetBootMinimizationSession();
   setTriageActive(false);
   clearMaximizedOperationId();
   container = document.createElement("div");
@@ -125,6 +128,16 @@ describe("Cruise fleet map", () => {
     const dot = container!.querySelector<HTMLButtonElement>('[data-fleet-map-dot="operation-b"]')!;
     act(() => { dot.click(); });
     expect(onFocus).toHaveBeenCalledWith("operation-b");
+  });
+
+  it("mounts a theater from its nameplate without folding the panels the map just showed", () => {
+    renderCanvas();
+    act(() => setViewport({ x: 0, y: 0, zoom: 0.1 }));
+    const pick = container!.querySelector<HTMLButtonElement>('[data-fleet-map-zone-pick="theater-b"]')!;
+    act(() => { pick.click(); });
+    expect(getState().activeTheaterId).toBe(THEATER_B);
+    // 부팅 최소화의 "처음 여는 한 번"은 표석 클릭이 소비했다 — 페이지 effect는 접을 목록을 받지 못한다.
+    expect(claimTheaterBootMinimization(THEATER_B)).toBe(false);
   });
 
   it("never stands under War Room or a maximized panel, whatever the zoom", () => {

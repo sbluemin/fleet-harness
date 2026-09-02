@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FleetMap } from "../core/client/src/canvas/fleet-map.js";
 import {
+  anchorViewportToPoint,
+  resolveFleetMapZoomAnchor,
   FLEET_MAP_ENTER_ZOOM,
   FLEET_MAP_EXIT_ZOOM,
+  resolveFleetContentCenter,
   resolveFleetMapActive,
   resolveFleetMapDriftStyle,
   resolveFleetMapMarkerLayout,
@@ -36,6 +39,31 @@ describe("fleet map activation", () => {
     // 이탈 뒤 같은 배율은 다시 진입하지 않는다.
     expect(resolveFleetMapActive(false, 0.22)).toBe(false);
     expect(resolveFleetMapActive(true, Number.NaN)).toBe(false);
+  });
+
+  it("anchors zoom on the visible fleet's center so the panels come back on screen", () => {
+    // 판 위의 커서는 월드와 무관하다 — 판에서의 줌은 함대 중심을 아레나 중앙에 놓는다.
+    const center = resolveFleetContentCenter({
+      a: { x: 0, y: 0, width: 400, height: 200, zIndex: 1 },
+      b: { x: 800, y: 600, width: 400, height: 200, zIndex: 2 },
+      hidden: { x: 9000, y: 9000, width: 400, height: 200, zIndex: 3 },
+    }, ["hidden"]);
+    expect(center).toEqual({ x: 600, y: 400 });
+    expect(resolveFleetContentCenter({}, [])).toBeNull();
+    expect(resolveFleetContentCenter({ only: { x: 10, y: 10, width: 100, height: 100, zIndex: 1 } }, ["only"])).toBeNull();
+    const viewport = anchorViewportToPoint({ x: 600, y: 400 }, 0.5, { width: 1000, height: 800 });
+    // 월드 (600,400)이 화면 (500,400)에 온다: 500 - 600*0.5 = 200, 400 - 400*0.5 = 200.
+    expect(viewport).toEqual({ x: 200, y: 200, zoom: 0.5 });
+    // 화면 점을 주면 그 점 아래에 온다 — 판에서 겨눈 자리로 내려가는 앵커.
+    expect(anchorViewportToPoint({ x: 600, y: 400 }, 0.5, { width: 1000, height: 800 }, { x: 900, y: 700 })).toEqual({ x: 600, y: 500, zoom: 0.5 });
+  });
+
+  it("zooms toward the dot nearest the cursor, or nowhere when the active theater has none", () => {
+    const near = { operationId: "near", screen: { x: 100, y: 100 }, center: { x: 10, y: 10 } };
+    const far = { operationId: "far", screen: { x: 900, y: 700 }, center: { x: 5000, y: 5000 } };
+    expect(resolveFleetMapZoomAnchor([far, near], { x: 130, y: 90 })).toBe(near);
+    expect(resolveFleetMapZoomAnchor([far, near], { x: 880, y: 720 })).toBe(far);
+    expect(resolveFleetMapZoomAnchor([], { x: 0, y: 0 })).toBeNull();
   });
 });
 
@@ -318,12 +346,27 @@ describe("FleetMap", () => {
     expect(onTheaterContextMenu).toHaveBeenCalledWith("theater-b", { x: 71, y: 82 });
   });
 
+  it("turns each zone's nameplate into a door to that theater", () => {
+    const onSelectTheater = vi.fn();
+    render({ onSelectTheater });
+    const picks = [...container!.querySelectorAll<HTMLButtonElement>("[data-fleet-map-zone-pick]")];
+    expect(picks).toHaveLength(2);
+    // 표석도 점처럼 캔버스 제스처에서 제외된다 — 누르는 순간 팬이 시작되면 안 된다.
+    expect(picks.every((pick) => pick.hasAttribute("data-canvas-blocker"))).toBe(true);
+    const active = container!.querySelector<HTMLButtonElement>('[data-fleet-map-zone-pick="theater-a"]')!;
+    const other = container!.querySelector<HTMLButtonElement>('[data-fleet-map-zone-pick="theater-b"]')!;
+    expect(active.getAttribute("aria-pressed")).toBe("true");
+    expect(other.getAttribute("aria-pressed")).toBe("false");
+    act(() => { other.click(); });
+    expect(onSelectTheater).toHaveBeenCalledWith("theater-b");
+  });
+
   it("takes its dots out of the tab order while leaving", () => {
     render({ leaving: true });
     const map = container!.querySelector<HTMLElement>(".canvas-fleet-map");
     expect(map?.classList.contains("is-leaving")).toBe(true);
     expect(map?.getAttribute("aria-hidden")).toBe("true");
-    const dots = [...container!.querySelectorAll<HTMLButtonElement>("[data-fleet-map-dot]")];
+    const dots = [...container!.querySelectorAll<HTMLButtonElement>("[data-fleet-map-dot], [data-fleet-map-zone-pick]")];
     expect(dots.every((dot) => dot.tabIndex === -1)).toBe(true);
   });
 });
