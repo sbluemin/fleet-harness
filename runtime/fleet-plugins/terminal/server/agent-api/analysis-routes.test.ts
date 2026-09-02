@@ -790,6 +790,9 @@ describe("Session Analyst server contract", () => {
         hairline: "#35404d",
         accent: "#65d1ff",
       }));
+      expect(headStyles[0]?.textContent).toContain(".fleet-callout{position:relative;");
+      expect(headStyles[0]?.textContent).toContain(".fleet-callout::before{content:\"\";position:absolute;");
+      expect(headStyles[0]?.textContent).not.toContain(".fleet-callout{display:grid;");
       // 바닥 시트는 모델 스타일을 짓밟지 않는다 — !important는 사용자 모션 설정 존중에만 허용된다.
       const motionIndex = headStyles[0]?.textContent?.indexOf("@media (prefers-reduced-motion") ?? -1;
       expect(motionIndex).toBeGreaterThan(0);
