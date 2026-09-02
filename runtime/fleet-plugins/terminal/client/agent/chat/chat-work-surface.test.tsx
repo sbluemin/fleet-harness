@@ -597,7 +597,7 @@ describe("chat ledger — one live line", () => {
     expect(container?.querySelector(".agent-chat-tally")?.textContent).not.toContain("Thinking");
   });
 
-  it("folds a thought trace into the tally as time, not as a count", () => {
+  it("omits settled thought traces from the tally", () => {
     logState = {
       ...stateWith([]),
       turns: [{
@@ -616,8 +616,8 @@ describe("chat ledger — one live line", () => {
     };
     mount();
     const clauses = [...(container?.querySelectorAll(".agent-chat-tally-clause") ?? [])].map((clause) => clause.textContent);
-    expect(clauses).toEqual(["Read 1 file", "Thought for 6s", "Ran 1 shell command"]);
-    // 생각은 집계 절 자체가 전부다 — 펼침 본문에 빈 전폭 스텝 상자로 반복하지 않는다.
+    expect(clauses).toEqual(["Read 1 file", "Ran 1 shell command"]);
+    expect(container?.textContent).not.toContain("Thought for");
     expect(container?.querySelector(".agent-chat-step.is-thought")).toBeNull();
   });
 });

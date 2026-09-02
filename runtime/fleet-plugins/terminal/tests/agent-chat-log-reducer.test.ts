@@ -414,7 +414,7 @@ describe("segmentAgentChatLedger", () => {
     }]);
   });
 
-  it("folds thought traces into one think group that sums its time", () => {
+  it("omits thought traces while keeping neighboring tool steps in one tally", () => {
     const segments = segmentAgentChatLedger([
       { type: "text", text: "Looking." },
       { type: "tool", name: "Read", detail: "a.md", state: "ok" },
@@ -425,12 +425,9 @@ describe("segmentAgentChatLedger", () => {
     const tally = segments[0]?.parts[0];
     expect(tally?.kind).toBe("tally");
     if (tally?.kind !== "tally") return;
-    expect(tally.groups).toEqual([
-      { family: "read", count: 2 },
-      { family: "think", count: 2, durationMs: 5_500 },
-    ]);
-    // 생각은 절에만 남고, 펼침 본문에는 실제 도구 두 건만 든다.
+    expect(tally.groups).toEqual([{ family: "read", count: 2 }]);
     expect(tally.folded).toHaveLength(2);
+    expect(tally.folded.every((item) => item.type === "tool")).toBe(true);
   });
 
   it("counts an unknown tool under its own name", () => {

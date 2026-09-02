@@ -285,7 +285,7 @@ export interface AgentChatQueueEntry {
  * 저널에 실리는 형태. seq는 재접속 클라이언트가 중복 반영을 걸러내는 단조 축이고, at은
  * 이벤트가 서버 원장에 선 시각이다. 클라이언트 수신 시각으로 생각 공백을 재면 재접속 뒤
  * snapshot이 한꺼번에 도착할 때 모든 공백이 0초가 된다 — 원장 시각이어야 라이브 턴을
- * 다시 붙여도 "N초 생각함" 흔적을 같은 값으로 복원한다.
+ * 다시 붙여도 공백과 활동 경계를 같은 시간축으로 복원한다.
  */
 export interface AgentChatJournalEvent {
   readonly seq: number;

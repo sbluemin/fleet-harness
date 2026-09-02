@@ -1084,14 +1084,7 @@ function settledLabel(count: number, t: ReturnType<typeof getT>): string {
 }
 
 /** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
-/** 생각의 흔적 라벨 — 1초 아래는 흔적이 서지 않으므로(리듀서 상한) 0초는 나오지 않는다. */
-function thoughtLabel(durationMs: number, t: ReturnType<typeof getT>): string {
-  return t("terminal.chat.thoughtFor", { seconds: Math.max(1, Math.round(durationMs / 1_000)) });
-}
-
 function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
-  // 생각은 횟수가 아니라 시간으로 읽힌다 — "2회 생각함"은 아무것도 말하지 않는다.
-  if (group.family === AGENT_CHAT_THINK_FAMILY) return thoughtLabel(group.durationMs ?? 0, t);
   const plural = group.count === 1 ? "one" : "other";
   const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
   return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
