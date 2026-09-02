@@ -194,10 +194,13 @@ function sanitizeGeminiItems(value: unknown): Record<string, unknown> {
 }
 
 function schemaAlternatives(schema: Record<string, unknown>): Record<string, unknown>[] {
-  if (Object.keys(schema).length === 1 && Array.isArray(schema.anyOf)) {
-    return schema.anyOf.filter(isRecord);
-  }
-  return [schema];
+  if (Object.keys(schema).length !== 1 || !Array.isArray(schema.anyOf)) return [schema];
+  return schema.anyOf.flatMap((entry) => {
+    if (!isRecord(entry) || Object.keys(entry).length === 0) {
+      return schemaAlternatives(geminiOpenValueApproximation());
+    }
+    return [entry];
+  });
 }
 
 function geminiTupleItems(

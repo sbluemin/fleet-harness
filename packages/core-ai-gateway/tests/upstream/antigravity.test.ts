@@ -546,6 +546,21 @@ describe("antigravity request wire", () => {
       items: { anyOf: [{ type: "string" }, { type: "integer" }] },
       maxItems: 1,
     });
+    expect(sanitizeGeminiSchema({
+      type: "array",
+      prefixItems: [{ anyOf: [{ type: "string" }, {}, { $ref: "#/$defs/value" }] }],
+      items: false,
+    })).toMatchObject({
+      type: "array",
+      items: {
+        anyOf: expect.arrayContaining([
+          { type: "string" },
+          { type: "string", nullable: true },
+          expect.objectContaining({ type: "array" }),
+        ]),
+      },
+      maxItems: 1,
+    });
     expect(sanitizeGeminiSchema({ type: "array" })).toMatchObject({
       type: "array",
       items: {
