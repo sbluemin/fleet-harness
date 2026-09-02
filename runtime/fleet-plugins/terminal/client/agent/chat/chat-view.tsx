@@ -676,7 +676,9 @@ function ChatTurn({
   const contextGrew = turn.contextBefore !== undefined && nextContextBefore !== undefined
     ? nextContextBefore - turn.contextBefore
     : undefined;
-  const hasSettledWork = !working && (view.ledger.length > 0 || view.changes.length > 0);
+  // 완료된 생각 흔적은 원장에 보이지 않으므로, 그것만 남은 턴에 빈 작업 접힘과 Answer 이음매를
+  // 세우지 않는다. 라이브 "생각 중…"은 working 경로가 별도로 그린다.
+  const hasSettledWork = !working && (view.ledger.some((item) => item.type !== "thought") || view.changes.length > 0);
   // 정비 명령은 대화가 아니다. 말풍선도 턴 노드도 경과 시계도 세우지 않는다 — 그 문법 전체가
   // "모델이 생각하고 있다"를 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예
   // 부르지 않는다. 한 줄이 지시와 진행과 결말을 함께 진다.

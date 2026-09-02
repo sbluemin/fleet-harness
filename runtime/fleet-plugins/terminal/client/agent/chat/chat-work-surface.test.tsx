@@ -620,6 +620,27 @@ describe("chat ledger — one live line", () => {
     expect(container?.textContent).not.toContain("Thought for");
     expect(container?.querySelector(".agent-chat-step.is-thought")).toBeNull();
   });
+
+  it("does not leave an empty work fold or answer seam when only a settled thought precedes the answer", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "thought", durationMs: 3_400 },
+          { type: "text", text: "Done." },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "done",
+        toolCount: 0,
+        durationMs: 3_400,
+        draft: "",
+      }],
+    };
+    mount();
+    expect(container?.querySelector(".agent-chat-work-fold")).toBeNull();
+    expect(container?.querySelector(".agent-chat-answer.has-seam")).toBeNull();
+    expect(container?.querySelector(".agent-chat-answer-kicker")?.textContent).toBe("Answer");
+  });
 });
 
 /**
