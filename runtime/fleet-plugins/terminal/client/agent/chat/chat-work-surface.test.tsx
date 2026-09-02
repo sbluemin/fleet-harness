@@ -181,6 +181,26 @@ describe("chat work surface — panel controls", () => {
     expect(document.activeElement).toBe(door());
   });
 
+  it("keeps focus inside the sheet when list and detail replace each other", () => {
+    // 작업 카드와 상세의 뒤로 버튼은 뷰를 바꾸는 순간 스스로 사라진다. 새 뷰의 첫 컨트롤로
+    // 초점을 이어야 Esc가 계속 이 패널에 귀속되고, Tab도 보이는 내용 안에서 시작한다.
+    logState = stateWith([job()]);
+    mount();
+    act(() => { door()?.click(); });
+    const jobButton = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-job");
+
+    act(() => { jobButton?.click(); });
+
+    const back = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-detail-back");
+    expect(back).not.toBeNull();
+    expect(document.activeElement).toBe(back);
+
+    act(() => { back?.click(); });
+
+    const returnedJob = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-job");
+    expect(document.activeElement).toBe(returnedJob);
+  });
+
   it("does not consume Escape from outside this chat panel", () => {
     // 한 화면에 채팅 패널이 여럿 산다. document 캡처 리스너를 쓰면 다른 패널의 컴포저가 보낸
     // Esc까지 먼저 삼켜 이 시트를 접고, 열린 시트가 여럿이면 전부 함께 접힌다.

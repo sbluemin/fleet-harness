@@ -323,12 +323,13 @@ export function AgentChatView({
     if (!hasJobs && workOpen) collapseWork();
   }, [hasJobs, workOpen, collapseWork]);
 
-  // 열리면 보이는 내용의 첫 컨트롤로 초점을 보낸다. 시트가 DOM에서 선반보다 앞에 있어 문에
-  // 초점을 둔 채 Tab을 누르면 컴포저로 건너뛰기 때문이다. 접을 때는 언제나 선반의 문으로 돌아간다.
+  // 열리거나 목록·상세가 갈아 끼워지면 보이는 내용의 첫 컨트롤로 초점을 보낸다. 시트는 DOM에서
+  // 선반보다 앞에 있고, 뷰를 바꾼 버튼은 그 순간 사라진다 — 이 좌표를 듣지 않으면 Tab은 컴포저로
+  // 건너뛰고 Esc도 패널 밖 body에서 시작한다. 접을 때는 언제나 선반의 문으로 돌아간다.
   React.useEffect(() => {
     if (!workOpen) return;
     workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
-  }, [workOpen]);
+  }, [workOpen, selectedJob?.id]);
 
   // Esc는 이 채팅 패널 안에서 생긴 키만 듣는다. document에 캡처 리스너를 걸면 다른 패널의
   // 컴포저가 턴을 멈추려고 누른 Esc까지 먼저 삼키고, 열린 시트가 여럿이면 전부 함께 접힌다.
