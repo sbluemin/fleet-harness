@@ -1278,7 +1278,10 @@ export function OperationsCanvas({
         </div>
       ) : null}
       <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
-      {!triageActive && !hasContent && !formationEntering && !cruiseEntering ? (
+      {/* 함대 지도가 서면 활성 Theater의 빈 상태는 동시 표면이 아니다 — 다른 Theater의 패널로
+          지도가 서는 동안 빈 상태를 함께 두면 지도를 가리고 숨은 버튼이 탭 순서에 남는다. 퇴장
+          단계는 지도가 입력을 이미 놓은 cross-fade라 새 표면이 바로 서도 된다. */}
+      {!triageActive && !fleetMapActive && !hasContent && !formationEntering && !cruiseEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}
           theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? state.activeTheaterId ?? ""}

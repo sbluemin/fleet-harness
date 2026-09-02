@@ -121,6 +121,19 @@ describe("Cruise fleet map", () => {
     expect(fleetMap()).toBeNull();
   });
 
+  it("does not mount the active Theater empty state over a fleet map backed by another Theater", () => {
+    // 활성 Theater의 패널만 접혀 hasContent=false이고, 다른 Theater의 패널은 함대 지도에 남는
+    // 지원 경로다. 두 표면이 함께 서면 불투명 빈 상태가 지도를 가리고 숨은 버튼도 탭 순서에 남는다.
+    setCanvasState({
+      viewport: { x: 0, y: 0, zoom: 0.1 },
+      operations: { [OPERATION.id]: OPERATION.geometry! },
+      minimized: [OPERATION.id],
+    });
+    renderCanvas();
+    expect(fleetMap()).not.toBeNull();
+    expect(container!.querySelector(".operations-canvas-empty")).toBeNull();
+  });
+
   it("hands a picked dot to the focus route, which owns the theater switch and the zoom back", () => {
     const onFocus = vi.fn();
     renderCanvas({ onFocus });
