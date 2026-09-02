@@ -163,20 +163,39 @@ describe("chat work surface", () => {
 });
 
 describe("chat work surface — panel controls", () => {
-  it("hides on Escape and hands focus back to the door", () => {
-    // 나가는 문은 하나뿐이고 언제나 같은 자리다 — Esc로 접어도 초점은 그 문으로 돌아와,
-    // 다음 Tab이 문 다음에서 이어진다.
+  it("moves focus into the opened sheet, then hides on Escape and returns focus to the door", () => {
+    // 시트는 DOM에서 문보다 앞에 있으므로 문에 초점을 둔 채 열면 다음 Tab이 컴포저로 건너뛴다.
+    // 보이는 첫 작업으로 초점을 보내고, Esc로 접으면 같은 자리의 문으로 돌아온다.
     logState = stateWith([job()]);
     mount();
     act(() => { door()?.click(); });
     expect(workPane()).not.toBeNull();
     expect(door()?.getAttribute("aria-controls")).toBe(workPane()?.id);
+    const firstJob = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-job");
+    expect(document.activeElement).toBe(firstJob);
 
-    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    act(() => { firstJob?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
     expect(workPane()).toBeNull();
     expect(door()?.getAttribute("aria-expanded")).toBe("false");
     expect(door()?.textContent).toBe("Show");
     expect(document.activeElement).toBe(door());
+  });
+
+  it("does not consume Escape from outside this chat panel", () => {
+    // 한 화면에 채팅 패널이 여럿 산다. document 캡처 리스너를 쓰면 다른 패널의 컴포저가 보낸
+    // Esc까지 먼저 삼켜 이 시트를 접고, 열린 시트가 여럿이면 전부 함께 접힌다.
+    logState = stateWith([job()]);
+    mount();
+    act(() => { door()?.click(); });
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+
+    act(() => { outside.dispatchEvent(escape); });
+
+    expect(workPane()).not.toBeNull();
+    expect(escape.defaultPrevented).toBe(false);
+    outside.remove();
   });
 
   it("hides on a pointer-down on the conversation", () => {

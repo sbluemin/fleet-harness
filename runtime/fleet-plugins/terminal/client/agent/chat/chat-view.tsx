@@ -93,6 +93,7 @@ export function AgentChatView({
   // 선반의 문. Esc로 접었을 때 초점이 돌아가는 자리다 — 문을 누르지 않고 닫았어도 다음 Tab이
   // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
   const ledgeToggleRef = React.useRef<HTMLButtonElement>(null);
+  const workSheetRef = React.useRef<HTMLElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -322,19 +323,21 @@ export function AgentChatView({
     if (!hasJobs && workOpen) collapseWork();
   }, [hasJobs, workOpen, collapseWork]);
 
-  // 열려 있는 동안에만 문서에 손을 댄다 — 한 화면에 채팅 패널이 여럿 살 수 있어, 닫힌 시트까지
-  // 리스너를 걸면 패널 수만큼 같은 핸들러가 매 Esc를 받는다. 접은 뒤 초점은 선반의 문으로
-  // 돌아간다: 시트를 열어 준 것이 원장 앵커였어도 나가는 문은 하나뿐이다.
+  // 열리면 보이는 내용의 첫 컨트롤로 초점을 보낸다. 시트가 DOM에서 선반보다 앞에 있어 문에
+  // 초점을 둔 채 Tab을 누르면 컴포저로 건너뛰기 때문이다. 접을 때는 언제나 선반의 문으로 돌아간다.
   React.useEffect(() => {
     if (!workOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      collapseWork();
-      ledgeToggleRef.current?.focus();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
+    workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+  }, [workOpen]);
+
+  // Esc는 이 채팅 패널 안에서 생긴 키만 듣는다. document에 캡처 리스너를 걸면 다른 패널의
+  // 컴포저가 턴을 멈추려고 누른 Esc까지 먼저 삼키고, 열린 시트가 여럿이면 전부 함께 접힌다.
+  const onPanelKeyDownCapture = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!workOpen || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    collapseWork();
+    ledgeToggleRef.current?.focus();
   }, [workOpen, collapseWork]);
 
   // 시트가 덮지 않은 대화 위를 누르면 시트가 물러난다 — 콘솔의 팝오버와 같은 문법이다. 원장의
@@ -354,6 +357,7 @@ export function AgentChatView({
          마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
       style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
+      onKeyDownCapture={onPanelKeyDownCapture}
     >
       <span className="agent-chat-sr-only" role="status" aria-atomic="true">{answerAnnouncement}</span>
       {/* 대화 면 하나다. 백그라운드 작업은 옆 컬럼도 아래 서랍도 아니라, 컴포저 위 선반에서
@@ -455,6 +459,7 @@ export function AgentChatView({
         {workOpen ? (
           <WorkSheet
             id={`${paneId}-work`}
+            sheetRef={workSheetRef}
             jobs={state.jobs}
             job={selectedJob}
             operationId={context.operationId}
@@ -1662,6 +1667,7 @@ function WorkLedge({
  */
 function WorkSheet({
   id,
+  sheetRef,
   jobs,
   job,
   operationId,
@@ -1670,6 +1676,7 @@ function WorkSheet({
   onBack,
 }: {
   readonly id: string;
+  readonly sheetRef: React.RefObject<HTMLElement | null>;
   readonly jobs: readonly AgentChatJob[];
   readonly job: AgentChatJob | null;
   readonly operationId: string;
@@ -1681,7 +1688,7 @@ function WorkSheet({
   const open = jobs.filter((entry) => entry.open);
   const settled = jobs.filter((entry) => !entry.open);
   return (
-    <section className="agent-chat-sheet" id={id} aria-label={t("terminal.chat.workAria")}>
+    <section ref={sheetRef} className="agent-chat-sheet" id={id} aria-label={t("terminal.chat.workAria")}>
       <div className="agent-chat-sheet-head">
         <span>{t("terminal.chat.workAria")}</span>
         <span className="agent-chat-sheet-hint">{t("terminal.chat.sheetEscHint")}</span>
