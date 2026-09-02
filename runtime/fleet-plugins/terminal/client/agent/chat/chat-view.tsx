@@ -869,9 +869,7 @@ function Ledger({
   );
   // continuityItem은 마지막 Shell 하나다. 앞서 끝난 작업은 그대로 남기고, 그 항목만 평소 집계에서
   // 빼 같은 자리에 전용 상태 행으로 세운다 — 원장 전체가 700ms 동안 사라지면 연속성이 아니다.
-  const ledgerItems = continuityItem?.id !== undefined
-    ? items.filter((item) => item.id !== continuityItem.id)
-    : items;
+  const ledgerItems = continuityItem !== null ? items.slice(0, -1) : items;
   const segments = segmentAgentChatLedger(ledgerItems, hasJob);
   if (segments.length === 0 && !pending && continuityItem === null) return null;
   return (
@@ -950,24 +948,28 @@ const FAST_SHELL_COMPLETION_MS = 220;
  * 개입하지 않아 과거 로그를 다시 열 때마다 애니메이션이 되살아나지 않는다.
  */
 function useFastShellContinuity(turn: AgentChatTurn): AgentChatTurnItem | null {
-  const candidate = [...turn.items].reverse().find((item) => (
-    item.type === "tool"
-    && agentChatToolFamily(item.name) === "run"
-    && item.startedAt !== undefined
-    && (item.state === "running" || (
-      item.settledAt !== undefined
-      && item.settledAt - item.startedAt < FAST_SHELL_PERCEPTION_MS
+  // 원장의 시간은 꼬리에서 앞으로 흐르지 않는다. 마지막 항목이 다른 활동이면 앞의 빠른 Shell을
+  // 아래로 옮겨 다시 살리지 않는다 — 이음매는 오직 지금 화면에서 바뀌는 마지막 개체의 것이다.
+  const tail = turn.items.at(-1);
+  const candidate = tail?.type === "tool"
+    && agentChatToolFamily(tail.name) === "run"
+    && tail.startedAt !== undefined
+    && (tail.state === "running" || (
+      tail.settledAt !== undefined
+      && tail.settledAt - tail.startedAt < FAST_SHELL_PERCEPTION_MS
     ))
-  ));
+    ? tail
+    : undefined;
   const perceptionAt = candidate?.startedAt !== undefined ? candidate.startedAt + FAST_SHELL_PERCEPTION_MS : 0;
   const deadline = perceptionAt + FAST_SHELL_COMPLETION_MS;
-  const [now, setNow] = React.useState(() => Date.now());
+  const [, rerender] = React.useState(0);
+  const now = Date.now();
   React.useEffect(() => {
     if (candidate === undefined || candidate.state === "running" || now >= deadline) return;
     const next = now < perceptionAt ? perceptionAt : deadline;
-    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, next - Date.now()));
+    const timer = window.setTimeout(() => rerender((value) => value + 1), Math.max(0, next - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [candidate?.id, candidate?.state, deadline, now, perceptionAt]);
+  }, [candidate?.id, candidate?.state, deadline, now < perceptionAt]);
   if (candidate === undefined) return null;
   if (candidate.state === "running") return candidate;
   if (now >= deadline) return null;

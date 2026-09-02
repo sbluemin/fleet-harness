@@ -977,7 +977,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         detail: "",
         id: event.id,
         state: "running",
-        ...(now !== undefined && !state.replaying ? { startedAt: now } : {}),
+        ...(now !== undefined && !state.replaying && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
       });
     case "tool": {
       // 재생 구간의 스텝은 이미 끝난 일이다 — 결과 줄이 뒤따르면 ok/fail로 다시 옮겨 붙는다.
@@ -988,7 +988,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         detail: event.detail,
         state: initial,
         ...(event.id !== undefined ? { id: event.id } : {}),
-        ...(initial === "running" && now !== undefined ? { startedAt: now } : {}),
+        ...(initial === "running" && now !== undefined && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
         ...(event.outside === true ? { outside: true } : {}),
         ...(event.change ? { change: event.change } : {}),
       };
