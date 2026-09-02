@@ -92,13 +92,13 @@ function mount(): void {
   render();
 }
 
-// 백그라운드 작업의 문 — 이제 컴포저 툴 행(attach 왼쪽)의 글리프다. 떠 있던 스트립을 대신한다.
-function strip(): HTMLButtonElement | null {
-  return container?.querySelector<HTMLButtonElement>(".agent-chat-composer-work") ?? null;
+// 백그라운드 작업의 문 — 컴포저 위 선반의 Show/Hide 버튼. 컴포저 글리프와 떠 있던 스트립을 대신한다.
+function door(): HTMLButtonElement | null {
+  return container?.querySelector<HTMLButtonElement>(".agent-chat-ledge-toggle") ?? null;
 }
 
 function workPane(): HTMLElement | null {
-  return container?.querySelector<HTMLElement>(".agent-chat-work") ?? null;
+  return container?.querySelector<HTMLElement>(".agent-chat-sheet") ?? null;
 }
 
 function logVisible(): boolean {
@@ -109,73 +109,85 @@ function logVisible(): boolean {
 describe("chat work surface", () => {
   it("stays out of the way until the session has background work", () => {
     mount();
-    expect(strip()).toBeNull();
+    expect(door()).toBeNull();
     expect(workPane()).toBeNull();
     expect(logVisible()).toBe(true);
   });
 
-  it("opens the work pane beside the conversation, never instead of it", () => {
+  it("opens the work sheet over the conversation, never instead of it", () => {
     // 이 표면의 요점 자체다. 탭은 대화를 통째로 숨겼는데, 백그라운드 작업은 대화를 대신하는 것이
-    // 아니라 대화 옆에서 동시에 돈다 — 하나를 고르게 만들면 무엇이 도는지 보려고 무엇을 물었는지를 잃는다.
+    // 아니라 대화 옆에서 동시에 돈다 — 시트는 대화의 아래쪽을 덮을 뿐, 로그는 그대로 서 있다.
     logState = stateWith([job()]);
     mount();
-    const door = strip();
-    expect(door).not.toBeNull();
-    act(() => { door?.click(); });
+    const toggle = door();
+    expect(toggle).not.toBeNull();
+    expect(toggle?.textContent).toBe("Show");
+    act(() => { toggle?.click(); });
 
     expect(workPane()).not.toBeNull();
     expect(logVisible()).toBe(true);
+    // 문은 같은 자리에 남아 자기 동사를 바꾼다 — 들어온 문이 나가는 문이다.
+    expect(door()?.textContent).toBe("Hide");
+    expect(door()?.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("keeps a door to the work surface after the last job settles", () => {
-    // 글리프가 살아 있는 잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 사라진다.
-    // 탭이 지던 몫이라 탭을 걷은 이상 쉬는 글리프(중립 정지 링)가 그 자리를 이어받아야 한다.
+    // 선반이 살아 있는 잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 사라진다.
+    // 정착만 남았으면 선반은 신호(도는 오브)가 아니라 중립 도트와 개수로 말한다.
     logState = stateWith([job({ open: false, status: "completed" })]);
     mount();
-    const door = strip();
-    expect(door).not.toBeNull();
-    // 정착만 남았으면 신호(도는 오브)가 아니라 중립 정지 링이 선다.
-    expect(door?.querySelector(".agent-chat-composer-work-rest")).not.toBeNull();
-    expect(door?.querySelector(".agent-chat-composer-work-orbit")).toBeNull();
-    act(() => { door?.click(); });
+    const ledge = container?.querySelector(".agent-chat-ledge");
+    expect(ledge?.classList.contains("is-rest")).toBe(true);
+    expect(ledge?.querySelector(".agent-chat-strip-dot")).not.toBeNull();
+    expect(ledge?.querySelector(".agent-chat-strip-orbit")).toBeNull();
+    expect(ledge?.querySelector(".agent-chat-strip-count")?.textContent).toBe("1 job");
+    act(() => { door()?.click(); });
     expect(workPane()).not.toBeNull();
   });
 
-  it("keeps the collapse door when the job ledger resets underneath the open pane", () => {
-    // 재접속이 리듀서를 되감고 저널에 잡 이벤트가 남아 있지 않으면 원장이 비어 버린다. 그때
-    // 접는 문까지 사라지면 작업 면이 열린 채 굳는다.
+  it("closes the sheet when the job ledger resets underneath it", () => {
+    // 재접속이 리듀서를 되감고 저널에 잡 이벤트가 남아 있지 않으면 원장이 비어 버린다. 선반은
+    // 잡과 함께 물러나므로, 그때 시트가 남으면 문 없는 시트가 열린 채 굳는다.
     logState = stateWith([job()]);
     mount();
-    act(() => { strip()?.click(); });
+    act(() => { door()?.click(); });
     expect(workPane()).not.toBeNull();
 
     logState = stateWith([]);
     render();
 
-    const cap = container?.querySelector<HTMLButtonElement>(".agent-chat-work-cap");
-    expect(cap).not.toBeNull();
-    act(() => { cap?.click(); });
+    expect(door()).toBeNull();
     expect(workPane()).toBeNull();
     expect(logVisible()).toBe(true);
   });
 });
 
 describe("chat work surface — panel controls", () => {
-  it("exposes the splitter value and resizes the pane from the keyboard", () => {
+  it("hides on Escape and hands focus back to the door", () => {
+    // 나가는 문은 하나뿐이고 언제나 같은 자리다 — Esc로 접어도 초점은 그 문으로 돌아와,
+    // 다음 Tab이 문 다음에서 이어진다.
     logState = stateWith([job()]);
     mount();
-    act(() => { strip()?.click(); });
+    act(() => { door()?.click(); });
+    expect(workPane()).not.toBeNull();
+    expect(door()?.getAttribute("aria-controls")).toBe(workPane()?.id);
 
-    const grip = container?.querySelector<HTMLElement>(".agent-chat-grip");
-    expect(grip?.tabIndex).toBe(0);
-    expect(grip?.getAttribute("aria-valuenow")).toBe("42");
-    expect(grip?.getAttribute("aria-valuetext")).toBe("Background work pane 42%");
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(workPane()).toBeNull();
+    expect(door()?.getAttribute("aria-expanded")).toBe("false");
+    expect(door()?.textContent).toBe("Show");
+    expect(document.activeElement).toBe(door());
+  });
 
-    act(() => { grip?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
-    expect(container?.querySelector(".agent-chat-grip")?.getAttribute("aria-valuenow")).toBe("46");
+  it("hides on a pointer-down on the conversation", () => {
+    // 시트가 덮지 않은 대화 위를 누르면 물러난다 — 콘솔의 팝오버와 같은 문법이다.
+    logState = stateWith([job()]);
+    mount();
+    act(() => { door()?.click(); });
+    expect(workPane()).not.toBeNull();
 
-    act(() => { grip?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })); });
-    expect(container?.querySelector(".agent-chat-grip")?.getAttribute("aria-valuenow")).toBe("18");
+    act(() => { container?.querySelector(".agent-chat-log")?.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(workPane()).toBeNull();
   });
 
   it("keeps no floating chip row in the body and leaves the composer with the conversation", () => {
@@ -183,13 +195,16 @@ describe("chat work surface — panel controls", () => {
     // 작업 면이 열리는 순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮는다(실측으로 겪은 자리다).
     logState = stateWith([job()]);
     mount();
-    act(() => { strip()?.click(); });
+    act(() => { door()?.click(); });
     expect(container?.querySelector(".agent-view-chip-row")).toBeNull();
     // 컴포저는 대화 면의 것이다 — 문맥 미터도 그 컨트롤 행에 실려 함께 남는다.
     const composer = container?.querySelector(".agent-chat-composer");
     expect(composer).not.toBeNull();
     expect(composer?.closest(".agent-chat-pane")).not.toBeNull();
-    expect(composer?.closest(".agent-chat-work")).toBeNull();
+    expect(composer?.closest(".agent-chat-sheet")).toBeNull();
+    // 선반은 컴포저 바로 위, 같은 대화 면 안에 in-flow로 선다.
+    const ledge = container?.querySelector(".agent-chat-ledge");
+    expect(ledge?.nextElementSibling).toBe(composer);
   });
 });
 
@@ -226,8 +241,8 @@ describe("chat work surface — stage identities", () => {
       }],
     })]);
     mount();
-    act(() => { strip()?.click(); });
-    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-work .agent-chat-job")?.click(); });
+    act(() => { door()?.click(); });
+    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-sheet .agent-chat-job")?.click(); });
 
     const cells = [...(container?.querySelectorAll<HTMLElement>(".agent-chat-stage-row .is-model") ?? [])];
     expect(cells.map((cell) => cell.textContent)).toEqual(["codex--gpt-5.6-sol", "claude-opus-5[1m]"]);
@@ -247,8 +262,8 @@ describe("chat work surface — job detail timing", () => {
     const closed = { id: "b1", kind: "shell" as const, title: "loop", open: false, status: "stopped" as const, stages: [], ends: 1 };
     logState = { ...stateWith([closed]), jobs: [closed] };
     mount();
-    act(() => { strip()?.click(); });
-    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-work .agent-chat-job")?.click(); });
+    act(() => { door()?.click(); });
+    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-sheet .agent-chat-job")?.click(); });
     await act(async () => { await Promise.resolve(); });
     const first = detailCalls.length;
     expect(first).toBeGreaterThan(0);
@@ -353,8 +368,11 @@ describe("chat ledger — one live line, and a job anchor instead of a card", ()
         ? "note"
         : child.classList.contains("agent-chat-job-anchor") ? "job" : "tally"));
     expect(kinds).toEqual(["note", "tally", "job", "tally"]);
-    // 문은 그대로 열린다 — 몸(종류·소요·출력)은 작업 면의 것이다.
+    // 문은 그대로 열린다 — 몸(종류·소요·출력)은 시트의 것이다.
     act(() => { anchor?.click(); });
+    expect(workPane()).not.toBeNull();
+    // 앵커 위의 pointer-down은 시트를 닫지 않는다 — 여는 문이 스스로를 지우면 안 된다.
+    act(() => { anchor?.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
     expect(workPane()).not.toBeNull();
   });
 });

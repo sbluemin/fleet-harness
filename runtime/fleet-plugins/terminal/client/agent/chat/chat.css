@@ -1453,58 +1453,6 @@
   outline-offset: 2px;
 }
 
-/* 백그라운드 작업 글리프 — attach의 왼쪽에 선 또래 글리프다. 떠 있던 잡 스트립을 대신해 이
-   툴 행 안으로 들어와, 부유 크롬이 지던 "어느 쪽에도 안 속함"을 없앤다. attach와 같은 문법을
-   쓴다(투명 바탕·tertiary 잉크·hover는 brass=위치). 살아 있는 잡이 있는 동안에만 서고, 눌러서
-   Work 면을 여는 문이다 — 배지도 글자도 없이 글리프 하나이고, 카운트는 접근성 레이블이 진다.
-   [doctrine] 실행 중=aurora orbit(신호), 완료만 남음=중립 정지 링(finished-work 문). 쉬는 링은
-   신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고 여기엔 그 사실이 없다. */
-.agent-chat-composer-work {
-  border: 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  padding: 7px;
-  border-radius: var(--radius-xs);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  /* 상자는 표식이 아니라 글리프 규격이 정한다. 이웃(첨부·계기·중지)은 16px 표식에 7px 패딩이라
-     30px인데, 이 글리프의 표식은 도는 중 14px·정착 13px이라 같은 패딩으로도 28·27px가 된다 —
-     한 줄에 선 네 버튼이 서로 다른 크기와 클릭 과녁을 갖고, 도는 잡이 끝나는 순간 행이 1px
-     움찔한다(실측). 상자를 못박으면 표식은 지금 그대로 그 안에 가운데로 앉는다. */
-  width: 30px;
-  height: 30px;
-}
-
-.agent-chat-composer-work:hover {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-}
-
-.agent-chat-composer-work:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-}
-
-/* attach 글리프(16px)와 시각 무게를 맞춘 14px 오브 — 스트립의 9px보다 크다. */
-.agent-chat-composer-work-orbit {
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-pill);
-  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
-  border-top-color: var(--aurora);
-  animation: agent-chat-orbit 0.9s linear infinite;
-}
-
-.agent-chat-composer-work-rest {
-  width: 13px;
-  height: 13px;
-  border-radius: var(--radius-pill);
-  border: 2px solid var(--hairline-strong);
-}
-
 .agent-chat-composer-send {
   width: 32px;
   height: 32px;
@@ -2027,6 +1975,8 @@
 .canvas-operation.is-deck-tile .agent-chat-dormant-open,
 .canvas-operation.is-deck-tile .agent-chat-follow,
 .canvas-operation.is-deck-tile .agent-chat-settle,
+.canvas-operation.is-deck-tile .agent-chat-ledge,
+.canvas-operation.is-deck-tile .agent-chat-sheet,
 .canvas-operation.is-deck-tile .agent-chat-composer {
   display: none;
 }
@@ -2038,9 +1988,8 @@
   min-height: 0;
 }
 
-/* 카드에는 컴포저가 없다(바로 위 숨김 목록) — 백그라운드 작업 글리프도 그 컴포저 툴 행 안에
-   살므로, 컴포저가 숨는 순간 글리프도 함께 사라진다. 스트립이 컴포저 경계에 걸터앉던 시절의
-   별도 카드 앵커는 그와 함께 폐기됐다. */
+/* 카드에는 컴포저가 없다(바로 위 숨김 목록) — 백그라운드 작업의 선반과 시트도 같은 목록에
+   든다. 카드는 읽는 자리라 문이 서지 않고, 문이 없으면 시트도 열 수 없다. */
 
 /* ── 세션 좌표 각인 ───────────────────────────────────────────────────────
    이 세션이 무엇으로 도는가(모델 · 강도). 최근 백그라운드 작업 글리프처럼 컴포저 툴 행에
@@ -2364,20 +2313,10 @@
    종류(서브에이전트·워크플로·셸)는 글리프와 모노 라벨이 가른다 — 종류를 색으로 가르면 신호
    채널이 뒤집힌다. 살아 있는 개수는 --aurora(상태 채널)다.
 
-   두 면은 **나란히** 산다. 이전에는 탭이 갈아 끼웠는데, 그러면 무엇이 도는지 보려고 무엇을
-   물었는지를 잃는다 — 백그라운드 작업은 대화를 대신하는 것이 아니라 대화 옆에서 동시에 돈다. */
+   두 번째 시계는 대화 **위로** 떠오른다. 탭은 대화를 통째로 숨겼고, 나란히 선 스플릿은 열 때마다
+   로그의 42%를 가져갔다 — 시트는 대화의 아래쪽을 잠시 덮을 뿐 밀어내지 않는다(아래 선반·시트). */
 
-.agent-chat-split {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  /* 넓은 패널에서는 작업 면이 오른쪽 컬럼이다. 좁아지면 아래 서랍으로 접힌다(아래 @container). */
-  flex-direction: row;
-}
-
-/* 대화 면. 떠 있는 컨트롤(Follow·스트립·중지·회신)의 위치 기준이 여기다 — 패널 전체에 걸면
-   작업 면이 열린 순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */
+/* 대화 면. 떠 있는 컨트롤(Follow·중지)과 시트의 위치 기준은 그 안의 .agent-chat-body다. */
 .agent-chat-pane {
   position: relative;
   flex: 1;
@@ -2385,73 +2324,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* 칩 줄(폭 칩·좌표 칩)의 @container 기준은 이 대화 면이다 — 작업 면이 옆 컬럼으로 서면
-     좁아지는 것은 섹션이 아니라 이 면인데, 섹션 폭으로 재면 프리셋이 전부 같게 그려지는
-     폭에서도 폭 칩이 뜻을 잃은 채 남는다. 스플릿 적층·그립 규칙은 이 면 밖이라 불변이다. */
+  /* 칩 줄(폭 칩·좌표 칩)의 @container 기준은 이 대화 면이다. */
   container-type: inline-size;
-}
-
-/* 스트립 전용 바닥 여백은 없다. 스트립이 회신 버튼과 같은 행으로 내려오면서 그 높이가 로그의
-   기본 바닥 여백(회신 버튼 몫) 안에 들어왔기 때문이다 — 한 층 더 비우면 그만큼이 죽은 띠로 남는다.
-   위층으로 올라간 Follow는 여백을 요구하지 않는다: 그 칩은 바닥에서 떨어져 있을 때만 서고,
-   바닥으로 돌아오는 순간 사라지므로 마지막 줄을 가둘 수 없다. */
-
-/* 두 면의 경계이자 손잡이. 얇지만 잡히는 폭을 따로 갖는다 — 1px 선은 눈에는 보여도 손에는 없다. */
-.agent-chat-grip {
-  flex: none;
-  width: 9px;
-  cursor: ew-resize;
-  display: grid;
-  place-items: center;
-  background: var(--glass-tint-panel);
-  border-left: 1px solid var(--hairline);
-  touch-action: none;
-}
-
-.agent-chat-grip::after {
-  content: "";
-  width: 2px;
-  height: 26px;
-  border-radius: 2px;
-  background: var(--hairline-strong);
-  transition: background var(--duration-fast);
-}
-
-.agent-chat-grip:hover::after,
-.agent-chat-grip:focus-visible::after {
-  background: var(--brass);
-}
-
-.agent-chat-grip:focus-visible { outline: none; }
-
-/* 작업 면이 열려 있는 동안에도 좁은 패널에서는 세로로 쌓인다. 뷰포트가 아니라 이 패널의 폭이
-   가른다 — 채팅 패널은 덱 안에서 얼마든지 좁아지고, 그때 두 컬럼은 어느 쪽도 읽을 수 없다. */
-@container (max-width: 719px) {
-  .agent-chat-split {
-    flex-direction: column;
-  }
-
-  .agent-chat-grip {
-    width: auto;
-    height: 9px;
-    cursor: ns-resize;
-    border-left: none;
-    border-top: 1px solid var(--hairline);
-  }
-
-  .agent-chat-grip::after {
-    width: 26px;
-    height: 2px;
-  }
-
-  /* 선택자를 한 단 올린다. @container는 특정성을 더하지 않으므로, 동률이면 소스 순서가 이긴다 —
-     `.agent-chat-work`의 기본 규칙은 이 블록보다 **뒤에** 있어서 폭이 되돌려진다(실측: 600px
-     컨테이너에서 서랍이 252px = 42%로 남았다). 규칙을 파일 끝으로 옮기는 대신 방향에 관한 규칙을
-     한자리에 모아 두고, 이기는 이유를 선택자에 적어 둔다. */
-  .agent-chat-split .agent-chat-work {
-    width: auto;
-    height: var(--agent-chat-work, 42%);
-  }
 }
 
 /* ── 잡 카드 ───────────────────────────────────────────────────────────────── */
@@ -2618,11 +2492,12 @@
 
 .agent-chat-fold-running { color: var(--aurora-ink); }
 
-/* ── 백그라운드 작업 글리프의 남은 부품 ──────────────────────────────────────
-   떠 있던 잡 스트립은 컴포저 툴 행의 글리프(.agent-chat-composer-work)로 옮겨 갔다 — 부유
-   크롬이 로그와 컴포저의 이음새에 걸터앉아 어느 쪽에도 속하지 않았고, 이제 attach와 한 줄에 선
-   또래 글리프다. 아래 세 부품은 Work 탭 머리(.agent-chat-work-cap)가 계속 재사용한다: 도는 오브 ·
-   쉬는 도트 · 카운트. 신호 채널 규약은 그대로다 — aurora는 "지금 돈다", 쉬는 카운트는 중립 잉크다. */
+/* ── 선반과 시트 ─────────────────────────────────────────────────────────────
+   백그라운드 작업의 표면은 두 부품이다. 선반은 컴포저 위에 in-flow로 서는 한 줄이고, 시트는
+   그 위에서 대화의 아래쪽을 덮으며 떠오르는 면이다. 이전의 컴포저 글리프(카운트 없는 30px
+   표식)와 스플릿(열 때마다 로그의 42%를 가져가던 옆 컬럼/아래 서랍)을 함께 대신한다 —
+   실측에서 접는 문은 헤더로 읽혔고(투명 rest·아래 화살표), 열어 준 글리프는 열리는 순간
+   사라졌다. 신호 채널 규약은 그대로다: aurora는 "지금 돈다", 쉬는 카운트는 중립 잉크다. */
 
 .agent-chat-strip-orbit {
   width: 9px;
@@ -2644,22 +2519,133 @@
   border: 2px solid var(--hairline-strong);
 }
 
-.agent-chat-work-cap.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
+.agent-chat-ledge.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
 
-/* ── Work 탭 본문 ─────────────────────────────────────────────────────────── */
-
-/* 작업 면 — 대화 면의 형제다. 스스로 스크롤하지 않고, 안의 본문이 스크롤한다: 머리(스트립이
-   옮겨 앉은 자리)는 언제나 보여야 접는 문이 손 닿는 곳에 남는다. */
-.agent-chat-work {
+/* 선반. 로그의 가로 여백과 같은 들여쓰기로 시작해 대화의 한 줄처럼 읽히되, 위 헤어라인이
+   로그와 컴포저 사이의 자기 자리를 말한다. 잡이 하나라도 있는 동안만 서고 떠다니지 않는다. */
+.agent-chat-ledge {
   flex: none;
-  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-3) 0 clamp(var(--space-4), 4vw, var(--space-8));
+  border-top: 1px solid var(--hairline);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.agent-chat-ledge-name {
   min-width: 0;
-  width: var(--agent-chat-work, 42%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+/* 문. 라벨이 동사(Show/Hide)이고 화살표가 시트의 이동 방향이다 — 열리면 180° 돌아 아래를
+   가리킨다. Quiet Controls 레시피 그대로: rest 몸·brass 예고·열림은 --control-open-rim.
+   [doctrine] 투명 rest 금지 — 컨트롤이 헤더로 읽히던 것이 이 표면의 결함이었다. */
+.agent-chat-ledge-toggle {
+  appearance: none;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px 0 9px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--hairline);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-ledge-toggle:hover {
+  background: var(--control-rest-hover);
+  border-color: var(--control-hover-rim);
+  color: var(--brass-ink);
+}
+
+.agent-chat-ledge-toggle[aria-expanded="true"] {
+  background: var(--control-wash);
+  border-color: var(--control-open-rim);
+  color: var(--text-primary);
+}
+
+.agent-chat-ledge-toggle:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.agent-chat-ledge-toggle svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform var(--duration-fast);
+}
+
+.agent-chat-ledge-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* 시트 — 로그의 좌표계(.agent-chat-body) 바닥에 붙어 대화의 아래 62%를 덮는다. 절대배치인
+   이유가 이 표면의 요점이다: 열어도 로그와 컴포저가 움직이지 않는다. Follow 칩(z 3)보다 위층. */
+.agent-chat-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  height: 62%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--glass-tint-panel);
   padding: var(--space-2) clamp(var(--space-3), 2.5cqi, var(--space-5)) var(--space-2);
+  /* 팝업 판독성 계약: 틴트 아래의 불투명 언더레이와 backdrop-filter를 한 벌로 쓴다.
+     glass 게이트가 열리면 언더레이는 투명해지고 틴트+블러가 재료가 되며, 게이트가 닫히거나
+     투명도 축소 선호가 켜지면 언더레이가 불투명 표면으로 돌아온다. */
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  border-top: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-soft);
+  animation: agent-chat-sheet-rise var(--duration-base) var(--ease-spring);
 }
+
+@keyframes agent-chat-sheet-rise {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+}
+
+.agent-chat-sheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-sheet-hint {
+  margin-left: auto;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 시트가 덮은 동안 대화는 한 단 물러난다 — 숨는 것이 아니라 층이 갈렸다는 것을 말한다. */
+.agent-chat-log { transition: opacity var(--duration-fast); }
+.agent-chat-log.is-shaded { opacity: 0.6; }
 
 .agent-chat-work-body {
   flex: 1;
@@ -2669,42 +2655,6 @@
   flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-2);
-}
-
-/* 면이 열리면 떠 있던 스트립이 이 자리로 옮겨 앉는다 — 알약으로 남으면 열린 면의 첫 줄을 덮고,
-   접는 문이 자란 것 밖에 서게 된다. 그래서 이 줄은 표시가 아니라 문이다. */
-.agent-chat-work-cap {
-  appearance: none;
-  cursor: pointer;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 4px 0 6px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--hairline);
-  font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  text-align: left;
-  transition: color var(--duration-fast);
-}
-
-.agent-chat-work-cap:hover { color: var(--text-secondary); }
-
-.agent-chat-work-cap:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
-}
-
-.agent-chat-work-cap-chev {
-  margin-left: auto;
-  font-size: var(--t-xs);
-  line-height: 1;
-  color: var(--text-tertiary);
 }
 
 .agent-chat-work-sec {
@@ -3220,10 +3170,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-chat-strip-orbit,
-  .agent-chat-composer-work-orbit { animation: none; }
-  .agent-chat-work-cap,
-  .agent-chat-grip::after,
+  .agent-chat-strip-orbit { animation: none; }
+  .agent-chat-sheet { animation: none; }
+  .agent-chat-ledge-toggle,
+  .agent-chat-ledge-toggle svg,
+  .agent-chat-log,
   .agent-chat-job,
   .agent-chat-detail-back { transition: none; }
   .agent-chat-ctx-arc-fill,
