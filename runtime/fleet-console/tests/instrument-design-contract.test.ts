@@ -4408,6 +4408,11 @@ describe("War Room deck panel grammar", () => {
     const nameplate = components.match(/\.canvas-fleet-map-zone-pick:hover,\n\.canvas-fleet-map-zone-pick:focus-visible \{[^}]*\}/)?.[0] ?? "";
     expect(nameplate).toContain("var(--brass)");
     expect(nameplate).not.toMatch(/--(?:aurora|warn|coral|positive)\b/);
+    // 구역의 점 필드는 표석을 상자로 덮는다 — 포인터를 통과시켜야 표석이 겨눠지고, 점만 되받는다.
+    const field = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-field \{[^}]*\}/)?.[0] ?? "";
+    expect(field).toContain("pointer-events: none;");
+    const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-dot \{[^}]*\}/)?.[0] ?? "";
+    expect(zoneDot).toContain("pointer-events: auto;");
     // 지도의 점과 표석은 캔버스 제스처에서 제외된다 — 바다만 팬·휠을 통과시킨다.
     const fleetMap = source("canvas/fleet-map.tsx");
     expect(fleetMap.match(/data-canvas-blocker/g)?.length).toBe(2);

@@ -3928,11 +3928,18 @@
 }
 
 /* dot 좌표계는 구역에 내접하는 사각 필드 — 마커 투영([8,92]%×[10,86]%)이 구역 밖으로 나가지
-   않는다. 중앙 표석보다 위에 서서 신호가 지명에 가리지 않게 한다. */
+   않는다. 중앙 표석보다 위에 서서 신호가 지명에 가리지 않게 한다. 필드 자신은 포인터를
+   통과시킨다 — 상자로 표석을 덮고 있어 그대로 두면 표석이 보이는데 겨눠지지 않는다(핸드오프
+   2차 결함). 빈 자리의 우클릭은 구역(section)이 받고, 점만 포인터를 되받는다. */
 .canvas-fleet-map-zone .canvas-fleet-map-field {
   position: absolute;
   z-index: 1;
   inset: 13%;
+  pointer-events: none;
+}
+
+.canvas-fleet-map-zone .canvas-fleet-map-dot {
+  pointer-events: auto;
 }
 
 /* 지도 마커도 같은 활동 축을 읽는다 — 조형은 행·캡션과 같은 둥근 네모다.
