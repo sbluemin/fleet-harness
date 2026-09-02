@@ -300,8 +300,11 @@ describe("FleetMap", () => {
   });
 
   it("uses the whole plate for a single theater and keeps dormant operations on the map", () => {
-    render({ operations: [operation("solo-a", "theater-a"), operation("solo-b", "theater-a")] });
-    // Theater가 하나면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
+    render({
+      theaters: [THEATERS[0]!],
+      operations: [operation("solo-a", "theater-a"), operation("solo-b", "theater-a")],
+    });
+    // 등록 Theater 자체가 하나면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
     expect(container!.querySelectorAll(".canvas-fleet-map-zone")).toHaveLength(0);
     expect(container!.querySelector(".canvas-fleet-map-field.is-plane")).not.toBeNull();
     // 런타임 항목이 없는 Operation도 점으로 선다 — 지도는 활동으로 거르지 않는다(Cruise는 휴면
@@ -344,6 +347,17 @@ describe("FleetMap", () => {
     act(() => { zone.dispatchEvent(zoneMenu); });
     expect(zoneMenu.defaultPrevented).toBe(true);
     expect(onTheaterContextMenu).toHaveBeenCalledWith("theater-b", { x: 71, y: 82 });
+  });
+
+  it("keeps a nameplate when the only populated Theater is foreign to the active one", () => {
+    // 등록된 Theater는 둘이지만 활성 Theater의 패널은 모두 최소화되어 외부 Theater 하나만 지도에
+    // 남을 수 있다. 이는 단일 Theater 제품이 아니므로 평면으로 익명화하지 않고 표석을 남겨야 한다.
+    render({
+      operations: [operation("foreign-only", "theater-b")],
+      activeTheaterId: "theater-a",
+    });
+    expect(container!.querySelector(".canvas-fleet-map-field.is-plane")).toBeNull();
+    expect(container!.querySelector('[data-fleet-map-zone-pick="theater-b"]')).not.toBeNull();
   });
 
   it("turns each zone's nameplate into a door to that theater", () => {

@@ -73,12 +73,16 @@ export function FleetMap({
       bands.length > 1,
     ),
   ]));
-  const zones = bands.length > 1
-    ? resolveFleetMapZoneLayout(
+  // 평면은 제품의 등록 Theater 자체가 하나일 때만이다. 다중 Theater 환경에서 최소화로 외부
+  // Theater 하나만 남은 것은 단일 함대가 아니다 — 표석을 없애면 소속과 Theater 마운트 문이 함께
+  // 사라진다. 그 경우 구역 하나를 유지한다.
+  const plane = theaters.length === 1 && bands.length === 1;
+  const zones = plane
+    ? []
+    : resolveFleetMapZoneLayout(
         bands.map((band) => ({ theaterId: band.theater.id, count: band.operations.length, slotIndex: band.theaterIndex })),
         aspect,
-      )
-    : [];
+      );
 
   const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -143,8 +147,8 @@ export function FleetMap({
         {t("canvas.fleetMap.caption", { operations: operations.length, theaters: bands.length })}
       </div>
       <div className="canvas-fleet-map-plate">
-        {bands.length === 1 ? (
-          // Theater가 하나뿐이면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
+        {plane ? (
+          // 등록 Theater 자체가 하나뿐이면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
           <div
             className="canvas-fleet-map-field is-plane"
             onContextMenu={(event) => openTheaterMenu(bands[0]!.theater.id, event)}
