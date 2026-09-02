@@ -92,8 +92,8 @@ function mount(activity: "idle" | "running" = "idle"): void {
   render(activity);
 }
 
-// 백그라운드 작업의 문 — 컴포저 위 선반의 Show/Hide 버튼. 컴포저 글리프와 떠 있던 스트립을 대신한다.
-function door(): HTMLButtonElement | null {
+// 백그라운드 작업의 상태 버튼 — 스피너와 관련 문구 전체가 작업 면을 여닫는다.
+function statusToggle(): HTMLButtonElement | null {
   return container?.querySelector<HTMLButtonElement>(".agent-chat-ledge-toggle") ?? null;
 }
 
@@ -109,7 +109,7 @@ function logVisible(): boolean {
 describe("chat work surface", () => {
   it("stays out of the way until the session has background work", () => {
     mount();
-    expect(door()).toBeNull();
+    expect(statusToggle()).toBeNull();
     expect(workPane()).toBeNull();
     expect(logVisible()).toBe(true);
   });
@@ -119,16 +119,21 @@ describe("chat work surface", () => {
     // 아니라 대화 옆에서 동시에 돈다 — 시트는 대화의 아래쪽을 덮을 뿐, 로그는 그대로 서 있다.
     logState = stateWith([job()]);
     mount();
-    const toggle = door();
+    const toggle = statusToggle();
     expect(toggle).not.toBeNull();
-    expect(toggle?.textContent).toBe("Show");
+    expect(toggle?.querySelector(".agent-chat-strip-orbit")).not.toBeNull();
+    expect(toggle?.textContent).toContain("1 running");
+    expect(toggle?.textContent).toContain("two-step");
+    expect(toggle?.textContent).not.toContain("Show");
+    expect(toggle?.textContent).not.toContain("Hide");
     act(() => { toggle?.click(); });
 
     expect(workPane()).not.toBeNull();
     expect(logVisible()).toBe(true);
-    // 문은 같은 자리에 남아 자기 동사를 바꾼다 — 들어온 문이 나가는 문이다.
-    expect(door()?.textContent).toBe("Hide");
-    expect(door()?.getAttribute("aria-expanded")).toBe("true");
+    expect(statusToggle()?.getAttribute("aria-expanded")).toBe("true");
+    act(() => { statusToggle()?.click(); });
+    expect(workPane()).toBeNull();
+    expect(statusToggle()?.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("keeps a door to the work surface after the last job settles", () => {
@@ -141,7 +146,7 @@ describe("chat work surface", () => {
     expect(ledge?.querySelector(".agent-chat-strip-dot")).not.toBeNull();
     expect(ledge?.querySelector(".agent-chat-strip-orbit")).toBeNull();
     expect(ledge?.querySelector(".agent-chat-strip-count")?.textContent).toBe("1 job");
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     expect(workPane()).not.toBeNull();
   });
 
@@ -150,35 +155,37 @@ describe("chat work surface", () => {
     // 잡과 함께 물러나므로, 그때 시트가 남으면 문 없는 시트가 열린 채 굳는다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     expect(workPane()).not.toBeNull();
 
     logState = stateWith([]);
     render();
 
-    expect(door()).toBeNull();
+    expect(statusToggle()).toBeNull();
     expect(workPane()).toBeNull();
     expect(logVisible()).toBe(true);
   });
 });
 
 describe("chat work surface — panel controls", () => {
-  it("moves focus into the opened sheet, then hides on Escape and returns focus to the door", () => {
-    // 시트는 DOM에서 문보다 앞에 있으므로 문에 초점을 둔 채 열면 다음 Tab이 컴포저로 건너뛴다.
-    // 보이는 첫 작업으로 초점을 보내고, Esc로 접으면 같은 자리의 문으로 돌아온다.
+  it("moves focus into the opened sheet, then hides on Escape and returns focus to the status", () => {
+    // 시트는 DOM에서 선반보다 앞에 있으므로 상태에 초점을 둔 채 열면 다음 Tab이 컴포저로 건너뛴다.
+    // 보이는 첫 작업으로 초점을 보내고, Esc로 접으면 같은 자리의 상태 버튼으로 돌아온다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     expect(workPane()).not.toBeNull();
-    expect(door()?.getAttribute("aria-controls")).toBe(workPane()?.id);
+    expect(statusToggle()?.getAttribute("aria-controls")).toBe(workPane()?.id);
     const firstJob = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-job");
     expect(document.activeElement).toBe(firstJob);
 
     act(() => { firstJob?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
     expect(workPane()).toBeNull();
-    expect(door()?.getAttribute("aria-expanded")).toBe("false");
-    expect(door()?.textContent).toBe("Show");
-    expect(document.activeElement).toBe(door());
+    expect(statusToggle()?.getAttribute("aria-expanded")).toBe("false");
+    expect(statusToggle()?.textContent).toContain("1 running");
+    expect(statusToggle()?.textContent).not.toContain("Show");
+    expect(statusToggle()?.textContent).not.toContain("Hide");
+    expect(document.activeElement).toBe(statusToggle());
   });
 
   it("keeps focus inside the sheet when list and detail replace each other", () => {
@@ -186,7 +193,7 @@ describe("chat work surface — panel controls", () => {
     // 초점을 이어야 Esc가 계속 이 패널에 귀속되고, Tab도 보이는 내용 안에서 시작한다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     const jobButton = workPane()?.querySelector<HTMLButtonElement>(".agent-chat-job");
 
     act(() => { jobButton?.click(); });
@@ -206,7 +213,7 @@ describe("chat work surface — panel controls", () => {
     // 오지 않아 시트는 그대로 남는다 — capture 단계에서는 이 위계를 뒤집는다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     const input = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
     input?.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -226,7 +233,7 @@ describe("chat work surface — panel controls", () => {
     // 조합 중 Esc는 입력기 소유다. 컴포저와 같은 경계로 시트도 듣지 않는다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     const input = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, isComposing: true });
 
@@ -241,7 +248,7 @@ describe("chat work surface — panel controls", () => {
     // Esc까지 먼저 삼켜 이 시트를 접고, 열린 시트가 여럿이면 전부 함께 접힌다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     const outside = document.createElement("button");
     document.body.append(outside);
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -257,7 +264,7 @@ describe("chat work surface — panel controls", () => {
     // 시트가 덮지 않은 대화 위를 누르면 물러난다 — 콘솔의 팝오버와 같은 문법이다.
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     expect(workPane()).not.toBeNull();
 
     act(() => { container?.querySelector(".agent-chat-log")?.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
@@ -269,7 +276,7 @@ describe("chat work surface — panel controls", () => {
     // 작업 면이 열리는 순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮는다(실측으로 겪은 자리다).
     logState = stateWith([job()]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     expect(container?.querySelector(".agent-view-chip-row")).toBeNull();
     // 컴포저는 대화 면의 것이다 — 문맥 미터도 그 컨트롤 행에 실려 함께 남는다.
     const composer = container?.querySelector(".agent-chat-composer");
@@ -315,7 +322,7 @@ describe("chat work surface — stage identities", () => {
       }],
     })]);
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-sheet .agent-chat-job")?.click(); });
 
     const cells = [...(container?.querySelectorAll<HTMLElement>(".agent-chat-stage-row .is-model") ?? [])];
@@ -336,7 +343,7 @@ describe("chat work surface — job detail timing", () => {
     const closed = { id: "b1", kind: "shell" as const, title: "loop", open: false, status: "stopped" as const, stages: [], ends: 1 };
     logState = { ...stateWith([closed]), jobs: [closed] };
     mount();
-    act(() => { door()?.click(); });
+    act(() => { statusToggle()?.click(); });
     act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-sheet .agent-chat-job")?.click(); });
     await act(async () => { await Promise.resolve(); });
     const first = detailCalls.length;

@@ -2682,19 +2682,22 @@ describe("Instrument core design contract", () => {
     expect(ledgeBlock).not.toContain("position: absolute");
     expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}`}');
     expect(chatView0).toContain("{hasJobs ? (");
-    // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 "연다"는 동사는 문의 라벨이 됐다.
+    // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 그 상태 전체가 여닫는 표면이다.
     expect(chatComposer0).not.toContain("agent-chat-composer-work");
     expect(chat).not.toContain(".agent-chat-composer-work");
-    // 문은 컨트롤로 보여야 한다 — 투명 rest는 헤더로 읽혔다(2026-09-02 실측). Quiet Controls
-    // 레시피 그대로: rest 몸, brass 예고, 열림은 --control-open-rim, 라벨은 동사(Show/Hide).
+    // 별도 보기/접기 동사와 화살표는 없다. 스피너·상태·작업 이름을 담은 한 버튼이 rest에서는
+    // 선반의 문장으로 머물다가 hover/focus에 brass로 하이라이트되고, 열림은 rim으로 남는다.
     const ledgeToggleBlock = chat.match(/^\.agent-chat-ledge-toggle \{[^}]*\}/m)?.[0] ?? "";
-    expect(ledgeToggleBlock).toContain("background: var(--control-rest);");
-    expect(ledgeToggleBlock).not.toContain("background: transparent");
+    expect(ledgeToggleBlock).toContain("background: transparent;");
+    expect(ledgeToggleBlock).toContain("border: 1px solid transparent;");
+    expect(chat).toMatch(/^\.agent-chat-ledge-toggle:hover \{[^}]*background: var\(--control-rest-hover\);[^}]*color: var\(--brass-ink\);/m);
     expect(chat).toMatch(/^\.agent-chat-ledge-toggle\[aria-expanded="true"\] \{[^}]*border-color: var\(--control-open-rim\);/m);
-    expect(chatView0).toContain('{t(open ? "terminal.chat.ledgeHide" : "terminal.chat.ledgeShow")}');
-    // 화살표는 시트의 이동 방향이다 — 열리면 돌아서 아래를 가리킨다(열린 채 아래를 가리키던
-    // 옛 ⌄는 "더 펼침"으로 읽혔다).
-    expect(chat).toContain('.agent-chat-ledge-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }');
+    expect(chatView0).toContain('className="agent-chat-ledge-toggle"');
+    expect(chatView0).not.toContain('{t(open ? "terminal.chat.ledgeHide" : "terminal.chat.ledgeShow")}');
+    expect(chatView0).not.toContain('<svg viewBox="0 0 16 16"');
+    expect(chatView0).toContain('className="agent-chat-strip-orbit"');
+    expect(chatView0).toContain('className="agent-chat-strip-count"');
+    expect(chatView0).toContain('className="agent-chat-ledge-name"');
     // 도는 중이면 aurora 오브(공용 키프레임). reduced-motion이 오브와 시트의 상승을 멈춘다.
     const stripOrbitBlock = chat.match(/^\.agent-chat-strip-orbit \{[^}]*\}/m)?.[0] ?? "";
     expect(stripOrbitBlock).toContain("animation: agent-chat-orbit 0.9s linear infinite;");
