@@ -5,12 +5,13 @@ import {
   initialAgentChatLogState,
   reduceAgentChatLog,
   splitAgentChatTurn,
+  type AgentChatClockedEvent,
   type AgentChatLogState,
   type AgentChatStreamEvent,
   type AgentChatTurnItem,
 } from "../client/agent/chat/chat-events.js";
 
-function fold(events: readonly AgentChatStreamEvent[], from: AgentChatLogState = initialAgentChatLogState): AgentChatLogState {
+function fold(events: readonly AgentChatClockedEvent[], from: AgentChatLogState = initialAgentChatLogState): AgentChatLogState {
   return events.reduce(reduceAgentChatLog, from);
 }
 
