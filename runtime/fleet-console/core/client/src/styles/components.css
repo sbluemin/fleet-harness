@@ -3112,17 +3112,17 @@
 }
 
 /* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
-   상태에 쓰는 기존 STATUS 예외다. 지도 점까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다.
+   상태에 쓰는 기존 STATUS 예외다. 함대 지도의 점까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다.
    War Room 덱은 자기 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다. */
 .tenant-beacon.is-awaiting,
-.canvas-triage-map-dot.is-awaiting,
+.canvas-fleet-map-dot.is-awaiting,
 .side-bar-status-section--awaiting {
   --activity-color: var(--aurora);
   --activity-glow: var(--aurora-glow);
 }
 
 .tenant-beacon.is-turn-running,
-.canvas-triage-map-dot.is-running,
+.canvas-fleet-map-dot.is-running,
 .side-bar-status-section--running {
   --activity-color: var(--warn);
   --activity-glow: var(--warn-glow);
@@ -3133,15 +3133,15 @@
    칸에 선다): 색과 칸이 갈리는 자리이며, 놓치지 않게 위로 모으는 쪽을 택한 결과다. */
 .tenant-beacon.is-idle,
 .tenant-beacon.is-unseen,
-.canvas-triage-map-dot.is-idle,
-.canvas-triage-map-dot.is-unseen,
+.canvas-fleet-map-dot.is-idle,
+.canvas-fleet-map-dot.is-unseen,
 .side-bar-status-section--idle {
   --activity-color: var(--positive);
   --activity-glow: var(--positive-glow);
 }
 
 .tenant-beacon.is-ended,
-.canvas-triage-map-dot.is-ended,
+.canvas-fleet-map-dot.is-ended,
 .side-bar-status-section--ended {
   --activity-color: var(--ink-fog);
 }
@@ -3154,7 +3154,7 @@
 }
 
 .tenant-beacon.is-background,
-.canvas-triage-map-dot.is-background {
+.canvas-fleet-map-dot.is-background {
   --activity-color: var(--warn);
   --activity-glow: var(--warn-glow);
 }
@@ -3727,8 +3727,6 @@
 }
 
 .canvas-triage-deck-grid {
-  /* 지도 필드와 같은 2행을 명시 공유한다 — auto-placement에 맡기면 명시 배치된 지도가 2행을
-     선점해 격자가 암시적 3행으로 밀리며, 1fr이던 카드 뷰포트가 쪼그라들고 지도도 전 높이를 잃는다. */
   grid-row: 2;
   grid-column: 1;
   display: flex;
@@ -3742,77 +3740,65 @@
   scrollbar-width: thin;
 }
 
-/* 작전지도 LOD — 카드가 줌 한계 아래로 읽히지 않는 크기로 낙찰하면 밴드는 mount를 유지한 채
-   은닉되고(카드 슬롯=비무대 body의 고정 거처, is-under-stage와 같은 계약) 지도 판이 그 위를 덮는다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards,
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-head {
+/* ── 함대 지도 ───────────────────────────────────────────────────────────────
+   Cruise 캔버스가 판독 한계(줌 0.2) 아래로 축소되면 패널 대신 이 판이 선다. 월드는 mount를 유지한
+   채 사라지고(패널 body·PTY는 그대로), 판은 그 위에 같은 아레나 인셋으로 앉는다. 바다는 입력을
+   가로채지 않는다 — 휠·팬은 캔버스로 흘러 확대하면 판이 걷히고 패널이 돌아온다. */
+.operations-canvas-world {
+  transition:
+    opacity var(--duration-base) var(--ease-glide),
+    visibility var(--duration-base) var(--ease-glide);
+}
+
+.operations-canvas.is-fleet-map .operations-canvas-world {
+  opacity: 0;
   visibility: hidden;
-  opacity: 0;
   pointer-events: none;
-  transition:
-    visibility var(--duration-fast) var(--ease-glide),
-    opacity var(--duration-fast) var(--ease-glide);
 }
 
-/* 밀도 변형 중에는 은닉을 유예한다 — 카드가 자기 점 자리로 날아가는 동안 컨테이너가 먼저
-   꺼지면 이동이 통째로 보이지 않는다. 사라지는 것은 카드 개개인의 opacity가 맡는다. */
-.canvas-triage-deck.is-map-mode.is-morphing .canvas-triage-deck-band-cards {
-  visibility: visible;
-  opacity: 1;
+/* 판이 서 있는 동안 미니맵은 중복이다 — 판 자체가 함대의 지도다. */
+.operations-canvas.is-fleet-map .canvas-minimap {
+  display: none;
 }
 
-/* 변형 프레임 — 카드가 점 자리로 옮겨 가며 수축한다. 방향은 프레임을 언제 걸고 언제 걷느냐로
-   갈린다(지도 진입=걸며 재생, 이탈=걸어 둔 채 다음 프레임에 걷어 재생). */
-.canvas-triage-deck-cell.is-morphing {
-  z-index: 2;
-  transition:
-    transform calc(var(--duration-slow) * 1.15) var(--ease-glide),
-    opacity calc(var(--duration-slow) * 1.15) var(--ease-glide);
-}
-
-/* invert 단계는 전이 없이 즉시 점 자리에 놓인다 — 여기에 전이가 걸리면 카드가 제자리에서
-   점 자리로 갔다가 되돌아오는 왕복이 보인다. */
-.canvas-triage-deck-cell.is-morph-snap {
-  transition: none;
-}
-
-.canvas-triage-deck.is-morph-to-map .canvas-triage-deck-cell.is-morphing {
-  opacity: 0;
-}
-
-/* 지도에서 돌아오는 카드는 점만 한 크기에서 옅게 시작해 제자리에서 또렷해진다. */
-.canvas-triage-deck.is-morph-to-cards .canvas-triage-deck-cell.is-morph-snap {
-  opacity: 0.35;
-}
-
-/* 도착 표면은 변형이 끝나며 떠오른다 — 점과 구역 표석이 카드보다 먼저 서면 같은 함대가
-   두 벌로 겹쳐 보인다. */
-.canvas-triage-deck.is-morph-to-map .canvas-triage-map-dot,
-.canvas-triage-deck.is-morph-to-map .canvas-triage-map-zone-head,
-.canvas-triage-deck.is-morph-to-map .canvas-triage-map-dot-label {
-  opacity: 0;
-}
-
-/* 지도 모드의 격자는 스크롤을 잠근다 — 숨은 밴드 스택이 만드는 dead scrollbar를 닫고,
-   판(fleet) 오버레이가 스크롤에 밀려나지 않게 한다. 카드 레이아웃은 visibility 은닉 그대로다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-grid {
-  overflow-y: hidden;
-}
-
-/* 작전지도는 격리된 타일이 아니라 하나의 연속된 판이다 — 지구본 위의 작전구역들처럼 모든
-   Operation이 같은 차원의 좌표계 위에 있고, Theater는 그 판 위의 구역 경계선으로만 구분된다.
-   숨은 밴드 스택 위의 오버레이라 grid에 relative가 필요하다. */
-.canvas-triage-deck-grid {
-  position: relative;
-}
-
-/* 연속 격자는 판(fleet)이 소유한다 — 구역이 각자 배경 격자를 가지면 판이 쪼개져 보인다. */
-.canvas-triage-map-fleet {
+.canvas-fleet-map {
   position: absolute;
-  inset: 0;
-  z-index: 1;
-  min-height: 100%;
+  /* 덱과 같은 자리 — 아레나 인셋 위 26px, 가로는 부유 카드에 12px 가산으로 다가선다. */
+  inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
+  /* 캔버스 실행 메뉴(.operation-launch-control--canvas, 30) 아래 — 판이 메뉴를 덮으면 메뉴는
+     보이는데 눌리지 않는다(핸드오프 1차 결함). 월드(무 z-index)와 미니맵(14)보다는 위. */
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
   min-width: 0;
+  min-height: 0;
+  animation: fleet-map-in var(--duration-base) var(--ease-glide) both;
+}
+
+/* 퇴장은 진입의 역재생이다 — 확대 방향으로 살짝 커지며 옅어져, 줌인이 판을 뚫고 패널로
+   내려가는 연속 동작으로 읽힌다. 입력은 캔버스가 이미 거둔 뒤다. */
+.canvas-fleet-map.is-leaving {
+  animation: fleet-map-out var(--duration-base) var(--ease-glide) both;
+  pointer-events: none;
+}
+
+.canvas-fleet-map-caption {
+  min-width: 0;
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* 판은 하나의 연속된 격자다 — 지구본 위의 작전구역들처럼 모든 Operation이 같은 좌표계 위에 있고,
+   Theater는 그 판 위의 구역 워시로만 구분된다. */
+.canvas-fleet-map-plate {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
   background:
     repeating-linear-gradient(to right, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px),
     repeating-linear-gradient(to bottom, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px);
@@ -3820,10 +3806,10 @@
 
 /* 작전구역 — 하나의 판 위에 떠 있는 구역. 경계는 선이 아니라 옅은 radial 워시와 구역 중앙에
    놓인 이름표가 말한다: 그어진 원주는 판 위에 격자를 하나 더 얹어 점을 가두는 울타리로 읽힌다.
-   크기·자리는 resolveTriageFleetZoneLayout이 정한다. */
-/* 구역 워시·이름표는 --zone-tint(--id-* 8톤, theaters 선언 순 배정)를 입는다 — Theater는
+   크기·자리는 resolveFleetMapZoneLayout이 정한다.
+   구역 워시·이름표는 --zone-tint(--id-* 8톤, theaters 선언 순 배정)를 입는다 — Theater는
    정체성 채널이므로 identity 톤이 맞고, 상태(dot)는 signal 토큰을 그대로 유지한다. */
-.canvas-triage-map-zone {
+.canvas-fleet-map-zone {
   position: absolute;
   left: var(--zone-x);
   top: var(--zone-y);
@@ -3831,8 +3817,6 @@
   aspect-ratio: 1 / 1;
   transform: translate(-50%, -50%);
   border-radius: var(--radius-pill);
-  /* 경계선을 걷어낸 자리를 워시가 대신 진다 — 중심을 진하게, 가장자리를 길게 흘려 선 없이도
-     구역의 범위가 읽히게 한다. 7%짜리 옅은 워시로는 판과 구별되지 않아 표석만 떠 있었다. */
   background: radial-gradient(
     circle,
     color-mix(in oklch, var(--zone-tint, var(--brass)) 9%, transparent) 0%,
@@ -3841,33 +3825,51 @@
   );
 }
 
-.canvas-triage-map-zone-head .canvas-triage-deck-band-chip {
-  background: color-mix(in oklch, var(--zone-tint, var(--brass)) 22%, transparent);
-  color: var(--zone-tint, var(--brass-bright));
+/* 활성 Theater의 구역은 "지금 있는 곳"이다 — 위치 채널인 brass 실선 하나로만 말한다. */
+.canvas-fleet-map-zone.is-active {
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 28%, transparent);
 }
 
-.canvas-triage-map-zone .canvas-triage-map-zone-label {
-  color: color-mix(in oklch, var(--zone-tint, var(--brass)) 72%, var(--text-primary));
+.canvas-fleet-map-zone-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--zone-tint, var(--brass)) 22%, transparent);
+  color: var(--zone-tint, var(--brass-bright));
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
 }
 
 /* 단일 Theater — 구역을 나눌 이유가 없어 원 없이 판 전체가 dot 필드가 된다. */
-.canvas-triage-map--plane {
+.canvas-fleet-map-field.is-plane {
   position: absolute;
   inset: 6% 4%;
 }
 
 /* 이름표는 구역 한가운데의 표석이다 — 점들 아래에 깔려 판의 지명처럼 읽히고, 점이 그 위를
-   지나가도 신호(dot)가 항상 이긴다. */
-.canvas-triage-map-zone-head {
+   지나가도 신호(dot)가 항상 이긴다. 헤더 자신은 포인터를 통과시키고, 안의 표석 버튼만 받는다. */
+.canvas-fleet-map-zone-head {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 0;
+  max-width: 84%;
+  pointer-events: none;
+}
+
+/* 표석은 그 Theater로 가는 문이다 — 겨누면 위치 채널(brass)로 밝아지고, 활성 Theater는 이미
+   그 자리라 링 없이 brass 잉크만 진하다. 포커스 링은 hover와 같은 마크다. */
+.canvas-fleet-map-zone-pick {
   display: grid;
   justify-items: center;
   gap: 5px;
-  max-width: 84%;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
   white-space: nowrap;
   color: var(--brass-ink);
   font-family: var(--font-mono);
@@ -3876,11 +3878,32 @@
   letter-spacing: 0.12em;
   text-align: center;
   text-transform: uppercase;
-  transition: opacity var(--duration-fast) var(--ease-glide);
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    background-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
 }
 
-.canvas-triage-map-zone-title {
+.canvas-fleet-map-zone-pick:hover,
+.canvas-fleet-map-zone-pick:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: var(--brass-bright);
+  outline: none;
+}
+
+.canvas-fleet-map-zone-pick:hover .canvas-fleet-map-zone-label,
+.canvas-fleet-map-zone-pick:focus-visible .canvas-fleet-map-zone-label {
+  color: var(--brass-bright);
+}
+
+.canvas-fleet-map-zone-pick[aria-pressed="true"] {
+  color: var(--brass-bright);
+}
+
+.canvas-fleet-map-zone-title {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -3888,15 +3911,16 @@
   max-width: 100%;
 }
 
-.canvas-triage-map-zone-label {
+.canvas-fleet-map-zone-label {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+  color: color-mix(in oklch, var(--zone-tint, var(--brass)) 72%, var(--text-primary));
   font-size: var(--t-sm);
   letter-spacing: 0.14em;
 }
 
-.canvas-triage-map-zone-counts {
+.canvas-fleet-map-zone-counts {
   flex: none;
   color: var(--text-tertiary);
   font-weight: var(--weight-medium);
@@ -3904,16 +3928,25 @@
 }
 
 /* dot 좌표계는 구역에 내접하는 사각 필드 — 마커 투영([8,92]%×[10,86]%)이 구역 밖으로 나가지
-   않는다. 중앙 표석보다 위에 서서 신호가 지명에 가리지 않게 한다. */
-.canvas-triage-map-zone .canvas-triage-map {
+   않는다. 중앙 표석보다 위에 서서 신호가 지명에 가리지 않게 한다. 필드 자신은 포인터를
+   통과시킨다 — 상자로 표석을 덮고 있어 그대로 두면 표석이 보이는데 겨눠지지 않는다(핸드오프
+   2차 결함). 빈 자리의 우클릭은 구역(section)이 받고, 점만 포인터를 되받는다. */
+.canvas-fleet-map-zone .canvas-fleet-map-field {
   position: absolute;
   z-index: 1;
   inset: 13%;
+  pointer-events: none;
 }
 
-/* 지도 마커도 같은 활동 축을 읽는다 — 조형은 행·캡션과 같은 둥근 네모다(원형 폐지).
-   지도 축척이라 반경만 치수에 맞춰 3px로 든다. */
-.canvas-triage-map-dot {
+.canvas-fleet-map-zone .canvas-fleet-map-dot {
+  pointer-events: auto;
+}
+
+/* 지도 마커도 같은 활동 축을 읽는다 — 조형은 행·캡션과 같은 둥근 네모다.
+   지도 축척이라 반경만 치수에 맞춰 3px로 든다. 모든 점이 제자리에서 유영한다 — 살아 있는
+   함대의 판에서 정지한 점은 죽은 표시로 읽힌다. 상태 위계는 움직임의 유무가 아니라
+   진폭·주기(JS가 주입하는 --fleet-drift-*)가 만든다. */
+.canvas-fleet-map-dot {
   position: absolute;
   width: 14px;
   height: 14px;
@@ -3928,36 +3961,31 @@
     border-color var(--duration-fast) var(--ease-glide),
     box-shadow var(--duration-fast) var(--ease-glide),
     opacity var(--duration-fast) var(--ease-glide);
+  animation: fleet-map-drift calc(var(--duration-slow) * var(--fleet-drift-mult, 36)) var(--ease-glide) infinite alternate;
 }
 
-.canvas-triage-map-dot.is-awaiting {
+.canvas-fleet-map-dot.is-awaiting {
   box-shadow: 0 0 14px var(--activity-glow);
   opacity: 1;
 }
 
-.canvas-triage-map-dot.is-awaiting::after {
+.canvas-fleet-map-dot.is-awaiting::after {
   content: "";
   position: absolute;
   inset: -3px;
   border: 1px solid var(--activity-color);
   border-radius: var(--radius-pill);
-  animation: triage-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
+  animation: fleet-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
 }
 
-/* deferred는 사용자가 이미 본 항목이다 — fresh-card와 같은 제외로 다시 흔들지 않는다. */
-.canvas-triage-map-dot.is-awaiting.is-deferred::after {
-  animation: none;
-  opacity: 0.6;
-}
-
-/* 지도의 미확인 — 점 자체의 animation은 지도 모드의 유영(triage-map-drift)이 소유하므로,
-   느린 점등은 ::after 후광이 진다. 비콘과 같은 키프레임을 써서 두 표면의 박자를 맞춘다. */
-.canvas-triage-map-dot.is-unseen {
+/* 지도의 미확인 — 점 자체의 animation은 유영(fleet-map-drift)이 소유하므로, 느린 점등은
+   ::after 후광이 진다. 비콘과 같은 키프레임을 써서 두 표면의 박자를 맞춘다. */
+.canvas-fleet-map-dot.is-unseen {
   box-shadow: 0 0 11px var(--activity-glow);
   opacity: 1;
 }
 
-.canvas-triage-map-dot.is-unseen::after {
+.canvas-fleet-map-dot.is-unseen::after {
   content: "";
   position: absolute;
   inset: -2px;
@@ -3966,107 +3994,30 @@
   animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite;
 }
 
-/* deferred는 사용자가 이미 본 항목이다 — awaiting 링과 같은 제외로 다시 흔들지 않는다. */
-.canvas-triage-map-dot.is-unseen.is-deferred::after {
-  animation: none;
-  opacity: 0.6;
-}
-
-.canvas-triage-map-dot.is-running {
+.canvas-fleet-map-dot.is-running {
   box-shadow: 0 0 11px var(--activity-glow);
   opacity: 1;
 }
 
-.canvas-triage-map-dot.is-background {
+.canvas-fleet-map-dot.is-background {
   background: none;
   border-color: var(--activity-color);
   box-sizing: border-box;
   box-shadow: 0 0 8px var(--activity-glow);
 }
 
-/* 유영은 실행 중만의 특권이 아니다 — 살아 있는 함대의 판에서 정지한 점은 죽은 표시로 읽힌다.
-   상태 위계는 움직임의 유무가 아니라 진폭·주기(JS가 주입하는 --triage-drift-*)가 만든다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot {
-  animation: triage-map-drift calc(var(--duration-slow) * var(--triage-drift-mult, 36)) var(--ease-glide) infinite alternate;
-}
-
-/* 착지 flash는 드리프트를 이겨야 한다 — 위 드리프트 규칙(0,2,0)이 animation을 소유해
-   .is-landed(0,2,0)의 flash가 순서로만 갈리므로, 결합 규칙로 1회 flash를 되살린다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed {
-  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
-}
-
-/* 유영만 멈춘다 — 착지(is-landed) 순간엔 포인터가 점 위에 남아 있는 게 보통이라,
-   무조건 pause면 1회성 flash까지 얼어붙는다. Quick-Look이 열리는 지점이기도 해서,
-   확대창을 읽는 동안 그 아래 점이 계속 흘러가면 어느 점의 창인지 잃는다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot:not(.is-landed):hover,
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot:not(.is-landed):focus-visible {
-  animation-play-state: paused;
-}
-
-.canvas-triage-deck.is-under-stage .canvas-triage-map-dot {
-  animation-play-state: paused;
-}
-
-/* 점은 집어 옮길 수 있는 것으로 보여야 한다 — 사이드바 칩과 같은 grab/grabbing 문법. */
-.canvas-triage-map-dot {
-  cursor: grab;
-}
-
-/* 끌고 있는 점은 손끝만 따른다 — 이동량은 렌더가 아니라 포인터 핸들러가 --drag-dx/--drag-dy에
-   직접 실어, 끄는 동안 리렌더가 한 번도 없다(이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를
-   다시 계산한다). 들어 올린 느낌은 사이드바 칩 드래그와 같은 문법으로 준다: 살짝 키우고
-   그림자를 얹는다.
-   셀렉터가 유영 규칙과 같은 조상을 달고 있어야 한다 — `.is-map-mode .canvas-triage-map-dot`은
-   (0,3,0)이라 단일 클래스 결합(0,2,0)으로는 animation을 끄지 못하고, 살아남은 드리프트
-   키프레임의 translate가 인라인 이동량을 통째로 덮어써 점이 제자리에 붙어 있게 된다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-dragging {
-  z-index: 3;
-  animation: none;
-  /* 포인터 추적은 즉답이어야 한다 — 전이가 끼면 점이 손끝을 뒤늦게 좇는다. */
-  transition: none;
-  translate: var(--drag-dx, 0) var(--drag-dy, 0);
-  scale: 1.4;
-  box-shadow: 0 0 0 5px var(--brass-glow), var(--shadow-floating);
-  cursor: grabbing;
-}
-
-/* 떠난 자리에 남는 자국 — 어디서 집어 어디까지 왔는지 보여야 "끌고 있다"가 읽힌다.
-   점의 자식이 아니라 형제로 세운다: 끌리는 점은 scale로 커지므로, 그 안에 두면 자국의
-   역보정 이동량까지 함께 확대되어 원래 자리가 아니라 엉뚱한 곳에 선다. 자국은 판 좌표에
-   직접 못 박히고 드래그가 끝날 때까지 움직이지 않는다. */
-.canvas-triage-map-dot-origin {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border: 1px dashed color-mix(in oklch, var(--brass) 55%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* 끄는 동안 이름표는 점을 따라오되 판독을 방해하지 않게 살짝 물러난다. */
-.canvas-triage-map-dot.is-dragging .canvas-triage-map-dot-label {
-  opacity: 0.7;
-}
-
-.canvas-triage-map-dot:hover,
-.canvas-triage-map-dot:focus-visible {
+/* 겨눈 점은 유영을 멈춘다 — 이름표를 읽는 동안 점이 흘러가면 어느 점의 이름인지 잃는다. */
+.canvas-fleet-map-dot:hover,
+.canvas-fleet-map-dot:focus-visible {
   border-color: var(--brass);
   box-shadow: 0 0 0 3px var(--brass-glow);
   outline: none;
-}
-
-/* 무대 복귀 착지 확인 — 카드와 같은 positive 플래시 문법을 지도 점에도 준다(지도 모드에서는
-   카드가 은닉되어 착지 피드백이 점에만 보인다). */
-.canvas-triage-map-dot.is-landed {
-  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+  animation-play-state: paused;
 }
 
 /* 지도의 이름표는 상시 노출이다 — 점만으로는 어떤 Operation인지 알 수 없어 지도가 익명이 된다.
    위계는 가시성이 아니라 텍스트 티어로 만든다: 유휴는 3티어, 대기·실행은 2티어. */
-.canvas-triage-map-dot-label {
+.canvas-fleet-map-dot-label {
   position: absolute;
   top: 50%;
   left: 130%;
@@ -4078,28 +4029,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   transform: translateY(-50%);
-  transition:
-    color var(--duration-fast) var(--ease-glide),
-    opacity var(--duration-fast) var(--ease-glide);
+  transition: color var(--duration-fast) var(--ease-glide);
   pointer-events: none;
 }
 
-.canvas-triage-map-dot.is-awaiting .canvas-triage-map-dot-label,
-.canvas-triage-map-dot.is-running .canvas-triage-map-dot-label,
-.canvas-triage-map-dot:hover .canvas-triage-map-dot-label,
-.canvas-triage-map-dot:focus-visible .canvas-triage-map-dot-label {
+.canvas-fleet-map-dot.is-awaiting .canvas-fleet-map-dot-label,
+.canvas-fleet-map-dot.is-running .canvas-fleet-map-dot-label,
+.canvas-fleet-map-dot:hover .canvas-fleet-map-dot-label,
+.canvas-fleet-map-dot:focus-visible .canvas-fleet-map-dot-label {
   color: var(--text-secondary);
 }
 
-/* 지도 Quick-Look로 끌어올린 칸의 패널 — 판 위에 떠 있다는 사실만 테두리·그림자로 말한다.
-   자리와 크기는 칸이 지고(is-map-quicklook), 여기서는 그 위에 얹는 강조만 소유한다.
-   믹스는 oklab이다 — 캡션 포커스 워시와 같은 이유다(.canvas-operation.is-active 옆 주석 참조).
-   oklch는 hue를 극좌표 짧은 호로 보간해 brass(78)와 rim(245)의 60% 믹스가 실측 hue 144.8(Instrument)
-   ·144.2(Maritime)·354(Carbon)에 착지했다 — 위치 채널이 신호 채널 positive(160·152) 옆에 앉거나
-   아예 마젠타로 넘어간다. 네 테마 중 Whites만 우연히 brass에 남았다. */
-.canvas-triage-deck-cell.is-map-quicklook > .canvas-triage-deck-mount > .canvas-operation {
-  border-color: color-mix(in oklab, var(--brass) 60%, var(--surface-rim));
-  box-shadow: var(--shadow-floating), 0 0 0 1px var(--brass-glow);
+@keyframes fleet-map-in {
+  from { opacity: 0; transform: scale(1.03); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fleet-map-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.03); }
+}
+
+@keyframes fleet-map-awaiting-ring {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes fleet-map-drift {
+  0% { translate: 0 0; }
+  50% { translate: var(--fleet-drift-x1, 12px) var(--fleet-drift-y1, -8px); }
+  100% { translate: var(--fleet-drift-x2, -10px) var(--fleet-drift-y2, 9px); }
 }
 
 /* Theater 밴드 — 전역 deck 안에서 카드 묶음을 소속별로 갈라 헤더(이니셜 칩+라벨+수치)를 단다.
@@ -4195,13 +4154,10 @@
    실측(맥동 카드에 hover brass를 얹어 계산): 나온 값은 brass가 아니라 aurora였고 그림자도
    맥동 글로우였다 — 신호가 가장 급한 카드에서만 hover가 사라지는 조용한 실패다.
    그래서 위치 마크는 패널이 건드리지 않는 표면, 곧 칸의 box-shadow가 소유한다.
-   밀도 변형 중(is-morphing)은 자기 그림자·z-index를 이미 소유하므로 제외한다 — 넣으면 변형 중인
-   칸이 이 규칙의 스택으로 떨어진다.
    키보드는 같은 마크를 같은 순간에 받는다. 기존 .canvas-triage-deck-pick:focus-visible 링은
-   그대로 남긴다: 그 링은 본문 안쪽을, 이 링은 캡션까지 포함한 칸 전체를 말한다.
-   지도 모드에서는 카드 컨테이너가 visibility:hidden + pointer-events:none이라 :hover가 서지 않는다. */
-.canvas-triage-deck-cell:hover:not(.is-morphing),
-.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible):not(.is-morphing) {
+   그대로 남긴다: 그 링은 본문 안쪽을, 이 링은 캡션까지 포함한 칸 전체를 말한다. */
+.canvas-triage-deck-cell:hover,
+.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) {
   /* 이웃 카드의 16px 맥동 글로우가 10px 간격을 건너와 이 1px 링을 씻지 않게 한 칸 올린다. */
   z-index: 6;
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
@@ -4214,25 +4170,6 @@
   background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
-}
-
-/* 지도 모드의 Quick-Look — 은닉된 밴드 안의 칸을 판 위로 끌어올려 점 옆에 세운다. 좌표는
-   뷰포트 기준(JS가 판 rect를 더해 넘긴다)이라 칸이 어느 밴드에 속하든 같은 자리에 선다.
-   포인터는 통과시킨다 — 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 그대로 닿는다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards .canvas-triage-deck-cell.is-map-quicklook {
-  position: fixed;
-  z-index: 12;
-  visibility: visible;
-  pointer-events: none;
-  animation: triage-map-quicklook-in var(--duration-fast) var(--ease-glide) both;
-}
-
-/* 은닉된 밴드에서 한 칸만 되살리는 것은 visibility만 할 수 있다 — opacity는 상속이 아니라 합성이라
-   0인 조상 안에서는 자식이 어떤 값을 적어도 보이지 않고, 그 조상이 만든 스택 컨텍스트가 z-index마저
-   가둬 판 아래로 내려보낸다. 확대창이 열린 동안만 그 컨테이너의 투명도를 되돌린다(칸들은 여전히
-   visibility로 숨어 있다). */
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards:has(.canvas-triage-deck-cell.is-map-quicklook) {
-  opacity: 1;
 }
 
 /* 패널이 들어오는 자리 — 칸을 그대로 채운다. 패널 자신은 이 상자 크기를 입고, 그 크기가
@@ -4300,22 +4237,6 @@
 
 .canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation {
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
-}
-
-@keyframes triage-map-awaiting-ring {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  70%, 100% { transform: scale(2.2); opacity: 0; }
-}
-
-@keyframes triage-map-quicklook-in {
-  from { opacity: 0; transform: scale(0.94); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes triage-map-drift {
-  0% { translate: 0 0; }
-  50% { translate: var(--triage-drift-x1, 12px) var(--triage-drift-y1, -8px); }
-  100% { translate: var(--triage-drift-x2, -10px) var(--triage-drift-y2, 9px); }
 }
 
 @keyframes triage-deck-landed-flash {
@@ -4389,12 +4310,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-triage-sweep,
-  .canvas-triage-map-dot.is-awaiting::after,
-  .canvas-triage-deck.is-map-mode .canvas-triage-map-dot,
-  .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,
-  .canvas-triage-map-quicklook,
+  .canvas-fleet-map,
+  .canvas-fleet-map.is-leaving,
+  .canvas-fleet-map-dot,
+  .canvas-fleet-map-dot.is-awaiting::after,
   .canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,
-  .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,
   .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
@@ -4410,7 +4330,7 @@
   }
 
   /* 움직임 없이도 대기 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
-  .canvas-triage-map-dot.is-awaiting::after {
+  .canvas-fleet-map-dot.is-awaiting::after {
     transform: scale(1.35);
     opacity: 0.6;
   }
@@ -4421,21 +4341,16 @@
     animation-timing-function: steps(1, start);
   }
 
-  /* Quick-Look 확대 자체는 유지하되 전이만 제거해 즉시 스냅되게 한다 — 확대 정보는
-     reduced-motion 사용자에게도 동일하게 필요하므로 상태가 아니라 동작만 끊는다. */
-  /* 확대와 밀도 변형은 칸의 transform이 지므로 칸의 전이만 끊으면 즉시 스냅이 선다. */
   .canvas-triage-deck-cell {
     transition: none;
   }
 
-  /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 지도 cross-fade와 마커 강조 전환은 여기서 끊는다.
-     밀도 변형(카드↔점)은 JS가 아예 프레임을 만들지 않으므로, 남은 표면 전이만 끊으면 된다. */
-  .canvas-triage-map,
-  .canvas-triage-map-dot,
-  .canvas-triage-map-zone-head,
-  .canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards,
-  .canvas-triage-deck.is-map-mode .canvas-triage-deck-band-head,
-  .canvas-triage-map-dot-label {
+  /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 함대 지도의 월드 cross-fade와 마커 강조 전환은
+     여기서 끊는다 — 판은 서거나 없거나 둘 중 하나로 즉시 떨어진다. */
+  .operations-canvas-world,
+  .canvas-fleet-map-dot,
+  .canvas-fleet-map-dot-label,
+  .canvas-fleet-map-zone-pick {
     transition: none;
   }
 }

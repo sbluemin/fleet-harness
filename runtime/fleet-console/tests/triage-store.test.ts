@@ -54,8 +54,6 @@ import {
   getTriageSetAsideArmedId,
   isTriageActive,
   isTriageClearedTransition,
-  isTriageDeckMapMode,
-  isTriageDeckMapModeActive,
   isTriageOperationDeferred,
   isTriageOperationDismissed,
   isTriageSpotlightEnabled,
@@ -70,12 +68,9 @@ import {
   resetTriageSpotlightForTests,
   resetTriageTheater,
   resolveActiveAwaitingTriageEntry,
-  resolveTriageFleetZoneLayout,
-  resolveTriageMapMarkerLayout,
   resolveTriageQueue,
   scheduleTriageClear,
   setTriageActive,
-  setTriageDeckMapModeLive,
   setTriageDeckZoom,
   setTriageSpotlightEnabled,
   subscribeTriage,
@@ -84,7 +79,7 @@ import {
 import { resolveTriageSideBarSections, TriageSideBar } from "../core/client/src/sidebar/triage-side-bar.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
-import { resolveTriageDeckPromotion, resolveTriageMapDriftStyle, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
+import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-marks.js";
 
@@ -1141,7 +1136,7 @@ describe("triage store", () => {
     // jsdom 환경의 import.meta.url은 file: 스킴이 아니다 — vitest가 패키지 루트를 cwd로 잡으므로
     // 그 기준 상대 경로로 읽는다.
     const css = readFileSync("core/client/src/styles/components.css", "utf8");
-    for (const state of ["is-fresh", "is-arriving", "is-landed", "is-map-quicklook"]) {
+    for (const state of ["is-fresh", "is-arriving", "is-landed"]) {
       const selectors = [...css.matchAll(new RegExp(`\\.canvas-triage-deck-cell\\.${state}[^,{]*\\.canvas-operation`, "g"))]
         .map((match) => match[0]);
       expect(selectors.length, `${state} has no signal selector`).toBeGreaterThan(0);
@@ -1206,13 +1201,6 @@ describe("triage store", () => {
     act(() => bandBody.dispatchEvent(fieldMenu));
     expect(fieldMenu.defaultPrevented).toBe(true);
     expect(theaterMenu).toHaveBeenCalledWith("theater-a", { x: 71, y: 82 });
-
-    act(() => setTriageDeckMapModeLive(true));
-    const dot = container.querySelector<HTMLButtonElement>('[data-triage-map-dot="picked"]')!;
-    const dotMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 91, clientY: 102 });
-    act(() => dot.dispatchEvent(dotMenu));
-    expect(dotMenu.defaultPrevented).toBe(true);
-    expect(operationMenu).toHaveBeenLastCalledWith("picked", expect.any(DOMRect), dot);
   });
 
   it("groups deck cards into theater bands ordered by waiting count", () => {
@@ -1246,66 +1234,6 @@ describe("triage store", () => {
     expect(bands[1]?.querySelector(".canvas-triage-deck-band-chip")?.textContent).toBe("AL");
     expect(bands[0]?.querySelectorAll("[data-triage-deck-card]")).toHaveLength(2);
     expect(bands[1]?.querySelectorAll("[data-triage-deck-card]")).toHaveLength(1);
-  });
-
-  it("separates fleet zones until none overlap at the given aspect", () => {
-    // 9개 이상이면 슬롯이 재사용되어 동일 중심에서 출발한다 — 분리 반복이 결정적 방향으로
-    // 밀어내 그 퇴화 케이스까지 겹침 없이 정착해야 한다.
-    const zones = resolveTriageFleetZoneLayout(
-      Array.from({ length: 9 }, (_, index) => ({ theaterId: `t${index}`, count: 2 })),
-      1.6,
-    );
-    // 픽셀 겹침 판정은 높이=100 정규 좌표계에서 수행한다(size는 높이 기준 지름).
-    const width = 100 * 1.6;
-    const points = zones.map((zone) => ({
-      x: (zone.centerX / 100) * width,
-      y: zone.centerY,
-      r: zone.size / 2,
-    }));
-    for (let i = 0; i < points.length; i += 1) {
-      for (let j = i + 1; j < points.length; j += 1) {
-        const dist = Math.hypot(points[j]!.x - points[i]!.x, points[j]!.y - points[i]!.y);
-        expect(dist).toBeGreaterThanOrEqual(points[i]!.r + points[j]!.r);
-      }
-    }
-  });
-
-  it("keeps a theater's zone on its own slot when band order changes", () => {
-    // 밴드 정렬은 대기 건수를 따라 바뀐다 — 그때마다 구역이 자리를 맞바꾸면 패널 하나의 상태
-    // 변화가 판 전체를 재배치한 것처럼 보인다. 자리는 Theater 정체성(slotIndex)에 묶인다.
-    const first = resolveTriageFleetZoneLayout([
-      { theaterId: "alpha", count: 3, slotIndex: 0 },
-      { theaterId: "bravo", count: 3, slotIndex: 1 },
-    ], 1.6);
-    const reordered = resolveTriageFleetZoneLayout([
-      { theaterId: "bravo", count: 3, slotIndex: 1 },
-      { theaterId: "alpha", count: 3, slotIndex: 0 },
-    ], 1.6);
-    const find = (zones: readonly { theaterId: string; centerX: number; centerY: number }[], id: string) =>
-      zones.find((zone) => zone.theaterId === id)!;
-    expect(find(reordered, "alpha").centerX).toBeCloseTo(find(first, "alpha").centerX, 6);
-    expect(find(reordered, "alpha").centerY).toBeCloseTo(find(first, "alpha").centerY, 6);
-    expect(find(reordered, "bravo").centerX).toBeCloseTo(find(first, "bravo").centerX, 6);
-    expect(find(reordered, "bravo").centerY).toBeCloseTo(find(first, "bravo").centerY, 6);
-  });
-
-  it("lays fleet zones on deterministic slots with sqrt-of-count sizing", () => {
-    const zones = resolveTriageFleetZoneLayout([
-      { theaterId: "big", count: 9 },
-      { theaterId: "small", count: 1 },
-    ]);
-    const again = resolveTriageFleetZoneLayout([
-      { theaterId: "big", count: 9 },
-      { theaterId: "small", count: 1 },
-    ]);
-    // 결정적 배치 — 같은 입력이면 같은 자리·크기(렌더마다 흔들리면 지도가 아니다).
-    expect(zones).toEqual(again);
-    expect(new Set(zones.map((zone) => `${zone.centerX}:${zone.centerY}`)).size).toBe(2);
-    expect(zones[0]!.size).toBeGreaterThan(zones[1]!.size);
-    for (const zone of zones) {
-      expect(zone.size).toBeGreaterThanOrEqual(34);
-      expect(zone.size).toBeLessThanOrEqual(66);
-    }
   });
 
   it("counts an idle arrival as waiting in the band header with the queue's predicate", () => {
@@ -1865,30 +1793,22 @@ describe("triage store", () => {
 });
 
 describe("triage deck zoom", () => {
-  it("clamps zoom to [0.35, 2.0] and rejects non-finite input", () => {
-    expect(clampTriageDeckZoom(0)).toBe(0.35);
-    expect(clampTriageDeckZoom(0.2)).toBe(0.35);
+  it("clamps zoom to [1.0, 2.0] and rejects non-finite input", () => {
+    // 1× 아래는 카드가 읽히지 않는 구간이다 — 그 판(함대 지도)은 Cruise 축소가 세우고 덱은 내려가지 않는다.
+    expect(clampTriageDeckZoom(0)).toBe(1.0);
+    expect(clampTriageDeckZoom(0.4)).toBe(1.0);
     expect(clampTriageDeckZoom(1.25)).toBe(1.25);
     expect(clampTriageDeckZoom(2.5)).toBe(2.0);
     expect(clampTriageDeckZoom(Number.NaN)).toBe(1.0);
     expect(clampTriageDeckZoom(Number.POSITIVE_INFINITY)).toBe(1.0);
   });
 
-  it("flips map mode exactly when the 260px card base falls below 140px", () => {
-    expect(isTriageDeckMapMode(1.0)).toBe(false);
-    expect(isTriageDeckMapMode(140 / 260)).toBe(false);
-    expect(isTriageDeckMapMode(140 / 260 - 0.01)).toBe(true);
-    expect(isTriageDeckMapMode(0.4)).toBe(true);
-    expect(isTriageDeckMapMode(0.35)).toBe(true);
-  });
-
   it("cycles presets from the nearest preset to the current zoom", () => {
     expect(nextTriageDeckZoomPreset(1.0)).toBe(1.6);
-    expect(nextTriageDeckZoomPreset(1.6)).toBe(0.4);
-    expect(nextTriageDeckZoomPreset(0.4)).toBe(1.0);
+    expect(nextTriageDeckZoomPreset(1.6)).toBe(1.0);
     // 비-프리셋 배율은 가장 가까운 프리셋 기준으로 다음 단계를 고른다.
     expect(nextTriageDeckZoomPreset(1.2)).toBe(1.6);
-    expect(nextTriageDeckZoomPreset(0.5)).toBe(1.0);
+    expect(nextTriageDeckZoomPreset(1.9)).toBe(1.0);
   });
 
   it("persists one global zoom in localStorage and clamps both writes and reloads", () => {
@@ -1901,27 +1821,10 @@ describe("triage deck zoom", () => {
     resetTriageDeckZoomForTests();
     window.localStorage.setItem("fleet-console.triage-deck-zoom", "9");
     expect(getTriageDeckZoom()).toBe(2.0);
-  });
-
-  it("reflects live map mode overrides and falls back to the persisted zoom", () => {
-    setTriageDeckZoom(1.0);
-    expect(isTriageDeckMapModeActive()).toBe(false);
-    setTriageDeckMapModeLive(true);
-    expect(isTriageDeckMapModeActive()).toBe(true);
-    setTriageDeckMapModeLive(false);
-    expect(isTriageDeckMapModeActive()).toBe(false);
-  });
-
-  it("emits only when the live map mode actually changes", () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeTriage(listener);
-    setTriageDeckMapModeLive(true);
-    expect(listener).toHaveBeenCalledTimes(1);
-    setTriageDeckMapModeLive(true);
-    expect(listener).toHaveBeenCalledTimes(1);
-    setTriageDeckMapModeLive(false);
-    expect(listener).toHaveBeenCalledTimes(2);
-    unsubscribe();
+    // 지도 밀도가 있던 시절의 저장값(0.4)은 새 하한으로 올라선다 — 재진입이 91px 카드로 서지 않는다.
+    resetTriageDeckZoomForTests();
+    window.localStorage.setItem("fleet-console.triage-deck-zoom", "0.4");
+    expect(getTriageDeckZoom()).toBe(1.0);
   });
 
   it("bare wheel zooms the deck; shift+wheel scrolls the card grid; alt leaves wheel alone", () => {
@@ -1955,10 +1858,11 @@ describe("triage deck zoom", () => {
       setTriageActive(true);
     });
 
+    // 덱 밀도는 1× 아래로 내려가지 않으므로 기본 1×에서는 확대 방향(음의 deltaY)만 칸을 바꾼다.
     const bareWheel = new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
-      deltaY: 400,
+      deltaY: -400,
     });
     act(() => {
       grid.dispatchEvent(bareWheel);
@@ -1967,12 +1871,10 @@ describe("triage deck zoom", () => {
     expect(host.style.getPropertyValue("--triage-card-min")).not.toBe("");
     expect(host.style.getPropertyValue("--triage-card-min")).not.toBe("260px");
 
-    // shift+wheel은 카드 모드에서만 격자 스크롤한다 — 맵 밀도로 떨어지지 않게 되돌린 뒤 검증한다.
     act(() => {
       control!.setZoomTarget(1.0);
       control!.snapZoomTween();
     });
-    expect(isTriageDeckMapModeActive()).toBe(false);
     const zoomBeforeShift = getTriageDeckZoom();
     const shiftWheel = new WheelEvent("wheel", {
       bubbles: true,
@@ -2019,14 +1921,14 @@ describe("triage deck zoom", () => {
     const lineWheel = new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
-      deltaY: 3,
+      deltaY: -3,
       deltaMode: WheelEvent.DOM_DELTA_LINE,
     });
     act(() => {
       grid.dispatchEvent(lineWheel);
     });
     expect(lineWheel.defaultPrevented).toBe(true);
-    const expectedLineZoomMin = Math.round(260 * Math.exp(-3 * 16 * 0.0022));
+    const expectedLineZoomMin = Math.round(260 * Math.exp(3 * 16 * 0.0022));
     expect(host.style.getPropertyValue("--triage-card-min")).toBe(`${expectedLineZoomMin}px`);
 
     const lineShiftWheel = new WheelEvent("wheel", {
@@ -2044,7 +1946,7 @@ describe("triage deck zoom", () => {
     detach?.();
   });
 
-  it("keeps stored map-density judgment across a triage exit and re-entry without remounting", () => {
+  it("keeps the stored density across a triage exit and re-entry without remounting", () => {
     let control: TriageDeckZoomControl | null = null;
     const Probe = () => {
       const zoomControl = useTriageDeckZoomControl();
@@ -2063,235 +1965,21 @@ describe("triage deck zoom", () => {
 
     act(() => {
       setTriageActive(true);
-      control!.setZoomTarget(0.35);
+      control!.setZoomTarget(1.6);
       control!.snapZoomTween();
     });
-    expect(isTriageDeckMapModeActive()).toBe(true);
-    expect(getTriageDeckZoom()).toBe(0.35);
+    expect(getTriageDeckZoom()).toBe(1.6);
 
     act(() => {
       setTriageActive(false);
     });
-    // 종료는 live 채널을 null로 되돌리고, 판정은 저장 배율에서 파생된다 — 91px 미니 카드로
-    // 재진입하던 스테일 판정 결함의 회귀 핀.
-    expect(isTriageDeckMapModeActive()).toBe(true);
+    // 종료는 live 채널만 null로 되돌린다 — 저장 배율은 재진입의 출발점으로 남는다.
+    expect(getTriageDeckZoom()).toBe(1.6);
 
     act(() => {
       setTriageActive(true);
     });
-    expect(isTriageDeckMapModeActive()).toBe(true);
-    expect(getTriageDeckZoom()).toBe(0.35);
-  });
-});
-
-describe("triage map marker layout", () => {
-  const geometry = (x: number, y: number) => ({ x, y, width: 100, height: 60, zIndex: 1 });
-  const expectInBounds = (layout: ReturnType<typeof resolveTriageMapMarkerLayout>) => {
-    for (const marker of layout) {
-      expect(marker.x).toBeGreaterThanOrEqual(4);
-      expect(marker.x).toBeLessThanOrEqual(96);
-      expect(marker.y).toBeGreaterThanOrEqual(4);
-      expect(marker.y).toBeLessThanOrEqual(96);
-    }
-  };
-  const minimumPairwiseDistance = (layout: ReturnType<typeof resolveTriageMapMarkerLayout>) => {
-    let minimum = Number.POSITIVE_INFINITY;
-    for (let left = 0; left < layout.length; left += 1) {
-      for (let right = left + 1; right < layout.length; right += 1) {
-        const a = layout[left]!;
-        const b = layout[right]!;
-        minimum = Math.min(minimum, Math.hypot(b.x - a.x, b.y - a.y));
-      }
-    }
-    return minimum;
-  };
-
-  it("projects non-collinear canvas geometry centers into the deck [8%,92%]×[10%,86%] frame", () => {
-    const layout = resolveTriageMapMarkerLayout([
-      { id: "a", geometry: geometry(0, 0) },
-      { id: "b", geometry: geometry(900, 400) },
-      { id: "c", geometry: geometry(0, 400) },
-    ]);
-    expect(layout.find((marker) => marker.operationId === "a")).toMatchObject({ x: 8, y: 10 });
-    expect(layout.find((marker) => marker.operationId === "b")).toMatchObject({ x: 92, y: 86 });
-  });
-
-  it("scatters a two-operation degenerate axis deterministically across the field", () => {
-    const input = [
-      { id: "a", geometry: geometry(0, 0) },
-      { id: "b", geometry: geometry(500, 0) },
-    ];
-    const first = resolveTriageMapMarkerLayout(input);
-    const second = resolveTriageMapMarkerLayout(input);
-    expect(first).toEqual(second);
-    expectInBounds(first);
-    expect(first.every((marker) => marker.y === 48)).toBe(false);
-  });
-
-  it("places geometry-less operations deterministically without Math.random", () => {
-    const input = [
-      { id: "orphan-1", geometry: null },
-      { id: "orphan-2", geometry: null },
-      { id: "orphan-3", geometry: null },
-    ];
-    const first = resolveTriageMapMarkerLayout(input);
-    const second = resolveTriageMapMarkerLayout([...input].reverse());
-    // 반환 순서는 입력 순서를 따르므로 id 기준 정렬 후 비교 — 위치 자체가 결정적이어야 한다.
-    const byId = (layout: typeof first) => [...layout].sort((a, b) => a.operationId.localeCompare(b.operationId));
-    expect(byId(first)).toEqual(byId(second));
-    expectInBounds(first);
-  });
-
-  it("projects geometry and scatters geometry-less operations together deterministically", () => {
-    const input = [
-      { id: "corner-a", geometry: geometry(0, 0) },
-      { id: "corner-b", geometry: geometry(900, 400) },
-      { id: "corner-c", geometry: geometry(0, 400) },
-      { id: "orphan-wide-17", geometry: null },
-      { id: "orphan-wide-83", geometry: null },
-    ];
-    const first = resolveTriageMapMarkerLayout(input);
-    expect(first).toEqual(resolveTriageMapMarkerLayout(input));
-    expect(first.find((marker) => marker.operationId === "corner-a")).toMatchObject({ x: 8, y: 10 });
-    expect(first.find((marker) => marker.operationId === "corner-b")).toMatchObject({ x: 92, y: 86 });
-    expectInBounds(first);
-    expect(minimumPairwiseDistance(first)).toBeGreaterThanOrEqual(3.5);
-  });
-
-  it("fans a collinear cascade across the full field", () => {
-    const ids = ["alpha-17", "bravo-43", "charlie-89", "delta-131", "echo-211", "foxtrot-307", "golf-419", "hotel-557"];
-    const input = ids.map((id, index) => ({ id, geometry: geometry(index * 24, index * 24) }));
-    const layout = resolveTriageMapMarkerLayout(input);
-    const xs = layout.map((marker) => marker.x);
-    const ys = layout.map((marker) => marker.y);
-    expect(layout).toEqual(resolveTriageMapMarkerLayout(input));
-    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThanOrEqual(40);
-    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThanOrEqual(30);
-    // 스팬만으로는 대각선 투영도 통과한다 — 산포가 실제로 일어났음은 투영 직선 이탈로 고정한다.
-    expect(layout.some((marker) => Math.abs((marker.y - 10) - (marker.x - 8) * (76 / 84)) > 5)).toBe(true);
-  });
-
-  it("relaxes overlapping markers apart deterministically", () => {
-    // 같은 중심의 geometry 3개 — 퇴화 산포와 이완 후 쌍 거리는 최소 4%를 만족한다.
-    const input = [
-      { id: "a", geometry: geometry(100, 100) },
-      { id: "b", geometry: geometry(100, 100) },
-      { id: "c", geometry: geometry(100, 100) },
-    ];
-    const layout = resolveTriageMapMarkerLayout(input);
-    expect(layout).toEqual(resolveTriageMapMarkerLayout(input));
-    expect(minimumPairwiseDistance(layout)).toBeGreaterThanOrEqual(4 - 1e-6);
-  });
-});
-
-describe("triage fleet map markers", () => {
-  it("marks deferred dots, injects drift vars on running dots, and keeps zone structure", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const alpha = operation("alpha-map", 1);
-    const beta = operation("beta-map", 2, "theater-b");
-    const operations = [alpha, beta];
-
-    act(() => {
-      triagePlateRoot?.render(createElement(TriageWatchDeck, {
-        active: true,
-        entering: false,
-        theaters: THEATERS,
-        operations,
-        operationRuntime: { "alpha-map": { lifecycle: "live", activity: "running" }, "beta-map": { lifecycle: "live", activity: "awaiting" } },
-        operationAccent: {},
-      }));
-    });
-    act(() => {
-      deferTriageOperation(beta.id);
-      setTriageDeckMapModeLive(true);
-    });
-
-    // Theater가 둘이면 플릿 판 위에 원형 구역이 Theater 수만큼 선다.
-    expect(container.querySelectorAll(".canvas-triage-map-fleet")).toHaveLength(1);
-    expect(container.querySelectorAll(".canvas-triage-map-zone")).toHaveLength(2);
-    const dots = [...container.querySelectorAll<HTMLElement>("[data-triage-map-dot]")];
-    expect(dots).toHaveLength(operations.length);
-    // 미룬 대기 마커는 is-deferred로 링 맥동에서 제외된다.
-    const deferredDot = container.querySelector<HTMLElement>('[data-triage-map-dot="beta-map"]');
-    expect(deferredDot?.classList.contains("is-deferred")).toBe(true);
-    expect(deferredDot?.classList.contains("is-awaiting")).toBe(true);
-    // 모든 마커가 결정적 유영 변수를 주입받는다 — 정지한 점은 죽은 표시로 읽힌다.
-    const runningDot = container.querySelector<HTMLElement>('[data-triage-map-dot="alpha-map"]');
-    expect(runningDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
-    expect(runningDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
-    expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
-    expect(deferredDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
-  });
-
-  it("keeps drift deterministic per id and narrows amplitude for non-running dots", () => {
-    const active = resolveTriageMapDriftStyle("alpha-map", true) as Record<string, string>;
-    const calm = resolveTriageMapDriftStyle("alpha-map", false) as Record<string, string>;
-    // 같은 id는 언제나 같은 경로를 받는다 — 렌더마다 흔들리면 지도가 아니다.
-    expect(resolveTriageMapDriftStyle("alpha-map", true)).toEqual(active);
-    // 상태 위계는 진폭과 주기가 만든다: 비실행은 더 좁게, 더 느리게 돈다.
-    const amplitude = (style: Record<string, string>) => Math.abs(Number.parseFloat(style["--triage-drift-x1"]!));
-    expect(amplitude(calm)).toBeLessThan(amplitude(active));
-    expect(Number.parseFloat(calm["--triage-drift-mult"]!)).toBeGreaterThan(Number.parseFloat(active["--triage-drift-mult"]!));
-  });
-
-  it("classifies an idle arrival as an unseen marker, distinct from a genuine awaiting one", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const arrival = operation("arrival-map", 1);
-    markIdleArrival(arrival.id);
-
-    act(() => {
-      triagePlateRoot?.render(createElement(TriageWatchDeck, {
-        active: true,
-        entering: false,
-        theaters: THEATERS,
-        operations: [arrival],
-        operationRuntime: {},
-        operationAccent: {},
-      }));
-    });
-    act(() => {
-      setTriageDeckMapModeLive(true);
-    });
-
-    // 유휴 도착은 지도에서도 사이드바 칩·커맨드 밴드와 같은 마크 축을 쓴다 — 진짜 대기(aurora)와
-    // 구별되는 미확인 마커(초록 느린 점등)여야 한다. 큐가 그것을 대기로 세는 것은 배치 축의 일이고,
-    // 색이 그 배치를 따라가면 두 사실이 한 색으로 뭉친다.
-    const dot = container.querySelector<HTMLElement>('[data-triage-map-dot="arrival-map"]');
-    expect(dot?.classList.contains("is-unseen")).toBe(true);
-    expect(dot?.classList.contains("is-awaiting")).toBe(false);
-    expect(dot?.classList.contains("is-idle")).toBe(false);
-  });
-
-
-  it("resets the card grid scroll when the deck enters map mode", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const operations = [operation("scroll-a", 1), operation("scroll-b", 2)];
-
-    act(() => {
-      triagePlateRoot?.render(createElement(TriageWatchDeck, {
-        active: true,
-        entering: false,
-        theaters: THEATERS,
-        operations,
-        operationRuntime: {},
-        operationAccent: {},
-      }));
-    });
-    const grid = container.querySelector<HTMLElement>(".canvas-triage-deck-grid");
-    expect(grid).not.toBeNull();
-    grid!.scrollTop = 120;
-
-    act(() => {
-      setTriageDeckMapModeLive(true);
-    });
-    // 판은 grid 안의 절대배치라 잔류 스크롤만큼 밀려 잘린다 — 지도 진입은 원점에서 시작한다.
-    expect(grid!.scrollTop).toBe(0);
+    expect(getTriageDeckZoom()).toBe(1.6);
   });
 });
 

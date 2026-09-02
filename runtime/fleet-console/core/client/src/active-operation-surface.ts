@@ -24,7 +24,6 @@ const WAR_ROOM_EMPTY_SURFACE_SELECTOR = [
 const WAR_ROOM_OWNED_SELECTOR = [
   "[data-canvas-operation]",
   "[data-triage-deck-card]",
-  "[data-triage-map-dot]",
   ".canvas-triage-deck-pick",
   ".canvas-minimap",
   ".canvas-context-menu",
