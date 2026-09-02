@@ -474,6 +474,37 @@
   min-width: 0;
 }
 
+/* 생각의 점은 하나씩 나타나고 모두 찬 뒤 첫 점만 남긴다. 세 칸을 늘 차지해 되풀이할 때
+   뒤 문구나 줄 폭이 흔들리지 않으며, 점은 장식으로 숨겨 라이브 리전이 매 박자 다시 읽히지 않는다. */
+.agent-chat-thinking-dots {
+  display: inline-flex;
+  width: 3ch;
+}
+
+.agent-chat-thinking-dots > span {
+  width: 1ch;
+  opacity: 0;
+  animation: agent-chat-thinking-dot 1.2s steps(1, end) infinite;
+}
+
+.agent-chat-thinking-dots > span:first-child {
+  opacity: 1;
+  animation: none;
+}
+
+.agent-chat-thinking-dots > span:nth-child(2) {
+  animation-delay: -0.8s;
+}
+
+.agent-chat-thinking-dots > span:nth-child(3) {
+  animation-delay: -0.4s;
+}
+
+@keyframes agent-chat-thinking-dot {
+  0%, 33.332% { opacity: 0; }
+  33.333%, 100% { opacity: 1; }
+}
+
 /* 도는 구간의 집계 줄. 예전에는 최근 여덟 스텝이 전폭 행으로 흘러가는 것이 "일하는 중"의
    증거였고, 실측하면 그 행들이 로그 가시 영역의 58%를 먹었다. 지금은 이 한 줄이 같은 말을
    한다 — 링이 돌고, 글자가 좌에서 우로 물결지고, 꼬리가 지금 도는 도구를 부른다. */
@@ -2321,7 +2352,8 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
   .agent-chat-ask-dot,
-  .agent-chat-step-orbit {
+  .agent-chat-step-orbit,
+  .agent-chat-thinking-dots > span {
     animation: none;
   }
 

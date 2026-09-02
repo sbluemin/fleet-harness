@@ -660,7 +660,8 @@ describe("chat ledger — one live line", () => {
     ]);
     mount("running");
     const live = container?.querySelector(".agent-chat-tally.is-live");
-    expect(live?.querySelector(".agent-chat-tally-running")?.textContent).toContain("Thinking…");
+    expect(live?.querySelector(".agent-chat-tally-running")?.textContent).toContain("Thinking...");
+    expect(live?.querySelector(".agent-chat-thinking-dots")?.getAttribute("aria-hidden")).toBe("true");
     expect(live?.querySelector(".agent-chat-tally-running svg")?.getAttribute("data-glyph")).toBe("think");
     // 상자도, 두 번째 링도 없다.
     expect(container?.querySelector(".agent-chat-step.is-running")).toBeNull();
@@ -674,7 +675,7 @@ describe("chat ledger — one live line", () => {
     logState = workingWith([]);
     mount("running");
     const live = container?.querySelector(".agent-chat-tally.is-live");
-    expect(live?.textContent).toContain("Thinking…");
+    expect(live?.textContent).toContain("Thinking...");
     expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(1);
     // 셀 것이 없으니 펼침도 없다 — 열쇠 없는 자물쇠는 어포던스가 아니다.
     expect(container?.querySelector(".agent-chat-tally-fold")).toBeNull();
