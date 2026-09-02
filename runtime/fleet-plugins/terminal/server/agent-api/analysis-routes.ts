@@ -191,8 +191,10 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const focus = safeArtifactColor(query.get("focus"), accent);
   const sansFont = safeArtifactFontPath(query.get("sansFont"));
   const monoFont = safeArtifactFontPath(query.get("monoFont"));
+  const sansCjkSheets = safeArtifactSheetPaths(query.getAll("sansCjkSheet"));
+  const monoCjkSheets = safeArtifactSheetPaths(query.getAll("monoCjkSheet"));
   const canvasStyle = `background-color:${ground}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont })}`;
+  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont, sansCjkSheets, monoCjkSheets })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
@@ -300,9 +302,10 @@ const ARTIFACT_BASE_RULES = [
  * 모델은 그 위에서 위계와 구조만 결정하면 되게 한다. 이 시트는 문서 맨 앞(<html> 직후)에
  * 들어가므로 모델이 뒤에서 같은 선택자로 덮을 수 있다 — 바닥이지 감옥이 아니다.
  *
- * 폰트는 시스템 스택만 쓴다. iframe은 Console의 @font-face를 상속하지 않고, 외부 폰트
+ * 폰트는 콘솔 자기 자산만 잇는다. iframe은 Console의 @font-face를 상속하지 않고, 외부 폰트
  * 호스트를 부르는 것은 아티팩트의 격리 계약(프로세스 메모리 전용·바깥으로 신호 없음)을
- * 깨기 때문이다.
+ * 깨기 때문이다. 라틴은 woff2 한 장을 @font-face로 직접 세우고, 한글은 서브셋이 여럿이라
+ * 콘솔 번들의 @font-face 시트를 same-origin으로 링크한다 — 어느 쪽도 자기 origin 밖은 없다.
  */
 function artifactBaseStylesheet(tokens: {
   readonly ground: string;
@@ -320,16 +323,23 @@ function artifactBaseStylesheet(tokens: {
   readonly focus: string;
   readonly sansFont?: string;
   readonly monoFont?: string;
+  readonly sansCjkSheets?: readonly string[];
+  readonly monoCjkSheets?: readonly string[];
 }): string {
   // 콘솔 자기 자산의 same-origin 서체 — 외부 신호 0. 응답 헤더의 sandbox가 문서를 opaque
   // origin으로 만들므로 폰트 fetch는 CORS 경로를 탄다(정적 서버가 woff2에 ACAO를 싣는 이유).
   // 내려받은 사본에서는 상대 경로가 죽고 폴백 스택이 선다 — 오프라인 계약은 그대로다.
   const sansFace = tokens.sansFont ? `@font-face{font-family:"Fleet Console Sans";src:url("${tokens.sansFont}") format("woff2");font-weight:100 999;font-style:normal;font-display:swap}` : "";
   const monoFace = tokens.monoFont ? `@font-face{font-family:"Fleet Console Mono";src:url("${tokens.monoFont}") format("woff2");font-weight:100 999;font-style:normal;font-display:swap}` : "";
-  const sansStack = `${tokens.sansFont ? `"Fleet Console Sans",` : ""}ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif`;
-  const monoStack = `${tokens.monoFont ? `"Fleet Console Mono",` : ""}ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace`;
+  // 한글 폴백 — 클라이언트가 넘긴 시트가 세우는 서체 이름은 역할별로 고정이다(sans=Pretendard
+  // Variable, mono=Nanum Gothic Coding). 이름까지 파라미터로 받으면 스택 문자열에 임의 값이
+  // 실리므로 경로만 받고 이름은 여기서 잠근다. 시트가 없으면 시스템 CJK 폴백이 그대로 선다.
+  const cjkSheets = [...(tokens.sansCjkSheets ?? []), ...(tokens.monoCjkSheets ?? [])];
+  const cjkLinks = cjkSheets.map((href) => `<link rel="stylesheet" href="${href}">`).join("");
+  const sansStack = `${tokens.sansFont ? `"Fleet Console Sans",` : ""}${tokens.sansCjkSheets?.length ? `"Pretendard Variable",` : ""}ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif`;
+  const monoStack = `${tokens.monoFont ? `"Fleet Console Mono",` : ""}${tokens.monoCjkSheets?.length ? `"Nanum Gothic Coding",` : ""}ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace`;
   const root = `:root{--fleet-canvas:${tokens.ground};--fleet-surface:${tokens.card};--fleet-card:${tokens.card};--fleet-inset:${tokens.inset};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-faint:${tokens.faint};--fleet-hairline:${tokens.hairline};--fleet-hairline-strong:${tokens.hairlineStrong};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:${sansStack};--fleet-mono:${monoStack}}`;
-  return `<style>${sansFace}${monoFace}${root}${ARTIFACT_BASE_RULES}</style>`;
+  return `${cjkLinks}<style>${sansFace}${monoFace}${root}${ARTIFACT_BASE_RULES}</style>`;
 }
 
 /**
@@ -342,6 +352,22 @@ const SAFE_ARTIFACT_FONT_PATH = /^\/[A-Za-z0-9_\-./]{1,200}\.woff2$/;
 function safeArtifactFontPath(value: string | null): string | undefined {
   if (!value || !SAFE_ARTIFACT_FONT_PATH.test(value) || value.includes("..") || value.includes("//")) return undefined;
   return value;
+}
+
+/* 한글 폴백 시트도 같은 계약이다 — same-origin 상대 경로의 .css만, 중복 없이, 상한까지. 시트는
+   @font-face 외의 규칙도 실을 수 있지만 콘솔이 내놓은 자기 자산만 가리킬 수 있으므로(스킴·호스트
+   거부) 문서에 낯선 규칙이 들어올 경로는 없다. 상한은 sans 1장 + mono 굵기 2장에 여유 하나다. */
+const SAFE_ARTIFACT_SHEET_PATH = /^\/[A-Za-z0-9_\-./]{1,200}\.css$/;
+const MAX_ARTIFACT_CJK_SHEETS = 4;
+
+function safeArtifactSheetPaths(values: readonly string[]): readonly string[] {
+  const safe: string[] = [];
+  for (const value of values) {
+    if (!SAFE_ARTIFACT_SHEET_PATH.test(value) || value.includes("..") || value.includes("//") || safe.includes(value)) continue;
+    safe.push(value);
+    if (safe.length >= MAX_ARTIFACT_CJK_SHEETS) break;
+  }
+  return safe;
 }
 
 type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };

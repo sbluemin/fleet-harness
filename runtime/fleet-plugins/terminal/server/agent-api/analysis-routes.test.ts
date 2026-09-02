@@ -61,9 +61,14 @@ const ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="$
 
 describe("Session Analyst server contract", () => {
   it("serializes all Console theme coordinates into artifact URLs", () => {
-    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", { ground: "#101820", foreground: "#f2f4f7", card: "#18212b", inset: "#0c1014", hairline: "#35404d", hairlineStrong: "#4a5764", accent: "#65d1ff", muted: "#96a0ad", faint: "#7d8894", positive: "#5fd39a", warn: "#e5c07b", critical: "#f2777a", focus: "#d9a441", sansFont: "/console/assets/manrope-latin.woff2", monoFont: "/console/assets/jetbrains-latin.woff2" }), "http://fleet.invalid");
+    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", { ground: "#101820", foreground: "#f2f4f7", card: "#18212b", inset: "#0c1014", hairline: "#35404d", hairlineStrong: "#4a5764", accent: "#65d1ff", muted: "#96a0ad", faint: "#7d8894", positive: "#5fd39a", warn: "#e5c07b", critical: "#f2777a", focus: "#d9a441", sansFont: "/console/assets/manrope-latin.woff2", monoFont: "/console/assets/jetbrains-latin.woff2", sansCjkSheets: ["/console/assets/pretendard.css"], monoCjkSheets: ["/console/assets/korean-400.css", "/console/assets/korean-700.css"] }), "http://fleet.invalid");
 
     expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    // 한글 시트는 굵기별로 여러 장이라 같은 키를 반복한다 — 서버는 getAll로 읽는다.
+    expect(url.searchParams.getAll("sansCjkSheet")).toEqual(["/console/assets/pretendard.css"]);
+    expect(url.searchParams.getAll("monoCjkSheet")).toEqual(["/console/assets/korean-400.css", "/console/assets/korean-700.css"]);
+    url.searchParams.delete("sansCjkSheet");
+    url.searchParams.delete("monoCjkSheet");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       theme: "carbon",
       ground: "#101820",
@@ -866,6 +871,77 @@ describe("Session Analyst server contract", () => {
     expect(response.body).not.toContain("injected-surface");
     expect(response.body).not.toContain("javascript:alert");
     expect(document.documentElement.hasAttribute("onload")).toBe(false);
+  });
+
+  it("links same-origin Hangul fallback sheets and seats their faces behind the Latin bridge", async () => {
+    const router = createRouterHarness(true);
+    const transcriptPath = join(await mkdtemp(join(tmpdir(), "analysis-artifact-fonts-")), "session.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
+    registerAnalysis(router, {
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
+    emit?.({ type: "artifact", artifact: { id: "fonts", title: "Fonts", html: "<p>한글</p>", createdAt: new Date(0).toISOString() } });
+    const query = new URLSearchParams({ theme: "carbon", ground: "#101820", foreground: "#f2f4f7", sansFont: "/console/assets/manrope-latin.woff2", monoFont: "/console/assets/jetbrains-latin.woff2" });
+    query.append("sansCjkSheet", "/console/assets/pretendardvariable-dynamic-subset-DIMR61Pu.css");
+    query.append("monoCjkSheet", "/console/assets/korean-400-BaAbCdEf.css");
+    query.append("monoCjkSheet", "/console/assets/korean-700-BaAbCdEf.css");
+    // 같은 경로의 중복은 한 번만, origin 밖·상위 경로·프로토콜 상대·비-CSS는 전부 버린다.
+    query.append("monoCjkSheet", "/console/assets/korean-700-BaAbCdEf.css");
+    query.append("monoCjkSheet", "https://fonts.example/evil.css");
+    query.append("monoCjkSheet", "/console/assets/../secret.css");
+    query.append("monoCjkSheet", "//fonts.example/evil.css");
+    query.append("monoCjkSheet", "/console/assets/evil.js");
+    query.append("sansCjkSheet", '/console/assets/x.css"><script>globalThis.sheetInjected=true</script><link href="');
+
+    const response = await router.call("GET", `/api/v1/plugins/terminal/analysis/artifacts/fonts?${query.toString()}`);
+
+    expect(response.status).toBe(200);
+    const document = new DOMParser().parseFromString(response.body, "text/html");
+    const links = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map((link) => link.getAttribute("href"));
+    expect(links).toEqual([
+      "/console/assets/pretendardvariable-dynamic-subset-DIMR61Pu.css",
+      "/console/assets/korean-400-BaAbCdEf.css",
+      "/console/assets/korean-700-BaAbCdEf.css",
+    ]);
+    const style = document.head.querySelector("style")?.textContent ?? "";
+    expect(style).toContain('--fleet-sans:"Fleet Console Sans","Pretendard Variable",ui-sans-serif');
+    expect(style).toContain('--fleet-mono:"Fleet Console Mono","Nanum Gothic Coding",ui-monospace');
+    expect(response.body).not.toContain("fonts.example");
+    expect(response.body).not.toContain("secret.css");
+    expect(response.body).not.toContain("evil.js");
+    expect(response.body).not.toContain("sheetInjected");
+  });
+
+  it("keeps the system Hangul fallback when no sheet is bridged", async () => {
+    const router = createRouterHarness(true);
+    const transcriptPath = join(await mkdtemp(join(tmpdir(), "analysis-artifact-fonts-")), "session.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
+    registerAnalysis(router, {
+      createSession: ((options: { onEvent: typeof emit }) => {
+        emit = options.onEvent;
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
+    emit?.({ type: "artifact", artifact: { id: "plain", title: "Plain", html: "<p>plain</p>", createdAt: new Date(0).toISOString() } });
+
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/plain?theme=carbon&ground=%23101820&foreground=%23f2f4f7");
+
+    const document = new DOMParser().parseFromString(response.body, "text/html");
+    expect(document.head.querySelector('link[rel="stylesheet"]')).toBeNull();
+    const style = document.head.querySelector("style")?.textContent ?? "";
+    expect(style).toContain('--fleet-sans:ui-sans-serif');
+    expect(style).toContain('--fleet-mono:ui-monospace');
+    expect(style).not.toContain("Pretendard");
+    expect(style).not.toContain("Nanum");
   });
 
   it("host-gates artifact documents and returns 404 for unknown ids", async () => {
