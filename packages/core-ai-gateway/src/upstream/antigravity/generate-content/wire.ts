@@ -300,6 +300,18 @@ export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
       ? geminiTupleItems(value.prefixItems, { allowsAdditional: true })
       : geminiOpenValueApproximation();
   }
+  // A homogeneous schema cannot express tuple length on its own. Preserve the positional
+  // ceiling when the source explicitly closed its tail, without weakening a smaller limit.
+  const tuple = Array.isArray(value.items)
+    ? value.items
+    : Array.isArray(value.prefixItems) ? value.prefixItems : undefined;
+  const closedTuple = Array.isArray(value.items)
+    ? value.additionalItems === false
+    : tuple !== undefined && value.items === false;
+  if (closedTuple && tuple) {
+    const explicitMax = typeof out.maxItems === "number" ? out.maxItems : undefined;
+    out.maxItems = explicitMax === undefined ? tuple.length : Math.min(explicitMax, tuple.length);
+  }
   // The mirror case: a declared object with no property map. A client spells a free-form
   // payload that way — Grok Build's `use_tool.tool_input` carries whatever schema the MCP
   // tool on the other side declares, so it cannot enumerate fields. Gemini refuses the
