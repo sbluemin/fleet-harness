@@ -172,6 +172,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function geminiOpenValueApproximation(depth = 2): Record<string, unknown> {
+  const alternatives: Record<string, unknown>[] = [
+    // `nullable` carries the otherwise unrepresentable JSON null branch.
+    { type: "string", nullable: true },
+    { type: "number" },
+    { type: "boolean" },
+    { type: "object", properties: {} },
+  ];
+  if (depth > 0) alternatives.push({
+    type: "array",
+    items: geminiOpenValueApproximation(depth - 1),
+  });
+  return { anyOf: alternatives };
+}
+
+function sanitizeGeminiItems(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return geminiOpenValueApproximation();
+  const schema = sanitizeGeminiSchema(value);
+  return Object.keys(schema).length === 0 ? geminiOpenValueApproximation() : schema;
+}
+
+function schemaAlternatives(schema: Record<string, unknown>): Record<string, unknown>[] {
+  if (Object.keys(schema).length === 1 && Array.isArray(schema.anyOf)) {
+    return schema.anyOf.filter(isRecord);
+  }
+  return [schema];
+}
+
+function geminiTupleItems(
+  items: readonly unknown[],
+  options: { readonly additional?: unknown; readonly allowsAdditional: boolean },
+): Record<string, unknown> {
+  const alternatives = items.flatMap((item) => schemaAlternatives(sanitizeGeminiItems(item)));
+  if (options.allowsAdditional) {
+    alternatives.push(...schemaAlternatives(sanitizeGeminiItems(options.additional)));
+  }
+  const distinct = [...new Map(alternatives.map((schema) => [JSON.stringify(schema), schema])).values()];
+  if (distinct.length === 0) return geminiOpenValueApproximation();
+  if (distinct.length === 1) return distinct[0]!;
+  return { anyOf: distinct };
+}
+
 export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) return { type: "object", properties: {} };
   const out: Record<string, unknown> = {};
@@ -188,7 +230,23 @@ export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
         break;
       }
       case "items":
-        out.items = sanitizeGeminiSchema(raw);
+        // Gemini requires one concrete schema here. JSON Schema tuples arrive either as the
+        // draft-07 array form or as 2020-12 `prefixItems` plus an unconstrained `{}` tail.
+        // Passing that empty tail produces `properties[...].items.items: missing field` and
+        // rejects every tool in the request, so lower the positional schemas into one union.
+        if (Array.isArray(raw)) {
+          out.items = geminiTupleItems(raw, {
+            additional: value.additionalItems,
+            allowsAdditional: value.additionalItems !== false,
+          });
+        } else if (Array.isArray(value.prefixItems)) {
+          out.items = geminiTupleItems(value.prefixItems, {
+            additional: raw,
+            allowsAdditional: raw !== false,
+          });
+        } else {
+          out.items = sanitizeGeminiItems(raw);
+        }
         break;
       case "anyOf":
         if (Array.isArray(raw)) out.anyOf = raw.map((entry) => sanitizeGeminiSchema(entry));
@@ -234,6 +292,14 @@ export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
   // An object with no declared type reads as untyped upstream and is refused;
   // every tool parameter document is an object at its root.
   if (out.type === undefined && out.properties !== undefined) out.type = "object";
+  // Unlike JSON Schema, Gemini does not interpret a missing `items` as an unconstrained
+  // element. Supply a concrete schema even when a client used only `prefixItems` or left
+  // the array open-ended.
+  if (out.type === "array" && out.items === undefined) {
+    out.items = Array.isArray(value.prefixItems)
+      ? geminiTupleItems(value.prefixItems, { allowsAdditional: true })
+      : geminiOpenValueApproximation();
+  }
   // The mirror case: a declared object with no property map. A client spells a free-form
   // payload that way — Grok Build's `use_tool.tool_input` carries whatever schema the MCP
   // tool on the other side declares, so it cannot enumerate fields. Gemini refuses the

@@ -468,6 +468,84 @@ describe("antigravity request wire", () => {
     });
   });
 
+  it("lowers tuple arrays into the homogeneous item schema Gemini requires", () => {
+    // ToolSearch's `where` is a tuple array. Dropping JSON Schema 2020-12's
+    // `prefixItems` leaves its inner array with an empty `items`, so Gemini rejects the turn.
+    const schema = sanitizeGeminiSchema({
+      type: "object",
+      properties: {
+        query: {
+          type: "object",
+          properties: {
+            where: {
+              type: "array",
+              items: {
+                type: "array",
+                prefixItems: [
+                  { type: "string" },
+                  { type: "string", enum: ["eq", "ne"] },
+                  {},
+                ],
+                items: {},
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(schema).toMatchObject({
+      type: "object",
+      properties: {
+        query: {
+          properties: {
+            where: {
+              type: "array",
+              items: {
+                type: "array",
+                items: { anyOf: expect.any(Array) },
+              },
+            },
+          },
+        },
+      },
+    });
+    const inner = ((schema.properties as Record<string, unknown>).query as Record<string, unknown>)
+      .properties as Record<string, Record<string, unknown>>;
+    const alternatives = ((inner.where.items as Record<string, unknown>).items as Record<string, unknown>)
+      .anyOf as Record<string, unknown>[];
+    expect(alternatives).toContainEqual({ type: "string", enum: ["eq", "ne"] });
+    expect(alternatives).toContainEqual({ type: "string", nullable: true });
+    expect(alternatives).toContainEqual(expect.objectContaining({ type: "array" }));
+
+    // A concrete 2020-12 tail is part of the homogeneous approximation too; dropping either
+    // side would incorrectly erase valid positional or additional values.
+    expect(sanitizeGeminiSchema({
+      type: "array",
+      prefixItems: [{ type: "integer" }],
+      items: { type: "string" },
+    })).toEqual({
+      type: "array",
+      items: { anyOf: [{ type: "integer" }, { type: "string" }] },
+    });
+    expect(sanitizeGeminiSchema({
+      type: "array",
+      prefixItems: [{ type: "string" }, { type: "integer" }],
+      items: false,
+    })).toEqual({
+      type: "array",
+      items: { anyOf: [{ type: "string" }, { type: "integer" }] },
+    });
+    expect(sanitizeGeminiSchema({ type: "array" })).toMatchObject({
+      type: "array",
+      items: {
+        anyOf: expect.arrayContaining([
+          { type: "string", nullable: true },
+          expect.objectContaining({ type: "array" }),
+        ]),
+      },
+    });
+  });
+
   it("rewrites a tool name the wire cannot carry and restores it on the way back", () => {
     const codec = createToolNameCodec();
     const long = `mcp__${"server".repeat(12)}__create_issue`;
