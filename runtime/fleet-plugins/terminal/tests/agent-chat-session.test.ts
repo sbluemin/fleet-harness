@@ -877,9 +877,14 @@ describe("AgentChatRegistry", () => {
 
     // 재접속 스냅숏을 리듀스하면 마지막 턴은 done이 아니라 working이다. snapshot-end는 이
     // live 문법의 opener까지가 복원 상태이며, 뒤 이벤트부터 새 도착임을 클라이언트에 말한다.
-    const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
+    const state = events.reduce(
+      (current, entry) => reduceAgentChatLog(current, { ...entry.event, receivedAt: entry.at }),
+      initialAgentChatLogState,
+    );
     expect(state.turns.at(-1)?.state).toBe("working");
     expect(events.at(-1)?.event).toMatchObject({ kind: "snapshot-end", turns: expect.any(Number) });
+    // 합성 재생 경계는 시각이 없어도 되고, 실제 저널 이벤트는 서버 시각을 갖는다.
+    expect(events.filter((entry) => entry.event.kind === "turn-start" || entry.event.kind === "text").every((entry) => typeof entry.at === "number")).toBe(true);
     expect(state.snapshotting).toBe(false);
 
     await registry.disposeAll();

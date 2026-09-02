@@ -179,6 +179,8 @@ export interface AgentChatQueueEntry {
 
 export interface AgentChatJournalEvent {
   readonly seq: number;
+  /** 서버 원장에 선 시각. 옛 서버의 부재는 스토어가 수신 시각으로 보완한다. */
+  readonly at?: number;
   readonly event: AgentChatStreamEvent;
 }
 
@@ -190,19 +192,21 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;
-  const entry = parsed as { readonly seq?: unknown; readonly event?: unknown };
+  const entry = parsed as { readonly seq?: unknown; readonly at?: unknown; readonly event?: unknown };
   if (typeof entry.seq !== "number" || !entry.event || typeof entry.event !== "object") return null;
+  const at = typeof entry.at === "number" && Number.isFinite(entry.at) ? entry.at : undefined;
+  const journal = at === undefined ? { seq: entry.seq } : { seq: entry.seq, at };
   const event = entry.event as { readonly kind?: unknown } & Record<string, unknown>;
   switch (event.kind) {
     case "replay-start":
-      return { seq: entry.seq, event: { kind: "replay-start" } };
+      return { ...journal, event: { kind: "replay-start" } };
     case "snapshot-end":
-      return { seq: entry.seq, event: { kind: "snapshot-end", turns: numberOr(event.turns, 0) } };
+      return { ...journal, event: { kind: "snapshot-end", turns: numberOr(event.turns, 0) } };
     case "context": {
       // 총량과 창 크기가 없으면 그릴 수 있는 것이 없다. 0짜리 미터는 사실이 아니라 빈칸이다.
       if (typeof event.total !== "number" || typeof event.max !== "number" || event.max <= 0) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "context",
           total: event.total,
@@ -220,23 +224,23 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     }
     case "context-live": {
       if (typeof event.total !== "number" || typeof event.max !== "number" || event.max <= 0) return null;
-      return { seq: entry.seq, event: { kind: "context-live", total: event.total, max: event.max } };
+      return { ...journal, event: { kind: "context-live", total: event.total, max: event.max } };
     }
     case "replay-end":
-      return { seq: entry.seq, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
+      return { ...journal, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
     case "dispatch":
       if (typeof event.text !== "string") return null;
-      return { seq: entry.seq, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
+      return { ...journal, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
     case "reset":
-      return { seq: entry.seq, event: { kind: "reset", ...atField(event.at) } };
+      return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
-      return { seq: entry.seq, event: { kind: "cleared", ...atField(event.at) } };
+      return { ...journal, event: { kind: "cleared", ...atField(event.at) } };
     case "command":
       if (typeof event.name !== "string" || event.name.length === 0) return null;
-      return { seq: entry.seq, event: { kind: "command", name: event.name, ...atField(event.at) } };
+      return { ...journal, event: { kind: "command", name: event.name, ...atField(event.at) } };
     case "command-progress":
       if (event.phase !== "compacting") return null;
-      return { seq: entry.seq, event: { kind: "command-progress", phase: "compacting" } };
+      return { ...journal, event: { kind: "command-progress", phase: "compacting" } };
     case "command-end": {
       const compact = event.compact;
       const readCompact = (): { before: number; after?: number; durationMs?: number } | null => {
@@ -251,7 +255,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       };
       const numbers = readCompact();
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "command-end",
           ok: event.ok !== false,
@@ -261,21 +265,21 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       };
     }
     case "turn-start":
-      return { seq: entry.seq, event: { kind: "turn-start", ...atField(event.at) } };
+      return { ...journal, event: { kind: "turn-start", ...atField(event.at) } };
     case "text":
       if (typeof event.text !== "string") return null;
-      return { seq: entry.seq, event: { kind: "text", text: event.text } };
+      return { ...journal, event: { kind: "text", text: event.text } };
     case "text-delta":
       if (typeof event.text !== "string") return null;
-      return { seq: entry.seq, event: { kind: "text-delta", text: event.text } };
+      return { ...journal, event: { kind: "text-delta", text: event.text } };
     case "tool-start":
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       if (typeof event.name !== "string" || event.name.length === 0) return null;
-      return { seq: entry.seq, event: { kind: "tool-start", id: event.id, name: event.name } };
+      return { ...journal, event: { kind: "tool-start", id: event.id, name: event.name } };
     case "tool":
       if (typeof event.name !== "string") return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "tool",
           name: event.name,
@@ -293,7 +297,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       // 형태가 비면 카드가 아무것도 못 그린다 — 빈 카드를 세우느니 이벤트를 버린다.
       if (event.form === "question" ? questions.length === 0 : plan === undefined) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "ask",
           id: event.id,
@@ -317,14 +321,14 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         })
         : [];
       return {
-        seq: entry.seq,
+        ...journal,
         event: { kind: "ask-settled", id: event.id, outcome, ...(answers.length > 0 ? { answers } : {}) },
       };
     }
     case "tool-result":
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "tool-result",
           id: event.id,
@@ -334,7 +338,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       };
     case "turn-end":
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "turn-end",
           ok: event.ok === true,
@@ -347,7 +351,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       if (typeof event.title !== "string") return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "job",
           id: event.id,
@@ -362,7 +366,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "job-progress": {
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "job-progress",
           id: event.id,
@@ -378,7 +382,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "job-end": {
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: {
           kind: "job-end",
           id: event.id,
@@ -395,7 +399,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "jobs": {
       if (!Array.isArray(event.ids)) return null;
       return {
-        seq: entry.seq,
+        ...journal,
         event: { kind: "jobs", ids: event.ids.filter((id): id is string => typeof id === "string" && id.length > 0) },
       };
     }
@@ -409,11 +413,11 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         if (typeof candidate.text !== "string") continue;
         entries.push({ id: candidate.id, text: candidate.text });
       }
-      return { seq: entry.seq, event: { kind: "queue", entries } };
+      return { ...journal, event: { kind: "queue", entries } };
     }
     case "error":
       if (typeof event.code !== "string") return null;
-      return { seq: entry.seq, event: { kind: "error", code: event.code } };
+      return { ...journal, event: { kind: "error", code: event.code } };
     default:
       return null;
   }
@@ -518,7 +522,15 @@ function numberOr(value: unknown, fallback: number): number {
 export type AgentChatStepState = "running" | "ok" | "fail" | "done";
 
 export interface AgentChatTurnItem {
-  readonly type: "text" | "tool" | "ask";
+  /**
+   * `thought`는 도구도 글자도 흐르지 않은 공백이 끝난 자리에 남는 흔적이다. 내용은 없고
+   * 시간만 있다 — 생각 내용은 공개 출력 금지 불변식에 따라 클라이언트에 오지 않으므로, 이
+   * 아이템이 나르는 것은 "그 사이 N초가 지났다"뿐이다. 서버 저널 시각으로 다시 계산되므로
+   * 브라우저 재연결과 프로세스 재시작 뒤에도 같은 흔적이 복원된다.
+   */
+  readonly type: "text" | "tool" | "ask" | "thought";
+  /** type="thought"의 길이. */
+  readonly durationMs?: number;
   /** type="ask"일 때의 카드. 대기 중이면 누를 수 있고, 결말이 붙으면 한 줄로 접힌다. */
   readonly ask?: AgentChatAsk;
   readonly text?: string;
@@ -548,6 +560,12 @@ export interface AgentChatTurn {
   readonly answer?: string;
   /** turn-start 시각 — 진행 중 elapsed 티커의 기준. */
   readonly startedAt?: number;
+  /**
+   * 지금 열려 있는 공백의 시작 — 도는 스텝도, 흐르는 글자도, 기다리는 질문도 없는 구간에
+   * 들어선 시각. 다음 활동이 닫으면서 `thought` 아이템으로 남긴다. 라이브 이벤트의 수신
+   * 시각(`receivedAt`)으로 움직인다. 라이브와 재생 모두 서버 저널의 같은 시간축을 쓴다.
+   */
+  readonly idleSince?: number;
   /**
    * 이 턴이 **시작될 때**의 문맥 총량. 이 턴이 더한 몫은 다음 턴의 같은 값과의 차이다.
    *
@@ -756,6 +774,19 @@ export interface AgentChatLogState {
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
 const MAX_DRAFT_CHARS = 60_000;
 
+/**
+ * 이보다 짧은 공백은 흔적을 남기지 않는다 — 결과가 오고 다음 호출이 나가는 사이의 왕복은
+ * 생각이 아니라 배관이고, 1초 아래의 "0초 생각함"은 정보가 아니라 소음이다.
+ */
+const MIN_THOUGHT_MS = 1_000;
+
+/**
+ * 스토어가 이벤트에 붙이는 서버 원장 시각. 라이브와 재생 모두 같은 값으로 공백을 재므로
+ * snapshot이 한꺼번에 도착해도 흔적이 0초로 무너지지 않는다. 옛 서버처럼 저널 시각이 없으면
+ * 라이브에서만 수신 시각으로 보완하고 재생에서는 모르는 길이를 지어내지 않는다.
+ */
+export type AgentChatClockedEvent = AgentChatStreamEvent & { readonly receivedAt?: number };
+
 export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
@@ -772,7 +803,10 @@ export const initialAgentChatLogState: AgentChatLogState = {
  * 이벤트 하나를 로그 상태에 접는다. 재생 구간의 턴은 전부 done으로 닫고, 라이브 구간은
  * turn-start/turn-end가 상태를 옮긴다. dispatch는 항상 새 턴을 연다.
  */
-export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStreamEvent): AgentChatLogState {
+export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClockedEvent): AgentChatLogState {
+  // 서버 원장 시각은 라이브와 재생 모두 같은 시간축이다. 재생이라는 이유로 버리면 완료 턴을
+  // 다시 연결한 순간 "N초 생각함" 흔적이 사라진다. 옛 서버처럼 시각이 없을 때만 undefined다.
+  const now = event.receivedAt;
   switch (event.kind) {
     case "replay-start":
       return { ...initialAgentChatLogState, observedTurns: state.observedTurns, replaying: true };
@@ -910,6 +944,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
           toolCount: 0,
           draft: "",
           ...(event.at !== undefined ? { startedAt: event.at } : {}),
+          // 턴이 열리자마자 첫 공백이다 — 첫 도구가 나가기까지가 첫 번째 생각이다.
+          ...(now !== undefined ? { idleSince: now } : {}),
         };
         return { ...state, turns: [...settleLastTurn(state), turn] };
       }
@@ -917,21 +953,24 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...turn,
         state: settled,
         ...(event.at !== undefined ? { startedAt: event.at } : {}),
+        ...(now !== undefined ? { idleSince: now } : {}),
       }));
     }
     case "text":
       // 완성 text는 흘러온 델타의 정정 앵커다 — 버퍼를 비우고 확정 아이템으로 치환한다.
-      return withLastTurn(appendItem(state, { type: "text", text: event.text }), (turn) => ({ ...turn, draft: "" }));
+      return withLastTurn(appendItem(wakeLastTurn(state, now), { type: "text", text: event.text }), (turn) => ({ ...turn, draft: "" }));
     case "text-delta":
       // 델타 개별은 서버가 캡을 지키지만 누적 버퍼는 여기서 다시 상한을 진다 — 병합 앵커가
       // 도착하기 전의 초장문 응답이 draft를 무한히 키우면 매 렌더가 그 전체를 복사한다.
       return withLastTurn(state, (turn) => {
         if (turn.state !== "working" || turn.draft.length >= MAX_DRAFT_CHARS) return turn;
-        return { ...turn, draft: (turn.draft + event.text).slice(0, MAX_DRAFT_CHARS) };
+        // 첫 델타가 공백을 닫는다 — 글자가 흐르기 시작한 순간부터는 생각이 아니라 말이다.
+        const woken = wakeTurn(turn, now);
+        return { ...woken, draft: (woken.draft + event.text).slice(0, MAX_DRAFT_CHARS) };
       });
     case "tool-start":
       // 이름만 아는 스텝을 먼저 세운다. 뒤따르는 완성 tool 이벤트가 같은 id로 좌표를 채운다.
-      return appendItem(state, { type: "tool", name: event.name, detail: "", id: event.id, state: "running" });
+      return appendItem(wakeLastTurn(state, now), { type: "tool", name: event.name, detail: "", id: event.id, state: "running" });
     case "tool": {
       // 재생 구간의 스텝은 이미 끝난 일이다 — 결과 줄이 뒤따르면 ok/fail로 다시 옮겨 붙는다.
       const initial: AgentChatStepState = state.replaying ? "done" : "running";
@@ -945,13 +984,14 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.change ? { change: event.change } : {}),
       };
       // tool-start가 이미 세운 스텝이면 새 줄을 만들지 않고 그 자리를 채운다.
+      const woken = wakeLastTurn(state, now);
       const merged = event.id !== undefined
-        ? mergeItemById(state, event.id, (item) => ({ ...filled, state: item.state ?? initial }))
+        ? mergeItemById(woken, event.id, (item) => ({ ...filled, state: item.state ?? initial }))
         : null;
-      return merged ?? appendItem(state, filled);
+      return merged ?? appendItem(woken, filled);
     }
     case "ask":
-      return appendItem(state, {
+      return appendItem(wakeLastTurn(state, now), {
         type: "ask",
         ask: {
           id: event.id,
@@ -968,7 +1008,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         outcome: event.outcome,
         ...(event.answers ? { answers: event.answers } : {}),
       }));
-      return merged ?? state;
+      // 답이 붙으면 모델의 차례다 — 다음 호출까지의 공백이 다시 생각이다.
+      return merged ? restLastTurn(merged, now) : state;
     }
     case "tool-result": {
       const merged = mergeItemById(state, event.id, (item) => ({
@@ -977,11 +1018,13 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.summary.length > 0 ? { result: event.summary } : {}),
       }));
       // 짝을 못 찾은 결과는 버린다 — 좌표 없는 결말은 원장에 세울 자리가 없다.
-      return merged ?? state;
+      // 마지막 도는 스텝이 결과를 받으면 공백이 열린다 — 다음 호출을 짓는 시간이 여기서 잰다.
+      return merged ? restLastTurn(merged, now) : state;
     }
     case "turn-end":
+      // 마지막 공백은 흔적을 남기지 않는다 — 턴이 닫히는 것은 활동이 아니라 결말이다.
       return withLastTurn(state, (turn) => ({
-        ...turn,
+        ...withoutIdle(turn),
         // 델타만 받고 완성 text 없이 턴이 끝나면(스트림 조기 종료) 버퍼를 아이템으로 회수한다.
         ...(turn.draft.length > 0
           ? { items: [...settleRunningSteps(turn.items), { type: "text" as const, text: turn.draft }], draft: "" }
@@ -1199,7 +1242,12 @@ export interface AgentChatStepGroup {
   /** `other` 계열의 표시 이름. 알려진 계열에서는 비어 있다. */
   readonly name?: string;
   readonly count: number;
+  /** `think` 계열의 합산 시간 — 이 계열은 횟수가 아니라 시간으로 읽힌다. */
+  readonly durationMs?: number;
 }
+
+/** 생각의 흔적이 접히는 계열 이름. 도구 이름이 아니라 아이템 종류에서 온다. */
+export const AGENT_CHAT_THINK_FAMILY = "think";
 
 /**
  * 구간을 이루는 한 조각. 구간은 이 조각들의 **순서 있는** 목록이다 — 순서가 곧 시간이다.
@@ -1299,8 +1347,10 @@ function foldSegment(
     // 자기를 부른 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다.
     // 결과 없이 닫힌 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를
     // 원장이 다시 했다고 말하는 셈이다 — 확인되지 않은 것과 지금 도는 것은 줄을 지킨다.
-    const job = step.type !== "ask" && hasJob?.(step) === true;
-    const foldable = step.type !== "ask" && !job && (step.state === "ok" || step.state === "fail");
+    // 생각의 흔적은 언제나 접힌다 — 자기 줄을 가질 내용이 없고, 절 하나("3초 생각함")로 충분하다.
+    const thought = step.type === "thought";
+    const job = !thought && step.type !== "ask" && hasJob?.(step) === true;
+    const foldable = thought || (step.type !== "ask" && !job && (step.state === "ok" || step.state === "fail"));
     if (!foldable) {
       groups = null;
       folded = null;
@@ -1314,16 +1364,30 @@ function foldSegment(
       seen = new Map();
       parts.push({ kind: "tally", groups, folded });
     }
-    folded.push(step);
-    const family = agentChatToolFamily(step.name);
+    // 생각은 집계 절("3초 생각함") 자체가 전부다. 펼침 본문에 넣으면 대상·결과가 없는 흔적이
+    // 다시 전폭 스텝 상자로 반복되어, 빈 생각 상자를 없앤 이 작업의 목적을 되돌린다.
+    if (!thought) folded.push(step);
+    const family = thought ? AGENT_CHAT_THINK_FAMILY : agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;
+    const durationMs = thought ? step.durationMs ?? 0 : 0;
     const found = seen.get(key);
     if (found === undefined) {
       seen.set(key, groups.length);
-      groups.push({ family, count: 1, ...(family === "other" ? { name: step.name ?? "" } : {}) });
+      groups.push({
+        family,
+        count: 1,
+        ...(family === "other" ? { name: step.name ?? "" } : {}),
+        ...(thought ? { durationMs } : {}),
+      });
     } else {
       const current = groups[found];
-      if (current) groups[found] = { ...current, count: current.count + 1 };
+      if (current) {
+        groups[found] = {
+          ...current,
+          count: current.count + 1,
+          ...(thought ? { durationMs: (current.durationMs ?? 0) + durationMs } : {}),
+        };
+      }
     }
   }
   return { ...(note !== undefined ? { note } : {}), parts };
@@ -1348,7 +1412,49 @@ function collectChanges(items: readonly AgentChatTurnItem[]): readonly AgentChat
   return [...byFile.values()];
 }
 
-/** 재생 중 dispatch가 연달아 오면 앞 턴은 그 시점에 닫힌 것이다. */
+/**
+ * 열린 공백을 닫는다. 활동이 도착한 순간 호출된다 — 공백이 흔적을 남길 만큼 길었으면
+ * `thought` 아이템을 활동 앞에 세우고, 아니면 시계만 지운다. 시계가 없으면(재생·시각 없는
+ * 이벤트) 아무것도 세우지 않는다: 모르는 길이를 지어내지 않는다.
+ */
+function wakeTurn(turn: AgentChatTurn, now: number | undefined): AgentChatTurn {
+  if (turn.idleSince === undefined) return turn;
+  const rested = withoutIdle(turn);
+  if (now === undefined) return rested;
+  const durationMs = now - turn.idleSince;
+  if (durationMs < MIN_THOUGHT_MS) return rested;
+  return { ...rested, items: [...rested.items, { type: "thought", durationMs }] };
+}
+
+function wakeLastTurn(state: AgentChatLogState, now: number | undefined): AgentChatLogState {
+  if (state.turns.at(-1)?.idleSince === undefined) return state;
+  return withLastTurn(state, (turn) => wakeTurn(turn, now));
+}
+
+/**
+ * 공백을 연다 — 화면이 "생각 중…"을 세우는 조건과 같은 조건이다: 도는 턴에서 도는 스텝도,
+ * 흐르는 글자도, 기다리는 질문도 없을 때. 조건이 갈리면 화면이 생각한다고 말한 시간과
+ * 흔적이 센 시간이 다른 값이 된다.
+ */
+function restTurn(turn: AgentChatTurn, now: number | undefined): AgentChatTurn {
+  if (now === undefined || (turn.state !== "working" && turn.state !== "done") || turn.idleSince !== undefined) return turn;
+  const blocked = turn.items.some((item) =>
+    item.state === "running" || (item.type === "ask" && item.ask?.outcome === undefined));
+  if (blocked || turn.draft.length > 0 || turn.items.at(-1)?.type === "text") return turn;
+  return { ...turn, idleSince: now };
+}
+
+function restLastTurn(state: AgentChatLogState, now: number | undefined): AgentChatLogState {
+  return withLastTurn(state, (turn) => restTurn(turn, now));
+}
+
+function withoutIdle(turn: AgentChatTurn): AgentChatTurn {
+  if (turn.idleSince === undefined) return turn;
+  const { idleSince, ...rest } = turn;
+  void idleSince;
+  return rest;
+}
+
 function settleLastTurn(state: AgentChatLogState): readonly AgentChatTurn[] {
   if (!state.replaying) return state.turns;
   const last = state.turns.at(-1);
@@ -1359,7 +1465,8 @@ function settleLastTurn(state: AgentChatLogState): readonly AgentChatTurn[] {
 function withLastTurn(state: AgentChatLogState, update: (turn: AgentChatTurn) => AgentChatTurn): AgentChatLogState {
   const last = state.turns.at(-1);
   if (!last) return state;
-  return { ...state, turns: [...state.turns.slice(0, -1), update(last)] };
+  const next = update(last);
+  return next === last ? state : { ...state, turns: [...state.turns.slice(0, -1), next] };
 }
 
 /**

@@ -6,8 +6,10 @@ import { getT, type TerminalMessageKey } from "../../i18n/index.js";
 import { useChatComposerWidth, useChatReadingWidth, useTerminalFontFamily, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
 import { readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
+import { AgentGlyph } from "../agent-glyphs.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
+  AGENT_CHAT_THINK_FAMILY,
   agentChatToolFamily,
   openAgentChatJobs,
   segmentAgentChatLedger,
@@ -708,7 +710,8 @@ function ChatTurn({
                 <ChangeStrip changes={view.changes} language={language} />
                 {/* 아무 스텝도 돌지 않고 글자도 흐르지 않는 구간이 실제로 길다(실측 34초) —
                     모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
-                    읽히므로, 원장 꼬리에 살아 있다는 사실 하나를 남긴다(내용은 싣지 않는다). */}
+                    읽히므로, 라이브 줄의 꼬리가 "생각 중…"을 말한다(내용은 싣지 않는다). 별도의
+                    행이나 상자가 아니다: 상자는 동사·대상·결과를 담는 그릇이고 생각에는 둘 다 없다. */}
                 <Ledger
                   operationId={operationId}
                   items={view.ledger}
@@ -780,7 +783,9 @@ function TurnElapsedLabel({
   const t = getT(language);
   const elapsedMs = useTurnElapsedMs(turn.startedAt, turn.state === "working");
   return (
-    <span className="agent-chat-live-text" aria-hidden="true">
+    // 물결을 지지 않는다 — "이 턴이 아직 살아 있다"는 원장의 라이브 줄 하나가 말하고, 이 자리는
+    // 시간축만 맡는다. 같은 사실을 두 자리가 동시에 말하면 은은함이 아니라 소음이다.
+    <span className="agent-chat-turn-clock" aria-hidden="true">
       {t("terminal.chat.turnWorking", { elapsed: formatElapsed(elapsedMs) })}
     </span>
   );
@@ -834,7 +839,7 @@ function Ledger({
   readonly onAnswer: AgentChatViewState["answerAsk"];
   /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
   readonly working?: boolean;
-  /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
+  /** 라이브 줄의 꼬리에 "생각 중…"을 붙인다 — 도구도 글자도 없는 구간의 유일한 신호다. */
   readonly pending?: boolean;
 }) {
   const t = getT(language);
@@ -874,7 +879,7 @@ function Ledger({
                     groups={part.groups}
                     folded={part.folded}
                     language={language}
-                    {...(at === liveTallyAt ? { live: true, tails } : {})}
+                    {...(at === liveTallyAt ? { live: true, tails, thinking: pending } : {})}
                   />
                 );
               }
@@ -885,18 +890,16 @@ function Ledger({
                 ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />
                 : <Step key={at} item={part.item} language={language} live={live} />;
             })}
-            {tails.length > 0 && liveTallyAt < 0
-              ? <Tally groups={[]} folded={[]} language={language} live tails={tails} />
+            {live && liveTallyAt < 0 && (tails.length > 0 || pending)
+              ? <Tally groups={[]} folded={[]} language={language} live tails={tails} thinking={pending} />
               : null}
           </div>
         );
       })}
-      {pending ? (
-        <div className="agent-chat-step is-running">
-          <span className="agent-chat-step-orbit" aria-hidden="true" />
-          <span className="agent-chat-step-verb agent-chat-live-text" role="status">{t("terminal.chat.stepThinking")}</span>
-        </div>
-      ) : null}
+      {/* 첫 도구가 나가기 전의 첫 공백 — 세울 구간이 없으므로 빈 집계에 꼬리만 단다. */}
+      {pending && segments.length === 0
+        ? <Tally groups={[]} folded={[]} language={language} live tails={[]} thinking />
+        : null}
     </div>
   );
 }
@@ -939,6 +942,7 @@ function Tally({
   language,
   live = false,
   tails = [],
+  thinking = false,
 }: {
   readonly groups: readonly AgentChatStepGroup[];
   readonly folded: readonly AgentChatTurnItem[];
@@ -947,16 +951,20 @@ function Tally({
   readonly live?: boolean;
   /** 지금 도는 스텝들. 이 줄의 꼬리로 붙어 "무엇을 하는 중인지"를 말한다(병렬 배치는 여럿이다). */
   readonly tails?: readonly AgentChatTurnItem[];
+  /** 도는 것이 없는 공백 — 꼬리가 "생각 중…"을 말한다. 링과 물결은 이때도 산다. */
+  readonly thinking?: boolean;
 }) {
   const t = getT(language);
   // 셀 것도 도는 것도 없으면 줄이 아니다. 도는 것만 있는 구간(도구로 시작한 구간)에서는 집계가
-  // 비어도 이 줄이 서야 한다 — 그러지 않으면 그 스텝들이 다시 자기 행을 갖는다.
-  if (groups.length === 0 && tails.length === 0) return null;
+  // 비어도 이 줄이 서야 한다 — 그러지 않으면 그 스텝들이 다시 자기 행을 갖는다. 생각 중인
+  // 공백도 같다: 셀 것이 없어도 살아 있다는 한 줄은 서야 한다.
+  const alive = live && (tails.length > 0 || thinking);
+  if (groups.length === 0 && tails.length === 0 && !alive) return null;
   const clauses = groups.map((group, index) => (
     <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
       <span className="agent-chat-tally-clause">
-        <span className="agent-chat-tally-glyph" aria-hidden="true">{familyGlyph(group.family)}</span>
+        <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>
         {/* 알려진 계열은 문구 하나로 끝나지만, `other`는 도구 이름이 곧 주어다. 그 이름만 따로
             그려 한 단 밝은 잉크를 지운다 — 접히지 않은 스텝 줄의 동사가 이미 그 잉크를 쓰므로,
             이것은 새 문법이 아니라 두 줄을 같은 문법으로 되돌리는 것이다. */}
@@ -971,14 +979,18 @@ function Tally({
   // 자체가 그 증거였는데, 그 증거가 읽는 자리의 절반을 먹었다 — 이제 링과 좌→우 물결, 그리고
   // 지금 도는 도구의 이름 하나가 같은 말을 한 줄로 한다.
   // 도는 스텝은 전부 이 줄의 꼬리가 된다 — 병렬 배치의 N개도 행이 아니라 절이다.
+  // 살아 있는 줄은 턴에 하나뿐이다. 링과 물결은 꼬리가 실제로 무엇인가를 말할 때만 산다 —
+  // 도는 도구든 생각이든. 글자가 흐르는 동안은 꼬리가 비고, 그때 생명은 글 끝의 캐럿이 진다.
+  // 예전에는 도는 턴의 마지막 구간이라는 이유만으로 링이 돌아, 아무것도 안 도는 줄 아래에
+  // 생각 상자가 링을 하나 더 달고 섰다(실측: 링 2개, 애니메이션 6개가 동시에).
   const running = live ? tails : [];
   const body = [...folded, ...running];
   const line = (
     <>
-      {live ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}
-      <span className={live ? "agent-chat-tally-text agent-chat-live-text" : "agent-chat-tally-text"}>
+      {alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}
+      <span className={alive ? "agent-chat-tally-text agent-chat-live-text" : "agent-chat-tally-text"}>
         {clauses}
-        {running.length > 0 ? (
+        {alive ? (
           // 라이브 리전은 이 묶음 하나다 — 절마다 걸면 배치 하나가 N번 낭독된다.
           <span className="agent-chat-tally-running" role="status">
             {running.map((item, index) => (
@@ -987,21 +999,30 @@ function Tally({
                   ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
                   : null}
                 <span className="agent-chat-tally-clause">
-                  <span className="agent-chat-tally-glyph" aria-hidden="true">{familyGlyph(agentChatToolFamily(item.name))}</span>
+                  <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(item.name)} /></span>
                   <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
                 </span>
               </React.Fragment>
             ))}
+            {thinking && running.length === 0 ? (
+              <>
+                {clauses.length > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
+                <span className="agent-chat-tally-clause">
+                  <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={AGENT_CHAT_THINK_FAMILY} /></span>
+                  <span>{t("terminal.chat.stepThinking")}</span>
+                </span>
+              </>
+            ) : null}
           </span>
         ) : null}
       </span>
     </>
   );
   // 펼칠 것이 없으면 눌리는 척하지 않는다 — 열쇠 없는 자물쇠는 어포던스가 아니라 거짓말이다.
-  if (body.length === 0) return <div className={`agent-chat-tally${live ? " is-live" : ""}`}>{line}</div>;
+  if (body.length === 0) return <div className={`agent-chat-tally${alive ? " is-live" : ""}`}>{line}</div>;
   return (
     <details className="agent-chat-tally-fold">
-      <summary className={`agent-chat-tally${live ? " is-live" : ""}`} aria-label={t("terminal.chat.tallyAria")}>
+      <summary className={`agent-chat-tally${alive ? " is-live" : ""}`} aria-label={t("terminal.chat.tallyAria")}>
         {line}
         <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
       </summary>
@@ -1045,9 +1066,9 @@ function JobAnchor({
       {job.open
         ? <span className="agent-chat-step-orbit" aria-hidden="true" />
         : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
-      <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+      <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
       {/* 카드가 제목 자리에 쓰던 값 그대로다. subagent_type(`who`)만 남기면 위임 여러 건이
-          "◆ general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
+          "general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
           `who`는 카드에서도 제목이 아니라 메타 줄의 값이었고, 그 줄은 작업 면이 진다. */}
       <span className="agent-chat-job-title">{job.title}</span>
       <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
@@ -1064,37 +1085,14 @@ function settledLabel(count: number, t: ReturnType<typeof getT>): string {
 }
 
 /** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
-/**
- * 계열 표식 — 같은 종류의 일이 어디서 몇 번 있었는지를 읽기 전에 **보이게** 한다.
- *
- * 집계 줄은 절이 이어질수록 한 줄짜리 글자 덩어리가 되어, 무엇이 몇 건인지 세려면 문장을
- * 읽어야 했다. 표식이 앞에 서면 세는 일이 읽기가 아니라 훑기가 된다.
- *
- * 알파벳은 제품에 이미 있는 잡 글리프(◆ 위임 · ❯ 셸 · ⣿ 워크플로 · ▪ 그 밖)를 그대로
- * 물려받아 넓힌 것이다 — 같은 일을 두 면이 다른 기호로 부르면 표식이 어휘가 아니라 장식이
- * 된다. 전부 텍스트 표현 문자다: 이모지를 쓰면 자기 색을 들고 와 채널 계약을 깬다.
- */
-function familyGlyph(family: string): string {
-  return FAMILY_GLYPHS[family] ?? "▪";
+/** 생각의 흔적 라벨 — 1초 아래는 흔적이 서지 않으므로(리듀서 상한) 0초는 나오지 않는다. */
+function thoughtLabel(durationMs: number, t: ReturnType<typeof getT>): string {
+  return t("terminal.chat.thoughtFor", { seconds: Math.max(1, Math.round(durationMs / 1_000)) });
 }
 
-const FAMILY_GLYPHS: Readonly<Record<string, string>> = {
-  read: "▤",
-  write: "✚",
-  edit: "✎",
-  run: "❯",
-  inspect: "◉",
-  search: "⌕",
-  fetch: "↧",
-  delegate: "◆",
-  workflow: "⣿",
-  stop: "■",
-  plan: "☰",
-  ask: "?",
-  propose: "▷",
-};
-
 function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
+  // 생각은 횟수가 아니라 시간으로 읽힌다 — "2회 생각함"은 아무것도 말하지 않는다.
+  if (group.family === AGENT_CHAT_THINK_FAMILY) return thoughtLabel(group.durationMs ?? 0, t);
   const plural = group.count === 1 ? "one" : "other";
   const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
   return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
@@ -1403,7 +1401,10 @@ function Step({
   return (
     <div className={`agent-chat-step is-${item.state ?? "done"}`}>
       {running
-        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+        // 상세 본문은 기록이다 — 라이브 상태와 애니메이션은 요약 줄 하나가 지고, 펼친 본문은
+        // 지금 하는 도구의 G2 글리프만 정적으로 보여 준다. 닫힌 details 안에서 링을 계속 돌리면
+        // 화면에는 안 보여도 브라우저가 영원히 애니메이션을 합성한다.
+        ? <span className="agent-chat-step-mark is-running" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(name)} /></span>
         : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : unconfirmed ? "·" : "✓"}</span>}
       <span
         className={`agent-chat-step-verb${live && running ? " agent-chat-live-text" : ""}`}
@@ -1502,12 +1503,10 @@ function WorkFold({
 /**
  * 종류는 상태가 아니다 — 글리프와 모노 라벨이 가르고, 색은 쓰지 않는다. 신호 토큰은 상태만
  * 나르고 식별 색조는 마크로만 칠한다는 Console 채널 규칙이 여기서도 그대로 선다.
+ * 글리프는 원장의 계열 알파벳과 같은 글자다 — 위임 잡은 위임 절과, 셸 잡은 셸 절과 같은 표식을 쓴다.
  */
-function jobGlyph(kind: AgentChatJobKind): string {
-  if (kind === "agent") return "◆";
-  if (kind === "shell") return "❯";
-  if (kind === "workflow") return "⣿";
-  return "▪";
+function JobGlyph({ kind }: { readonly kind: AgentChatJobKind }) {
+  return <AgentGlyph name={kind === "agent" ? "delegate" : kind === "shell" ? "run" : kind === "workflow" ? "workflow" : "other"} />;
 }
 
 function jobKindLabel(kind: AgentChatJobKind, language: "en" | "ko"): string {
@@ -1567,7 +1566,7 @@ function JobCard({
         {job.open
           ? <span className="agent-chat-step-orbit" aria-hidden="true" />
           : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
-        <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+        <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-job-title">{job.title}</span>
         <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
         <span className="agent-chat-job-chev" aria-hidden="true">›</span>
@@ -1745,7 +1744,7 @@ function JobDetail({
         <button type="button" className="agent-chat-detail-back" aria-label={t("terminal.chat.workBackAria")} onClick={onBack}>
           ‹ {t("terminal.chat.workBack")}
         </button>
-        <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+        <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-detail-title">{job.title}</span>
         <span className={`agent-chat-job-outcome ${jobStateClass(job)}`}>{jobOutcome(job, language)}</span>
         {/* 도는 잡에만 선다. 끝난 잡 위의 중단 버튼은 누를 수 없는 문이고, 그 자리에 있는 것만으로

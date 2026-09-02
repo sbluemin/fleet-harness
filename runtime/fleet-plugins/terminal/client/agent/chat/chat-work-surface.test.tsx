@@ -69,7 +69,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function render(): void {
+function render(activity: "idle" | "running" = "idle"): void {
   const context = {
     operationId: "op-1",
     theaterId: "theater-1",
@@ -77,7 +77,7 @@ function render(): void {
     type: "agent",
     language: "en",
     operation: { id: "op-1", theaterId: "theater-1", type: "agent", pluginId: "terminal", title: "op", payload: {}, geometry: null, ts: { createdAt: 0, updatedAt: 0 } },
-    runtimeState: { lifecycle: "live", activity: "idle" },
+    runtimeState: { lifecycle: "live", activity },
   } as unknown as OperationRenderContext;
   act(() => root?.render(createElement(AgentChatView, {
     context,
@@ -85,11 +85,11 @@ function render(): void {
   })));
 }
 
-function mount(): void {
+function mount(activity: "idle" | "running" = "idle"): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  render();
+  render(activity);
 }
 
 // 백그라운드 작업의 문 — 컴포저 위 선반의 Show/Hide 버튼. 컴포저 글리프와 떠 있던 스트립을 대신한다.
@@ -475,9 +475,10 @@ describe("chat ledger — family glyphs on the tally clauses", () => {
     mount();
     const clauses = [...(container?.querySelectorAll(".agent-chat-tally-clause") ?? [])];
     expect(clauses).toHaveLength(3);
-    expect(clauses.map((clause) => clause.querySelector(".agent-chat-tally-glyph")?.textContent))
-      .toEqual(["▤", "❯", "⌕"]);
-    // 셸은 잡 글리프(❯)와 같은 기호다 — 같은 일을 두 면이 다른 기호로 부르면 어휘가 아니라 장식이 된다.
+    // 표식은 모노라인 SVG 알파벳이다 — 문자가 아니라 계열 이름이 곧 글자다.
+    expect(clauses.map((clause) => clause.querySelector(".agent-chat-tally-glyph svg")?.getAttribute("data-glyph")))
+      .toEqual(["read", "run", "search"]);
+    // 셸은 잡 글리프(run)와 같은 글자다 — 같은 일을 두 면이 다른 기호로 부르면 어휘가 아니라 장식이 된다.
     expect(clauses[1]?.textContent).toContain("Ran 1 shell command");
   });
 
@@ -499,8 +500,11 @@ describe("chat ledger — family glyphs on the tally clauses", () => {
     mount();
     const live = container?.querySelector(".agent-chat-tally.is-live");
     const running = live?.querySelector(".agent-chat-tally-running .agent-chat-tally-clause");
-    expect(running?.querySelector(".agent-chat-tally-glyph")?.textContent).toBe("❯");
+    expect(running?.querySelector(".agent-chat-tally-glyph svg")?.getAttribute("data-glyph")).toBe("run");
     expect(running?.textContent).toContain("Running pnpm test");
+    // 상세 기록에는 정적 도구 글리프가 서고 두 번째 orbit은 없다.
+    expect(live?.parentElement?.querySelector(".agent-chat-tally-body .agent-chat-step-mark.is-running svg")?.getAttribute("data-glyph")).toBe("run");
+    expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(1);
   });
 
   it("falls back to the neutral mark for a tool with no family", () => {
@@ -519,9 +523,94 @@ describe("chat ledger — family glyphs on the tally clauses", () => {
     };
     mount();
     const clause = container?.querySelector(".agent-chat-tally-clause");
-    expect(clause?.querySelector(".agent-chat-tally-glyph")?.textContent).toBe("▪");
+    expect(clause?.querySelector(".agent-chat-tally-glyph svg")?.getAttribute("data-glyph")).toBe("other");
     // `other`는 도구 이름이 곧 주어다 — 표식이 그 이름을 밀어내지 않는다.
     expect(clause?.querySelector(".agent-chat-tally-name")?.textContent).toBe("mcp__fleet__wiki_read");
+  });
+});
+
+/**
+ * 살아 있는 줄은 턴에 하나다. "생각 중…"은 상자가 아니라 그 줄의 꼬리이고, 링은 꼬리가
+ * 무엇인가를 말할 때만 산다 — 글자가 흐르는 동안은 꼬리가 비고 생명은 글 끝의 캐럿이 진다.
+ * 예전에는 도는 턴의 집계 줄이 무조건 링을 달고, 그 아래 생각 상자가 링을 하나 더 달았다
+ * (실측: 링 2개, 애니메이션 6개가 동시에).
+ */
+describe("chat ledger — one live line", () => {
+  function workingWith(items: readonly unknown[], draft = ""): AgentChatLogState {
+    return {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: items as AgentChatLogState["turns"][number]["items"],
+        state: "working",
+        toolCount: items.length,
+        draft,
+        startedAt: Date.now() - 34_000,
+      }],
+    };
+  }
+  it("says Thinking in the tail of the live tally instead of standing a boxed step", () => {
+    logState = workingWith([
+      { type: "text", text: "Reading the folder." },
+      { type: "tool", name: "Read", detail: "package.json", state: "ok" },
+      { type: "tool", name: "Bash", detail: "pnpm build", state: "ok" },
+    ]);
+    mount("running");
+    const live = container?.querySelector(".agent-chat-tally.is-live");
+    expect(live?.querySelector(".agent-chat-tally-running")?.textContent).toContain("Thinking…");
+    expect(live?.querySelector(".agent-chat-tally-running svg")?.getAttribute("data-glyph")).toBe("think");
+    // 상자도, 두 번째 링도 없다.
+    expect(container?.querySelector(".agent-chat-step.is-running")).toBeNull();
+    expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(1);
+    // 헤드의 시계는 물결을 지지 않는다.
+    expect(container?.querySelector(".agent-chat-turn-head .agent-chat-live-text")).toBeNull();
+    expect(container?.querySelector(".agent-chat-turn-clock")?.textContent).toContain("Working…");
+  });
+
+  it("stands a bare Thinking line for the first gap before any step", () => {
+    logState = workingWith([]);
+    mount("running");
+    const live = container?.querySelector(".agent-chat-tally.is-live");
+    expect(live?.textContent).toContain("Thinking…");
+    expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(1);
+    // 셀 것이 없으니 펼침도 없다 — 열쇠 없는 자물쇠는 어포던스가 아니다.
+    expect(container?.querySelector(".agent-chat-tally-fold")).toBeNull();
+  });
+
+  it("rests the tally while the answer streams, and marks the streaming text instead", () => {
+    logState = workingWith([
+      { type: "text", text: "Reading the folder." },
+      { type: "tool", name: "Read", detail: "package.json", state: "ok" },
+    ], "The build is fine");
+    mount("running");
+    expect(container?.querySelector(".agent-chat-tally.is-live")).toBeNull();
+    expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(0);
+    expect(container?.querySelector(".agent-chat-stream.is-streaming")).not.toBeNull();
+    expect(container?.querySelector(".agent-chat-tally")?.textContent).not.toContain("Thinking");
+  });
+
+  it("folds a thought trace into the tally as time, not as a count", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Reading the folder." },
+          { type: "tool", name: "Read", detail: "package.json", state: "ok" },
+          { type: "thought", durationMs: 3_400 },
+          { type: "tool", name: "Bash", detail: "pnpm build", state: "ok" },
+          { type: "thought", durationMs: 2_100 },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "done",
+        toolCount: 2,
+        draft: "",
+      }],
+    };
+    mount();
+    const clauses = [...(container?.querySelectorAll(".agent-chat-tally-clause") ?? [])].map((clause) => clause.textContent);
+    expect(clauses).toEqual(["Read 1 file", "Thought for 6s", "Ran 1 shell command"]);
+    // 생각은 집계 절 자체가 전부다 — 펼침 본문에 빈 전폭 스텝 상자로 반복하지 않는다.
+    expect(container?.querySelector(".agent-chat-step.is-thought")).toBeNull();
   });
 });
 
