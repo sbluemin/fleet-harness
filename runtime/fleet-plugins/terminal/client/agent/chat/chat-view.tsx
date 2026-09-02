@@ -1634,7 +1634,6 @@ function WorkLedge({
         className="agent-chat-ledge-toggle"
         aria-expanded={open}
         aria-controls={controlsId}
-        aria-label={t(open ? "terminal.chat.ledgeHideAria" : "terminal.chat.ledgeShowAria")}
         onClick={onToggle}
       >
         {running

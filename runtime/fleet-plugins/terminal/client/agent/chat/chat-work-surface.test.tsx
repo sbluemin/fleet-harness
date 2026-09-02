@@ -124,6 +124,7 @@ describe("chat work surface", () => {
     expect(toggle?.querySelector(".agent-chat-strip-orbit")).not.toBeNull();
     expect(toggle?.textContent).toContain("1 running");
     expect(toggle?.textContent).toContain("two-step");
+    expect(toggle?.getAttribute("aria-label")).toBeNull();
     expect(toggle?.textContent).not.toContain("Show");
     expect(toggle?.textContent).not.toContain("Hide");
     act(() => { toggle?.click(); });
