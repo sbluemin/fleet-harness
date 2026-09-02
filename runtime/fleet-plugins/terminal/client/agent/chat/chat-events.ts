@@ -774,10 +774,7 @@ export interface AgentChatLogState {
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
 const MAX_DRAFT_CHARS = 60_000;
 
-/**
- * 이보다 짧은 공백은 흔적을 남기지 않는다 — 결과가 오고 다음 호출이 나가는 사이의 왕복은
- * 생각이 아니라 배관이고, 1초 아래의 "0초 생각함"은 정보가 아니라 소음이다.
- */
+/** 결과와 다음 호출 사이의 왕복을 생각 구간으로 기록하지 않도록 짧은 공백은 버린다. */
 const MIN_THOUGHT_MS = 1_000;
 
 /**
@@ -804,8 +801,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
  * turn-start/turn-end가 상태를 옮긴다. dispatch는 항상 새 턴을 연다.
  */
 export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClockedEvent): AgentChatLogState {
-  // 서버 원장 시각은 라이브와 재생 모두 같은 시간축이다. 재생이라는 이유로 버리면 완료 턴을
-  // 다시 연결한 순간 "N초 생각함" 흔적이 사라진다. 옛 서버처럼 시각이 없을 때만 undefined다.
+  // 서버 원장 시각은 라이브와 재생 모두 같은 시간축이다. 옛 서버처럼 시각이 없을 때만 undefined다.
   const now = event.receivedAt;
   switch (event.kind) {
     case "replay-start":
@@ -1242,8 +1238,6 @@ export interface AgentChatStepGroup {
   /** `other` 계열의 표시 이름. 알려진 계열에서는 비어 있다. */
   readonly name?: string;
   readonly count: number;
-  /** `think` 계열의 합산 시간 — 이 계열은 횟수가 아니라 시간으로 읽힌다. */
-  readonly durationMs?: number;
 }
 
 /** 생각의 흔적이 접히는 계열 이름. 도구 이름이 아니라 아이템 종류에서 온다. */
@@ -1347,8 +1341,10 @@ function foldSegment(
     // 자기를 부른 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다.
     // 결과 없이 닫힌 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를
     // 원장이 다시 했다고 말하는 셈이다 — 확인되지 않은 것과 지금 도는 것은 줄을 지킨다.
-    // 생각의 흔적은 언제나 접힌다 — 자기 줄을 가질 내용이 없고, 절 하나("3초 생각함")로 충분하다.
+    // 생각의 흔적은 사용자에게 보이지 않는다. 자기 줄이나 집계 절을 만들지 않고 건너뛰되,
+    // 이웃한 완료 스텝의 집계는 끊지 않는다.
     const thought = step.type === "thought";
+    if (thought) continue;
     const job = !thought && step.type !== "ask" && hasJob?.(step) === true;
     const foldable = thought || (step.type !== "ask" && !job && (step.state === "ok" || step.state === "fail"));
     if (!foldable) {
@@ -1364,12 +1360,9 @@ function foldSegment(
       seen = new Map();
       parts.push({ kind: "tally", groups, folded });
     }
-    // 생각은 집계 절("3초 생각함") 자체가 전부다. 펼침 본문에 넣으면 대상·결과가 없는 흔적이
-    // 다시 전폭 스텝 상자로 반복되어, 빈 생각 상자를 없앤 이 작업의 목적을 되돌린다.
-    if (!thought) folded.push(step);
-    const family = thought ? AGENT_CHAT_THINK_FAMILY : agentChatToolFamily(step.name);
+    folded.push(step);
+    const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;
-    const durationMs = thought ? step.durationMs ?? 0 : 0;
     const found = seen.get(key);
     if (found === undefined) {
       seen.set(key, groups.length);
@@ -1377,7 +1370,6 @@ function foldSegment(
         family,
         count: 1,
         ...(family === "other" ? { name: step.name ?? "" } : {}),
-        ...(thought ? { durationMs } : {}),
       });
     } else {
       const current = groups[found];
@@ -1385,7 +1377,6 @@ function foldSegment(
         groups[found] = {
           ...current,
           count: current.count + 1,
-          ...(thought ? { durationMs: (current.durationMs ?? 0) + durationMs } : {}),
         };
       }
     }

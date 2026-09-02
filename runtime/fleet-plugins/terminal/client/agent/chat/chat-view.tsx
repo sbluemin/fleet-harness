@@ -676,7 +676,9 @@ function ChatTurn({
   const contextGrew = turn.contextBefore !== undefined && nextContextBefore !== undefined
     ? nextContextBefore - turn.contextBefore
     : undefined;
-  const hasSettledWork = !working && (view.ledger.length > 0 || view.changes.length > 0);
+  // 완료된 생각 흔적은 원장에 보이지 않으므로, 그것만 남은 턴에 빈 작업 접힘과 Answer 이음매를
+  // 세우지 않는다. 라이브 "생각 중…"은 working 경로가 별도로 그린다.
+  const hasSettledWork = !working && (view.ledger.some((item) => item.type !== "thought") || view.changes.length > 0);
   // 정비 명령은 대화가 아니다. 말풍선도 턴 노드도 경과 시계도 세우지 않는다 — 그 문법 전체가
   // "모델이 생각하고 있다"를 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예
   // 부르지 않는다. 한 줄이 지시와 진행과 결말을 함께 진다.
@@ -1084,14 +1086,7 @@ function settledLabel(count: number, t: ReturnType<typeof getT>): string {
 }
 
 /** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
-/** 생각의 흔적 라벨 — 1초 아래는 흔적이 서지 않으므로(리듀서 상한) 0초는 나오지 않는다. */
-function thoughtLabel(durationMs: number, t: ReturnType<typeof getT>): string {
-  return t("terminal.chat.thoughtFor", { seconds: Math.max(1, Math.round(durationMs / 1_000)) });
-}
-
 function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
-  // 생각은 횟수가 아니라 시간으로 읽힌다 — "2회 생각함"은 아무것도 말하지 않는다.
-  if (group.family === AGENT_CHAT_THINK_FAMILY) return thoughtLabel(group.durationMs ?? 0, t);
   const plural = group.count === 1 ? "one" : "other";
   const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
   return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
