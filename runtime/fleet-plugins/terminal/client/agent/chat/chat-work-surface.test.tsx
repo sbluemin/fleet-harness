@@ -543,6 +543,101 @@ describe("chat ledger — family glyphs on the tally clauses", () => {
  * 예전에는 도는 턴의 집계 줄이 무조건 링을 달고, 그 아래 생각 상자가 링을 하나 더 달았다
  * (실측: 링 2개, 애니메이션 6개가 동시에).
  */
+describe("chat ledger — fast Shell continuity", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_180);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function fastShellTurn(state: "working" | "done" = "done"): AgentChatLogState {
+    return {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [{
+          type: "tool",
+          name: "Bash",
+          detail: "pwd",
+          id: "t1",
+          state: "ok",
+          startedAt: 1_100,
+          settledAt: 1_180,
+        }],
+        state,
+        toolCount: 1,
+        draft: "",
+        ...(state === "done" ? { answer: "Done." } : {}),
+      }],
+    };
+  }
+
+  it("keeps the running Shell in the same row before its result arrives", () => {
+    logState = {
+      ...fastShellTurn("working"),
+      turns: [{
+        ...fastShellTurn("working").turns[0]!,
+        items: [{ type: "tool", name: "Bash", detail: "pwd", id: "t1", state: "running", startedAt: 1_100 }],
+      }],
+    };
+    mount("running");
+    const row = container?.querySelector(".agent-chat-tally.is-continuity");
+    expect(row?.querySelector(".agent-chat-step-orbit")).not.toBeNull();
+    expect(row?.textContent).toContain("Running pwd");
+    expect(container?.querySelectorAll(".agent-chat-step-orbit")).toHaveLength(1);
+  });
+
+  it("keeps one Shell row in place until it morphs from running to completed", () => {
+    logState = fastShellTurn();
+    mount();
+
+    let row = container?.querySelector(".agent-chat-tally.is-continuity");
+    expect(row, container?.innerHTML).not.toBeNull();
+    expect(row?.querySelector(".agent-chat-step-orbit")).not.toBeNull();
+    expect(row?.textContent).toContain("Running pwd");
+    expect(container?.querySelector(".agent-chat-fold")).toBeNull();
+    // 인지 바닥은 모델의 다음 말까지 막는 지연이 아니다 — Answer는 도착 즉시 읽힌다.
+    expect(container?.querySelector(".agent-chat-answer-body")?.textContent).toContain("Done.");
+
+    act(() => { vi.advanceTimersByTime(400); });
+    row = container?.querySelector(".agent-chat-tally.is-continuity");
+    expect(row?.querySelector(".agent-chat-step-orbit")).toBeNull();
+    expect(row?.querySelector(".agent-chat-continuity-mark")?.textContent).toBe("✓");
+    expect(row?.textContent).toContain("Ran pwd");
+    expect(row?.textContent).toContain("80ms");
+
+    act(() => { vi.advanceTimersByTime(220); });
+    expect(container?.querySelector(".agent-chat-tally.is-continuity")).toBeNull();
+    expect(container?.querySelector(".agent-chat-fold")).not.toBeNull();
+  });
+
+  it("does not hold a slow Shell or another fast tool", () => {
+    logState = fastShellTurn();
+    logState = {
+      ...logState,
+      turns: [{
+        ...logState.turns[0]!,
+        items: [{ type: "tool", name: "Bash", detail: "sleep 1", state: "ok", startedAt: 100, settledAt: 1_180 }],
+      }],
+    };
+    mount();
+    expect(container?.querySelector(".agent-chat-tally.is-continuity")).toBeNull();
+
+    logState = {
+      ...logState,
+      turns: [{
+        ...logState.turns[0]!,
+        items: [{ type: "tool", name: "Read", detail: "a.md", state: "ok", startedAt: 1_100, settledAt: 1_180 }],
+      }],
+    };
+    render();
+    expect(container?.querySelector(".agent-chat-tally.is-continuity")).toBeNull();
+  });
+});
+
 describe("chat ledger — one live line", () => {
   function workingWith(items: readonly unknown[], draft = ""): AgentChatLogState {
     return {

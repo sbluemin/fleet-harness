@@ -538,6 +538,10 @@ export interface AgentChatTurnItem {
   readonly detail?: string;
   readonly id?: string;
   readonly state?: AgentChatStepState;
+  /** 라이브 화면에서 이 스텝이 처음 열린 수신 시각. 빠른 Shell의 시각 수명에만 쓰며 저널 계약은 아니다. */
+  readonly startedAt?: number;
+  /** 라이브 결과가 돌아온 수신 시각. 시작 시각과 함께 있을 때만 짧은 완료 이음매를 만든다. */
+  readonly settledAt?: number;
   readonly result?: string;
   readonly outside?: boolean;
   readonly change?: AgentChatChange;
@@ -966,7 +970,15 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       });
     case "tool-start":
       // 이름만 아는 스텝을 먼저 세운다. 뒤따르는 완성 tool 이벤트가 같은 id로 좌표를 채운다.
-      return appendItem(wakeLastTurn(state, now), { type: "tool", name: event.name, detail: "", id: event.id, state: "running" });
+      // 시작 시각은 라이브 수신 시각이 있을 때만 남긴다 — 재생에는 running 표면도 인지 바닥도 없다.
+      return appendItem(wakeLastTurn(state, now), {
+        type: "tool",
+        name: event.name,
+        detail: "",
+        id: event.id,
+        state: "running",
+        ...(now !== undefined && !state.replaying && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
+      });
     case "tool": {
       // 재생 구간의 스텝은 이미 끝난 일이다 — 결과 줄이 뒤따르면 ok/fail로 다시 옮겨 붙는다.
       const initial: AgentChatStepState = state.replaying ? "done" : "running";
@@ -976,13 +988,18 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         detail: event.detail,
         state: initial,
         ...(event.id !== undefined ? { id: event.id } : {}),
+        ...(initial === "running" && now !== undefined && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
         ...(event.outside === true ? { outside: true } : {}),
         ...(event.change ? { change: event.change } : {}),
       };
       // tool-start가 이미 세운 스텝이면 새 줄을 만들지 않고 그 자리를 채운다.
       const woken = wakeLastTurn(state, now);
       const merged = event.id !== undefined
-        ? mergeItemById(woken, event.id, (item) => ({ ...filled, state: item.state ?? initial }))
+        ? mergeItemById(woken, event.id, (item) => ({
+          ...filled,
+          state: item.state ?? initial,
+          ...(item.startedAt !== undefined ? { startedAt: item.startedAt } : {}),
+        }))
         : null;
       return merged ?? appendItem(woken, filled);
     }
@@ -1011,6 +1028,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       const merged = mergeItemById(state, event.id, (item) => ({
         ...item,
         state: event.ok ? "ok" : "fail",
+        ...(now !== undefined && !state.replaying ? { settledAt: now } : {}),
         ...(event.summary.length > 0 ? { result: event.summary } : {}),
       }));
       // 짝을 못 찾은 결과는 버린다 — 좌표 없는 결말은 원장에 세울 자리가 없다.
