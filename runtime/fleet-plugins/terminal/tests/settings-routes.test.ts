@@ -56,9 +56,10 @@ describe("terminal settings routes", () => {
     expect(allIds).toContain("kimi--k3");
     // Antigravity는 Gemini만 노출한다. 같은 구독이 Claude·GPT-OSS도 서비스하지만
     // 카탈로그에 없으므로 설정 화면에도 뜨지 않아야 한다.
+    expect(allIds).toContain("antigravity--gemini-3.8-flash");
     expect(allIds).toContain("antigravity--gemini-3.7-flash");
     expect(allIds).toContain("antigravity--gemini-3.1-pro");
-    expect(allIds.filter((id) => id.startsWith("antigravity--"))).toHaveLength(2);
+    expect(allIds.filter((id) => id.startsWith("antigravity--"))).toHaveLength(3);
     expect(allIds).toContain("xai--grok-4.6");
     expect(allIds).toContain("xai--grok-composer-2.5-fast");
     for (const id of [

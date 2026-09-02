@@ -350,7 +350,9 @@ describe("antigravity quota", () => {
 });
 
 describe("antigravity model selection", () => {
-  it("spells Flash's rung as a request field and Pro's as a wire id", () => {
+  it("spells each model's rung in the shape its wire exposes", () => {
+    expect(resolveAntigravityModelSelection("antigravity--gemini-3.8-flash", "medium"))
+      .toEqual({ wireModelId: "gemini-3.8-flash-medium" });
     expect(resolveAntigravityModelSelection("antigravity--gemini-3.7-flash", "medium"))
       .toEqual({ wireModelId: "gemini-3.7-flash-tiered", thinkingLevel: "medium" });
     expect(resolveAntigravityModelSelection("antigravity--gemini-3.1-pro", "low"))

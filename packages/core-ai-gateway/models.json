@@ -1,12 +1,32 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-22T00:00:00Z",
+  "updatedAt": "2026-09-03T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
-      "defaultModel": "gemini-3.7-flash",
-      "source": "live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-08-22; the same read reported defaultAgentModelId gemini-3.7-flash-high and a deprecatedModelIds entry mapping gemini-3.1-pro-high to gemini-pro-agent, and a live streamGenerateContent probe on that date confirmed gemini-3.1-pro-high is refused with INVALID_ARGUMENT while gemini-pro-agent answers. Effort spelling was measured per model on one fixed prompt: gemini-3.7-flash-tiered honours generationConfig.thinkingConfig.thinkingLevel (343 / 407 / 434 reasoning tokens at low / medium / high) so its ladder is a request field, while Gemini 3.1 Pro encodes the rung in the wire id. thinkingLevel accepts low, medium, and high only: minimal and max are both refused. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here",
+      "defaultModel": "gemini-3.8-flash",
+      "source": "live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03; the same read reported defaultAgentModelId gemini-3.8-flash-high, a 1,048,576-token window for all three Gemini 3.8 Flash rungs, and a deprecatedModelIds entry mapping gemini-3.1-pro-high to gemini-pro-agent. Live agy turns on that date confirmed Gemini 3.8 Flash low and high answer successfully. The 2026-08-22 wire measurements remain authoritative for effort encoding: gemini-3.7-flash-tiered honours generationConfig.thinkingConfig.thinkingLevel while Gemini 3.1 Pro encodes the rung in the wire id. Gemini 3.8 Flash is exposed through the upstream rung ids returned by fetchAvailableModels. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here",
       "models": [
+        {
+          "modelId": "gemini-3.8-flash",
+          "name": "Gemini-3.8-Flash",
+          "capabilityClass": "light",
+          "providerModelId": "gemini-3.8-flash-high",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "upstreamModelIds": {
+              "low": "gemini-3.8-flash-low",
+              "medium": "gemini-3.8-flash-medium",
+              "high": "gemini-3.8-flash-high"
+            }
+          }
+        },
         {
           "modelId": "gemini-3.7-flash",
           "name": "Gemini-3.7-Flash",
