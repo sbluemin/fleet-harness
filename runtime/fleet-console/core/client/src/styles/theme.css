@@ -340,7 +340,9 @@
      OS 폴백의 얇은 스템 대신 번들 서체로 렌더되어 라틴과 굵기·폭이 정합된다. */
   --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, "Times New Roman", serif;
   --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* mono의 한글 폴백은 Nanum Gothic Coding — 터미널·채팅 로그와 같은 서체라 캡션·칩·펄스의 한글이
+     본문 로그와 한 몸으로 읽힌다. Pretendard가 아닌 이유: 비례폭이라 mono 라틴과 폭 리듬이 갈린다. */
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, "SF Mono", Menlo, monospace;
   --font-body-size: 14px;
 
   /* 크기도 굵기와 같은 이유로 사다리 하나만 쓴다 — 굵기를 3티어로 묶어 놓고 크기를 raw px로
