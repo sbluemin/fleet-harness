@@ -95,7 +95,6 @@ export function AgentChatComposer({
   turnRunning,
   stopping,
   queue,
-  work,
   onStop,
   onCancelQueued,
   coordinates,
@@ -119,18 +118,6 @@ export function AgentChatComposer({
    * 지킨다. 서버가 소유하는 목록이라 화면은 세지 않고 그대로 그린다.
    */
   readonly queue: readonly AgentChatQueueEntry[];
-  /**
-   * 백그라운드 작업 표시 — attach 왼쪽에 선 글리프의 상태·문이다. 잡이 있는 동안에만 서고
-   * (`hasJobs`), 도는 잡이 있으면(`running > 0`) aurora 오브, 정착만 남으면 중립 링이다.
-   * 작업 면이 열리면(`open`) 면의 머리가 같은 내용을 지므로 이 글리프는 물러난다.
-   */
-  readonly work: {
-    readonly running: number;
-    readonly hasJobs: boolean;
-    readonly open: boolean;
-    readonly controlsId: string;
-    readonly onOpen: () => void;
-  };
   readonly onStop: () => Promise<boolean>;
   /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
   readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
@@ -710,29 +697,6 @@ export function AgentChatComposer({
                 <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25M2.5 8h11" />
               </svg>
             </button>
-            {/* 백그라운드 작업 글리프 — attach의 왼쪽 또래다. 살아 있는 잡이 있는 동안에만 서고,
-                눌러서 Work 면을 연다. 도는 중이면 aurora 오브, 정착만 남으면 중립 링이며, 배지도
-                글자도 없이 카운트는 접근성 레이블이 진다. 면이 열려 있으면 서지 않는다. */}
-            {work.hasJobs && !work.open ? (
-              <button
-                type="button"
-                className="agent-chat-composer-work"
-                onClick={work.onOpen}
-                aria-label={work.running > 0
-                  ? t("terminal.chat.workGlyphRunningAria", { count: work.running })
-                  : t("terminal.chat.stripAria")}
-                aria-expanded={false}
-                aria-controls={work.controlsId}
-                title={work.running > 0
-                  ? t("terminal.chat.stripRunning", { count: work.running })
-                  : t("terminal.chat.stripAria")}
-              >
-                <span
-                  className={work.running > 0 ? "agent-chat-composer-work-orbit" : "agent-chat-composer-work-rest"}
-                  aria-hidden="true"
-                />
-              </button>
-            ) : null}
             <ComposerAttachControl
               className="agent-chat-composer-attach"
               label={t("terminal.chat.composerAttach")}

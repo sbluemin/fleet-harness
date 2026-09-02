@@ -85,16 +85,15 @@ export function AgentChatView({
   // 사용자 지시와 그 응답을 함께 담는 턴의 탄생만 센다.
   const [unseenTurns, setUnseenTurns] = React.useState(0);
   const [answerAnnouncement, setAnswerAnnouncement] = React.useState("");
-  // 두 번째 목적지는 **나란히** 선다. 탭 교체는 대화를 통째로 숨겼는데, 백그라운드 작업은
-  // 대화를 대신하는 것이 아니라 대화 옆에서 동시에 도는 것이다 — 동시에 일어나는 두 가지 앞에서
-  // 하나를 고르라고 요구하면, 무엇이 도는지 보려고 무엇을 물었는지를 잃는다.
+  // 두 번째 목적지는 대화 **위로** 떠오른다. 탭 교체는 대화를 통째로 숨겼고, 나란히 선 스플릿은
+  // 열 때마다 로그의 절반을 가져갔다 — 시트는 대화의 아래쪽을 잠시 덮을 뿐 밀어내지 않고,
+  // 접으면 로그와 컴포저는 처음 그 자리다. 여는 것이 레이아웃 사건이 아니어야 닫는 것도 가볍다.
   const [workOpen, setWorkOpen] = React.useState(false);
-  const [workStacked, setWorkStacked] = React.useState(false);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
-  // 작업 면이 차지하는 비율. 마운트 안에서만 산다 — 패널마다 알맞은 비율이 다르고, 세션을
-  // 넘겨 기억할 만큼 무거운 결정이 아니다.
-  const [workRatio, setWorkRatio] = React.useState(0.42);
-  const splitRef = React.useRef<HTMLDivElement>(null);
+  // 선반의 문. Esc로 접었을 때 초점이 돌아가는 자리다 — 문을 누르지 않고 닫았어도 다음 Tab이
+  // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
+  const ledgeToggleRef = React.useRef<HTMLButtonElement>(null);
+  const workSheetRef = React.useRef<HTMLElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -205,15 +204,6 @@ export function AgentChatView({
     return () => observer.disconnect();
   }, [restoreAnchor]);
 
-  React.useEffect(() => {
-    const split = splitRef.current;
-    if (!split || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => setWorkStacked(split.getBoundingClientRect().width <= 719));
-    observer.observe(split);
-    setWorkStacked(split.getBoundingClientRect().width <= 719);
-    return () => observer.disconnect();
-  }, []);
-
   const handleScroll = React.useCallback(() => {
     const log = logRef.current;
     if (!log) return;
@@ -322,55 +312,43 @@ export function AgentChatView({
     }
   }, [state.cancelQueued]);
 
-  const setBoundedWorkRatio = React.useCallback((next: number) => {
-    setWorkRatio(Math.min(0.78, Math.max(0.18, next)));
-  }, []);
+  const toggleWork = React.useCallback(() => {
+    if (workOpen) collapseWork();
+    else openWork();
+  }, [workOpen, collapseWork, openWork]);
 
-  const onGripKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    const split = splitRef.current;
-    if (!split) return;
-    const backward = workStacked ? "ArrowUp" : "ArrowLeft";
-    const forward = workStacked ? "ArrowDown" : "ArrowRight";
-    if (event.key === "Home") {
-      event.preventDefault();
-      setBoundedWorkRatio(0.18);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setBoundedWorkRatio(0.78);
-    } else if (event.key === backward) {
-      event.preventDefault();
-      setWorkRatio((current) => Math.min(0.78, current + 0.04));
-    } else if (event.key === forward) {
-      event.preventDefault();
-      setWorkRatio((current) => Math.max(0.18, current - 0.04));
-    }
-  }, [setBoundedWorkRatio, workStacked]);
+  // 잡 원장이 시트 밑에서 비면(재접속이 리듀서를 되감고 저널에 잡이 남지 않은 경우) 선반도
+  // 함께 물러난다. 문 없는 시트는 열린 채 굳으므로, 선반이 물러나는 순간 시트도 접는다.
+  React.useEffect(() => {
+    if (!hasJobs && workOpen) collapseWork();
+  }, [hasJobs, workOpen, collapseWork]);
 
-  // 손잡이 드래그. 가로(오른쪽 컬럼)와 세로(아래 서랍)가 같은 상태를 쓰고 축만 다르다 —
-  // 좁은 패널에서 컬럼이 서랍으로 접히는 것이 별개의 기능이 아니라 같은 면의 다른 방향이기 때문이다.
-  const onGripDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const split = splitRef.current;
-    if (!split) return;
-    const grip = event.currentTarget;
-    grip.setPointerCapture(event.pointerId);
-    const column = getComputedStyle(split).flexDirection !== "column";
-    const move = (moved: PointerEvent): void => {
-      const box = split.getBoundingClientRect();
-      const raw = column
-        ? (box.right - moved.clientX) / box.width
-        : (box.bottom - moved.clientY) / box.height;
-      // 어느 쪽도 0으로 눌리지 않는다 — 사라진 면은 접힌 것과 구별되지 않는데, 접는 문은 따로 있다.
-      setBoundedWorkRatio(raw);
-    };
-    const up = (): void => {
-      grip.removeEventListener("pointermove", move);
-      grip.removeEventListener("pointerup", up);
-      grip.removeEventListener("pointercancel", up);
-    };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", up);
-    grip.addEventListener("pointercancel", up);
-  }, [setBoundedWorkRatio]);
+  // 열리거나 목록·상세가 갈아 끼워지면 보이는 내용의 첫 컨트롤로 초점을 보낸다. 시트는 DOM에서
+  // 선반보다 앞에 있고, 뷰를 바꾼 버튼은 그 순간 사라진다 — 이 좌표를 듣지 않으면 Tab은 컴포저로
+  // 건너뛰고 Esc도 패널 밖 body에서 시작한다. 접을 때는 언제나 선반의 문으로 돌아간다.
+  React.useEffect(() => {
+    if (!workOpen) return;
+    workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
+  }, [workOpen, selectedJob?.id]);
+
+  // Esc는 이 채팅 패널 안에서 생긴 키만 bubble 단계에서 듣는다. document에 걸면 다른 패널의
+  // Esc까지 삼키고, capture 단계면 컴포저의 더 구체적인 덱 닫기보다 먼저 시트를 접는다. 자식이
+  // 이미 소비한 Esc와 IME 조합 중 Esc는 그대로 두고, 남은 일반 Esc만 시트를 닫는다.
+  const onPanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!workOpen || event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    collapseWork();
+    ledgeToggleRef.current?.focus();
+  }, [workOpen, collapseWork]);
+
+  // 시트가 덮지 않은 대화 위를 누르면 시트가 물러난다 — 콘솔의 팝오버와 같은 문법이다. 원장의
+  // 잡 앵커는 예외다: 그것은 시트를 여는 문이라, 누르는 순간 닫히면 문이 스스로를 지운다.
+  const onLogPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!workOpen) return;
+    if ((event.target as Element).closest(".agent-chat-job-anchor")) return;
+    collapseWork();
+  }, [workOpen, collapseWork]);
 
   return (
     <section
@@ -381,174 +359,157 @@ export function AgentChatView({
          마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
       style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
+      onKeyDown={onPanelKeyDown}
     >
-      {/* 대화 면과 작업 면이 나란히 산다. 넓은 패널에서는 작업 면이 오른쪽 컬럼이고, 좁아지면
-          같은 면이 아래 서랍으로 접힌다 — 별개의 기능이 아니라 한 면의 두 방향이며, 그 전환은
-          뷰포트가 아니라 이 패널의 폭이 정한다(패널은 덱 안에서 얼마든지 좁아진다). */}
       <span className="agent-chat-sr-only" role="status" aria-atomic="true">{answerAnnouncement}</span>
-      <div
-        className={`agent-chat-split${workOpen ? " is-open" : ""}`}
-        ref={splitRef}
-        style={workOpen ? ({ "--agent-chat-work": `${Math.round(workRatio * 1000) / 10}%` } as React.CSSProperties) : undefined}
-      >
-        <div className="agent-chat-pane">
-          {/* 로그와 그 위에 떠 있는 크롬(Follow·잡 스트립·중지)의 좌표계. 컴포저가 pane 하단에
-              in-flow로 서면서, pane에 앵커하던 부유물이 컴포저 위에 얹히지 않도록 부유물의
-              containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
-              언제나 그 위에 선다. */}
-          <div className="agent-chat-body">
-          {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
-              사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
-              콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
-          <div
-            className={`agent-chat-log${awaitingFirstTurn ? " is-inviting" : ""}`}
-            ref={logRef}
-            role="log"
-            aria-label={t("terminal.chat.aria")}
-            aria-live="off"
-            onScroll={handleScroll}
-            {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
-          >
-        {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
-            "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
-            가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
-        {awaitingFirstTurn ? (
-          <div className="agent-chat-hero">
-            <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
-            <h2 className="agent-chat-hero-title">{t("terminal.chat.heroTitle")}</h2>
-            <p className="agent-chat-hero-body">{t("terminal.chat.heroBody")}</p>
+      {/* 대화 면 하나다. 백그라운드 작업은 옆 컬럼도 아래 서랍도 아니라, 컴포저 위 선반에서
+          대화 위로 떠오르는 시트다 — 열어도 로그와 컴포저는 한 픽셀도 움직이지 않는다. */}
+      <div className="agent-chat-pane">
+        {/* 로그와 그 위에 떠 있는 크롬(Follow·잡 스트립·중지)의 좌표계. 컴포저가 pane 하단에
+            in-flow로 서면서, pane에 앵커하던 부유물이 컴포저 위에 얹히지 않도록 부유물의
+            containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
+            언제나 그 위에 선다. */}
+        <div className="agent-chat-body">
+        {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
+            사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
+            콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
+        <div
+          className={`agent-chat-log${awaitingFirstTurn ? " is-inviting" : ""}${workOpen ? " is-shaded" : ""}`}
+          ref={logRef}
+          role="log"
+          aria-label={t("terminal.chat.aria")}
+          aria-live="off"
+          onScroll={handleScroll}
+          onPointerDown={onLogPointerDown}
+          {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
+        >
+      {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
+          "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
+          가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
+      {awaitingFirstTurn ? (
+        <div className="agent-chat-hero">
+          <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
+          <h2 className="agent-chat-hero-title">{t("terminal.chat.heroTitle")}</h2>
+          <p className="agent-chat-hero-body">{t("terminal.chat.heroBody")}</p>
+        </div>
+      ) : null}
+      {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
+          않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
+          상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
+      {state.errorCode === "chat_transcript_missing"
+        ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.transcriptMissing")}</div>
+        : state.connection === "connecting" && state.turns.length === 0
+          ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
+          : null}
+      {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
+          사용자 자기 대화이므로, 그것을 "이전 턴 재생됨"으로 알리면 없던 이전 세션을 가리키는
+          오독이 된다. 새 도착 오알림을 막는 replay-start/replay-end 경계는 그대로 남는다. */}
+      {state.errorCode === "chat_replay_unavailable"
+        ? <div className="agent-chat-sys agent-chat-sys--warn">{t("terminal.chat.replayUnavailable")}</div>
+        : null}
+      {state.turns.map((turn, index) => (
+        <ChatTurn
+          key={index}
+          operationId={context.operationId}
+          turn={turn}
+          nextContextBefore={state.turns[index + 1]?.contextBefore}
+          language={language}
+          timeFormat={timeFormat}
+          streaming={index === state.turns.length - 1 && turn.state === "working"}
+          jobsByToolUse={jobsByToolUse}
+          onOpenJob={showJob}
+          onAnswer={state.answerAsk}
+        />
+      ))}
+      {state.errorCode === "chat_turn_failed"
+        ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
+        : null}
+      {stopFailed
+        ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.stopFailed")}</div>
+        : null}
+      {state.connection === "lost"
+        ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
+        : null}
+      {terminalError !== "none"
+        ? (
+          <div className="agent-chat-sys agent-chat-sys--error" role="alert">
+            <span aria-hidden="true">{terminalError === "busy" ? "⚠" : "✕"}</span>{" "}
+            {t(terminalError === "busy" ? "terminal.chat.openTerminalBusy" : "terminal.chat.openTerminalFailed")}
           </div>
-        ) : null}
-        {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
-            않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
-            상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
-        {state.errorCode === "chat_transcript_missing"
-          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.transcriptMissing")}</div>
-          : state.connection === "connecting" && state.turns.length === 0
-            ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
-            : null}
-        {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
-            사용자 자기 대화이므로, 그것을 "이전 턴 재생됨"으로 알리면 없던 이전 세션을 가리키는
-            오독이 된다. 새 도착 오알림을 막는 replay-start/replay-end 경계는 그대로 남는다. */}
-        {state.errorCode === "chat_replay_unavailable"
-          ? <div className="agent-chat-sys agent-chat-sys--warn">{t("terminal.chat.replayUnavailable")}</div>
-          : null}
-        {state.turns.map((turn, index) => (
-          <ChatTurn
-            key={index}
-            operationId={context.operationId}
-            turn={turn}
-            nextContextBefore={state.turns[index + 1]?.contextBefore}
-            language={language}
-            timeFormat={timeFormat}
-            streaming={index === state.turns.length - 1 && turn.state === "working"}
-            jobsByToolUse={jobsByToolUse}
-            onOpenJob={showJob}
-            onAnswer={state.answerAsk}
-          />
-        ))}
-        {state.errorCode === "chat_turn_failed"
-          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
-          : null}
-        {stopFailed
-          ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.stopFailed")}</div>
-          : null}
-        {state.connection === "lost"
-          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
-          : null}
-        {terminalError !== "none"
-          ? (
-            <div className="agent-chat-sys agent-chat-sys--error" role="alert">
-              <span aria-hidden="true">{terminalError === "busy" ? "⚠" : "✕"}</span>{" "}
-              {t(terminalError === "busy" ? "terminal.chat.openTerminalBusy" : "terminal.chat.openTerminalFailed")}
-            </div>
-          )
-          : null}
-          </div>
-
-          {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
-              다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
-              떠 있는 컨트롤은 전부 대화 면 안에 산다 — 패널 전체에 걸어 두면 작업 면이 열린
-              순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */}
-          {!following ? (
-            <button
-              type="button"
-              className="agent-chat-follow"
-              aria-label={unseenTurns > 0 ? t("terminal.chat.followUnreadAria", { count: unseenTurns }) : t("terminal.chat.followAria")}
-              onClick={handleFollow}
-            >
-              {unseenTurns > 0 ? t("terminal.chat.followUnread", { count: unseenTurns }) : t("terminal.chat.follow")}
-            </button>
-          ) : null}
-
-          {/* 백그라운드 작업 표시는 이제 로그 위에 떠 있지 않다 — 컴포저 툴 행의 글리프
-              (attach 왼쪽)로 옮겨 가, 로그와 컴포저의 이음새에 걸터앉던 부유 크롬의 소속
-              모호함을 없앴다. 상태·문은 아래 AgentChatComposer의 work prop이 진다. */}
-
-          </div>
-
-          {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
-              (Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch 멘션
-              전달은 여전히 살아 있는 별도 경로다. */}
-          <AgentChatComposer
-            context={context}
-            coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
-            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
-            coordinates={coordinates}
-            onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
-            catalogEpoch={state.catalogEpoch}
-            tourAnchor={tourAnchors}
-            turnRunning={turnRunning}
-            stopping={stopping}
-            queue={state.queue}
-            work={{
-              running: openJobs.length,
-              hasJobs,
-              open: workOpen,
-              controlsId: `${paneId}-work`,
-              onOpen: openWork,
-            }}
-            onStop={handleStop}
-            onCancelQueued={handleCancelQueued}
-          />
-
-          {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
-              컴포저가 하단으로 내려앉는다 — 움직이는 것은 컴포저 하나이고, 컴포저 자신은 언제나
-              in-flow라 대화의 마지막 줄을 덮지 않는다. 높이를 직접 애니메이션하지 않는 이유는
-              패널 높이가 사용자 손에 달려 있어서다: 비율로 두면 어떤 높이에서도 같은 자리다. */}
-          <div className={`agent-chat-settle${awaitingFirstTurn ? " is-inviting" : ""}`} aria-hidden="true" />
+        )
+        : null}
         </div>
 
-        {workOpen ? (
-          <>
-            {/* 두 면의 비율을 손으로 정한다. 방향은 CSS가 정하고 이 손잡이는 그 방향을 읽어
-                따른다 — 컬럼과 서랍이 서로 다른 컨트롤을 갖지 않게. */}
-            <div
-              className="agent-chat-grip"
-              role="separator"
-              tabIndex={0}
-              aria-orientation={workStacked ? "horizontal" : "vertical"}
-              aria-label={t("terminal.chat.gripAria")}
-              aria-valuemin={18}
-              aria-valuemax={78}
-              aria-valuenow={Math.round(workRatio * 100)}
-              aria-valuetext={t("terminal.chat.gripValue", { percent: Math.round(workRatio * 100) })}
-              onKeyDown={onGripKeyDown}
-              onPointerDown={onGripDown}
-            />
-            <WorkPanel
-              id={`${paneId}-work`}
-              jobs={state.jobs}
-              job={selectedJob}
-              openJobs={openJobs}
-              operationId={context.operationId}
-              language={language}
-              onOpen={setOpenJobId}
-              onBack={() => setOpenJobId(null)}
-              onCollapse={collapseWork}
-            />
-          </>
+        {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
+            다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
+            떠 있는 컨트롤은 전부 대화 면 안에 산다 — 패널 전체에 걸어 두면 작업 면이 열린
+            순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */}
+        {!following ? (
+          <button
+            type="button"
+            className="agent-chat-follow"
+            aria-label={unseenTurns > 0 ? t("terminal.chat.followUnreadAria", { count: unseenTurns }) : t("terminal.chat.followAria")}
+            onClick={handleFollow}
+          >
+            {unseenTurns > 0 ? t("terminal.chat.followUnread", { count: unseenTurns }) : t("terminal.chat.follow")}
+          </button>
         ) : null}
+
+        {/* 백그라운드 작업의 시트. 로그의 좌표계(이 body) 안에서 바닥에 붙어 대화의 아래쪽을
+            덮는다 — 선반 바로 위에서 자라므로 문과 내용이 한 이음새다. Follow 칩보다 위층이라
+            열린 동안 그 칩은 시트 뒤로 들어간다. */}
+        {workOpen ? (
+          <WorkSheet
+            id={`${paneId}-work`}
+            sheetRef={workSheetRef}
+            jobs={state.jobs}
+            job={selectedJob}
+            operationId={context.operationId}
+            language={language}
+            onOpen={setOpenJobId}
+            onBack={() => setOpenJobId(null)}
+          />
+        ) : null}
+        </div>
+
+        {/* 선반 — 잡이 하나라도 태어난 세션에 서는 한 줄. 무엇이 도는지 말로 말하고, 상태 옆
+            문은 자기 동사(Show/Hide)를 단다. 시트가 열려도 이 줄은 같은 자리에 그대로다:
+            들어온 문이 나가는 문이고, 그 문은 옮겨 다니지 않는다. */}
+        {hasJobs ? (
+          <WorkLedge
+            jobs={state.jobs}
+            openJobs={openJobs}
+            open={workOpen}
+            controlsId={`${paneId}-work`}
+            language={language}
+            toggleRef={ledgeToggleRef}
+            onToggle={toggleWork}
+          />
+        ) : null}
+
+        {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
+            (Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch 멘션
+            전달은 여전히 살아 있는 별도 경로다. */}
+        <AgentChatComposer
+          context={context}
+          coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
+          meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
+          coordinates={coordinates}
+          onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
+          catalogEpoch={state.catalogEpoch}
+          tourAnchor={tourAnchors}
+          turnRunning={turnRunning}
+          stopping={stopping}
+          queue={state.queue}
+          onStop={handleStop}
+          onCancelQueued={handleCancelQueued}
+        />
+
+        {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
+            컴포저가 하단으로 내려앉는다 — 움직이는 것은 컴포저 하나이고, 컴포저 자신은 언제나
+            in-flow라 대화의 마지막 줄을 덮지 않는다. 높이를 직접 애니메이션하지 않는 이유는
+            패널 높이가 사용자 손에 달려 있어서다: 비율로 두면 어떤 높이에서도 같은 자리다. */}
+        <div className={`agent-chat-settle${awaitingFirstTurn ? " is-inviting" : ""}`} aria-hidden="true" />
       </div>
     </section>
   );
@@ -1641,54 +1602,99 @@ function StageDots({ stages }: { readonly stages: readonly AgentChatJob["stages"
 }
 
 /**
- * 작업 면 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다.
+ * 선반 — 컴포저 위에 서는 한 줄. 잡이 하나라도 있는 동안 무엇이 도는지 말로 말하고, 상태 옆 문이
+ * 시트를 연다. 문의 라벨은 그것이 할 동사(Show/Hide)이고 화살표는 시트가 움직일 방향이다 — 열려
+ * 있을 때 아래를 가리키던 화살표가 "더 펼침"으로 읽혀 접는 문을 못 찾던 자리다.
  *
- * 머리에는 스트립이 앉는다. 면이 열리면 떠 있던 알약이 이 자리로 옮겨 오고, 그것이 곧 접는
- * 문이다 — 눌린 것이 자랐으므로 접는 문도 자란 것 안에 있어야 한다.
+ * 색 규칙은 스트립 시절 그대로다: 도는 개수는 aurora(상태), 정착만 남은 개수는 중립 잉크. 문은
+ * Quiet Controls의 rest 몸(--control-rest)을 입는다 — 투명한 rest는 헤더로 읽혔다.
  */
-function WorkPanel({
+function WorkLedge({
+  jobs,
+  openJobs,
+  open,
+  controlsId,
+  language,
+  toggleRef,
+  onToggle,
+}: {
+  readonly jobs: readonly AgentChatJob[];
+  readonly openJobs: readonly AgentChatJob[];
+  readonly open: boolean;
+  readonly controlsId: string;
+  readonly language: "en" | "ko";
+  readonly toggleRef: React.RefObject<HTMLButtonElement | null>;
+  readonly onToggle: () => void;
+}) {
+  const t = getT(language);
+  const running = openJobs.length > 0;
+  return (
+    <div className={`agent-chat-ledge${running ? "" : " is-rest"}`}>
+      {running
+        ? <span className="agent-chat-strip-orbit" aria-hidden="true" />
+        : <span className="agent-chat-strip-dot" aria-hidden="true" />}
+      <span className="agent-chat-strip-count">
+        {running ? t("terminal.chat.stripRunning", { count: openJobs.length }) : settledLabel(jobs.length, t)}
+      </span>
+      {/* 문은 오른쪽 캔버스 모서리에서 물러난다 — 기본 패널 기하에서는 미니맵이 그 모서리를
+          덮는다. 상태 바로 뒤에 두면 어떤 지도 상태에서도 실제 포인터가 닿고, 문과 상태도 한
+          문장으로 읽힌다. */}
+      <button
+        type="button"
+        ref={toggleRef}
+        className="agent-chat-ledge-toggle"
+        aria-expanded={open}
+        aria-controls={controlsId}
+        aria-label={t(open ? "terminal.chat.ledgeHideAria" : "terminal.chat.ledgeShowAria")}
+        onClick={onToggle}
+      >
+        <span>{t(open ? "terminal.chat.ledgeHide" : "terminal.chat.ledgeShow")}</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M4 10l4-4 4 4" />
+        </svg>
+      </button>
+      {/* 도는 것이 있으면 그 이름을 잇는다 — 개수만으로는 무엇이 도는지 모른다. 정착만 남았을
+          때는 개수가 곧 내용이다. */}
+      {running ? <span className="agent-chat-ledge-name">· {openJobs[0]?.title}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * 시트 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다.
+ *
+ * 대화 옆 컬럼도 아래 서랍도 아니다. 선반 바로 위에서 대화의 아래쪽을 덮으며 떠오르고, 접으면
+ * 로그와 컴포저는 처음 그 자리다. 접는 문은 이 안에 없다: 선반의 문이 Hide로 바뀌어 같은 자리에
+ * 서 있고, Esc와 대화 위 클릭이 그 문을 대신한다.
+ */
+function WorkSheet({
   id,
+  sheetRef,
   jobs,
   job,
-  openJobs,
   operationId,
   language,
   onOpen,
   onBack,
-  onCollapse,
 }: {
   readonly id: string;
+  readonly sheetRef: React.RefObject<HTMLElement | null>;
   readonly jobs: readonly AgentChatJob[];
   readonly job: AgentChatJob | null;
-  readonly openJobs: readonly AgentChatJob[];
   readonly operationId: string;
   readonly language: "en" | "ko";
   readonly onOpen: (id: string) => void;
   readonly onBack: () => void;
-  readonly onCollapse: () => void;
 }) {
   const t = getT(language);
   const open = jobs.filter((entry) => entry.open);
   const settled = jobs.filter((entry) => !entry.open);
   return (
-    <section className="agent-chat-work" id={id} aria-label={t("terminal.chat.workAria")}>
-      <button
-        type="button"
-        className={`agent-chat-work-cap${openJobs.length === 0 ? " is-rest" : ""}`}
-        aria-expanded
-        aria-label={t("terminal.chat.workCollapseAria")}
-        onClick={onCollapse}
-      >
-        {openJobs.length > 0
-          ? <span className="agent-chat-strip-orbit" aria-hidden="true" />
-          : <span className="agent-chat-strip-dot" aria-hidden="true" />}
-        <span className="agent-chat-strip-count">
-          {openJobs.length > 0
-            ? t("terminal.chat.stripRunning", { count: openJobs.length })
-            : settledLabel(jobs.length, t)}
-        </span>
-        <span className="agent-chat-work-cap-chev" aria-hidden="true">⌄</span>
-      </button>
+    <section ref={sheetRef} className="agent-chat-sheet" id={id} aria-label={t("terminal.chat.workAria")}>
+      <div className="agent-chat-sheet-head">
+        <span>{t("terminal.chat.workAria")}</span>
+        <span className="agent-chat-sheet-hint">{t("terminal.chat.sheetEscHint")}</span>
+      </div>
       <div className="agent-chat-work-body">
         {job !== null ? (
           <JobDetail job={job} operationId={operationId} language={language} onBack={onBack} />

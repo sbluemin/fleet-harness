@@ -2660,8 +2660,10 @@ describe("Instrument core design contract", () => {
     // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
     // 떠 있던 잡 스트립은 폐기됐다 — 로그와 컴포저의 이음새에 걸터앉아 어느 쪽에도 속하지
-    // 않았다. 백그라운드 작업 표시는 컴포저 툴 행의 글리프(.agent-chat-composer-work)로 옮겨,
-    // attach와 한 줄에 선 또래 글리프가 됐다: 부유 크롬도, 로그 흐름을 덮던 걱정도 사라진다.
+    // 않았다. 그 뒤를 이은 컴포저 툴 행의 글리프(.agent-chat-composer-work)도 폐기됐다: 카운트도
+    // 라벨도 없는 30px 표식이 열리는 순간 사라져, 들어온 문이 나가는 자리에 없었다. 백그라운드
+    // 작업은 이제 컴포저 위 in-flow 선반(.agent-chat-ledge)과 대화 위로 떠오르는 시트
+    // (.agent-chat-sheet)다.
     const chatView0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const chatComposer0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
     // 부유 스트립 컨테이너 규칙과 그 마크업은 없다 — orbit·dot·count 부품만 Work 탭 머리가 쓴다.
@@ -2674,44 +2676,69 @@ describe("Instrument core design contract", () => {
     // 로그 위에 떠 있는 줄은 이제 Follow 하나뿐이다 — 바닥을 놓친 동안에만 서는 일시적 문이다.
     const chatFollowBottom = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0].match(/bottom: ([^;]+);/)?.[1] ?? "";
     expect(chatFollowBottom).toBe("var(--space-3)");
-    // 글리프는 컴포저 액션 바 안, attach 바로 앞에 선다. attach와 같은 문법이라 in-flow이고
-    // 절대배치가 아니다 — 로그 흐름에서 한 픽셀도 가져가지 않는다는 원래 계약을 다른 방식으로 지킨다.
-    const composerWorkBlock = chat.match(/^\.agent-chat-composer-work \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerWorkBlock).toContain("border: 0;");
-    expect(composerWorkBlock).toContain("background: transparent;");
-    expect(composerWorkBlock).not.toContain("position: absolute");
-    expect(chatComposer0).toContain('className="agent-chat-composer-work"');
-    // 잡이 있는 동안에만 서고, 작업 면이 열리면 물러난다 — 조건 없이 서면 폐기 사유가 되살아난다.
-    expect(chatComposer0).toContain("work.hasJobs && !work.open ? (");
-    // 도는 중이면 aurora 오브(공용 키프레임), 정착만 남으면 중립 링. reduced-motion이 오브를 멈춘다.
-    const composerWorkOrbitBlock = chat.match(/^\.agent-chat-composer-work-orbit \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerWorkOrbitBlock).toContain("animation: agent-chat-orbit 0.9s linear infinite;");
-    expect(chat).toContain(".agent-chat-composer-work-orbit { animation: none; }");
+    // 선반은 in-flow다 — 떠다니지 않고, 잡이 있는 동안 컴포저 바로 위 같은 자리에 선다.
+    const ledgeBlock = chat.match(/^\.agent-chat-ledge \{[^}]*\}/m)?.[0] ?? "";
+    expect(ledgeBlock).toContain("flex: none;");
+    expect(ledgeBlock).not.toContain("position: absolute");
+    expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}`}');
+    expect(chatView0).toContain("{hasJobs ? (");
+    // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 "연다"는 동사는 문의 라벨이 됐다.
+    expect(chatComposer0).not.toContain("agent-chat-composer-work");
+    expect(chat).not.toContain(".agent-chat-composer-work");
+    // 문은 컨트롤로 보여야 한다 — 투명 rest는 헤더로 읽혔다(2026-09-02 실측). Quiet Controls
+    // 레시피 그대로: rest 몸, brass 예고, 열림은 --control-open-rim, 라벨은 동사(Show/Hide).
+    const ledgeToggleBlock = chat.match(/^\.agent-chat-ledge-toggle \{[^}]*\}/m)?.[0] ?? "";
+    expect(ledgeToggleBlock).toContain("background: var(--control-rest);");
+    expect(ledgeToggleBlock).not.toContain("background: transparent");
+    expect(chat).toMatch(/^\.agent-chat-ledge-toggle\[aria-expanded="true"\] \{[^}]*border-color: var\(--control-open-rim\);/m);
+    expect(chatView0).toContain('{t(open ? "terminal.chat.ledgeHide" : "terminal.chat.ledgeShow")}');
+    // 화살표는 시트의 이동 방향이다 — 열리면 돌아서 아래를 가리킨다(열린 채 아래를 가리키던
+    // 옛 ⌄는 "더 펼침"으로 읽혔다).
+    expect(chat).toContain('.agent-chat-ledge-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }');
+    // 도는 중이면 aurora 오브(공용 키프레임). reduced-motion이 오브와 시트의 상승을 멈춘다.
+    const stripOrbitBlock = chat.match(/^\.agent-chat-strip-orbit \{[^}]*\}/m)?.[0] ?? "";
+    expect(stripOrbitBlock).toContain("animation: agent-chat-orbit 0.9s linear infinite;");
+    expect(chat).toContain(".agent-chat-strip-orbit { animation: none; }");
+    expect(chat).toContain(".agent-chat-sheet { animation: none; }");
     // 탭은 폐기됐다. 두 면을 갈아 끼우면 대화가 통째로 사라지는데, 백그라운드 작업은 대화를
-    // 대신하는 것이 아니라 대화 **옆에서** 동시에 돈다 — 하나를 고르게 만들면 무엇이 도는지
-    // 보려고 무엇을 물었는지를 잃는다. 스트립 하나가 유일한 문이고, 문은 면을 나란히 연다.
+    // 대신하는 것이 아니라 대화와 동시에 돈다. 선반의 한 문이 대화 위 시트를 열고, 로그는
+    // 자리를 지킨 채 아래층으로만 물러난다.
     expect(chat).not.toContain(".agent-chat-tab");
     expect(chatView0).not.toContain('role="tablist"');
     // 대화 면은 어떤 경로로도 숨지 않는다. 이 표면 전체가 존재하는 이유가 그것이다.
     expect(chatView0).not.toContain("agent-chat-log${view");
-    const chatSplitBlock = chat.match(/^\.agent-chat-split \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatSplitBlock).toContain("flex-direction: row;");
-    // 컬럼이 서랍으로 접히는 기준은 **패널 폭**이다. 뷰포트로 가르면 넓은 창 안의 좁은 덱
-    // 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다.
+    // 스플릿은 폐기됐다 — 옆 컬럼이든 아래 서랍이든 열 때마다 로그의 42%를 가져가는 레이아웃
+    // 사건이었다. 시트는 로그의 좌표계(.agent-chat-body) 바닥에 절대배치로 붙어 대화의 아래쪽을
+    // 덮는다: 열어도 로그와 컴포저는 한 픽셀도 움직이지 않는다. Follow 칩(z 3)보다 위층.
+    expect(chat).not.toContain(".agent-chat-split");
+    expect(chat).not.toContain(".agent-chat-grip");
+    expect(chatView0).not.toContain("agent-chat-grip");
+    const sheetBlock = chat.match(/^\.agent-chat-sheet \{[^}]*\}/m)?.[0] ?? "";
+    expect(sheetBlock).toContain("position: absolute;");
+    expect(sheetBlock).toContain("bottom: 0;");
+    expect(sheetBlock).toContain("z-index: 4;");
+    // 시트는 팝업 판독성 레시피를 완주한다 — 틴트만 칠하면 유리 모드에서 아래 대화가 카드
+    // 본문을 뚫고 올라온다. 틴트 + 언더레이 + backdrop-filter 셋이 한 계약이다.
+    expect(sheetBlock).toContain("linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong))");
+    expect(sheetBlock).toContain("var(--glass-underlay);");
+    expect(sheetBlock).toContain("backdrop-filter: var(--glass-backdrop-strong);");
+    // 시트가 덮은 대화는 물러날 뿐 숨지 않는다 — display·visibility가 아니라 opacity다.
+    expect(chat).toContain(".agent-chat-log.is-shaded { opacity: 0.6; }");
+    // 칩 줄의 @container 기준은 여전히 대화 면이고, 패널 루트도 컨테이너로 남는다.
     expect(chatRootBlock).toContain("container-type: inline-size;");
-    expect(chat).toContain("@container (max-width: 719px)");
     // 읽기 폭 프리셋은 measure 변수 하나만 갈아끼운다 — 로그 컬럼·하단 스트립·덱 타일 스트립이
     // 전부 이 변수를 경유하므로, 세 값(100ch/140ch/100%)이 표면을 한 몸으로 묶는 계약이다.
     expect(chatRootBlock).toContain("--agent-chat-measure: 100ch;");
     expect(chat).toMatch(/\.agent-chat\[data-reading-width="wide"\] \{\s*--agent-chat-measure: 140ch;\s*\}/);
     expect(chat).toMatch(/\.agent-chat\[data-reading-width="full"\] \{\s*--agent-chat-measure: 100%;\s*\}/);
-    // 쉬는(정착만 남은) 글리프는 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 정지 링에는
-    // 그 사실이 없다. 중립 링은 hairline-strong만 쓴다(신호색·brass 없음).
-    const composerWorkRestBlock = chat.match(/^\.agent-chat-composer-work-rest \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerWorkRestBlock).toContain("border: 2px solid var(--hairline-strong);");
+    // 쉬는(정착만 남은) 선반은 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 정지 도트에는
+    // 그 사실이 없다. 중립 도트는 hairline-strong만 쓰고, 쉬는 카운트는 중립 잉크다.
+    const stripDotBlock = chat.match(/^\.agent-chat-strip-dot \{[^}]*\}/m)?.[0] ?? "";
+    expect(stripDotBlock).toContain("border: 2px solid var(--hairline-strong);");
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
-      expect(composerWorkRestBlock).not.toContain(signal);
+      expect(stripDotBlock).not.toContain(signal);
     }
+    expect(chat).toContain(".agent-chat-ledge.is-rest .agent-chat-strip-count { color: var(--text-secondary); }");
     // 완료 과정과 Answer는 한 이음새다. 별도 Answer kicker를 다시 세우지 않고, details가 닫히든
     // 열리든 Answer 표식은 과정과 실제 응답 사이의 경계를 지킨다. 과정이 없는 답만 기존 kicker다.
     expect(chatView0).toContain('className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`}');
@@ -2931,16 +2958,12 @@ describe("Instrument core design contract", () => {
     // 바에 선 컨트롤들이 한 문법으로 읽힌다. 라벨을 두르면 도는 동안에만 서는 문 하나가 바에서
     // 가장 큰 물건이 되어, 상시로 읽어야 할 좌표와 계기를 밀어낸다.
     const composerAttachBlock = chat.match(/^\.agent-chat-composer-attach \{[^}]*\}/m)?.[0] ?? "";
-    // 한 행에 선 글리프 버튼들은 한 문법을 쓴다 — 백그라운드 작업 글리프도 같은 또래다.
+    // 한 행에 선 글리프 버튼들은 한 문법을 쓴다. 백그라운드 작업 글리프는 이 행을 떠났다 —
+    // 그 몫은 컴포저 위 선반(.agent-chat-ledge)이 말로 진다.
     for (const glyph of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;"]) {
       expect(composerAttachBlock, glyph).toContain(glyph);
       expect(composerStopBlock, glyph).toContain(glyph);
-      expect(composerWorkBlock, glyph).toContain(glyph);
     }
-    // 작업 글리프의 표식은 도는 중 14px·정착 13px이라 패딩만으로는 이웃보다 작은 상자가 된다.
-    // 상자를 못박아 네 버튼이 같은 크기와 같은 클릭 과녁을 갖고, 잡이 끝나도 행이 움찔하지 않는다.
-    expect(composerWorkBlock).toContain("width: 30px;");
-    expect(composerWorkBlock).toContain("height: 30px;");
     // 상자는 표식이 아니라 글리프 규격을 따른다 — 이웃이 16px svg를 싣고 있어, 표식 크기를 그대로
     // 상자로 쓰면 같은 패딩에도 버튼만 작아지고 클릭 과녁이 나란히 어긋난다(실측 25 vs 30).
     const stopMarkBlock = chat.match(/^\.agent-chat-composer-stop-mark \{[^}]*\}/m)?.[0] ?? "";
@@ -4380,10 +4403,12 @@ describe("War Room deck panel grammar", () => {
     expect(logOnTile).not.toContain("45px");
     expect(logOnTile).not.toContain("padding-bottom");
     expect(logOnTile).not.toMatch(/(?:^|[^-])padding:/);
-    // 백그라운드 작업 글리프는 컴포저 툴 행 안에 산다 — 컴포저가 카드에서 숨는 순간(위 목록) 글리프도
-    // 함께 사라진다. 스트립이 컴포저 경계에 걸터앉던 시절의 별도 카드 앵커 규칙은 그와 함께 폐기됐다.
+    // 스트립이 컴포저 경계에 걸터앉던 시절의 별도 카드 앵커 규칙은 폐기된 채다.
     expect(terminalChatCss).not.toContain(".canvas-operation.is-deck-tile .agent-chat-strip");
     expect(hide).not.toContain("agent-chat-strip");
+    // 선반과 시트도 카드에서는 서지 않는다 — 카드는 읽는 자리라 문이 없고, 문이 없으면 시트도 없다.
+    expect(hide).toContain(".canvas-operation.is-deck-tile .agent-chat-ledge,");
+    expect(hide).toContain(".canvas-operation.is-deck-tile .agent-chat-sheet,");
   });
 
   it("gives the promotion surface the body and leaves the caption its own controls", () => {
