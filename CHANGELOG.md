@@ -5,6 +5,35 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.82.0] - 2026-09-02
+
+### fleet-cli
+
+#### Added
+- Add Antigravity Gemini 3.8 Flash with low, medium, and high reasoning effort.
+
+#### Fixed
+- Accept tuple-shaped tool schemas when using Antigravity Gemini models.
+
+### fleet-console
+
+#### Added
+- Add Antigravity Gemini 3.8 Flash to the AI Gateway model picker.
+- Zooming the Cruise canvas out past the readability floor now stands a fleet map in place of the panels: every Theater becomes a zone, every Operation a state-colored dot you can click to go there, a Theater's nameplate brings that Theater up, and zooming back in lands on the dot you were pointing at.
+
+#### Changed
+- Show one live line per chat turn: the tally tail cycles the dots in "Thinking..." during model gaps instead of standing a boxed row, the ring and shimmer only run while that tail says something, and streaming answers carry a caret and a fading last line.
+- Replace the chat ledger's text glyphs (tally families, job anchors, work pane, Session Analyst sigils) with a uniform monoline icon set.
+- Background work in the chat view now lives on a ledge above the composer: the spinner and status text highlight together and toggle the job list as a sheet over the conversation, while Escape or a click on the conversation hides it again. The ledge replaces the composer glyph and the side-by-side work pane.
+- War Room deck density now stays between 1.0x and 2.0x; the 0.4x map density is retired in favor of the Cruise fleet map.
+- Align the Chat work shelf with the composer and give short prompts a more compact writing area.
+
+#### Fixed
+- Render Hangul inside Session Analyst artifacts with the bundled Console fonts (Pretendard for prose, the coding font for labels and code) instead of the OS fallback.
+- Render Hangul in monospace UI text (Session Analyst caption, chips, and status lines) with the bundled coding font instead of the OS fallback.
+- Keep fast Shell activity legible as one continuous running-to-complete row in Chat Mode.
+- Tint running and failed step borders in oklab so the Whites theme no longer shows a greenish edge instead of the status color.
+
 ## [1.81.0] - 2026-09-01
 
 ### fleet-console
