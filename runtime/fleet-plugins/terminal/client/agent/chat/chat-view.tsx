@@ -664,6 +664,8 @@ function ChatTurn({
   const t = getT(language);
   const view = splitAgentChatTurn(turn);
   const working = turn.state === "working";
+  const continuityItem = useFastShellContinuity(turn);
+  const holdingContinuity = continuityItem !== null;
   // 이 턴이 낳은 잡 중 아직 도는 것. 접힘 줄이 이 수를 말하지 않으면, 접힘이 "다 끝났다"를
   // 뜻하게 되고 그것이 이 표면을 만든 이유인 거짓말이다.
   const stillRunning = turn.items.reduce((count, item) => {
@@ -721,13 +723,28 @@ function ChatTurn({
                   onOpenJob={onOpenJob}
                   onAnswer={onAnswer}
                   working
+                  continuityItem={continuityItem}
                   pending={view.streamingText === null
+                    && continuityItem === null
                     && !view.ledger.some((item) => item.state === "running")
                     // 답을 기다리는 동안에는 아무도 생각하지 않는다 — 카드 아래에서 링이 계속 돌면
                     // 화면이 두 사실을 동시에 말하고, 사용자는 자기 차례인지 알 수 없다.
                     && !view.awaiting}
                 />
               </>
+            ) : holdingContinuity ? (
+              // 빠른 Shell이 턴과 함께 닫혀도 라이브 줄을 새 접힘으로 바꾸지 않는다. 같은 줄이 같은
+              // 자리에서 완료로 변한 뒤 물러난다 — 명령과 Answer는 이미 도착했고, 늦추는 것은 이
+              // 시각 개체 하나뿐이다.
+              <Ledger
+                operationId={operationId}
+                items={view.ledger}
+                language={language}
+                jobsByToolUse={jobsByToolUse}
+                onOpenJob={onOpenJob}
+                onAnswer={onAnswer}
+                continuityItem={continuityItem}
+              />
             ) : hasSettledWork ? (
               <WorkFold
                 durationMs={turn.durationMs}
@@ -831,6 +848,7 @@ function Ledger({
   onAnswer,
   working = false,
   pending = false,
+  continuityItem = null,
 }: {
   readonly operationId: string;
   readonly items: readonly AgentChatTurnItem[];
@@ -842,16 +860,22 @@ function Ledger({
   readonly working?: boolean;
   /** 라이브 줄의 꼬리에 "생각 중…"을 붙인다 — 도구도 글자도 없는 구간의 유일한 신호다. */
   readonly pending?: boolean;
+  readonly continuityItem?: AgentChatTurnItem | null;
 }) {
   const t = getT(language);
   const hasJob = React.useCallback(
     (item: AgentChatTurnItem) => item.id !== undefined && jobsByToolUse.has(item.id),
     [jobsByToolUse],
   );
-  const segments = segmentAgentChatLedger(items, hasJob);
-  if (segments.length === 0 && !pending) return null;
+  // continuityItem은 마지막 Shell 하나다. 앞서 끝난 작업은 그대로 남기고, 그 항목만 평소 집계에서
+  // 빼 같은 자리에 전용 상태 행으로 세운다 — 원장 전체가 700ms 동안 사라지면 연속성이 아니다.
+  const ledgerItems = continuityItem?.id !== undefined
+    ? items.filter((item) => item.id !== continuityItem.id)
+    : items;
+  const segments = segmentAgentChatLedger(ledgerItems, hasJob);
+  if (segments.length === 0 && !pending && continuityItem === null) return null;
   return (
-    <div className="agent-chat-ledger">
+    <div className={`agent-chat-ledger${continuityItem !== null ? " is-continuity" : ""}`}>
       {segments.map((segment, index) => {
         // 도는 턴의 마지막 구간만 라이브다 — 그 구간의 꼬리 한 줄이 "지금 무엇을 하는가"를 진다.
         const live = working && index === segments.length - 1;
@@ -897,6 +921,7 @@ function Ledger({
           </div>
         );
       })}
+      {continuityItem !== null ? <ContinuityTally item={continuityItem} language={language} /> : null}
       {/* 첫 도구가 나가기 전의 첫 공백 — 세울 구간이 없으므로 빈 집계에 꼬리만 단다. */}
       {pending && segments.length === 0
         ? <Tally groups={[]} folded={[]} language={language} live tails={[]} thinking />
@@ -916,6 +941,70 @@ function Ledger({
  * 도는 스텝 사이에 끼는데, 거기서 멈추면 앞의 스텝이 자기 행을 되찾는다. 앵커는 태어난 자리를
  * 지키는 물건이므로 걷지 않고 지나가기만 한다 — 그래서 반환은 위치가 아니라 조각의 집합이다.
  */
+const FAST_SHELL_PERCEPTION_MS = 480;
+const FAST_SHELL_COMPLETION_MS = 220;
+
+/**
+ * 빠른 Shell의 마지막 상태를 잠시 같은 자리에 붙든다. 서버 상태와 Answer는 그대로 앞서가고,
+ * 여기서 늦추는 것은 live Tally 하나뿐이다. 시작·결과 시각이 없는 재생 턴이나 다른 도구에는
+ * 개입하지 않아 과거 로그를 다시 열 때마다 애니메이션이 되살아나지 않는다.
+ */
+function useFastShellContinuity(turn: AgentChatTurn): AgentChatTurnItem | null {
+  const candidate = [...turn.items].reverse().find((item) => (
+    item.type === "tool"
+    && agentChatToolFamily(item.name) === "run"
+    && item.startedAt !== undefined
+    && (item.state === "running" || (
+      item.settledAt !== undefined
+      && item.settledAt - item.startedAt < FAST_SHELL_PERCEPTION_MS
+    ))
+  ));
+  const perceptionAt = candidate?.startedAt !== undefined ? candidate.startedAt + FAST_SHELL_PERCEPTION_MS : 0;
+  const deadline = perceptionAt + FAST_SHELL_COMPLETION_MS;
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (candidate === undefined || candidate.state === "running" || now >= deadline) return;
+    const next = now < perceptionAt ? perceptionAt : deadline;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, next - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [candidate?.id, candidate?.state, deadline, now, perceptionAt]);
+  if (candidate === undefined) return null;
+  if (candidate.state === "running") return candidate;
+  if (now >= deadline) return null;
+  // 결과가 먼저 돌아와도 480ms까지는 running 모습 그대로다. 그 뒤 같은 줄이 완료형으로 변한다.
+  return now < perceptionAt ? { ...candidate, state: "running" } : candidate;
+}
+
+/** 같은 live Tally가 결과를 받은 뒤 완료형으로 변한 모습. 새 행이나 toast를 만들지 않는다. */
+function ContinuityTally({
+  item,
+  language,
+}: {
+  readonly item: AgentChatTurnItem;
+  readonly language: "en" | "ko";
+}) {
+  const running = item.state === "running";
+  const failed = item.state === "fail";
+  const elapsed = item.startedAt !== undefined && item.settledAt !== undefined
+    ? formatDuration(Math.max(0, item.settledAt - item.startedAt))
+    : null;
+  const verb = running ? runningVerb(item.name ?? "", language) : pastVerb(item.name ?? "", language);
+  return (
+    <div className={`agent-chat-tally is-continuity is-${item.state ?? "done"}`} role="status" aria-atomic="true">
+      {running
+        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+        : <span className="agent-chat-continuity-mark" aria-hidden="true">{failed ? "✕" : "✓"}</span>}
+      <span className={`agent-chat-tally-text${running ? " agent-chat-live-text" : ""}`}>
+        <span className="agent-chat-tally-clause">
+          <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name="run" /></span>
+          <span>{`${verb}${item.detail ? ` ${item.detail}` : ""}`}</span>
+        </span>
+      </span>
+      {!running && elapsed !== null ? <span className="agent-chat-continuity-elapsed">{elapsed}</span> : null}
+    </div>
+  );
+}
+
 function runningTails(parts: readonly AgentChatLedgerPart[]): ReadonlySet<AgentChatLedgerPart> {
   const hoisted = new Set<AgentChatLedgerPart>();
   for (let at = parts.length - 1; at >= 0; at -= 1) {

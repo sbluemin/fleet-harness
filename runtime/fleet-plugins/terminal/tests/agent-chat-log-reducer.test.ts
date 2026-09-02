@@ -289,6 +289,42 @@ describe("chat log steps", () => {
     expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({ state: "ok", result: "File created" });
   });
 
+  it("keeps live tool timing on the same step through completion", () => {
+    let state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start", receivedAt: 1_000 },
+      { kind: "tool-start", id: "t1", name: "Bash", receivedAt: 1_100 },
+      { kind: "tool", name: "Bash", detail: "pwd", id: "t1", receivedAt: 1_120 },
+    ]);
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({
+      id: "t1",
+      state: "running",
+      startedAt: 1_100,
+    });
+
+    state = fold([{ kind: "tool-result", id: "t1", ok: true, summary: "", receivedAt: 1_180 }], state);
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({
+      id: "t1",
+      state: "ok",
+      startedAt: 1_100,
+      settledAt: 1_180,
+    });
+  });
+
+  it("does not attach live timing to replayed tools", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "turn-start", receivedAt: 1_000 },
+      { kind: "tool", name: "Bash", detail: "pwd", id: "t1", receivedAt: 1_100 },
+      { kind: "tool-result", id: "t1", ok: true, summary: "", receivedAt: 1_180 },
+      { kind: "replay-end", turns: 1 },
+    ]);
+    expect(state.turns.at(-1)?.items.at(-1)).not.toHaveProperty("startedAt");
+    expect(state.turns.at(-1)?.items.at(-1)).not.toHaveProperty("settledAt");
+  });
+
   it("settles a still-running step when the turn closes without its result", () => {
     const state = fold([
       { kind: "replay-start" },

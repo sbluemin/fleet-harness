@@ -481,6 +481,32 @@
   color: var(--text-secondary);
 }
 
+/* 빠른 Shell은 이 한 줄을 재사용해 running → completed로 변한다. 새 완료 행으로 바꾸지 않고
+   마크만 같은 폭에서 교체해 텍스트의 좌표를 지킨다. 상태색은 마크만 진다. */
+.agent-chat-tally.is-continuity {
+  width: 100%;
+  color: var(--text-secondary);
+  transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-continuity-mark {
+  width: 9px;
+  flex: none;
+  text-align: center;
+  color: var(--positive);
+}
+
+.agent-chat-tally.is-continuity.is-fail .agent-chat-continuity-mark {
+  color: var(--coral);
+}
+
+.agent-chat-continuity-elapsed {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 좌→우 명도 물결.
    [doctrine] 진행은 이미 링(aurora)이 말한다. 이 물결은 같은 사실을 두 번 말하는 것이 아니라
    "이 줄이 아직 자라고 있다"를 말하므로 색 채널을 하나도 빌리지 않는다 — 신호(aurora)도,
