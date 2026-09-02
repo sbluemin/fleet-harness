@@ -113,20 +113,6 @@ describe("isWarRoomEmptyReleaseTarget", () => {
     canvas.remove();
   });
 
-  it("releases on an empty War Room map field, not on a map marker", () => {
-    const canvas = el(`<main class="operations-canvas is-triage">
-      <section class="canvas-triage-deck is-map-mode">
-        <div class="canvas-triage-map">
-          <button type="button" data-triage-map-dot="op-1">Alpha</button>
-        </div>
-      </section>
-    </main>`);
-    document.body.append(canvas);
-    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".canvas-triage-map"))).toBe(true);
-    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector("[data-triage-map-dot]"))).toBe(false);
-    canvas.remove();
-  });
-
   it("does not treat Cruise empty sea as a War Room empty release", () => {
     const canvas = el(`<main class="operations-canvas"><div class="operations-canvas-world"></div></main>`);
     document.body.append(canvas);

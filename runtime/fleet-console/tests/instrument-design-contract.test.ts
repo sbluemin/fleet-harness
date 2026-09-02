@@ -1711,26 +1711,22 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
     // Watch Deck 칸이 자기 패널에 실어 주는 도착·착지 신호도 같은 reduced-motion 봉인을 공유한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,");
-    // 지도 점의 착지 플래시도 칸과 같은 봉인을 공유한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-landed,");
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,");
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,");
-    // 작전지도 LOD 전환(cross-fade·마커 강조)도 같은 봉인 안에서 즉시 상태로 떨어진다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-map,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot-label {");
-    // 지도 점의 대기 링 맥동과 전 상태 유영도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-awaiting::after,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot,");
-    // 착지 flash 우선 규칙은 봉인 항목들보다 세다 — 결합 셀렉터를 봉인에 직접 올린다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,");
-    // 지도 Quick-Look 등장 연출도 같은 봉인을 공유한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-map-quicklook,");
+    // 함대 지도의 등장·퇴장과 월드 cross-fade, 마커 강조 전환도 같은 봉인 안에서 즉시 상태로 떨어진다.
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map,");
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map.is-leaving,");
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot,");
+    expect(reducedMotionBlock).toContain(".operations-canvas-world,");
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot-label {");
+    // 지도 점의 대기 링 맥동도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot.is-awaiting::after,");
     expect(reducedMotionBlock).toContain("transform: scale(1.35);");
-    // 밀도 변형(카드↔점)은 JS가 reduced-motion에서 프레임 자체를 만들지 않고, 남은 표면
-    // cross-fade만 봉인에서 끊는다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards,");
+    // War Room 덱의 지도 밀도는 퇴역했다 — 덱은 1×~2× 카드뿐이고 지도는 Cruise 축소가 세운다.
+    expect(components).not.toContain(".canvas-triage-deck.is-map-mode");
+    expect(components).not.toContain("canvas-triage-map");
+    expect(components).not.toContain("is-map-quicklook");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {
@@ -1873,16 +1869,16 @@ describe("Instrument core design contract", () => {
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
     // The group header does not repeat the rounded activity mark; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
-    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
+    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-fleet-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     // 미확인 완료는 유휴와 같은 --positive를 받는다 — 색은 "끝난 일"을 말하고, 미확인은 모션이 말한다.
-    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.tenant-beacon\.is-unseen,\s*\.canvas-triage-map-dot\.is-idle,\s*\.canvas-triage-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-triage-map-dot.is-ended,\n.side-bar-status-section--ended {");
+    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.tenant-beacon\.is-unseen,\s*\.canvas-fleet-map-dot\.is-idle,\s*\.canvas-fleet-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-fleet-map-dot.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
-    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
-    expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
+    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-fleet-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
+    expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
     expect(components).not.toContain(".canvas-triage-deck-card");
-    expect(components).toMatch(/\.canvas-triage-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
+    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).not.toMatch(/\.side-bar-status-section \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
@@ -1929,8 +1925,7 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/@keyframes beacon-unseen-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
     expect(theme).not.toContain("@keyframes beacon-unseen-blink");
     // 지도 점은 유영 애니메이션이 점 자체를 소유하므로 느린 점등을 ::after 후광에 싣는다.
-    expect(components).toMatch(/\.canvas-triage-map-dot\.is-unseen::after \{[^}]*animation:\s*beacon-unseen-blink 3\.6s/);
-    expect(components).toMatch(/\.canvas-triage-map-dot\.is-unseen\.is-deferred::after \{[^}]*animation:\s*none/);
+    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-unseen::after \{[^}]*animation:\s*beacon-unseen-blink 3\.6s/);
     // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
@@ -1942,7 +1937,9 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("const markVisual = mark ?? status;");
     // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
     expect(commandBand).not.toContain("resolveOperationMarkVisual");
-    expect(watchDeck).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
+    // 지도 점은 함대 지도(Cruise 축소)가 그린다 — 덱은 칸에 패널을 세울 뿐 마크 축을 소비하지 않는다.
+    expect(source("canvas/fleet-map.tsx")).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
+    expect(watchDeck).not.toContain("resolveOperationMarkVisual");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
@@ -3295,7 +3292,7 @@ describe("Instrument core design contract", () => {
     expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
     expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
     // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
-    expect(components).not.toContain(".canvas-triage-map-dot.is-shell,");
+    expect(components).not.toContain(".canvas-fleet-map-dot.is-shell,");
     expect(components).not.toContain(".tenant-beacon.is-shell");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
@@ -4297,14 +4294,15 @@ describe("War Room deck panel grammar", () => {
     expect(components).not.toContain("canvas-triage-deck-card");
   });
 
-  it("never magnifies a hovered card — the cell's transform belongs to the density morph alone", () => {
+  it("never magnifies a hovered card — the cell owns no transform at all", () => {
     // hover 확대는 폐기됐다. 겨눈 칸은 링으로만 말하고(아래 hover 계약), 칸을 키우지 않는다 —
-    // 확대는 이웃을 덮어 판 전체를 읽지 못하게 만드는 조작이었다.
+    // 확대는 이웃을 덮어 판 전체를 읽지 못하게 만드는 조작이었다. 지도 밀도 변형까지 퇴역해
+    // 칸의 transform을 쓰는 규칙은 하나도 남지 않는다.
     expect(components).not.toContain(".canvas-triage-deck-cell.is-quicklook");
     expect(components).not.toContain("--triage-quicklook-scale");
     expect(deck).not.toContain("is-quicklook\"");
-    // 칸의 transform 소유자는 밀도 변형 하나뿐이다.
-    expect(components).toContain(".canvas-triage-deck-cell.is-morphing {");
+    expect(components).not.toContain(".canvas-triage-deck-cell.is-morphing");
+    expect(deck).not.toContain("is-morphing");
     // 전이 소유가 칸이므로 reduced-motion도 칸을 끊는다.
     const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell \{\s*transition: none;\s*\}/);
@@ -4330,10 +4328,9 @@ describe("War Room deck panel grammar", () => {
     // is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를 키프레임으로 물고 있어,
     // 같은 두 속성에 얹은 hover 선언은 애니메이션 오리진에 진다 — 신호가 가장 급한 카드에서만
     // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 box-shadow가 소유한다.
-    const hover = components.match(/\.canvas-triage-deck-cell:hover:not\(\.is-morphing\),\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\):not\(\.is-morphing\) \{[^}]*\}/)?.[0] ?? "";
+    const hover = components.match(/\.canvas-triage-deck-cell:hover,\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\) \{[^}]*\}/)?.[0] ?? "";
     expect(hover).toContain("box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
     expect(hover).toContain("z-index: 6;");
-    // 변형 중인 칸은 자기 그림자와 z-index를 이미 소유한다 — 제외하지 않으면 그 칸이 떨어진다.
     expect(hover).not.toContain("--shadow-floating");
     // 위치 마크는 패널의 맥동 속성을 절대 건드리지 않는다.
     expect(components).not.toContain(".canvas-triage-deck-cell:hover > .canvas-triage-deck-mount > .canvas-operation {");
@@ -4346,17 +4343,6 @@ describe("War Room deck panel grammar", () => {
     const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
     expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));");
     expect(wash).toContain("background-clip: padding-box;");
-  });
-
-  it("mixes the map quick-look border in oklab so brass stays on the location channel", () => {
-    // oklch는 hue를 극좌표 짧은 호로 보간한다. brass(78)와 surface-rim(245)의 60% 믹스는
-    // 실측 hue 144.8(Instrument)·144.2(Maritime)·354(Carbon)에 착지해, 위치 채널이 신호 채널
-    // positive(160·152) 옆에 앉거나 마젠타로 넘어갔다. 같은 함정을 캡션 포커스 워시가 이미
-    // oklab으로 옮겨 해결했다. War Room 안에서는 지도 점 hover(raw brass)·카드 hover와
-    // 같은 색이어야 하므로 이 자리도 oklab이다.
-    const mapQuicklook = components.match(/\.canvas-triage-deck-cell\.is-map-quicklook > \.canvas-triage-deck-mount > \.canvas-operation \{[^}]*\}/)?.[0] ?? "";
-    expect(mapQuicklook).toContain("border-color: color-mix(in oklab, var(--brass) 60%, var(--surface-rim));");
-    expect(mapQuicklook).not.toContain("in oklch");
   });
 
   it("keeps the deck tile's live body out of reach of both pointer and keyboard", () => {
@@ -4409,15 +4395,6 @@ describe("War Room deck panel grammar", () => {
     // 그 규칙이 공용 컨트롤 블록보다 앞서 잡혀 계약 검사를 오탐시킨다.
     expect(pick).toContain("z-index: 5;");
     expect(deck).toContain('className="canvas-triage-deck-pick"');
-  });
-
-  it("raises the hovered cell onto the plate for the map Quick-Look", () => {
-    // 지도 모드에서도 확대창은 같은 패널이다 — 별도 얼굴을 그리면 밀도마다 다른 물건이 된다.
-    expect(deck).toContain('${mapLook ? "is-map-quicklook" : ""}');
-    const raised = components.match(/\.canvas-triage-deck\.is-map-mode \.canvas-triage-deck-band-cards \.canvas-triage-deck-cell\.is-map-quicklook \{[^}]*\}/)?.[0] ?? "";
-    expect(raised).toContain("position: fixed;");
-    expect(raised).toContain("visibility: visible;");
-    expect(raised).toContain("pointer-events: none;");
   });
 
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {

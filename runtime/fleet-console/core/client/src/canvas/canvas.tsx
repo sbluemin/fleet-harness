@@ -20,7 +20,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../operation-activ
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -28,11 +28,16 @@ import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
+import { FleetMap } from "./fleet-map.js";
+import { resolveFleetMapActive } from "./fleet-map-layout.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+
+// 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
+const FLEET_MAP_LEAVE_MS = 320;
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -776,6 +781,34 @@ export function OperationsCanvas({
       ]
     : theaterOperations;
   const hasContent = triageActive ? triageStage !== null : hasVisibleCanvasContent(pluginOperations, minimizedSet);
+  // ── 함대 지도 ─────────────────────────────────────────────────────────────
+  // Cruise가 판독 한계 아래로 축소되면 패널 대신 함대 지도가 선다. 판정은 히스테리시스라 직전 값을
+  // ref가 들고, 모드·포커스 층이 서 있는 동안은 항상 꺼진다 — 그 층들은 자기 기하를 쓰므로 줌이
+  // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
+  // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
+  const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
+  const fleetMapMinimizedSet = new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
+  const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
+  const fleetMapActiveRef = useRef(false);
+  fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
+    && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);
+  const fleetMapActive = fleetMapActiveRef.current;
+  // 퇴장은 한 박자 남긴다 — 판이 줌 한 노치에 즉시 사라지면 패널의 복귀 페이드와 어긋나 화면이 빈다.
+  const [fleetMapLeaving, setFleetMapLeaving] = useState(false);
+  const previousFleetMapActiveRef = useRef(false);
+  useEffect(() => {
+    const previous = previousFleetMapActiveRef.current;
+    previousFleetMapActiveRef.current = fleetMapActive;
+    if (fleetMapActive || !previous || prefersReducedMotion()) {
+      setFleetMapLeaving(false);
+      return;
+    }
+    setFleetMapLeaving(true);
+    const timer = window.setTimeout(() => setFleetMapLeaving(false), FLEET_MAP_LEAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [fleetMapActive]);
+  // 판의 종횡비 — 층은 아레나 안쪽 26px 인셋에 서고 캡션 한 줄(≈28px)을 위에 둔다.
+  const fleetMapAspect = Math.max(0.2, (arena.width - 52) / Math.max(1, arena.height - 52 - 28));
   useEffect(() => {
     if (companionOperationId === null || currentPanelCompanion !== null) return;
     // ops 푸시 직후 대상 Operation이 목록에서 일시적으로 빠지는 레이스가 있어, 방금 연 분석
@@ -867,7 +900,7 @@ export function OperationsCanvas({
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""} ${focusFadeTransitionReady ? "" : "is-focus-fade-settling"}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""} ${fleetMapActive ? "is-fleet-map" : ""} ${focusFadeTransitionReady ? "" : "is-focus-fade-settling"}`}
       onPointerDown={(event) => {
         // 메뉴 내부 클릭(캔버스 소유 메뉴는 <main> 자손이라 버블로 도달한다)은 실행 항목의
         // click을 살리기 위해 닫기 신호를 본내지 않는다 — data-canvas-blocker는 전파를 멈추지 않는다.
@@ -1093,6 +1126,25 @@ export function OperationsCanvas({
           });
         })}
       </div>
+      {fleetMapActive || fleetMapLeaving ? (
+        <FleetMap
+          theaters={state.theaters}
+          operations={fleetMapOperations}
+          operationRuntime={state.operationRuntime}
+          activeTheaterId={state.activeTheaterId}
+          aspect={fleetMapAspect}
+          leaving={!fleetMapActive}
+          // 마커의 자리는 라이브 캔버스 배치가 정본이다 — 로드되지 않은 Theater는 저장 스냅샷으로 읽는다.
+          geometryFor={(operation) => operation.theaterId === state.activeTheaterId
+            ? canvas.operations[operation.id] ?? operation.geometry ?? null
+            : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
+          // 점을 고르면 그 Operation으로 내려간다 — 페이지의 포커스 경로가 Theater 전환과 줌 복귀를
+          // 함께 지고, 포커스 줌 하한(0.25)이 지도 이탈 임계 위라 판은 그 자리에서 걷힌다.
+          onPick={onFocus}
+          onOperationContextMenu={onOpenOperationMenu}
+          onTheaterContextMenu={openTriageTheaterLaunchMenu}
+        />
+      ) : null}
       {formationView ? (
         <>
           <div className="canvas-mode-frame" aria-hidden="true">
@@ -1144,16 +1196,8 @@ export function OperationsCanvas({
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
         onBeforePick={triageDeckZoom.control.snapZoomTween}
-        mapGeometryFor={(operation) => operation.theaterId === state.activeTheaterId
-          ? canvas.operations[operation.id] ?? operation.geometry ?? null
-          : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
         onPanelSlotRef={registerTriageDeckSlot}
         freshOperationIds={freshDeckOperationIds}
-        onMapMarkerMove={(operationId, theaterId, geometry) => {
-          // 지도에서 옮긴 자리는 캔버스의 자리다 — 라이브 좌표를 먼저 세우고 durable에도 남긴다.
-          setTheaterOperationGeometry(theaterId, operationId, geometry);
-          void updatePluginOperationGeometry(operationId, geometry);
-        }}
         onOperationContextMenu={onOpenOperationMenu}
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
       />

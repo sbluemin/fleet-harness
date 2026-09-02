@@ -23,7 +23,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDesc
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { getTheaterCanvasSnapshot, loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
 import { getIdleArrivalIds, markIdleArrival, resetIdleArrivalForTests } from "../core/client/src/operation-marks.js";
-import { isTriageDeckMapMode, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom } from "../core/client/src/canvas/triage-store.js";
+import { clampTriageDeckZoom, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom } from "../core/client/src/canvas/triage-store.js";
 import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -86,13 +86,11 @@ describe("War Room canvas controls reach", () => {
   it("opens canvas controls on unowned canvas space at every deck density", () => {
     renderCanvas();
     const canvas = container!.querySelector<HTMLElement>("main.operations-canvas")!;
-    // 밀도 칩이 순환시키는 실제 프리셋 전부. 0.4만 지도로 넘어가고 1.0/1.6은 카드다 —
-    // 카드 밀도에서 Theater를 소유한 표면은 밴드 헤더 한 줄뿐이라, 판 바닥이 아무것도 열지 않으면
-    // 실행 진입점이 밀도에 따라 사라진다.
-    expect([1.0, 1.6].map(isTriageDeckMapMode)).toEqual([false, false]);
-    expect(isTriageDeckMapMode(0.4)).toBe(true);
+    // 밀도 칩이 순환시키는 실제 프리셋 전부와 휠 상한. 덱은 1×~2× 카드뿐이다 — Theater를 소유한
+    // 표면은 밴드 헤더 한 줄뿐이라, 판 바닥이 아무것도 열지 않으면 실행 진입점이 밀도에 따라 사라진다.
+    expect(clampTriageDeckZoom(0.4)).toBe(1.0);
 
-    for (const zoom of [1.0, 1.6, 0.4]) {
+    for (const zoom of [1.0, 1.6, 2.0]) {
       act(() => setTriageDeckZoom(zoom));
       const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 240 });
       act(() => canvas.dispatchEvent(menu));
