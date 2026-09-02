@@ -331,10 +331,11 @@ export function AgentChatView({
     workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
   }, [workOpen, selectedJob?.id]);
 
-  // Esc는 이 채팅 패널 안에서 생긴 키만 듣는다. document에 캡처 리스너를 걸면 다른 패널의
-  // 컴포저가 턴을 멈추려고 누른 Esc까지 먼저 삼키고, 열린 시트가 여럿이면 전부 함께 접힌다.
-  const onPanelKeyDownCapture = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (!workOpen || event.key !== "Escape") return;
+  // Esc는 이 채팅 패널 안에서 생긴 키만 bubble 단계에서 듣는다. document에 걸면 다른 패널의
+  // Esc까지 삼키고, capture 단계면 컴포저의 더 구체적인 덱 닫기보다 먼저 시트를 접는다. 자식이
+  // 이미 소비한 Esc와 IME 조합 중 Esc는 그대로 두고, 남은 일반 Esc만 시트를 닫는다.
+  const onPanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!workOpen || event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
     event.preventDefault();
     event.stopPropagation();
     collapseWork();
@@ -358,7 +359,7 @@ export function AgentChatView({
          마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
       style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
-      onKeyDownCapture={onPanelKeyDownCapture}
+      onKeyDown={onPanelKeyDown}
     >
       <span className="agent-chat-sr-only" role="status" aria-atomic="true">{answerAnnouncement}</span>
       {/* 대화 면 하나다. 백그라운드 작업은 옆 컬럼도 아래 서랍도 아니라, 컴포저 위 선반에서

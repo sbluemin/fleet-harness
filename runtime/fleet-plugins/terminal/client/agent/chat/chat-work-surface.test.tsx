@@ -201,6 +201,41 @@ describe("chat work surface — panel controls", () => {
     expect(document.activeElement).toBe(returnedJob);
   });
 
+  it("lets a child control consume Escape before the sheet", () => {
+    // 컴포저 덱은 시트보다 위의 열린 표면이다. 자식이 Esc를 소비하면 패널의 bubble 핸들러까지
+    // 오지 않아 시트는 그대로 남는다 — capture 단계에서는 이 위계를 뒤집는다.
+    logState = stateWith([job()]);
+    mount();
+    act(() => { door()?.click(); });
+    const input = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, { once: true });
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+
+    act(() => { input?.dispatchEvent(escape); });
+
+    expect(workPane()).not.toBeNull();
+    expect(escape.defaultPrevented).toBe(true);
+  });
+
+  it("ignores Escape during IME composition", () => {
+    // 조합 중 Esc는 입력기 소유다. 컴포저와 같은 경계로 시트도 듣지 않는다.
+    logState = stateWith([job()]);
+    mount();
+    act(() => { door()?.click(); });
+    const input = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, isComposing: true });
+
+    act(() => { input?.dispatchEvent(escape); });
+
+    expect(workPane()).not.toBeNull();
+    expect(escape.defaultPrevented).toBe(false);
+  });
+
   it("does not consume Escape from outside this chat panel", () => {
     // 한 화면에 채팅 패널이 여럿 산다. document 캡처 리스너를 쓰면 다른 패널의 컴포저가 보낸
     // Esc까지 먼저 삼켜 이 시트를 접고, 열린 시트가 여럿이면 전부 함께 접힌다.
