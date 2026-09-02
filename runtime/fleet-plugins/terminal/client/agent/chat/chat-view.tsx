@@ -260,7 +260,7 @@ export function AgentChatView({
     setOpenJobId(id);
     setWorkOpen(true);
   }, []);
-  // 컴포저의 백그라운드 작업 글리프가 여는 문 — 특정 잡을 고르지 않고 목록(작업 면)을 연다.
+  // 선반의 작업 상태가 여는 면 — 특정 잡을 고르지 않고 목록(작업 면)을 연다.
   const openWork = React.useCallback(() => {
     setOpenJobId(null);
     setWorkOpen(true);
@@ -327,7 +327,7 @@ export function AgentChatView({
 
   // 열리거나 목록·상세가 갈아 끼워지면 보이는 내용의 첫 컨트롤로 초점을 보낸다. 시트는 DOM에서
   // 선반보다 앞에 있고, 뷰를 바꾼 버튼은 그 순간 사라진다 — 이 좌표를 듣지 않으면 Tab은 컴포저로
-  // 건너뛰고 Esc도 패널 밖 body에서 시작한다. 접을 때는 언제나 선반의 문으로 돌아간다.
+  // 건너뛰고 Esc도 패널 밖 body에서 시작한다. 접을 때는 언제나 선반의 상태 버튼으로 돌아간다.
   React.useEffect(() => {
     if (!workOpen) return;
     workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
@@ -474,9 +474,8 @@ export function AgentChatView({
         ) : null}
         </div>
 
-        {/* 선반 — 잡이 하나라도 태어난 세션에 서는 한 줄. 무엇이 도는지 말로 말하고, 상태 옆
-            문은 자기 동사(Show/Hide)를 단다. 시트가 열려도 이 줄은 같은 자리에 그대로다:
-            들어온 문이 나가는 문이고, 그 문은 옮겨 다니지 않는다. */}
+        {/* 선반 — 잡이 하나라도 태어난 세션에 서는 한 줄. 스피너와 상태 문구가 한 덩어리의
+            버튼으로 시트를 여닫는다. 시트가 열려도 같은 자리에서 같은 상태를 계속 말한다. */}
         {hasJobs ? (
           <WorkLedge
             jobs={state.jobs}
@@ -1601,12 +1600,12 @@ function StageDots({ stages }: { readonly stages: readonly AgentChatJob["stages"
 }
 
 /**
- * 선반 — 컴포저 위에 서는 한 줄. 잡이 하나라도 있는 동안 무엇이 도는지 말로 말하고, 상태 옆 문이
- * 시트를 연다. 문의 라벨은 그것이 할 동사(Show/Hide)이고 화살표는 시트가 움직일 방향이다 — 열려
- * 있을 때 아래를 가리키던 화살표가 "더 펼침"으로 읽혀 접는 문을 못 찾던 자리다.
+ * 선반 — 컴포저 위에 서는 한 줄. 잡이 하나라도 있으면 스피너와 상태 문구가 한 덩어리의 버튼으로
+ * 시트를 연다. 따로 붙인 보기/접기 동사는 상태를 두 번 읽게 하므로 두지 않고, 같은 상태를 다시
+ * 누르면 시트가 접힌다.
  *
- * 색 규칙은 스트립 시절 그대로다: 도는 개수는 aurora(상태), 정착만 남은 개수는 중립 잉크. 문은
- * Quiet Controls의 rest 몸(--control-rest)을 입는다 — 투명한 rest는 헤더로 읽혔다.
+ * 색 규칙은 스트립 시절 그대로다: 도는 개수는 aurora(상태), 정착만 남은 개수는 중립 잉크.
+ * brass는 버튼 전체의 hover/focus 예고에만 쓴다.
  */
 function WorkLedge({
   jobs,
@@ -1629,32 +1628,24 @@ function WorkLedge({
   const running = openJobs.length > 0;
   return (
     <div className={`agent-chat-ledge${running ? "" : " is-rest"}`}>
-      {running
-        ? <span className="agent-chat-strip-orbit" aria-hidden="true" />
-        : <span className="agent-chat-strip-dot" aria-hidden="true" />}
-      <span className="agent-chat-strip-count">
-        {running ? t("terminal.chat.stripRunning", { count: openJobs.length }) : settledLabel(jobs.length, t)}
-      </span>
-      {/* 문은 오른쪽 캔버스 모서리에서 물러난다 — 기본 패널 기하에서는 미니맵이 그 모서리를
-          덮는다. 상태 바로 뒤에 두면 어떤 지도 상태에서도 실제 포인터가 닿고, 문과 상태도 한
-          문장으로 읽힌다. */}
       <button
         type="button"
         ref={toggleRef}
         className="agent-chat-ledge-toggle"
         aria-expanded={open}
         aria-controls={controlsId}
-        aria-label={t(open ? "terminal.chat.ledgeHideAria" : "terminal.chat.ledgeShowAria")}
         onClick={onToggle}
       >
-        <span>{t(open ? "terminal.chat.ledgeHide" : "terminal.chat.ledgeShow")}</span>
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-          <path d="M4 10l4-4 4 4" />
-        </svg>
+        {running
+          ? <span className="agent-chat-strip-orbit" aria-hidden="true" />
+          : <span className="agent-chat-strip-dot" aria-hidden="true" />}
+        <span className="agent-chat-strip-count">
+          {running ? t("terminal.chat.stripRunning", { count: openJobs.length }) : settledLabel(jobs.length, t)}
+        </span>
+        {/* 도는 것이 있으면 그 이름을 잇는다 — 개수만으로는 무엇이 도는지 모른다. 정착만 남았을
+            때는 개수가 곧 내용이다. */}
+        {running ? <span className="agent-chat-ledge-name">· {openJobs[0]?.title}</span> : null}
       </button>
-      {/* 도는 것이 있으면 그 이름을 잇는다 — 개수만으로는 무엇이 도는지 모른다. 정착만 남았을
-          때는 개수가 곧 내용이다. */}
-      {running ? <span className="agent-chat-ledge-name">· {openJobs[0]?.title}</span> : null}
     </div>
   );
 }
@@ -1663,8 +1654,8 @@ function WorkLedge({
  * 시트 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다.
  *
  * 대화 옆 컬럼도 아래 서랍도 아니다. 선반 바로 위에서 대화의 아래쪽을 덮으며 떠오르고, 접으면
- * 로그와 컴포저는 처음 그 자리다. 접는 문은 이 안에 없다: 선반의 문이 Hide로 바뀌어 같은 자리에
- * 서 있고, Esc와 대화 위 클릭이 그 문을 대신한다.
+ * 로그와 컴포저는 처음 그 자리다. 접는 문은 이 안에 없다: 선반의 같은 상태 버튼을 다시 누르거나
+ * Esc와 대화 위를 누르면 접힌다.
  */
 function WorkSheet({
   id,

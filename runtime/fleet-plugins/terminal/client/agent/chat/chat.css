@@ -2610,21 +2610,21 @@
   color: var(--text-tertiary);
 }
 
-/* 문. 라벨이 동사(Show/Hide)이고 화살표가 시트의 이동 방향이다 — 열리면 180° 돌아 아래를
-   가리킨다. Quiet Controls 레시피 그대로: rest 몸·brass 예고·열림은 --control-open-rim.
-   [doctrine] 투명 rest 금지 — 컨트롤이 헤더로 읽히던 것이 이 표면의 결함이었다. */
+/* 상태 버튼. 별도 동사와 화살표를 붙이지 않고 스피너·상태·이름 전체가 한 번에 반응한다.
+   rest에서는 선반의 한 줄로 머물고, hover/focus에만 brass로 클릭 가능성을 예고한다. */
 .agent-chat-ledge-toggle {
   appearance: none;
-  flex: none;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 24px;
-  padding: 0 6px 0 9px;
+  margin: 0;
+  padding: 0 6px;
   border-radius: var(--radius-xs);
-  border: 1px solid var(--hairline);
-  background: var(--control-rest);
-  color: var(--text-secondary);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
   font: inherit;
   cursor: pointer;
   transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
@@ -2639,7 +2639,6 @@
 .agent-chat-ledge-toggle[aria-expanded="true"] {
   background: var(--control-wash);
   border-color: var(--control-open-rim);
-  color: var(--text-primary);
 }
 
 .agent-chat-ledge-toggle:focus-visible {
@@ -2647,14 +2646,14 @@
   outline-offset: 2px;
 }
 
-.agent-chat-ledge-toggle svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  transition: transform var(--duration-fast);
+.agent-chat-ledge-toggle:hover .agent-chat-strip-count,
+.agent-chat-ledge-toggle:hover .agent-chat-ledge-name {
+  color: inherit;
 }
 
-.agent-chat-ledge-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.agent-chat-ledge-toggle[aria-expanded="true"] .agent-chat-ledge-name {
+  color: var(--text-secondary);
+}
 
 /* 시트 — 로그의 좌표계(.agent-chat-body) 바닥에 붙어 대화의 아래 62%를 덮는다. 절대배치인
    이유가 이 표면의 요점이다: 열어도 로그와 컴포저가 움직이지 않는다. Follow 칩(z 3)보다 위층. */
