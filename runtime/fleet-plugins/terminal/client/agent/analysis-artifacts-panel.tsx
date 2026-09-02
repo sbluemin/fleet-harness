@@ -2,6 +2,11 @@ import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/pl
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { AnalysisArtifact } from "./analysis-types.js";
 
+// 한글 폴백 서체의 @font-face 시트 — ?url이라 같은 Vite 번들이 처리한 시트의 경로만 받고, 여기서
+// 로드하지는 않는다(콘솔 본체는 core main.tsx가 이미 싣는다). 아티팩트 문서가 이 경로를 링크한다.
+import nanumGothicCodingBoldSheetUrl from "@fontsource/nanum-gothic-coding/korean-700.css?url";
+import nanumGothicCodingRegularSheetUrl from "@fontsource/nanum-gothic-coding/korean-400.css?url";
+import pretendardSheetUrl from "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css?url";
 import { analysisArtifactUrl, clearAnalysisArtifacts, type ArtifactThemeColors } from "./analysis-api.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { getT } from "../i18n/index.js";
@@ -282,9 +287,14 @@ function getArtifactColors(): ArtifactThemeColors {
  * 콘솔 번들의 @font-face에서 본문·모노 서체의 same-origin 자산 경로를 읽는다.
  * 아티팩트 iframe은 콘솔의 @font-face를 상속하지 않으므로, 문서가 같은 파일을 스스로
  * 선언해야 콘솔 서체를 잇는다. 변수 폰트는 서브셋별 규칙이 여럿이라 라틴 서브셋
- * (U+0000 범위를 쥔 규칙)을 고른다 — 한글은 콘솔과 동일하게 시스템 폴백이 진다.
+ * (U+0000 범위를 쥔 규칙)을 고른다.
+ *
+ * 한글은 파일 하나로 못 잇는다 — Pretendard는 unicode-range로 쪼갠 서브셋 92장이고 Nanum
+ * Gothic Coding은 굵기별 파일이다. 그래서 라틴처럼 woff2 경로가 아니라, Vite가 같은 번들에서
+ * 처리해 내놓은 @font-face **시트**의 경로를 넘긴다. 문서가 그 시트를 링크하면 브라우저가
+ * 화면에 실제로 등장한 한글 서브셋만 내려받는다(콘솔 본체와 같은 동작).
  */
-function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont"> {
+function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont" | "sansCjkSheets" | "monoCjkSheets"> {
   try {
     let sans: string | undefined;
     let mono: string | undefined;
@@ -315,10 +325,29 @@ function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont"
       }
       if (sans && mono) break;
     }
-    return { ...(sans ? { sansFont: sans } : {}), ...(mono ? { monoFont: mono } : {}) };
+    const sansCjkSheets = sameOriginSheetPaths([pretendardSheetUrl]);
+    const monoCjkSheets = sameOriginSheetPaths([nanumGothicCodingRegularSheetUrl, nanumGothicCodingBoldSheetUrl]);
+    return {
+      ...(sans ? { sansFont: sans } : {}),
+      ...(mono ? { monoFont: mono } : {}),
+      ...(sansCjkSheets.length ? { sansCjkSheets } : {}),
+      ...(monoCjkSheets.length ? { monoCjkSheets } : {}),
+    };
   } catch {
     return {};
   }
+}
+
+/* 번들이 준 시트 URL을 same-origin 경로로 정규화한다. 개발 서버·베이스 경로에 따라 절대 URL일
+   수 있고, 다른 origin이면 아티팩트의 오프라인 계약(자기 origin 밖을 부르지 않음) 위반이라 버린다. */
+function sameOriginSheetPaths(urls: readonly string[]): readonly string[] {
+  const paths: string[] = [];
+  for (const raw of urls) {
+    const url = new URL(raw, window.location.href);
+    if (url.origin !== window.location.origin || !url.pathname.endsWith(".css")) continue;
+    paths.push(url.pathname);
+  }
+  return paths;
 }
 
 function ArtifactTime({ createdAt, language }: { readonly createdAt: number; readonly language: ConsoleLocale }) {

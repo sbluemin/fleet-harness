@@ -46,6 +46,11 @@ export type ArtifactThemeColors = {
   /** 콘솔 번들 @font-face에서 읽은 same-origin 서체 경로 — 문서가 콘솔 서체를 잇는다. */
   readonly sansFont?: string;
   readonly monoFont?: string;
+  /** 한글 폴백 서체의 same-origin @font-face 시트 경로. 서브셋 92장짜리 변수 폰트(Pretendard)는
+      파일 하나로 못 잇고, 코딩 서체(Nanum Gothic Coding)는 굵기별 파일이 갈리므로 시트 단위로
+      넘긴다 — 서버가 sans에는 "Pretendard Variable", mono에는 "Nanum Gothic Coding"을 세운다. */
+  readonly sansCjkSheets?: readonly string[];
+  readonly monoCjkSheets?: readonly string[];
 };
 
 const ARTIFACT_OPTIONAL_PARAMS = ["card", "inset", "hairline", "hairlineStrong", "accent", "muted", "faint", "positive", "warn", "critical", "focus", "sansFont", "monoFont"] as const;
@@ -56,6 +61,8 @@ export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, col
     const value = colors[key];
     if (value) query.set(key, value);
   }
+  for (const sheet of colors.sansCjkSheets ?? []) query.append("sansCjkSheet", sheet);
+  for (const sheet of colors.monoCjkSheets ?? []) query.append("monoCjkSheet", sheet);
   return `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}?${query.toString()}`;
 }
 
