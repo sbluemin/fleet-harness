@@ -206,6 +206,67 @@ describe("chat log reducer", () => {
 });
 
 // 스텝의 생애 — 이름만 아는 시점, 좌표가 채워지는 시점, 결말이 붙는 시점.
+describe("chat log thought traces", () => {
+  const start = (at: number): AgentChatStreamEvent & { receivedAt: number } => ({ kind: "turn-start", at, receivedAt: at });
+  const tool = (id: string, receivedAt: number) => ({ kind: "tool" as const, name: "Read", detail: `${id}.md`, id, receivedAt });
+  const result = (id: string, receivedAt: number) => ({ kind: "tool-result" as const, id, ok: true, summary: "", receivedAt });
+
+  it("leaves a thought where nothing ran and nothing streamed between two calls", () => {
+    const state = fold([
+      start(1_000),
+      tool("a", 4_500),
+      result("a", 5_000),
+      tool("b", 8_200),
+      { kind: "turn-end", ok: true, receivedAt: 9_000 },
+    ]);
+    const items = state.turns[0]?.items.map((item) => item.type === "thought" ? `thought:${item.durationMs}` : `${item.type}:${item.state}`);
+    // 첫 도구까지 3.5초, 결과와 다음 호출 사이 3.2초 — 둘 다 흔적이다. 마지막 공백은 남지 않는다.
+    expect(items).toEqual(["thought:3500", "tool:ok", "thought:3200", "tool:done"]);
+    expect(state.turns[0]?.idleSince).toBeUndefined();
+  });
+
+  it("drops a gap shorter than a second, and closes the gap on the first streamed delta", () => {
+    const state = fold([
+      start(1_000),
+      tool("a", 1_400),
+      result("a", 2_000),
+      { kind: "text-delta", text: "So", receivedAt: 4_600 },
+      { kind: "text-delta", text: "on", receivedAt: 9_000 },
+    ]);
+    const items = state.turns[0]?.items.map((item) => item.type === "thought" ? `thought:${item.durationMs}` : item.type);
+    expect(items).toEqual(["tool", "thought:2600"]);
+    expect(state.turns[0]?.draft).toBe("Soon");
+  });
+
+  it("restores a thought from journal timestamps while replaying, but never invents one without a clock", () => {
+    const replayed = fold([
+      { kind: "replay-start" },
+      start(1_000),
+      tool("a", 4_500),
+      result("a", 5_000),
+      tool("b", 8_200),
+      { kind: "turn-end", ok: true, receivedAt: 9_000 },
+      { kind: "replay-end", turns: 1 },
+    ]);
+    expect(replayed.turns[0]?.items.map((item) => item.type === "thought" ? `thought:${item.durationMs}` : item.type))
+      .toEqual(["thought:3500", "tool", "thought:3200", "tool"]);
+    const unclocked = fold([{ kind: "turn-start", at: 1_000 }, { kind: "tool", name: "Read", detail: "a.md", id: "a" }]);
+    expect(unclocked.turns[0]?.items.map((item) => item.type)).toEqual(["tool"]);
+    expect(unclocked.turns[0]?.idleSince).toBeUndefined();
+  });
+
+  it("does not count time spent waiting on a question as thought", () => {
+    const state = fold([
+      start(1_000),
+      { kind: "ask", id: "q", form: "question", questions: [], receivedAt: 1_200 },
+      { kind: "ask-settled", id: "q", outcome: "answered", receivedAt: 40_000 },
+      tool("a", 42_500),
+    ]);
+    const items = state.turns[0]?.items.map((item) => item.type === "thought" ? `thought:${item.durationMs}` : item.type);
+    expect(items).toEqual(["ask", "thought:2500", "tool"]);
+  });
+});
+
 describe("chat log steps", () => {
   it("fills the step tool-start opened instead of adding a second row", () => {
     let state = fold([
@@ -351,6 +412,25 @@ describe("segmentAgentChatLedger", () => {
       groups: [{ family: "read", count: 2 }, { family: "run", count: 1 }],
       folded: [items[1], items[2], items[3]],
     }]);
+  });
+
+  it("folds thought traces into one think group that sums its time", () => {
+    const segments = segmentAgentChatLedger([
+      { type: "text", text: "Looking." },
+      { type: "tool", name: "Read", detail: "a.md", state: "ok" },
+      { type: "thought", durationMs: 3_400 },
+      { type: "tool", name: "Read", detail: "b.md", state: "ok" },
+      { type: "thought", durationMs: 2_100 },
+    ]);
+    const tally = segments[0]?.parts[0];
+    expect(tally?.kind).toBe("tally");
+    if (tally?.kind !== "tally") return;
+    expect(tally.groups).toEqual([
+      { family: "read", count: 2 },
+      { family: "think", count: 2, durationMs: 5_500 },
+    ]);
+    // 생각은 절에만 남고, 펼침 본문에는 실제 도구 두 건만 든다.
+    expect(tally.folded).toHaveLength(2);
   });
 
   it("counts an unknown tool under its own name", () => {

@@ -70,5 +70,8 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
     if (renderTimer.current !== null) window.clearTimeout(renderTimer.current);
   }, []);
 
-  return <div className={className} dangerouslySetInnerHTML={{ __html: completedHtml ?? streamedHtml }} />;
+  // 흐르는 동안만 다는 표식 — 캐럿과 끝단 옅어짐은 CSS가 이 클래스에 건다. 글이 멈추면
+  // 클래스가 함께 걷혀 확정된 글에 "아직 자란다"가 남지 않는다.
+  const streamingClass = streaming ? `${className ?? ""} is-streaming`.trim() : className;
+  return <div className={streamingClass} dangerouslySetInnerHTML={{ __html: completedHtml ?? streamedHtml }} />;
 });

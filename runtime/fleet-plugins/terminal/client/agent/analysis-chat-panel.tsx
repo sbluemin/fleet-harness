@@ -1,4 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+
+import { AgentGlyph } from "./agent-glyphs.js";
 import { EffortTrack } from "@fleet-console/sdk/components/effort-track";
 import {
   groupModelsByLaunchProvider,
@@ -697,7 +699,7 @@ function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: Analy
   return (
     <div className="session-analyst__author-card is-done">
       <div className="session-analyst__author-head">
-        <span className="session-analyst__author-sigil" aria-hidden="true">◆</span>
+        <span className="session-analyst__author-sigil" aria-hidden="true"><AgentGlyph name="artifact" /></span>
         <strong className="session-analyst__author-title">{t("terminal.analyst.artifactPublished", { title: published.artifact.title })}</strong>
         {published.durationMs === null ? null : <time className="session-analyst__author-time">{formatElapsed(published.durationMs)}</time>}
         {onOpen ? <button type="button" className="session-analyst__author-open" onClick={onOpen}>{t("terminal.analyst.openInArtifacts")}</button> : null}

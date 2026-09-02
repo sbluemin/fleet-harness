@@ -1,5 +1,7 @@
 import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
+
+import { AgentGlyph } from "./agent-glyphs.js";
 import type { AnalysisArtifact } from "./analysis-types.js";
 
 // 한글 폴백 서체의 @font-face 시트 — ?url이라 같은 Vite 번들이 처리한 시트의 경로만 받고, 여기서
@@ -201,7 +203,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   return (
     <section className="session-analyst__artifacts" aria-label={t("terminal.companion.artifacts")}>
       <header className="session-analyst__panel-head--artifacts">
-        <span className="session-analyst__panel-mark--artifact" aria-hidden="true">◆</span>
+        <span className="session-analyst__panel-mark--artifact" aria-hidden="true"><AgentGlyph name="artifact" /></span>
         <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.artifacts")}</strong><small>{t("terminal.artifacts.subtitle")}</small></span>
         <div className="session-analyst__artifact-list-shell" ref={listShell}>
           <button type="button" className="session-analyst__artifact-count" aria-expanded={listOpen} aria-controls={listId} aria-haspopup="listbox" aria-label={t(listOpen ? (count === 1 ? "terminal.artifacts.hideCount_one" : "terminal.artifacts.hideCount_other") : (count === 1 ? "terminal.artifacts.showCount_one" : "terminal.artifacts.showCount_other"), { count })} onClick={() => setListOpen((open) => !open)} disabled={!count}>
@@ -213,7 +215,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
                 const selected = artifact.id === active?.id;
                 return (
                   <button type="button" role="option" key={artifact.id} aria-selected={selected} className={selected ? "is-active" : undefined} title={artifact.title} onClick={() => { setActiveId(artifact.id); setListOpen(false); }}>
-                    <span className="session-analyst__artifact-list-mark" aria-hidden="true">◇</span>
+                    <span className="session-analyst__artifact-list-mark" aria-hidden="true"><AgentGlyph name="artifact" /></span>
                     <strong>{artifact.title}</strong>
                     <ArtifactTime createdAt={artifact.createdAt} language={language} />
                   </button>

@@ -64,7 +64,12 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
       onEvent: (raw) => {
         const entry = readChatJournalEvent(raw);
         if (!entry) return;
-        setLog((current) => reduceAgentChatLog(current, entry.event));
+        // 서버 원장 시각이 생각 공백의 권위다 — 재접속 snapshot이 한꺼번에 도착해도 원래
+        // 간격을 복원한다. 옛 서버의 저널에는 at이 없으므로 그때만 수신 시각으로 보완한다.
+        setLog((current) => reduceAgentChatLog(current, {
+          ...entry.event,
+          receivedAt: entry.at ?? (current.replaying ? undefined : Date.now()),
+        }));
       },
     });
     sessionRef.current = session;

@@ -661,6 +661,13 @@ describe("background job mapping", () => {
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", tools: ["Bash"] })).toEqual([]);
   });
 
+  it("preserves the server journal timestamp when present and accepts older entries without it", () => {
+    const event = { kind: "turn-start" as const, at: 1_000 };
+    expect(readChatJournalEvent(JSON.stringify({ seq: 11, at: 2_000, event }))).toEqual({ seq: 11, at: 2_000, event });
+    expect(readChatJournalEvent(JSON.stringify({ seq: 12, event }))).toEqual({ seq: 12, event });
+    expect(readChatJournalEvent(JSON.stringify({ seq: 13, at: "late", event }))).toEqual({ seq: 13, event });
+  });
+
   it("round-trips every job event through the journal reader", () => {
     const events: readonly AgentChatStreamEvent[] = [
       { kind: "job", id: "w1", jobKind: "workflow", title: "two-step", toolUseId: "c1", who: "two-step", at: 1786858148878 },

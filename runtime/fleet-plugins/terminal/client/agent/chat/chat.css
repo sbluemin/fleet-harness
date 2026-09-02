@@ -427,14 +427,31 @@
   min-width: 0;
 }
 
-/* 계열 표식. 색을 따로 쥐지 않는다 — 계열은 상태(신호)도 위치(brass)도 정체성도 아니라
-   어떤 채널에도 속하지 않고, 잉크를 쥐는 순간 도는 줄의 물결이 이 글자에서만 끊긴다
-   (배경 클립은 투명한 자식만 통과시킨다 — 구분점과 `other` 이름이 이미 그 예외다).
-   폭을 1em으로 고정해 여러 절이 같은 리듬으로 선다. */
+/* 계열 표식 — 모노라인 SVG(.agent-glyph). 채널 색을 쥐지 않는다: 계열은 상태(신호)도
+   위치(brass)도 정체성(--id-*)도 아니다. 잉크는 줄의 문구와 같은 사다리에서 오고, 도는 줄에서는
+   문구와 함께 한 단 밝아진다. 물결은 배경 클립이라 투명한 글자만 통과하므로 아이콘은 물결을
+   타지 않고 고정 잉크로 선다 — 문구만 물결지고 표식은 제자리에 있는 것이 의도다(아이콘이
+   반짝이는 UI는 없다). 폭을 1em으로 고정해 여러 절이 같은 리듬으로 선다. */
 .agent-chat-tally-glyph {
   flex: none;
+  display: inline-flex;
+  justify-content: center;
+  align-self: center;
   width: 1em;
-  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-tally.is-live .agent-chat-tally-glyph {
+  color: var(--text-secondary);
+}
+
+/* 글리프 알파벳의 한 글자. 24 뷰박스에 1.8 스트로크를 13px로 그리면 12px 모노 활자와
+   같은 시각 무게가 된다(실측: 문자 글리프 ▤·❯의 x-높이 자리). */
+.agent-glyph {
+  width: 13px;
+  height: 13px;
+  display: block;
+  flex: none;
 }
 
 /* 집계 줄의 글자 묶음. 도는 구간에서는 이 묶음만 물결지고 링과 꺾쇠는 제자리에 남는다. */
@@ -568,14 +585,18 @@
   border-radius: var(--radius-xs);
 }
 
-/* 진행 중인 스텝 하나만 aurora를 진다 — 상태 채널이므로 완료된 줄은 중립으로 돌아간다. */
+/* 진행 중인 스텝 하나만 aurora를 진다 — 상태 채널이므로 완료된 줄은 중립으로 돌아간다.
+   섞는 공간은 oklab이다. oklch로 섞으면 두 색의 **색상 호**를 걸어 중간에 없던 색이 선다 —
+   whites에서 aurora(hue 210)와 hairline(hue 100)의 30% 혼합이 hue 133(녹회색)으로 떨어졌고
+   (실측 oklch(0.752 0.037 133)), coral(hue 25)도 같은 함정에 있었다. oklab은 두 색 사이를
+   직선으로 지나 신호색이 옅어질 뿐 다른 색이 되지 않는다. */
 .agent-chat-step.is-running {
-  border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline));
-  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
+  border-color: color-mix(in oklab, var(--aurora) 30%, var(--hairline));
+  background: color-mix(in oklab, var(--aurora) 4%, var(--surface-panel-raised));
 }
 
 .agent-chat-step.is-fail {
-  border-color: color-mix(in oklch, var(--coral) 30%, var(--hairline));
+  border-color: color-mix(in oklab, var(--coral) 30%, var(--hairline));
 }
 
 .agent-chat-step-orbit {
@@ -594,9 +615,16 @@
 
 .agent-chat-step-mark {
   flex: none;
+  display: inline-flex;
+  justify-content: center;
   width: 9px;
   text-align: center;
   color: var(--positive);
+}
+
+.agent-chat-step-mark.is-running {
+  width: 13px;
+  color: var(--text-secondary);
 }
 
 .agent-chat-step.is-fail .agent-chat-step-mark { color: var(--coral); }
@@ -1099,6 +1127,37 @@
 
 .agent-chat-stream {
   margin-top: var(--space-3);
+}
+
+/* 흐르는 글의 표식 — 글이 자라는 동안 생명은 원장 줄이 아니라 글 끝에 있다.
+   [doctrine] 캐럿은 어느 채널의 색도 빌리지 않는다(secondary 잉크). 진행은 이미 스파인 노드가
+   말하고, 이 표식은 "이 글이 아직 끝나지 않았다"만 말한다. 마지막 블록의 끝에 서고 목록·
+   코드 블록에서는 마지막 항목 안으로 들어간다 — 블록 뒤에 서면 홀로 다음 줄로 떨어진다. */
+.agent-chat-stream.is-streaming > :last-child:not(ol, ul, pre)::after,
+.agent-chat-stream.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+.agent-chat-stream.is-streaming > pre:last-child > code::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--text-secondary);
+  animation: agent-chat-caret 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes agent-chat-caret {
+  50% { opacity: 0; }
+}
+
+/* 끝단 옅어짐 — 흐르는 동안 마지막 줄 높이만큼을 옅게 해 "아직 자란다"를 말한다. 글이 멈추면
+   클래스와 함께 걷힌다. 마스크는 잉크가 아니라 알파라 어느 채널도 빌리지 않는다. */
+.agent-chat-stream.is-streaming {
+  /* 바닥을 완전히 투명하게 만들면 짧은 한 줄 응답이 통째로 사라진다. 마지막 줄은 42%까지
+     옅어질 뿐 읽혀야 하고, "아직 자란다"는 캐럿이 주 신호를 진다. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), rgb(0 0 0 / 42%));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), rgb(0 0 0 / 42%));
 }
 
 /* 공유 .markdown-body(리딩 스케일 17px·78ch 중앙 정렬)를 챗 밀도로 오버라이드한다 —
@@ -2260,10 +2319,17 @@
     color: var(--text-secondary);
   }
 
-  /* 턴 헤드의 잉크는 tertiary다 — 봉인의 기본 채움(secondary)을 그대로 받으면 모션을 끈
-     것만으로 시계가 밝아져, 없는 상태 변화를 말하게 된다. */
-  .agent-chat-turn-head .agent-chat-live-text {
-    color: var(--text-tertiary);
+  /* 캐럿은 점멸만 멎고 자리는 지킨다 — 없애면 글이 끝났는지 멈췄는지 알 수 없다. 끝단
+     옅어짐은 모션이 아니지만 흐르는 글의 마지막 줄을 읽기 어렵게 하므로 함께 걷는다. */
+  .agent-chat-stream.is-streaming > :last-child:not(ol, ul, pre)::after,
+  .agent-chat-stream.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+  .agent-chat-stream.is-streaming > pre:last-child > code::after {
+    animation: none;
+  }
+
+  .agent-chat-stream.is-streaming {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   /* 동사 자리의 짝(0,2,0)은 봉인의 기본 채움(0,1,0)을 이기므로 여기서도 함께 세워야 한다 —
@@ -2426,7 +2492,7 @@
 .agent-chat-job.is-done .agent-chat-job-mark { color: var(--positive); }
 .agent-chat-job.is-fail .agent-chat-job-mark { color: var(--coral); }
 
-.agent-chat-job-glyph { flex: none; color: var(--text-tertiary); }
+.agent-chat-job-glyph { flex: none; display: inline-flex; color: var(--text-tertiary); }
 
 .agent-chat-job-title {
   color: var(--text-primary);

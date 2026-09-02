@@ -2811,19 +2811,41 @@ describe("Instrument core design contract", () => {
     expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
     // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 두 면이 같은 레시피를 쓰는 것이
     // 그 계산의 근거이므로 함께 못박는다.
-    const liveRowSurface = "background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));";
+    // 섞는 공간은 oklab이다 — oklch는 두 색의 색상 호를 걸어 whites에서 aurora 30% 테두리가
+    // hue 133(녹회색)으로 떨어졌다(실측). 4% 바탕의 명도(L93.68%)는 두 공간에서 같으므로
+    // 위 대비 계산은 그대로 선다.
+    const liveRowSurface = "background: color-mix(in oklab, var(--aurora) 4%, var(--surface-panel-raised));";
+    expect(chat).not.toContain("color-mix(in oklch, var(--aurora) 30%, var(--hairline))");
+    expect(chat).toContain("border-color: color-mix(in oklab, var(--aurora) 30%, var(--hairline));");
     expect(chat).toContain(liveRowSurface);
     expect(externalSource(TERMINAL_ANALYSIS_CSS_PATH)).toContain(liveRowSurface);
     // 라이트가 마루를 따로 잡으면 극성 계약이 조용히 갈린다 — 마루는 기본값을 그대로 받는다.
     expect(whitesSweepBlock).not.toContain("--live-sweep-crest:");
-    // 진행 중 턴 헤드의 시계도 같은 물결을 진다 — 집계 줄과 같은 사실("이 턴이 아직 살아
-    // 있다")을 말하는 자리라 어휘가 갈리면 안 된다. 다만 이 자리의 잉크는 tertiary이므로
-    // 봉인의 기본 채움(secondary)을 덮어써야 모션을 끈 것이 밝기 변화로 읽히지 않는다.
-    expect(chatView0).toContain('<span className="agent-chat-live-text" aria-hidden="true">');
+    // 진행 중 턴 헤드의 시계는 물결을 지지 않는다 — "이 턴이 아직 살아 있다"는 원장의 라이브
+    // 줄 하나가 말한다. 같은 사실을 헤드·집계·생각 행이 동시에 말하던 때에는 링 2개와
+    // 애니메이션 6개가 한 화면에 돌았다(실측). 살아 있는 줄은 턴에 하나다.
+    expect(chatView0).toContain('<span className="agent-chat-turn-clock" aria-hidden="true">');
     expect(chatView0).toContain('t("terminal.chat.turnWorking"');
-    expect(chat).toMatch(
-      /\.agent-chat-turn-head \.agent-chat-live-text \{\s*color: var\(--text-tertiary\);\s*\}/,
-    );
+    expect(chatView0).not.toContain('<span className="agent-chat-live-text" aria-hidden="true">');
+    expect(chat).not.toContain(".agent-chat-turn-head .agent-chat-live-text");
+    // "생각 중…"은 상자가 아니라 라이브 줄의 꼬리다 — 상자는 동사·대상·결과의 그릇이고 생각에는
+    // 둘 다 없다. 링은 꼬리가 무엇인가를 말할 때(도는 도구든 생각이든)만 산다.
+    expect(chatView0).not.toContain('<div className="agent-chat-step is-running">\n          <span className="agent-chat-step-orbit"');
+    expect(chatView0).toContain("const alive = live && (tails.length > 0 || thinking);");
+    expect(chatView0).toContain('{alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}');
+    // 흐르는 글의 표식 — 캐럿은 secondary 잉크(채널 없음)로 마지막 블록 끝에 서고, 끝단
+    // 옅어짐은 알파 마스크다. 둘 다 흐르는 동안만 걸리고 감속 모션에서 점멸·마스크가 걷힌다.
+    const chatCaretBlock = chat.match(/\.agent-chat-stream\.is-streaming > :last-child:not\(ol, ul, pre\)::after,[\s\S]*?\}/)?.[0] ?? "";
+    expect(chatCaretBlock).toContain("background: var(--text-secondary);");
+    expect(chatCaretBlock).toContain("animation: agent-chat-caret 1.1s steps(2, jump-none) infinite;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatCaretBlock, signal).not.toContain(signal);
+    }
+    expect(chat).toMatch(/\.agent-chat-stream\.is-streaming \{[\s\S]*?-webkit-mask-image: linear-gradient\(to bottom, #000 calc\(100% - 1\.6em\), rgb\(0 0 0 \/ 42%\)\);/);
+    const chatCaretSeal = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-stream\.is-streaming > pre:last-child > code::after \{\s*animation: none;\s*\}[\s\S]*?\.agent-chat-stream\.is-streaming \{\s*-webkit-mask-image: none;\s*mask-image: none;\s*\}/)?.[0] ?? "";
+    expect(chatCaretSeal).not.toBe("");
+    const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
+    expect(streamedMarkdown).toContain('const streamingClass = streaming ? `${className ?? ""} is-streaming`.trim() : className;');
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
     // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
     const chatLiveSealBlock = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-live-text \{[^}]*\}/)?.[0] ?? "";
@@ -2866,15 +2888,31 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
       expect(chatJobGlyphBlock).not.toContain(signal);
     }
-    // 계열 표식은 잡 글리프와 같은 알파벳을 넓힌 것이다 — 같은 일을 두 면이 다른 기호로 부르면
-    // 표식이 어휘가 아니라 장식이 된다. 색은 쥐지 않는다: 계열은 어떤 채널에도 속하지 않고,
-    // 잉크를 쥐면 도는 줄의 물결이 이 글자에서만 끊긴다(배경 클립은 투명한 자식만 통과시킨다).
+    // 계열 표식은 잡 글리프와 같은 알파벳이다 — 같은 일을 두 면이 다른 기호로 부르면 표식이
+    // 어휘가 아니라 장식이 된다. 알파벳은 모노라인 SVG(agent-glyphs.tsx)로 currentColor만 쓰고,
+    // 잉크는 줄의 문구 사다리(tertiary, 라이브에서 secondary)에서 온다 — 채널 색은 쥐지 않는다.
+    // 물결은 배경 클립이라 아이콘을 통과하지 못하므로 표식은 물결을 타지 않고 고정 잉크로 선다.
     const chatTallyGlyphBlock = chat.match(/^\.agent-chat-tally-glyph \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatTallyGlyphBlock).not.toContain("color:");
+    expect(chatTallyGlyphBlock).toContain("color: var(--text-tertiary);");
     expect(chatTallyGlyphBlock).toContain("width: 1em;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatTallyGlyphBlock, signal).not.toContain(signal);
+    }
+    expect(chat).toMatch(/\.agent-chat-tally\.is-live \.agent-chat-tally-glyph \{\s*color: var\(--text-secondary\);\s*\}/);
+    const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
+    expect(agentGlyphs).toContain('stroke="currentColor"');
+    expect(agentGlyphs).not.toMatch(/var\(--(aurora|positive|warn|coral|brass|id-)/);
+    for (const family of ["delegate", "run", "workflow", "think", "artifact"]) {
+      expect(agentGlyphs, family).toContain(`${family}: [`);
+    }
     const chatView0Glyphs = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
-    for (const [family, glyph] of [["delegate", "◆"], ["run", "❯"], ["workflow", "⣿"]] as const) {
-      expect(chatView0Glyphs, family).toContain(`${family}: "${glyph}",`);
+    expect(chatView0Glyphs).not.toContain("FAMILY_GLYPHS");
+    expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>');
+    // 분석가 시길도 같은 알파벳을 쓴다 — 같은 뜻을 두 면이 다른 기호로 부르지 않는다.
+    for (const panel of ["analysis-chat-panel.tsx", "analysis-artifacts-panel.tsx"]) {
+      const source0 = fs.readFileSync(fileURLToPath(new URL(`../../fleet-plugins/terminal/client/agent/${panel}`, import.meta.url)), "utf8");
+      expect(source0, panel).not.toContain('aria-hidden="true">◆</span>');
+      expect(source0, panel).toContain("<AgentGlyph name=");
     }
     // 표식과 그 문구는 한 덩어리다 — 절 사이 간격을 그대로 쓰면 표식이 앞 절 끝에 붙어 읽힌다.
     const chatTallyClauseBlock = chat.match(/^\.agent-chat-tally-clause \{[^}]*\}/m)?.[0] ?? "";

@@ -552,7 +552,7 @@ class AgentChatSession {
     let lastAt: number | null = null;
     const closeReplayedTurn = (): void => {
       if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
-        this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt });
+        this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
       }
       turnAt = null;
       lastAt = null;
@@ -573,7 +573,7 @@ class AgentChatSession {
       closeReplayedTurn();
       turns += 1;
       turnAt = at;
-      this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at });
+      this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? Date.now());
     };
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
@@ -596,7 +596,9 @@ class AgentChatSession {
             openPendingTurn();
           }
           this.rememberTool(event);
-          this.push(event);
+          // 트랜스크립트 줄의 시각을 저널 시각으로 보존한다. 재연결 클라이언트가 이벤트를
+          // 한꺼번에 받아도 원래 공백을 같은 길이로 복원해야 "N초 생각함"이 사라지지 않는다.
+          this.push(event, mapped.at ?? Date.now());
         }
         // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
         if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
@@ -1377,8 +1379,8 @@ class AgentChatSession {
     };
   }
 
-  private push(event: AgentChatStreamEvent): void {
-    const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
+  private push(event: AgentChatStreamEvent, at = Date.now()): void {
+    const entry: AgentChatJournalEvent = { seq: ++this.seq, at, event };
     // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
     // 리듀서도 통째로 갈아 끼운다. 저널에 겹겹이 쌓으면 재접속이 이미 지나간 트리를 수십 번
     // 되재생하고, 상한(JOURNAL_CAP)에 걸린 세션에서는 그 무게가 디스패치·응답·잡 시작 같은
@@ -1398,7 +1400,7 @@ class AgentChatSession {
    * 그 완성 이벤트가 델타 유실의 정정 앵커를 겸한다. seq는 저널과 한 축을 공유한다.
    */
   private pushEphemeral(event: AgentChatStreamEvent): void {
-    const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
+    const entry: AgentChatJournalEvent = { seq: ++this.seq, at: Date.now(), event };
     for (const listener of this.listeners) listener(entry);
   }
 
