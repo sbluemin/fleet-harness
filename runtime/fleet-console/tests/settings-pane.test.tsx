@@ -83,6 +83,10 @@ function renderPane(params: Readonly<Record<string, string>>, pane = primaryPane
   });
 }
 
+function blurHandle(): HTMLInputElement {
+  return document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!;
+}
+
 function chip(label: string): HTMLButtonElement {
   const found = [...document.querySelectorAll<HTMLButtonElement>(".settings-chip")]
     .find((button) => button.textContent === label);
@@ -252,25 +256,34 @@ describe("settings pane body", () => {
     expect(root.getPropertyValue("--side-bar-glass-blur")).toBe("24px");
   });
 
-  it("disables the blur handle wherever the glass gate is closed, without touching the stored value", () => {
+  /* 게이트 판정은 테마 이름이 아니라 채널의 계산값으로 한다. theme.css의 게이트 넷 중 둘
+     (@supports 미달 · prefers-reduced-transparency)은 CSS에만 있어 TS 상태로는 보이지 않으므로,
+     조건을 복제하면 반드시 원본보다 좁아진다(적대 리뷰 적발). 그래서 이 테스트도 테마를 흔드는
+     대신 채널을 직접 닫는다 — 게이트가 몇 개든 닫힘의 유일한 표현이 이 값이기 때문이다. */
+  it("disables the blur handle whenever the glass channel resolves to none, without touching the stored value", async () => {
     resetSideBarGlassForTests();
     act(() => setSideBarGlassBlur(12));
-    // 라이트는 유리를 아예 받지 않는다(theme.css 게이트가 극성으로 제외한다).
-    act(() => hydrateGlobalSettings({ ...SETTINGS, theme: "whites" }));
+    // jsdom에는 시트가 없어 채널이 스스로 계산되지 않는다 — 라이트 전환을 그 결과(채널 none)와
+    // 계기(루트 data-theme)로 함께 재현한다. 훅이 보는 것은 그 둘뿐이므로 이것이 실기와 같은 신호다.
+    const style = document.documentElement.style;
+    style.setProperty("--glass-backdrop-side-bar", "none");
+    act(() => { document.documentElement.setAttribute("data-theme", "whites"); });
     renderPane({});
-    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(true);
-    // 불투명도는 유리와 무관한 레이어 알파라 어느 테마에서도 살아 있다.
+    expect(blurHandle().disabled).toBe(true);
+    // 불투명도는 유리와 무관한 레이어 알파라 게이트가 닫혀도 살아 있다.
     expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar opacity"]')!.disabled).toBe(false);
 
-    act(() => hydrateGlobalSettings({ ...SETTINGS, liquidGlass: false }));
-    renderPane({});
-    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(true);
-
-    // 화면을 닫는 일과 저장값을 지우는 일은 다르다 — 다크로 돌아오면 고른 값이 그대로 선다.
+    // 화면을 닫는 일과 저장값을 지우는 일은 다르다 — 유리가 돌아오면 고른 값이 그대로 선다.
     expect(getSideBarGlass().blur).toBe(12);
-    act(() => hydrateGlobalSettings(SETTINGS));
-    renderPane({});
-    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(false);
+    style.setProperty("--glass-backdrop-side-bar", "blur(24px) saturate(1.7)");
+    await act(async () => {
+      document.documentElement.setAttribute("data-theme", "instrument");
+      // MutationObserver 콜백은 마이크로태스크로 온다 — 같은 tick에서 단언하면 옛 값을 읽는다.
+      await Promise.resolve();
+    });
+    expect(blurHandle().disabled).toBe(false);
+    style.removeProperty("--glass-backdrop-side-bar");
+    document.documentElement.removeAttribute("data-theme");
   });
 
   it("carries the rail preferences into the expanded Appearance section too", () => {
