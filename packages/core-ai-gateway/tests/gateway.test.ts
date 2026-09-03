@@ -1100,14 +1100,14 @@ describe("model catalog", () => {
         .toMatchObject({ cursorMaxMode: true });
     }
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
-    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브, 08-21 두 모델 추가).
+    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브, 09-03 Muse 1.3 세대교체).
     // wire 미선언 = Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
     expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => [model.upstreamId, model.wire ?? "anthropic"])).toEqual([
       ["minimax-m3", "anthropic"],
       ["qwen3.8-max", "anthropic"],
       ["gpt-5.6-luna", "responses"],
       ["grok-4.5", "responses"],
-      ["muse-spark-1.2-contributor", "responses"],
+      ["muse-spark-1.3-contributor", "responses"],
       ["deepseek-v4-flash", "chat-completions"],
       ["deepseek-v4-pro", "chat-completions"],
       ["glm-5.2", "chat-completions"],
@@ -1129,7 +1129,7 @@ describe("model catalog", () => {
       ])).toEqual([
       ["gpt-5.6-luna", ["low", "medium", "high", "xhigh", "max"]],
       ["grok-4.5", ["low", "medium", "high"]],
-      ["muse-spark-1.2-contributor", ["low", "medium", "high", "xhigh"]],
+      ["muse-spark-1.3-contributor", ["low", "medium", "high", "xhigh"]],
       ["ox-alpha-free", ["low", "high", "max"]],
     ]);
   });
