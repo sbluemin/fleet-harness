@@ -21,6 +21,13 @@ import {
   openRailPanel,
   setRailOverlayAlpha,
 } from "../core/client/src/rail/rail-store.js";
+import {
+  getSideBarGlass,
+  resetSideBarGlassForTests,
+  setSideBarGlassAlpha,
+  setSideBarGlassBlur,
+  SIDE_BAR_GLASS_BLUR_DEFAULT,
+} from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { settingsPanes, syncSettingsSearchPlugins } from "../core/client/src/settings/settings-pane.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
 
@@ -217,7 +224,7 @@ describe("settings pane body", () => {
     // 전용 "레일 패널" 카드도 퇴역했다 — 행은 테마 카드 안, 비포커스 패널 흐리기 바로 아래에 선다(재가된 배치).
     const themeSliders = [...document.querySelectorAll<HTMLInputElement>(".settings-pane .appearance-card .settings-slider")]
       .map((input) => input.getAttribute("aria-label"));
-    expect(themeSliders).toEqual(["Unfocused panel fade", "Right sidebar opacity"]);
+    expect(themeSliders).toEqual(["Unfocused panel fade", "Right sidebar opacity", "Left sidebar opacity", "Left sidebar glass blur"]);
 
     act(() => setRailOverlayAlpha(65));
     renderPane({});
@@ -226,10 +233,52 @@ describe("settings pane body", () => {
     expect(getRailStoreSnapshot().overlayAlpha).toBe(RAIL_OVERLAY_ALPHA_DEFAULT);
   });
 
+  it("drives the left sidebar glass from the root variables and resets blur on double-click", () => {
+    resetSideBarGlassForTests();
+    act(() => setSideBarGlassAlpha(70));
+    act(() => setSideBarGlassBlur(6));
+    renderPane({});
+
+    // 손잡이는 반드시 문서 루트에 실린다 — 사이드바 요소에 실으면 theme.css가 :root에서
+    // 이미 폴백을 치환해 버려 blur 값이 화면에 닿지 않는다.
+    const root = document.documentElement.style;
+    expect(root.getPropertyValue("--side-bar-glass-alpha")).toBe("0.7");
+    expect(root.getPropertyValue("--side-bar-glass-blur")).toBe("6px");
+
+    const blur = document.querySelector<HTMLInputElement>('.settings-pane .appearance-card input[aria-label="Left sidebar glass blur"]')!;
+    expect(blur.disabled).toBe(false);
+    act(() => blur.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(getSideBarGlass().blur).toBe(SIDE_BAR_GLASS_BLUR_DEFAULT);
+    expect(root.getPropertyValue("--side-bar-glass-blur")).toBe("24px");
+  });
+
+  it("disables the blur handle wherever the glass gate is closed, without touching the stored value", () => {
+    resetSideBarGlassForTests();
+    act(() => setSideBarGlassBlur(12));
+    // 라이트는 유리를 아예 받지 않는다(theme.css 게이트가 극성으로 제외한다).
+    act(() => hydrateGlobalSettings({ ...SETTINGS, theme: "whites" }));
+    renderPane({});
+    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(true);
+    // 불투명도는 유리와 무관한 레이어 알파라 어느 테마에서도 살아 있다.
+    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar opacity"]')!.disabled).toBe(false);
+
+    act(() => hydrateGlobalSettings({ ...SETTINGS, liquidGlass: false }));
+    renderPane({});
+    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(true);
+
+    // 화면을 닫는 일과 저장값을 지우는 일은 다르다 — 다크로 돌아오면 고른 값이 그대로 선다.
+    expect(getSideBarGlass().blur).toBe(12);
+    act(() => hydrateGlobalSettings(SETTINGS));
+    renderPane({});
+    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!.disabled).toBe(false);
+  });
+
   it("carries the rail preferences into the expanded Appearance section too", () => {
     renderPane({ section: "appearance" }, sectionPane);
 
     expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Right sidebar opacity"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Left sidebar opacity"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Left sidebar glass blur"]')).not.toBeNull();
     // 확대 사본은 준비된 스냅숏을 재사용한다 — 여기서 GET을 또 쏘면 그 응답이 사용자의
     // 낙관 저장 뒤에 도착해 옛 값으로 화면을 되덮는다(리뷰 적발).
     const settingsGets = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls

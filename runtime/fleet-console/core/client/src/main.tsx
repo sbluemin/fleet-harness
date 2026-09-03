@@ -38,6 +38,7 @@ import { failGlobalSettingsLoad, hydrateGlobalSettings } from "./global-settings
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "./store.js";
+import { applyStoredSideBarGlass } from "./sidebar/operations-side-bar-store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -76,6 +77,9 @@ globalThis.__fleetConsoleRuntime__ = {
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
 setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "instrument");
 applyDesktopShellMarker();
+// 사이드바 유리 취향은 브라우저-로컬이라 서버 왕복을 기다릴 이유가 없다 — 테마와 같은 줄에서
+// 첫 페인트 앞에 실어 두면 기본 재질이 잠깐 스쳤다 바뀌는 일이 없다.
+applyStoredSideBarGlass();
 
 try {
   const settings = await fetchGlobalSettingsState();

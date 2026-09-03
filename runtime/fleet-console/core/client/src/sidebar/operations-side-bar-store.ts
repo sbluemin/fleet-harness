@@ -331,3 +331,119 @@ function subscribeCollapsedTheaters(listener: () => void): () => void {
   collapsedTheaterListeners.add(listener);
   return () => collapsedTheaterListeners.delete(listener);
 }
+
+/* ── 좌측 사이드바 유리 손잡이 ───────────────────────────────────────
+   부유 카드의 유리 재질을 사람이 직접 고른다: 알파(카드 배경 레이어 전체의 불투명도)와
+   blur 반경 둘. 우측 사이드바 불투명도와 같은 realm(브라우저-로컬 localStorage)에 산다 —
+   화면 재질 취향은 모니터·조명·기기마다 다르고, 서버 전역 설정으로 올리면 다른 화면의
+   같은 계정까지 따라간다.
+
+   값은 반드시 **문서 루트**에 실린다. blur 반경은 theme.css의 게이트 블록이 :root에서
+   `--glass-on-backdrop-side-bar` 안으로 치환하는데, custom property의 var() 치환은 그 속성이
+   선언된 요소에서 끝나므로, 사이드바 요소에 실으면 이미 폴백(24px)이 박힌 값만 상속되어
+   손잡이가 닿지 않는다. 알파도 같은 자리에 실어 둘의 소유자를 하나로 유지한다. */
+export const SIDE_BAR_GLASS_ALPHA_MIN = 40;
+export const SIDE_BAR_GLASS_ALPHA_MAX = 100;
+export const SIDE_BAR_GLASS_ALPHA_DEFAULT = 100;
+export const SIDE_BAR_GLASS_BLUR_MIN = 0;
+export const SIDE_BAR_GLASS_BLUR_MAX = 40;
+export const SIDE_BAR_GLASS_BLUR_DEFAULT = 24;
+
+export interface SideBarGlass {
+  /** 카드 배경 레이어의 불투명도(%) — 100이 지금까지의 재질 그대로다. */
+  readonly alpha: number;
+  /** backdrop-filter blur 반경(px). 0은 흐리지 않음이며 채도 보정만 남는다. */
+  readonly blur: number;
+}
+
+const STORAGE_KEY_GLASS_ALPHA = "fleet-console.operations.side-glass-alpha";
+const STORAGE_KEY_GLASS_BLUR = "fleet-console.operations.side-glass-blur";
+const sideBarGlassListeners = new Set<() => void>();
+
+let sideBarGlass: SideBarGlass = {
+  alpha: readStoredGlassValue(STORAGE_KEY_GLASS_ALPHA, SIDE_BAR_GLASS_ALPHA_DEFAULT, clampSideBarGlassAlpha),
+  blur: readStoredGlassValue(STORAGE_KEY_GLASS_BLUR, SIDE_BAR_GLASS_BLUR_DEFAULT, clampSideBarGlassBlur),
+};
+
+export function useSideBarGlass(): SideBarGlass {
+  return useSyncExternalStore(subscribeSideBarGlass, getSideBarGlass, getSideBarGlass);
+}
+
+export function getSideBarGlass(): SideBarGlass {
+  return sideBarGlass;
+}
+
+export function subscribeSideBarGlass(listener: () => void): () => void {
+  sideBarGlassListeners.add(listener);
+  return () => sideBarGlassListeners.delete(listener);
+}
+
+export function setSideBarGlassAlpha(alpha: number): void {
+  const clamped = clampSideBarGlassAlpha(alpha);
+  if (sideBarGlass.alpha === clamped) return;
+  sideBarGlass = { ...sideBarGlass, alpha: clamped };
+  saveGlassValue(STORAGE_KEY_GLASS_ALPHA, clamped);
+  applySideBarGlass(sideBarGlass);
+  notifySideBarGlassListeners();
+}
+
+export function setSideBarGlassBlur(blur: number): void {
+  const clamped = clampSideBarGlassBlur(blur);
+  if (sideBarGlass.blur === clamped) return;
+  sideBarGlass = { ...sideBarGlass, blur: clamped };
+  saveGlassValue(STORAGE_KEY_GLASS_BLUR, clamped);
+  applySideBarGlass(sideBarGlass);
+  notifySideBarGlassListeners();
+}
+
+/** 부팅이 저장된 취향을 첫 페인트 앞에서 한 번 싣는다 — CSS 폴백이 곧 기본값이라 미호출도 안전하다. */
+export function applyStoredSideBarGlass(): void {
+  applySideBarGlass(sideBarGlass);
+}
+
+export function resetSideBarGlassForTests(): void {
+  sideBarGlass = { alpha: SIDE_BAR_GLASS_ALPHA_DEFAULT, blur: SIDE_BAR_GLASS_BLUR_DEFAULT };
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY_GLASS_ALPHA);
+      localStorage.removeItem(STORAGE_KEY_GLASS_BLUR);
+    }
+  } catch { /* ignore */ }
+  applySideBarGlass(sideBarGlass);
+  notifySideBarGlassListeners();
+}
+
+function applySideBarGlass(glass: SideBarGlass): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.style.setProperty("--side-bar-glass-alpha", String(glass.alpha / 100));
+  root.style.setProperty("--side-bar-glass-blur", `${glass.blur}px`);
+}
+
+function readStoredGlassValue(key: string, fallback: number, clamp: (value: number) => number): number {
+  try {
+    if (typeof window === "undefined") return fallback;
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw.trim() === "") return fallback;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? clamp(parsed) : fallback;
+  } catch { return fallback; }
+}
+
+function saveGlassValue(key: string, value: number): void {
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(key, String(value));
+  } catch { /* ignore */ }
+}
+
+function clampSideBarGlassAlpha(alpha: number): number {
+  return Math.min(SIDE_BAR_GLASS_ALPHA_MAX, Math.max(SIDE_BAR_GLASS_ALPHA_MIN, Math.round(alpha)));
+}
+
+function clampSideBarGlassBlur(blur: number): number {
+  return Math.min(SIDE_BAR_GLASS_BLUR_MAX, Math.max(SIDE_BAR_GLASS_BLUR_MIN, Math.round(blur)));
+}
+
+function notifySideBarGlassListeners(): void {
+  for (const listener of sideBarGlassListeners) listener();
+}

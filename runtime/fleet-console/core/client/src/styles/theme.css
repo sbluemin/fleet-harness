@@ -255,6 +255,7 @@
   --canvas-bloom-brass: 5%;
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
+  --glass-backdrop-side-bar: none;
   --glass-backdrop-panel: none;
   --glass-backdrop-terminal: none;
   --glass-backdrop-scrim: none;
@@ -294,6 +295,10 @@
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
   --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
+  /* 좌측 사이드바 전용 재료 — strong과 같은 채도 보정 위에 blur 반경만 사용자 손잡이가 잡는다.
+     반경 변수는 :root에 실려야 여기서 치환된다(operations-side-bar-store 주석 참조). 기본 24px는
+     캔버스 위브(48px 눈금) 위 실측으로 정해진 값이며, 낮출수록 그 잔물결이 틴트 위에 되살아난다. */
+  --glass-on-backdrop-side-bar: blur(var(--side-bar-glass-blur, 24px)) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
   --glass-on-backdrop-panel: none;
   --glass-on-backdrop-terminal: blur(20px) saturate(1.45);
@@ -891,6 +896,7 @@
     --glass-tint-band: var(--glass-on-tint-band);
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
     --glass-backdrop-soft: var(--glass-on-backdrop-soft);
+    --glass-backdrop-side-bar: var(--glass-on-backdrop-side-bar);
     --glass-backdrop-panel: var(--glass-on-backdrop-panel);
     --glass-backdrop-terminal: var(--glass-on-backdrop-terminal);
     --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
@@ -923,6 +929,7 @@
       --glass-tint-band: var(--surface-band);
       --glass-backdrop-strong: none;
       --glass-backdrop-soft: none;
+      --glass-backdrop-side-bar: none;
       --glass-backdrop-panel: none;
       --glass-backdrop-terminal: none;
       --glass-backdrop-scrim: none;

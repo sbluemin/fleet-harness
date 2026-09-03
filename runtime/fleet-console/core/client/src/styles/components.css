@@ -5298,13 +5298,17 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background:
     linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),
     var(--glass-underlay);
-  /* soft(12px)가 아니라 strong(24px)이다. 이 카드 뒤에는 캔버스 위브(48px 눈금·12px 도트)가
-     그대로 깔리는데, soft는 48px 주기의 대비를 ~73%나 남겨 그 잔물결이 근흑색 틴트 위에서
-     8-bit 계단 모자이크(가짜 격자)로 양자화된다(2026-08-31 실측 + 사용자 보고). strong은
-     같은 주기를 ~29%까지 눌러 위브가 유리 뒤에서 재질로만 남는다 — 우측 레일 슬롯이 같은
-     채널로 이미 검증한 값이다. soft로 되돌리려면 위브 위 실측을 다시 통과할 것. */
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 사이드바 전용 blur 채널 — 기본 반경은 strong과 같은 24px이고 설정의 손잡이가 그 반경만
+     바꾼다. soft(12px) 근처는 캔버스 위브(48px 눈금·12px 도트)의 대비를 ~73%나 남겨 그 잔물결이
+     근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로 양자화되는 최악 구간이다(2026-08-31
+     실측 + 사용자 보고). 24px는 같은 주기를 ~29%까지 누른다 — 기본값을 옮기려면 위브 위 실측을
+     다시 통과할 것. 채널을 거치므로 유리 게이트 셋(@supports·축소-투명도·설정 off)은 그대로다. */
+  -webkit-backdrop-filter: var(--glass-backdrop-side-bar);
+  backdrop-filter: var(--glass-backdrop-side-bar);
+  /* 재질 한 겹 전체의 불투명도 — 틴트도 언더레이도 함께 물러나야 슬라이더 수치가 화면과 같은
+     말을 한다(우측 레일 슬롯의 판독성 계약과 같은 문법). 카드 루트가 아니라 이 배경 레이어만
+     내려간다: 루트를 내리면 목록 글자와 테두리까지 함께 사라진다. */
+  opacity: var(--side-bar-glass-alpha, 1);
   pointer-events: none;
 }
 

@@ -893,11 +893,16 @@ describe("Instrument core design contract", () => {
     const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
     expect(backdropDeclarations.length).toBeGreaterThan(0);
     for (const declaration of backdropDeclarations) {
-      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: (?:var\(--glass-backdrop-(?:strong|soft|panel|terminal|scrim)\)|none);$/);
+      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: (?:var\(--glass-backdrop-(?:strong|soft|side-bar|panel|terminal|scrim)\)|none);$/);
     }
     // 게이트와 폴백 기본값은 theme.css에 존재해야 한다 — 채널 기본값이 곧 구 불투명 계약이다.
     const theme = source("styles/theme.css");
     expect(theme).toContain("--glass-underlay: var(--ink-deep);");
+    // 좌측 사이드바 blur 손잡이는 반경만 사용자 값으로 갈아 끼우고 게이트는 채널이 그대로 진다 —
+    // 재료에 var()가 빠지면 손잡이가 죽고, base/되돌림의 none이 빠지면 게이트 닫힘이 새 채널을 놓친다.
+    expect(theme).toContain("--glass-on-backdrop-side-bar: blur(var(--side-bar-glass-blur, 24px)) saturate(1.7);");
+    expect((theme.match(/--glass-backdrop-side-bar: none;/g) ?? []).length).toBe(2);
+    expect(theme).toContain("--glass-backdrop-side-bar: var(--glass-on-backdrop-side-bar);");
     expect(theme).toContain("@media (prefers-reduced-transparency: reduce)");
     expect(theme).toMatch(/@supports \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
     expect(css).toContain("background: var(--surface-glass)");
@@ -2325,16 +2330,19 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
-    // blur는 soft가 아니라 strong이다: 뒤에 깔리는 캔버스 위브(48px 주기)를 soft(12px)는
-    // ~73%나 남겨 근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로 양자화된다
-    // (2026-08-31 실측 + 사용자 보고). strong(24px)은 같은 주기를 ~29%까지 눌러 위브가
-    // 재질로만 남는다 — 우측 레일 슬롯이 같은 채널로 검증한 값이다.
+    // blur는 사이드바 전용 채널이 진다(기본 반경 24px = 구 strong): 설정의 손잡이가 반경만
+    // 갈아 끼우되 게이트 셋은 채널이 그대로 지고, soft(12px) 근처는 뒤에 깔리는 캔버스
+    // 위브(48px 주기)의 대비를 ~73%나 남겨 근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로
+    // 양자화되는 최악 구간이다(2026-08-31 실측 + 사용자 보고). 24px는 같은 주기를 ~29%까지 누른다.
+    // 알파는 카드 루트가 아니라 이 배경 레이어만 내려간다 — 루트를 내리면 목록 글자까지 사라진다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
     expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
     expect(sideBarBeforeBlock).toContain("var(--glass-underlay);");
-    expect(sideBarBeforeBlock).toContain("backdrop-filter: var(--glass-backdrop-strong);");
+    expect(sideBarBeforeBlock).toContain("backdrop-filter: var(--glass-backdrop-side-bar);");
     expect(sideBarBeforeBlock).not.toContain("var(--glass-backdrop-soft)");
+    expect(sideBarBeforeBlock).toContain("opacity: var(--side-bar-glass-alpha, 1);");
+    expect(sideBarBlock).not.toContain("opacity:");
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     // Operation과 War Room 카드는 개수와 무관하게 blur하지 않고 같은 투명 면을 공유한다.

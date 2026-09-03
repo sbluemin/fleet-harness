@@ -17,6 +17,18 @@ import {
   setRailOverlayAlpha,
   useRailOverlayAlpha,
 } from "../rail/rail-store.js";
+import {
+  setSideBarGlassAlpha,
+  setSideBarGlassBlur,
+  SIDE_BAR_GLASS_ALPHA_DEFAULT,
+  SIDE_BAR_GLASS_ALPHA_MAX,
+  SIDE_BAR_GLASS_ALPHA_MIN,
+  SIDE_BAR_GLASS_BLUR_DEFAULT,
+  SIDE_BAR_GLASS_BLUR_MAX,
+  SIDE_BAR_GLASS_BLUR_MIN,
+  useSideBarGlass,
+} from "../sidebar/operations-side-bar-store.js";
+import { themePolarity } from "../store.js";
 import type { RemoteAccessState } from "../types.js";
 import {
   buildCoreSettingsSections,
@@ -267,7 +279,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
             /* 톱니 메뉴가 들고 있던 레일 취향은 테마 카드의 한 행이 된다 — 비포커스 패널
                흐리기 아래(재가된 배치). 행 주입은 데스크톱 페인만 한다: 레일 없는 모바일이
                같은 헬퍼를 본문으로 쓰기 때문이다. */
-            renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <RailOpacityRow /> })
+            renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <ChromeMaterialRows /> })
           )}
         </div>
       )}
@@ -300,10 +312,29 @@ function RemoteSummaryCard({ remote, onManage }: {
 }
 
 /**
- * 우측 사이드바(레일 카드) 불투명도 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 터미널
- * 렌더러가 그렇듯 브라우저-로컬도 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라
- * 하는 일이다. 전용 "레일 패널" 카드는 퇴역했다 — 화면 재질을 다루는 다른 손잡이(리퀴드
- * 글래스·패널 흐리기)와 같은 테마 카드에 한 행으로 선다(재가된 배치·리네이밍).
+ * 크롬 재질 손잡이 묶음 — 좌·우 사이드바가 캔버스 위에서 어떻게 서는지를 사람이 직접 고른다.
+ * 셋 다 서버 설정이 아니라 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도
+ * 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라 하는 일이다.
+ *
+ * 순서는 재가된 배치를 지킨다 — 우측 불투명도가 "비포커스 패널 흐리기" 바로 아래 자리를
+ * 계속 가지고, 좌측 손잡이 둘이 그 아래에 붙는다. 이 묶음 전체는 데스크톱 페인·확대 표면만
+ * 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접 넣으면 폰에 죽은
+ * 슬라이더 셋이 선다.
+ */
+function ChromeMaterialRows() {
+  return (
+    <>
+      <RailOpacityRow />
+      <SideBarOpacityRow />
+      <SideBarBlurRow />
+    </>
+  );
+}
+
+/**
+ * 우측 사이드바(레일 카드) 불투명도 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 전용
+ * "레일 패널" 카드는 퇴역했다 — 화면 재질을 다루는 다른 손잡이(리퀴드 글래스·패널 흐리기)와
+ * 같은 테마 카드에 한 행으로 선다(재가된 배치·리네이밍).
  */
 function RailOpacityRow() {
   const t = useT();
@@ -332,6 +363,84 @@ function RailOpacityRow() {
           onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
         />
         <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
+      </div>
+    </div>
+  );
+}
+
+/** 좌측 사이드바 카드의 불투명도 — 우측과 같은 문법이되 소유 store만 다르다(사이드바 store). */
+function SideBarOpacityRow() {
+  const t = useT();
+  const glass = useSideBarGlass();
+  return (
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">
+          {t("settings.theme.sideBarOpacity")}
+          <SettingsHelp title={t("settings.theme.sideBarOpacity")}>{t("settings.theme.sideBarOpacityHelp")}</SettingsHelp>
+          <SettingsScope kind="live" />
+        </p>
+      </div>
+      <div className="settings-slider-field">
+        <input
+          className="fleet-slider settings-slider"
+          type="range"
+          min={SIDE_BAR_GLASS_ALPHA_MIN}
+          max={SIDE_BAR_GLASS_ALPHA_MAX}
+          step={1}
+          value={glass.alpha}
+          aria-label={t("settings.theme.sideBarOpacity")}
+          aria-valuetext={`${glass.alpha}%`}
+          style={{ "--slider-fill": `${((glass.alpha - SIDE_BAR_GLASS_ALPHA_MIN) / (SIDE_BAR_GLASS_ALPHA_MAX - SIDE_BAR_GLASS_ALPHA_MIN)) * 100}%` } as CSSProperties}
+          onChange={(event) => setSideBarGlassAlpha(Number(event.currentTarget.value))}
+          onDoubleClick={() => setSideBarGlassAlpha(SIDE_BAR_GLASS_ALPHA_DEFAULT)}
+        />
+        <output className="settings-slider-value">{`${glass.alpha}%`}</output>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 좌측 사이드바 유리의 blur 반경. 불투명도와 달리 이 손잡이는 유리 게이트에 종속된다 —
+ * 라이트 테마와 리퀴드 글래스 끔은 각각 게이트를 닫고, 그때 화면에는 blur가 아예 없다.
+ * 리퀴드 글래스 줄이 이미 정한 실패 양식을 그대로 따른다: 화면에 없는 재질을 켜진 손잡이로
+ * 말하지 않고, 저장값은 건드리지 않아 다크로 돌아오면 고른 값이 그대로 다시 선다.
+ */
+function SideBarBlurRow() {
+  const t = useT();
+  const glass = useSideBarGlass();
+  const settings = useGlobalSettingsStore();
+  const activeTheme = settings.state?.theme ?? "instrument";
+  const glassOff = themePolarity(activeTheme) === "light" || settings.state?.liquidGlass === false;
+  return (
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">
+          {t("settings.theme.sideBarBlur")}
+          <SettingsHelp title={t("settings.theme.sideBarBlur")}>
+            {t(glassOff ? "settings.theme.sideBarBlurOffHelp" : "settings.theme.sideBarBlurHelp")}
+          </SettingsHelp>
+          <SettingsScope kind="live" />
+        </p>
+      </div>
+      <div className="settings-slider-field">
+        <input
+          className="fleet-slider settings-slider"
+          type="range"
+          min={SIDE_BAR_GLASS_BLUR_MIN}
+          max={SIDE_BAR_GLASS_BLUR_MAX}
+          step={2}
+          value={glass.blur}
+          disabled={glassOff}
+          aria-label={t("settings.theme.sideBarBlur")}
+          aria-valuetext={`${glass.blur}px`}
+          style={{ "--slider-fill": `${((glass.blur - SIDE_BAR_GLASS_BLUR_MIN) / (SIDE_BAR_GLASS_BLUR_MAX - SIDE_BAR_GLASS_BLUR_MIN)) * 100}%` } as CSSProperties}
+          onChange={(event) => setSideBarGlassBlur(Number(event.currentTarget.value))}
+          onDoubleClick={() => setSideBarGlassBlur(SIDE_BAR_GLASS_BLUR_DEFAULT)}
+        />
+        {/* px 표기도 두 로케일에서 같은 문자열이라 메시지 키를 두지 않고 여기서 조립한다. */}
+        <output className="settings-slider-value">{`${glass.blur}px`}</output>
       </div>
     </div>
   );
@@ -369,7 +478,7 @@ function SettingsSectionExpanded({ ctx }: { readonly ctx: PaneContext }) {
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {/* 우측 사이드바 불투명도 행은 페인과 같은 자리(테마 카드)에서 확대에도 선다 — 행 주입인
             이유는 같은 헬퍼가 레일 없는 모바일의 본문이기도 하기 때문이다. */}
-        {renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <RailOpacityRow /> })}
+        {renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <ChromeMaterialRows /> })}
       </div>
     </div>
   );
