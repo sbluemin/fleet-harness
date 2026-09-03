@@ -66,6 +66,18 @@ export function documentPaneTitle(ctx: PaneContext): string {
   return path ? nameOfPath(path) : t("fileExplorer.panel.title");
 }
 
+/**
+ * stale 탭 선택의 명시적 재읽기 판정 — 이미 활성인 탭만 여기서 읽는다.
+ * 비활성 탭은 activePath 전이가 문서 effect를 일으키므로 명시적으로 읽으면 요청이 둘이 된다.
+ */
+export function shouldReloadSelectedTab(input: {
+  readonly selectedPath: string;
+  readonly activePath: string | null;
+  readonly stale: boolean;
+}): boolean {
+  return input.stale && input.selectedPath === input.activePath;
+}
+
 export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
@@ -157,6 +169,15 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const reloadDoc = useCallback((relativePath: string) => {
     void loadDocument(theaterId, relativePath, { silent: true, language, signal });
   }, [language, signal, theaterId]);
+
+  // 보이는 탭과 넘침 목록이 같은 전이를 쓴다. stale 활성 탭은 명시적으로 다시 읽고,
+  // stale 비활성 탭은 activePath effect가 한 번만 읽게 둔다.
+  const selectDocumentTab = useCallback((doc: OpenDocument) => {
+    const stale = isStaleViewState(docStatesRef.current.get(doc.relativePath));
+    const reload = shouldReloadSelectedTab({ selectedPath: doc.relativePath, activePath, stale });
+    openFilePath(doc.relativePath, doc.name);
+    if (reload) reloadDoc(doc.relativePath);
+  }, [activePath, openFilePath, reloadDoc]);
 
   const handleCrumbReveal = useCallback((path: string) => {
     if (!theaterId) return;
@@ -299,10 +320,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
                   className="fexp-tab-open"
                   aria-current={active ? "true" : undefined}
                   title={stale ? t("fileExplorer.tabs.staleTitle") : doc.relativePath}
-                  onClick={() => {
-                    openFilePath(doc.relativePath, doc.name);
-                    if (stale) reloadDoc(doc.relativePath);
-                  }}
+                  onClick={() => selectDocumentTab(doc)}
                   onAuxClick={(event) => {
                     if (event.button !== 1) return;
                     event.preventDefault();
@@ -361,7 +379,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
               icon: <FileIcon name={doc.name} />,
               current: doc.relativePath === activePath,
               onSelect: () => {
-                openFilePath(doc.relativePath, doc.name);
+                selectDocumentTab(doc);
                 setTabsMenuOpen(false);
               },
             }))}

@@ -1,7 +1,9 @@
+import fs from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { breadcrumbSegments } from "../client/format.js";
-import { resolveSiblingListState } from "../client/document-pane.js";
+import { resolveSiblingListState, shouldReloadSelectedTab } from "../client/document-pane.js";
 import { chipDirHints } from "../client/layout.js";
 
 describe("breadcrumbSegments", () => {
@@ -90,5 +92,20 @@ describe("breadcrumb sibling list honesty", () => {
       entries: [file],
       partial: false,
     });
+  });
+});
+
+
+describe("stale tab activation", () => {
+  it("reloads only when the selected stale tab is already active", () => {
+    expect(shouldReloadSelectedTab({ selectedPath: "a.ts", activePath: "a.ts", stale: true })).toBe(true);
+    // 비활성 탭은 선택 전이 뒤 활성 문서 effect가 한 번 읽는다 — 여기서 다시 읽으면 중복이다.
+    expect(shouldReloadSelectedTab({ selectedPath: "b.ts", activePath: "a.ts", stale: true })).toBe(false);
+    expect(shouldReloadSelectedTab({ selectedPath: "a.ts", activePath: "a.ts", stale: false })).toBe(false);
+  });
+
+  it("uses the same stale activation path for visible tabs and the overflow list", () => {
+    const source = fs.readFileSync(new URL("../client/document-pane.tsx", import.meta.url), "utf8");
+    expect(source.match(/selectDocumentTab\(doc\)/g)).toHaveLength(2);
   });
 });
