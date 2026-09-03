@@ -10,6 +10,8 @@ import {
   resolveFleetMapZoomAnchor,
   FLEET_MAP_ENTER_ZOOM,
   FLEET_MAP_EXIT_ZOOM,
+  FLEET_MAP_FLOOR_ZOOM,
+  resolveWheelZoomFloor,
   resolveFleetContentCenter,
   resolveFleetMapActive,
   resolveFleetMapDriftStyle,
@@ -39,6 +41,20 @@ describe("fleet map activation", () => {
     // 이탈 뒤 같은 배율은 다시 진입하지 않는다.
     expect(resolveFleetMapActive(false, 0.22)).toBe(false);
     expect(resolveFleetMapActive(true, Number.NaN)).toBe(false);
+  });
+
+  it("stops the wheel at the plate — the floor stands the map and never rebounds a deeper viewport", () => {
+    // 바닥은 판이 반드시 서 있는 배율이다: 진입 임계 미만이라야 그 자리에서 지도가 서고,
+    // 축소가 멈춘 화면이 곧 함대 점 판이 된다.
+    expect(FLEET_MAP_FLOOR_ZOOM).toBeLessThan(FLEET_MAP_ENTER_ZOOM);
+    expect(resolveFleetMapActive(false, FLEET_MAP_FLOOR_ZOOM)).toBe(true);
+    expect(resolveWheelZoomFloor(1)).toBe(FLEET_MAP_FLOOR_ZOOM);
+    expect(resolveWheelZoomFloor(FLEET_MAP_FLOOR_ZOOM)).toBe(FLEET_MAP_FLOOR_ZOOM);
+    // fit-all은 판보다 깊은 배율까지 데려간다 — 그 자리에서 하한을 들이대면 축소 휠이
+    // 확대로 뒤집힌다. 바닥이 현재 배율까지 따라 내려가 축소만 정지시킨다.
+    expect(resolveWheelZoomFloor(0.02)).toBe(0.02);
+    expect(resolveWheelZoomFloor(Number.NaN)).toBe(FLEET_MAP_FLOOR_ZOOM);
+    expect(resolveWheelZoomFloor(0)).toBe(FLEET_MAP_FLOOR_ZOOM);
   });
 
   it("anchors zoom on the visible fleet's center so the panels come back on screen", () => {

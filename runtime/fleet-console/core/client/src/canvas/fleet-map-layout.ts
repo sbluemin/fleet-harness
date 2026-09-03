@@ -13,6 +13,21 @@ import type { OperationGeometry, OperationNode } from "../types.js";
 export const FLEET_MAP_ENTER_ZOOM = 0.2;
 export const FLEET_MAP_EXIT_ZOOM = 0.24;
 
+// 축소의 바닥 — 판이 반드시 서 있는 첫 배율이다(진입 임계 바로 아래). 함대가 점으로 잦아든
+// 뒤의 추가 축소는 아무 정보도 더 주지 못한다: 판은 화면 고정 층이라 그대로고, 바다만 계속
+// 옅어진다. 그 구간을 열어 두면 "끝까지 축소했다"는 감각이 사라지고, 되돌아오는 데 휠 노치만
+// 늘어난다. 그래서 휠 축소는 이 층에서 멈춘다.
+export const FLEET_MAP_FLOOR_ZOOM = 0.19;
+
+/** 휠 축소가 내려갈 수 있는 하한. 상수 하나로 고정하지 않는 이유는 fit-all(FIT_ALL_MIN_ZOOM
+ *  0.02)이 판보다 깊은 배율로 뷰포트를 데려갈 수 있기 때문이다 — 그 자리에서 하한을 0.19로
+ *  들이대면 축소 휠이 하한으로 튀어 올라 방향이 뒤집힌다. 이미 바닥보다 깊은 뷰포트에서는
+ *  그 자리를 바닥으로 삼아, 축소는 정지하고 확대만 열어 둔다. */
+export function resolveWheelZoomFloor(currentZoom: number): number {
+  if (!Number.isFinite(currentZoom) || currentZoom <= 0) return FLEET_MAP_FLOOR_ZOOM;
+  return Math.min(FLEET_MAP_FLOOR_ZOOM, currentZoom);
+}
+
 /** 줌 히스테리시스 — 진입은 0.2 미만, 이탈은 0.24 초과. 경계 위에서 휠 한 노치가 판을 두 번
  *  뒤집지 않게 한다. previous는 직전 판정(캔버스가 ref로 든다). */
 export function resolveFleetMapActive(previous: boolean, zoom: number): boolean {
