@@ -1,13 +1,26 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
+} from "react";
 
 import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
 import type { PaneContext } from "@fleet-console/sdk/pane";
 
+import type { FolderEntry } from "../server/types.js";
+import { performFileContextAction, type FileContextAction } from "./context-menu.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
-import { breadcrumbSegments, buildViewerMetaParts } from "./format.js";
+import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
 import { FileIcon } from "./file-icon.js";
+import { makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
-import { CHIP_STRIP_GAP_PX, chipDirHints, countOverflowingChips } from "./layout.js";
+import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
+import { QuietMenu } from "./quiet-menu.js";
 import { mintRevealRequestId, setFileRevealTarget, useFileRevealTarget } from "./search-navigation.js";
 import {
   activateStoredDocument,
@@ -16,12 +29,14 @@ import {
   navigateStoredHistory,
   setWrapLines,
   useFileExplorerViewState,
+  type OpenDocument,
   type ViewState,
 } from "./view-store.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
+import { parentDirOf } from "./viewer/stale.js";
 
 /**
  * 문서 창 — 표면의 detail 열.
@@ -38,12 +53,10 @@ import { MarkdownViewer } from "./viewer/markdown.js";
 
 export const DOCUMENT_PANE_ID = "file-explorer-document";
 
-/**
- * 폴더 브레드크럼 클릭 복사의 더블클릭 유예 — 이 안에 두 번째 클릭이 오면 복사 없이 reveal만 한다.
- * 브라우저는 OS 더블클릭 간격을 노출하지 않으므로 널리 쓰이는 OS 기본 상한(500ms)에 맞춘다 —
- * 이보다 짧으면 기본 설정의 느긋한 더블클릭에서도 복사가 먼저 나가 클립보드를 덮는다.
- */
-const CRUMB_DBLCLICK_GRACE_MS = 500;
+/** 복사 확인("복사됨")이 제자리에 서 있는 시간. */
+const COPY_NOTE_MS = 1200;
+/** 활성 탭 밑줄이 탭 글자 폭에서 양쪽으로 물러나는 px. */
+const TAB_LINE_INSET_PX = 8;
 
 /** 캡션에 설 이름 — 페인 종류가 아니라 지금 담은 문서를 말한다. */
 export function documentPaneTitle(ctx: PaneContext): string {
@@ -58,10 +71,16 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const t = getT(language);
   const contextScope = theaterId ?? "";
   const { openDocs, activePath, docStates, wrapLines } = useFileExplorerViewState(contextScope);
-  const chipsRef = useRef<HTMLDivElement>(null);
-  const [chipOverflow, setChipOverflow] = useState(0);
-  const [chipsScrolled, setChipsScrolled] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabsMoreRef = useRef<HTMLButtonElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  const [hiddenTabs, setHiddenTabs] = useState<readonly number[]>([]);
+  const [tabsScrolled, setTabsScrolled] = useState(false);
+  const [tabLine, setTabLine] = useState<{ readonly left: number; readonly width: number } | null>(null);
+  const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
   const [sourceModePaths, setSourceModePaths] = useState<ReadonlySet<string>>(new Set());
+  const [crumbPop, setCrumbPop] = useState<CrumbPopState | null>(null);
+  const [copied, setCopied] = useState(false);
   const revealTarget = useFileRevealTarget();
 
   useEffect(() => {
@@ -114,6 +133,18 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (openDocs.length === 0 && ctx.visible) panes.close();
   }, [ctx.visible, openDocs.length, panes]);
 
+  // 팝오버들은 문서가 바뀌면 함께 닫힌다 — 다른 문서의 목록이 남아 있으면 거짓말이 된다.
+  useEffect(() => {
+    setTabsMenuOpen(false);
+    setCrumbPop(null);
+  }, [activePath, contextScope]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPY_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const openFilePath = useCallback((relativePath: string, displayName?: string) => {
     if (!theaterId) return;
     activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath) });
@@ -123,47 +154,41 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     closeStoredDocument(contextScope, relativePath);
   }, [contextScope]);
 
-  const handleCrumbCopy = useCallback((path: string) => {
-    void (async () => {
-      try {
-        const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
-        if (!clipboard) return;
-        await clipboard.writeText(path);
-      } catch {
-        // 복사 실패는 조용히 지나간다 — 알림 토스트는 트리 페인이 소유한다.
-      }
-    })();
-  }, []);
+  const reloadDoc = useCallback((relativePath: string) => {
+    void loadDocument(theaterId, relativePath, { silent: true, language, signal });
+  }, [language, signal, theaterId]);
 
   const handleCrumbReveal = useCallback((path: string) => {
     if (!theaterId) return;
     setFileRevealTarget({ theaterId, relativePath: path, requestId: mintRevealRequestId() });
   }, [theaterId]);
 
-  // 더블클릭은 click을 두 번 앞세운다 — 폴더 조각의 복사를 유예 없이 실행하면
-  // reveal 더블클릭마다 클립보드가 두 번 덮인다. 유예 안에 두 번째 클릭이 오면 복사를 접는다.
-  const crumbCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelPendingCrumbCopy = useCallback(() => {
-    if (crumbCopyTimerRef.current === null) return;
-    clearTimeout(crumbCopyTimerRef.current);
-    crumbCopyTimerRef.current = null;
+  // 복사는 헤더 오른쪽의 아이콘 하나가 맡는다 — 클릭은 상대 경로, Alt+클릭은 절대 경로.
+  // 확인은 토스트가 아니라 제자리다: 아이콘이 체크로 바뀌고 조각 옆에 "복사됨"이 스며든다.
+  const handleCopyPath = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!activePath) return;
+    const action: FileContextAction = event.altKey ? "copyPath" : "copyRelativePath";
+    void performFileContextAction(action, contextScope, activePath)
+      .then(() => setCopied(true))
+      .catch(() => {
+        // 복사 실패는 조용히 지나간다 — 알림 토스트는 트리 페인이 소유한다.
+      });
+  }, [activePath, contextScope]);
+
+  const openCrumbPop = useCallback((segment: BreadcrumbSegment, trigger: HTMLElement) => {
+    const head = headRef.current;
+    const anchorLeft = head ? trigger.getBoundingClientRect().left - head.getBoundingClientRect().left : 0;
+    // 폴더 조각은 그 폴더를 연다. 잎(파일)은 제 부모 — 자기 옆의 파일들 — 을 연다.
+    const dirPath = segment.isLeaf ? parentDirOf(segment.path) : segment.path;
+    setCrumbPop((current) => (current?.segmentPath === segment.path ? null : { segmentPath: segment.path, dirPath, anchorLeft, trigger }));
   }, []);
-  useEffect(() => cancelPendingCrumbCopy, [cancelPendingCrumbCopy, contextScope]);
 
-  const handleCrumbDirClick = useCallback((path: string, detail: number) => {
-    cancelPendingCrumbCopy();
-    // 브라우저가 이미 다중 클릭으로 인식한 클릭(detail>1)은 reveal 제스처의 일부다 — 복사를 다시 걸지 않는다.
-    if (detail > 1) return;
-    crumbCopyTimerRef.current = setTimeout(() => {
-      crumbCopyTimerRef.current = null;
-      handleCrumbCopy(path);
-    }, CRUMB_DBLCLICK_GRACE_MS);
-  }, [cancelPendingCrumbCopy, handleCrumbCopy]);
-
-  const handleCrumbDirDoubleClick = useCallback((path: string) => {
-    cancelPendingCrumbCopy();
-    handleCrumbReveal(path);
-  }, [cancelPendingCrumbCopy, handleCrumbReveal]);
+  const closeCrumbPop = useCallback((restoreFocus: boolean) => {
+    setCrumbPop((current) => {
+      if (restoreFocus) current?.trigger.focus();
+      return null;
+    });
+  }, []);
 
   const handleToggleSourceMode = useCallback((source: boolean) => {
     if (!activePath) return;
@@ -187,28 +212,35 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const chipHints = useMemo(() => chipDirHints(openDocs), [openDocs]);
   const crumbSegments = useMemo(() => activePath ? breadcrumbSegments(activePath) : [], [activePath]);
 
-  const measureChipOverflow = useCallback(() => {
-    const container = chipsRef.current;
+  const measureTabs = useCallback(() => {
+    const container = tabsRef.current;
     if (!container) {
-      setChipOverflow(0);
-      setChipsScrolled(false);
+      setHiddenTabs([]);
+      setTabsScrolled(false);
+      setTabLine(null);
       return;
     }
-    const widths = [...container.querySelectorAll<HTMLElement>(".fexp-chip")].map((el) => el.getBoundingClientRect().width);
-    setChipOverflow(countOverflowingChips(container.clientWidth, container.scrollLeft, widths, CHIP_STRIP_GAP_PX));
-    setChipsScrolled(container.scrollLeft > 1);
+    const tabs = [...container.querySelectorAll<HTMLElement>(".fexp-tab")];
+    const widths = tabs.map((el) => el.getBoundingClientRect().width);
+    setHiddenTabs(overflowingChipIndices(container.clientWidth, container.scrollLeft, widths, CHIP_STRIP_GAP_PX));
+    setTabsScrolled(container.scrollLeft > 1);
+    const activeTab = container.querySelector<HTMLElement>(".fexp-tab.is-active");
+    const activeButton = activeTab?.querySelector<HTMLElement>(".fexp-tab-open");
+    setTabLine(activeTab && activeButton
+      ? tabLineGeometry(activeTab.offsetLeft, activeButton.offsetLeft, activeButton.offsetWidth, TAB_LINE_INSET_PX)
+      : null);
   }, []);
 
   /**
-   * 활성 칩을 띠 안으로 끌어온다. scrollIntoView({inline:"nearest"})는 칩이 "조금 걸친" 상태를
+   * 활성 탭을 띠 안으로 끌어온다. scrollIntoView({inline:"nearest"})는 탭이 "조금 걸친" 상태를
    * 이미 보이는 것으로 판정해 그대로 두므로(실측: 오른쪽 끝이 31px 잘린 채 유지), 좌표로 직접 민다.
    */
-  const ensureActiveChipVisible = useCallback(() => {
-    const container = chipsRef.current;
-    const activeChip = container?.querySelector<HTMLElement>(".fexp-chip.is-active");
-    if (!container || !activeChip) return;
-    const left = activeChip.offsetLeft;
-    const right = left + activeChip.offsetWidth;
+  const ensureActiveTabVisible = useCallback(() => {
+    const container = tabsRef.current;
+    const activeTab = container?.querySelector<HTMLElement>(".fexp-tab.is-active");
+    if (!container || !activeTab) return;
+    const left = activeTab.offsetLeft;
+    const right = left + activeTab.offsetWidth;
     const viewLeft = container.scrollLeft;
     const viewRight = viewLeft + container.clientWidth;
     if (left < viewLeft) container.scrollLeft = Math.max(0, left - CHIP_STRIP_GAP_PX);
@@ -216,22 +248,24 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   }, []);
 
   useLayoutEffect(() => {
-    const container = chipsRef.current;
+    const container = tabsRef.current;
     if (!container) {
-      setChipOverflow(0);
-      setChipsScrolled(false);
+      setHiddenTabs([]);
+      setTabsScrolled(false);
+      setTabLine(null);
       return;
     }
-    measureChipOverflow();
-    ensureActiveChipVisible();
-    measureChipOverflow();
+    measureTabs();
+    ensureActiveTabVisible();
+    measureTabs();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measureChipOverflow);
+    const observer = new ResizeObserver(measureTabs);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [activePath, chipOverflow, ensureActiveChipVisible, measureChipOverflow, openDocs]);
+  }, [activePath, ensureActiveTabVisible, hiddenTabs.length, measureTabs, openDocs]);
 
   // Escape는 지금 읽는 문서를 닫는다. 마지막 문서였다면 위의 effect가 열까지 거둔다.
+  // 팝오버가 열려 있으면 그쪽이 먼저 Escape를 삼킨다.
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape" || !activePath) return;
     event.preventDefault();
@@ -239,56 +273,106 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     closeStoredDocument(contextScope, activePath);
   }, [activePath, contextScope]);
 
+  const hiddenDocs = hiddenTabs.map((index) => openDocs[index]).filter((doc): doc is OpenDocument => doc !== undefined);
+
   return (
     <div className="fexp-viewer-pane" onKeyDown={handleKeyDown}>
-      <div className="fexp-chips-wrap">
+      <div className="fexp-tabs-wrap">
         <div
-          ref={chipsRef}
-          className={`fexp-chips${chipOverflow > 0 ? " is-overflowing" : ""}${chipsScrolled ? " is-scrolled" : ""}`}
+          ref={tabsRef}
+          className={`fexp-tabs${hiddenTabs.length > 0 ? " is-overflowing" : ""}${tabsScrolled ? " is-scrolled" : ""}${tabLine ? " is-settled" : ""}`}
           role="list"
-          aria-label={t("fileExplorer.viewer.openFiles")}
-          onScroll={measureChipOverflow}
+          aria-label={t("fileExplorer.tabs.aria")}
+          onScroll={measureTabs}
         >
-          {openDocs.map((doc) => (
-            <div
-              key={doc.relativePath}
-              role="listitem"
-              className={`fexp-chip${doc.relativePath === activePath ? " is-active" : ""}`}
-            >
-              <button
-                type="button"
-                className="fexp-chip-open"
-                aria-current={doc.relativePath === activePath ? "true" : undefined}
-                title={doc.relativePath}
-                onClick={() => openFilePath(doc.relativePath, doc.name)}
+          {openDocs.map((doc) => {
+            const active = doc.relativePath === activePath;
+            const stale = isStaleViewState(docStates.get(doc.relativePath));
+            return (
+              <div
+                key={doc.relativePath}
+                role="listitem"
+                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}`}
               >
-                <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
-                {chipHints.has(doc.relativePath) && (
-                  <span className="fexp-chip-dir" aria-hidden="true">{chipHints.get(doc.relativePath)}</span>
-                )}
-                <span className="fexp-chip-name">{doc.name}</span>
-              </button>
-              <button
-                type="button"
-                className="fexp-chip-close"
-                aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
-                onClick={() => handleCloseDoc(doc.relativePath)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-        {chipOverflow > 0 && (
+                <button
+                  type="button"
+                  className="fexp-tab-open"
+                  aria-current={active ? "true" : undefined}
+                  title={stale ? t("fileExplorer.tabs.staleTitle") : doc.relativePath}
+                  onClick={() => {
+                    openFilePath(doc.relativePath, doc.name);
+                    if (stale) reloadDoc(doc.relativePath);
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) return;
+                    event.preventDefault();
+                    handleCloseDoc(doc.relativePath);
+                  }}
+                >
+                  <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
+                  {chipHints.has(doc.relativePath) && (
+                    <span className="fexp-chip-dir" aria-hidden="true">{chipHints.get(doc.relativePath)}</span>
+                  )}
+                  <span className="fexp-chip-name">{doc.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="fexp-tab-close"
+                  aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
+                  onClick={() => handleCloseDoc(doc.relativePath)}
+                >
+                  <span className="fexp-tab-close-glyph" aria-hidden="true">✕</span>
+                </button>
+              </div>
+            );
+          })}
           <span
-            className="fexp-chips-more"
-            title={t("fileExplorer.viewer.moreChipsTitle", { count: chipOverflow })}
+            className="fexp-tab-line"
+            aria-hidden="true"
+            style={tabLine ? { left: tabLine.left, width: tabLine.width } : { left: 0, width: 0 }}
+          />
+        </div>
+        {hiddenTabs.length > 0 && (
+          <button
+            ref={tabsMoreRef}
+            type="button"
+            className="fexp-tabs-more"
+            aria-haspopup="menu"
+            aria-expanded={tabsMenuOpen}
+            aria-label={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
+            title={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
+            onClick={() => setTabsMenuOpen((open) => !open)}
           >
-            {t("fileExplorer.viewer.moreChips", { count: chipOverflow })}
-          </span>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>{hiddenTabs.length}</span>
+          </button>
+        )}
+        {tabsMenuOpen && (
+          <QuietMenu
+            className="fexp-tabs-menu"
+            ariaLabel={t("fileExplorer.tabs.menuAria")}
+            triggerRef={tabsMoreRef}
+            items={hiddenDocs.map((doc) => ({
+              key: doc.relativePath,
+              label: doc.name,
+              hint: parentDirOf(doc.relativePath) ? `${parentDirOf(doc.relativePath)}/` : undefined,
+              icon: <FileIcon name={doc.name} />,
+              current: doc.relativePath === activePath,
+              onSelect: () => {
+                openFilePath(doc.relativePath, doc.name);
+                setTabsMenuOpen(false);
+              },
+            }))}
+            onClose={(restoreFocus) => {
+              setTabsMenuOpen(false);
+              if (restoreFocus) tabsMoreRef.current?.focus();
+            }}
+          />
         )}
       </div>
-      <div className="fexp-viewer-head">
+      <div ref={headRef} className="fexp-viewer-head">
         {activeDoc && (
           <span className="fexp-viewer-doc-icon" aria-hidden="true"><FileIcon name={activeDoc.name} /></span>
         )}
@@ -299,19 +383,41 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
               <button
                 type="button"
                 className={`fexp-crumb-seg${segment.isLeaf ? " is-leaf" : ""}`}
+                aria-haspopup="menu"
+                aria-expanded={crumbPop?.segmentPath === segment.path}
                 title={segment.isLeaf
-                  ? t("fileExplorer.viewer.crumbFileTitle", { path: segment.path })
-                  : t("fileExplorer.viewer.crumbDirTitle", { path: segment.path })}
-                onClick={segment.isLeaf
-                  ? () => handleCrumbCopy(segment.path)
-                  : (event) => handleCrumbDirClick(segment.path, event.detail)}
-                onDoubleClick={segment.isLeaf ? undefined : () => handleCrumbDirDoubleClick(segment.path)}
+                  ? t("fileExplorer.viewer.crumbFileOpen", { name: segment.name })
+                  : t("fileExplorer.viewer.crumbDirOpen", { path: segment.path })}
+                onClick={(event) => openCrumbPop(segment, event.currentTarget)}
               >
                 {segment.name}
               </button>
             </span>
           ))}
         </div>
+        <span className={`fexp-crumb-ok${copied ? " is-shown" : ""}`} role="status" aria-live="polite">
+          {copied ? t("fileExplorer.viewer.copied") : ""}
+        </span>
+        {activePath && (
+          <button
+            type="button"
+            className={`fexp-crumb-copy${copied ? " is-done" : ""}`}
+            aria-label={t("fileExplorer.viewer.copyPath")}
+            title={t("fileExplorer.viewer.copyPath")}
+            onClick={handleCopyPath}
+          >
+            {copied ? (
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="m3.5 8.5 3 3 6-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M3 11V4a1 1 0 0 1 1-1h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        )}
         {isMarkdownDoc && (
           <div className="fexp-view-mode" role="group" aria-label={t("fileExplorer.viewer.viewModeAria")}>
             <button type="button" aria-pressed={!showSource} onClick={() => handleToggleSourceMode(false)}>
@@ -321,6 +427,27 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
               {t("fileExplorer.viewer.sourceMode")}
             </button>
           </div>
+        )}
+        {crumbPop && (
+          <CrumbSiblingsMenu
+            key={crumbPop.segmentPath}
+            theaterId={theaterId}
+            dirPath={crumbPop.dirPath}
+            activePath={activePath}
+            anchorLeft={crumbPop.anchorLeft}
+            boundaryRef={headRef}
+            triggerElement={crumbPop.trigger}
+            t={t}
+            onOpenFile={(path, name) => {
+              openFilePath(path, name);
+              setCrumbPop(null);
+            }}
+            onReveal={(path) => {
+              handleCrumbReveal(path);
+              closeCrumbPop(true);
+            }}
+            onClose={closeCrumbPop}
+          />
         )}
       </div>
       <div className="fexp-viewer-body">
@@ -364,6 +491,75 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         </div>
       )}
     </div>
+  );
+}
+
+interface CrumbPopState {
+  readonly segmentPath: string;
+  readonly dirPath: string;
+  readonly anchorLeft: number;
+  readonly trigger: HTMLElement;
+}
+
+function isStaleViewState(state: ViewState | undefined): boolean {
+  return (state?.kind === "code" || state?.kind === "image") && state.stale === true;
+}
+
+interface CrumbSiblingsMenuProps {
+  readonly theaterId: string | null;
+  readonly dirPath: string;
+  readonly activePath: string | null;
+  readonly anchorLeft: number;
+  readonly boundaryRef: RefObject<HTMLElement | null>;
+  readonly triggerElement: HTMLElement;
+  readonly t: ReturnType<typeof getT>;
+  readonly onOpenFile: (relativePath: string, name: string) => void;
+  readonly onReveal: (dirPath: string) => void;
+  readonly onClose: (restoreFocus: boolean) => void;
+}
+
+/**
+ * 경로 조각이 여는 폴더 목록 — 그 폴더의 파일들이 서고, 지금 읽는 파일은 brass다.
+ * 머리 행(폴더 경로)을 누르면 트리에서 드러낸다. 목록은 기존 `files/list` 한 번으로 온다.
+ */
+function CrumbSiblingsMenu({ theaterId, dirPath, activePath, anchorLeft, boundaryRef, triggerElement, t, onOpenFile, onReveal, onClose }: CrumbSiblingsMenuProps) {
+  const [entries, setEntries] = useState<readonly FolderEntry[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setEntries(null);
+    makeFilesClient(theaterId).listFolder(dirPath || undefined).then((result) => {
+      if (!active) return;
+      setEntries(result.entries.filter((entry) => entry.kind === "file"));
+    }).catch(() => {
+      if (active) setEntries([]);
+    });
+    return () => { active = false; };
+  }, [dirPath, theaterId]);
+
+  return (
+    <QuietMenu
+      className="fexp-crumb-menu"
+      ariaLabel={t("fileExplorer.viewer.crumbSiblingsAria", { path: dirPath || "/" })}
+      anchorLeft={anchorLeft}
+      boundaryRef={boundaryRef}
+      triggerElement={triggerElement}
+      header={{
+        label: dirPath || "/",
+        title: t("fileExplorer.viewer.crumbRevealFolder"),
+        onSelect: () => onReveal(dirPath),
+      }}
+      loading={entries === null}
+      emptyLabel={t("fileExplorer.viewer.crumbEmpty")}
+      items={(entries ?? []).map((entry) => ({
+        key: entry.relativePath,
+        label: entry.name,
+        icon: <FileIcon name={entry.name} />,
+        current: entry.relativePath === activePath,
+        onSelect: () => onOpenFile(entry.relativePath, entry.name),
+      }))}
+      onClose={onClose}
+    />
   );
 }
 

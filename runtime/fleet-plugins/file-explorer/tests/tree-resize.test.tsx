@@ -96,15 +96,15 @@ describe("FileTree viewport measurement", () => {
 
     expect(ResizeObserverMock.instances).toHaveLength(1);
     expect(ResizeObserverMock.instances[0]?.observe).toHaveBeenCalledWith(container.querySelector(".fexp-tree"));
-    expect(renderedNames()).toHaveLength(42);
-    expect(renderedNames().at(-1)).toBe("file-042.txt");
+    expect(renderedNames()).toHaveLength(45);
+    expect(renderedNames().at(-1)).toBe("file-045.txt");
 
     const tree = container.querySelector<HTMLDivElement>(".fexp-tree")!;
     Object.defineProperty(tree, "scrollTop", { configurable: true, writable: true, value: 450 });
     await act(async () => tree.dispatchEvent(new Event("scroll", { bubbles: true })));
 
-    expect(renderedNames()[0]).toBe("file-010.txt");
-    expect(renderedNames().at(-1)).toBe("file-057.txt");
+    expect(renderedNames()[0]).toBe("file-011.txt");
+    expect(renderedNames().at(-1)).toBe("file-061.txt");
   });
 
   it("reconnects measurement when filtering replaces and restores the tree node", async () => {
@@ -129,6 +129,6 @@ describe("FileTree viewport measurement", () => {
     expect(container.querySelector(".fexp-tree")).not.toBeNull();
     expect(ResizeObserverMock.instances).toHaveLength(2);
     expect(renderedNames()[0]).toBe("file-001.txt");
-    expect(renderedNames().at(-1)).toBe("file-042.txt");
+    expect(renderedNames().at(-1)).toBe("file-045.txt");
   });
 });

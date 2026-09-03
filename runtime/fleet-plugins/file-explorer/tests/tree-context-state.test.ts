@@ -184,7 +184,9 @@ describe("watch degraded and failed expand source contracts", () => {
   it("listens for the watcher state event", () => {
     const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
     expect(source).toContain('es.addEventListener("state"');
-    expect(source).toContain("fexp-tree-degraded");
+    // 저하 안내는 필드 아래 상태 한 줄로 선다 — 그때만 헤더에 새로고침 버튼이 되돌아온다.
+    expect(source).toContain('key: "degraded"');
+    expect(source).toContain("watchDegraded && (");
     expect(source).toContain("fileExplorer.tree.watchDegraded");
   });
 

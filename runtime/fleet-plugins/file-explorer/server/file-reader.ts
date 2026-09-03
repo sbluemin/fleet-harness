@@ -22,6 +22,28 @@ export interface FileReadResult {
   readonly sizeBytes: number;
   /** 파일 mtime (epoch ms) — 같은 stat에서 채운다. */
   readonly mtimeMs: number;
+  /** maxLines로 잘라 읽은 경우, 잘라내기 전 불러온 본문의 줄 수. */
+  readonly lineCount?: number;
+}
+
+export interface FileReadOptions {
+  /** 앞에서부터 이 줄 수만 싣는다 — 훑어보기처럼 첫 화면만 필요한 읽기가 1 MiB를 실어 오지 않기 위함. */
+  readonly maxLines?: number;
+}
+
+/** 훑어보기가 요청할 수 있는 최대 줄 수 — 그 이상은 문서로 여는 편이 맞다. */
+export const READ_MAX_LINES_CAP = 200;
+
+/** 앞 maxLines줄만 남긴다. 잘렸으면 truncated와 원래 줄 수를 함께 싣는다. */
+export function sliceLeadingLines(
+  result: FileReadResult,
+  maxLines: number | undefined,
+): FileReadResult {
+  if (maxLines === undefined) return result;
+  const lines = result.content.split("\n");
+  const lineCount = lines.at(-1) === "" ? lines.length - 1 : lines.length;
+  if (lineCount <= maxLines) return { ...result, lineCount };
+  return { ...result, content: lines.slice(0, maxLines).join("\n"), truncated: true, lineCount };
 }
 
 const FILE_SIZE_CAP = 1024 * 1024;
@@ -57,7 +79,15 @@ const EXT_LANG_MAP: Readonly<Record<string, string>> = {
   ".txt": "plaintext",
 };
 
-export async function readFileForTheater(theaterPath: string, relativePath: string): Promise<FileReadResult> {
+export async function readFileForTheater(
+  theaterPath: string,
+  relativePath: string,
+  options: FileReadOptions = {},
+): Promise<FileReadResult> {
+  return sliceLeadingLines(await readWholeFileForTheater(theaterPath, relativePath), options.maxLines);
+}
+
+async function readWholeFileForTheater(theaterPath: string, relativePath: string): Promise<FileReadResult> {
   const resolved = path.resolve(theaterPath, relativePath);
   if (!isWithinRoot(resolved, theaterPath)) throw new FileReadError("path_outside_theater");
 

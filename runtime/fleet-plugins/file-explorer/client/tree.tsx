@@ -16,12 +16,13 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
-import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, resolveContextMenuKeyboardAction, restoreContextMenuFocus } from "./context-menu.js";
+import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, performFileContextAction, resolveContextMenuKeyboardAction, restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import type { FileSearchTarget } from "./search-navigation.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";
+import { FilePeek } from "./peek.js";
 export interface PluginFilesClient {
   readonly listFolder: (relativePath?: string) => Promise<FolderListResult>;
 }
@@ -38,8 +39,13 @@ interface FileTreeProps {
   readonly onEntriesRefreshed?: (result: FolderListResult) => void;
   /** 뷰어가 열어 둔 문서들의 부모 폴더 — 펼침 여부와 무관하게 변경을 지켜본다. */
   readonly watchedDirectories?: readonly string[];
+  /** 행 hover 동작(복사·드러내기)이 실패했을 때 — 안내는 패널이 진다. */
+  readonly onActionFailed?: () => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
+
+/** 행 hover에 드러나는 두 동작 — 우클릭 메뉴에서 가장 잦은 둘이 한 번 클릭으로 내려온 것. */
+export type TreeRowAction = "copyRelativePath" | "reveal";
 
 export interface FileTreeHandle {
   readonly restoreContextMenuFocus: (relativePath: string) => HTMLElement | null;
@@ -88,8 +94,15 @@ export interface ExpandErrorRow {
   readonly key: string;
 }
 
+/** 펼쳤는데 아무것도 없는 폴더 아래의 한 줄 — 빈 자리가 고장으로 읽히지 않게 한다. 포커스 불가. */
+export interface EmptyFolderRow {
+  readonly type: "empty";
+  readonly depth: number;
+  readonly key: string;
+}
+
 export type EntryRow = FlatRow & { readonly type: "entry" };
-export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow | ExpandErrorRow;
+export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow | ExpandErrorRow | EmptyFolderRow;
 
 export function isEntryRow(row: TreeRow): row is EntryRow {
   return row.type === "entry";
@@ -109,6 +122,7 @@ export type TreeNavigationAction =
   | { readonly kind: "collapse" }
   | { readonly kind: "activate" }
   | { readonly kind: "openMenu" }
+  | { readonly kind: "peek" }
   | { readonly kind: "none" };
 
 export interface TreeNavigationOptions {
@@ -117,7 +131,11 @@ export interface TreeNavigationOptions {
 }
 
 const VIRTUALIZE_THRESHOLD = 200;
-export const ROW_HEIGHT = 30;
+export const ROW_HEIGHT = 28;
+/** 상단에 겹쳐 남는 조상 폴더 행의 최대 단 수 — 그 이상은 가장 가까운 조상들만 남긴다. */
+export const STICKY_ANCESTOR_MAX = 3;
+/** 행 hover 동작의 제자리 확인("복사됨")이 서 있는 시간. */
+const ROW_NOTE_MS = 1200;
 export const TREE_PADDING_Y = 8;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
@@ -453,7 +471,110 @@ export function rollupGitStatuses(
   return rollups;
 }
 
-/** 트리 들여쓰기 지오메트리 — 행 높이 30px·수준당 16px 계약과 함께 가상화가 기대는 상수다. */
+/**
+ * 폴더 점 하나의 색 — 세 점을 나열하는 대신 가장 강한 상태 하나만 말한다.
+ * 삭제 > 수정 > 새 파일: 되돌릴 수 없는 쪽이 먼저다.
+ */
+export function rollupDominantStatus(rollup: GitDirRollup): GitFileStatus | null {
+  if (rollup.deleted > 0) return "deleted";
+  if (rollup.modified > 0) return "modified";
+  if (rollup.untracked > 0) return "untracked";
+  return null;
+}
+
+// ═══ 조상 고정 ══════════════════════════════════════════════════════════════
+
+export interface StickyAncestorStack {
+  readonly rows: readonly EntryRow[];
+  /** 각 고정 행의 flatRows 인덱스 — 클릭으로 그 행에 착지할 때 쓴다. */
+  readonly indices: readonly number[];
+  /** 가장 깊은 조상 행을 위로 밀어 올리는 px — 그 하위 트리의 끝이 스택 아래로 들어오면 그만큼 얕은 조상 밑으로 미끄러진다. */
+  readonly shift: number;
+}
+
+const EMPTY_STICKY: StickyAncestorStack = { rows: [], indices: [], shift: 0 };
+
+/** index 행의 조상 엔트리 행 인덱스 — 얕은 것부터. 표식 행(cap·vcs·ghost)은 조상이 아니다. */
+function ancestorChain(rows: readonly TreeRow[], index: number): number[] {
+  const row = rows[index];
+  if (!row) return [];
+  const chain: number[] = [];
+  let needDepth = row.depth - 1;
+  for (let i = index - 1; i >= 0 && needDepth >= 0; i -= 1) {
+    const candidate = rows[i];
+    if (candidate && candidate.type === "entry" && candidate.depth === needDepth) {
+      chain.push(i);
+      needDepth -= 1;
+    }
+  }
+  return chain.reverse();
+}
+
+/** index 행의 하위 트리가 끝나는 첫 인덱스(exclusive). */
+function subtreeEnd(rows: readonly TreeRow[], index: number): number {
+  const row = rows[index];
+  if (!row) return index + 1;
+  for (let i = index + 1; i < rows.length; i += 1) {
+    const candidate = rows[i];
+    if (candidate && candidate.depth <= row.depth) return i;
+  }
+  return rows.length;
+}
+
+/**
+ * 뷰포트 상단에 겹쳐 남을 조상 폴더 행 — "지금 어느 폴더 안인가"를 트리가 늘 말하게 한다.
+ *
+ * 한 단씩 쌓는다: 스택 아래 경계에 걸린 행의 조상 체인에서 다음 슬롯의 조상을 꺼내, 그 행이
+ * 제자리를 지나 올라갔을 때만 붙인다. 체인이 스택과 갈라지면(하위 트리가 끝나면) 거기서 멈춘다.
+ * 가장 깊은 조상의 하위 트리가 끝나 가면 그 행만 위로 밀려 나간다(shift) — 얕은 조상은 그대로다.
+ */
+export function stickyAncestorStack(
+  rows: readonly TreeRow[],
+  scrollTop: number,
+  rowHeight: number = ROW_HEIGHT,
+  paddingY: number = TREE_PADDING_Y,
+  max: number = STICKY_ANCESTOR_MAX,
+): StickyAncestorStack {
+  if (rows.length === 0 || scrollTop <= paddingY) return EMPTY_STICKY;
+  const rowTop = (index: number) => paddingY + index * rowHeight;
+  const rowAt = (y: number) => Math.max(0, Math.min(rows.length - 1, Math.floor((y - paddingY) / rowHeight)));
+  const chainFor = (probe: number): number[] => {
+    const probeRow = rows[probe];
+    const chain = ancestorChain(rows, probe);
+    // 펼친 폴더 자기 행이 스택 아래로 반쯤 들어가 있으면 그 행도 조상이다 — 다음 행들이 그 자식이므로.
+    if (
+      probeRow
+      && probeRow.type === "entry"
+      && probeRow.entry.kind === "dir"
+      && probeRow.isExpanded
+      && subtreeEnd(rows, probe) > probe + 1
+    ) chain.push(probe);
+    return chain;
+  };
+  const full: number[] = [];
+  for (;;) {
+    const slotTop = scrollTop + full.length * rowHeight;
+    const chain = chainFor(rowAt(slotTop));
+    const candidate = chain[full.length];
+    if (candidate === undefined || rowTop(candidate) >= slotTop) break;
+    if (full.slice(0, full.length).some((index, slot) => chain[slot] !== index)) break;
+    full.push(candidate);
+  }
+  if (full.length === 0) return EMPTY_STICKY;
+  // 상한을 넘으면 가장 가까운 조상들만 남긴다.
+  const stack = full.slice(-max);
+  const deepest = stack[stack.length - 1] ?? 0;
+  const stackBottom = scrollTop + full.length * rowHeight;
+  const subtreeBottom = rowTop(subtreeEnd(rows, deepest));
+  const shift = Math.max(0, Math.min(rowHeight, stackBottom - subtreeBottom));
+  return {
+    rows: stack.map((index) => rows[index] as EntryRow),
+    indices: stack,
+    shift,
+  };
+}
+
+/** 트리 들여쓰기 지오메트리 — 행 높이 28px·수준당 16px 계약과 함께 가상화가 기대는 상수다. */
 export const TREE_INDENT_PX = 16;
 export const TREE_BASE_PADDING_PX = 12;
 /** 인덴트 가이드 세로선의 좌측 오프셋(px) — 각 조상 수준의 chevron 열 중앙 아래에 선다. */
@@ -632,7 +753,10 @@ export function buildFlatRows(
       isLoading,
     });
     if (entry.kind === "dir" && isExpanded && !isCycle) {
-      if (children) {
+      if (children && children.length === 0 && !low && !childResult?.truncated) {
+        // 필터 합성 트리의 빈 자식 목록은 "아직 안 가져옴"의 자리이므로, 실제 탐색에서만 빈 폴더를 말한다.
+        rows.push({ type: "empty", depth: depth + 1, key: `empty:${entry.relativePath}` });
+      } else if (children) {
         const nextAncestorFolders = new Set(ancestorFolders);
         nextAncestorFolders.add(folderIdentity);
         rows.push(...buildFlatRows(
@@ -718,12 +842,14 @@ export function resolveTreeNavigation(
     }
     return { kind: "none" };
   }
-  if (key === "Enter" || key === " ") return { kind: "activate" };
+  if (key === "Enter") return { kind: "activate" };
+  // Space는 파일을 훑어본다(Quick Look) — 문서를 세우지 않고 첫 화면만. 폴더는 Enter처럼 펼친다.
+  if (key === " ") return row.entry.kind === "dir" ? { kind: "activate" } : { kind: "peek" };
   return { kind: "none" };
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -749,11 +875,18 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [filterOutcome, setFilterOutcome] = useState<FileSearchResult | null>(null);
   const [expandFailedDirs, setExpandFailedDirs] = useState<Set<string>>(new Set());
   const [watchDegraded, setWatchDegraded] = useState(false);
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [optionsMenuOpen, setOptionsMenuOpen] = useState(false);
+  /** 훑어보기 중인 파일 — 트리 안의 카드 하나. 세션·스토어에는 닿지 않는다. */
+  const [peekPath, setPeekPath] = useState<string | null>(null);
+  /** 행 hover 동작의 제자리 확인 — 토스트 대신 그 행의 동작 자리에 잠깐 선다. */
+  const [rowNote, setRowNote] = useState<{ readonly path: string; readonly id: number; readonly text: string } | null>(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const treeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
-  const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const optionsButtonRef = useRef<HTMLButtonElement>(null);
+  const rowNoteIdRef = useRef(0);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
   const revealedRequestRef = useRef(0);
@@ -1155,8 +1288,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     inFlightFoldersRef.current.set(relPath, request);
   }, [contextKey, files]);
 
+  // 스크롤은 가상화 창뿐 아니라 조상 고정 스택과 가장자리 페이드도 정하므로 늘 듣는다.
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);
+    const node = e.currentTarget as HTMLDivElement;
+    setScrollTop(node.scrollTop);
+    setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
   }, []);
 
   const handleToggleHidden = useCallback(() => {
@@ -1365,7 +1501,98 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   };
 
+  // ── 조상 고정 ──
+  const sticky = useMemo(
+    () => (isFiltering ? EMPTY_STICKY : stickyAncestorStack(flatRows, scrollTop)),
+    [flatRows, isFiltering, scrollTop],
+  );
+
+  useLayoutEffect(() => {
+    const node = treeRef.current;
+    if (!node) return;
+    setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+  }, [containerHeight, flatRows.length]);
+
+  /** 고정 행 클릭 — 그 폴더 행이 자기 슬롯 자리에 오도록 스크롤하고 커서를 옮긴다. */
+  const jumpToStickyRow = (rowIndex: number, slot: number) => {
+    const row = flatRows[rowIndex];
+    if (!row || row.type !== "entry") return;
+    const nextScrollTop = Math.max(0, TREE_PADDING_Y + rowIndex * ROW_HEIGHT - slot * ROW_HEIGHT);
+    if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
+    setScrollTop(nextScrollTop);
+    pendingFocusPathRef.current = row.entry.relativePath;
+    setCursorPath(row.entry.relativePath);
+  };
+
+  // ── 훑어보기 ──
+  const peekRow = useMemo(() => {
+    if (peekPath === null) return null;
+    const index = flatRows.findIndex((row) => isEntryRow(row) && row.entry.relativePath === peekPath);
+    const row = flatRows[index];
+    return row && isEntryRow(row) && row.entry.kind === "file" ? { row, index } : null;
+  }, [flatRows, peekPath]);
+
+  useEffect(() => {
+    if (peekPath !== null && peekRow === null) setPeekPath(null);
+  }, [peekPath, peekRow]);
+
+  useEffect(() => {
+    setPeekPath(null);
+  }, [contextKey, isFiltering]);
+
+  // 카드가 열린 채 ↑↓로 움직이면 카드가 커서를 따라간다 — 폴더에 닿으면 접는다.
+  useEffect(() => {
+    if (peekPath === null || renderedCursorPath === null || renderedCursorPath === peekPath) return;
+    const row = flatRows.find((candidate) => isEntryRow(candidate) && candidate.entry.relativePath === renderedCursorPath);
+    setPeekPath(row && isEntryRow(row) && row.entry.kind === "file" ? renderedCursorPath : null);
+  }, [flatRows, peekPath, renderedCursorPath]);
+
+  useEffect(() => {
+    if (peekPath === null) return;
+    const handleOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (viewportRef.current?.querySelector(".fexp-peek")?.contains(target)) return;
+      setPeekPath(null);
+    };
+    document.addEventListener("pointerdown", handleOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
+  }, [peekPath]);
+
+  // ── 행 hover 동작 ──
+  useEffect(() => {
+    if (!rowNote) return;
+    const timer = setTimeout(() => setRowNote((current) => (current?.id === rowNote.id ? null : current)), ROW_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [rowNote]);
+
+  const handleRowAction = (row: EntryRow, action: TreeRowAction) => {
+    if (!theaterId) {
+      onActionFailed?.();
+      return;
+    }
+    setCursorPath(row.entry.relativePath);
+    void performFileContextAction(action, theaterId, row.entry.relativePath)
+      .then(() => {
+        if (action !== "copyRelativePath") return;
+        rowNoteIdRef.current += 1;
+        setRowNote({ path: row.entry.relativePath, id: rowNoteIdRef.current, text: t("fileExplorer.row.copied") });
+      })
+      .catch(() => onActionFailed?.());
+  };
+
+  const handleRowPeek = (row: EntryRow) => {
+    setCursorPath(row.entry.relativePath);
+    setPeekPath(row.entry.relativePath);
+  };
+
   const handleTreeItemKeyDown = (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Escape" && peekPath !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPeekPath(null);
+      return;
+    }
     const index = flatRows.findIndex((candidate) => isEntryRow(candidate) && candidate.entry.relativePath === row.entry.relativePath);
     if (index < 0) return;
     const pageSize = Math.max(1, Math.floor(containerHeight / ROW_HEIGHT));
@@ -1388,6 +1615,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       event.stopPropagation();
       const anchor = contextMenuAnchorFromRowRect(event.currentTarget.getBoundingClientRect());
       openRowContextMenu(row, anchor.x, anchor.y);
+      return;
+    }
+    if (action.kind === "peek") {
+      setPeekPath((current) => (current === row.entry.relativePath ? null : row.entry.relativePath));
       return;
     }
     if (action.kind === "focus") {
@@ -1425,6 +1656,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   };
 
   const activateRow = (row: EntryRow) => {
+    // 진짜로 열면 훑어보기는 끝난다.
+    setPeekPath(null);
     if (row.entry.kind !== "dir") {
       onSelect(row.entry);
       return;
@@ -1451,11 +1684,27 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     openRowContextMenu(row, event.clientX, event.clientY);
   };
 
-  if (!theaterId) return <div className="fexp-tree-empty">{t("fileExplorer.status.selectTheater")}</div>;
+  if (!theaterId) {
+    return (
+      <div className="fexp-empty is-plain">
+        <span className="fexp-empty-title">{t("fileExplorer.status.selectTheater")}</span>
+      </div>
+    );
+  }
   // 전체 에러 화면은 보여줄 트리가 아예 없을 때(초기 로드 실패)만 —
   // 이전 result가 있으면 트리를 유지해 ↻ 재시도 경로를 보존한다
-  if (error && !result) return <div className="fexp-tree-error">{error}</div>;
-  if (!result) return <div className="fexp-tree-loading">{t("fileExplorer.status.loading")}</div>;
+  if (error && !result) {
+    return (
+      <div className="fexp-state-card is-error" role="alert">
+        <span className="fexp-state-title">{t("fileExplorer.status.loadFailedTitle")}</span>
+        <span className="fexp-state-text">{error}</span>
+        <button type="button" className="fexp-state-action" onClick={handleRefresh}>
+          {t("fileExplorer.status.loadFailedRetry")}
+        </button>
+      </div>
+    );
+  }
+  if (!result) return <TreeSkeleton t={t} />;
 
   const renderTreeRow = (row: TreeRow) => {
     if (row.type === "cap") {
@@ -1485,7 +1734,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       return (
         <div
           key={row.key}
-          className="fexp-tree-ghost"
+          className="fexp-tree-ghost is-deleted"
           style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
           role="note"
           aria-label={t("fileExplorer.git.deletedGhost", { name: row.name })}
@@ -1497,7 +1746,19 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           <span className="fexp-tree-chevron" aria-hidden="true" />
           <span className="fexp-tree-icon" aria-hidden="true"><FileIcon name={row.name} /></span>
           <span className="fexp-tree-name">{row.name}</span>
-          <span className="fexp-git-badge is-deleted" aria-hidden="true">D</span>
+          <span className="fexp-tree-dot is-deleted" aria-hidden="true" />
+        </div>
+      );
+    }
+    if (row.type === "empty") {
+      return (
+        <div
+          key={row.key}
+          className="fexp-tree-empty-row"
+          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
+          role="note"
+        >
+          {t("fileExplorer.status.emptyFolder")}
         </div>
       );
     }
@@ -1529,19 +1790,55 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         gitAvailable={gitAvailable}
         gitStatus={gitStatusByPath.get(row.entry.relativePath)}
         rollup={row.entry.kind === "dir" ? gitRollups.get(row.entry.relativePath) : undefined}
+        note={rowNote?.path === row.entry.relativePath ? rowNote.text : null}
         onEntryClick={handleRowClick}
         onContextMenu={handleRowContextMenu}
         onKeyDown={handleTreeItemKeyDown}
+        onRowAction={handleRowAction}
+        onPeek={handleRowPeek}
         t={t}
       />
     );
   };
 
+  // 상태는 한 줄로 — 필드 아래 모노 한 줄이 검색 수·캡·저하·git 상한을 차례로 말한다. 경고색은 캡·실패에만.
+  const statusLines: { readonly key: string; readonly text: string; readonly tone: "quiet" | "warn"; readonly role: "status" | "alert" }[] = [];
+  if (isFiltering && filterSearching) {
+    statusLines.push({ key: "searching", text: t("fileExplorer.filter.searchingAll"), tone: "quiet", role: "status" });
+  }
+  if (isFiltering && !filterSearching && !filterFailed) {
+    if (filterOutcome?.walkCapped) {
+      statusLines.push({ key: "capped", text: t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: PALETTE_SEARCH_WALK_CAP }), tone: "warn", role: "status" });
+    } else if (filterOutcome?.ignoredSkipped) {
+      statusLines.push({ key: "count", text: t("fileExplorer.filter.scanSkipped", { count: filterMatchCount }), tone: "quiet", role: "status" });
+    } else {
+      statusLines.push({ key: "count", text: t("fileExplorer.filter.resultCount", { count: filterMatchCount }), tone: "quiet", role: "status" });
+    }
+  }
+  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.degraded === "walker") {
+    statusLines.push({ key: "fallback", text: t("fileExplorer.filter.degraded"), tone: "warn", role: "status" });
+  }
+  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.complete === false) {
+    statusLines.push({ key: "partial", text: t("fileExplorer.filter.partial"), tone: "quiet", role: "status" });
+  }
+  if (isFiltering && filterFailed) {
+    statusLines.push({ key: "failed", text: t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
+  }
+  if (watchDegraded) {
+    statusLines.push({ key: "degraded", text: t("fileExplorer.tree.watchDegraded"), tone: "quiet", role: "status" });
+  }
+  if (gitStatusResult?.truncated) {
+    statusLines.push({ key: "git", text: t("fileExplorer.git.truncated", { cap: gitStatusResult.cap ?? 0 }), tone: "warn", role: "status" });
+  }
+
   return (
     <div className="fexp-tree-container">
       <div className="fexp-head">
-      <div className="fexp-filter">
-        <div className="fexp-filter-box">
+        <div className={`fexp-filter${isFiltering ? " is-typing" : ""}`}>
+          <svg className="fexp-filter-glyph" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+            <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
           <input
             ref={filterInputRef}
             type="text"
@@ -1562,140 +1859,106 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             }}
             aria-label={t("fileExplorer.filter.aria")}
           />
-          {!filterText && <span className="fexp-filter-hint" aria-hidden="true">/</span>}
+          {isFiltering && (
+            <div className="fexp-scope" role="group" aria-label={t("fileExplorer.filter.scopeAria")}>
+              <button
+                type="button"
+                className={searchScope === "files" ? "is-active" : ""}
+                aria-pressed={searchScope === "files"}
+                onClick={() => setSearchScope("files")}
+              >
+                {t("fileExplorer.filter.files")}
+              </button>
+              <button
+                type="button"
+                className={searchScope === "contents" ? "is-active" : ""}
+                aria-pressed={searchScope === "contents"}
+                onClick={() => setSearchScope("contents")}
+              >
+                {t("fileExplorer.filter.contents")}
+              </button>
+            </div>
+          )}
+          {filterText && (
+            <button
+              type="button"
+              className="fexp-filter-clear"
+              onClick={() => {
+                setFilterText("");
+                setFilterCollapsedDirs(new Set());
+              }}
+              aria-label={t("fileExplorer.filter.clear")}
+            >
+              ✕
+            </button>
+          )}
+          <div className="fexp-filter-tools">
+            {watchDegraded && (
+              <button
+                type="button"
+                className="fexp-refresh-btn"
+                onClick={handleRefresh}
+                aria-label={t("fileExplorer.tree.refresh")}
+                title={t("fileExplorer.tree.refresh")}
+              >
+                ↻
+              </button>
+            )}
+            <div className="fexp-more-wrap">
+              <button
+                ref={optionsButtonRef}
+                type="button"
+                className="fexp-more-btn"
+                onClick={() => setOptionsMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={optionsMenuOpen}
+                aria-label={t("fileExplorer.header.more")}
+                title={t("fileExplorer.header.more")}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                  <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+                  <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+                  <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+                </svg>
+              </button>
+              {optionsMenuOpen && (
+                <TreeOptionsMenu
+                  sortMode={sortMode}
+                  showHidden={showHidden}
+                  t={t}
+                  triggerRef={optionsButtonRef}
+                  onSelectSort={(mode) => {
+                    handleSelectSort(mode);
+                    setOptionsMenuOpen(false);
+                    optionsButtonRef.current?.focus();
+                  }}
+                  onToggleHidden={() => {
+                    handleToggleHidden();
+                    setOptionsMenuOpen(false);
+                    optionsButtonRef.current?.focus();
+                  }}
+                  onRefresh={() => {
+                    handleRefresh();
+                    setOptionsMenuOpen(false);
+                    optionsButtonRef.current?.focus();
+                  }}
+                  onClose={(restoreFocus) => {
+                    setOptionsMenuOpen(false);
+                    if (restoreFocus) optionsButtonRef.current?.focus();
+                  }}
+                />
+              )}
+            </div>
+          </div>
         </div>
-        {filterText && (
-          <button
-            type="button"
-            className="fexp-filter-clear"
-            onClick={() => {
-              setFilterText("");
-              setFilterCollapsedDirs(new Set());
-            }}
-            aria-label={t("fileExplorer.filter.clear")}
+        {statusLines.length > 0 && (
+          <div
+            className={`fexp-status${statusLines.some((line) => line.tone === "warn") ? " is-warn" : ""}`}
+            role={statusLines.some((line) => line.role === "alert") ? "alert" : "status"}
           >
-            ✕
-          </button>
+            {statusLines.map((line) => line.text).join(" · ")}
+          </div>
         )}
-        <div className="fexp-sort-wrap">
-          <button
-            ref={sortButtonRef}
-            type="button"
-            className="fexp-sort-btn"
-            onClick={() => setSortMenuOpen((open) => !open)}
-            aria-haspopup="menu"
-            aria-expanded={sortMenuOpen}
-            aria-label={t("fileExplorer.sort.open", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
-            title={t("fileExplorer.sort.open", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M4.5 3v9M4.5 12l-2-2M4.5 12l2-2M9 4.5h5M9 8h4M9 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="fexp-sort-label">{t(SORT_MODE_LABEL_KEYS[sortMode])}</span>
-          </button>
-          {sortMenuOpen && (
-            <SortMenu
-              sortMode={sortMode}
-              t={t}
-              triggerRef={sortButtonRef}
-              onSelect={(mode) => {
-                handleSelectSort(mode);
-                setSortMenuOpen(false);
-                sortButtonRef.current?.focus();
-              }}
-              onClose={(restoreFocus) => {
-                setSortMenuOpen(false);
-                if (restoreFocus) sortButtonRef.current?.focus();
-              }}
-            />
-          )}
-        </div>
-        <button
-          type="button"
-          className="fexp-refresh-btn"
-          onClick={handleRefresh}
-          aria-label={t("fileExplorer.tree.refresh")}
-          title={t("fileExplorer.tree.refresh")}
-        >
-          ↻
-        </button>
-        <button
-          type="button"
-          className={`fexp-hidden-toggle${showHidden ? " is-active" : ""}`}
-          onClick={handleToggleHidden}
-          aria-pressed={showHidden}
-          aria-label={showHidden ? t("fileExplorer.tree.hideHidden") : t("fileExplorer.tree.showHidden")}
-          title={showHidden ? t("fileExplorer.tree.hideHidden") : t("fileExplorer.tree.showHidden")}
-        >
-          {showHidden ? (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <ellipse cx="8" cy="8" rx="5.5" ry="3.5" stroke="currentColor" strokeWidth="1.4"/>
-              <circle cx="8" cy="8" r="1.8" fill="currentColor"/>
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <ellipse cx="8" cy="8" rx="5.5" ry="3.5" stroke="currentColor" strokeWidth="1.4"/>
-              <circle cx="8" cy="8" r="1.8" fill="currentColor"/>
-              <line x1="3" y1="13" x2="13" y2="3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-            </svg>
-          )}
-        </button>
-      </div>
-      {isFiltering && (
-        <div className="fexp-search-scopes" role="group" aria-label={t("fileExplorer.filter.scopeAria")}>
-          <button
-            type="button"
-            className={searchScope === "files" ? "is-active" : ""}
-            aria-pressed={searchScope === "files"}
-            onClick={() => setSearchScope("files")}
-          >
-            {t("fileExplorer.filter.files")}
-          </button>
-          <button
-            type="button"
-            className={searchScope === "contents" ? "is-active" : ""}
-            aria-pressed={searchScope === "contents"}
-            onClick={() => setSearchScope("contents")}
-          >
-            {t("fileExplorer.filter.contents")}
-          </button>
-        </div>
-      )}
-      {isFiltering && filterSearching && (
-        <div className="fexp-filter-scan" role="status">
-          {t("fileExplorer.filter.searchingAll")}
-        </div>
-      )}
-      {isFiltering && !filterSearching && !filterFailed && (
-        <div className="fexp-filter-scan" role="status">
-          {t("fileExplorer.filter.resultCount", { count: filterMatchCount })}
-        </div>
-      )}
-      {isFiltering && !filterSearching && !filterFailed && filterOutcome?.ignoredSkipped && (
-        <div className="fexp-filter-cap" role="status">
-          {t("fileExplorer.filter.ignoredHint")}
-        </div>
-      )}
-      {isFiltering && !filterSearching && !filterFailed && filterOutcome?.walkCapped && (
-        <div className="fexp-filter-cap" role="status">
-          {t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: PALETTE_SEARCH_WALK_CAP })}
-        </div>
-      )}
-      {isFiltering && filterFailed && (
-        <div className="fexp-filter-cap" role="alert">
-          {t("fileExplorer.filter.searchFailed")}
-        </div>
-      )}
-      {watchDegraded && (
-        <div className="fexp-tree-degraded" role="status">
-          {t("fileExplorer.tree.watchDegraded")}
-        </div>
-      )}
-      {gitStatusResult?.truncated && (
-        <div className="fexp-git-note" role="status">
-          {t("fileExplorer.git.truncated", { cap: gitStatusResult.cap ?? 0 })}
-        </div>
-      )}
       </div>
       {isFiltering ? (
         <SearchResultList
@@ -1707,37 +1970,66 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         />
       ) : (
         <div
-          ref={attachTreeRef}
-          className="fexp-tree"
-          role="tree"
-          tabIndex={-1}
-          aria-label={t("fileExplorer.tree.aria")}
-          onScroll={shouldVirtualize ? handleScroll : undefined}
+          ref={viewportRef}
+          className={`fexp-tree-viewport${scrollTop > TREE_PADDING_Y ? " is-scrolled" : ""}${canScrollDown ? " can-scroll-down" : ""}${sticky.rows.length > 0 ? " has-sticky" : ""}`}
         >
-          {false && result?.parentRelativePath !== null && (
-            <button
-              className="fexp-tree-up"
-              type="button"
-              onClick={() => setCurrentPath(result?.parentRelativePath ?? "")}
-              aria-label={t("fileExplorer.tree.parentFolder")}
-            >
-              ↑ ..
-            </button>
-          )}
-          {shouldVirtualize ? (
-            <div style={{ height: totalHeight, position: "relative" }}>
-              <div style={{ transform: `translateY(${offsetY}px)` }}>
-                {visibleRows.map(renderTreeRow)}
+          <div
+            ref={attachTreeRef}
+            className="fexp-tree"
+            role="tree"
+            tabIndex={-1}
+            aria-label={t("fileExplorer.tree.aria")}
+            onScroll={handleScroll}
+          >
+            {shouldVirtualize ? (
+              <div style={{ height: totalHeight, position: "relative" }}>
+                <div style={{ transform: `translateY(${offsetY}px)` }}>
+                  {visibleRows.map(renderTreeRow)}
+                </div>
               </div>
+            ) : (
+              visibleRows.map(renderTreeRow)
+            )}
+            {flatRows.length === 0 && result.entries.length === 0 && (
+              <div className="fexp-empty">
+                <span className="fexp-empty-glyph" aria-hidden="true" />
+                <span className="fexp-empty-title">{t("fileExplorer.status.emptyTitle")}</span>
+                <span className="fexp-empty-hint">{t("fileExplorer.status.emptyHint")}</span>
+              </div>
+            )}
+            {hasOnlyHiddenEntries && (
+              <div className="fexp-empty">
+                <span className="fexp-empty-glyph" aria-hidden="true" />
+                <span className="fexp-empty-title">{t("fileExplorer.status.onlyHiddenTitle")}</span>
+                <button type="button" className="fexp-empty-action" onClick={handleToggleHidden}>
+                  {t("fileExplorer.status.onlyHiddenAction")}
+                </button>
+              </div>
+            )}
+          </div>
+          {sticky.rows.length > 0 && (
+            <div className="fexp-tree-sticky" aria-hidden="true">
+              {sticky.rows.map((row, slot) => (
+                <StickyAncestorRow
+                  key={row.entry.relativePath}
+                  row={row}
+                  slot={slot}
+                  shift={slot === sticky.rows.length - 1 ? sticky.shift : 0}
+                  onJump={() => jumpToStickyRow(sticky.indices[slot] ?? 0, slot)}
+                />
+              ))}
             </div>
-          ) : (
-            visibleRows.map(renderTreeRow)
           )}
-          {flatRows.length === 0 && result.entries.length === 0 && (
-            <div className="fexp-tree-empty">{t("fileExplorer.status.emptyFolder")}</div>
-          )}
-          {hasOnlyHiddenEntries && (
-            <div className="fexp-tree-empty">{t("fileExplorer.status.onlyHiddenItems")}</div>
+          {peekRow && (
+            <FilePeek
+              theaterId={theaterId}
+              relativePath={peekRow.row.entry.relativePath}
+              name={peekRow.row.entry.name}
+              anchorTop={TREE_PADDING_Y + peekRow.index * ROW_HEIGHT - scrollTop}
+              anchorBottom={TREE_PADDING_Y + (peekRow.index + 1) * ROW_HEIGHT - scrollTop}
+              boundaryRef={viewportRef}
+              t={t}
+            />
           )}
         </div>
       )}
@@ -1756,7 +2048,11 @@ interface SearchResultListProps {
 function SearchResultList({ outcome, searching, selectedPath, onSelect, t }: SearchResultListProps) {
   const results = outcome?.files ?? [];
   if (results.length === 0 && !searching) {
-    return <div className="fexp-search-results"><div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div></div>;
+    return (
+      <div className="fexp-search-results">
+        <div className="fexp-empty is-plain"><span className="fexp-empty-title">{t("fileExplorer.status.noMatchingItems")}</span></div>
+      </div>
+    );
   }
   return (
     <div className="fexp-search-results" role="listbox" aria-label={t("fileExplorer.filter.resultsAria")}>
@@ -1789,12 +2085,7 @@ function SearchResultList({ outcome, searching, selectedPath, onSelect, t }: Sea
           </button>
         );
       })}
-      {outcome?.degraded === "walker" && (
-        <div className="fexp-filter-cap" role="status">{t("fileExplorer.filter.degraded")}</div>
-      )}
-      {!searching && outcome && outcome.complete === false && (
-        <div className="fexp-filter-scan" role="status">{t("fileExplorer.filter.partial")}</div>
-      )}
+
     </div>
   );
 }
@@ -1855,69 +2146,190 @@ interface FlatTreeRowProps {
   readonly gitAvailable: boolean;
   readonly gitStatus: GitFileStatus | undefined;
   readonly rollup: GitDirRollup | undefined;
+  /** 이 행의 동작 자리에 잠깐 서는 제자리 확인("복사됨") — 없으면 동작 버튼이 선다. */
+  readonly note: string | null;
   readonly onEntryClick: (row: EntryRow) => void;
   readonly onContextMenu: (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  readonly onRowAction: (row: EntryRow, action: TreeRowAction) => void;
+  readonly onPeek: (row: EntryRow) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, onEntryClick, onContextMenu, onKeyDown, t }: FlatTreeRowProps) {
+const ACTION_STROKE = { fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+/**
+ * 트리 행 하나.
+ *
+ * 행은 버튼이고 hover 동작도 버튼이라 한 요소에 겹칠 수 없다 — 그래서 래퍼가 둘을 나란히 세우고,
+ * 동작들은 행 오른쪽 끝에 떠 있다가 hover·focus-within에만 나타난다. 로빙 탭 정지는 행 하나뿐이므로
+ * 동작 버튼은 tabIndex -1이다(키보드는 우클릭 메뉴와 Space가 같은 일을 한다).
+ */
+function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, note, onEntryClick, onContextMenu, onKeyDown, onRowAction, onPeek, t }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
-  // 디렉터리형 행이라도 정확 경로에 상태가 있으면 배지를 단다 —
+  // 디렉터리형 행이라도 정확 경로에 상태가 있으면 점을 단다 —
   // dirty 서브모듈/디렉터리형 심링크는 git이 그 경로 자체를 보고한다.
-  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 무배지.
+  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 무표식.
   const gitBadge = gitAvailable ? mapGitStatusBadge(gitStatus) : null;
+  const rollupStatus = isDir && rollup && rollup.total > 0 ? rollupDominantStatus(rollup) : null;
   const indent = depth * 16;
   const handleClick = useCallback(() => onEntryClick(row), [onEntryClick, row]);
 
   return (
+    <div className={`fexp-tree-rowwrap${cursor ? " is-cursor" : ""}`}>
+      <button
+        ref={(node) => {
+          if (node) rowRefs.current.set(entry.relativePath, node);
+          else rowRefs.current.delete(entry.relativePath);
+        }}
+        className={`fexp-tree-row${isSelected ? " is-cur" : ""}${isDir ? " is-dir" : " is-file"}${gitBadge ? ` is-${gitBadge.status}` : ""}`}
+        style={{ paddingLeft: `${indent + 12}px` }}
+        type="button"
+        role="treeitem"
+        tabIndex={cursor ? 0 : -1}
+        aria-haspopup="menu"
+        aria-level={depth + 1}
+        aria-selected={isSelected}
+        aria-expanded={isDir ? isExpanded : undefined}
+        onClick={handleClick}
+        onContextMenu={(event) => onContextMenu(row, event)}
+        onKeyDown={(event) => onKeyDown(row, event)}
+      >
+        {treeGuideOffsets(depth).map((left) => (
+          <span key={left} className="fexp-tree-guide" style={{ left: `${left}px` }} aria-hidden="true" />
+        ))}
+        <span className="fexp-tree-chevron" aria-hidden="true">
+          {isDir && (
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+              <path d="M2.5 1.2 5.8 4 2.5 6.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </span>
+        <span className="fexp-tree-icon" aria-hidden="true">
+          {isDir ? <FolderIcon name={entry.name} open={isExpanded} /> : <FileIcon name={entry.name} />}
+        </span>
+        <span className="fexp-tree-name">{entry.name}</span>
+        {isLoading && <span className="fexp-tree-ring" role="status" aria-label={t("fileExplorer.status.expanding")} />}
+        {rollupStatus && rollup && (
+          <span
+            className={`fexp-tree-dot is-rollup is-${rollupStatus}`}
+            role="img"
+            aria-label={t("fileExplorer.git.rollupAria", { count: rollup.total })}
+            title={t("fileExplorer.git.rollupAria", { count: rollup.total })}
+          />
+        )}
+        {gitBadge && (
+          <span
+            className={`fexp-tree-dot is-${gitBadge.status}`}
+            role="img"
+            aria-label={t(gitBadge.messageKey)}
+            title={t(gitBadge.messageKey)}
+          />
+        )}
+      </button>
+      <span className="fexp-row-actions">
+        {note ? (
+          <span className="fexp-row-note" role="status">{note}</span>
+        ) : (
+          <>
+            {!isDir && (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="fexp-row-action"
+                aria-label={t("fileExplorer.row.peek")}
+                title={t("fileExplorer.row.peek")}
+                onClick={() => onPeek(row)}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" {...ACTION_STROKE} />
+                  <circle cx="8" cy="8" r="2" {...ACTION_STROKE} />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              tabIndex={-1}
+              className="fexp-row-action"
+              aria-label={t("fileExplorer.row.copyRelativePath")}
+              title={t("fileExplorer.row.copyRelativePath")}
+              onClick={() => onRowAction(row, "copyRelativePath")}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="5" y="5" width="8" height="8" rx="1.5" {...ACTION_STROKE} />
+                <path d="M3 11V4a1 1 0 0 1 1-1h7" {...ACTION_STROKE} />
+              </svg>
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="fexp-row-action"
+              aria-label={t("fileExplorer.row.reveal")}
+              title={t("fileExplorer.row.reveal")}
+              onClick={() => onRowAction(row, "reveal")}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 12 13 3" {...ACTION_STROKE} />
+                <path d="M6 3h7v7" {...ACTION_STROKE} />
+              </svg>
+            </button>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** 상단에 겹쳐 남는 조상 폴더 행 — 실제 행과 픽셀 동일하되 로빙 탭 정지 밖이다. 누르면 그 행으로 착지한다. */
+function StickyAncestorRow({ row, slot, shift, onJump }: {
+  readonly row: EntryRow;
+  readonly slot: number;
+  /** 하위 트리가 끝나 가며 위로 밀려 나가는 px — 얕은 조상 밑으로 미끄러져 들어간다. */
+  readonly shift: number;
+  readonly onJump: () => void;
+}) {
+  const { entry, depth } = row;
+  return (
     <button
-      ref={(node) => {
-        if (node) rowRefs.current.set(entry.relativePath, node);
-        else rowRefs.current.delete(entry.relativePath);
-      }}
-      className={`fexp-tree-row${isSelected ? " is-cur" : ""}${isDir ? " is-dir" : " is-file"}`}
-      style={{ paddingLeft: `${indent + 12}px` }}
       type="button"
-      role="treeitem"
-      tabIndex={cursor ? 0 : -1}
-      aria-haspopup="menu"
-      aria-level={depth + 1}
-      aria-selected={isSelected}
-      aria-expanded={isDir ? isExpanded : undefined}
-      onClick={handleClick}
-      onContextMenu={(event) => onContextMenu(row, event)}
-      onKeyDown={(event) => onKeyDown(row, event)}
+      className="fexp-tree-row is-dir is-sticky"
+      style={{
+        paddingLeft: `${depth * 16 + 12}px`,
+        zIndex: STICKY_ANCESTOR_MAX - slot,
+        ...(shift > 0 ? { marginTop: `-${shift}px` } : {}),
+      }}
+      tabIndex={-1}
+      aria-expanded="true"
+      onClick={onJump}
     >
       {treeGuideOffsets(depth).map((left) => (
         <span key={left} className="fexp-tree-guide" style={{ left: `${left}px` }} aria-hidden="true" />
       ))}
       <span className="fexp-tree-chevron" aria-hidden="true">
-        {isDir && (
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-            <path d="M2.5 1.2 5.8 4 2.5 6.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <path d="M2.5 1.2 5.8 4 2.5 6.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </span>
-      <span className="fexp-tree-icon" aria-hidden="true">
-        {isDir ? <FolderIcon name={entry.name} open={isExpanded} /> : <FileIcon name={entry.name} />}
-      </span>
+      <span className="fexp-tree-icon" aria-hidden="true"><FolderIcon name={entry.name} open /></span>
       <span className="fexp-tree-name">{entry.name}</span>
-      {isLoading && <span className="fexp-tree-spin" aria-hidden="true">⋯</span>}
-      {isDir && rollup && rollup.total > 0 && (
-        <span className="fexp-tree-rollup" aria-label={t("fileExplorer.git.rollupAria", { count: rollup.total })}>
-          {rollup.modified > 0 && <span className="fexp-tree-rollup-mark is-modified" />}
-          {rollup.untracked > 0 && <span className="fexp-tree-rollup-mark is-untracked" />}
-          {rollup.deleted > 0 && <span className="fexp-tree-rollup-mark is-deleted" />}
-        </span>
-      )}
-      {gitBadge && (
-        <span className={`fexp-git-badge is-${gitBadge.status}`} aria-label={t(gitBadge.messageKey)}>
-          {gitBadge.text}
-        </span>
-      )}
     </button>
+  );
+}
+
+const SKELETON_ROWS: readonly (readonly [depth: number, width: number])[] = [[0, 96], [1, 140], [1, 72], [0, 110], [1, 84]];
+
+/** 첫 로드의 골격 — 오고 있는 것의 모양(행)을 먼저 보여준다. 실제 행 높이와 같아 내용이 오면 제자리에서 바뀐다. */
+function TreeSkeleton({ t }: { readonly t: Translate<FileExplorerMessageKey> }) {
+  return (
+    <div className="fexp-skeleton" role="status" aria-label={t("fileExplorer.status.loading")}>
+      {SKELETON_ROWS.map(([depth, width], index) => (
+        <div key={index} className="fexp-skeleton-row" style={{ paddingLeft: `${TREE_BASE_PADDING_PX + depth * TREE_INDENT_PX}px` }}>
+          <span className="fexp-skeleton-icon" />
+          <span className="fexp-skeleton-bar" style={{ width: `${width}px` }} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1927,17 +2339,32 @@ const SORT_MODE_LABEL_KEYS = {
   size: "fileExplorer.sort.size",
 } as const satisfies Record<SortMode, FileExplorerMessageKey>;
 
-interface SortMenuProps {
+type TreeOption =
+  | { readonly kind: "sort"; readonly mode: SortMode }
+  | { readonly kind: "hidden" }
+  | { readonly kind: "refresh" };
+
+/** ⋯ 메뉴의 항목 — 정렬 3종(라디오) · 숨김 보기(체크) · 새로고침. 순서가 곧 키보드 순서다. */
+export const TREE_OPTIONS: readonly TreeOption[] = [
+  ...SORT_MODES.map((mode): TreeOption => ({ kind: "sort", mode })),
+  { kind: "hidden" },
+  { kind: "refresh" },
+];
+
+interface TreeOptionsMenuProps {
   readonly sortMode: SortMode;
+  readonly showHidden: boolean;
   readonly t: Translate<FileExplorerMessageKey>;
   /** 바깥 클릭 판정에서 제외할 트리거 버튼 — 빼면 pointerdown 닫힘 뒤 click 토글이 메뉴를 되열어 버튼으로 닫을 수 없다. */
   readonly triggerRef: React.RefObject<HTMLButtonElement | null>;
-  readonly onSelect: (mode: SortMode) => void;
+  readonly onSelectSort: (mode: SortMode) => void;
+  readonly onToggleHidden: () => void;
+  readonly onRefresh: () => void;
   readonly onClose: (restoreFocus: boolean) => void;
 }
 
-/** 정렬 선택 메뉴 — 순환 버튼과 달리 전체 선택지와 현재 값을 한 번에 보여준다. */
-function SortMenu({ sortMode, t, triggerRef, onSelect, onClose }: SortMenuProps) {
+/** ⋯ 뒤로 물러난 트리 옵션 — 정렬·숨김·새로고침이 한 메뉴에 선다. 컨텍스트 메뉴의 팝업 판독성 계약을 입는다. */
+function TreeOptionsMenu({ sortMode, showHidden, t, triggerRef, onSelectSort, onToggleHidden, onRefresh, onClose }: TreeOptionsMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, SORT_MODES.indexOf(sortMode)));
@@ -1962,8 +2389,16 @@ function SortMenu({ sortMode, t, triggerRef, onSelect, onClose }: SortMenuProps)
     return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
   }, [onClose, triggerRef]);
 
+  const activate = (index: number) => {
+    const option = TREE_OPTIONS[index];
+    if (!option) return;
+    if (option.kind === "sort") onSelectSort(option.mode);
+    else if (option.kind === "hidden") onToggleHidden();
+    else onRefresh();
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const action = resolveContextMenuKeyboardAction(activeIndex, event.key, SORT_MODES.length);
+    const action = resolveContextMenuKeyboardAction(activeIndex, event.key, TREE_OPTIONS.length);
     if (action.kind === "close") {
       // preventDefault 없이 닫는다 — Tab의 자연스러운 포커스 이동을 보존.
       onClose(false);
@@ -1978,8 +2413,7 @@ function SortMenu({ sortMode, t, triggerRef, onSelect, onClose }: SortMenuProps)
       return;
     }
     if (action.kind === "activate") {
-      const mode = SORT_MODES[action.index];
-      if (mode) onSelect(mode);
+      activate(action.index);
       return;
     }
     onClose(true);
@@ -1988,27 +2422,39 @@ function SortMenu({ sortMode, t, triggerRef, onSelect, onClose }: SortMenuProps)
   return (
     <div
       ref={menuRef}
-      className="fexp-context-menu fexp-sort-menu"
+      className="fexp-context-menu fexp-options-menu"
       role="menu"
-      aria-label={t("fileExplorer.sort.menuAria")}
+      aria-label={t("fileExplorer.header.menuAria")}
       onKeyDown={handleKeyDown}
     >
-      {SORT_MODES.map((mode, index) => (
-        <button
-          key={mode}
-          ref={(node) => { itemRefs.current[index] = node; }}
-          className="fexp-context-menu-item fexp-sort-menu-item"
-          type="button"
-          role="menuitemradio"
-          aria-checked={mode === sortMode}
-          tabIndex={activeIndex === index ? 0 : -1}
-          onClick={() => onSelect(mode)}
-          onFocus={() => setActiveIndex(index)}
-        >
-          <span>{t(SORT_MODE_LABEL_KEYS[mode])}</span>
-          <span className="fexp-sort-menu-check" aria-hidden="true">✓</span>
-        </button>
-      ))}
+      {TREE_OPTIONS.map((option, index) => {
+        const separatorBefore = index > 0 && TREE_OPTIONS[index - 1]?.kind !== option.kind;
+        const checked = option.kind === "sort" ? option.mode === sortMode : option.kind === "hidden" ? showHidden : undefined;
+        const label = option.kind === "sort"
+          ? t(SORT_MODE_LABEL_KEYS[option.mode])
+          : option.kind === "hidden"
+            ? t("fileExplorer.tree.showHidden")
+            : t("fileExplorer.tree.refresh");
+        const key = option.kind === "sort" ? `sort:${option.mode}` : option.kind;
+        return (
+          <div key={key} className="fexp-options-menu-slot">
+            {separatorBefore && <div className="fexp-context-menu-separator" role="separator" />}
+            <button
+              ref={(node) => { itemRefs.current[index] = node; }}
+              className="fexp-context-menu-item fexp-sort-menu-item"
+              type="button"
+              role={option.kind === "sort" ? "menuitemradio" : option.kind === "hidden" ? "menuitemcheckbox" : "menuitem"}
+              aria-checked={checked}
+              tabIndex={activeIndex === index ? 0 : -1}
+              onClick={() => activate(index)}
+              onFocus={() => setActiveIndex(index)}
+            >
+              <span>{label}</span>
+              {checked !== undefined && <span className="fexp-sort-menu-check" aria-hidden="true">✓</span>}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

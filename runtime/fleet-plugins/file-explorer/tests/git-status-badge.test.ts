@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { mapGitStatusBadge, rollupGitStatuses, shouldRefreshGitStatusOnVisibility, triggerManualRefresh } from "../client/tree.js";
+import { mapGitStatusBadge, rollupDominantStatus, rollupGitStatuses, shouldRefreshGitStatusOnVisibility, triggerManualRefresh } from "../client/tree.js";
 
 describe("mapGitStatusBadge", () => {
   it("maps git states to their fixed badge letter and accessible message key", () => {
@@ -61,12 +61,31 @@ describe("rollupGitStatuses", () => {
   });
 });
 
-describe("rollup marks are actually painted", () => {
-  it("gives .fexp-tree-rollup-mark a size so the ancestor signal is visible, not aria-only", () => {
+describe("status dots are actually painted", () => {
+  it("gives .fexp-tree-dot a size and ink so the signal is visible, not aria-only", () => {
     const css = fs.readFileSync(new URL("../client/explorer.css", import.meta.url), "utf8");
-    const block = css.slice(css.indexOf(".fexp-tree-rollup-mark {"));
+    const block = css.slice(css.indexOf(".fexp-tree-dot {"), css.indexOf(".fexp-tree-dot.is-rollup {"));
     expect(block).toContain("width:");
     expect(block).toContain("height:");
     expect(block).toContain("background: currentColor");
+    // 폴더 롤업 점은 속이 빈 링이다 — "안에 무언가 있다"와 "이 파일이 그렇다"를 한 점의 속으로 가른다.
+    const rollup = css.slice(css.indexOf(".fexp-tree-dot.is-rollup {"));
+    expect(rollup).toContain("box-shadow: inset 0 0 0 1px currentColor");
+  });
+
+  it("names the letter badge only for assistive text — the row itself carries the tint class", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain('className={`fexp-tree-dot is-${gitBadge.status}`}');
+    expect(source).toContain("${gitBadge ? ` is-${gitBadge.status}` : \"\"}");
+    expect(source).not.toContain("fexp-git-badge");
+  });
+});
+
+describe("rollupDominantStatus", () => {
+  it("picks the strongest state — deleted over modified over untracked", () => {
+    expect(rollupDominantStatus({ modified: 2, untracked: 1, deleted: 1, total: 4 })).toBe("deleted");
+    expect(rollupDominantStatus({ modified: 2, untracked: 1, deleted: 0, total: 3 })).toBe("modified");
+    expect(rollupDominantStatus({ modified: 0, untracked: 1, deleted: 0, total: 1 })).toBe("untracked");
+    expect(rollupDominantStatus({ modified: 0, untracked: 0, deleted: 0, total: 0 })).toBeNull();
   });
 });

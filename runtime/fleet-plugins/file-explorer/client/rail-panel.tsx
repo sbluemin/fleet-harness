@@ -257,6 +257,10 @@ function FileExplorerTreePane(ctx: PaneContext) {
       .catch(() => showFeedback(t("fileExplorer.menu.actionUnavailable")));
   }, [showFeedback, t, theaterId]);
 
+  const handleRowActionFailed = useCallback(() => {
+    showFeedback(t("fileExplorer.menu.actionUnavailable"));
+  }, [showFeedback, t]);
+
   const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isFilterFocusShortcut(event.key, event.target)) return;
     event.preventDefault();
@@ -289,6 +293,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
           onContextMenu={handleOpenContextMenu}
           onEntriesRefreshed={handleEntriesRefreshed}
           watchedDirectories={watchedDocumentDirectories}
+          onActionFailed={handleRowActionFailed}
           t={t}
         />
       </div>
