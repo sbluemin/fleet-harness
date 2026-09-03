@@ -29,6 +29,8 @@ export interface FileReadResult {
   readonly sizeBytes?: number;
   /** 파일 mtime (epoch ms) — 같은 stat에서 채운다. */
   readonly mtimeMs: number;
+  /** maxLines로 잘라 읽은 경우, 잘라내기 전 불러온 본문의 줄 수. */
+  readonly lineCount?: number;
 }
 
 export interface Utf16Span {

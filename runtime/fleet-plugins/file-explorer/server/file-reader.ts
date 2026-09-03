@@ -22,6 +22,49 @@ export interface FileReadResult {
   readonly sizeBytes: number;
   /** 파일 mtime (epoch ms) — 같은 stat에서 채운다. */
   readonly mtimeMs: number;
+  /** maxLines로 잘라 읽은 경우, 잘라내기 전 불러온 본문의 줄 수. */
+  readonly lineCount?: number;
+}
+
+export interface FileReadOptions {
+  /** 앞에서부터 이 줄 수만 싣는다 — 훑어보기처럼 첫 화면만 필요한 읽기가 1 MiB를 실어 오지 않기 위함. */
+  readonly maxLines?: number;
+}
+
+/** 훑어보기가 요청할 수 있는 최대 줄 수 — 그 이상은 문서로 여는 편이 맞다. */
+export const READ_MAX_LINES_CAP = 200;
+/** 줄바꿈 없는 생성물도 훑어보기가 구문 강조할 수 있는 크기로 제한한다. */
+export const READ_PREVIEW_BYTE_CAP = 64 * 1024;
+
+/** UTF-8 바이트 상한에서 중간 code point를 버리고 안전한 문자열로 되돌린다. */
+function sliceUtf8Bytes(content: string, cap: number): string {
+  const bytes = Buffer.from(content, "utf8");
+  if (bytes.byteLength <= cap) return content;
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, cap)).replace(/�$/, "");
+}
+
+/** 앞 maxLines줄만 남긴다. 잘렸으면 truncated와 원래 줄 수를 함께 싣는다. */
+export function sliceLeadingLines(
+  result: FileReadResult,
+  maxLines: number | undefined,
+): FileReadResult {
+  if (maxLines === undefined) return result;
+  const lines = result.content.split("\n");
+  const prefixLineCount = lines.at(-1) === "" ? lines.length - 1 : lines.length;
+  // byte reader가 이미 1 MiB에서 잘랐다면 이 수는 전체 파일의 줄 수가 아니다. 줄 수를 생략해
+  // 훑어보기가 접두 수를 전체로 말하지 않게 한다. 본문은 요청한 줄 수까지만 다시 자른다.
+  const lineLimited = prefixLineCount <= maxLines ? result.content : lines.slice(0, maxLines).join("\n");
+  const byteLimited = sliceUtf8Bytes(lineLimited, READ_PREVIEW_BYTE_CAP);
+  const previewTruncated = byteLimited !== result.content;
+  if (result.truncated) {
+    return { ...result, content: byteLimited };
+  }
+  return {
+    ...result,
+    content: byteLimited,
+    ...(previewTruncated ? { truncated: true } : {}),
+    lineCount: prefixLineCount,
+  };
 }
 
 const FILE_SIZE_CAP = 1024 * 1024;
@@ -57,7 +100,15 @@ const EXT_LANG_MAP: Readonly<Record<string, string>> = {
   ".txt": "plaintext",
 };
 
-export async function readFileForTheater(theaterPath: string, relativePath: string): Promise<FileReadResult> {
+export async function readFileForTheater(
+  theaterPath: string,
+  relativePath: string,
+  options: FileReadOptions = {},
+): Promise<FileReadResult> {
+  return sliceLeadingLines(await readWholeFileForTheater(theaterPath, relativePath), options.maxLines);
+}
+
+async function readWholeFileForTheater(theaterPath: string, relativePath: string): Promise<FileReadResult> {
   const resolved = path.resolve(theaterPath, relativePath);
   if (!isWithinRoot(resolved, theaterPath)) throw new FileReadError("path_outside_theater");
 

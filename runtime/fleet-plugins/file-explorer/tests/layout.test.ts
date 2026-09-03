@@ -51,11 +51,11 @@ describe("code viewer window", () => {
   });
 });
 
-describe("활성 칩 가시성", () => {
-  it("띠 밖으로 걸친 활성 칩을 좌표로 끌어온다", () => {
+describe("활성 탭 가시성", () => {
+  it("띠 밖으로 걸친 활성 탭을 좌표로 끌어온다", () => {
     const source = fs.readFileSync(new URL("../client/document-pane.tsx", import.meta.url), "utf8");
     // scrollIntoView는 "조금 걸친" 칩을 보이는 것으로 판정해 잘린 채 남긴다.
-    expect(source).toContain("ensureActiveChipVisible");
+    expect(source).toContain("ensureActiveTabVisible");
     expect(source).not.toContain('scrollIntoView({ inline: "nearest"');
   });
 });

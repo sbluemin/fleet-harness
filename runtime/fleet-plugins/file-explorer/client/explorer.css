@@ -36,23 +36,6 @@
   overflow: hidden;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .fexp-filter-input,
-  .fexp-filter-clear,
-  .fexp-tree-row,
-  .fexp-tree-chevron svg,
-  .fexp-hidden-toggle,
-  .fexp-sort-btn,
-  .fexp-refresh-btn,
-  .fexp-tree-error-retry {
-    transition-duration: 0.01ms;
-  }
-
-  .fexp-inline-toast {
-    animation: none;
-  }
-}
-
 .fexp-tree-pane {
   display: grid;
   grid-template-rows: 1fr;
@@ -157,7 +140,7 @@
 
 .fexp-viewer-pane {
   display: grid;
-  /* 칩 스트립(auto) · 경로 줄(32px) · 본문(1fr) · 메타 바(auto)
+  /* 탭 띠(auto) · 경로 줄(32px) · 본문(1fr) · 메타 바(auto)
      이력·낡음·줄바꿈은 호스트 캡션으로 올라갔고, 여기 남은 머리는 경로와 보기 모드뿐이라
      46px이던 자리가 32px로 줄었다 — 캡션이 새로 먹는 세로를 그만큼 되돌린다. */
   grid-template-rows: auto 32px minmax(0, 1fr) auto;
@@ -167,114 +150,6 @@
   min-height: 0;
   overflow: hidden;
   height: 100%;
-}
-
-/* ── 열린 파일 칩 스트립 ── */
-.fexp-chips-wrap {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-width: 0;
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.fexp-chips {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 6px 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.fexp-chips.is-overflowing::after,
-.fexp-chips.is-scrolled::before {
-  content: "";
-  position: sticky;
-  top: 0;
-  bottom: 0;
-  width: 28px;
-  align-self: stretch;
-  flex-shrink: 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.fexp-chips.is-overflowing::after {
-  right: 0;
-  margin-left: -28px;
-  background: linear-gradient(to right, transparent, var(--glass-tint-panel));
-}
-
-.fexp-chips.is-scrolled::before {
-  left: 0;
-  margin-right: -28px;
-  background: linear-gradient(to right, var(--glass-tint-panel), transparent);
-}
-
-.fexp-chips-more {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  padding: 0 10px 0 4px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.fexp-chips::-webkit-scrollbar {
-  display: none;
-}
-
-.fexp-chip {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  max-width: 180px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: transparent;
-}
-
-.fexp-chip.is-active {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
-}
-
-.fexp-chip-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 2px 2px 2px 8px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-}
-
-.fexp-chip.is-active .fexp-chip-open {
-  color: var(--text-primary);
-}
-
-.fexp-chip-open:focus-visible,
-.fexp-chip-close:focus-visible,
-.fexp-crumb-seg:focus-visible,
-.fexp-img-zoom button:focus-visible,
-.fexp-view-mode button:focus-visible,
-.fexp-sort-btn:focus-visible,
-.fexp-filter-clear:focus-visible,
-.fexp-refresh-btn:focus-visible,
-.fexp-hidden-toggle:focus-visible,
-.fexp-tree-error-retry:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
 }
 
 .fexp-chip-icon {
@@ -296,22 +171,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.fexp-chip-close {
-  flex-shrink: 0;
-  padding: 2px 7px 2px 4px;
-  background: none;
-  border: none;
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  line-height: 1;
-}
-
-.fexp-chip-close:hover {
-  color: var(--text-secondary);
 }
 
 /* ── 뷰어 문서 표식 ── */
@@ -399,17 +258,6 @@
   margin: 0 4px;
 }
 
-/* ── 뷰어 헤더 ── */
-.fexp-viewer-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--surface-rim);
-  min-height: 32px;
-  background: var(--surface-glass);
-}
-
 /* 브레드크럼 — 조각마다 자기까지의 경로를 집을 수 있는, 읽기가 아니라 조작의 표면. */
 .fexp-viewer-crumb {
   flex: 1;
@@ -441,30 +289,9 @@
   flex-shrink: 0;
 }
 
-.fexp-crumb-seg {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px 3px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-family: inherit;
-  font-size: inherit;
-  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-
 .fexp-crumb-seg.is-leaf {
   color: var(--text-secondary);
   font-weight: var(--weight-medium);
-}
-
-.fexp-crumb-seg:hover {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
 }
 
 .fexp-viewer-body {
@@ -500,54 +327,6 @@
   flex-direction: column;
   min-width: 0;
   border-bottom: 1px solid var(--surface-rim);
-}
-
-.fexp-filter {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 5px 8px;
-}
-
-.fexp-search-scopes {
-  display: flex;
-  gap: 3px;
-  margin: 0 10px 6px;
-  padding: 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 36%, transparent);
-}
-
-.fexp-search-scopes button {
-  flex: 1;
-  min-height: 24px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  cursor: pointer;
-}
-
-.fexp-search-scopes button:hover,
-.fexp-search-scopes button.is-active {
-  background: color-mix(in oklch, var(--brass) 9%, var(--surface-panel-raised));
-  color: var(--brass-ink);
-}
-
-.fexp-search-scopes button:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-}
-
-.fexp-filter-scan {
-  padding: 0 12px 6px;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
 }
 
 .fexp-search-results {
@@ -647,129 +426,6 @@
   font-size: var(--t-xs);
 }
 
-
-.fexp-filter-cap {
-  margin: 0 10px 8px;
-  padding: 4px 8px;
-  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--warn) 9%, transparent);
-  color: var(--warn-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.fexp-git-note {
-  padding: 0 12px 6px;
-  font-size: var(--t-xs);
-  color: var(--warn-ink);
-}
-
-.fexp-filter-box {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
-
-/* "/" 단축키 힌트 — 입력 중이거나 포커스면 물러난다. 장식이므로 포인터를 받지 않는다. */
-.fexp-filter-hint {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0 4px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-.fexp-filter-box:focus-within .fexp-filter-hint {
-  opacity: 0;
-}
-
-.fexp-filter-input {
-  flex: 1;
-  min-width: 0;
-  background: color-mix(in oklch, var(--ink-deep) 30%, transparent);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  padding: 3px 8px;
-  outline: none;
-  transition: border-color var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-filter-input:focus {
-  border-color: var(--brass);
-}
-
-.fexp-filter-clear {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-  padding: 2px 4px;
-  border-radius: var(--radius-xs);
-  line-height: 1;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-filter-clear:hover {
-  color: var(--text-secondary);
-}
-
-/* ── 파일 트리 ── */
-.fexp-tree {
-  min-width: 0;
-  padding: 8px 0;
-  overflow-y: auto;
-}
-
-.fexp-tree-up {
-  display: block;
-  width: 100%;
-  padding: 6px 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-}
-
-.fexp-tree-up:hover {
-  color: var(--text-secondary);
-}
-
-.fexp-tree-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  gap: 6px;
-  width: 100%;
-  height: 30px;
-  min-width: 0;
-  padding: 0 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-  transition: background var(--duration-fast) var(--ease-spring);
-}
-
 /* 선택 스파인 — brass는 위치 채널: "지금 여기"를 rail-chip spine과 같은 문법으로 말한다. */
 .fexp-tree-row.is-cur::before {
   content: "";
@@ -818,10 +474,6 @@
   color: var(--brass-ink);
 }
 
-.fexp-tree-row:hover {
-  background: var(--surface-glass);
-}
-
 .fexp-tree-row:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: -2px;
@@ -863,84 +515,6 @@
   font-size: var(--t-sm);
 }
 
-.fexp-tree-spin {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  animation: none;
-}
-
-/* 목록 상한 표식 행 — 트리 행과 동일한 30px를 지켜 가상화 높이 계산을 보존한다. */
-.fexp-tree-cap {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding-top: 0;
-  padding-bottom: 0;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  color: var(--warn-ink);
-  background: color-mix(in oklch, var(--warn) 8%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* VCS 날것 숨김 표식 행 — 비활성, 포커스 불가. */
-.fexp-tree-vcs {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding-top: 0;
-  padding-bottom: 0;
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: default;
-}
-
-.fexp-git-badge {
-  flex: 0 0 12px;
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  text-align: center;
-}
-
-.fexp-git-badge.is-modified { color: var(--warn-ink); }
-.fexp-git-badge.is-untracked { color: var(--positive-ink); }
-.fexp-git-badge.is-deleted { color: var(--coral-ink); }
-
-.fexp-tree-empty,
-.fexp-tree-loading {
-  padding: 16px 12px;
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-}
-
-/* 전체 로드 실패 메시지는 문단이다 — 한 줄로 자르면 사유가 사라진다. */
-.fexp-tree-error {
-  padding: 16px 12px;
-  font-size: var(--t-sm);
-  color: var(--coral-ink);
-}
-
-/* 인라인 펼침 실패 행은 가상화 격자 위에 서므로 한 행 높이를 지킨다. */
-.fexp-tree .fexp-tree-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  height: 30px;
-  padding: 0 12px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
 .fexp-tree-error-retry {
   flex-shrink: 0;
   margin-left: auto;
@@ -954,54 +528,6 @@
   font-size: var(--t-xs);
   line-height: 1.5;
   transition: background var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-tree-degraded {
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: 30px;
-  padding: 0 12px;
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fexp-tree-rollup {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding-left: 8px;
-  margin-left: auto;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-/* 롤업 표식은 잎 배지(M/U/D)보다 한 단 조용한 점이다 — 조상 행은 "안에 무언가 있다"만 말하고,
-   무엇인지는 펼쳐서 잎 배지로 읽는다. 크기를 주지 않으면 aria만 남고 화면에는 아무것도 그려지지 않는다. */
-.fexp-tree-rollup-mark {
-  width: 5px;
-  height: 5px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  flex: 0 0 auto;
-}
-
-.fexp-tree-rollup-mark.is-modified { color: var(--warn-ink); }
-.fexp-tree-rollup-mark.is-untracked { color: var(--positive-ink); }
-.fexp-tree-rollup-mark.is-deleted { color: var(--coral-ink); }
-
-/* ── 코드 뷰어 ── */
-.fexp-code-wrap {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
 .fexp-truncated-badge {
@@ -1226,48 +752,6 @@
   margin: 0;
 }
 
-/* ── 숨김 파일 토글 버튼 ── */
-.fexp-hidden-toggle {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  min-width: 26px;
-  min-height: 26px;
-  padding: 2px 4px;
-  border-radius: var(--radius-xs);
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-hidden-toggle:hover {
-  color: var(--text-secondary);
-  background: var(--surface-glass-strong);
-}
-
-.fexp-hidden-toggle.is-active {
-  color: var(--brass-ink);
-}
-
-/* ── 삭제 파일 고스트 행 — 합성 정보 행, 포커스 불가 ── */
-.fexp-tree-ghost {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding-right: 12px;
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  cursor: default;
-}
-
 .fexp-tree-ghost .fexp-tree-icon {
   opacity: 0.55;
 }
@@ -1276,58 +760,6 @@
   flex: 0 1 auto;
   color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary));
   text-decoration: line-through;
-}
-
-.fexp-tree-ghost .fexp-git-badge {
-  margin-left: auto;
-}
-
-/* ── 정렬 순환 버튼 ── */
-.fexp-sort-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.fexp-sort-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  min-width: 26px;
-  min-height: 26px;
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  line-height: 1;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-
-.fexp-sort-btn:hover {
-  color: var(--text-secondary);
-  background: var(--surface-glass-strong);
-}
-
-.fexp-sort-btn[aria-expanded="true"] {
-  color: var(--text-secondary);
-  background: var(--surface-glass-strong);
-}
-
-/* 정렬 메뉴 — 컨텍스트 메뉴의 팝업 판독성 계약을 그대로 입고, 버튼 아래 우측 정렬로 선다. */
-.fexp-sort-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  min-width: 148px;
-  /* 컨텍스트 메뉴의 100% 기준 상한은 26px 버튼 래퍼에서 풀리면 메뉴를 잘라 버린다 —
-     세 항목짜리 고정 메뉴는 자연 크기로 선다. */
-  max-width: none;
-  max-height: none;
 }
 
 .fexp-sort-menu-item {
@@ -1345,13 +777,6 @@
 
 .fexp-sort-menu-item[aria-checked="true"] .fexp-sort-menu-check {
   visibility: visible;
-}
-
-.fexp-sort-label {
-  max-width: 64px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ── 수동 새로고침 버튼 ── */
@@ -1376,4 +801,1200 @@
 .fexp-refresh-btn:hover {
   color: var(--text-secondary);
   background: var(--surface-glass-strong);
+}
+
+/* ═══ Quiet Explorer (2026-09-03) ════════════════════════════════════════════
+   헤더는 쉴 때 한 줄, 행은 상태를 잉크로, 탭은 밑줄로, 경로 조각은 열리고, 기다림은 골격으로.
+   행 높이 28px는 가상화 상수(ROW_HEIGHT)와 한 몸이다. */
+
+/* ── 침묵하는 머리 ── */
+.fexp-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.fexp-filter-glyph {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+
+/* 유령 필드 — 테두리·배경 없이 돋보기와 placeholder만. 아래 hairline이 헤더의 유일한 선이다. */
+.fexp-filter-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  outline: none;
+}
+
+.fexp-filter-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* 검색 범위는 글자가 들어올 때만 필드 안 오른쪽 끝에 두 낱말로 선다. */
+.fexp-scope {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.fexp-scope button {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+}
+
+.fexp-scope button:hover {
+  color: var(--text-secondary);
+}
+
+.fexp-scope button.is-active {
+  background: var(--brass-glow);
+  color: var(--brass-ink);
+}
+
+.fexp-scope button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.fexp-filter-clear {
+  flex-shrink: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-filter-clear:hover {
+  color: var(--text-secondary);
+}
+
+/* 컨트롤 묶음은 쉴 때 물러나 있다가 페인 hover·포커스·열림에 살아난다. */
+.fexp-filter-tools {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity var(--duration-base) var(--ease-glide);
+}
+
+.fexp-tree-container:hover .fexp-filter-tools,
+.fexp-filter:focus-within .fexp-filter-tools,
+.fexp-filter-tools:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+/* 검색 범위가 들어오면 ⋯ 메뉴는 그 자리를 비켜 준다. 감시 저하의 새로고침은 남는다. */
+.fexp-filter.is-typing .fexp-more-wrap {
+  display: none;
+}
+
+.fexp-more-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fexp-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-more-btn:hover,
+.fexp-more-btn[aria-expanded="true"] {
+  background: var(--surface-glass-strong);
+  color: var(--text-secondary);
+}
+
+/* ⋯ 메뉴 — 컨텍스트 메뉴의 팝업 판독성 계약을 입고 버튼 아래 우측 정렬로 선다. */
+.fexp-options-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 172px;
+  max-width: none;
+  max-height: none;
+}
+
+.fexp-options-menu-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 상태는 한 줄 — 필드 아래 모노 한 줄. 경고색은 캡·실패에만. */
+.fexp-status {
+  padding: 0 12px 6px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fexp-status.is-warn {
+  color: var(--warn-ink);
+}
+
+.fexp-status.is-inline {
+  padding: 8px 12px;
+  white-space: normal;
+}
+
+/* ── 트리 뷰포트 — 스크롤 면 위에 조상 고정 스택·가장자리 페이드·훑어보기 카드가 얹힌다 ── */
+.fexp-tree-viewport {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fexp-tree {
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+/* 가장자리 페이드 — 목록의 끝은 잘리는 대신 옅어진다. 스크롤 위치가 끝이면 페이드도 사라진다.
+   위쪽 페이드는 고정 스택이 있으면 그 스택의 그림자가 대신 말한다. */
+.fexp-tree-viewport::before,
+.fexp-tree-viewport::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.fexp-tree-viewport::before {
+  top: 0;
+  background: linear-gradient(var(--glass-tint-panel), transparent);
+}
+
+.fexp-tree-viewport::after {
+  bottom: 0;
+  background: linear-gradient(transparent, var(--glass-tint-panel));
+}
+
+.fexp-tree-viewport.is-scrolled:not(.has-sticky)::before,
+.fexp-tree-viewport.can-scroll-down::after {
+  opacity: 1;
+}
+
+/* 조상 고정 스택 — 열린 조상 폴더 행이 깊이순으로 상단에 겹쳐 남는다. 행 모양은 실제 행과 같다.
+   가장 깊은 행은 자기 하위 트리가 끝나 가면 음수 margin으로 얕은 조상 밑에 미끄러져 들어가므로,
+   행마다 불투명한 바닥과 깊이 역순의 z-index를 가진다. */
+.fexp-tree-sticky {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  overflow: hidden;
+  box-shadow: 0 1px 0 var(--surface-rim), 0 8px 14px -10px rgb(0 0 0 / 0.5);
+}
+
+.fexp-tree-row.is-sticky {
+  position: relative;
+  background: var(--glass-tint-panel);
+}
+
+.fexp-tree-row.is-sticky:hover {
+  background: var(--surface-glass-strong);
+}
+
+/* ── 행 ── */
+.fexp-tree-rowwrap {
+  position: relative;
+}
+
+.fexp-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tree-row:hover {
+  background: var(--surface-glass);
+}
+
+/* 잉크 틴트 — 상태는 글자 배지가 아니라 이름의 색조로 읽는다. */
+.fexp-tree-row.is-modified .fexp-tree-name {
+  color: color-mix(in oklch, var(--warn-ink) 78%, var(--text-secondary));
+}
+
+.fexp-tree-row.is-untracked .fexp-tree-name {
+  color: color-mix(in oklch, var(--positive-ink) 78%, var(--text-secondary));
+}
+
+.fexp-tree-row.is-deleted .fexp-tree-name {
+  color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary));
+  text-decoration: line-through;
+}
+
+/* 점 하나 — 파일은 자기 상태, 폴더(is-rollup)는 안쪽의 가장 강한 상태를 속이 빈 점으로. */
+.fexp-tree-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.fexp-tree-dot.is-rollup {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.fexp-tree-dot.is-modified { color: var(--warn-ink); }
+.fexp-tree-dot.is-untracked { color: var(--positive-ink); }
+.fexp-tree-dot.is-deleted { color: var(--coral-ink); }
+
+/* 폴더 펼침 링 — 150ms 안에 응답하면 그리지 않는다(깜빡임 방지). */
+.fexp-tree-ring {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin-left: auto;
+  border: 1.5px solid var(--hairline-strong);
+  border-top-color: var(--brass);
+  border-radius: var(--radius-pill);
+  animation:
+    fexp-ring-spin 0.8s linear infinite,
+    fexp-ring-in var(--duration-fast) linear 150ms both;
+}
+
+@keyframes fexp-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fexp-ring-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* hover 동작 — 점 자리에 훑어보기·상대 경로 복사·드러내기가 떠오른다. 로빙 탭 정지 밖이다. */
+.fexp-row-actions {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  padding-left: 18px;
+  background:
+    linear-gradient(to right, transparent, var(--surface-glass) 18px),
+    linear-gradient(to right, transparent, var(--glass-tint-panel) 18px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.fexp-tree-rowwrap:hover .fexp-row-actions,
+.fexp-tree-rowwrap:focus-within .fexp-row-actions,
+.fexp-row-actions:has(.fexp-row-note) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.fexp-tree-rowwrap:hover .fexp-tree-dot,
+.fexp-tree-rowwrap:focus-within .fexp-tree-dot,
+.fexp-tree-rowwrap:has(.fexp-row-note) .fexp-tree-dot {
+  opacity: 0;
+}
+
+.fexp-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-row-action:hover {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.fexp-row-action:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.fexp-row-note {
+  padding-right: 4px;
+  color: var(--positive-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+/* 표식 행들은 행과 같은 28px을 지켜 가상화 높이 계산을 보존한다. */
+.fexp-tree-cap {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fexp-tree-vcs {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* 펼친 빈 폴더 아래의 한 줄 — 자식 자리에 조용히 선다. */
+.fexp-tree-empty-row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* 삭제 파일 고스트 행 — 합성 정보 행, 포커스 불가. 이름은 coral 취소선, 점은 오른쪽 끝. */
+.fexp-tree-ghost {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-right: 12px;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+}
+
+.fexp-tree-ghost .fexp-tree-dot {
+  margin-left: auto;
+}
+
+/* 인라인 펼침 실패 행은 가상화 격자 위에 서므로 한 행 높이를 지킨다. */
+.fexp-tree-error {
+  padding: 16px 12px;
+  font-size: var(--t-sm);
+  color: var(--coral-ink);
+}
+
+.fexp-tree .fexp-tree-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── 기다림의 얼굴 ── */
+.fexp-skeleton {
+  padding: 8px 0;
+}
+
+.fexp-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+}
+
+.fexp-skeleton.is-peek .fexp-skeleton-row {
+  height: 20px;
+  padding: 0;
+}
+
+.fexp-skeleton-icon,
+.fexp-skeleton-bar {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-glass-strong) 0%,
+    color-mix(in oklch, var(--surface-glass-strong) 62%, var(--ink-fog)) 40%,
+    var(--surface-glass-strong) 80%
+  );
+  background-size: 240% 100%;
+  animation: fexp-shimmer 1.4s linear infinite;
+}
+
+.fexp-skeleton-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+}
+
+.fexp-skeleton-bar {
+  height: 9px;
+  border-radius: var(--radius-pill);
+}
+
+@keyframes fexp-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+/* 빈 폴더의 표정 — 점선 폴더 글리프와 두 줄. */
+.fexp-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 36px 16px;
+  text-align: center;
+}
+
+.fexp-empty.is-plain {
+  padding: 16px 12px;
+}
+
+.fexp-empty-glyph {
+  position: relative;
+  width: 34px;
+  height: 26px;
+  margin-bottom: 6px;
+  border: 1.5px dashed var(--hairline-strong);
+  border-radius: var(--radius-xs);
+}
+
+.fexp-empty-glyph::before {
+  content: "";
+  position: absolute;
+  left: -1.5px;
+  top: -6px;
+  width: 14px;
+  height: 6px;
+  border: 1.5px dashed var(--hairline-strong);
+  border-bottom: 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+}
+
+.fexp-empty-title {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.fexp-empty-hint {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.fexp-empty-action,
+.fexp-state-action {
+  margin-top: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-empty-action:hover,
+.fexp-state-action:hover {
+  background: var(--control-wash);
+}
+
+/* 실패 카드 — 제목·사유·다시 시도가 한 카드에. */
+.fexp-state-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin: 10px 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--coral) 26%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--coral) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+.fexp-state-title {
+  color: var(--coral-ink);
+  font-weight: var(--weight-medium);
+}
+
+.fexp-state-text {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.fexp-state-action {
+  margin-top: 2px;
+}
+
+/* ── Space 훑어보기 ── */
+.fexp-peek {
+  position: absolute;
+  left: 24px;
+  right: 12px;
+  z-index: 6;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 ink 언더레이. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 90%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 90%, var(--ink-deep))
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-anchor), 0 18px 40px -18px rgb(0 0 0 / 0.6);
+  transform-origin: top left;
+  animation: fexp-peek-in var(--duration-fast) var(--ease-spring);
+}
+
+@keyframes fexp-peek-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fexp-peek-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+.fexp-peek-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fexp-peek-meta {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.fexp-peek-code {
+  display: block;
+  max-height: 190px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent);
+  mask-image: linear-gradient(#000 72%, transparent);
+}
+
+.fexp-peek-line {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  overflow: hidden;
+  white-space: pre;
+}
+
+.fexp-peek-ln {
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.fexp-peek-more {
+  margin-top: 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.fexp-peek-stage {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+  background: repeating-conic-gradient(
+    color-mix(in oklch, var(--ink-fog) 15%, transparent) 0% 25%,
+    transparent 0% 50%
+  ) 0 0 / 16px 16px;
+  border-radius: var(--radius-xs);
+}
+
+.fexp-peek-img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+}
+
+.fexp-peek-note {
+  padding: 8px 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.fexp-peek-note.is-error {
+  color: var(--coral-ink);
+}
+
+.fexp-peek-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.fexp-peek-keys kbd {
+  padding: 0 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+/* ── 호흡하는 탭 ── */
+.fexp-tabs-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-tabs {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fexp-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.fexp-tabs.is-overflowing::after,
+.fexp-tabs.is-scrolled::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 28px;
+  align-self: stretch;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.fexp-tabs.is-overflowing::after {
+  right: 0;
+  margin-left: -28px;
+  background: linear-gradient(to right, transparent, var(--glass-tint-panel));
+}
+
+.fexp-tabs.is-scrolled::before {
+  left: 0;
+  margin-right: -28px;
+  background: linear-gradient(to right, var(--glass-tint-panel), transparent);
+}
+
+.fexp-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 200px;
+}
+
+.fexp-tab-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px 0 8px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tab:hover .fexp-tab-open {
+  color: var(--text-secondary);
+}
+
+.fexp-tab.is-active .fexp-tab-open {
+  color: var(--text-primary);
+}
+
+/* ✕는 손이 닿을 때만. 16px 자리는 늘 확보해 레이아웃이 튀지 않는다. */
+.fexp-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tab:hover .fexp-tab-close,
+.fexp-tab.is-active .fexp-tab-close,
+.fexp-tab.is-stale .fexp-tab-close,
+.fexp-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.fexp-tab-close:hover {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+/* 낡음 = 점. ✕ 자리에 서고, hover하면 ✕로 돌아온다. */
+.fexp-tab.is-stale .fexp-tab-close::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+}
+
+.fexp-tab.is-stale .fexp-tab-close-glyph {
+  display: none;
+}
+
+.fexp-tab.is-stale:hover .fexp-tab-close::before,
+.fexp-tab.is-stale .fexp-tab-close:focus-visible::before {
+  display: none;
+}
+
+.fexp-tab.is-stale:hover .fexp-tab-close-glyph,
+.fexp-tab.is-stale .fexp-tab-close:focus-visible .fexp-tab-close-glyph {
+  display: inline;
+}
+
+/* 활성 밑줄 하나가 탭 사이를 미끄러진다. 첫 측정 전에는 움직이지 않는다. */
+.fexp-tab-line {
+  position: absolute;
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  pointer-events: none;
+}
+
+.fexp-tabs.is-settled .fexp-tab-line {
+  transition: left var(--duration-base) var(--ease-spring), width var(--duration-base) var(--ease-spring);
+}
+
+.fexp-tabs-more {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 3px;
+  height: 22px;
+  margin: 0 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tabs-more:hover,
+.fexp-tabs-more[aria-expanded="true"] {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.fexp-tabs-menu {
+  position: absolute;
+  right: 6px;
+  top: calc(100% + 2px);
+  min-width: 200px;
+  max-width: calc(100% - 12px);
+  max-height: 280px;
+}
+
+/* ── 조용한 목록 팝오버 (탭 넘침 · 경로 조각) ── */
+.fexp-quiet-menu {
+  z-index: 30;
+}
+
+.fexp-quiet-menu-head {
+  display: block;
+  width: 100%;
+  padding: 4px 9px 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fexp-quiet-menu-head:hover,
+.fexp-quiet-menu-head:focus-visible {
+  outline: none;
+  background: var(--brass-glow);
+  color: var(--brass-ink);
+}
+
+.fexp-quiet-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fexp-quiet-menu-item.is-current {
+  color: var(--brass-ink);
+}
+
+.fexp-quiet-menu-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.fexp-quiet-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fexp-quiet-menu-hint {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.fexp-quiet-menu-note {
+  padding: 6px 9px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.fexp-quiet-menu-note.is-error {
+  color: var(--coral-ink);
+}
+
+/* ── 열리는 경로 조각 ── */
+.fexp-viewer-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: var(--surface-glass);
+}
+
+.fexp-crumb-seg {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 3px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: inherit;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-crumb-seg:hover,
+.fexp-crumb-seg[aria-expanded="true"] {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
+}
+
+.fexp-crumb-menu {
+  top: calc(100% + 2px);
+  min-width: 200px;
+  max-width: calc(100% - 8px);
+  max-height: 280px;
+}
+
+/* 복사는 hover에 나타나는 아이콘 하나. 확인은 제자리 — 체크와 "복사됨". */
+.fexp-crumb-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-viewer-head:hover .fexp-crumb-copy,
+.fexp-viewer-head:focus-within .fexp-crumb-copy,
+.fexp-crumb-copy.is-done {
+  opacity: 1;
+}
+
+.fexp-crumb-copy:hover {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.fexp-crumb-copy.is-done {
+  color: var(--positive-ink);
+}
+
+.fexp-crumb-ok {
+  flex: 0 0 auto;
+  color: var(--positive-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.fexp-crumb-ok.is-shown {
+  opacity: 1;
+}
+
+/* ── 코드 뷰어 위·아래 페이드 ── */
+.fexp-code-wrap {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fexp-code-wrap::before,
+.fexp-code-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  height: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.fexp-code-wrap::before {
+  top: 0;
+  background: linear-gradient(var(--glass-tint-panel), transparent);
+}
+
+/* 잘린 파일 배지가 위에 서면 페이드는 그 배지 아래에서 시작한다. */
+.fexp-code-wrap.is-truncated::before {
+  top: 25px;
+}
+
+.fexp-code-wrap::after {
+  bottom: 0;
+  background: linear-gradient(transparent, var(--glass-tint-panel));
+}
+
+.fexp-code-wrap.is-scrolled::before,
+.fexp-code-wrap.can-scroll-down::after {
+  opacity: 1;
+}
+
+/* ── 포커스 링 ── */
+.fexp-tab-open:focus-visible,
+.fexp-tab-close:focus-visible,
+.fexp-tabs-more:focus-visible,
+.fexp-crumb-seg:focus-visible,
+.fexp-crumb-copy:focus-visible,
+.fexp-more-btn:focus-visible,
+.fexp-empty-action:focus-visible,
+.fexp-state-action:focus-visible,
+.fexp-img-zoom button:focus-visible,
+.fexp-view-mode button:focus-visible,
+.fexp-filter-clear:focus-visible,
+.fexp-refresh-btn:focus-visible,
+.fexp-tree-error-retry:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fexp-filter-clear,
+  .fexp-filter-tools,
+  .fexp-tree-row,
+  .fexp-tree-chevron svg,
+  .fexp-tree-dot,
+  .fexp-row-actions,
+  .fexp-row-action,
+  .fexp-more-btn,
+  .fexp-refresh-btn,
+  .fexp-tree-error-retry,
+  .fexp-tab-open,
+  .fexp-tab-close,
+  .fexp-tabs-more,
+  .fexp-crumb-copy,
+  .fexp-crumb-ok,
+  .fexp-tree-viewport::before,
+  .fexp-tree-viewport::after,
+  .fexp-code-wrap::before,
+  .fexp-code-wrap::after {
+    transition-duration: 0.01ms;
+  }
+
+  .fexp-tabs.is-settled .fexp-tab-line {
+    transition: none;
+  }
+
+  .fexp-inline-toast,
+  .fexp-peek,
+  .fexp-skeleton-icon,
+  .fexp-skeleton-bar {
+    animation: none;
+  }
+
+  /* 링은 돌지 않고 서 있다 — 지연 등장만 남긴다. */
+  .fexp-tree-ring {
+    animation: fexp-ring-in var(--duration-fast) linear 150ms both;
+  }
 }

@@ -1,6 +1,9 @@
+import fs from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { breadcrumbSegments } from "../client/format.js";
+import { resolveSiblingListState, shouldReloadSelectedTab } from "../client/document-pane.js";
 import { chipDirHints } from "../client/layout.js";
 
 describe("breadcrumbSegments", () => {
@@ -68,5 +71,41 @@ describe("chipDirHints", () => {
     ]);
     expect(hints.get("index.ts")).toBe("/");
     expect(hints.get("src/index.ts")).toBe("src/");
+  });
+});
+
+
+describe("breadcrumb sibling list honesty", () => {
+  it("keeps failed, empty, partial, and complete listings distinct", () => {
+    const file = { name: "a.ts", relativePath: "dir/a.ts", kind: "file" } as const;
+    const dir = { name: "nested", relativePath: "dir/nested", kind: "dir" } as const;
+    expect(resolveSiblingListState("pending")).toEqual({ kind: "loading" });
+    expect(resolveSiblingListState("failed")).toEqual({ kind: "error" });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [] })).toEqual({ kind: "empty" });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [file, dir], truncated: true, cap: 500 })).toEqual({
+      kind: "ready",
+      entries: [file],
+      partial: true,
+    });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [file] })).toEqual({
+      kind: "ready",
+      entries: [file],
+      partial: false,
+    });
+  });
+});
+
+
+describe("stale tab activation", () => {
+  it("reloads only when the selected stale tab is already active", () => {
+    expect(shouldReloadSelectedTab({ selectedPath: "a.ts", activePath: "a.ts", stale: true })).toBe(true);
+    // 비활성 탭은 선택 전이 뒤 활성 문서 effect가 한 번 읽는다 — 여기서 다시 읽으면 중복이다.
+    expect(shouldReloadSelectedTab({ selectedPath: "b.ts", activePath: "a.ts", stale: true })).toBe(false);
+    expect(shouldReloadSelectedTab({ selectedPath: "a.ts", activePath: "a.ts", stale: false })).toBe(false);
+  });
+
+  it("uses the same stale activation path for visible tabs and the overflow list", () => {
+    const source = fs.readFileSync(new URL("../client/document-pane.tsx", import.meta.url), "utf8");
+    expect(source.match(/selectDocumentTab\(doc\)/g)).toHaveLength(2);
   });
 });

@@ -36,6 +36,49 @@ export function chipDirHints(
   return hints;
 }
 
+/** Indices of tabs whose box is not fully inside the visible strip — the "▾ N" list is built from these. */
+export function overflowingChipIndices(
+  containerWidth: number,
+  scrollLeft: number,
+  itemWidths: readonly number[],
+  gap: number = CHIP_STRIP_GAP_PX,
+): number[] {
+  if (containerWidth <= 0 || itemWidths.length === 0) return [];
+  const viewLeft = scrollLeft;
+  const viewRight = scrollLeft + containerWidth;
+  let x = 0;
+  const hidden: number[] = [];
+  itemWidths.forEach((width, index) => {
+    const left = x;
+    const right = x + width;
+    if (left + 0.5 < viewLeft || right - 0.5 > viewRight) hidden.push(index);
+    x += width + gap;
+  });
+  return hidden;
+}
+
+
+export interface TabLineGeometry {
+  readonly left: number;
+  readonly width: number;
+}
+
+/**
+ * 활성 탭 밑줄 좌표 — 버튼의 offsetLeft만 쓰면 offsetParent인 탭 안의 0에 가까운 값이라
+ * 둘째 탭부터도 첫 탭 밑에 그려진다. 탭 자체의 띠 좌표를 반드시 더한다.
+ */
+export function tabLineGeometry(
+  tabOffsetLeft: number,
+  buttonOffsetLeft: number,
+  buttonWidth: number,
+  inset: number,
+): TabLineGeometry {
+  return {
+    left: tabOffsetLeft + buttonOffsetLeft + inset,
+    width: Math.max(0, buttonWidth - inset * 2),
+  };
+}
+
 /** Chips whose box is not fully inside the visible strip. */
 export function countOverflowingChips(
   containerWidth: number,
@@ -43,16 +86,5 @@ export function countOverflowingChips(
   itemWidths: readonly number[],
   gap: number = CHIP_STRIP_GAP_PX,
 ): number {
-  if (containerWidth <= 0 || itemWidths.length === 0) return 0;
-  const viewLeft = scrollLeft;
-  const viewRight = scrollLeft + containerWidth;
-  let x = 0;
-  let hidden = 0;
-  for (const width of itemWidths) {
-    const left = x;
-    const right = x + width;
-    if (left + 0.5 < viewLeft || right - 0.5 > viewRight) hidden += 1;
-    x += width + gap;
-  }
-  return hidden;
+  return overflowingChipIndices(containerWidth, scrollLeft, itemWidths, gap).length;
 }

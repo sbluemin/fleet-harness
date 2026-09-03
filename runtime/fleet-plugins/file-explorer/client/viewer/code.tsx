@@ -54,12 +54,17 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
   const windowRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(480);
+  // 아래에 더 있음을 가장자리 페이드가 말한다 — 끝에 닿으면 페이드도 사라진다.
+  const [canScrollDown, setCanScrollDown] = useState(false);
   const wrapping = wrap && canWrapLines(lines.length);
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
-    const measure = () => setViewportHeight(node.clientHeight);
+    const measure = () => {
+      setViewportHeight(node.clientHeight);
+      setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -105,14 +110,18 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
   });
 
   return (
-    <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}`}>
+    <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}${scrollTop > 1 ? " is-scrolled" : ""}${canScrollDown ? " can-scroll-down" : ""}${truncated ? " is-truncated" : ""}`}>
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div
         ref={scrollRef}
         className="fexp-code-scroll"
         role="region"
         aria-label={t("fileExplorer.viewer.fileContentsAria")}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          setScrollTop(node.scrollTop);
+          setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+        }}
       >
         {wrapping ? (
           <div className="fexp-code-sizer">
@@ -158,7 +167,7 @@ function CodeRow({
   );
 }
 
-function renderLine(line: string, lang: string): string {
+export function renderLine(line: string, lang: string): string {
   if (lang === "plaintext" || lang === "markdown") return escapeHtml(line) || " ";
   const tokens = tokenize(line, lang);
   return tokens.map((tok) => {

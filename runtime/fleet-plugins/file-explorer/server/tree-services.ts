@@ -8,7 +8,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { ClipboardUnavailableError, copyPathToClipboard, PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
-import { FileReadError, readFileForTheater } from "./file-reader.js";
+import { FileReadError, READ_MAX_LINES_CAP, readFileForTheater } from "./file-reader.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
 import { invalidateSearchCatalog, searchFilesWithRipgrep } from "./search-engine.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "./types.js";
@@ -816,6 +816,13 @@ export async function handleFilesGitStatus(
   }
 }
 
+/** 훑어보기의 maxLines — 생략은 전체 읽기, 양의 정수는 상한으로 클램프, 그 밖의 값은 거부(null). */
+export function resolveReadMaxLines(raw: unknown): number | undefined | null {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) return null;
+  return Math.min(raw, READ_MAX_LINES_CAP);
+}
+
 export async function handleFilesRead(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -824,17 +831,19 @@ export async function handleFilesRead(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown; readonly maxLines?: unknown }>(req);
   if (!isPlainObject(body) || typeof body.relativePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const maxLines = resolveReadMaxLines(body.maxLines);
+  if (maxLines === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {
-    const result = await readFileForTheater(theaterPath, body.relativePath);
+    const result = await readFileForTheater(theaterPath, body.relativePath, maxLines === undefined ? {} : { maxLines });
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FileReadError) {
