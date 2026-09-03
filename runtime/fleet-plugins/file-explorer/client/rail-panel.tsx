@@ -294,6 +294,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
           onEntriesRefreshed={handleEntriesRefreshed}
           watchedDirectories={watchedDocumentDirectories}
           onActionFailed={handleRowActionFailed}
+          language={ctx.language}
           t={t}
         />
       </div>

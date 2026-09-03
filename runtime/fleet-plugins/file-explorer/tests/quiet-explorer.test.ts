@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { formatRelativeTime } from "../client/format.js";
@@ -15,7 +17,7 @@ import {
   TREE_OPTIONS,
   TREE_PADDING_Y,
 } from "../client/tree.js";
-import { sliceLeadingLines } from "../server/file-reader.js";
+import { READ_PREVIEW_BYTE_CAP, sliceLeadingLines } from "../server/file-reader.js";
 import { resolveReadMaxLines } from "../server/tree-services.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
@@ -70,6 +72,15 @@ describe("stickyAncestorStack", () => {
     const stack = stickyAncestorStack(rows, scrollToRow(f4), ROW_HEIGHT, TREE_PADDING_Y, 2);
     expect(stack.rows.map((row) => row.entry.name)).toEqual(["plugins", "explorer"]);
     expect(STICKY_ANCESTOR_MAX).toBe(3);
+  });
+
+  it("bases push-out on the rendered capped stack rather than hidden outer ancestors", () => {
+    const rows = deepRows();
+    const z = rows.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "runtime/plugins/z.ts");
+    // full chain은 3단이지만 화면에는 가까운 2단만 선다. 3단 경계로 계산하면 explorer가 10px 일찍 밀린다.
+    const stack = stickyAncestorStack(rows, scrollToRow(z) - 3 * ROW_HEIGHT + 10, ROW_HEIGHT, TREE_PADDING_Y, 2);
+    expect(stack.rows.map((row) => row.entry.name)).toEqual(["plugins", "explorer"]);
+    expect(stack.shift).toBe(0);
   });
 
   it("pushes only the deepest row up as its subtree runs out", () => {
@@ -175,6 +186,15 @@ describe("peek read slice", () => {
     expect(sliced.lineCount).toBeUndefined();
   });
 
+  it("keeps a line-limited peek byte-bounded even when a generated file has one giant line", () => {
+    const giant = "한".repeat(READ_PREVIEW_BYTE_CAP);
+    const sliced = sliceLeadingLines({ ...base, content: giant, sizeBytes: Buffer.byteLength(giant) }, 12);
+    expect(Buffer.byteLength(sliced.content)).toBeLessThanOrEqual(READ_PREVIEW_BYTE_CAP);
+    expect(sliced.truncated).toBe(true);
+    expect(sliced.lineCount).toBe(1);
+    expect(sliced.content.endsWith("�")).toBe(false);
+  });
+
   it("leaves short files whole and untouched without a cap", () => {
     expect(sliceLeadingLines({ ...base, content: "a\nb\n" }, 5)).toMatchObject({ content: "a\nb\n", lineCount: 2 });
     expect(sliceLeadingLines({ ...base, content: "a\nb\n" }, 5).truncated).toBeUndefined();
@@ -199,5 +219,11 @@ describe("formatRelativeTime", () => {
     expect(formatRelativeTime(now - 3 * 60_000, now, t, "en")).toBe("3 minutes ago");
     expect(formatRelativeTime(now - 2 * 60 * 60_000, now, t, "en")).toBe("2 hours ago");
     expect(formatRelativeTime(now - 3 * 24 * 60 * 60_000, now, t, "en")).toBe("3 days ago");
+    expect(formatRelativeTime(now - 3 * 60_000, now, getT("ko"), "ko")).toBe("3분 전");
+  });
+
+  it("passes the selected Console language into the peek timestamp formatter", () => {
+    const source = fs.readFileSync(new URL("../client/peek.tsx", import.meta.url), "utf8");
+    expect(source).toContain("formatRelativeTime(state.mtimeMs, Date.now(), t, language)");
   });
 });

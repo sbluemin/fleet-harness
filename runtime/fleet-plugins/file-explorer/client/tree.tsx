@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
@@ -41,6 +41,7 @@ interface FileTreeProps {
   readonly watchedDirectories?: readonly string[];
   /** 행 hover 동작(복사·드러내기)이 실패했을 때 — 안내는 패널이 진다. */
   readonly onActionFailed?: () => void;
+  readonly language?: ConsoleLocale;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -564,7 +565,7 @@ export function stickyAncestorStack(
   // 상한을 넘으면 가장 가까운 조상들만 남긴다.
   const stack = full.slice(-max);
   const deepest = stack[stack.length - 1] ?? 0;
-  const stackBottom = scrollTop + full.length * rowHeight;
+  const stackBottom = scrollTop + stack.length * rowHeight;
   const subtreeBottom = rowTop(subtreeEnd(rows, deepest));
   const shift = Math.max(0, Math.min(rowHeight, stackBottom - subtreeBottom));
   return {
@@ -849,7 +850,7 @@ export function resolveTreeNavigation(
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -2028,6 +2029,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               anchorTop={TREE_PADDING_Y + peekRow.index * ROW_HEIGHT - scrollTop}
               anchorBottom={TREE_PADDING_Y + (peekRow.index + 1) * ROW_HEIGHT - scrollTop}
               boundaryRef={viewportRef}
+              language={language}
               t={t}
             />
           )}

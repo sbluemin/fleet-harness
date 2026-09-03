@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileReadResult } from "../server/types.js";
 import { knownMtime } from "./entry-stats.js";
@@ -40,6 +40,7 @@ interface FilePeekProps {
   readonly anchorTop: number;
   readonly anchorBottom: number;
   readonly boundaryRef: RefObject<HTMLElement | null>;
+  readonly language?: ConsoleLocale;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -59,7 +60,7 @@ export function resolvePeekTop(
   return Math.max(margin, Math.min(below, boundaryHeight - cardHeight - margin));
 }
 
-export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBottom, boundaryRef, t }: FilePeekProps) {
+export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PeekState>({ kind: "loading" });
   const [top, setTop] = useState<number | null>(null);
@@ -132,7 +133,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
   if (state.kind === "code") {
     if (state.sizeBytes !== undefined) meta.push(formatByteSize(state.sizeBytes));
     if (state.lineCount !== undefined) meta.push(t("fileExplorer.viewer.lines", { count: state.lineCount }));
-    meta.push(formatRelativeTime(state.mtimeMs, Date.now(), t));
+    meta.push(formatRelativeTime(state.mtimeMs, Date.now(), t, language));
   }
 
   return (
