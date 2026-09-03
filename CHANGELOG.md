@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.83.0] - 2026-09-03
+
+### fleet-cli
+
+#### Changed
+- Offer Muse-Spark-1.3-Contributor in the fleet gateway OpenCode Go model picker instead of Muse-Spark-1.2-Contributor, preserving its 1M context window and supported reasoning-effort rungs.
+
+### fleet-console
+
+#### Added
+- Press Space on a file in the Files tree to peek at its first lines, image, or size in a card beside the row without opening a document; Enter opens it, Escape or Space closes it, and the arrow keys move the peek to the next file.
+- Open ancestor folders stay pinned at the top of the Files tree while you scroll deep into them, and clicking a pinned folder jumps back to it.
+- Hovering a Files tree row reveals peek, copy relative path, and reveal-in-file-manager actions, with an in-place "Copied" note instead of a toast.
+- Path segments in the document header open the folder's file list for direct navigation, and a header copy button copies the relative path (Alt+click for the absolute path) with an in-place confirmation.
+- Set the left sidebar's opacity and glass blur from Settings, next to the right sidebar opacity handle.
+
+#### Changed
+- Zooming the Cruise canvas out now stops at the fleet map. Once every Operation has collapsed into a dot, further wheel-out only dimmed the sea while the map itself stood unchanged, so the bottom of the zoom range was impossible to feel; the wheel now holds at that altitude, and zooming back in still leaves from where it stopped.
+- The Files tree header rests as a single borderless filter line: the Files/Contents scope appears inside the field while typing, sort, hidden files, and refresh moved into one menu, and search status collapses to one line.
+- Git status in the Files tree is shown by tinting the file name and a single dot per row instead of M/U/D letters, folders show one dot for the strongest change inside, and rows are slightly denser.
+- Open documents are shown as underline tabs whose close button appears on hover, a changed-on-disk document shows a dot in the close slot and reloads when clicked, middle-click closes a tab, and overflowing tabs open a list instead of a "+N" counter.
+- The Files tree shows skeleton rows while loading, a delayed ring while a folder expands, an illustrated empty-folder state with a hidden-files shortcut, a retry card when loading fails, and fades at scrollable edges of the tree and code viewer.
+- Offer Muse-Spark-1.3-Contributor in the Fleet Console OpenCode Go model loadout instead of Muse-Spark-1.2-Contributor, preserving its 1M context window and supported reasoning-effort rungs.
+
 ## [1.82.0] - 2026-09-02
 
 ### fleet-cli
