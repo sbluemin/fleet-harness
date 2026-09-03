@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
 import { screenToCanvas, type CanvasPoint, type CanvasRect, type CanvasViewport } from "./coordinates.js";
+import { resolveWheelZoomFloor } from "./fleet-map-layout.js";
 
 interface CanvasInteractionOptions {
   readonly viewport: CanvasViewport;
@@ -37,9 +38,9 @@ interface DragState {
   readonly startViewport: CanvasViewport;
 }
 
-// 휠 줌 하한은 fit-all의 FIT_ALL_MIN_ZOOM(0.02)과 같은 도메인이어야 한다 — 더 높으면
-// fit으로 깊게 나간 뷰포트에서 축소 휠이 하한으로 튀어 방향이 뒤집힌다.
-const MIN_ZOOM = 0.02;
+// 휠 줌 하한은 함대 지도가 서는 층이다(resolveWheelZoomFloor) — 함대가 점으로 잦아든 뒤의
+// 축소는 판을 바꾸지 못한다. fit-all(FIT_ALL_MIN_ZOOM 0.02)이 그 층보다 깊게 데려간 뷰포트에서는
+// 하한이 현재 배율까지 따라 내려가, 축소 휠이 하한으로 튀어 방향이 뒤집히는 일이 없다.
 const MAX_ZOOM = 2;
 const MIN_CREATE_WIDTH = 200;
 const MIN_CREATE_HEIGHT = 150;
@@ -135,7 +136,7 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     const current = viewportRef.current;
     // 기본 휠 업/다운으로 포인터 위치를 기준점 삼아 줌 인/아웃한다(Ctrl/⌘ 보조키 없이). 맵 이동은 드래그가 담당한다.
     // 줌 목표는 보간 경로(onZoom)로 보내 스토어 rAF tween이 부드럽게 수렴시킨다(기준점은 현재 viewport 기준으로 계산).
-    const zoom = clamp(current.zoom * Math.exp(-event.deltaY * ZOOM_STEP), MIN_ZOOM, MAX_ZOOM);
+    const zoom = clamp(current.zoom * Math.exp(-event.deltaY * ZOOM_STEP), resolveWheelZoomFloor(current.zoom), MAX_ZOOM);
     const canvas = screenToCanvas(screen, current);
     onZoom({
       x: screen.x - canvas.x * zoom,
