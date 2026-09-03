@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-03T00:00:00Z",
+  "updatedAt": "2026-09-03T12:58:55Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -783,7 +783,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it. muse-spark-1.3-contributor replaced 1.2 as the current generation on 2026-09-03 from the live list; /responses was the only working wire in three endpoint probes, none and max were refused while minimal/low/medium/high/xhigh succeeded, and only tool_choice auto was accepted. Its 1048576 contextWindow comes from the models.dev opencode-go entry (2026-09-03)",
       "models": [
         {
           "modelId": "minimax-m3",
@@ -832,8 +832,8 @@
           "benchmarkKey": "grok-4.5"
         },
         {
-          "modelId": "muse-spark-1.2-contributor",
-          "name": "Muse-Spark-1.2-Contributor",
+          "modelId": "muse-spark-1.3-contributor",
+          "name": "Muse-Spark-1.3-Contributor",
           "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 1048576,

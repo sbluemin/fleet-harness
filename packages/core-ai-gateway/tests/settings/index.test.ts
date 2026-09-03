@@ -241,7 +241,11 @@ describe("ai-gateway settings", () => {
   it("drops models that left the catalog", () => {
     expect(normalizeAiGatewaySettings({
       version: 1,
-      models: [{ id: "opencode--qwen3.7-max" }, { id: "kimi--k3", efforts: ["max"] }],
+      models: [
+        { id: "opencode--qwen3.7-max" },
+        { id: "opencode--muse-spark-1.2-contributor" },
+        { id: "kimi--k3", efforts: ["max"] },
+      ],
     })).toEqual({ version: 1, models: [{ id: "kimi--k3", efforts: ["max"] }] });
   });
 

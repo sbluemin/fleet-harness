@@ -2420,7 +2420,8 @@ describe("route surface", () => {
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
     expect(ids).toContain("claude-gateway--opencode--ox-alpha-free[1m]");
-    expect(ids).toContain("claude-gateway--opencode--muse-spark-1.2-contributor[1m]");
+    expect(ids).toContain("claude-gateway--opencode--muse-spark-1.3-contributor[1m]");
+    expect(ids).not.toContain("claude-gateway--opencode--muse-spark-1.2-contributor[1m]");
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--cursor--grok-4.5",
       display_name: "Cursor-Grok-4.5",
