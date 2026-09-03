@@ -21,6 +21,13 @@ import {
   openRailPanel,
   setRailOverlayAlpha,
 } from "../core/client/src/rail/rail-store.js";
+import {
+  getSideBarGlass,
+  resetSideBarGlassForTests,
+  setSideBarGlassAlpha,
+  setSideBarGlassBlur,
+  SIDE_BAR_GLASS_BLUR_DEFAULT,
+} from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { settingsPanes, syncSettingsSearchPlugins } from "../core/client/src/settings/settings-pane.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
 
@@ -74,6 +81,10 @@ function renderPane(params: Readonly<Record<string, string>>, pane = primaryPane
   act(() => {
     root!.render(pane.render(paneContext(params, pane)) as never);
   });
+}
+
+function blurHandle(): HTMLInputElement {
+  return document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar glass blur"]')!;
 }
 
 function chip(label: string): HTMLButtonElement {
@@ -217,7 +228,7 @@ describe("settings pane body", () => {
     // 전용 "레일 패널" 카드도 퇴역했다 — 행은 테마 카드 안, 비포커스 패널 흐리기 바로 아래에 선다(재가된 배치).
     const themeSliders = [...document.querySelectorAll<HTMLInputElement>(".settings-pane .appearance-card .settings-slider")]
       .map((input) => input.getAttribute("aria-label"));
-    expect(themeSliders).toEqual(["Unfocused panel fade", "Right sidebar opacity"]);
+    expect(themeSliders).toEqual(["Unfocused panel fade", "Right sidebar opacity", "Left sidebar opacity", "Left sidebar glass blur"]);
 
     act(() => setRailOverlayAlpha(65));
     renderPane({});
@@ -226,10 +237,61 @@ describe("settings pane body", () => {
     expect(getRailStoreSnapshot().overlayAlpha).toBe(RAIL_OVERLAY_ALPHA_DEFAULT);
   });
 
+  it("drives the left sidebar glass from the root variables and resets blur on double-click", () => {
+    resetSideBarGlassForTests();
+    act(() => setSideBarGlassAlpha(70));
+    act(() => setSideBarGlassBlur(6));
+    renderPane({});
+
+    // 손잡이는 반드시 문서 루트에 실린다 — 사이드바 요소에 실으면 theme.css가 :root에서
+    // 이미 폴백을 치환해 버려 blur 값이 화면에 닿지 않는다.
+    const root = document.documentElement.style;
+    expect(root.getPropertyValue("--side-bar-glass-alpha")).toBe("0.7");
+    expect(root.getPropertyValue("--side-bar-glass-blur")).toBe("6px");
+
+    const blur = document.querySelector<HTMLInputElement>('.settings-pane .appearance-card input[aria-label="Left sidebar glass blur"]')!;
+    expect(blur.disabled).toBe(false);
+    act(() => blur.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(getSideBarGlass().blur).toBe(SIDE_BAR_GLASS_BLUR_DEFAULT);
+    expect(root.getPropertyValue("--side-bar-glass-blur")).toBe("24px");
+  });
+
+  /* 게이트 판정은 테마 이름이 아니라 채널의 계산값으로 한다. theme.css의 게이트 넷 중 둘
+     (@supports 미달 · prefers-reduced-transparency)은 CSS에만 있어 TS 상태로는 보이지 않으므로,
+     조건을 복제하면 반드시 원본보다 좁아진다(적대 리뷰 적발). 그래서 이 테스트도 테마를 흔드는
+     대신 채널을 직접 닫는다 — 게이트가 몇 개든 닫힘의 유일한 표현이 이 값이기 때문이다. */
+  it("disables the blur handle whenever the glass channel resolves to none, without touching the stored value", async () => {
+    resetSideBarGlassForTests();
+    act(() => setSideBarGlassBlur(12));
+    // jsdom에는 시트가 없어 채널이 스스로 계산되지 않는다 — 라이트 전환을 그 결과(채널 none)와
+    // 계기(루트 data-theme)로 함께 재현한다. 훅이 보는 것은 그 둘뿐이므로 이것이 실기와 같은 신호다.
+    const style = document.documentElement.style;
+    style.setProperty("--glass-backdrop-side-bar", "none");
+    act(() => { document.documentElement.setAttribute("data-theme", "whites"); });
+    renderPane({});
+    expect(blurHandle().disabled).toBe(true);
+    // 불투명도는 유리와 무관한 레이어 알파라 게이트가 닫혀도 살아 있다.
+    expect(document.querySelector<HTMLInputElement>('.settings-pane input[aria-label="Left sidebar opacity"]')!.disabled).toBe(false);
+
+    // 화면을 닫는 일과 저장값을 지우는 일은 다르다 — 유리가 돌아오면 고른 값이 그대로 선다.
+    expect(getSideBarGlass().blur).toBe(12);
+    style.setProperty("--glass-backdrop-side-bar", "blur(24px) saturate(1.7)");
+    await act(async () => {
+      document.documentElement.setAttribute("data-theme", "instrument");
+      // MutationObserver 콜백은 마이크로태스크로 온다 — 같은 tick에서 단언하면 옛 값을 읽는다.
+      await Promise.resolve();
+    });
+    expect(blurHandle().disabled).toBe(false);
+    style.removeProperty("--glass-backdrop-side-bar");
+    document.documentElement.removeAttribute("data-theme");
+  });
+
   it("carries the rail preferences into the expanded Appearance section too", () => {
     renderPane({ section: "appearance" }, sectionPane);
 
     expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Right sidebar opacity"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Left sidebar opacity"]')).not.toBeNull();
+    expect(document.querySelector('.settings-expanded .appearance-card input[aria-label="Left sidebar glass blur"]')).not.toBeNull();
     // 확대 사본은 준비된 스냅숏을 재사용한다 — 여기서 GET을 또 쏘면 그 응답이 사용자의
     // 낙관 저장 뒤에 도착해 옛 값으로 화면을 되덮는다(리뷰 적발).
     const settingsGets = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls

@@ -89,6 +89,39 @@ describe("two-state SideBar store", () => {
   });
 });
 
+describe("SideBar glass preferences", () => {
+  it("restores stored alpha and blur, clamping values from an older or hand-edited store", async () => {
+    window.localStorage.setItem("fleet-console.operations.side-glass-alpha", "12");
+    window.localStorage.setItem("fleet-console.operations.side-glass-blur", "999");
+    const store = await loadStore();
+
+    // 아래는 판독성 바닥(40%)이고 위는 브라우저가 실제로 그리는 반경 상한(40px)이다 —
+    // 손으로 고친 값이나 옛 범위가 들어와도 화면 계약 밖으로 나가지 않는다.
+    expect(store.getSideBarGlass()).toEqual({ alpha: 40, blur: 40 });
+  });
+
+  it("persists each handle on its own key and notifies subscribers once per change", async () => {
+    const store = await loadStore();
+    expect(store.getSideBarGlass()).toEqual({ alpha: 100, blur: 24 });
+
+    let notified = 0;
+    const unsubscribe = store.subscribeSideBarGlass(() => { notified += 1; });
+    store.setSideBarGlassAlpha(70);
+    store.setSideBarGlassBlur(8);
+    // 같은 값 재설정은 아무 일도 아니다 — 슬라이더 드래그가 프레임마다 같은 값을 던진다.
+    store.setSideBarGlassAlpha(70);
+    expect(notified).toBe(2);
+    unsubscribe();
+
+    expect(window.localStorage.getItem("fleet-console.operations.side-glass-alpha")).toBe("70");
+    expect(window.localStorage.getItem("fleet-console.operations.side-glass-blur")).toBe("8");
+
+    vi.resetModules();
+    const reloaded = await loadStore();
+    expect(reloaded.getSideBarGlass()).toEqual({ alpha: 70, blur: 8 });
+  });
+});
+
 async function loadStore() {
   return import("../core/client/src/sidebar/operations-side-bar-store.js");
 }
