@@ -27,7 +27,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
 type PeekState =
   | { readonly kind: "loading" }
-  | { readonly kind: "code"; readonly lines: readonly string[]; readonly lang: string; readonly lineCount: number; readonly sizeBytes?: number; readonly mtimeMs: number }
+  | { readonly kind: "code"; readonly lines: readonly string[]; readonly lang: string; readonly lineCount?: number; readonly sizeBytes?: number; readonly mtimeMs: number }
   | { readonly kind: "image"; readonly src: string }
   | { readonly kind: "binary" }
   | { readonly kind: "error"; readonly message: string };
@@ -100,7 +100,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
           kind: "code",
           lines,
           lang: result.lang,
-          lineCount: result.lineCount ?? lines.length,
+          ...(result.lineCount !== undefined ? { lineCount: result.lineCount } : {}),
           sizeBytes: result.sizeBytes,
           mtimeMs: result.mtimeMs,
         });
@@ -131,7 +131,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
   const meta: string[] = [];
   if (state.kind === "code") {
     if (state.sizeBytes !== undefined) meta.push(formatByteSize(state.sizeBytes));
-    meta.push(t("fileExplorer.viewer.lines", { count: state.lineCount }));
+    if (state.lineCount !== undefined) meta.push(t("fileExplorer.viewer.lines", { count: state.lineCount }));
     meta.push(formatRelativeTime(state.mtimeMs, Date.now(), t));
   }
 
@@ -176,7 +176,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
           {state.lines.length === 0 && <span className="fexp-peek-line"><span className="fexp-peek-ln" aria-hidden="true">1</span><span className="fexp-peek-src"> </span></span>}
         </pre>
       )}
-      {state.kind === "code" && state.lineCount > state.lines.length && (
+      {state.kind === "code" && state.lineCount !== undefined && state.lineCount > state.lines.length && (
         <div className="fexp-peek-more">{t("fileExplorer.peek.more", { count: state.lineCount - state.lines.length })}</div>
       )}
       {state.kind === "image" && (

@@ -42,6 +42,9 @@ interface QuietMenuProps {
   readonly header?: QuietMenuHeader;
   /** 항목이 하나도 없을 때의 한 줄. */
   readonly emptyLabel?: string;
+  /** 항목 위에 서는 정직성 안내 — 실패나 목록 잘림을 빈 폴더와 갈라 말한다. */
+  readonly noticeLabel?: string;
+  readonly noticeTone?: "quiet" | "error";
   readonly loading?: boolean;
   /** 바깥 클릭 판정에서 제외할 트리거 — 빼면 pointerdown 닫힘 뒤 click 토글이 메뉴를 되열어 버린다. */
   readonly triggerRef?: RefObject<HTMLElement | null>;
@@ -66,6 +69,8 @@ export function QuietMenu({
   items,
   header,
   emptyLabel,
+  noticeLabel,
+  noticeTone = "quiet",
   loading,
   triggerRef,
   triggerElement,
@@ -174,7 +179,12 @@ export function QuietMenu({
         );
       })()}
       {loading && <div className="fexp-quiet-menu-note" role="status">…</div>}
-      {!loading && items.length === 0 && emptyLabel && (
+      {!loading && noticeLabel && (
+        <div className={`fexp-quiet-menu-note${noticeTone === "error" ? " is-error" : ""}`} role={noticeTone === "error" ? "alert" : "status"}>
+          {noticeLabel}
+        </div>
+      )}
+      {!loading && !noticeLabel && items.length === 0 && emptyLabel && (
         <div className="fexp-quiet-menu-note">{emptyLabel}</div>
       )}
       {items.map((item) => {

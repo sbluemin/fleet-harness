@@ -168,6 +168,13 @@ describe("peek read slice", () => {
     expect(sliced.lineCount).toBe(4);
   });
 
+  it("does not report a prefix line count as a full-file total when the byte reader had already truncated", () => {
+    const sliced = sliceLeadingLines({ ...base, content: "a\nb\nc\nd\n", truncated: true }, 2);
+    expect(sliced.content).toBe("a\nb");
+    expect(sliced.truncated).toBe(true);
+    expect(sliced.lineCount).toBeUndefined();
+  });
+
   it("leaves short files whole and untouched without a cap", () => {
     expect(sliceLeadingLines({ ...base, content: "a\nb\n" }, 5)).toMatchObject({ content: "a\nb\n", lineCount: 2 });
     expect(sliceLeadingLines({ ...base, content: "a\nb\n" }, 5).truncated).toBeUndefined();

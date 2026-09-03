@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { breadcrumbSegments } from "../client/format.js";
+import { resolveSiblingListState } from "../client/document-pane.js";
 import { chipDirHints } from "../client/layout.js";
 
 describe("breadcrumbSegments", () => {
@@ -68,5 +69,26 @@ describe("chipDirHints", () => {
     ]);
     expect(hints.get("index.ts")).toBe("/");
     expect(hints.get("src/index.ts")).toBe("src/");
+  });
+});
+
+
+describe("breadcrumb sibling list honesty", () => {
+  it("keeps failed, empty, partial, and complete listings distinct", () => {
+    const file = { name: "a.ts", relativePath: "dir/a.ts", kind: "file" } as const;
+    const dir = { name: "nested", relativePath: "dir/nested", kind: "dir" } as const;
+    expect(resolveSiblingListState("pending")).toEqual({ kind: "loading" });
+    expect(resolveSiblingListState("failed")).toEqual({ kind: "error" });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [] })).toEqual({ kind: "empty" });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [file, dir], truncated: true, cap: 500 })).toEqual({
+      kind: "ready",
+      entries: [file],
+      partial: true,
+    });
+    expect(resolveSiblingListState({ relativePath: "dir", parentRelativePath: "", entries: [file] })).toEqual({
+      kind: "ready",
+      entries: [file],
+      partial: false,
+    });
   });
 });

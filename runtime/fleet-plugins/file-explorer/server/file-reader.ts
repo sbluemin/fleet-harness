@@ -41,9 +41,16 @@ export function sliceLeadingLines(
 ): FileReadResult {
   if (maxLines === undefined) return result;
   const lines = result.content.split("\n");
-  const lineCount = lines.at(-1) === "" ? lines.length - 1 : lines.length;
-  if (lineCount <= maxLines) return { ...result, lineCount };
-  return { ...result, content: lines.slice(0, maxLines).join("\n"), truncated: true, lineCount };
+  const prefixLineCount = lines.at(-1) === "" ? lines.length - 1 : lines.length;
+  // byte reader가 이미 1 MiB에서 잘랐다면 이 수는 전체 파일의 줄 수가 아니다. 줄 수를 생략해
+  // 훑어보기가 접두 수를 전체로 말하지 않게 한다. 본문은 요청한 줄 수까지만 다시 자른다.
+  if (result.truncated) {
+    return prefixLineCount <= maxLines
+      ? result
+      : { ...result, content: lines.slice(0, maxLines).join("\n") };
+  }
+  if (prefixLineCount <= maxLines) return { ...result, lineCount: prefixLineCount };
+  return { ...result, content: lines.slice(0, maxLines).join("\n"), truncated: true, lineCount: prefixLineCount };
 }
 
 const FILE_SIZE_CAP = 1024 * 1024;

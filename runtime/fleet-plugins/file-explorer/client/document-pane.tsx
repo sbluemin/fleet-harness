@@ -12,7 +12,7 @@ import {
 import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
 import type { PaneContext } from "@fleet-console/sdk/pane";
 
-import type { FolderEntry } from "../server/types.js";
+import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
@@ -505,6 +505,25 @@ function isStaleViewState(state: ViewState | undefined): boolean {
   return (state?.kind === "code" || state?.kind === "image") && state.stale === true;
 }
 
+export type SiblingListSource = FolderListResult | "pending" | "failed";
+export type SiblingListState =
+  | { readonly kind: "loading" }
+  | { readonly kind: "error" }
+  | { readonly kind: "empty" }
+  | { readonly kind: "ready"; readonly entries: readonly FolderEntry[]; readonly partial: boolean };
+
+/**
+ * 경로 팝오버의 목록 상태 — 빈 폴더, 실패, 상한에 잘린 목록을 서로 다른 사실로 보존한다.
+ * directory 항목은 이 메뉴가 "옆 파일"을 여는 표면이라 제외하되, truncated는 그대로 말한다.
+ */
+export function resolveSiblingListState(source: SiblingListSource): SiblingListState {
+  if (source === "pending") return { kind: "loading" };
+  if (source === "failed") return { kind: "error" };
+  const entries = source.entries.filter((entry) => entry.kind === "file");
+  if (entries.length === 0 && !source.truncated) return { kind: "empty" };
+  return { kind: "ready", entries, partial: source.truncated === true };
+}
+
 interface CrumbSiblingsMenuProps {
   readonly theaterId: string | null;
   readonly dirPath: string;
@@ -523,19 +542,32 @@ interface CrumbSiblingsMenuProps {
  * 머리 행(폴더 경로)을 누르면 트리에서 드러낸다. 목록은 기존 `files/list` 한 번으로 온다.
  */
 function CrumbSiblingsMenu({ theaterId, dirPath, activePath, anchorLeft, boundaryRef, triggerElement, t, onOpenFile, onReveal, onClose }: CrumbSiblingsMenuProps) {
-  const [entries, setEntries] = useState<readonly FolderEntry[] | null>(null);
+  const [source, setSource] = useState<SiblingListSource>("pending");
 
   useEffect(() => {
     let active = true;
-    setEntries(null);
+    setSource("pending");
     makeFilesClient(theaterId).listFolder(dirPath || undefined).then((result) => {
-      if (!active) return;
-      setEntries(result.entries.filter((entry) => entry.kind === "file"));
+      if (active) setSource(result);
     }).catch(() => {
-      if (active) setEntries([]);
+      if (active) setSource("failed");
     });
     return () => { active = false; };
   }, [dirPath, theaterId]);
+
+  const state = resolveSiblingListState(source);
+  const retry = () => {
+    setSource("pending");
+    makeFilesClient(theaterId).listFolder(dirPath || undefined)
+      .then((result) => setSource(result))
+      .catch(() => setSource("failed"));
+  };
+  const items = state.kind === "ready" ? state.entries : [];
+  const noticeLabel = state.kind === "error"
+    ? t("fileExplorer.viewer.crumbLoadFailed")
+    : state.kind === "ready" && state.partial
+      ? t("fileExplorer.viewer.crumbPartial", { count: state.entries.length })
+      : undefined;
 
   return (
     <QuietMenu
@@ -549,15 +581,24 @@ function CrumbSiblingsMenu({ theaterId, dirPath, activePath, anchorLeft, boundar
         title: t("fileExplorer.viewer.crumbRevealFolder"),
         onSelect: () => onReveal(dirPath),
       }}
-      loading={entries === null}
-      emptyLabel={t("fileExplorer.viewer.crumbEmpty")}
-      items={(entries ?? []).map((entry) => ({
-        key: entry.relativePath,
-        label: entry.name,
-        icon: <FileIcon name={entry.name} />,
-        current: entry.relativePath === activePath,
-        onSelect: () => onOpenFile(entry.relativePath, entry.name),
-      }))}
+      loading={state.kind === "loading"}
+      emptyLabel={state.kind === "empty" ? t("fileExplorer.viewer.crumbEmpty") : undefined}
+      noticeLabel={noticeLabel}
+      noticeTone={state.kind === "error" ? "error" : "quiet"}
+      items={[
+        ...(state.kind === "error" ? [{
+          key: "retry",
+          label: t("fileExplorer.viewer.crumbRetry"),
+          onSelect: retry,
+        }] : []),
+        ...items.map((entry) => ({
+          key: entry.relativePath,
+          label: entry.name,
+          icon: <FileIcon name={entry.name} />,
+          current: entry.relativePath === activePath,
+          onSelect: () => onOpenFile(entry.relativePath, entry.name),
+        })),
+      ]}
       onClose={onClose}
     />
   );

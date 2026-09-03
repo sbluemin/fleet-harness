@@ -1808,6 +1808,10 @@
   font-size: var(--t-xs);
 }
 
+.fexp-quiet-menu-note.is-error {
+  color: var(--coral-ink);
+}
+
 /* ── 열리는 경로 조각 ── */
 .fexp-viewer-head {
   position: relative;
