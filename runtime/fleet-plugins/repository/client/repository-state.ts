@@ -89,6 +89,7 @@ export interface CommitDraft {
   readonly subject: string;
   readonly body: string;
   readonly amend: boolean;
+  readonly amendHeadSha?: string | null;
 }
 
 // 초안은 플러그인 번들의 메모리에만 둔다. 체크아웃 전환과 패널 재개방은 넘지만 디스크에는 쓰지 않는다.

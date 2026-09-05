@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StagingView } from "../client/staging-view.js";
+import type { WorkstateResult } from "../server/types.js";
 import type { RepositoryContext } from "../client/repository-context.js";
 import { readCommitDraft, writeCommitDraft } from "../client/repository-state.js";
 
@@ -29,6 +30,26 @@ afterEach(async () => {
 });
 
 describe("변경 없음과 커밋 초안", () => {
+  it("복원된 Amend 초안은 HEAD가 확인되기 전에는 실행할 수 없다", async () => {
+    const draft = { subject: "이전 커밋 수정", body: "", amend: true, amendHeadSha: "old-head" };
+    writeCommitDraft(ctx.theaterId!, "amend-pending", draft);
+    await act(async () => root.render(createElement(StagingView, { ...props, repoRel: "amend-pending" })));
+    expect(host.querySelector<HTMLButtonElement>(".repository-commit-button")?.disabled).toBe(true);
+  });
+  it("동일 HEAD는 복원하고 다른 HEAD는 메시지를 보존한 채 실행을 막는다", async () => {
+    const draft = { subject: "원래 커밋 제목", body: "보존할 설명", amend: true, amendHeadSha: "original-head" };
+    writeCommitDraft(ctx.theaterId!, "amend-advanced", draft);
+    const workstate = { headSha: "original-head", indexLock: false, inProgress: null, stationedOperations: [] } as unknown as WorkstateResult;
+    const render = (state: WorkstateResult) => root.render(createElement(StagingView, { ...props, repoRel: "amend-advanced", workstate: state }));
+    await act(async () => render(workstate));
+    expect(host.querySelector<HTMLButtonElement>(".repository-commit-button")?.disabled).toBe(false);
+    await act(async () => render({ ...workstate, headSha: "new-head" }));
+    expect(host.querySelector<HTMLButtonElement>(".repository-commit-button")?.disabled).toBe(true);
+    expect(host.textContent).toContain("HEAD changed since this Amend draft");
+    expect(host.querySelector<HTMLInputElement>(".repository-commit-subject")?.value).toBe(draft.subject);
+    expect(readCommitDraft(ctx.theaterId!, "amend-advanced")?.amendHeadSha).toBe("original-head");
+  });
+
   it("깨끗한 저장소에서는 커밋 폼 대신 기록 진입을 제공한다", async () => {
     await act(async () => root.render(createElement(StagingView, props)));
     expect(host.textContent).toContain("No changes to commit");

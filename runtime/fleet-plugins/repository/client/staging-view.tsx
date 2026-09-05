@@ -90,9 +90,11 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const [subject, setSubject] = useState(initialDraft?.subject ?? "");
   const [bodyText, setBodyText] = useState(initialDraft?.body ?? "");
   const [amend, setAmend] = useState(initialDraft?.amend ?? false);
+  const [amendHeadSha, setAmendHeadSha] = useState(initialDraft?.amendHeadSha ?? null);
+  const amendReady = !amend || (!stateUnknown && !!amendHeadSha && workstate?.headSha === amendHeadSha);
   useEffect(() => {
-    writeCommitDraft(ctx.theaterId ?? "", repoRel, { subject, body: bodyText, amend });
-  }, [ctx.theaterId, repoRel, subject, bodyText, amend]);
+    writeCommitDraft(ctx.theaterId ?? "", repoRel, { subject, body: bodyText, amend, amendHeadSha });
+  }, [ctx.theaterId, repoRel, subject, bodyText, amend, amendHeadSha]);
   const [busy, setBusy] = useState(false);
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => () => onBusyChange(false), [onBusyChange]);
@@ -242,14 +244,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const toggleAmend = useCallback(() => {
     setAmend((current) => {
       const next = !current;
+      setAmendHeadSha(next ? workstate?.headSha ?? null : null);
       if (next) prefillFromHead();
       return next;
     });
-  }, [prefillFromHead]);
+  }, [prefillFromHead, workstate?.headSha]);
 
   const commit = useCallback(async () => {
     const trimmedSubject = subject.trim();
-    if (trimmedSubject === "") return;
+    if (trimmedSubject === "" || !amendReady) return;
     const payload = await runVerb("commit-create", {
       subject: trimmedSubject,
       ...(bodyText.trim() ? { message: bodyText.trim() } : {}),
@@ -265,7 +268,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       setBodyText("");
       setAmend(false);
     }
-  }, [amend, bodyText, runVerb, showNotice, subject, t]);
+  }, [amend, amendReady, bodyText, runVerb, showNotice, subject, t]);
 
   const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -295,12 +298,13 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const staged = status.kind === "ok" ? status.staged : [];
   const unstaged = status.kind === "ok" ? status.unstaged : [];
   const commitCount = staged.length;
-  const commitDisabled = busy || writeLocked || subject.trim() === "" || (commitCount === 0 && !amend);
+  const commitDisabled = busy || writeLocked || !amendReady || subject.trim() === "" || (commitCount === 0 && !amend);
   const hunkSelection = selection;
   const clean = status.kind === "ok" && !status.truncated && staged.length === 0 && unstaged.length === 0;
   const showComposer = !clean || amend || subject !== "" || bodyText !== "";
 
   return <div className="repository-staging">
+    {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
     {(guardMessage || stationedMessage) && <div className={`repository-staging-guard${guardMessage ? " is-locked" : ""}`} role="status">
       {guardMessage ?? stationedMessage}
     </div>}

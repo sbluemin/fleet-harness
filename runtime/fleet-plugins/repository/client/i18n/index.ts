@@ -17,6 +17,8 @@ const repositoryEn = {
   "repository.staging.cleanHint": "Changes appear here when you edit files. Browse History to review earlier work.",
   "repository.staging.viewHistory": "View History",
   "repository.staging.editLastCommit": "Edit last commit",
+  "repository.staging.amendChecking": "Checking the commit for this Amend draft…",
+  "repository.staging.amendHeadChanged": "HEAD changed since this Amend draft. Your message is preserved. Turn Amend off, review History, then select Amend again if you want to edit the current commit.",
   "repository.sync.button": "Fetch",
   "repository.sync.title": "Update remote-tracking branches",
 
@@ -295,6 +297,8 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.staging.cleanHint": "파일을 수정하면 여기에 나타납니다. 이전 작업은 기록에서 확인하세요.",
   "repository.staging.viewHistory": "기록 보기",
   "repository.staging.editLastCommit": "마지막 커밋 수정",
+  "repository.staging.amendChecking": "Amend 초안의 대상 커밋을 확인하고 있습니다…",
+  "repository.staging.amendHeadChanged": "Amend 초안을 작성한 뒤 HEAD가 바뀌었습니다. 메시지는 보존했습니다. Amend를 끄고 기록을 확인한 뒤, 현재 커밋을 수정하려면 Amend를 다시 선택하세요.",
   "repository.sync.button": "Fetch",
   "repository.sync.title": "원격 추적 브랜치를 갱신합니다",
 
