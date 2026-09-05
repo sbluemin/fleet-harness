@@ -2371,12 +2371,18 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(54);
+    expect(list.data).toHaveLength(60);
     // All Antigravity models carry a real 1M window, so they are advertised on
     // Claude Code's `[1m]` coordinate rather than its unmarked 200k one.
     expect(ids).toContain("claude-gateway--antigravity--gemini-3.8-flash[1m]");
     expect(ids).toContain("claude-gateway--antigravity--gemini-3.7-flash[1m]");
     expect(ids).toContain("claude-gateway--antigravity--gemini-3.1-pro[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra-524k");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra-524k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-6-astra-1m-fast[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
