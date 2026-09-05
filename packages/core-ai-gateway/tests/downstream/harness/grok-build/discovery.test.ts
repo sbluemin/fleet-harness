@@ -57,7 +57,10 @@ describe("grok build model id grammar", () => {
   });
 
   it("refuses every spelling this harness does not publish", () => {
-    const sample = GATEWAY_MODELS[0]!;
+    // 아래 "점이 살아 있는 형태"가 실제 거부 대상이 되려면 표본 자체가 점을 품어야 한다 —
+    // 카탈로그 선두 항목은 점 없는 id일 수 있다(codex--gpt-6-astra).
+    const sample = GATEWAY_MODELS.find((model) => model.id.includes("."))!;
+    expect(sample).toBeDefined();
     // 접두 없는 카탈로그 고유 id — Claude Code 쪽은 옛 영속 값 때문에 받아 주지만
     // 이 하네스에는 그런 값이 없다.
     expect(findGrokGatewayModel(sample.id)).toBeUndefined();

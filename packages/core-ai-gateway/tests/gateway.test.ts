@@ -1026,27 +1026,33 @@ describe("model catalog", () => {
   });
 
   it("contains only the approved provider families", () => {
-    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(18);
+    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(24);
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(16);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(13);
-    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => /^gpt-(6-astra|5\.6-)/.test(model.upstreamId ?? ""))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("524k")).every((model) => model.contextWindow === 524_288)).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("-1m")).every((model) => model.contextWindow === 1_000_000)).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.includes("524k") && !model.id.includes("-1m")).every((model) => model.contextWindow === 272_000)).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.map((model) => model.id.replace(/^codex--/, ""))).toEqual([
+      "gpt-6-astra",
+      "gpt-6-astra-fast",
       "gpt-5.6-sol",
       "gpt-5.6-sol-fast",
       "gpt-5.6-terra",
       "gpt-5.6-terra-fast",
       "gpt-5.6-luna",
       "gpt-5.6-luna-fast",
+      "gpt-6-astra-524k",
+      "gpt-6-astra-524k-fast",
       "gpt-5.6-sol-524k",
       "gpt-5.6-sol-524k-fast",
       "gpt-5.6-luna-524k",
       "gpt-5.6-luna-524k-fast",
       "gpt-5.6-terra-524k",
       "gpt-5.6-terra-524k-fast",
+      "gpt-6-astra-1m",
+      "gpt-6-astra-1m-fast",
       "gpt-5.6-sol-1m",
       "gpt-5.6-sol-1m-fast",
       "gpt-5.6-luna-1m",
