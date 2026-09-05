@@ -80,6 +80,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   }, [updateLog.status, theaterId, loadList]);
 
   const handleUpdate = useCallback((updScope: Scope) => {
+    if (updateLog.status === "running") return;
     updateScopeRef.current = updScope;
     const body: Record<string, unknown> = { scope: updScope };
     if (updScope === "project" && theaterId) {
@@ -154,7 +155,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
               type="button"
               className="skills-btn skills-btn--ghost"
               onClick={() => handleUpdate(visibleScope)}
-              disabled={isUpdating}
+              disabled={updateLog.status === "running"}
             >
               {isUpdating ? t("skills.action.updating") : t("skills.action.update")}
             </button>
