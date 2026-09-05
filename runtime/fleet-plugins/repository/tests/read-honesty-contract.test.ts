@@ -87,6 +87,14 @@ describe("honesty copy exists in both locales", () => {
 // 앉아 있으면 "모두 스테이지"는 여전히 보이지 않는 나머지를 건드린다.
 const stagingSource = await fs.readFile(new URL("../client/staging-view.tsx", import.meta.url), "utf8");
 
+it("통합 선택기 카운터는 중복을 제외한 worktree 검색 결과도 센다", async () => {
+  const source = await fs.readFile(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+  expect(source).toContain("const distinctWorktrees = worktrees.filter((worktree) => !repos.some((repo) => repo.relPath === worktree.relPath))");
+  expect(source).toContain("const matchedWorktrees = distinctWorktrees.filter(matches)");
+  expect(source).toContain("totalCount={repos.length + distinctWorktrees.length}");
+  expect(source).toContain("matchedCount={rootRepos.length + nestedRepos.length + matchedWorktrees.length}");
+});
+
 describe("the staging surface carries its own honesty", () => {
   const source = stagingSource;
 

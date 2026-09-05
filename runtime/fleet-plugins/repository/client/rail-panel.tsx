@@ -1264,7 +1264,8 @@ function RepositoryPicker({ t, repos, worktrees, selectedRel, selectedRepo, repo
   const matches = (repo: RepoCandidate | WorktreeCandidate) => !query || fuzzyMatch(query, repo.name) !== null || fuzzyMatch(query, repo.relPath) !== null || (repo.branch !== null && fuzzyMatch(query, repo.branch) !== null);
   const rootRepos = repos.filter((repo) => repo.kind === "root" && matches(repo));
   const nestedRepos = repos.filter((repo) => repo.kind === "nested" && matches(repo));
-  const matchedWorktrees = worktrees.filter((worktree) => !repos.some((repo) => repo.relPath === worktree.relPath) && matches(worktree));
+  const distinctWorktrees = worktrees.filter((worktree) => !repos.some((repo) => repo.relPath === worktree.relPath));
+  const matchedWorktrees = distinctWorktrees.filter(matches);
   const select = (repo: RepoCandidate | WorktreeCandidate) => { close(true); onRepository(repo); };
   const toggleFolder = (path: string) => setCollapsedFolders((current) => {
     const next = new Set(current);
@@ -1283,7 +1284,7 @@ function RepositoryPicker({ t, repos, worktrees, selectedRel, selectedRepo, repo
       <span aria-hidden="true">⌄</span>
     </button>
     {open && <section id={panelId} className="repository-context-popover" aria-label={t("repository.context.choose")}>
-      <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={rootRepos.length + nestedRepos.length} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={truncated} onReload={onReload} onEnter={() => { const first = rootRepos[0] ?? nestedRepos[0] ?? matchedWorktrees[0]; if (first) select(first); }} />
+      <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length + distinctWorktrees.length} matchedCount={rootRepos.length + nestedRepos.length + matchedWorktrees.length} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={truncated} onReload={onReload} onEnter={() => { const first = rootRepos[0] ?? nestedRepos[0] ?? matchedWorktrees[0]; if (first) select(first); }} />
       <div className="repository-context-options">
         {reposError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadReposFailed")} onRetry={onRetryRepos} /> : <>
           {rootRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={select} />)}
