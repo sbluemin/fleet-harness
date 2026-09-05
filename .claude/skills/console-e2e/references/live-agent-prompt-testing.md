@@ -76,8 +76,8 @@ current settings are written.) A fresh runtime directory has no such file, so th
 shows only the Claude entries and it reads as though gateway models were unsupported. They
 are not. Add one first:
 
-Settings → **AI Gateway** (Terminal) → the provider's row under *AI Gateway 모델* → choose
-the model in that row's combobox → **모델 추가**. Launch the Operation afterwards and the
+Settings → **AI Gateway** (Terminal) → the provider's row in the gateway model section → choose
+the model in that row's combobox → the add-model action (use its current localized label). Launch the Operation afterwards and the
 entry appears, e.g. `OpenCode-DeepSeek-V4-Flash (1M Context) · From gateway`.
 
 That combobox resists automation in four separate ways, measured 2026-08-07:
@@ -95,7 +95,7 @@ short and say so when reporting.
 
 ## Clear the dialogs before the first click
 
-A fresh `FLEET_CONSOLE_DIR` opens the commissioning guide, then What's New, then the
+A fresh `FLEET_CONSOLE_DATA_DIR` opens the commissioning guide, then What's New, then the
 three onboarding tours — each swallows clicks aimed at the page behind it, and the failure
 looks like a missing element, not a blocked one. Dismiss, then assert:
 
@@ -108,14 +108,14 @@ ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('
 ## Registering a Theater and launching the agent
 
 Theater registration is Console's own folder UI (`/n/folder-listings`), not a native
-dialog. Fill the **절대 경로로 이동 / absolute path** textbox, press 이동/Go, then
-Theater 추가. After that, `<theater>에서 새 Operation` opens a menu whose items are
+dialog. Fill the absolute-path textbox, use its Go action, then add the Theater.
+Use current localized accessible labels. The Theater's new-Operation action opens a menu whose items are
 `Claude (Gateway)` and `Shell`.
 
 Both entry points live in the sidebar, so a collapsed sidebar removes them from the
-accessibility tree and the snapshot simply has no `새 Theater` ref — which reads as a
+accessibility tree and the snapshot simply has no new-Theater ref — which reads as a
 missing feature, not a hidden one. `Escape` can collapse it as a side effect of dismissing
-something else; re-expand with the `사이드바 펼치기 (⌘B)` button before hunting for the ref.
+something else; use the sidebar expand control (⌘B on macOS) before hunting for the ref.
 
 Verify the launch actually attached to the gateway rather than trusting the banner — the
 header still reads the Claude model name even when every request is being rerouted. Confirm

@@ -1,83 +1,30 @@
 ---
 name: wiki-history
-description: Register a Fleet Wiki PRD entry that captures cognitive-debt-resolving decision history. NOT a code-grounded document. NOT a planning document. Records the WHY of a decision so future readers do not have to reverse-engineer it from code and git log.
+description: Preserve the rationale of an already-approved decision and its prior cognitive debt as Fleet Wiki PRD history. Not for future plans, implementation guides, or general documentation.
 ---
 
-# Wiki History Authoring
+# Wiki History
 
-Use this skill when authoring a Fleet Wiki history PRD that enshrines the motivation behind a decision that has already been made.
+Preserve **why an already-made decision was made** when code/git history cannot explain it. Deliver a reviewable Wiki patch; permanent registration requires explicit approval.
 
-## Inputs
+## Inputs and evidence
 
-Replace each `<placeholder>` before running.
+Resolve `<feature-or-decision-topic>` and raw decision evidence from the request/existing records. Separate prior friction, structural cause, debate/constraints/trade-offs, and user-perceived effects. Never present an undecided question as approved history. Ask only for missing decision evidence.
 
-- `<feature-or-decision-topic>` — The feature, decision, or change whose *why* needs to be preserved (required).
+## Procedure
 
-## Sole Purpose — Cognitive Debt Resolution
+1. Call `wiki_orient` for current PRD structure, tags, and naming. Find same-area records: update a duplicate; retain adjacent entries as `related` candidates.
+2. Before writing, read [Format and exclusions](references/format.md). The host authors the eight sections directly: Overview, Problem, Goals, Non-Goals, User Stories, Functional Requirements, Acceptance Criteria, Related. Include only WHY and user-facing contracts.
+3. Check current Wiki tool schemas, then stage create/update through `wiki_ingest`. Use `prd-<area>-<topic>` and put raw decision evidence in `source`. Read the actual preview through `wiki_patch_queue(action:"show")` and present it to the user.
+4. Verify every statement below is true. Correct violations through `wiki_patch_edit` or re-staging, then inspect the new preview.
+   - The body has no source paths, symbols, line numbers, code, build commands, or dependency graphs.
+   - It has no future plans, TODOs, roadmaps, or implementation-action sentences.
+   - It does not duplicate patch-envelope metadata in body YAML.
+   - It uses exactly the required sections, with a structural cause in Problem.
+   - User Stories and Acceptance Criteria describe actual user experience and directly verifiable conditions.
+   - Related links are evidence-backed, and the decision rationale is understandable in isolation.
+5. Register with `wiki_patch_queue(action:"approve")` **only after explicit user approval of that preview**. Do not reuse approval if revisions change its meaning.
 
-This document exists for exactly one reason: to let future-self and future-team understand **why this decision was made** without having to reverse-engineer it from code and git log.
+## Completion and blocks
 
-- Code and git log accurately show *what* changed, but the *why* evaporates over time.
-- The wiki preserves that *why* permanently, so future readers never need to reconstruct the decision context.
-- This wiki is **NOT a planning document**. It does not describe future work. It enshrines the motivation behind a decision that has already been made.
-- This wiki is **NOT an implementation guide**. Code and PRs already explain how it was built.
-
-## Hard Rules
-
-### DO — must be present
-
-- The cognitive debt / friction / risk that existed in the **previous state**
-- The **structural cause** of that cognitive debt (root cause, not just the symptom)
-- The **decision context** (debates, agreements, constraints, trade-offs) under which the change was approved
-- The **effect users/teams now feel** (lower learning cost, eliminated collision risk, restored consistency, etc.)
-- `related` links (`[[wiki:<id>]]`) to existing entries in the same feature area
-
-### DO NOT — must be absent
-
-- Source file paths, function names, line numbers, class names, variable names
-- Code snippets or pseudo-code
-- Planning phrases such as "next step", "TODO", "Roadmap", "Phase 2", "future work"
-- Implementation actions such as "changed X to Y", "added to module Z", "refactored A into B"
-- "Here is how to implement it" style implementation guidance
-- Build/test commands, directory trees, package dependency graphs
-- Duplicated frontmatter inside the body (e.g., `id:`, `title:`, `tags:`, `created:`, `updated:`, `version:`, `feature_area:`, `lifecycle:` YAML blocks that repeat metadata already carried in the patch envelope)
-- Sections not listed in the Output Format below (e.g., "Open Questions", "Future Considerations")
-
-## Output Format
-
-Follow the same section structure used by existing Fleet Wiki PRD entries (`prd-*`):
-
-1. **Overview** — 1–2 paragraphs stating what was decided. No source locations.
-2. **Problem** — Cognitive debt / friction / risk in the previous state. Include the structural cause, not just the symptom.
-3. **Goals** — Targets this decision resolves, framed from the user's perspective.
-4. **Non-Goals** — Areas intentionally left unchanged. Prevents scope misreading.
-5. **User Stories** — "As a … when … then …" form, describing felt experience.
-6. **Functional Requirements** — Only the **call surface / UX / contract** the user actually faces. Internal implementation changes are forbidden here.
-7. **Acceptance Criteria** — A checklist verifiable by the user directly. UX checks, not unit-test assertions.
-8. **Related** — Links to adjacent entries in the same/neighboring feature area.
-
-Every section must be written from "**why**" and "**what the user feels at the surface**". If a single line slips into "how it was implemented", rewrite it.
-
-## Required Workflow
-
-1. Call `wiki_orient` to capture existing PRD section structure, tag vocabulary, and naming patterns.
-2. Identify existing entries in the same feature area (e.g., `coding-agent`, `harness`, `gateway`) and reserve them as `related` candidates.
-3. Compose the entry body in this session, obeying the DO / DO NOT rules above and the Output Format. Write from "why" and "what the user feels at the surface"; without explicit adherence the output drifts into code-grounded or planning-style writing. Do not hand the authoring off.
-4. Stage the entry with `wiki_ingest` (`mode: "create"` for a new entry, or `"update"` to refine an existing one), targeting id `prd-<area>-<topic>` and providing the raw decision evidence as the `source`. Then fetch the preview with `wiki_patch_queue(action:"show")` and present it to the user.
-5. Walk through the preview line by line, checking each DO / DO NOT rule. If any rule is violated (code detail, planning phrasing, implementation action), revise the pending patch with `wiki_patch_edit` (or re-stage with `wiki_ingest`) before proceeding.
-6. Only after explicit user approval, register the entry via `wiki_patch_queue(action:"approve")`. **Never auto-approve** — wiki entries are permanent.
-
-## Pre-Registration Self-Check
-
-Before approving the patch, ask each question once more:
-
-- [ ] Does any source file path, function name, or line number appear in the body?
-- [ ] Do phrases like "next step", "later", "future", "TODO", or "Roadmap" appear?
-- [ ] Are there implementation-action sentences ("changed X to Y", "added Z")?
-- [ ] Does the body contain duplicated frontmatter (YAML block with `id:`, `title:`, `tags:`, `version:`, etc.) that repeats metadata already in the patch envelope?
-- [ ] Are there sections not listed in the Output Format (e.g., "Open Questions", "Future Considerations")?
-- [ ] Does the Problem section describe the **structural cause**, not just the visible symptom?
-- [ ] Are the User Stories written from the actual user perspective, not the developer's?
-- [ ] Can a reader, one year from now, understand "why this decision was made" from this document alone?
-
-If any answer is NO, do not register — rewrite first.
+Without approval, deliver patch id/preview for review and stop. After approval, confirm registration from the tool result and report entry id/outcome. Never replace unavailable tools/schemas or missing evidence with claimed success. General model-prompting advice does not relax Wiki formatting rules.

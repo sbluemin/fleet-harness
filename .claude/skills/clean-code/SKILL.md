@@ -1,77 +1,51 @@
 ---
 name: clean-code
-description: Diagnose over-abstraction in a package, then consolidate files by domain and deduplicate functional logic.
+description: Diagnose excessive file splitting, proxies, and duplicate logic in a named package, then perform approved structural consolidation and deduplication. Not for general bug fixes, feature development, or cosmetic formatting.
 ---
 
 # Clean Code
 
-Two-pass refactoring: **Pass 1** consolidates files by domain boundary, **Pass 2** deduplicates functional logic across the result. Present each pass's diagnosis to the user for approval before executing.
+Simplify structure around domain boundaries while preserving behavior and public APIs. File/line reductions are supporting evidence, not the objective.
 
-## Inputs
+## Inputs and approval scope
 
-- `<target_path>` — Directory or package to analyze (required).
-- `<public_surface>` — Optional. Package root barrel that must preserve exports (e.g., `src/index.ts`).
+`<target_path>` is required; resolve it from the request. Confirm optional `<public_surface>` through declared package exports/barrels and actual external consumers. A diagnosis-only request ends at the report.
 
-## Pass 1 — Structural Consolidation
+Present structural consolidation and functional deduplication diagnoses separately; implement only the approved scope. Do not ask again for an already-approved exact transformation. Return new API or behavioral trade-offs to the user.
 
-### Reconnaissance
+## 1. Structural diagnosis and consolidation
 
-1. `find <target_path> -type f -name "*.ts" -exec wc -l {} + | sort -n` — record file count, lines, avg.
-2. Read every file. Classify each as: types-only, barrel, single-function util, stateful service, DI factory, tool spec.
-3. `rg` external consumers to distinguish public vs internal exports.
+Inventory target files/sizes and trace real dependencies and external consumers. Read merge candidates and affected consumers rather than requiring a ceremonial read of unrelated packages.
 
-### Diagnosis — flag these anti-patterns
+These are **candidate signals**, not automatic deletion rules:
 
-- **Micro-file**: < 50 lines, single function/type. Flag if ≥ 3 in one directory.
-- **Type split**: 2+ type-only files in same directory, or identical type literal in multiple files.
-- **Barrel bloat**: `index.ts` with only re-export chains.
-- **Factory+Proxy**: `create*()` → default singleton → forwarding functions where runtime never uses the factory directly.
-- **DI singleton**: module-level mutable state outside a `create*(deps)` factory.
+- Multiple tiny single-function/type files in one domain, duplicated types, simple re-export chains.
+- Factory-to-singleton-to-forwarding-proxy layers unused by runtime callers.
+- Module-level mutable state bypassing test isolation or explicit dependencies.
 
-### Consolidation map
+Present a domain-based before/after map, preserved exports, affected consumers, and checks. Files under roughly 50 lines or merges over 800 lines are investigation clues; do not remove barrels/boundaries solely by file count. Preserve `create*(deps)` test isolation and public export boundaries.
 
-Group files by **domain concern** (not file type). Rules:
-- Merged file ≤ ~800 lines; split on sub-domain boundary if exceeded.
-- One `types.ts` per directory unless clearly distinct domains exist.
-- ≤ 7 files after merge → delete the directory barrel.
-- Module-level singletons → migrate to nearest DI service or `create*()` factory.
+After approval, work from dependencies outward: `relocate → update imports → remove absorbed files → verify`. Up to two independent merge groups can form one batch; larger or intertwined changes use meaningful waves. Verify the current wave before continuing.
 
-Present a before/after table (files, barrels, lines) and await user approval.
+## 2. Functional deduplication
 
-### Execution
+Check the consolidated result against actual consumer paths:
 
-- **≤ 2 merge groups**: execute directly after approval.
-- **≥ 3 merge groups or cross-directory deps**: execute in waves; inspect the diff and run QA after each wave before starting the next.
-- Wave order: consolidate imported-from directories first. Per wave: relocate → update imports → delete absorbed files → typecheck/test/build → residual grep.
+- Does repeated logic have identical semantics, literal-only differences, or necessary caller-specific exceptions?
+- Does a reshape/forward wrapper own an API, permission, or lifecycle contract?
+- Can parallel types/builders share a discriminant without erasing domain meaning?
+- Is an apparently dead export public API or dynamically referenced?
 
-## Pass 2 — Functional Deduplication
+Present the diagnosis, estimated savings, and preserved contracts; deduplicate only within approval. Place shared helpers at an allowed common dependency owner, never reaching back into hosts. Do not merge semantically different functions just to reduce lines.
 
-After Pass 1, scan the consolidated files for:
+## Verification and completion
 
-### Diagnosis — flag these patterns
+Run each package script explicitly per wave:
 
-- **Copy-paste functions**: identical or near-identical logic in 2+ files (e.g., status mappers, effort resolvers, log wrappers). Diff the bodies — if they differ only by a string literal, parameterize.
-- **Trivial wrappers**: functions that only reshape or forward to another function with no added logic. Inline at call site.
-- **Parallel type hierarchies**: separate types/builders that follow the same structure. Unify with a discriminant parameter.
-- **Dead exports**: exported but zero consumers (verify with `rg`).
-- **Alias bloat**: namespace objects with backward-compat keys pointing to the same module, or methods duplicated under long+short names.
+```bash
+cd <absolute-worktree> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test && pnpm --filter <pkg> build
+```
 
-### Execution
+Check affected consumer builds, residual imports/dead references to removed paths, public exports, and module-state ownership. Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
 
-Present the list with estimated line savings. After approval, execute. Extract shared helpers to the most downstream common file. Preserve public export symbols via re-export aliases where needed.
-
-## Verification (both passes)
-
-After each wave or batch:
-1. `pnpm --filter <pkg> typecheck && test && build`
-2. Consumer builds (dependent packages).
-3. `rg` for deleted file imports and dead references.
-4. Module-level mutable state grep — must be inside factory or class, not module scope.
-
-## Safety
-
-- Preserve all public export symbols. Use re-export aliases if the definition moves.
-- No semantic changes — mechanical relocation and parameterization only.
-- Re-read files before editing (concurrency safety).
-- Keep `create*(deps)` factories needed for test isolation; remove only proxy wrappers.
-- Do not skip verification between waves.
+Finish when approved consolidation/deduplication and relevant checks are complete. Do not expand into general refactoring. Report before/after, API preservation, changed files, checks/results, and unverified scope. Commits/PRs require a separately requested or authorized lifecycle.
