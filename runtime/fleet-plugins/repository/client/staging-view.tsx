@@ -5,6 +5,7 @@ import type { RepositoryContext } from "./repository-context.js";
 
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
+import { readCommitDraft, writeCommitDraft } from "./repository-state.js";
 import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
@@ -36,6 +37,8 @@ interface StagingViewProps {
   readonly stateUnknown?: boolean;
   /** 패널이 로컬 상태를 다시 읽을 때 함께 오르는 토큰 — 이 값이 바뀌면 스테이징 목록도 다시 읽는다. */
   readonly reloadToken?: number;
+  readonly onReturnToHistory: () => void;
+  readonly onBusyChange: (busy: boolean) => void;
   /** 변이 후 패널 전역 갱신 — history:true는 커밋처럼 기록 축이 실제로 움직인 변이에만 쓴다. */
   readonly onMutated: (options: { readonly history: boolean }) => void;
 }
@@ -76,17 +79,25 @@ function readListPaneWidth(): number {
  * Local Changes 스테이징 뷰 — Fork 문법의 심장부.
  * 왼쪽은 Unstaged/Staged 두 단, 오른쪽은 선택한 축의 diff, 아래는 커밋 상자다.
  */
-export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, reloadToken = 0, onMutated }: StagingViewProps) {
+export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, reloadToken = 0, onMutated, onReturnToHistory, onBusyChange }: StagingViewProps) {
   const t = getT(ctx.language);
   const [status, setStatus] = useState<StatusState>({ kind: "loading" });
   const [statusRetry, setStatusRetry] = useState(0);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [armedDiscard, setArmedDiscard] = useState<string | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [subject, setSubject] = useState("");
-  const [bodyText, setBodyText] = useState("");
-  const [amend, setAmend] = useState(false);
+  const [initialDraft] = useState(() => readCommitDraft(ctx.theaterId ?? "", repoRel));
+  const [subject, setSubject] = useState(initialDraft?.subject ?? "");
+  const [bodyText, setBodyText] = useState(initialDraft?.body ?? "");
+  const [amend, setAmend] = useState(initialDraft?.amend ?? false);
+  const [amendHeadSha, setAmendHeadSha] = useState(initialDraft?.amendHeadSha ?? null);
+  const amendReady = !amend || (!stateUnknown && !!amendHeadSha && workstate?.headSha === amendHeadSha);
+  useEffect(() => {
+    writeCommitDraft(ctx.theaterId ?? "", repoRel, { subject, body: bodyText, amend, amendHeadSha });
+  }, [ctx.theaterId, repoRel, subject, bodyText, amend, amendHeadSha]);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange(false), [onBusyChange]);
   const [notice, setNotice] = useState<StagingNotice | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 커밋 인스펙터와 같은 선호 키를 읽는다 — 목록/트리는 화면마다 다른 취향이 아니라 한 문법이다.
@@ -233,14 +244,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const toggleAmend = useCallback(() => {
     setAmend((current) => {
       const next = !current;
+      setAmendHeadSha(next ? workstate?.headSha ?? null : null);
       if (next) prefillFromHead();
       return next;
     });
-  }, [prefillFromHead]);
+  }, [prefillFromHead, workstate?.headSha]);
 
   const commit = useCallback(async () => {
     const trimmedSubject = subject.trim();
-    if (trimmedSubject === "") return;
+    if (trimmedSubject === "" || !amendReady) return;
     const payload = await runVerb("commit-create", {
       subject: trimmedSubject,
       ...(bodyText.trim() ? { message: bodyText.trim() } : {}),
@@ -256,7 +268,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       setBodyText("");
       setAmend(false);
     }
-  }, [amend, bodyText, runVerb, showNotice, subject, t]);
+  }, [amend, amendReady, bodyText, runVerb, showNotice, subject, t]);
 
   const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -286,10 +298,13 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const staged = status.kind === "ok" ? status.staged : [];
   const unstaged = status.kind === "ok" ? status.unstaged : [];
   const commitCount = staged.length;
-  const commitDisabled = busy || writeLocked || subject.trim() === "" || (commitCount === 0 && !amend);
+  const commitDisabled = busy || writeLocked || !amendReady || subject.trim() === "" || (commitCount === 0 && !amend);
   const hunkSelection = selection;
+  const clean = status.kind === "ok" && !status.truncated && staged.length === 0 && unstaged.length === 0;
+  const showComposer = !clean || amend || subject !== "" || bodyText !== "";
 
   return <div className="repository-staging">
+    {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
     {(guardMessage || stationedMessage) && <div className={`repository-staging-guard${guardMessage ? " is-locked" : ""}`} role="status">
       {guardMessage ?? stationedMessage}
     </div>}
@@ -297,7 +312,13 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
         되살린다(독이 이미 같은 이유로 변수를 쓴다). */}
-    <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
+    {clean && !amend ? <div className="repository-staging-empty">
+      <span className="repository-staging-clean-mark" aria-hidden="true">✓</span>
+      <strong>{t("repository.staging.cleanTitle")}</strong>
+      <p>{t("repository.staging.cleanHint")}</p>
+      <button type="button" className="repository-refresh-btn" onClick={onReturnToHistory}>{t("repository.staging.viewHistory")}</button>
+      {workstate?.headSha && <button type="button" className="repository-staging-amend-entry" disabled={busy || writeLocked} onClick={toggleAmend}>{t("repository.staging.editLastCommit")}</button>}
+    </div> : <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
       <div className="repository-list-pane repository-staging-lists">
         {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
         {status.kind === "error" && <div className="repository-sections-error"><span>{readErrorSentence(t, status.message)}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
@@ -379,8 +400,8 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
         </div>
         <HunkView key={`${hunkSelection.axis}:${hunkSelection.entry.path}`} ctx={ctx} repoRel={repoRel} file={hunkSelection.entry} mode={hunkModeOf(hunkSelection)} />
       </div>}
-    </div>
-    <div className="repository-commit-box">
+    </div>}
+    {showComposer && <div className="repository-commit-box">
       <input
         type="text"
         className="repository-commit-subject"
@@ -408,7 +429,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           {amend ? t("repository.staging.commitAmend") : t(commitCount === 1 ? "repository.staging.commit_one" : "repository.staging.commit_other", { count: commitCount })}
         </button>
       </div>
-    </div>
+    </div>}
   </div>;
 }
 

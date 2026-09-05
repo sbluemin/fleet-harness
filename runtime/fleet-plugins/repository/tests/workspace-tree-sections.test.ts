@@ -69,12 +69,6 @@ function renderWorkspaceTree(): ReactElement<ElementProps> {
   hookHarness.beginRender();
   return WorkspaceTree({
     t: getT("en"),
-    repos: [{ relPath: ".", name: "fleet-harness", branch: "canary", kind: "root" }],
-    reposError: false,
-    reposTruncated: false,
-    scanDepth: 3,
-    worktrees: [{ relPath: ".fleet/worktrees/topic", name: "topic", branch: "topic", current: false }],
-    worktreesError: false,
     refs: {
       branches: [{ label: "canary", ref: "refs/heads/canary", current: true }],
       remotes: [],
@@ -82,17 +76,10 @@ function renderWorkspaceTree(): ReactElement<ElementProps> {
       stashes: [{ name: "stash@{0}", subject: "WIP" }],
     },
     refsError: false,
-    changedFiles: { kind: "ok", files: [] },
-    selectedRel: ".",
     source: "history",
     refFilter: null,
-    onRepository: vi.fn(),
-    onScanDepth: vi.fn(),
-    onRetryRepos: vi.fn(),
     onReloadState: vi.fn(),
-    onRetryWorktrees: vi.fn(),
     onRetryRefs: vi.fn(),
-    onSource: vi.fn(),
     onRef: vi.fn(),
     onCompare: vi.fn(),
     onStashInspect: vi.fn(),
@@ -120,19 +107,13 @@ beforeEach(() => hookHarness.reset());
 describe("WorkspaceTree section collapse", () => {
   it("starts with tags and stashes collapsed while preserving every count badge", () => {
     const state = sectionState(renderWorkspaceTree());
-    expect([...state.keys()]).toEqual(["context", "working", "worktrees", "branches", "tags", "stashes"]);
+    expect([...state.keys()]).toEqual(["branches", "tags", "stashes"]);
     expect(Object.fromEntries([...state].map(([id, section]) => [id, section.expanded]))).toEqual({
-      context: true,
-      working: true,
-      worktrees: true,
       branches: true,
       tags: false,
       stashes: false,
     });
     expect(Object.fromEntries([...state].map(([id, section]) => [id, section.count]))).toEqual({
-      context: "1",
-      working: "0",
-      worktrees: "1",
       branches: "1",
       tags: "1",
       stashes: "1",
@@ -144,12 +125,8 @@ describe("WorkspaceTree section collapse", () => {
   it("toggles expanded state and conditionally renders section bodies", () => {
     const initial = sectionState(renderWorkspaceTree());
     initial.get("tags")?.toggle();
-    initial.get("context")?.toggle();
-    initial.get("working")?.toggle();
 
     const toggled = sectionState(renderWorkspaceTree());
     expect(toggled.get("tags")).toMatchObject({ expanded: true, hasBody: true, count: "1" });
-    expect(toggled.get("context")).toMatchObject({ expanded: false, hasBody: false, count: "1" });
-    expect(toggled.get("working")).toMatchObject({ expanded: false, hasBody: false, count: "0" });
   });
 });

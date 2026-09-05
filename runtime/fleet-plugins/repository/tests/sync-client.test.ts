@@ -92,8 +92,10 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).not.toContain("setVerbNotice");
     expect(railPanelSource).not.toContain("repository.verb.pulled\"");
     expect(railPanelSource).not.toContain("repository.verb.pushed\"");
-    // 배너를 쓰는 표면은 sync와 스태시 "행" 동작 둘뿐이다 — 툴바 동사가 세 번째로 끼어들면 부활한 것이다.
-    expect(railPanelSource.split("repository-sync-toast").length - 1).toBe(2);
+    // 결과는 높이가 고정된 공통 행에 남긴다. 일시 배너로 작업면을 밀지 않는다.
+    expect(railPanelSource).not.toContain("repository-sync-toast");
+    expect(railPanelSource).toContain("repository-feedback");
+    expect(railPanelSource).toContain("setFeedback(outcome)");
     const verbRun = railPanelSource.slice(railPanelSource.indexOf("const runToolbarVerb"), railPanelSource.indexOf("const handlePull"));
     expect(verbRun).not.toContain("setSyncNotice");
     for (const handler of ["const handlePull", "const handlePush", "const handleStash ="]) {

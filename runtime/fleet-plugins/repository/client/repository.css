@@ -1874,50 +1874,39 @@
 }
 
 
-/* ═══ Fork 워크벤치 — 체크아웃 탭 ═══════════════════════════════════════════ */
-/* 루트 체크아웃과 워크트리가 한 줄에 서는 상단 탭 — 컨텍스트 트리의 빠른 길이다. */
-.repository-checkout-tabs {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  padding: 4px 10px 0;
-  border-bottom: 1px solid var(--hairline);
-  /* identity 캡과 같은 위스퍼 한 단 — 캡 구역(identity+탭)이 하나의 띠로 이어진다(밴드 정합). */
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex: none;
-}
-.repository-checkout-tabs::-webkit-scrollbar { display: none; }
-.repository-checkout-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: var(--t-sm);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.repository-checkout-tab:hover { color: var(--text-primary); background: var(--ink-mid); }
-.repository-checkout-tab.is-active {
-  color: var(--text-primary);
-  background: var(--ink-mid);
-  border-color: var(--hairline);
-  position: relative;
-  top: 1px;
-}
-.repository-checkout-tab-label { overflow: hidden; text-overflow: ellipsis; max-width: 18ch; }
-.repository-checkout-tab-mark {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-style: normal;
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
+/* 저장소 맥락은 상단 선택기 하나가, 주 작업은 작업면 탭이 소유한다. */
+.repository-feedback { display: flex; align-items: center; gap: 8px; flex: none; height: 36px; padding: 4px 12px; border-top: 1px solid var(--surface-rim); color: var(--text-secondary); font-size: var(--t-xs); }
+.repository-feedback > span { flex: 1; min-width: 0; max-height: 100%; overflow-y: auto; overflow-wrap: anywhere; }
+.repository-feedback.is-error { color: var(--coral-ink); }
+.repository-feedback button { flex: none; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.repository-context-picker { position: relative; min-width: 0; flex: 1; }
+.repository-context-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; text-align: left; }
+.repository-context-trigger:hover { background: var(--control-rest-hover); }
+.repository-context-trigger strong { flex: 1; }
+.repository-context-trigger .repository-context-branch { max-width: 32%; }
+.repository-context-trigger:focus-visible, .repository-source-tabs button:focus-visible, .repository-staging-amend-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.repository-context-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; width: min(480px, calc(100cqw - 24px)); max-height: min(440px, 65vh); display: flex; flex-direction: column; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--surface-glass-strong); box-shadow: var(--shadow-floating); overflow: hidden; }
+.repository-context-options { min-height: 0; overflow-y: auto; }
+.repository-identity .repository-context-options span { color: inherit; font: inherit; }
+.repository-context-heading { padding: 9px 12px 4px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.repository-work-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.repository-work-panel { flex: 1; min-height: 0; min-width: 0; }
+.repository-work-panel > .history-root { height: 100%; }
+.repository-source-tabs { display: flex; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 5%, transparent); flex: none; }
+.repository-source-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
+.repository-source-tabs button:hover { color: var(--text-primary); }
+.repository-source-tabs button[aria-selected="true"] { border-bottom-color: var(--brass); color: var(--text-primary); font-weight: var(--weight-medium); }
+.repository-source-tabs button span { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+.repository-staging-empty { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+.repository-staging-empty strong { color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-medium); }
+.repository-staging-empty p { max-width: 36ch; margin: 0; color: var(--text-secondary); font-size: var(--t-sm); }
+.repository-staging-clean-mark { color: var(--positive-ink); font-size: var(--t-lg); }
+.repository-staging-amend-entry { padding: 5px 8px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.repository-staging-amend-entry:hover { color: var(--brass-ink); }
+@container (width < 720px) {
+  .repository-identity { flex-wrap: wrap; }
+  .repository-context-picker { flex-basis: 100%; }
+  .repository-identity > .repository-sync-button { margin-left: 0; }
 }
 
 /* ═══ Fork 워크벤치 — 툴바 동사(Pull/Push/Stash) ══════════════════════════ */
