@@ -1,6 +1,6 @@
 # Changelog Fragments
 
-Follow the root `CLAUDE.md` changelog rules in full: compiler-owned changelogs remain untouched; every English bullet and Korean `ko:` line are adjacent; ASCII English, Hangul Korean, and protected tokens follow the root contract.
+Follow the root inclusion criteria and compiler-owned output boundary. Apply the authoring contract below only when creating or changing a fragment. English bullets use ASCII and are immediately followed by a `  ko: ` line containing Hangul. `scripts/compile-changelog-fragments.mjs` owns fragment syntax and validation. Preserve protected technical tokens between locales; `scripts/changelog-korean-seed.test.mjs` checks release topology and token parity in compiled history.
 
 ## When to write
 
@@ -39,8 +39,10 @@ branch: feat/some-topic
 ### fleet-console
 #### Changed
 - Group release notes by the runtime a change is noticed in.
-  ko: 릴리스 노트를 변경이 드러나는 런타임 기준으로 묶습니다.
+  ko: <Korean summary containing Hangul>
 ```
+
+Replace the placeholder with the actual Korean translation before validation.
 
 Runtime headings use the Runtime Mapping values above. Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`. Bullets carry no package tag — the runtime heading already states where the change is noticed, and the compiler rejects a bullet that starts with one. Every English bullet and Korean `ko:` line remain adjacent. Groups may be authored in any order because the compiler emits the canonical runtime and section order: `fleet-cli`, `fleet-console`, `fleet-desktop`, `fleet-mobile`, each with its sections nested beneath.
 

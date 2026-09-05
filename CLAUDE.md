@@ -1,44 +1,50 @@
-> **Instruction maintenance rule — risk-weighted minimalism**
->
-> - Except for Fleet Wiki-governed instructions, treat each `CLAUDE.md` as always-loaded routing context, not a handbook. Keep a rule when its pre-work value outweighs recurring context and maintenance cost: normal exploration is unlikely to reveal it in time, violation is costly, and the fact is stable.
-> - Prefer directory-level ownership routes and non-obvious ownership, security, or operational invariants. Allow a rare file pointer only for a stable source of truth or authoring/generated boundary that materially prevents misrouting; never add exhaustive inventories or implementation walkthroughs.
-> - State each fact once at the nearest scope and retire stale or low-value guidance. Before removing still-required procedures, catalogs, or conventions, move them to reliable automation or on-demand documentation. Validate both the assembled instruction context and representative task outcomes under comparable prompt, tool, and retrieval conditions, and prune before adding.
-
 # Fleet
 
-Fleet is a multi-LLM orchestration kit. A host agent coordinates delegated runs across supported Agent CLI backends and gateway models.
+Fleet is a multi-LLM orchestration kit spanning Agent CLI backends and gateway models. The **Admiral** is the host agent that plans, delegates, and integrates; a **Theater** is a registered project root and its local context boundary; an **Operation** is a Console-managed unit inside a Theater.
 
-## Domain map
+## Select task context
 
-- **Admiral** — the host agent that plans, delegates, and integrates work.
-- **Theater** — a Fleet Console project root and the boundary for its local context.
-- **Operation** — a Console-managed unit inside a Theater.
+This file defines repository-wide boundaries. Apply child `CLAUDE.md` files along the paths you work in; read other instructions, documents, and skills only when relevant to the task. Do not preload every instruction file or a documentation bundle.
 
-## Directory index
-
-| Directory | Responsibility |
+| Owner | Path |
 |---|---|
-| `docs/` | Human-facing architecture, development, and operating references |
-| `packages/` | Reusable core and Fleet domain packages |
-| `runtime/fleet-console/` | Standalone Console service and web product |
-| `runtime/fleet-desktop/` | Optional thin native shell for Fleet Console |
-| `runtime/fleet-plugins/` | Built-in Console plugin implementations |
-| `scripts/` | Repository generation, packaging, and boundary gates |
-| `.claude/skills/` | On-demand task workflows and verification procedures |
-| `.changelog.d/` | Unreleased bilingual changelog fragments |
-| `examples/` | Reference plugin integrations |
+| Reusable core capabilities and Fleet domains | `packages/` |
+| `fleet` terminal launcher, Console server and web product | `runtime/fleet-console/` |
+| Built-in Console plugins | `runtime/fleet-plugins/` |
+| Electron native shell | `runtime/fleet-desktop/` |
+| Mobile shell | `runtime/fleet-mobile/` |
+| Generation, packaging, and boundary checks | `scripts/` |
+| Development references / plugin integration examples | `docs/` / `examples/` |
+| Task-specific execution and verification procedures | `.claude/skills/` |
+| Unreleased change records | `.changelog.d/` |
 
-## Architecture constraints
+- Modify the repository in a dedicated `canary`-based worktree created through the `git-worktree` skill, unless the user explicitly directs otherwise. Read-only work needs no worktree.
+- Route Console browser verification to `console-e2e`, Electron shell verification to `desktop-e2e`, and a Console for the user to try to `console-handoff`. Load a skill's body only for its task.
+- For local execution, consult **Isolated Development Data** in `docs/fleet-development-reference.md`. Development and verification must not touch real user data or another session's processes.
 
-- Runtime hosts own composition, process lifecycle, UI, and host adapters. Reusable packages must not reach back into a host.
-- `core-*` packages are Fleet-domain-agnostic. Fleet semantics belong in `fleet-*` packages or runtime hosts; dependencies flow from runtime to Fleet domains to core capabilities.
-- Fleet Console is the sole published host package for both the `fleet` terminal launcher and the Console web product. Built-in plugin implementations live under `runtime/fleet-plugins/`, and Desktop remains a shell over the Console public protocol.
+## Architecture boundaries
+
+- Dependencies flow from runtime hosts to Fleet domains to core capabilities. `core-*` packages remain Fleet-domain-agnostic; reusable packages must not reach back into a runtime host.
+- Runtime hosts own composition, process lifecycle, UI, and host adapters. Console is the sole published host for the `fleet` launcher and Console web product. Built-ins live in `runtime/fleet-plugins/`; Desktop remains a shell over the Console public protocol.
 - Cross-package construction uses explicit dependency objects. Do not add DI containers, service locators, or hidden cross-layer lookups.
-- Consume declared package exports only. Source deep imports create shadow APIs and are forbidden across package boundaries.
+- Consume other packages through declared exports only. Source deep imports must not create shadow APIs.
 
-## Repository-wide operational invariants
+## Execution scope and completion
 
-- Repository-modifying work proceeds in a dedicated `canary`-based git worktree (via the `git-worktree` skill), not the main checkout, unless the user explicitly directs otherwise; read-only or conversational tasks need no worktree.
+- Within the authorized task, continue local edits, relevant checks, repairs of regressions introduced by the change, and re-verification without intermediate approval requests. Do not expand an investigation into implementation or implementation into deployment.
+- Destructive actions, external publication or deployment, and billable external actions require authorization for that action. Local verification authority does not extend to production data, other sessions, or external services; never bypass tool permission gates.
+- Define completion by the requested outcome and affected boundaries. Start with relevant checks and broaden coverage for shared contracts, dependencies, or packaging changes. Do not require the entire test suite after every edit, and do not skip mandatory skill, CI, or release gates.
+- Verify executable-code or bundle changes with affected builds, and UI behavior or visual changes in the real app. For documentation-only changes, check references, instruction conflicts, and preservation of required constraints. Run commands in the active worktree and verify that they exercise the changed version.
+- An initial implementation or one green check is not completion. Resolve relevant failures or identify the concrete blocker; report changes, checks run, failures, and unverified areas separately. Do not expand scope to repair unrelated pre-existing failures.
+
+## Change records
+
 - Commits use English Conventional Commits.
-- Unreleased notes live in `.changelog.d/`; `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-owned outputs and must not be edited directly.
-- Changelog fragments are authored autonomously only for product changes a user would perceive as a feature-level delta; omit otherwise with no mandatory `no-changelog` declaration. Exact inclusion criteria, fragment identity, and bilingual syntax belong to the `.changelog.d/` instructions and changelog compiler.
+- `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-owned outputs; never edit them directly.
+- Author a `.changelog.d/` fragment autonomously only for a product change users perceive as a feature-level delta. Omit otherwise, without a mandatory `no-changelog` declaration. That directory's instructions and the compiler own inclusion details, identity, and bilingual syntax.
+
+## Instruction maintenance
+
+- Keep all `CLAUDE.md` files in English. Retain stable ownership, security, and operational boundaries that must be known before work begins; do not accumulate implementation walkthroughs, one-off lessons, or inventories discoverable through normal exploration.
+- State each fact once at the nearest scope. Put procedures in task-specific skills, detailed rationale in on-demand references, and mechanically decidable constraints in checks. Never delete a still-required constraint without a reliable replacement.
+- When revising instructions or skills, consult `docs/instruction-maintenance.md`. Do not relax safety boundaries based on presumed model capability. Fleet Wiki-governed instructions retain their own approval and generation contracts.
