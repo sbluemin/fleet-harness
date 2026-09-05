@@ -15,6 +15,8 @@ Prefer the official native agent-browser binary matching the host. If the packag
 
 ### Windows ARM64 fallback
 
+Replace `<session-scratchpad>` below with the absolute scratchpad path supplied by this session before executing PowerShell. It is a placeholder, not a Windows directory name.
+
 agent-browser may publish `win32-x64` without `win32-arm64`. Windows ARM64 can run the official x64 binary through OS emulation. Use the exact version already placed in the npm npx cache and download only its matching official GitHub release asset.
 
 ```powershell
@@ -30,7 +32,7 @@ $packageRoot = $packages |
 if (-not $packageRoot) { throw "agent-browser package not found in the npx cache" }
 
 $version = (Get-Content -Raw (Join-Path $packageRoot "package.json") | ConvertFrom-Json).version
-$toolDir = Join-Path $env:TEMP "fleet-agent-browser-$version-$PID"
+$toolDir = Join-Path '<session-scratchpad>' "fleet-agent-browser-$version-$PID"
 New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
 gh release download "v$version" -R vercel-labs/agent-browser `
   -p "agent-browser-win32-x64.exe" -D $toolDir

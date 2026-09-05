@@ -16,6 +16,8 @@ The agent-browser binary is only the CDP client. Its architecture never proves t
 
 ### Windows ARM64 fallback
 
+Replace `<session-scratchpad>` below with the absolute scratchpad path supplied by this session before executing PowerShell. It is a placeholder, not a Windows directory name.
+
 If the installed agent-browser wrapper reports `No binary found for win32-arm64`, use the matching official `win32-x64` release binary through Windows ARM64 x64 emulation:
 
 ```powershell
@@ -31,7 +33,7 @@ $packageRoot = $packages |
 if (-not $packageRoot) { throw "agent-browser package not found in the npx cache" }
 
 $version = (Get-Content -Raw (Join-Path $packageRoot "package.json") | ConvertFrom-Json).version
-$toolDir = Join-Path $env:TEMP "fleet-agent-browser-$version-$PID"
+$toolDir = Join-Path '<session-scratchpad>' "fleet-agent-browser-$version-$PID"
 New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
 gh release download "v$version" -R vercel-labs/agent-browser `
   -p "agent-browser-win32-x64.exe" -D $toolDir
