@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.84.0] - 2026-09-05
+
+### fleet-cli
+
+#### Added
+- fleet gateway의 Codex 모델 선택기에서 GPT-6-Astra를 제공하며, 272K/524K/1M 컨텍스트 변형과 각 변형의 Fast 우선 등급 짝을 함께 싣고, 기존 GPT-5.6 모델도 그대로 유지합니다.
+
+### fleet-console
+
+#### Added
+- Fleet Console의 Codex 모델 선별에서 GPT-6-Astra를 제공하며, 272K/524K/1M 컨텍스트 변형과 각 변형의 Fast 우선 등급 짝을 함께 싣고, 기존 GPT-5.6 모델도 그대로 유지합니다.
+
 ## [1.83.0] - 2026-09-03
 
 ### fleet-cli

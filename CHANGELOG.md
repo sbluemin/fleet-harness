@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.84.0] - 2026-09-05
+
+### fleet-cli
+
+#### Added
+- Offer GPT-6-Astra in the fleet gateway Codex model picker, with 272K, 524K, and 1M context variants and a Fast priority-tier twin for each, alongside the GPT-5.6 models that stay available.
+
+### fleet-console
+
+#### Added
+- Offer GPT-6-Astra in the Fleet Console Codex model loadout, with 272K, 524K, and 1M context variants and a Fast priority-tier twin for each, alongside the GPT-5.6 models that stay available.
+
 ## [1.83.0] - 2026-09-03
 
 ### fleet-cli
