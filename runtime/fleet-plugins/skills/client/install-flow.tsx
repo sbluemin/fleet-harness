@@ -1,144 +1,71 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { AgentId, Scope } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
-import type { UseJobLogReturn } from "./use-job-log.js";
-
-// ─── types ───────────────────────────────────────────────────────────────────
 
 interface InstallFlowProps {
-  readonly source: string;
-  readonly skill: string;
   readonly theaterId: string | null;
   readonly onCancel: () => void;
-  readonly onStarted: (scope: Scope) => void;
-  readonly jobLog: UseJobLogReturn;
+  readonly onInstall: (scope: Scope, agents: AgentId[]) => void;
+  readonly disabled: boolean;
   readonly t: Translate<SkillsMessageKey>;
 }
 
-// ─── constants ───────────────────────────────────────────────────────────────
-
-const AGENT_IDS: AgentId[] = ["claude-code", "codex", "cursor", "opencode"];
-
-const AGENT_LABELS: Record<AgentId, string> = {
+export const AGENT_LABELS: Record<AgentId, string> = {
   "claude-code": "Claude",
   codex: "Codex",
   cursor: "Cursor",
   opencode: "OpenCode",
 };
+const AGENT_IDS = Object.keys(AGENT_LABELS) as AgentId[];
 
-// ─── InstallFlow ──────────────────────────────────────────────────────────────
-
-export function InstallFlow({ source, skill, theaterId, onCancel, onStarted, jobLog, t }: InstallFlowProps) {
+export function InstallFlow({ theaterId, onCancel, onInstall, disabled, t }: InstallFlowProps) {
   const [scope, setScope] = useState<Scope>(theaterId ? "project" : "global");
-  const [allAgents, setAllAgents] = useState(true);
-  const [selectedAgents, setSelectedAgents] = useState<Set<AgentId>>(new Set(AGENT_IDS));
-
-  const { status, start } = jobLog;
-  const isRunning = status === "running";
-  const isDone = status === "done";
-  const isError = status === "error";
-
-  const handleToggleAll = useCallback(() => {
-    setAllAgents(true);
-    setSelectedAgents(new Set(AGENT_IDS));
-  }, []);
-
-  const handleToggleAgent = useCallback((agentId: AgentId) => {
-    setAllAgents(false);
-    setSelectedAgents((prev) => {
-      const next = new Set(prev);
-      if (next.has(agentId)) {
-        next.delete(agentId);
-      } else {
-        next.add(agentId);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleInstall = useCallback(() => {
-    const agents: AgentId[] = allAgents ? AGENT_IDS : Array.from(selectedAgents);
-    if (agents.length === 0) return;
-
-    const body: Record<string, unknown> = { source, skill, scope, agents };
-    if (scope === "project" && theaterId) {
-      body["theaterId"] = theaterId;
-    }
-
-    start("/plugins/skills/install", body);
-    // 완료 전파(설치 목록 새로고침·탭 전환)는 잡 소유자(FindTab)가 status로 구동하므로,
-    // 이 transient 폼은 설치 대상 scope만 시작 시점에 상위로 알린다.
-    onStarted(scope);
-  }, [allAgents, selectedAgents, source, skill, scope, theaterId, start, onStarted]);
+  const [selectedAgents, setSelectedAgents] = useState<AgentId[]>(AGENT_IDS);
 
   return (
-    <div className="skills-install-flow">
-      <div className="skills-scope-toggle">
-        <button
-          type="button"
-          className={`skills-scope-btn${scope === "project" ? " is-active" : ""}`}
-          onClick={() => setScope("project")}
-          disabled={!theaterId || isRunning || isDone}
-          title={!theaterId ? t("skills.install.selectTheater") : undefined}
-        >
-          {t("skills.scope.project")}
-        </button>
-        <button
-          type="button"
-          className={`skills-scope-btn${scope === "global" ? " is-active" : ""}`}
-          onClick={() => setScope("global")}
-          disabled={isRunning || isDone}
-        >
-          {t("skills.scope.global")}
-        </button>
-      </div>
-
-      <div className="skills-agents-row">
-        <button
-          type="button"
-          className={`skills-agent-chip${allAgents ? " is-active" : ""}`}
-          onClick={handleToggleAll}
-          disabled={isRunning || isDone}
-        >
-          {t("skills.install.allAgents")}
-        </button>
-        {AGENT_IDS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            className={`skills-agent-chip${!allAgents && selectedAgents.has(id) ? " is-active" : ""}`}
-            onClick={() => handleToggleAgent(id)}
-            disabled={isRunning || isDone}
-          >
-            {AGENT_LABELS[id]}
-          </button>
-        ))}
-      </div>
-
-      <p className="skills-permission-warning">{t("skills.install.permissionWarning")}</p>
-
-      {!isRunning && !isDone && !isError && (
-        <div className="skills-card-actions">
-          <button
-            type="button"
-            className="skills-btn skills-btn--ghost"
-            onClick={onCancel}
-          >
-            {t("skills.action.cancel")}
-          </button>
-          <button
-            type="button"
-            className="skills-btn skills-btn--primary"
-            onClick={handleInstall}
-            disabled={!allAgents && selectedAgents.size === 0}
-          >
-            {t("skills.install.installNow")}
-          </button>
+    <form className="skills-install-flow" onSubmit={(event) => {
+      event.preventDefault();
+      if (disabled || selectedAgents.length === 0) return;
+      onInstall(scope, selectedAgents);
+    }}>
+      <fieldset disabled={disabled}>
+        <legend>{t("skills.scope.label")}</legend>
+        <div className="skills-install-choices">
+          {(["project", "global"] as const).map((value) => (
+            <label className="skills-install-choice" key={value}>
+              <input type="radio" name="skills-install-scope" value={value} checked={scope === value}
+                disabled={value === "project" && !theaterId} onChange={() => setScope(value)} />
+              <span>{t(value === "project" ? "skills.scope.project" : "skills.scope.global")}
+                <small>{t(value === "project" ? "skills.scope.projectHint" : "skills.scope.globalHint")}</small>
+              </span>
+            </label>
+          ))}
         </div>
-      )}
-    </div>
+        {!theaterId && <p className="skills-scope-description">{t("skills.install.selectTheater")}</p>}
+      </fieldset>
+      <fieldset disabled={disabled}>
+        <legend>{t("skills.install.agents")}</legend>
+        <div className="skills-install-choices">
+          {AGENT_IDS.map((id) => (
+            <label className="skills-install-choice" key={id}>
+              <input type="checkbox" checked={selectedAgents.includes(id)} onChange={(event) => {
+                setSelectedAgents((prev) => event.target.checked ? [...prev, id] : prev.filter((agent) => agent !== id));
+              }} />
+              {AGENT_LABELS[id]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <p className="skills-permission-warning">{t("skills.overlay.permissionWarning")}</p>
+      <div className="skills-card-actions">
+        <button type="button" className="skills-btn skills-btn--ghost" onClick={onCancel}>{t(disabled ? "skills.overlay.close" : "skills.action.cancel")}</button>
+        <button type="submit" className="skills-btn skills-btn--primary" disabled={disabled || selectedAgents.length === 0}>
+          {t("skills.install.confirm", { scope: t(scope === "project" ? "skills.scope.project" : "skills.scope.global"), count: selectedAgents.length })}
+        </button>
+      </div>
+    </form>
   );
 }

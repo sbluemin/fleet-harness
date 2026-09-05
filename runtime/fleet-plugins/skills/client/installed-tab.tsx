@@ -36,7 +36,7 @@ async function fetchInstalledList(theaterId: string | null): Promise<SkillListIt
     ? `?theaterId=${encodeURIComponent(theaterId)}`
     : "";
   const res = await fetch(`/plugins/skills/list${query}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error("list_failed");
   const data = await res.json() as { skills: SkillListItem[] };
   return data.skills ?? [];
 }
@@ -51,20 +51,22 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   const installedLoading = hasInstalledStateForContext(state, contextKey) && state.installedLoading;
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
-  const [removeFailed, setRemoveFailed] = useState(false);
-  // 실패한 제거의 대상 Theater까지 들고 있어야 한다. Theater를 바꾼 뒤 재시도를 누르면
-  // 지금 보고 있는 Theater에서 같은 이름의 스킬을 지우게 되기 때문이다.
-  const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string; readonly theaterId: string | null } | null>(null);
-  // 나간 요청을 세어 그 번호로 완료를 맞춰 본다. Theater를 옮기는 동안 날아가던 요청이
-  // 뒤늦게 실패로 돌아오면, 그 실패는 지금 화면의 사실이 아니다.
-  const removeRequestRef = useRef(0);
+  const [listFailed, setListFailed] = useState(false);
+  const listRequestRef = useRef(0);
+  useEffect(() => () => { listRequestRef.current += 1; }, []);
 
   const loadList = useCallback((tid: string | null) => {
     const requestContextKey = skillsContextKey(tid);
+    const requestId = ++listRequestRef.current;
+    setListFailed(false);
     setInstalledState(requestContextKey, [], true);
     fetchInstalledList(tid)
-      .then((skills) => setInstalledState(requestContextKey, skills, false))
-      .catch(() => setInstalledState(requestContextKey, [], false));
+      .then((skills) => { if (requestId === listRequestRef.current) setInstalledState(requestContextKey, skills, false); })
+      .catch(() => {
+        if (requestId !== listRequestRef.current) return;
+        setInstalledState(requestContextKey, [], false);
+        setListFailed(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -86,53 +88,6 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     updateLog.start("/plugins/skills/update", body);
   }, [theaterId, updateLog]);
 
-  const removeSkill = useCallback((name: string, removeScope: string, targetTheaterId: string | null) => {
-    const body: Record<string, unknown> = { scope: removeScope, skill: name };
-    if (removeScope === "project" && targetTheaterId) {
-      body["theaterId"] = targetTheaterId;
-    }
-    const requestId = removeRequestRef.current + 1;
-    removeRequestRef.current = requestId;
-    lastRemoveRef.current = { name, scope: removeScope, theaterId: targetTheaterId };
-    setRemoveFailed(false);
-
-    void fetch("/plugins/skills/remove", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-      .then((response) => {
-        // fetch는 4xx·5xx에도 resolve한다. ok를 보지 않으면 서버가 거절한 제거가 성공으로
-        // 처리되고, 목록만 다시 불러와 아무 일도 없던 것처럼 보인다 — 스킬은 그대로 남는다.
-        if (!response.ok) throw new Error(String(response.status));
-        loadList(targetTheaterId);
-      })
-      .catch(() => {
-        // 이 요청이 더 이상 화면이 기다리는 요청이 아니면(Theater 전환이나 새 제거가 뒤이었다면)
-        // 그 실패는 지금 보이는 목록의 사실이 아니다 — 재시도할 대상도 이미 사라졌다.
-        if (removeRequestRef.current !== requestId) return;
-        setRemoveFailed(true);
-      });
-  }, [loadList]);
-
-  const handleRemove = useCallback((name: string, removeScope: string) => {
-    removeSkill(name, removeScope, theaterId);
-  }, [removeSkill, theaterId]);
-
-  const retryRemove = useCallback(() => {
-    const last = lastRemoveRef.current;
-    // 실패했던 그 Theater를 다시 겨눈다 — 지금 보고 있는 Theater가 아니다.
-    if (last) removeSkill(last.name, last.scope, last.theaterId);
-  }, [removeSkill]);
-
-  // Theater를 옮기면 앞선 실패의 맥락이 화면에서 사라진다. 남은 재시도 카드가 다른 Theater의
-  // 목록 위에 떠 있지 않도록 함께 거두고, 아직 날아가는 요청의 번호도 무효로 만든다.
-  useEffect(() => {
-    removeRequestRef.current += 1;
-    setRemoveFailed(false);
-    lastRemoveRef.current = null;
-  }, [theaterId]);
-
   const handleRetry = useCallback(() => {
     if (updateScopeRef.current) handleUpdate(updateScopeRef.current);
   }, [handleUpdate]);
@@ -153,10 +108,11 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   return (
     <>
       <div className="skills-tab-body">
-        <div className="skills-scope-toggle">
+        <div className="skills-scope-toggle" role="group" aria-label={t("skills.scope.label")}>
           <button
             type="button"
             className={`skills-scope-btn${visibleScope === "project" ? " is-active" : ""}`}
+            aria-pressed={visibleScope === "project"}
             onClick={() => setScope("project")}
             disabled={!theaterId}
             title={!theaterId ? t("skills.scope.viewProjectTitle") : undefined}
@@ -166,11 +122,14 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
           <button
             type="button"
             className={`skills-scope-btn${visibleScope === "global" ? " is-active" : ""}`}
+            aria-pressed={visibleScope === "global"}
             onClick={() => setScope("global")}
           >
             {t("skills.scope.global")}
           </button>
         </div>
+
+        <p className="skills-scope-description">{t(!theaterId ? "skills.install.selectTheater" : visibleScope === "project" ? "skills.scope.projectHint" : "skills.scope.globalHint")}</p>
 
         <input
           type="search"
@@ -204,7 +163,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
 
         {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}
 
-        {!installedLoading && filtered.length === 0 && (
+        {!installedLoading && !listFailed && filtered.length === 0 && (
           <div className="skills-empty-state">
             {filterText
               ? t("skills.empty.noMatch")
@@ -219,22 +178,16 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
               skill={skill}
               shadowsOtherScope={otherScopeNames.has(skill.name)}
               onReadMore={onReadMore}
-              onRemove={handleRemove}
               t={t}
             />
           ))}
         </div>
       </div>
 
-      {removeFailed ? (
-        <FailureNotice
-          title={t("skills.failure.remove.title")}
-          cause={t("skills.failure.remove.cause")}
-          actions={[{ label: t("skills.failure.remove.retry"), onSelect: retryRemove, primary: true }]}
-          tone="coral"
-          className="skills-remove-failure"
-        />
-      ) : null}
+      {listFailed && (
+        <FailureNotice title={t("skills.failure.list.title")} cause={t("skills.failure.list.cause")}
+          actions={[{ label: t("skills.action.retry"), onSelect: () => loadList(theaterId), primary: true }]} tone="coral" />
+      )}
 
       <JobStatusDock
         status={updateLog.status}

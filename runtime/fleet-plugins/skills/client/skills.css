@@ -144,15 +144,16 @@
 .skills-card-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 /* ─── card ──────────────────────────────────────────────────────────────────── */
 
 .skills-card {
-  background: color-mix(in srgb, var(--surface-glass) 50%, transparent);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--surface-rim);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -165,19 +166,28 @@
   gap: var(--space-2);
 }
 
-.skills-card-name-btn {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--t-base);
-  font-weight: var(--weight-medium);
-  padding: 0;
+.skills-card-row {
+  width: 100%;
   text-align: left;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
 }
 
-.skills-card-name-btn:hover { color: var(--brass-ink); }
+.skills-card-row:hover { background: color-mix(in srgb, var(--brass) 6%, transparent); }
+
+.skills-card-name {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.skills-card-chevron { color: var(--text-tertiary); margin-left: auto; }
+.skills-card-header, .skills-card-footer { width: 100%; }
+.skills-card-footer { justify-content: space-between; }
 
 .skills-card-meta {
   color: var(--text-tertiary);
@@ -471,43 +481,6 @@
   padding-top: var(--space-2);
 }
 
-.skills-agents-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.skills-agent-chip {
-  background: none;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.01em;
-  padding: 3px var(--space-2);
-  transition: background var(--duration-base), color var(--duration-base), border-color var(--duration-base);
-}
-
-.skills-agent-chip:hover:not(:disabled) { color: var(--text-secondary); }
-
-.skills-agent-chip.is-active {
-  background: color-mix(in srgb, var(--brass) 15%, transparent);
-  border-color: color-mix(in srgb, var(--brass) 40%, transparent);
-  color: var(--brass-ink);
-}
-
-.skills-agent-chip:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skills-agent-chip { transition: none; }
-}
-
 .skills-permission-warning {
   color: var(--text-tertiary);
   font-size: var(--t-xs);
@@ -545,7 +518,7 @@
      없어 다이얼로그가 헤더+한 줄 높이로 붕괴한다(Codex Reading Sheet와 동일한
      고정 컨테이너 패턴). max-height 상한만으로는 높이가 만들어지지 않는다. */
   height: min(80vh, 900px);
-  max-width: min(720px, calc(100vw - 120px));
+  max-width: min(720px, calc(100vw - 32px));
   overflow: hidden;
   width: 100%;
 }
@@ -561,10 +534,10 @@
 
 .skills-overlay-title {
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-mono);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .skills-overlay-meta {
@@ -608,6 +581,45 @@
 }
 
 .skills-overlay-footer .skills-permission-warning { flex: 1; }
+
+.skills-root button:focus-visible,
+.skills-overlay-dialog button:focus-visible,
+.skills-overlay-dialog input:focus-visible,
+.skills-overlay-dialog summary:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.skills-btn:disabled { opacity: 0.45; cursor: default; }
+.skills-search-intro { padding: var(--space-4) var(--space-2); }
+.skills-search-intro strong { color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); }
+.skills-search-intro p, .skills-scope-description {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  margin: 0;
+}
+.skills-search-intro p { margin: var(--space-2) 0 var(--space-3); }
+.skills-search-examples { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skills-overlay-heading { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
+.skills-detail-description { color: var(--text-secondary); font-size: var(--t-md); line-height: 1.6; margin: 0 0 var(--space-4); }
+.skills-detail-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-4); font-size: var(--t-sm); margin: 0 0 var(--space-4); }
+.skills-detail-facts dt { color: var(--text-tertiary); }
+.skills-detail-facts dd { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.skills-detail-document { border-top: 1px solid var(--surface-rim); padding-top: var(--space-3); }
+.skills-detail-document summary { cursor: pointer; color: var(--text-primary); font-size: var(--t-md); margin-bottom: var(--space-3); }
+.skills-install-flow { margin-top: var(--space-4); gap: var(--space-4); }
+.skills-install-flow fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.skills-install-flow legend { color: var(--text-secondary); font-size: var(--t-sm); padding: 0; margin-bottom: var(--space-2); }
+.skills-install-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skills-install-choice { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: var(--space-2) var(--space-3); color: var(--text-secondary); font-size: var(--t-sm); cursor: pointer; }
+.skills-install-choice:has(input:checked) { border-color: color-mix(in srgb, var(--brass) 40%, var(--surface-rim)); background: color-mix(in srgb, var(--brass) 6%, transparent); }
+.skills-install-choice:has(input:disabled) { opacity: 0.45; cursor: default; }
+.skills-install-choice input { accent-color: var(--brass); }
+.skills-install-choice small { display: block; color: var(--text-tertiary); font-size: var(--t-xs); }
+.skills-install-flow .skills-card-actions { justify-content: space-between; flex-wrap: wrap; }
+.skills-permission-warning { color: var(--text-secondary); font-size: var(--t-sm); }
+.skills-overlay-footer { flex-wrap: wrap; }
 
 /* ─── toast ──────────────────────────────────────────────────────────────────── */
 
