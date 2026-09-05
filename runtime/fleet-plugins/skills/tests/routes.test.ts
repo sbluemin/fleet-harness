@@ -110,6 +110,30 @@ describe("미인가 요청 401", () => {
   });
 });
 
+describe("설치 목록 실패 구분", () => {
+  it.each([
+    { stdout: "", stderr: "private error", exitCode: 1 },
+    { stdout: "not-json", stderr: "", exitCode: 0 },
+    { stdout: "{}", stderr: "", exitCode: 0 },
+  ])("잘못된 CLI 결과를 빈 목록으로 숨기지 않는다: %j", async (result) => {
+    const ctx = makeUnauthorizedCtx();
+    vi.spyOn(ctx.host.security, "isTerminalAuthorized").mockReturnValue(true);
+    const res = makeRes();
+    await handleList(makeReq("GET", "/plugins/skills/list"), res, ctx, async () => result);
+    expect(res._status).toBe(502);
+    expect(res._body).toEqual({ error: "list_failed" });
+  });
+
+  it("빈 배열은 정상적인 미설치 상태로 반환한다", async () => {
+    const ctx = makeUnauthorizedCtx();
+    vi.spyOn(ctx.host.security, "isTerminalAuthorized").mockReturnValue(true);
+    const res = makeRes();
+    await handleList(makeReq("GET", "/plugins/skills/list"), res, ctx, async () => ({ stdout: "[]", stderr: "", exitCode: 0 }));
+    expect(res._status).toBe(200);
+    expect(res._body).toEqual({ skills: [] });
+  });
+});
+
 // ─── remove CLI 인자 계약 ─────────────────────────────────────────────────────
 
 describe("handleRemove CLI 인자", () => {

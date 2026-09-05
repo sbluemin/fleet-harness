@@ -19,7 +19,6 @@ export interface SkillsState {
   readonly installedContextKey: string | null;
   readonly updateJobId: string | null;
   readonly updateJobScope: Scope | null;
-  readonly installFormOpenId: string | null;
 }
 
 type Listener = () => void;
@@ -38,7 +37,6 @@ const DEFAULT_STATE: SkillsState = {
   installedContextKey: null,
   updateJobId: null,
   updateJobScope: null,
-  installFormOpenId: null,
 };
 
 // ─── module state ─────────────────────────────────────────────────────────────
@@ -104,13 +102,8 @@ export function setInstalledState(contextKey: string, list: readonly SkillListIt
   emit();
 }
 
-export function setInstallFormOpenId(id: string | null): void {
-  state = { ...state, installFormOpenId: id };
-  emit();
-}
-
 export function resetProjectContextState(contextKey: string): void {
-  state = { ...state, installedContextKey: contextKey, installedList: [], installedLoading: false, installFormOpenId: null };
+  state = { ...state, installedContextKey: contextKey, installedList: [], installedLoading: false };
   emit();
 }
 

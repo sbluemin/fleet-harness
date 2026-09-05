@@ -128,15 +128,12 @@ async function readSkillSources(cwd: string): Promise<LockLookup> {
 
 async function runListCommand(args: string[], cwd: string, executor: CliExecutor): Promise<RawSkillEntry[]> {
   const result = await executor(args, { cwd, timeout: CLI_TIMEOUT_MS });
+  if (result.exitCode !== 0) throw new Error("list_failed");
   const text = stripAnsi(result.stdout).trim();
   if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as RawSkillEntry[];
-  } catch {
-    return [];
-  }
+  const parsed: unknown = JSON.parse(text);
+  if (!Array.isArray(parsed)) throw new Error("invalid_list");
+  return parsed as RawSkillEntry[];
 }
 
 function buildDisplayPath(scope: Scope, name: string): string {
@@ -301,7 +298,7 @@ export async function handleList(
     ctx.host.http.writeJson(res, 200, { skills });
   } catch {
     if (theaterId) installedSkillsByTheater.set(theaterId, []);
-    ctx.host.http.writeJson(res, 200, { skills: [] });
+    ctx.host.http.writeJson(res, 502, { error: "list_failed" });
   }
 }
 

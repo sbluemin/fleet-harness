@@ -1,4 +1,7 @@
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useJobLog } from "./use-job-log.js";
+import { JobStatusDock } from "./skill-feedback.js";
+import type { AgentId } from "../server/skill-types.js";
 
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -14,7 +17,6 @@ import {
   resetProjectContextState,
   setActiveTab,
   setFilterText,
-  setInstallFormOpenId,
   setScope,
   skillsContextKey,
   useSkillsStore,
@@ -52,6 +54,11 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [installedRefreshKey, setInstalledRefreshKey] = useState(0);
   const searchTarget = useSkillSearchTarget();
+  const tabId = useId();
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const installLog = useJobLog();
+  const [installTarget, setInstallTarget] = useState<{ name: string; scope: Scope } | null>(null);
+  const closeOverlay = useCallback(() => setReadMoreEntry(null), []);
 
   const installedCount = hasInstalledStateForContext(state, contextKey) ? state.installedList.length : 0;
 
@@ -97,23 +104,41 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
     setActiveTab("installed");
   }, [ctx.language, t]);
 
-  const handleOverlayInstall = useCallback(() => {
-    if (readMoreEntry?.registryId) {
-      setInstallFormOpenId(readMoreEntry.registryId);
-      setActiveTab("find");
-    }
+  useEffect(() => {
+    if (installLog.status !== "done" || !installTarget) return;
+    handleInstallSuccess(installTarget.name, installTarget.scope);
+    setScope(installTarget.scope);
+    setInstallTarget(null);
     setReadMoreEntry(null);
-  }, [readMoreEntry]);
+  }, [installLog.status, installTarget, handleInstallSuccess]);
+
+  const handleOverlayInstall = useCallback((scope: Scope, agents: AgentId[]) => {
+    if (!readMoreEntry || installLog.status === "running") return;
+    const skill = readMoreEntry.skill;
+    setInstallTarget({ name: skill.name, scope });
+    installLog.start("/plugins/skills/install", {
+      source: skill.source, skill: skill.name, scope, agents,
+      ...(scope === "project" ? { theaterId } : {}),
+    });
+  }, [readMoreEntry, installLog, theaterId]);
 
   return (
     <div className="skills-root">
-      <div className="skills-tab-bar" role="tablist" aria-label={t("skills.tab.panelsAria")}>
+      <div ref={tabBarRef} className="skills-tab-bar" role="tablist" aria-label={t("skills.tab.panelsAria")}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "installed" : event.key === "End" ? "find" : activeTab === "installed" ? "find" : "installed";
+          setActiveTab(next);
+          tabBarRef.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next === "installed" ? 0 : 1]?.focus();
+        }}>
         <button
           type="button"
           role="tab"
-          id="skills-tab-installed"
+          id={`${tabId}-installed`}
+          tabIndex={activeTab === "installed" ? 0 : -1}
           aria-selected={activeTab === "installed"}
-          aria-controls="skills-tabpanel"
+          aria-controls={`${tabId}-panel`}
           className={`skills-tab-btn${activeTab === "installed" ? " is-active" : ""}`}
           onClick={() => setActiveTab("installed")}
         >
@@ -122,9 +147,10 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         <button
           type="button"
           role="tab"
-          id="skills-tab-find"
+          id={`${tabId}-find`}
+          tabIndex={activeTab === "find" ? 0 : -1}
           aria-selected={activeTab === "find"}
-          aria-controls="skills-tabpanel"
+          aria-controls={`${tabId}-panel`}
           className={`skills-tab-btn${activeTab === "find" ? " is-active" : ""}`}
           onClick={() => setActiveTab("find")}
         >
@@ -136,8 +162,8 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
           알 수 없다. 두 탭은 같은 자리를 갈아 끼우므로 패널도 하나다. */}
       <div
         role="tabpanel"
-        id="skills-tabpanel"
-        aria-labelledby={activeTab === "installed" ? "skills-tab-installed" : "skills-tab-find"}
+        id={`${tabId}-panel`}
+        aria-labelledby={`${tabId}-${activeTab}`}
         className="skills-tabpanel"
       >
         {activeTab === "installed" ? (
@@ -150,9 +176,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
           />
         ) : (
           <FindTab
-            theaterId={theaterId}
             onReadMore={handleReadMoreFind}
-            onInstallSuccess={handleInstallSuccess}
             t={t}
           />
         )}
@@ -160,15 +184,25 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
 
-      <ReadingOverlay
-        skill={readMoreEntry?.skill ?? null}
-        isInstalled={readMoreEntry?.isInstalled ?? false}
+      <JobStatusDock status={installLog.status} lines={installLog.lines}
+        runningLabel={t("skills.status.installingNamed", { name: installTarget?.name ?? "" })}
+        doneLabel={t("skills.status.installed")} errorLabel={t("skills.status.installFailed")}
+        onDismiss={installLog.reset} t={t} />
+      {readMoreEntry && <ReadingOverlay
+        key={`${readMoreEntry.isInstalled}:${readMoreEntry.skill.scope}:${readMoreEntry.skill.name}`}
+        skill={readMoreEntry.skill}
+        isInstalled={readMoreEntry.isInstalled}
         theaterId={theaterId}
-        onClose={() => setReadMoreEntry(null)}
+        onClose={closeOverlay}
         onInstall={handleOverlayInstall}
+        installLog={installLog}
+        onRemoved={() => {
+          setReadMoreEntry((entry) => entry === readMoreEntry ? null : entry);
+          setInstalledRefreshKey((key) => key + 1);
+        }}
         t={t}
         language={ctx.language}
-      />
+      />}
     </div>
   );
 }
