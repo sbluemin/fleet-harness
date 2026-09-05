@@ -6,6 +6,17 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
+  "repository.feedback.ready": "Local working tree · Fetch updates remote-tracking branches",
+  "repository.context.choose": "Choose repository or worktree",
+  "repository.context.empty": "No repositories found. Try scanning deeper.",
+  "repository.source.aria": "Repository views",
+  "repository.refs.search": "Find branches, tags, stashes",
+  "repository.refs.noMatching": "No matching refs",
+  "repository.refs.empty": "No refs",
+  "repository.staging.cleanTitle": "No changes to commit",
+  "repository.staging.cleanHint": "Changes appear here when you edit files. Browse History to review earlier work.",
+  "repository.staging.viewHistory": "View History",
+  "repository.staging.editLastCommit": "Edit last commit",
   "repository.sync.button": "Fetch",
   "repository.sync.title": "Update remote-tracking branches",
 
@@ -273,7 +284,18 @@ const repositoryEn = {
 
 const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
-  "repository.sync.button": "가져오기",
+  "repository.feedback.ready": "로컬 작업 트리 · Fetch로 원격 추적 정보를 갱신합니다",
+  "repository.context.choose": "저장소·워크트리 선택",
+  "repository.context.empty": "발견한 저장소가 없습니다. 탐색 깊이를 늘려 보세요.",
+  "repository.source.aria": "저장소 작업 보기",
+  "repository.refs.search": "브랜치·태그·스태시 찾기",
+  "repository.refs.noMatching": "일치하는 참조가 없습니다",
+  "repository.refs.empty": "참조가 없습니다",
+  "repository.staging.cleanTitle": "커밋할 변경이 없습니다",
+  "repository.staging.cleanHint": "파일을 수정하면 여기에 나타납니다. 이전 작업은 기록에서 확인하세요.",
+  "repository.staging.viewHistory": "기록 보기",
+  "repository.staging.editLastCommit": "마지막 커밋 수정",
+  "repository.sync.button": "Fetch",
   "repository.sync.title": "원격 추적 브랜치를 갱신합니다",
 
   "repository.section.context": "컨텍스트",

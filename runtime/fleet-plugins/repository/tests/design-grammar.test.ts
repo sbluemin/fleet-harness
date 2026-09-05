@@ -226,7 +226,7 @@ describe("Repository design grammar", () => {
     // 캔버스 톤은 이 패널에서 퇴역했다 — 남은 언급은 독트린 주석뿐이어야 한다.
     expect(css).not.toContain("var(--surface-band)");
 
-    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery", ".repository-identity", ".repository-checkout-tabs", ".repository-ws-peek"]) {
+    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery", ".repository-identity", ".repository-source-tabs", ".repository-ws-peek"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-fog) 5%");
     }
     expect(blockOf(".repository-ws-tree")).toContain("background: transparent");

@@ -85,6 +85,26 @@ export interface RepoViewState {
   readonly collapsedFolders: readonly string[];
 }
 
+export interface CommitDraft {
+  readonly subject: string;
+  readonly body: string;
+  readonly amend: boolean;
+}
+
+// 초안은 플러그인 번들의 메모리에만 둔다. 체크아웃 전환과 패널 재개방은 넘지만 디스크에는 쓰지 않는다.
+const commitDrafts = new Map<string, CommitDraft>();
+const commitDraftKey = (theaterId: string, repoRel: string): string => JSON.stringify([theaterId, repoRel]);
+
+export function readCommitDraft(theaterId: string, repoRel: string): CommitDraft | undefined {
+  return commitDrafts.get(commitDraftKey(theaterId, repoRel));
+}
+
+export function writeCommitDraft(theaterId: string, repoRel: string, draft: CommitDraft): void {
+  const key = commitDraftKey(theaterId, repoRel);
+  if (!draft.subject && !draft.body && !draft.amend) commitDrafts.delete(key);
+  else commitDrafts.set(key, draft);
+}
+
 const workspaceTreeCache = new Map<string, WorkspaceTreeState>();
 const repoViewCache = new Map<string, RepoViewState>();
 
