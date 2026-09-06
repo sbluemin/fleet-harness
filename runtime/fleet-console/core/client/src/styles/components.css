@@ -5537,6 +5537,23 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding: var(--space-1) 0;
 }
 
+/* Theater 안의 복구 선반(상태별 보기) — War Room 선반과 같은 요소이지만 Theater 섹션 안에서는
+   구분선을 갖지 않는다. 선을 그으면 Theater 경계처럼 읽혀 여러 Theater가 섰을 때 어느 Theater의
+   선반인지 갈린다. 여기서는 상태 섹션(대기·실행 중·유휴)과 같은 문법으로 잇달아 선다. */
+.side-bar-status-recovery-shelves {
+  list-style: none;
+}
+
+.side-bar-status-recovery-shelf {
+  min-width: 0;
+  border-top: 0;
+  padding: 0;
+}
+
+.side-bar-status-recovery-shelf .side-bar-status-section {
+  padding-bottom: 0;
+}
+
 .triage-side-bar-minimized-list {
   list-style: none;
   margin: 0;
