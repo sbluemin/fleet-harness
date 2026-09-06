@@ -82,7 +82,72 @@ describe("Anthropic request translation", () => {
 });
 
 describe("model catalog", () => {
+  it("publishes only complete, reproducible benchmark evidence at a reachable effort", () => {
+    const snapshot = parseGatewayBenchmarksRegistry(minimalBenchmarks());
+    expect(snapshot.models.alpha!.normalized).toEqual({ score: 50, sourceScores: { first: 0, second: 100 } });
+    expect(snapshot.models.beta!.normalized).toEqual({ score: 50, sourceScores: { first: 100, second: 0 } });
+
+    const tied = minimalBenchmarks();
+    tied.models.beta.measurements.second.metrics.cost = 0;
+    tied.models.alpha.normalized = { score: 25, sourceScores: { first: 0, second: 50 } };
+    tied.models.beta.normalized = { score: 75, sourceScores: { first: 100, second: 50 } };
+    expect(parseGatewayBenchmarksRegistry(tied).models.alpha!.normalized.score).toBe(25);
+
+    const catalog = parseGatewayModelsRegistry(minimalRegistry());
+    catalog.providers.codex.models[0]!.benchmarkKey = "alpha";
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["high"] };
+    catalog.providers.xai.models[0]!.benchmarkKey = "beta";
+    catalog.providers.xai.models[0]!.effort = { supported: true, levels: ["high"] };
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).not.toThrow();
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["low"] };
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/effort is not reachable/);
+    catalog.providers.codex.models[0]!.effort = { supported: false };
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/effort is not reachable/);
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["high"] };
+    delete catalog.providers.xai.models[0]!.benchmarkKey;
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/orphaned/);
+
+    const measured = GATEWAY_MODELS.find((model) => model.benchmark)!;
+    expect(measured).toBeDefined();
+    expect(buildGatewayModelConstraints(measured).benchmark).toBe(measured.benchmark);
+    expect(buildGatewayModelConstraints({
+      ...measured,
+      effort: { supported: true, levels: GATEWAY_REASONING_EFFORTS.filter((effort) => effort !== measured.benchmark!.effort) },
+    }).benchmark).toBeUndefined();
+  });
+
   it("rejects malformed registry data at module boundaries", () => {
+    const incomplete = minimalBenchmarks();
+    Reflect.deleteProperty(incomplete.models.alpha.measurements, "second");
+    expect(() => parseGatewayBenchmarksRegistry(incomplete)).toThrow(/exact complete keys/);
+
+    const differentSampleSize = minimalBenchmarks();
+    differentSampleSize.models.beta.measurements.first.metrics.questions = 101;
+    expect(() => parseGatewayBenchmarksRegistry(differentSampleSize)).toThrow(/sample-size must be an equal positive integer/);
+
+    const missingMetric = minimalBenchmarks();
+    Reflect.deleteProperty(missingMetric.models.alpha.measurements.first.metrics, "tokens");
+    expect(() => parseGatewayBenchmarksRegistry(missingMetric)).toThrow(/exact complete keys/);
+
+    const unknownSource = minimalBenchmarks();
+    Object.assign(unknownSource.models.alpha.measurements, { unknown: { model: "Alpha high", metrics: { quality: 0 } } });
+    expect(() => parseGatewayBenchmarksRegistry(unknownSource)).toThrow(/unknown source/);
+
+    const forgedSourceScore = minimalBenchmarks();
+    forgedSourceScore.models.alpha.normalized.sourceScores.first = 1;
+    expect(() => parseGatewayBenchmarksRegistry(forgedSourceScore)).toThrow(/recomputed score/);
+    const forgedAverage = minimalBenchmarks();
+    forgedAverage.models.alpha.normalized.score = 51;
+    expect(() => parseGatewayBenchmarksRegistry(forgedAverage)).toThrow(/recomputed score/);
+
+    const overlap = minimalBenchmarks();
+    Object.assign(overlap.excluded, { alpha: { reason: "Incomplete" } });
+    expect(() => parseGatewayBenchmarksRegistry(overlap)).toThrow(/overlaps excluded models/);
+    const sourceOverlap = minimalBenchmarks();
+    Object.assign(sourceOverlap.sourceAudit, {
+      first: { name: "First", url: "https://example.com/first", status: "excluded", reason: "Duplicate source" },
+    });
+    expect(() => parseGatewayBenchmarksRegistry(sourceOverlap)).toThrow(/overlaps excluded source audit/);
     const extraField = minimalRegistry() as Record<string, unknown>;
     extraField.unexpected = true;
     expect(() => parseGatewayModelsRegistry(extraField)).toThrow();
@@ -309,6 +374,64 @@ function baseRequest(): AnthropicMessagesRequest {
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     stream: true
+  };
+}
+
+function minimalBenchmarks() {
+  const provenance = {
+    benchVersion: "1",
+    observedAt: "2026-09-06T00:00:00Z",
+    url: "https://example.com/benchmark",
+    method: "Isolated fixture",
+    license: "CC0-1.0",
+    artifacts: [{ url: "https://example.com/raw.json", sha256: "a".repeat(64) }],
+  };
+  return {
+    version: 3,
+    updatedAt: "2026-09-06T00:00:00Z",
+    normalization: {
+      method: "cohort-min-max",
+      sourceWeighting: "equal",
+      missingData: "exclude-model",
+      effortPolicy: "exact-match",
+      tieBandPoints: 2,
+    },
+    sources: {
+      first: {
+        ...provenance,
+        name: "First",
+        metrics: {
+          quality: { unit: "points", direction: "higher", role: "quality" },
+          tokens: { unit: "tokens", direction: "lower", role: "context" },
+          questions: { unit: "questions", direction: "higher", role: "sample-size" },
+        },
+      },
+      second: {
+        ...provenance,
+        name: "Second",
+        metrics: { cost: { unit: "penalty", direction: "lower", role: "quality" } },
+      },
+    },
+    models: {
+      alpha: {
+        effort: "high",
+        measurements: {
+          first: { model: "Alpha (high)", metrics: { quality: 0, tokens: 9_000, questions: 100 } },
+          second: { model: "Alpha high", metrics: { cost: 0 } },
+        },
+        normalized: { score: 50, sourceScores: { first: 0, second: 100 } },
+      },
+      beta: {
+        effort: "high",
+        measurements: {
+          first: { model: "Beta (high)", metrics: { quality: 200, tokens: 0, questions: 100 } },
+          second: { model: "Beta high", metrics: { cost: 3 } },
+        },
+        normalized: { score: 50, sourceScores: { first: 100, second: 0 } },
+      },
+    },
+    excluded: {},
+    sourceAudit: {},
   };
 }
 

@@ -21,11 +21,11 @@ The tool returns facts as JSON and stops there: nothing in the payload recommend
 
 Three constraint fields answer three different questions, and none implies another.
 
-- **`benchmark` is measured evidence and outranks the claim.** Its figures are third-party measurements about the vendor model; where they exist at the rung you would request, rank by them — a measured `standard` model above the band beats an unmeasured `flagship` claim. The catalog deliberately carries one benchmark source: figures are harness-relative, so a number from anywhere else never orders against them, and a model the source has not measured carries no figures at all.
-- **`capabilityClass` is the provider's own lineup positioning** (`flagship` / `standard` / `light`) — the quality prior where no figures exist. It is absent on routing aliases, whose serving model varies per call; an entry with neither figures nor a class takes no judgment seat.
-- **Scores within `routingTieBandPoints` are one band, not an ordering.** Within a band prefer the lower `tokensPerTask`, then let allowance decide. The band is Fleet's own conservative routing policy, not a statistic the source published — do not quote it back as one.
-- **Read `caveat` before trusting a standout.** It travels with the figures because it changes what they are evidence of — a contaminated score, an unknown serving rung.
-- **An effortless identity's rung table is a range, not a menu.** With no effort control, which measured rung the serving path reaches is unknown — read the spread, not the best row. `overall` figures carry no rung at all and compare across identities, never across efforts.
+- **`benchmark`는 같은 조건의 완전한 자료로 계산한 상대 지표다.** `sources`의 모든 출처와 필수 지표를 갖춘 `cohortSize`개 모델만 `method`에 따라 정규화한다. `sourceScores`는 출처별 상대점수, `score`는 동일 가중 평균이다. 서로 다른 원점수를 직접 평균하거나 다른 cohort·버전의 점수와 비교하지 않는다. 0과 100은 비교 집합의 상대 위치이지 실패율·정확도가 아니다.
+- **`effort`가 실제 선택과 같을 때만 해당 benchmark를 적용한다.** 다른 effort의 점수나 무표기 설정을 대신 쓰지 않는다. 현재 노출에 측정된 effort가 없다면 근거도 전달되지 않는다. 출처들이 같은 모델에 동일 effort를 측정했다는 뜻이지, 서로 다른 모델의 max/high가 같은 계산 예산이라는 뜻은 아니다.
+- **`capabilityClass`는 공급자의 라인업 주장이다** (`flagship` / `standard` / `light`). 비교 가능한 benchmark가 없는 선택의 사전 근거이며 정량 점수로 변환하지 않는다. 미측정 모델을 상대점수 0으로 취급하거나 측정된 모델보다 자동 열등하다고 판정하지 않는다. 실제 모델이 바뀌는 라우팅 별칭에는 고정 모델 근거가 없다.
+- **`routingTieBandPoints` 이내는 한 묶음이다.** 같은 normalized cohort·effort 프로필 사이에서 적용한 뒤 allowance로 선택한다. 이 밴드는 Fleet 정책이지 통계적 유의수준이 아니다. 하네스별 raw tokens/task·steps/task를 합친 효율 숫자를 만들지 않으며, 벤치 비용을 현재 구독의 가격·한도로 대체하지 않는다.
+- **`caveat`와 `observedAt`을 함께 읽는다.** 정규화는 과제·하네스 차이를 없애는 인과적 보정이 아니고, 공개 사이트 관측이 실제 Fleet serving 성능이나 공급자 호출 성공을 입증하지도 않는다. 데이터가 부족해 benchmark가 없으면 다른 source의 부분 점수로 빈칸을 채우지 않는다.
 
 ## Reading lineage and spend
 

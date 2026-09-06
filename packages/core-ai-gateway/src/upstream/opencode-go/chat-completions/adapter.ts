@@ -254,9 +254,10 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
       ...(options.headers ? { headers: options.headers } : {}),
     });
-    // OpenCode Go의 DeepSeek V4 Chat 스키마는 image_url을 거부한다. 이 정책은
-    // public generic class의 상속 표면을 넓히지 않고 provider instance에만 결합한다.
-    imageInputPolicy.set(this, (model) => !model.startsWith("deepseek-v4-"));
+    // DeepSeek V4 텍스트 모델은 image_url을 거부하지만 Vision Exp는 이미지 입력을 받는다.
+    // 기존 차단을 유지하되 공식 Go 카탈로그의 Vision 모델만 예외로 둔다.
+    imageInputPolicy.set(this, (model) =>
+      model === "deepseek-v4-flash-vision-exp" || !model.startsWith("deepseek-v4-"));
     // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
     // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
     argumentPruningPolicy.set(this, true);

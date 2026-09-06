@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-05T05:13:34Z",
+  "updatedAt": "2026-09-06T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -25,7 +25,8 @@
               "medium": "gemini-3.8-flash-medium",
               "high": "gemini-3.8-flash-high"
             }
-          }
+          },
+          "benchmarkKey": "gemini-3.8-flash"
         },
         {
           "modelId": "gemini-3.7-flash",
@@ -40,7 +41,8 @@
               "medium",
               "high"
             ]
-          }
+          },
+          "benchmarkKey": "gemini-3.7-flash"
         },
         {
           "modelId": "gemini-3.1-pro",
@@ -595,8 +597,7 @@
           "name": "Composer-2.5",
           "capabilityClass": "standard",
           "quotaScope": "auto",
-          "contextWindow": 200000,
-          "benchmarkKey": "composer-2.5"
+          "contextWindow": 200000
         },
         {
           "modelId": "composer-2.5-fast",
@@ -604,8 +605,7 @@
           "capabilityClass": "standard",
           "variantOf": "composer-2.5",
           "quotaScope": "auto",
-          "contextWindow": 200000,
-          "benchmarkKey": "composer-2.5"
+          "contextWindow": 200000
         },
         {
           "modelId": "grok-4.5",
@@ -621,8 +621,7 @@
               "high"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}"
-          },
-          "benchmarkKey": "grok-4.5"
+          }
         },
         {
           "modelId": "grok-4.5-fast",
@@ -639,8 +638,7 @@
               "high"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
-          },
-          "benchmarkKey": "grok-4.5"
+          }
         },
         {
           "modelId": "grok-4.6",
@@ -657,8 +655,7 @@
               "xhigh"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}"
-          },
-          "benchmarkKey": "grok-4.6"
+          }
         },
         {
           "modelId": "grok-4.6-fast",
@@ -676,8 +673,7 @@
               "xhigh"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}-fast"
-          },
-          "benchmarkKey": "grok-4.6"
+          }
         },
         {
           "modelId": "claude-opus-5",
@@ -699,8 +695,7 @@
               "xhigh": "claude-opus-5-thinking-xhigh",
               "max": "claude-opus-5-thinking-max"
             }
-          },
-          "benchmarkKey": "claude-opus-5"
+          }
         },
         {
           "modelId": "claude-opus-5-1m",
@@ -723,8 +718,7 @@
               "xhigh": "claude-opus-5-thinking-xhigh",
               "max": "claude-opus-5-thinking-max"
             }
-          },
-          "benchmarkKey": "claude-opus-5"
+          }
         },
         {
           "modelId": "claude-fable-5",
@@ -838,7 +832,8 @@
               "high"
             ],
             "upstreamModelIdTemplate": "gemini-3.7-flash-{effort}"
-          }
+          },
+          "benchmarkKey": "gemini-3.7-flash"
         },
         {
           "modelId": "kimi-k3",
@@ -854,8 +849,7 @@
               "max"
             ],
             "upstreamModelIdTemplate": "kimi-k3-{effort}"
-          },
-          "benchmarkKey": "kimi-k3"
+          }
         }
       ]
     },
@@ -879,8 +873,7 @@
           },
           "aliases": [
             "k3"
-          ],
-          "benchmarkKey": "kimi-k3"
+          ]
         },
         {
           "modelId": "k3-256k",
@@ -897,21 +890,97 @@
           },
           "aliases": [
             "k3-256k"
-          ],
-          "benchmarkKey": "kimi-k3"
+          ]
         }
       ]
     },
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it. muse-spark-1.3-contributor replaced 1.2 as the current generation on 2026-09-03 from the live list; /responses was the only working wire in three endpoint probes, none and max were refused while minimal/low/medium/high/xhigh succeeded, and only tool_choice auto was accepted. Its 1048576 contextWindow comes from the models.dev opencode-go entry (2026-09-03)",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it. muse-spark-1.3-contributor replaced 1.2 as the current generation on 2026-09-03 from the live list; /responses was the only working wire in three endpoint probes, none and max were refused while minimal/low/medium/high/xhigh succeeded, and only tool_choice auto was accepted. Its 1048576 contextWindow comes from the models.dev opencode-go entry (2026-09-03). 2026-09-06: 공식 GET https://opencode.ai/zen/go/v1/models의 35개 ID와 https://opencode.ai/docs/go/의 모델별 endpoint 표, models.dev api.json의 opencode-go contextWindow를 대조하여 누락된 현세대 및 독립 라인업 10개를 추가했다. Kimi K2.7 Code는 코딩 특화 라인업, Qwen3.7 Plus는 최신 Plus 라인업, Hy4 Preview는 안정판 Hy3와 별도의 preview로 포함한다. 기존 등록은 유지하되 대체된 구세대와 과거 실패로 제외한 모델은 복원하지 않는다. 새 모델의 실제 추론 호출은 검증하지 않았다. Grok 4.6의 effort는 models.dev의 opencode-go 선언을 사용하고, 새 Chat Completions 모델의 effort는 기존 실측 정책에 따라 아직 노출하지 않는다",
       "models": [
         {
           "modelId": "minimax-m3",
           "name": "MiniMax-M3",
           "capabilityClass": "flagship",
           "contextWindow": 1000000
+        },
+        {
+          "modelId": "grok-4.6",
+          "name": "Grok-4.6",
+          "capabilityClass": "flagship",
+          "wire": "responses",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        },
+        {
+          "modelId": "glm-5.3",
+          "name": "GLM-5.3",
+          "capabilityClass": "flagship",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "capabilityClass": "light",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "qwen3.8-flash",
+          "name": "Qwen3.8-Flash",
+          "capabilityClass": "light",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "qwen3.7-plus",
+          "name": "Qwen3.7-Plus",
+          "capabilityClass": "standard",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "kimi-k2.7-code",
+          "name": "Kimi-K2.7-Code",
+          "capabilityClass": "standard",
+          "wire": "chat-completions",
+          "contextWindow": 262144
+        },
+        {
+          "modelId": "longcat-2.0",
+          "name": "LongCat-2.0",
+          "capabilityClass": "flagship",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "deepseek-v4-flash-vision-exp",
+          "name": "DeepSeek-V4-Flash-Vision-Exp",
+          "capabilityClass": "light",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "hy4-preview",
+          "name": "HY4-Preview",
+          "capabilityClass": "flagship",
+          "wire": "chat-completions",
+          "contextWindow": 1024000
+        },
+        {
+          "modelId": "omen-alpha",
+          "name": "Omen-Alpha",
+          "capabilityClass": "standard",
+          "wire": "chat-completions",
+          "contextWindow": 500000
         },
         {
           "modelId": "qwen3.8-max",
@@ -950,8 +1019,7 @@
               "medium",
               "high"
             ]
-          },
-          "benchmarkKey": "grok-4.5"
+          }
         },
         {
           "modelId": "muse-spark-1.3-contributor",
@@ -988,16 +1056,14 @@
           "name": "GLM-5.2",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1000000,
-          "benchmarkKey": "glm-5.2"
+          "contextWindow": 1000000
         },
         {
           "modelId": "kimi-k3",
           "name": "Kimi-K3",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1048576,
-          "benchmarkKey": "kimi-k3"
+          "contextWindow": 1048576
         },
         {
           "modelId": "mimo-v2.5-pro",
@@ -1056,8 +1122,7 @@
               "high",
               "xhigh"
             ]
-          },
-          "benchmarkKey": "grok-4.6"
+          }
         },
         {
           "modelId": "grok-composer-2.5-fast",
