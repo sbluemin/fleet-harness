@@ -1966,7 +1966,7 @@ export function QuickLaunch() {
               <span className="quick-launch-target-dot" aria-hidden="true" />
               {/* 태그는 "종류 · 무엇"이다. 플러그인 대상은 Theater가 없으므로 그 자리에 이름이 선다 —
                   카테고리만 적으면 같은 카테고리의 어느 대상을 골랐는지 확인할 수 없다. */}
-              <span>{mentionTarget.kind === "operation"
+              <span className="quick-launch-target-label" title={mentionTarget.kind === "operation" ? mentionTarget.entry.theaterLabel : undefined}>{mentionTarget.kind === "operation"
                 ? t("chrome.quickLaunch.mentionTarget", { theater: mentionTarget.entry.theaterLabel })
                 : t("chrome.quickLaunch.mentionTargetOther", { category: mentionTarget.row.categoryLabel, name: mentionTarget.row.label })}</span>
               {mentionTarget.kind === "plugin" && mentionTarget.row.capabilityLabel ? (

@@ -14850,13 +14850,19 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   50% { transform: scale(1.14); }
 }
 
-/* 도구가 서는 동안 글자가 그 아래로 들어가지 않게 입력 오른쪽에 자리를 남긴다 — 하나면 한 칸, 둘이면 두 칸. */
+/* 도구가 서는 동안 글자가 그 아래로 들어가지 않게 입력 오른쪽에 자리를 남긴다 — 하나면 한 칸, 둘이면 두 칸.
+   하이라이트 미러도 같은 여백을 진다: 미러 폭은 JS가 textarea의 client 박스(여백 포함)로 맞추므로,
+   미러만 여백이 없으면 글줄이 textarea보다 늦게 접혀 보이는 글자와 캐럿·선택이 어긋난다
+   (`ultracode` 문장이 오른쪽 가장자리에 닿을 때 실측). */
 .quick-launch-input-wrap:has(.quick-launch-suggest-trigger) .quick-launch-input,
-.quick-launch-input-wrap:has(.quick-launch-attach) .quick-launch-input {
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger) .quick-launch-highlight,
+.quick-launch-input-wrap:has(.quick-launch-attach) .quick-launch-input,
+.quick-launch-input-wrap:has(.quick-launch-attach) .quick-launch-highlight {
   padding-right: 32px;
 }
 
-.quick-launch-input-wrap:has(.quick-launch-suggest-trigger):has(.quick-launch-attach) .quick-launch-input {
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger):has(.quick-launch-attach) .quick-launch-input,
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger):has(.quick-launch-attach) .quick-launch-highlight {
   padding-right: 62px;
 }
 
@@ -15336,6 +15342,9 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* 한 줄 계약의 짝: nowrap 바에서 유일하게 늘어나는 글자 덩어리라, 긴 Theater 이름은 태그 안에서
+     말줄임되어야 한다. 그렇지 않으면 태그가 카드 밖으로 넘친다(96자 폴더명으로 실측). */
+  min-width: 0;
   color: var(--brass);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
@@ -15343,6 +15352,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-transform: uppercase;
   white-space: nowrap;
   animation: quick-launch-mention-in var(--duration-base) var(--ease-glide);
+}
+
+.quick-launch-target-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quick-launch-target-dot {
