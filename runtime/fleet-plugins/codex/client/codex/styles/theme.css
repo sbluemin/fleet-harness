@@ -23,16 +23,7 @@
   --font-size-display-hero-md: 72px;
   --font-size-display-hero-sm: 56px;
   --font-size-display-hero: 96px;
-
-  --blur-soft: 0px;
-  --blur-control: 0px;
-  --blur-rise: 0px;
-  --blur-glass: 0px;
-  --blur-pop: 0px;
-  --blur-overlay: 0px;
 }
-
-
 
 @keyframes codex-glow {
   0%,

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
+import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./server/codex/contracts.js";
@@ -48,9 +49,13 @@ export default definePlugin({
       registrations = registrations.then(() => work).catch(() => undefined);
     };
 
+    // Gateway 선별 파일은 Fleet 루트의 것이다 — 터미널 플러그인이 쓰는 파일을 읽기만 한다.
+    // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
+    const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.fleetDataDir });
     const gateway = createCodexGateway({
       host: "127.0.0.1",
       version: "1",
+      readAiGatewaySettings: aiGatewaySettings.read,
       theaterPaths: {
         canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),
         hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),

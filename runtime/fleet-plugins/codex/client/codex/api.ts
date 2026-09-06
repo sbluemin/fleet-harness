@@ -3,6 +3,7 @@
 import type {
   CoworkAnnotationDto,
   CoworkEventDto,
+  CoworkModelRow,
   CoworkOptionsResponse,
   CoworkSessionDto,
   CodexHealthResponse,
@@ -27,6 +28,7 @@ import type {
 export type {
   CoworkAnnotationDto,
   CoworkEventDto,
+  CoworkModelRow,
   CoworkOptionsResponse,
   CoworkSessionDto,
   CodexHealthResponse,
