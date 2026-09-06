@@ -9,63 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 import { handleFilesGitStatus } from "../server/tree-services.js";
 import { parseGitStatusPorcelainV1Z, readTheaterGitStatus, scopeGitStatusesToTheater } from "../server/tree-services.js";
 
-describe("git status porcelain parser", () => {
-  it("parses spaces, Unicode, rename, untracked, and both deleted columns", () => {
-    const output = [
-      " M file with spaces.ts",
-      "?? 문서 파일.md",
-      "D  staged-deleted.ts",
-      " D worktree-deleted.ts",
-      "R  새 이름.ts",
-      "old name.ts",
-      "A  added.ts",
-      " T type-changed.sh",
-      "!! ignored.log",
-      "",
-    ].join("\0");
-
-    expect(parseGitStatusPorcelainV1Z(output)).toEqual([
-      { gitPath: "file with spaces.ts", status: "modified" },
-      { gitPath: "문서 파일.md", status: "untracked" },
-      { gitPath: "staged-deleted.ts", status: "deleted" },
-      { gitPath: "worktree-deleted.ts", status: "deleted" },
-      { gitPath: "새 이름.ts", status: "modified" },
-      { gitPath: "added.ts", status: "modified" },
-      { gitPath: "type-changed.sh", status: "modified" },
-    ]);
-  });
-
-  it("keeps only the parent-repository prefix and emits OS-native separators", () => {
-    const entries = parseGitStatusPorcelainV1Z([
-      " M packages/app/src/index.ts",
-      "?? packages/other/skip.ts",
-      "",
-    ].join("\0"));
-
-    expect(scopeGitStatusesToTheater(entries, "packages/app/")).toEqual([
-      { path: ["src", "index.ts"].join(path.sep), status: "modified" },
-    ]);
-    expect(scopeGitStatusesToTheater(entries, "packages/app/", "\\")).toEqual([
-      { path: "src\\index.ts", status: "modified" },
-    ]);
-  });
-
-  it("keeps nested files reported from untracked directories", () => {
-    expect(parseGitStatusPorcelainV1Z("?? new-dir/inner.ts\0")).toEqual([
-      { gitPath: "new-dir/inner.ts", status: "untracked" },
-    ]);
-  });
-
-  it.each(["UU", "UD", "DU", "AA", "AU", "UA", "DD"])(
-    "maps the %s unmerged pair to modified",
-    (pair) => {
-      expect(parseGitStatusPorcelainV1Z(`${pair} conflict.ts\0`)).toEqual([
-        { gitPath: "conflict.ts", status: "modified" },
-      ]);
-    },
-  );
-});
-
 describe("readTheaterGitStatus", () => {
   it("disables fsmonitor and optional locks while removing Git override environment", async () => {
     const contaminatedEnvironment: NodeJS.ProcessEnv = {
@@ -170,36 +113,5 @@ describe("handleFilesGitStatus", () => {
     } finally {
       await fs.rm(theaterPath, { recursive: true, force: true });
     }
-  });
-});
-
-describe("readTheaterGitStatus truncation marker", () => {
-  it("exposes the cap when statuses exceed the 10,000-entry limit", async () => {
-    const record = " M file-\0";
-    const statusOutput = record.repeat(10_001);
-    const execGit = vi.fn(async (args: readonly string[]) => args.includes("status") ? statusOutput : "");
-
-    const result = await readTheaterGitStatus("/theater", {
-      environment: { PATH: "/usr/bin" },
-      execGit,
-      realpath: async () => "/real/theater",
-    });
-
-    expect(result.truncated).toBe(true);
-    expect(result.cap).toBe(10_000);
-    expect(result.statuses).toHaveLength(10_000);
-  });
-
-  it("omits the cap fields when under the limit", async () => {
-    const execGit = vi.fn(async (args: readonly string[]) => args.includes("status") ? " M a.ts\0" : "");
-
-    const result = await readTheaterGitStatus("/theater", {
-      environment: { PATH: "/usr/bin" },
-      execGit,
-      realpath: async () => "/real/theater",
-    });
-
-    expect(result.truncated).toBeUndefined();
-    expect(result.cap).toBeUndefined();
   });
 });

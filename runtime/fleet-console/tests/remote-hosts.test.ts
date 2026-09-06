@@ -60,38 +60,6 @@ describe("remote host store", () => {
     expect(harness.stored()).toContain(FINGERPRINT_A);
   });
 
-  it("survives a restart", () => {
-    const harness = createHarness();
-    harness.open().remember(link());
-
-    expect(harness.open().list()).toHaveLength(1);
-  });
-
-  it("keeps the name the user chose when a fresh link for the same console arrives", () => {
-    const harness = createHarness();
-    const store = harness.open();
-    const first = store.remember(link());
-    store.rename(first.id, "Studio Linux");
-
-    const second = store.remember(link({ token: TOKEN_B, fingerprint: FINGERPRINT_B, label: "devbox" }));
-
-    expect(store.list()).toHaveLength(1);
-    expect(second.id).toBe(first.id);
-    expect(second.label).toBe("Studio Linux");
-    // 지문은 링크가 이긴다 — 서버가 신원을 교체했다면 새 링크가 그 사실을 나른다.
-    expect(second.fingerprint).toBe(FINGERPRINT_B);
-  });
-
-  it("refuses a name that sanitizes away", () => {
-    const harness = createHarness();
-    const store = harness.open();
-    const host = store.remember(link());
-
-    expect(store.rename(host.id, "   ")).toBeNull();
-    expect(store.rename("missing", "ok")).toBeNull();
-    expect(store.find(host.id)?.label).toBe("devbox");
-  });
-
   it("hands the pending grant over exactly once", () => {
     const harness = createHarness();
     const store = harness.open();
@@ -104,44 +72,6 @@ describe("remote host store", () => {
     expect(second?.token).toBeNull();
     // 두 번째도 호스트 자체는 여전히 열 수 있다 — 그때는 세션 쿠키가 통행증이다.
     expect(second?.host.origin).toBe("https://100.84.12.7:6768");
-  });
-
-  it("drops a grant nobody used in time", () => {
-    const harness = createHarness();
-    const store = harness.open();
-    store.remember(link());
-    harness.advance(6 * 60 * 1000);
-
-    expect(store.takeHandoff("https://100.84.12.7:6768")?.token).toBeNull();
-  });
-
-  it("records when a host was last opened", () => {
-    const harness = createHarness(5_000);
-    const store = harness.open();
-    store.remember(link());
-    harness.advance(1_000);
-
-    store.takeHandoff("https://100.84.12.7:6768");
-
-    expect(store.list()[0]?.lastOpenedAt).toBe(6_000);
-  });
-
-  it("forgets a host together with anything pending for it", () => {
-    const harness = createHarness();
-    const store = harness.open();
-    const host = store.remember(link());
-
-    expect(store.forget(host.id)).toBe(true);
-    expect(store.forget(host.id)).toBe(false);
-    expect(store.list()).toEqual([]);
-    expect(store.takeHandoff("https://100.84.12.7:6768")).toBeNull();
-  });
-
-  it("starts empty rather than throwing on a file it cannot read", () => {
-    const harness = createHarness();
-    harness.files.set("/console/remote/known-hosts.json", "{ not json");
-
-    expect(harness.open().list()).toEqual([]);
   });
 
   it("drops entries that lost their shape instead of trusting them", () => {

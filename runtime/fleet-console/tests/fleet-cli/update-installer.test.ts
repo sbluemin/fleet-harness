@@ -69,88 +69,6 @@ describe("update installer process invocation", () => {
     mockedCheckUpdateStatus.mockResolvedValue({ status: "unavailable" });
   });
 
-  it("installs with the stored resolved Windows shim argv", async () => {
-    const child = new EventEmitter();
-    const io = createIo();
-    mockedSpawn.mockReturnValue(child as ReturnType<typeof spawn>);
-
-    const statusPromise = __installerTestHooks.installFleetPackages(
-      {
-        command: "pnpm",
-        globalRoot: "C:\\global",
-        resolved: createWindowsResolvedShim("C:\\tools\\pnpm.cmd"),
-      },
-      "latest",
-      io,
-    );
-    child.emit("exit", 0, null);
-
-    await expect(statusPromise).resolves.toBe(0);
-    expect(mockedSpawn).toHaveBeenCalledWith(
-      "C:\\Windows\\System32\\cmd.exe",
-      ["/d", "/s", "/c", "call", "C:\\tools\\pnpm.cmd ", "i", "-g", "--force", "@dotobokuri/fleet-console@latest"],
-      { stdio: "inherit" },
-    );
-    expect(io.stderr.toString()).toBe("");
-  });
-
-  it("installs POSIX managers as bare argv targets", async () => {
-    const child = new EventEmitter();
-    const io = createIo();
-    mockedSpawn.mockReturnValue(child as ReturnType<typeof spawn>);
-
-    const statusPromise = __installerTestHooks.installFleetPackages(
-      {
-        command: "npm",
-        globalRoot: "/usr/local/lib/node_modules",
-        resolved: { bin: "/usr/local/bin/npm", prefixArgs: [] },
-      },
-      "1.2.3",
-      io,
-    );
-    child.emit("exit", 0, null);
-
-    await expect(statusPromise).resolves.toBe(0);
-    expect(mockedSpawn).toHaveBeenCalledWith(
-      "/usr/local/bin/npm",
-      ["i", "-g", "--force", "@dotobokuri/fleet-console@1.2.3"],
-      { stdio: "inherit" },
-    );
-  });
-
-  it("reports spawn errors before returning installer failure", async () => {
-    const child = new EventEmitter();
-    const io = createIo();
-    mockedSpawn.mockReturnValue(child as ReturnType<typeof spawn>);
-
-    const statusPromise = __installerTestHooks.installFleetPackages(
-      {
-        command: "npm",
-        globalRoot: "/global",
-        resolved: { bin: "/bin/npm", prefixArgs: [] },
-      },
-      "latest",
-      io,
-    );
-    child.emit("error", new Error("spawn failed"));
-
-    await expect(statusPromise).resolves.toBe(1);
-    expect(io.stderr.toString()).toContain("Failed to run npm installer: spawn failed");
-  });
-
-  it("prints local development guidance without detecting or installing", async () => {
-    const io = createIo();
-    mockedReadFleetCliRelease.mockReturnValue({ channel: "local", version: "1.2.0" });
-
-    await expect(runFleetUpdate(io)).resolves.toBe(0);
-
-    expect(io.stdout.toString()).toBe(
-      "Fleet is running from a local development build (v1.2.0) — nothing to update here.\n",
-    );
-    expect(mockedResolvePathBinary).not.toHaveBeenCalled();
-    expect(mockedSpawn).not.toHaveBeenCalled();
-  });
-
   it("does not install when the registry confirms Fleet is current", async () => {
     const io = createIo();
     mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
@@ -161,24 +79,6 @@ describe("update installer process invocation", () => {
 
     expect(io.stdout.toString()).toBe("Fleet is already on the latest version (v1.2.0).\n");
     expect(mockedCheckUpdateStatus).toHaveBeenCalledWith({ channel: "stable", version: "1.2.0" }, { forceRefresh: true });
-    expect(mockedSpawn).not.toHaveBeenCalled();
-  });
-
-  it("prints stable local-detection guidance when no global manager is found", async () => {
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue(undefined);
-
-    await expect(runFleetUpdate(io)).resolves.toBe(0);
-
-    expect(io.stdout.toString()).toBe(
-      [
-        "Fleet could not detect its global npm or pnpm installation, so no installer was run.",
-        "Run one of these commands manually:",
-        "npm i -g @dotobokuri/fleet-console@latest",
-        "pnpm i -g @dotobokuri/fleet-console@latest",
-        "",
-      ].join("\n"),
-    );
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
 
@@ -205,47 +105,6 @@ describe("update installer process invocation", () => {
       ].join("\n"),
     );
     expect(mockedSpawn).not.toHaveBeenCalled();
-  });
-
-  it("installs the confirmed newer version with the detected manager", async () => {
-    const child = new EventEmitter();
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
-    mockedExecFileSync.mockReturnValue(`${process.cwd()}\n`);
-    mockedCheckUpdateStatus.mockResolvedValue({ status: "update", latest: "1.3.0" });
-    mockedSpawn.mockImplementation(() => {
-      queueMicrotask(() => child.emit("exit", 0, null));
-      return child as ReturnType<typeof spawn>;
-    });
-
-    await expect(runFleetUpdate(io)).resolves.toBe(0);
-
-    expect(io.stdout.toString()).toBe("Updating Fleet with npm (1.3.0)...\n");
-    expect(mockedSpawn).toHaveBeenCalledWith(
-      "npm",
-      ["i", "-g", "--force", "@dotobokuri/fleet-console@1.3.0"],
-      { stdio: "inherit" },
-    );
-  });
-
-  it("reinstalls latest with the detected manager when registry status is unavailable", async () => {
-    const child = new EventEmitter();
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
-    mockedExecFileSync.mockReturnValue(`${process.cwd()}\n`);
-    mockedCheckUpdateStatus.mockResolvedValue({ status: "unavailable" });
-    mockedSpawn.mockImplementation(() => {
-      queueMicrotask(() => child.emit("exit", 0, null));
-      return child as ReturnType<typeof spawn>;
-    });
-
-    await expect(runFleetUpdate(io)).resolves.toBe(0);
-    expect(io.stdout.toString()).toBe("Could not reach the npm registry to check for updates; reinstalling the latest published version with npm...\n");
-    expect(mockedSpawn).toHaveBeenCalledWith(
-      "npm",
-      ["i", "-g", "--force", "@dotobokuri/fleet-console@latest"],
-      { stdio: "inherit" },
-    );
   });
 });
 

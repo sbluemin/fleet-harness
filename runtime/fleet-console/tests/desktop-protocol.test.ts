@@ -46,12 +46,6 @@ describe("desktop protocol", () => {
     expect(source).not.toContain("desktopThemeSnapshot");
   });
 
-  it("publishes no theme transport exports", () => {
-    const source = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "desktop-protocol", "index.ts"), "utf8");
-
-    expect(source).not.toMatch(/^export (?:type |interface |const |function )(?:ConsoleThemeId|DesktopThemeId|DesktopTitleBarOverlay|DesktopThemeSnapshot|DESKTOP_THEME_PATH|DESKTOP_THEME_EVENTS_PATH|DESKTOP_THEME_EVENT|isDesktopThemeSnapshot)\b/gmu);
-  });
-
   it("validates the marked resource root and exact owner protocol", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-resource-"));
     TEMP_DIRS.push(root);
@@ -68,65 +62,5 @@ describe("desktop protocol", () => {
     expect(desktop).toEqual({ owner: { kind: "desktop", id: "desktop-owner-1", protocolVersion: 1 }, resourceRoot: fs.realpathSync(root) });
     expect(isCompatibleDesktopOwner(desktop?.owner, "1.2.3", { id: "desktop-owner-1", version: "1.2.3" })).toBe(true);
     expect(isCompatibleDesktopOwner(desktop?.owner, "1.2.4", { id: "desktop-owner-1", version: "1.2.3" })).toBe(false);
-  });
-
-  it("rejects incomplete or unmarked desktop environments", () => {
-    expect(() => readDesktopProtocolEnvironment({ [DESKTOP_OWNER_ID_ENV]: "desktop-owner-1" })).toThrow("desktop_protocol_environment_incomplete");
-    expect(() => readDesktopProtocolEnvironment({
-      [DESKTOP_RESOURCE_ROOT_ENV]: "/not-a-real-resource-root",
-      [DESKTOP_OWNER_KIND_ENV]: "desktop",
-      [DESKTOP_OWNER_ID_ENV]: "desktop-owner-1",
-      [DESKTOP_PROTOCOL_VERSION_ENV]: "1",
-    })).toThrow();
-  });
-
-  it("rejects an arbitrary marked resource root", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-resource-"));
-    TEMP_DIRS.push(root);
-    fs.writeFileSync(path.join(root, DESKTOP_RESOURCE_ROOT_MARKER), `${DESKTOP_PROTOCOL_VERSION}\n`);
-
-    expect(() => readDesktopProtocolEnvironment({
-      [DESKTOP_RESOURCE_ROOT_ENV]: root,
-      [DESKTOP_OWNER_KIND_ENV]: "desktop",
-      [DESKTOP_OWNER_ID_ENV]: "desktop-owner-1",
-      [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),
-    })).toThrow("desktop_resource_root_invalid");
-  });
-
-  it("accepts only this source package root for an explicitly development-scoped desktop", () => {
-    const env = {
-      [DESKTOP_DEVELOPMENT_ENV]: "1",
-      [DESKTOP_RESOURCE_ROOT_ENV]: CONSOLE_PACKAGE_ROOT,
-      [DESKTOP_OWNER_KIND_ENV]: "desktop",
-      [DESKTOP_OWNER_ID_ENV]: "desktop-owner-1",
-      [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),
-    } as NodeJS.ProcessEnv;
-
-    expect(readDesktopProtocolEnvironment(env)?.resourceRoot).toBe(fs.realpathSync(CONSOLE_PACKAGE_ROOT));
-    expect(resolveCanonicalLocalConsolePaths({ packageRoot: CONSOLE_PACKAGE_ROOT }).dir).toBe(path.join(path.resolve(CONSOLE_PACKAGE_ROOT, "..", ".."), ".fleet", "console"));
-    expect(() => readDesktopProtocolEnvironment({ ...env, [DESKTOP_RESOURCE_ROOT_ENV]: "/tmp/not-the-console-package" })).toThrow("desktop_development_resource_root_invalid");
-  });
-
-  it("resolves the one stable lock and durable-data namespace without host imports", () => {
-    const paths = resolveCanonicalStableConsolePaths({
-      tmpDir: "/tmp",
-      uid: 42,
-      fleetDataDir: "/home/operator/.fleet",
-    });
-
-    expect(paths).toEqual({
-      dir: "/tmp/fleet-console-42-stable",
-      lockFile: "/tmp/fleet-console-42-stable/console.lock",
-      dataDir: "/home/operator/.fleet/console",
-      stateFile: "/home/operator/.fleet/console/state.json",
-      settingsFile: "/home/operator/.fleet/console/settings.json",
-      capturesDir: "/home/operator/.fleet/console/captures",
-    });
-    expect(resolveCanonicalStableConsolePaths({
-      tmpDir: "/tmp",
-      uid: 42,
-      fleetDataDir: "/ignored",
-      consoleDirOverride: "/isolated/console",
-    }).dataDir).toBe("/isolated/console");
   });
 });

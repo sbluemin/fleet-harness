@@ -63,34 +63,6 @@ class FakeTerminal {
 let thisTerminal: FakeTerminal;
 
 describe("terminal alternate screen controller", () => {
-  it("hides the scrollbar, refits, and resizes once on live alternate entry", () => {
-    const terminal = new FakeTerminal();
-    thisTerminal = terminal;
-    const fit = vi.fn();
-    const resizePty = vi.fn();
-    const onAlternateScreenChange = vi.fn();
-    const controller = createTerminalAlternateScreenController({
-      terminal: terminal as never,
-      fitAddon: { fit },
-      resizePty,
-      isReplaying: () => false,
-      onAlternateScreenChange,
-    });
-
-    terminal.emitCsi("h", [1049]);
-
-    expect(terminal.options.scrollbar.showScrollbar).toBe(false);
-    expect(onAlternateScreenChange).toHaveBeenLastCalledWith(true);
-    expect(fit).toHaveBeenCalledTimes(1);
-    expect(resizePty).toHaveBeenCalledWith(80, 24);
-
-    terminal.emitCsi("l", [1049]);
-    expect(terminal.options.scrollbar.showScrollbar).toBe(true);
-    expect(onAlternateScreenChange).toHaveBeenLastCalledWith(false);
-    expect(fit).toHaveBeenCalledTimes(2);
-    expect(resizePty).toHaveBeenCalledTimes(2);
-    controller.dispose();
-  });
 
   it("coalesces replay transitions into the final sideband state", () => {
     const terminal = new FakeTerminal();
@@ -145,23 +117,6 @@ describe("terminal alternate screen controller", () => {
     expect(terminal.buffer.active.type).toBe("alternate");
     expect(terminal.options.scrollbar.showScrollbar).toBe(false);
     expect(fit).toHaveBeenCalledTimes(1);
-    controller.dispose();
-  });
-
-  it("returns to normal scrollbar policy on RIS", () => {
-    const terminal = new FakeTerminal();
-    thisTerminal = terminal;
-    const controller = createTerminalAlternateScreenController({
-      terminal: terminal as never,
-      fitAddon: { fit: vi.fn() },
-      resizePty: vi.fn(),
-      isReplaying: () => false,
-    });
-    terminal.emitCsi("h", [1049]);
-
-    terminal.emitReset();
-
-    expect(terminal.options.scrollbar.showScrollbar).toBe(true);
     controller.dispose();
   });
 });

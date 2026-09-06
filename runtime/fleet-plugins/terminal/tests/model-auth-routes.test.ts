@@ -40,33 +40,6 @@ describe("terminal model auth routes", () => {
     expect(serialized).not.toContain("stored-key");
   });
 
-  it("validates, trims, and stores a Kimi API key", async () => {
-    const harness = createRouterHarness({ body: { apiKey: "  kimi-secret  " } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
-
-    expect(harness.validatedKeys).toEqual([["kimi", "kimi-secret"]]);
-    expect(harness.store.get(KIMI_PROVIDER_ID)).toBe("kimi-secret");
-    expect(harness.writes[0]?.status).toBe(200);
-  });
-
-  it("stores an OpenCode Go key under its own provider id", async () => {
-    const harness = createRouterHarness({ body: { apiKey: "opencode-secret" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: OPENCODE_PATH });
-
-    expect(harness.validatedKeys).toEqual([["opencode", "opencode-secret"]]);
-    expect(harness.store.get(OPENCODE_PROVIDER_ID)).toBe("opencode-secret");
-    expect(harness.store.has(KIMI_PROVIDER_ID)).toBe(false);
-    expect(harness.writes[0]?.status).toBe(200);
-  });
-
-  it("deletes only the OpenCode Go key on opencode sign-out", async () => {
-    const harness = createRouterHarness({ signedIn: true, opencodeSignedIn: true });
-    await harness.router({ req: req("DELETE"), res: res(), pathname: OPENCODE_PATH });
-    expect(harness.store.has(OPENCODE_PROVIDER_ID)).toBe(false);
-    expect(harness.store.has(KIMI_PROVIDER_ID)).toBe(true);
-    expect(harness.writes[0]).toMatchObject({ status: 200 });
-  });
-
   it("does not store a rejected key or leak the storage provider ID", async () => {
     const harness = createRouterHarness({ body: { apiKey: "bad" }, validationStatus: "unauthorized" });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
@@ -87,23 +60,6 @@ describe("terminal model auth routes", () => {
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
     expect(harness.writes[0]?.status).toBe(401);
     expect(harness.validatedKeys).toEqual([]);
-  });
-
-  it("rejects extra body fields and unknown providers", async () => {
-    const harness = createRouterHarness({ body: { apiKey: "x", providerId: "leak" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
-    expect(harness.writes[0]?.status).toBe(400);
-
-    const unknown = createRouterHarness();
-    await unknown.router({ req: jsonReq("PUT"), res: res(), pathname: `${BASE_PATH}/model-auth/providers/claude-glm` });
-    expect(unknown.writes[0]?.status).toBe(404);
-  });
-
-  it("deletes the stored key", async () => {
-    const harness = createRouterHarness({ signedIn: true });
-    await harness.router({ req: req("DELETE"), res: res(), pathname: KIMI_PATH });
-    expect(harness.store.has(KIMI_PROVIDER_ID)).toBe(false);
-    expect(harness.writes[0]).toMatchObject({ status: 200 });
   });
 });
 

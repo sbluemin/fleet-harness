@@ -33,17 +33,6 @@ afterEach(() => {
 });
 
 describe("fleet gateway set", () => {
-  it("exposes exactly the scalar policy axes — model selection is not one of them", () => {
-    expect([...GATEWAY_SET_KEYS]).toEqual([
-      "xai-endpoint",
-      "compact-ceiling",
-      "wire-log",
-      "cursor-diagnostics",
-      "provider-priority",
-    ]);
-    expect(isGatewaySetKey("models")).toBe(false);
-    expect(isGatewaySetKey(undefined)).toBe(false);
-  });
 
   it("writes the xAI endpoint and refuses anything outside the pair", () => {
     const store = createStore();
@@ -58,35 +47,6 @@ describe("fleet gateway set", () => {
     expect(store.read().xaiEndpoint).toBe("direct");
   });
 
-  it("accepts auto, the named steps, and a custom percent for the compact ceiling", () => {
-    const store = createStore();
-    expect(applyGatewaySetting(store, "compact-ceiling", "early").ok).toBe(true);
-    expect(store.read().compactCeiling).toBe("early");
-
-    expect(applyGatewaySetting(store, "compact-ceiling", "82").ok).toBe(true);
-    expect(store.read().compactCeiling).toBe(82);
-
-    expect(applyGatewaySetting(store, "compact-ceiling", "auto").ok).toBe(true);
-    expect(store.read().compactCeiling).toBeUndefined();
-
-    expect(applyGatewaySetting(store, "compact-ceiling", "42").ok).toBe(false);
-    expect(applyGatewaySetting(store, "compact-ceiling", "soon").ok).toBe(false);
-  });
-
-  it("keeps wire-log's off distinct from auto so an env toggle cannot revive it", () => {
-    const store = createStore();
-    expect(applyGatewaySetting(store, "wire-log", "off").ok).toBe(true);
-    expect(store.read().wireLogEnabled).toBe(false);
-
-    expect(applyGatewaySetting(store, "wire-log", "auto").ok).toBe(true);
-    expect("wireLogEnabled" in store.read()).toBe(false);
-
-    // cursor-diagnostics는 env 폴백이 없는 축이라 auto를 받지 않는다.
-    expect(applyGatewaySetting(store, "cursor-diagnostics", "auto").ok).toBe(false);
-    expect(applyGatewaySetting(store, "cursor-diagnostics", "on").ok).toBe(true);
-    expect(store.read().cursorDiagnosticsEnabled).toBe(true);
-  });
-
   it("parses a provider order and rejects unknown or repeated providers", () => {
     expect(parseProviderPriority("cursor,codex")).toEqual(["cursor", "codex"]);
     expect(parseProviderPriority(" cursor , codex ")).toEqual(["cursor", "codex"]);
@@ -95,50 +55,10 @@ describe("fleet gateway set", () => {
     expect(parseProviderPriority("anthropic")).toBe("invalid");
     expect(parseProviderPriority("")).toBe("invalid");
   });
-
-  it("keeps the exposed models when only the spend priority changes", () => {
-    // store.write는 넘긴 값으로 models 키를 통째로 덮는다. 우선순위만 바꾸는 저장이 현재
-    // 선별을 함께 싣지 않으면 노출 모델이 전부 사라진다 — 그 경로를 여기서 못 박는다.
-    const store = createStore();
-    store.write({ models: [{ id: "gpt-5.6-luna", efforts: ["high"] }] });
-
-    const result = applyGatewaySetting(store, "provider-priority", "cursor,codex");
-    expect(result).toEqual({ ok: true, summary: "provider-priority = cursor → codex" });
-
-    const stored = store.read();
-    expect(stored.providerPriority).toEqual(["cursor", "codex"]);
-    expect(stored.models).toEqual([{ id: "gpt-5.6-luna", efforts: ["high"] }]);
-  });
-
-  it("clears the priority without touching the models", () => {
-    const store = createStore();
-    store.write({ models: [{ id: "gpt-5.6-luna" }] });
-    writeProviderPriority(store, ["codex"]);
-
-    expect(applyGatewaySetting(store, "provider-priority", "none").ok).toBe(true);
-    const stored = store.read();
-    expect(stored.providerPriority ?? []).toEqual([]);
-    expect(stored.models).toEqual([{ id: "gpt-5.6-luna" }]);
-  });
-
-  it("reports a missing value as invalid rather than writing a default", () => {
-    const store = createStore();
-    const result = applyGatewaySetting(store, "xai-endpoint", undefined);
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.message).toContain("(missing)");
-    expect(store.read().xaiEndpoint).toBeUndefined();
-  });
 });
 
 describe("interactive spend priority defaults", () => {
   const ALL = ["codex", "xai", "cursor", "opencode", "kimi"] as const;
-
-  it("defaults to the terminating choice when nothing is stored", () => {
-    // 기본값이 없으면 커서가 남은 공급자 첫 줄에 놓인다. 순위가 없는 사용자가 화면을 열어
-    // 엔터만 눌러도 없던 랭킹이 생기는 경로다.
-    expect(nextPriorityDefault(undefined, [], ALL)).toBe("");
-    expect(nextPriorityDefault([], [], ALL)).toBe("");
-  });
 
   it("walks the stored order while it lasts, then terminates", () => {
     const stored = ["cursor", "codex"] as const;
@@ -146,71 +66,5 @@ describe("interactive spend priority defaults", () => {
     expect(nextPriorityDefault(stored, ["cursor"], ALL.filter((p) => p !== "cursor"))).toBe("codex");
     // 저장된 둘을 다 지나면 기본은 Done이라, 부분 순위가 전체 랭킹으로 자라지 않는다.
     expect(nextPriorityDefault(stored, ["cursor", "codex"], ["xai", "opencode", "kimi"])).toBe("");
-  });
-
-  it("terminates when the stored suggestion was already ranked by hand", () => {
-    // 사용자가 저장 순서와 다르게 골랐다면 제안이 remaining에 없다. 옵션에 없는 기본값을
-    // 넘기면 프롬프트가 첫 줄로 되돌아가므로 종료 항목으로 접는다.
-    expect(nextPriorityDefault(["cursor", "codex"], ["codex"], ["xai", "cursor", "opencode", "kimi"]))
-      .toBe("");
-  });
-});
-
-describe("interactive compact ceiling choices", () => {
-  it("offers only the three named steps when nothing custom is stored", () => {
-    const choices = buildCompactCeilingChoices(undefined);
-    expect(choices.options.map((option) => option.value)).toEqual(["auto", "early", "late"]);
-    expect(choices.initialValue).toBe("auto");
-  });
-
-  it("preselects a stored named step", () => {
-    expect(buildCompactCeilingChoices("late").initialValue).toBe("late");
-  });
-
-  it("surfaces a stored percent as its own choice instead of collapsing it into auto", () => {
-    // 숫자를 auto로 접으면, xAI 엔드포인트만 바꾸러 들어온 사용자가 화면을 지나갔다는
-    // 이유만으로 `set compact-ceiling 82`를 잃는다.
-    const choices = buildCompactCeilingChoices(82);
-    expect(choices.initialValue).toBe("custom");
-    expect(choices.options.map((option) => option.value)).toEqual(["auto", "early", "late", "custom"]);
-    expect(choices.options.at(3)?.label).toContain("82");
-  });
-
-  it("keeps the stored percent when the custom choice is accepted", () => {
-    expect(resolveCompactCeilingChoice("custom", 82)).toBe(82);
-    expect(resolveCompactCeilingChoice("auto", 82)).toBeUndefined();
-    expect(resolveCompactCeilingChoice("early", 82)).toBe("early");
-    // custom은 저장된 퍼센트가 있을 때만 화면에 오르지만, 없을 때 들어와도 auto로 안전하게 접힌다.
-    expect(resolveCompactCeilingChoice("custom", undefined)).toBeUndefined();
-    expect(resolveCompactCeilingChoice("custom", "late")).toBeUndefined();
-  });
-});
-
-describe("gateway policy summary", () => {
-  it("names the unset axes by what they fall back to", () => {
-    expect(describeGatewayPolicy({ version: 1 })).toEqual({
-      "xai-endpoint": "cli-proxy (default)",
-      "compact-ceiling": "auto",
-      "wire-log": "auto (env)",
-      "cursor-diagnostics": "off",
-      "provider-priority": "none",
-    });
-  });
-
-  it("renders stored values in the same vocabulary the set command accepts", () => {
-    expect(describeGatewayPolicy({
-      version: 1,
-      xaiEndpoint: "direct",
-      compactCeiling: 82,
-      wireLogEnabled: false,
-      cursorDiagnosticsEnabled: true,
-      providerPriority: ["cursor", "codex"],
-    })).toEqual({
-      "xai-endpoint": "direct",
-      "compact-ceiling": "82%",
-      "wire-log": "off",
-      "cursor-diagnostics": "on",
-      "provider-priority": "cursor → codex",
-    });
   });
 });

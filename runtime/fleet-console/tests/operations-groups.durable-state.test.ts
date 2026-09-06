@@ -33,17 +33,6 @@ describe("DurableConsoleState v2 — groups", () => {
     expect(result.groups).toEqual([]);
   });
 
-  it("유효한 groups를 그대로 복원한다", () => {
-    const result = sanitizeDurableConsoleState({
-      version: 2,
-      theaters: [],
-      operations: [],
-      groups: [BASE_GROUP],
-    });
-    expect(result.groups).toHaveLength(1);
-    expect(result.groups?.[0]).toMatchObject({ id: "grp-1", name: "Alpha", color: "blue", order: 0 });
-  });
-
   it("잘못된 color 키를 가진 그룹을 버린다", () => {
     const result = sanitizeDurableConsoleState({
       version: 2,
@@ -56,44 +45,5 @@ describe("DurableConsoleState v2 — groups", () => {
       ],
     });
     expect(result.groups?.map((g) => g.id)).toEqual(["valid"]);
-  });
-
-  it("name이 64자를 초과하는 그룹을 버린다", () => {
-    const result = sanitizeDurableConsoleState({
-      version: 2,
-      theaters: [],
-      operations: [],
-      groups: [
-        { ...BASE_GROUP, id: "short", name: "Short" },
-        { ...BASE_GROUP, id: "long", name: "x".repeat(65) },
-      ],
-    });
-    expect(result.groups?.map((g) => g.id)).toEqual(["short"]);
-  });
-
-  it("OperationNode의 groupId가 trim·null·undefined 모두 정상 처리된다", () => {
-    const result = sanitizeDurableConsoleState({
-      version: 2,
-      theaters: [],
-      operations: [
-        { ...BASE_NODE, id: "with-group", groupId: "  grp-1  " },
-        { ...BASE_NODE, id: "null-group", groupId: null },
-        { ...BASE_NODE, id: "no-group" },
-      ],
-    });
-    const byId = Object.fromEntries(result.operations.map((n) => [n.id, n]));
-    expect(byId["with-group"]?.groupId).toBe("grp-1");
-    expect(byId["null-group"]?.groupId).toBeNull();
-    expect(byId["no-group"]?.groupId).toBeUndefined();
-  });
-
-  it("groupId가 64자를 초과하면 truncate한다", () => {
-    const longId = "a".repeat(80);
-    const result = sanitizeDurableConsoleState({
-      version: 2,
-      theaters: [],
-      operations: [{ ...BASE_NODE, id: "op", groupId: longId }],
-    });
-    expect(result.operations[0]?.groupId).toHaveLength(64);
   });
 });

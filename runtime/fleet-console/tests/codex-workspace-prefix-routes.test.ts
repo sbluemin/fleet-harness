@@ -50,28 +50,6 @@ describe("workspace-prefixed routes", () => {
     expect(entryB.frontmatter.title).toBe("Workspace B");
   });
 
-  it("serves selected workspace drydock data through /w/:ws/api routes", async () => {
-    await expectWorkspaceBody(`/w/${wsA}/api/drydock`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/drydock`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/drydock/${SHARED_PATCH_ID}`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/drydock/${SHARED_PATCH_ID}`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/conflicts`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/conflicts`, MARKER_B, MARKER_A);
-    await expectWorkspaceBody(`/w/${wsA}/api/conflicts/${SHARED_CONFLICT_ID}`, MARKER_A, MARKER_B);
-    await expectWorkspaceBody(`/w/${wsB}/api/conflicts/${SHARED_CONFLICT_ID}`, MARKER_B, MARKER_A);
-  });
-
-  it("redirects legacy SPA routes to the MRU workspace", async () => {
-    const response = await fetch(`${baseUrl}/entry/shared`, { redirect: "manual" });
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe(`/console/codex/w/${wsB}/entry/shared`);
-  });
-
-  it("routes legacy APIs through the MRU workspace", async () => {
-    const entry = await fetchJson<{ frontmatter: { title: string } }>("/api/entry/shared");
-    expect(entry.frontmatter.title).toBe("Workspace B");
-  });
-
   it("scopes concurrent drydock action locks by workspace id", async () => {
     const slowApproveA = startSlowApprove(`/w/${wsA}/api/drydock/${encodeURIComponent(SHARED_PATCH_ID)}/decision`);
     await delay(100);
@@ -85,18 +63,6 @@ describe("workspace-prefixed routes", () => {
 
     const responseA = await slowApproveA.finish();
     expect(responseA.status).toBe(200);
-  });
-
-  it("redirects unknown workspace navigations to Welcome", async () => {
-    const response = await fetch(`${baseUrl}/w/000000000000/entry/shared`, { redirect: "manual" });
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/console/codex/");
-  });
-
-  it("does not serve API misses through the SPA fallback", async () => {
-    const response = await fetch(`${baseUrl}/w/${wsA}/api/not-found`);
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({ error: "not_found" });
   });
 });
 

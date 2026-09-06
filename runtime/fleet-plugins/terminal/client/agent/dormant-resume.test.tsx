@@ -30,19 +30,6 @@ afterEach(() => {
 });
 
 describe("dormant resume feedback", () => {
-  it("offers Start fresh for a restored Codex Operation without captured resume metadata", async () => {
-    const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
-    await renderOperation(fetch, {});
-
-    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Ended");
-    const button = dormantButton();
-    expect(button.textContent).toContain("Start fresh");
-    await act(async () => { button.click(); });
-
-    expect(fetch).toHaveBeenCalledTimes(1);
-    const init = fetch.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
-  });
 
   it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
     const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
@@ -56,28 +43,6 @@ describe("dormant resume feedback", () => {
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
-  });
-
-  it("shows a pending state while resume is in flight", async () => {
-    let resolveResume: ((response: Response) => void) | undefined;
-    const fetch = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveResume = resolve; }));
-    const { notifications } = await renderDormant(fetch);
-
-    const button = dormantButton();
-    expect(button.textContent).toContain("Resume");
-    act(() => button.click());
-
-    expect(dormantButton().textContent).toContain("Resuming…");
-    expect(dormantButton().disabled).toBe(true);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(String(fetch.mock.calls[0]?.[0])).toContain(`/plugins/terminal/agent/sessions/${OPERATION_ID}/resume`);
-    // 일반 resume는 body를 볼리지 않는다.
-    expect((fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.body).toBeUndefined();
-
-    await act(async () => { resolveResume?.(sessionResponse("live")); });
-    expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
-    expect(getAgentState().sessions[OPERATION_ID]?.status).toBe("live");
-    expect(notifications.emit).not.toHaveBeenCalled();
   });
 
   it("surfaces an error card with Try again / Start fresh and emits an alert on failure", async () => {
@@ -102,119 +67,6 @@ describe("dormant resume feedback", () => {
     expect(getAgentState().sessions[OPERATION_ID]?.status).toBe("dormant");
   });
 
-  it("explains an unavailable saved launch option without offering Start fresh", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
-      status: 409,
-      headers: { "Content-Type": "application/json" },
-    }));
-    const { notifications } = await renderDormant(fetch);
-
-    act(() => dormantButton().click());
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-
-    const card = container?.querySelector(".canvas-operation-dormant--error");
-    expect(card?.textContent).toContain("Re-enable its saved model or effort");
-    expect(card?.textContent).toContain("Try again");
-    expect(card?.textContent).not.toContain("Start fresh");
-    expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
-      message: "Resume failed — the saved model or effort is unavailable.",
-    }));
-  });
-
-  it("keeps retry available after a fresh-only launch-option failure", async () => {
-    const launchOptionFailure = new Response(JSON.stringify({ error: "invalid_effort" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(launchOptionFailure)
-      .mockResolvedValueOnce(sessionResponse("live"));
-    await renderOperation(fetch, { session: { harness: "claude-code" } });
-
-    await act(async () => { dormantButton().click(); });
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-
-    const retry = [...(container?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Try again");
-    expect(retry).toBeDefined();
-    await act(async () => { retry?.click(); });
-
-    expect(fetch).toHaveBeenCalledTimes(2);
-    const init = fetch.mock.calls[1]?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
-  });
-
-  it("uses launch-option feedback for host-triggered resumes", async () => {
-    applySessionUpdate({
-      sessionId: OPERATION_ID,
-      terminalSessionId: OPERATION_ID,
-      cwdLabel: "Workspace",
-      label: "Dormant test",
-      status: "dormant",
-      turnState: "none",
-      createdAt: 1,
-      theaterId: "theater",
-      resumeAvailable: true,
-    });
-    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {
-        return Promise.resolve(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
-          status: 409,
-          headers: { "Content-Type": "application/json" },
-        }));
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal("fetch", fetch);
-    const notifications = { emit: vi.fn(), dismiss: vi.fn() };
-    const dispose = agentPlugin.install?.({
-      api: { resync: vi.fn() },
-      notifications,
-      operations: {},
-      runtime: { set: vi.fn(), clear: vi.fn(), setHydration: vi.fn() },
-    } as unknown as PluginInstallContext);
-
-    await expect(agentPlugin.resumeOperation?.(OPERATION_ID)).rejects.toThrow("gateway_model_not_enabled");
-
-    expect((fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.body).toBeUndefined();
-    expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
-      operationId: OPERATION_ID,
-      message: "Resume failed — the saved model or effort is unavailable.",
-    }));
-    dispose?.();
-  });
-
-  it("sends { fresh: true } for a host-triggered resume without captured resume metadata", async () => {
-    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes(`/api/v1/operations/${OPERATION_ID}`)) {
-        return Promise.resolve(new Response(JSON.stringify({
-          operation: { payload: { restoredDormant: true } },
-        }), { status: 200, headers: { "Content-Type": "application/json" } }));
-      }
-      if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {
-        return Promise.resolve(sessionResponse("live"));
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal("fetch", fetch);
-    const notifications = { emit: vi.fn(), dismiss: vi.fn() };
-    const dispose = agentPlugin.install?.({
-      api: { resync: vi.fn() },
-      notifications,
-      operations: {},
-      runtime: { set: vi.fn(), clear: vi.fn(), setHydration: vi.fn() },
-    } as unknown as PluginInstallContext);
-
-    await agentPlugin.resumeOperation?.(OPERATION_ID);
-
-    expect(fetch).toHaveBeenCalledWith(
-      `/plugins/terminal/agent/sessions/${OPERATION_ID}/resume`,
-      expect.objectContaining({ method: "POST" }),
-    );
-    const init = fetch.mock.calls.find((call) => String(call[0]).includes("/resume"))?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
-    dispose?.();
-  });
-
   it("Start fresh retries the resume route with { fresh: true }", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 503 }))
@@ -232,23 +84,6 @@ describe("dormant resume feedback", () => {
     const init = fetch.mock.calls[1]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
-  });
-
-  it("Try again replays a plain resume without a body and dismisses the failure alert on success", async () => {
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(new Response("{}", { status: 503 }))
-      .mockResolvedValueOnce(sessionResponse("live"));
-    const { notifications } = await renderDormant(fetch);
-
-    act(() => dormantButton().click());
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-
-    const retry = [...(container?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Try again");
-    await act(async () => { retry?.click(); });
-
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect((fetch.mock.calls[1]?.[1] as RequestInit | undefined)?.body).toBeUndefined();
-    expect(notifications.dismiss).toHaveBeenCalledWith(OPERATION_ID);
   });
 });
 

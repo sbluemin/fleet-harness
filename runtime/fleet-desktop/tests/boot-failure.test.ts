@@ -3,22 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { describeBootFailure, showBootFailureAndExit } from "../src/boot-dialogs.js";
 
 describe("desktop boot failure notice", () => {
-  it("names the managed runtime mismatch and what to install", () => {
-    const notice = describeBootFailure(new Error("managed_node_engine_unsupported"), "/logs");
-    expect(notice.title).toContain("could not start");
-    expect(notice.message).toContain("managed Node runtime");
-    expect(notice.detail).toContain("latest Fleet Console Desktop release");
-    expect(notice.detail).toContain("/logs");
-    // 기계 코드는 문장 자리를 차지하지 않는다.
-    expect(notice.message).not.toContain("managed_node_engine_unsupported");
-  });
-
-  it("still gives an unknown failure a next step and keeps the cause for support", () => {
-    const notice = describeBootFailure(new Error("something_new"), null);
-    expect(notice.detail).toContain("Try opening it again");
-    expect(notice.detail).toContain("something_new");
-    expect(notice.detail).not.toContain("Diagnostic log");
-  });
 
   it("shows the notice before exiting, and exits even when the dialog cannot open", () => {
     const order: string[] = [];

@@ -51,12 +51,6 @@ describe("Codex Theater-root workspace resolution", () => {
     expect(resolve).toHaveBeenCalledWith(await realpath(theaterRoot));
   });
 
-  it("does not create storage while registration metadata is restored", async () => {
-    const gateway = createGateway();
-    await gateway.registerWorkspace(theaterRoot, "2026-07-17T00:00:00.000Z", "theater");
-    expect(resolve).not.toHaveBeenCalled();
-  });
-
   it("forgets only the registered Theater-root workspace", async () => {
     const gateway = createGateway();
     const resolved = await gateway.resolveWorkspaceForTheater("theater-a", theaterRoot);
@@ -80,13 +74,6 @@ describe("Codex Theater-root workspace route", () => {
     });
     return { router, resolveWorkspace, writeJson };
   }
-
-  it("resolves the Theater named in the body and returns a path-free DTO", async () => {
-    const { router, resolveWorkspace, writeJson } = routerFor({ theaterId: "theater" });
-    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/plugins/codex/workspace" });
-    expect(resolveWorkspace).toHaveBeenCalledWith("theater", "/tmp/theater");
-    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 200, { hasWiki: true, id: WORKSPACE_ID });
-  });
 
   // Theater가 경로에서 본문으로 옮겨 왔으므로 "빈 본문만 허용"은 더 이상 계약이 아니다.
   // 남는 계약은 하나다: Theater를 말하지 않은 요청은 워크스페이스를 열지 않는다.

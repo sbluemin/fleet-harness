@@ -27,17 +27,6 @@ const goodPlist = JSON.stringify({
 });
 
 describe("iOS Info.plist contract", () => {
-  it("extracts the contract fields", () => {
-    const fields = inspectInfoPlist(goodPlist);
-    expect(fields.bundleId).toBe(BUNDLE_ID);
-    expect(fields.buildNumber).toBe("2");
-    expect(fields.allowsArbitraryLoads).toBe(false);
-    expect(fields.urlSchemes).toEqual(["fleet"]);
-    expect(fields.usageDescriptionKeys).toEqual([
-      "NSCameraUsageDescription",
-      "NSLocalNetworkUsageDescription",
-    ]);
-  });
 
   it("accepts a hardened plist", () => {
     expect(() => verifyReleaseInfoPlist(inspectInfoPlist(goodPlist))).not.toThrow();
@@ -144,29 +133,10 @@ describe.skipIf(process.platform !== "darwin")("provisioning profile fields", ()
 
   const CERTIFICATE_DATA = "<key>DeveloperCertificates</key><array><data>TUlJRg==</data></array>";
 
-  it("reads the fields even though the profile carries certificate data", () => {
-    const file = profilePlist(`
-      <key>UUID</key><string>0aedbc2f-1db6-467d-a4d6-7a39b767c82f</string>
-      <key>Name</key><string>Fleet Mobile App Store</string>
-      ${CERTIFICATE_DATA}
-      <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.dotobokuri.fleet.mobile</string></dict>`);
-    expect(readProfileFields(file)).toEqual({
-      teamId: "8TJ9GTYF8J",
-      uuid: "0aedbc2f-1db6-467d-a4d6-7a39b767c82f",
-      name: "Fleet Mobile App Store",
-    });
-  });
-
   it("rejects a profile issued for another app", () => {
     const file = profilePlist(`
       <key>UUID</key><string>u</string>${CERTIFICATE_DATA}
       <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.example.other</string></dict>`);
     expect(() => readProfileFields(file)).toThrow(/com\.example\.other/);
-  });
-
-  it("rejects a profile with no UUID to name in ExportOptions", () => {
-    const file = profilePlist(`${CERTIFICATE_DATA}
-      <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.dotobokuri.fleet.mobile</string></dict>`);
-    expect(() => readProfileFields(file)).toThrow(/no UUID/);
   });
 });

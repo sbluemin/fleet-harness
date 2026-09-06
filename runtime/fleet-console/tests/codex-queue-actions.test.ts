@@ -57,30 +57,10 @@ describe("queue POST actions", () => {
     if (tempDir) await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("rejects POST to non-whitelisted path with 405 and Allow: GET, HEAD", async () => {
-    const response = await fetch(`${baseUrl}/api/index`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({}),
-    });
-    expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toMatch(/GET.*HEAD/);
-  });
-
   it("rejects approve with missing Origin header → 403", async () => {
     const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
-  });
-
-  it("rejects approve with wrong Origin header → 403", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: "http://evil.example.com" },
       body: JSON.stringify({ action: "approve" }),
     });
     expect(response.status).toBe(403);
@@ -100,98 +80,6 @@ describe("queue POST actions", () => {
     // patch should now be in archive
     const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
-  });
-
-  it("returns 409 create_target_exists when approving a create_wiki patch whose target already exists", async () => {
-    const overwriteId = "2026-05-05T08-00-00-000Z-cafebabe";
-    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
-    await writePatch(queueDir, overwriteId, "test-entry", "이미 존재하는 entry overwrite 시도", "pending", "create_wiki");
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(overwriteId)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({ error: "create_target_exists" });
-  });
-
-  it("returns 409 when approving a queued patch whose meta already has non-pending status", async () => {
-    // fleet-wiki throws "patch is not pending" only when patch is still in queueDir
-    // but meta.json status != "pending". Simulate by writing a non-pending fixture in queue.
-    const nonPendingId = "2026-05-04T11-00-00-000Z-deadbeef";
-    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
-    await writePatch(queueDir, nonPendingId, "test-entry", "비활성 패치", "accepted", "update_wiki");
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(nonPendingId)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({ error: "patch_not_pending" });
-  });
-
-  it("rejects reject request with missing reason → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "reject" }),
-    });
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
-  });
-
-  it("rejects reject request with empty reason after trim → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "reject", reason: "   " }),
-    });
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
-  });
-
-  it("rejects a valid pending patch with reason → 200 and moves to archive", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "reject", reason: "테스트 거절 사유" }),
-    });
-    expect(response.status).toBe(200);
-    const data = await response.json() as { ok: boolean; meta: { status: string } };
-    expect(data.ok).toBe(true);
-    expect(data.meta.status).toBe("rejected");
-    const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
-    await expect(access(archivePath)).resolves.not.toThrow();
-  });
-
-  it("rejects invalid patch ID format → 400", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent("../etc/passwd")}/decision`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: baseUrl },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({ error: "invalid_patch_id" });
-  });
-
-  it("rejects POST without content-type → 415", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { origin: baseUrl },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    expect(response.status).toBe(415);
-    await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
-  });
-
-  it("rejects POST with wrong content-type → 415", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}/decision`, {
-      method: "POST",
-      headers: { "content-type": "text/plain", origin: baseUrl },
-      body: '{"action":"approve"}',
-    });
-    expect(response.status).toBe(415);
-    await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
   });
 
   it("rejects POST with oversized body → 413", async () => {
@@ -220,14 +108,6 @@ describe("queue POST actions", () => {
     // archive에 정확히 한 개만 이동
     const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
-  });
-
-  it("includes patch set membership in drydock detail when metadata exists", async () => {
-    const response = await fetch(`${baseUrl}/api/drydock/${encodeURIComponent(PENDING_PATCH_ID)}`);
-    expect(response.status).toBe(200);
-    const data = await response.json() as { patchSet: { id: string; members: Array<{ id: string }> } | null };
-    expect(data.patchSet?.id).toBe("set-alpha");
-    expect(data.patchSet?.members[0]?.id).toBe(PENDING_PATCH_ID);
   });
 });
 

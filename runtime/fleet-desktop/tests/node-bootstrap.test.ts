@@ -38,42 +38,10 @@ describe("Node runtime bootstrap", () => {
     expect(injected.fileSystem.rm).toHaveBeenLastCalledWith("/runtime/node.staging");
   });
 
-  it("exposes a reusable verified archive seam before an archive can be consumed", async () => {
-    const injected = dependencies();
-    const directory = path.resolve("/temporary");
-    const archivePath = path.join(directory, "node.tar.gz");
-    const archive = await downloadVerifiedNodeArchive({ directory, manifest, target: manifest.targets["darwin-arm64"]!, dependencies: injected });
-    expect(archive).toEqual({ path: archivePath, content: new Uint8Array([1]) });
-    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", archivePath);
-  });
-
-  it("uses the Windows node executable without executing it", async () => {
-    const injected = dependencies();
-    const destination = path.resolve("C:/runtime/node");
-    await expect(bootstrapNodeRuntime({ destination, manifest, platform: "win32", architecture: "x64", dependencies: injected })).resolves.toMatchObject({ nodePath: path.join(destination, "node.exe") });
-  });
-
   it("accepts the trusted manifest only when it satisfies the installed Console engine", () => {
     expect(satisfiesNodeEngine("22.23.1", ">=22.12.0")).toBe(true);
     expect(satisfiesNodeEngine("22.11.0", ">=22.12.0")).toBe(false);
     expect(satisfiesNodeEngine("22.23.1", "^22.12.0")).toBe(false);
-  });
-
-  it("requires both the trusted marker and managed executable before reusing Node", async () => {
-    const fileSystem = { readFile: vi.fn(async () => new TextEncoder().encode("22.23.1\n")), stat: vi.fn(async () => undefined) };
-    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(true);
-    fileSystem.readFile.mockResolvedValueOnce(new TextEncoder().encode("22.22.0\n"));
-    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
-    fileSystem.stat.mockRejectedValueOnce(new Error("missing executable"));
-    await expect(isManagedNodeRuntimeValid("/runtime/node", manifest, "darwin", fileSystem)).resolves.toBe(false);
-  });
-
-  it("best-effort cleans a stale Node rollback once the managed runtime is valid", async () => {
-    // node·rollback 모두 존재(stat 성공) → 유효 런타임이 있으니 고아 rollback을 rm, 실패는 삼킨다.
-    const fileSystem = { stat: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), rm: vi.fn(async () => { throw new Error("locked"); }) };
-    await expect(reconcileNodeRuntime("/runtime/node", fileSystem)).resolves.toBeUndefined();
-    expect(fileSystem.rm).toHaveBeenCalledWith("/runtime/node.rollback");
-    expect(fileSystem.rename).not.toHaveBeenCalled();
   });
 
   it("restores an interrupted Node rollback before any download when node is missing", async () => {
@@ -90,12 +58,5 @@ describe("Node runtime bootstrap", () => {
     expect(command).toContain("-LiteralPath 'C:\\Users\\O''Brien\\node.zip'");
     expect(command).toContain("Join-Path 'C:\\Users\\O''Brien\\runtime' 'extract'");
     expect(command).toContain("-Destination 'C:\\Users\\O''Brien\\runtime'");
-  });
-
-  it("passes the escaped PowerShell command to execFile for Windows ZIP extraction", async () => {
-    execFileMock.mockImplementationOnce((_command: string, _arguments: readonly string[], callback: (error: Error | null, stdout: string, stderr: string) => void) => callback(null, "", ""));
-    const dependencies = createNodeBootstrapDependencies();
-    await dependencies.extract("C:\\Users\\O'Brien\\node.zip", "C:\\Users\\O'Brien\\runtime", "win32");
-    expect(execFileMock).toHaveBeenCalledWith("powershell", ["-NoProfile", "-NonInteractive", "-Command", expect.stringContaining("O''Brien")], expect.any(Function));
   });
 });

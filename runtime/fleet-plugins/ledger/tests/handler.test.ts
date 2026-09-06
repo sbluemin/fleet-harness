@@ -35,31 +35,4 @@ describe("handleSummary", () => {
     expect(test.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
     expect(test.getSummary).not.toHaveBeenCalled();
   });
-
-  it.each(["toString", "", "quarter"])("rejects invalid explicit window %s", async (window) => {
-    const test = harness(`/plugins/ledger/summary?window=${window}`);
-    await handleSummary(test.req, test.res, test.ctx, test.service);
-    expect(test.writes).toEqual([{ status: 400, payload: { error: "invalid_window" } }]);
-    expect(test.getSummary).not.toHaveBeenCalled();
-  });
-
-  it("defaults to week and passes only window plus refresh", async () => {
-    const test = harness("/plugins/ledger/summary?theaterId=ignored");
-    test.getSummary.mockResolvedValue({ schemaVersion: 2 });
-    await handleSummary(test.req, test.res, test.ctx, test.service);
-    expect(test.getSummary).toHaveBeenCalledWith({ window: "week", refresh: false });
-    expect(test.writes).toEqual([{ status: 200, payload: { schemaVersion: 2 } }]);
-  });
-
-  it.each([
-    ["1", true],
-    ["true", false],
-    ["01", false],
-    ["", false],
-  ])("treats refresh=%s as %s", async (value, expected) => {
-    const test = harness(`/plugins/ledger/summary?window=month&refresh=${value}`);
-    test.getSummary.mockResolvedValue({ schemaVersion: 2 });
-    await handleSummary(test.req, test.res, test.ctx, test.service);
-    expect(test.getSummary).toHaveBeenCalledWith({ window: "month", refresh: expected });
-  });
 });

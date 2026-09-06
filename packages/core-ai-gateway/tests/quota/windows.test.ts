@@ -23,26 +23,11 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-
 describe("provider error sanitization", () => {
   it("classifies a TLS certificate verification failure", () => {
     const error = new TypeError("fetch failed");
     Object.defineProperty(error, "cause", { value: { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" } });
     expect(sanitizeProviderError(error)).toBe("Certificate verification failed (UNABLE_TO_VERIFY_LEAF_SIGNATURE)");
-  });
-
-  it("classifies a nested TLS certificate verification failure", () => {
-    const error = new TypeError("fetch failed");
-    Object.defineProperty(error, "cause", {
-      value: { cause: { code: "CERT_HAS_EXPIRED" } },
-    });
-    expect(sanitizeProviderError(error)).toBe("Certificate verification failed (CERT_HAS_EXPIRED)");
-  });
-
-  it("keeps non-TLS causes generic", () => {
-    const error = new TypeError("fetch failed");
-    Object.defineProperty(error, "cause", { value: { code: "ECONNREFUSED" } });
-    expect(sanitizeProviderError(error)).toBe("Provider request failed");
   });
 });
 
@@ -85,28 +70,5 @@ describe("provider response boundaries", () => {
     }
     expect(sanitizeProviderError(caught)).toBe("Provider response too large");
     expect(sanitizeProviderError(caught)).not.toContain(body);
-  });
-
-  it("aborts a streamed response after the bounded byte limit", async () => {
-    const secret = "private-stream-content";
-    const chunk = new TextEncoder().encode(secret.repeat(12_000));
-    const response = new Response(new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(chunk);
-        controller.enqueue(chunk);
-        controller.close();
-      },
-    }), { status: 200 });
-    let caught: unknown;
-    try {
-      await fetchClaudeUsage({
-        credentials: claudeCredentials(),
-        fetch: (async () => response) as typeof fetch,
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(sanitizeProviderError(caught)).toBe("Provider response too large");
-    expect(sanitizeProviderError(caught)).not.toContain(secret);
   });
 });

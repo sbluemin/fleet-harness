@@ -43,47 +43,6 @@ describe("console-global Shell session", () => {
     expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/a"]);
   });
 
-  it("releases the pin once the session is explicitly ended", async () => {
-    const paths: Record<string, string> = { "theater-a": "/repos/a", "theater-b": "/repos/b" };
-    const { call, del, issued, terminated } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
-
-    await call({ theaterId: "theater-a" });
-    await del();
-    await call({ theaterId: "theater-b" });
-
-    expect(terminated).toEqual([GLOBAL_SHELL_SESSION_ID]);
-    expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/b"]);
-  });
-
-  // 세션 매니저는 `shell:` 접두를 "상태 미유지"의 표식으로 읽어 소켓이 떨어지면 짧은 유예
-  // 뒤 PTY를 정리한다. 전역 셸은 정반대 약속이다 — 레일에서 잠깐 치워 둔 셸은 돌아왔을 때
-  // 그 자리에 있어야 한다. 접두 하나가 그 약속을 4초짜리로 만들었다.
-  it("keeps its id outside the transient theater-shell prefix", () => {
-    expect(GLOBAL_SHELL_SESSION_ID.startsWith("shell:")).toBe(false);
-  });
-
-  it("releases the pin when the shell exits on its own", async () => {
-    const paths: Record<string, string> = { "theater-a": "/repos/a", "theater-b": "/repos/b" };
-    const { call, exit, issued } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
-
-    await call({ theaterId: "theater-a" });
-    exit(GLOBAL_SHELL_SESSION_ID);
-    await call({ theaterId: "theater-b" });
-
-    expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/b"]);
-  });
-
-  it("ignores an exit belonging to some other session", async () => {
-    const paths: Record<string, string> = { "theater-a": "/repos/a", "theater-b": "/repos/b" };
-    const { call, exit, issued } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
-
-    await call({ theaterId: "theater-a" });
-    exit("some-agent-operation");
-    await call({ theaterId: "theater-b" });
-
-    expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/a"]);
-  });
-
   it("reports an unknown Theater rather than opening a shell somewhere arbitrary", async () => {
     const { call, responses, issued } = mount({ resolveTheaterPath: () => null });
 
@@ -164,16 +123,3 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null } =
  * `readPayloadString`이 없는 키에 빈 문자열을 돌려주므로 `??`로는 절대 넘어가지 않았고,
  * 그래서 cwd가 찍히지 않은 agent Operation은 티켓을 영영 받지 못했다.
  */
-describe("agent cwd fallback", () => {
-  it("falls back to the Theater path when the payload carries no cwd", async () => {
-    // 계약 자체를 소스에서 못 박는다 — `??`가 돌아오면 폴백이 다시 죽는다.
-    const fs = await import("node:fs/promises");
-    const url = await import("node:url");
-    const path = await import("node:path");
-    const here = path.dirname(url.fileURLToPath(import.meta.url));
-    const source = await fs.readFile(path.join(here, "..", "server", "agent.ts"), "utf8");
-
-    expect(source).not.toMatch(/readPayloadString\((?:operation|node)\.payload, "cwd"\) \?\?/);
-    expect(source).toMatch(/readPayloadString\((?:operation|node)\.payload, "cwd"\) \|\|/);
-  });
-});

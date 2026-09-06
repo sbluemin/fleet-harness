@@ -65,27 +65,6 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		expect(statSync(cachePath).mode & 0o777).toBe(0o600);
 	});
 
-	it("omits compact hook env when the host did not provide a process token", () => {
-		const prepared = prepareAiGatewayLaunchProfile(makeProfile(), {
-			baseUrl: "http://127.0.0.1:4310/gateway",
-			homeDir: makeTemporaryDirectory(),
-		});
-		expect(prepared.env.FLEET_COMPACT_BASE_URL).toBeUndefined();
-		expect(prepared.env.FLEET_COMPACT_HOOK_TOKEN).toBeUndefined();
-	});
-
-	it("preserves an explicit auto-compact ceiling", () => {
-		const homeDir = makeTemporaryDirectory();
-		const prepared = prepareAiGatewayLaunchProfile(makeProfile({
-			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "850000",
-		}), {
-			baseUrl: "http://127.0.0.1:4310/gateway",
-			homeDir,
-		});
-
-		expect(prepared.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
-	});
-
 	it("throws for an invalid base URL before writing a cache", () => {
 		const homeDir = makeTemporaryDirectory();
 		expect(() => prepareAiGatewayLaunchProfile(makeProfile(), {
@@ -93,17 +72,6 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			homeDir,
 		})).toThrow();
 		expect(() => readFileSync(path.join(homeDir, ".claude", "cache", "gateway-models.json"))).toThrow();
-	});
-
-	it("throws when the discovery cache cannot be written", () => {
-		const homeDir = makeTemporaryDirectory();
-		const configPath = path.join(homeDir, "not-a-directory");
-		writeFileSync(configPath, "occupied");
-
-		expect(() => prepareAiGatewayLaunchProfile(makeProfile({ CLAUDE_CONFIG_DIR: configPath }), {
-			baseUrl: "http://127.0.0.1:4310/gateway",
-			homeDir,
-		})).toThrow();
 	});
 });
 

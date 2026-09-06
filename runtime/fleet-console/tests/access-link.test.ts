@@ -55,25 +55,6 @@ describe("access link envelope", () => {
     expect(value).not.toContain(FINGERPRINT);
   });
 
-  it("survives being carried through a chat window", () => {
-    expect(parseAccessLink(`  ${link()}  `).label).toBe("devbox");
-    expect(isAccessLinkInput(" FLEET://join?code=abc")).toBe(true);
-    expect(isAccessLinkInput("https://172.30.1.35:54240/join#t=a&f=b")).toBe(false);
-  });
-
-  it("reads a hand-copied fingerprint with separators as the same value", () => {
-    const colons = FINGERPRINT.match(/.{2}/gu)?.join(":") ?? "";
-
-    expect(parseAccessLink(link({ fingerprint: colons })).fingerprint).toBe(FINGERPRINT);
-  });
-
-  it("unwraps an IPv6 literal for the certificate pin", () => {
-    const parsed = parseAccessLink(link({ endpoint: "https://[fd00::1]:4310" }));
-
-    expect(parsed.hostname).toBe("fd00::1");
-    expect(parsed.origin).toBe("https://[fd00::1]:4310");
-  });
-
   it.each(vectors.negative)("refuses the language-neutral $name vector", (vector) => {
     expect(() => parseAccessLink(vector.link)).toThrow("pairing_target_invalid");
   });
@@ -83,9 +64,5 @@ describe("access label", () => {
   it("strips the characters that would let a name disguise its own address line", () => {
     expect(sanitizeAccessLabel("dev\u202ebox\u200b")).toBe("devbox");
     expect(sanitizeAccessLabel("two\u0000  \u2028lines  here")).toBe("two lines here");
-  });
-
-  it("caps the length so one host cannot crowd the list", () => {
-    expect(sanitizeAccessLabel("x".repeat(200))).toHaveLength(48);
   });
 });

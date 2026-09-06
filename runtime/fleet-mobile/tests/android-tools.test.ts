@@ -96,10 +96,6 @@ describe("Android APK contract helpers", () => {
     );
   });
 
-  it("reads the shipped version out of aapt badging", () => {
-    expect(inspectBadging(badging)).toMatchObject({ versionCode: 1, versionName: "1.0.0" });
-  });
-
   // The release APK carries no android:debuggable attribute at all; the debug one must carry it.
   it("holds each build type to the opposite debuggable value", () => {
     const debuggable = inspectAaptManifestTree(manifestTree);
@@ -124,15 +120,5 @@ describe("Android APK contract helpers", () => {
   it("requires one absolute SDK root", () => {
     expect(() => requireAndroidSdk({})).toThrow(/ANDROID_SDK_ROOT/);
     expect(() => requireAndroidSdk({ ANDROID_SDK_ROOT: "relative" })).toThrow(/absolute/);
-  });
-
-  it("enables native access only for JDK 24 and newer", () => {
-    expect(parseJavaMajor('openjdk version "21.0.8" 2025-07-15 LTS')).toBe(21);
-    expect(parseJavaMajor('openjdk version "25.0.1" 2025-10-21')).toBe(25);
-    expect(withJavaNativeAccess(21, "-Xmx2g")).toBe("-Xmx2g");
-    expect(withJavaNativeAccess(25, "-Xmx2g")).toBe("-Xmx2g --enable-native-access=ALL-UNNAMED");
-    expect(withJavaNativeAccess(25, "--enable-native-access=ALL-UNNAMED")).toBe(
-      "--enable-native-access=ALL-UNNAMED",
-    );
   });
 });

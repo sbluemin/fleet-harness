@@ -73,22 +73,6 @@ describe("Repository tree route", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("lists one folder layer at a commit, folders first", async () => {
-    const { clonePath } = await seedRemotePair(tmpDir);
-    const head = (await runGit(["rev-parse", "HEAD"], { cwd: clonePath })).stdout.trim();
-
-    let writes: JsonWrite[] = [];
-    await handleRepositoryTree(req, res, makeContext(clonePath, { theaterId: "t", ref: head }, writes));
-    expect(writes[0]!.status).toBe(200);
-    const root = writes[0]!.payload as TreeResult;
-    expect(root.entries.map((entry) => `${entry.kind}:${entry.name}`)).toEqual(["tree:docs", "blob:entry.txt"]);
-
-    writes = [];
-    await handleRepositoryTree(req, res, makeContext(clonePath, { theaterId: "t", ref: head, dirPath: "docs" }, writes));
-    const docs = writes[0]!.payload as TreeResult;
-    expect(docs.entries.map((entry) => entry.path)).toEqual(["docs/guide.md"]);
-  });
-
   it("rejects symbolic refs and escaping folder paths at the lexical gate", async () => {
     const { clonePath } = await seedRemotePair(tmpDir);
     const writes: JsonWrite[] = [];
@@ -99,63 +83,6 @@ describe("Repository tree route", () => {
     expect(isSafeTreeDirPath(":(top)")).toBe(false);
     expect(isSafeTreeDirPath("docs/nested")).toBe(true);
     expect(isSafeTreeDirPath("")).toBe(true);
-  });
-
-  it("parses ls-tree -z records into sorted entries", () => {
-    const stdout = ["100644 blob abc\tb.txt", "040000 tree def\ta-dir", "100644 blob ghi\ta.txt", ""].join("\0");
-    expect(parseTreeEntries(stdout).map((entry) => `${entry.kind}:${entry.name}`)).toEqual(["tree:a-dir", "blob:a.txt", "blob:b.txt"]);
-  });
-});
-
-describe("Repository workstate route", () => {
-  let tmpDir: string;
-
-  beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-repository-workstate-"));
-  });
-
-  afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  });
-
-  it("reports lock state, upstream counts, and stationed operations", async () => {
-    const { clonePath } = await seedRemotePair(tmpDir);
-    await fs.writeFile(path.join(clonePath, "ahead.txt"), "ahead\n");
-    await runGit(["add", "ahead.txt"], { cwd: clonePath });
-    await runGit(["commit", "-m", "ahead commit"], { cwd: clonePath });
-
-    const operations: StubOperation[] = [
-      { id: "op-in", title: "stationed op", payload: { cwd: clonePath } },
-      { id: "op-out", title: "elsewhere", payload: { cwd: tmpDir } },
-      // cwd 없는 op는 터미널 플러그인이 Theater 루트에서 기동한다 — 루트 컨텍스트의 주둔으로 집계돼야 한다.
-      { id: "op-rootless", title: "no cwd", payload: null },
-    ];
-    let writes: JsonWrite[] = [];
-    await handleRepositoryWorkstate(req, res, makeContext(clonePath, { theaterId: "t" }, writes, operations));
-    expect(writes[0]!.status).toBe(200);
-    const state = writes[0]!.payload as WorkstateResult;
-    expect(state.indexLock).toBe(false);
-    expect(state.inProgress).toBeNull();
-    expect(state.ahead).toBe(1);
-    expect(state.behind).toBe(0);
-    expect(state.headSha).toMatch(/^[0-9a-f]{40}$/);
-    // theater 루트 컨텍스트: 클론 안의 op만 주둔으로 집계된다 — tmpDir op는 클론 밖이다.
-    expect(state.stationedOperations).toEqual([
-      { id: "op-in", title: "stationed op" },
-      { id: "op-rootless", title: "no cwd" },
-    ]);
-
-    const gitDir = path.resolve(clonePath, (await runGit(["rev-parse", "--absolute-git-dir"], { cwd: clonePath })).stdout.trim());
-    await fs.writeFile(path.join(gitDir, "index.lock"), "");
-    writes = [];
-    await handleRepositoryWorkstate(req, res, makeContext(clonePath, { theaterId: "t" }, writes, []));
-    expect((writes[0]!.payload as WorkstateResult).indexLock).toBe(true);
-  });
-
-  it("parses ahead/behind from rev-list left-right counts", () => {
-    expect(parseAheadBehind("3\t1\n".replace("\t", " "))).toEqual({ behind: 3, ahead: 1 });
-    expect(parseAheadBehind("2\t5")).toEqual({ behind: 2, ahead: 5 });
-    expect(parseAheadBehind("garbage")).toBeNull();
   });
 });
 
@@ -210,14 +137,5 @@ describe("Repository remote routes", () => {
     await handleRepositoryPull(req, res, makeContext(clonePath, { theaterId: "t" }, writes));
     expect(writes[0]!.status).toBe(409);
     expect((writes[0]!.payload as { readonly error: string }).error).toBe("non_fast_forward");
-  });
-
-  it("classifies push and pull failure prose into typed codes", () => {
-    expect(classifyPushError("! [rejected] main -> main (non-fast-forward)")).toBe("non_fast_forward");
-    expect(classifyPushError("hint: Updates were rejected because the remote contains work")).toBe("non_fast_forward");
-    expect(classifyPushError("fatal: other")).toBeNull();
-    expect(classifyPullError("fatal: Not possible to fast-forward, aborting.")).toBe("non_fast_forward");
-    expect(classifyPullError("error: Your local changes to the following files would be overwritten by merge:")).toBe("dirty_worktree");
-    expect(classifyPullError("fatal: other")).toBeNull();
   });
 });

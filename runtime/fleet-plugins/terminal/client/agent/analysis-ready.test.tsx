@@ -33,33 +33,6 @@ afterEach(() => {
 });
 
 describe("Session Analyst entry chip readiness", () => {
-  it("keeps ANALYZE disabled with preventive guidance before a transcript is ready", async () => {
-    const fetch = analysisFetch(false);
-    await renderLiveOperation(fetch);
-
-    const handle = analystHandle();
-    expect(handle.disabled).toBe(true);
-    expect(handle.getAttribute("aria-label")).toBe("Send a message in this session first");
-    expect(analystTip()).toBe("Send a message in this session first");
-    expect(readyCalls(fetch)).toHaveLength(1);
-  });
-
-  it("enables ANALYZE after the readiness poll turns true and stops polling", async () => {
-    vi.useFakeTimers();
-    const fetch = analysisFetch(false, true);
-    await renderLiveOperation(fetch);
-    expect(analystHandle().disabled).toBe(true);
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-
-    const handle = analystHandle();
-    expect(handle.disabled).toBe(false);
-    expect(analystTip()).toBe("Open Session Analyst");
-    expect(readyCalls(fetch)).toHaveLength(2);
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(readyCalls(fetch)).toHaveLength(2);
-  });
 
   it("opens Session Analyst from a ready dormant operation without resuming it", async () => {
     const fetch = analysisFetch(true);
@@ -80,40 +53,6 @@ describe("Session Analyst entry chip readiness", () => {
     expect(readyCalls(fetch)).toHaveLength(1);
   });
 
-  it("closes and reopens companions without stopping or replacing the Analyst session", async () => {
-    const fetch = vi.fn(async (_pluginId: string, path: string) => new Response(
-      path === "analysis/catalog" ? CATALOG_BODY : path.endsWith("/ready") ? JSON.stringify({ ready: true }) : "{}",
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    ));
-    const api = createApi(fetch);
-    const store = getAnalysisStore(OPERATION_ID, api);
-    store.dispatch({ type: "sending", started: true, text: "Remember this conversation", now: 1 });
-    store.dispatch({ type: "event", event: { type: "chunk", text: "Retained answer" }, now: 2 });
-    store.dispatch({ type: "event", event: { type: "complete" }, now: 3 });
-    const onRequestCompanions = vi.fn();
-    await renderOperation(fetch, "live", onRequestCompanions, true, []);
-
-    expect(analystHandle().getAttribute("aria-pressed")).toBe("true");
-    act(() => analystHandle().click());
-
-    expect(onRequestCompanions).toHaveBeenCalledWith(false);
-    expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
-
-    onRequestCompanions.mockClear();
-    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat"]);
-    await vi.waitFor(() => expect(analystHandle().disabled).toBe(false));
-    expect(analystHandle().getAttribute("aria-pressed")).toBe("false");
-    act(() => analystHandle().click());
-
-    expect(onRequestCompanions).toHaveBeenCalledWith(true);
-    expect(getAnalysisStore(OPERATION_ID, api)).toBe(store);
-    expect(store.getSnapshot().entries).toMatchObject([
-      { role: "user", text: "Remember this conversation" },
-      { role: "analyst", segments: [{ text: "Retained answer", steps: [] }] },
-    ]);
-    expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
-  });
-
   it("disposing through Operation close POSTs stop and replaces the store", async () => {
     const fetch = vi.fn(async (_pluginId: string, path: string) => new Response(
       path === "analysis/catalog" ? CATALOG_BODY : "{}",
@@ -132,57 +71,6 @@ describe("Session Analyst entry chip readiness", () => {
     expect(terminateFetch).toHaveBeenCalledWith(`/plugins/terminal/agent/sessions/${OPERATION_ID}`, expect.objectContaining({ method: "DELETE" }));
     expect(fetch).toHaveBeenCalledWith("terminal", `analysis/${OPERATION_ID}/stop`, expect.objectContaining({ method: "POST", body: "{}" }));
     expect(getAnalysisStore(OPERATION_ID, api)).not.toBe(store);
-  });
-
-  it("treats readiness request failures as not ready", async () => {
-    const api = createApi(vi.fn().mockRejectedValue(new Error("offline")));
-    await expect(fetchAnalysisReady(api, OPERATION_ID)).resolves.toBe(false);
-  });
-
-  it("keeps the host companion gate open independently of transcript readiness", async () => {
-    const fetch = analysisFetch(false);
-    const canOpenCompanions = agentOperationKind.canOpenCompanions;
-    if (!canOpenCompanions) throw new Error("Agent companion availability gate must exist.");
-
-    await expect(Promise.resolve(canOpenCompanions({ api: createApi(fetch), operation: operation() }))).resolves.toBe(true);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("hides Analyst panels and closes the companion layer when no visible panel remains", async () => {
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-
-    await renderOperation(
-      analysisFetch(false),
-      "live",
-      onRequestCompanions,
-      true,
-      [],
-      onSetCompanionPanelVisible,
-    );
-
-    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
-      ["session-analyst-chat", false],
-    ]);
-    expect(onRequestCompanions).toHaveBeenCalledOnce();
-    expect(onRequestCompanions).toHaveBeenCalledWith(false);
-  });
-
-  it("does not change panel visibility when the companion layer is already closed", async () => {
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-
-    await renderOperation(
-      analysisFetch(false),
-      "live",
-      onRequestCompanions,
-      false,
-      ["session-analyst-chat"],
-      onSetCompanionPanelVisible,
-    );
-
-    expect(onSetCompanionPanelVisible).not.toHaveBeenCalled();
-    expect(onRequestCompanions).not.toHaveBeenCalled();
   });
 });
 

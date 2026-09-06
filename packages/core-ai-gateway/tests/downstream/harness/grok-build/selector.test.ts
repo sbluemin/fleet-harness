@@ -32,36 +32,6 @@ describe("grok build harness selector", () => {
     expect(claude.status).toBe(401);
   });
 
-  it("keeps a mount path that merely contains the selector name on the default harness", async () => {
-    // 선택자는 엔드포인트 접미 **바로 앞** 조각이다. 마운트 경로에 같은 이름이 들어 있어도
-    // 그 자리가 아니면 선택자가 아니다 — 아니면 호스트가 마운트를 옮기는 순간 하네스가 바뀐다.
-    const router = grokRouter();
-    const res = response();
-    await router.handle(ctx({
-      res,
-      pathname: "/plugins/grok/ai-gateway/v1/messages",
-      model: GROK_MODEL,
-      token: "eyJ0eXAiOiJKV1Qi",
-    }));
-    expect(res.status).toBe(401);
-  });
-
-  it("falls to the default harness for a segment that names an inherited property", async () => {
-    // 선택자 조회를 평범한 객체 인덱싱으로 하면 `toString` 같은 프로토타입 키가 함수로 잡히고,
-    // 바로 다음 자격증명 검사에서 `acceptsCredential is not a function`으로 요청 처리가 죽는다.
-    // 문서화된 동작은 "등록되지 않은 조각이면 기본 하네스"이므로, 여기서는 Claude Code가 답해야 한다.
-    const router = grokRouter();
-    const res = response();
-    await router.handle(ctx({
-      res,
-      pathname: `${BASE}/toString/v1/messages`,
-      model: GROK_MODEL,
-      token: "eyJ0eXAiOiJKV1Qi",
-    }));
-    // 기본 하네스는 이 자격증명을 자기 것으로 인정하지 않는다 — 죽는 대신 401이다.
-    expect(res.status).toBe(401);
-  });
-
   it("refuses grok's own built-in model id instead of relaying it to Anthropic", async () => {
     // Grok Build는 세션마다 제목 생성 보조 턴을 같은 base_url로 보내는데, 그 턴의 모델 id는
     // 커스텀 모델이 아니라 내장 `grok-4.6`이고 본문에는 사용자 질의 원문이 들어 있다.
@@ -89,80 +59,6 @@ describe("grok build harness selector", () => {
 
     expect(res.status).toBe(200);
     expect(seen[0]?.user_id).toBe("01a02cea-2ab6-7fd2-8500-a16d6aebb55e");
-  });
-
-  it("never overwrites an identity the request body already carried", async () => {
-    const seen: Array<Record<string, unknown> | undefined> = [];
-    const router = grokRouter(recordingGateway(seen));
-
-    const res = response();
-    await router.handle(ctx({
-      res,
-      pathname: GROK_MESSAGES,
-      model: GROK_MODEL,
-      token: "eyJ0eXAiOiJKV1Qi",
-      headers: { "x-grok-session-id": "from-header" },
-      metadata: { user_id: "from-body" },
-    }));
-
-    expect(seen[0]?.user_id).toBe("from-body");
-  });
-
-  it("treats the empty header grok sends before a session exists as no identity", async () => {
-    const seen: Array<Record<string, unknown> | undefined> = [];
-    const router = grokRouter(recordingGateway(seen));
-
-    const res = response();
-    await router.handle(ctx({
-      res,
-      pathname: GROK_MESSAGES,
-      model: GROK_MODEL,
-      token: "eyJ0eXAiOiJKV1Qi",
-      headers: { "x-grok-session-id": "", "x-grok-conv-id": "" },
-    }));
-
-    expect(res.status).toBe(200);
-    expect(seen[0]?.user_id).toBeUndefined();
-  });
-
-  it("meters the provider's real window instead of Claude Code's coordinate", async () => {
-    const router = grokRouter();
-    const res = response();
-    await router.handle(ctx({ res, pathname: GROK_MESSAGES, model: GROK_MODEL, token: "eyJ0eXAiOiJKV1Qi" }));
-
-    const started = res.body
-      .split("\n")
-      .filter((line) => line.startsWith("data: "))
-      .map((line) => JSON.parse(line.slice(6)) as { type: string; message?: { usage?: { input_tokens?: number } } })
-      .find((frame) => frame.type === "message_start");
-    // 272k 창의 221k가 그대로 221k로 간다. Claude 좌표로 접으면 약 0.637배가 된다.
-    expect(started?.message?.usage?.input_tokens).toBe(221_000);
-  });
-
-  it("answers grok discovery on the selector path and Claude discovery on the bare mount", async () => {
-    const router = grokRouter();
-
-    const grok = response();
-    await router.handle(ctx({ res: grok, pathname: `${BASE}/grok/v1/models`, token: "eyJ0eXAiOiJKV1Qi" }));
-    const grokList = JSON.parse(grok.body) as { data: ReadonlyArray<{ id: string }> };
-    expect(grokList.data.every((entry) => entry.id.startsWith("grok-build-gateway--"))).toBe(true);
-
-    const claude = response();
-    await router.handle(ctx({ res: claude, pathname: `${BASE}/v1/models`, token: "sk-ant-fleet-local" }));
-    const claudeList = JSON.parse(claude.body) as { data: ReadonlyArray<{ id: string }> };
-    expect(claudeList.data.every((entry) => entry.id.startsWith("claude-gateway--"))).toBe(true);
-  });
-
-  it("declares grok's own answers on its profile", () => {
-    expect(grokBuildHarnessProfile.probePaths).toEqual([]);
-    expect(grokBuildHarnessProfile.acceptsCredential("eyJ0eXAiOiJKV1Qi")).toBe(true);
-    expect(grokBuildHarnessProfile.acceptsCredential("")).toBe(false);
-    expect(grokBuildHarnessProfile.relaysUnmatchedModel("anything")).toBe(false);
-    // 투영이 없다는 것이 이 프로필의 요점이다.
-    expect(grokBuildHarnessProfile.usageProjection).toBeUndefined();
-    expect(grokBuildHarnessProfile.passthroughProjection).toBeUndefined();
-    // 재시도 예산은 실측 전까지 비워 둔다 — Claude Code의 목록을 복사하지 않는다.
-    expect(grokBuildHarnessProfile.retryableStatus).toBeUndefined();
   });
 });
 

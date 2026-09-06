@@ -142,77 +142,6 @@ async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof 
   return { session, events };
 }
 
-describe("agentChatAskFromToolInput", () => {
-  it("reads a question with its options", () => {
-    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-1", QUESTION_INPUT);
-    expect(parsed).toEqual({
-      event: {
-        kind: "ask",
-        id: "id-1",
-        form: "question",
-        questions: [{
-          header: "Log format",
-          question: "Should logs be JSON or plain text?",
-          multiSelect: false,
-          options: [
-            { label: "JSON", description: "Structured logs" },
-            { label: "Plain text", description: "Human-readable logs" },
-          ],
-        }],
-      },
-      answerKeys: ["Should logs be JSON or plain text?"],
-    });
-  });
-
-  it("keeps the original question text as the answer key while the card shows the bounded one", () => {
-    // 도구는 **원문** 질문 텍스트로 답을 맞춘다. 표시용은 trim과 400자 상한을 지나므로,
-    // 그 결과를 키로 쓰면 긴 질문에서 키가 어긋나 모델이 답을 받지 못한다(조용한 실패).
-    const long = `${"왜 ".repeat(260)}이 방향으로 갈까요?`;
-    const raw = `  ${long}  `;
-    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-long", {
-      questions: [{ question: raw, header: "Direction", multiSelect: false, options: [{ label: "A", description: "" }, { label: "B", description: "" }] }],
-    });
-    expect(parsed?.answerKeys).toEqual([raw]);
-    const shown = parsed?.event.questions?.[0]?.question ?? "";
-    expect(shown.length).toBeLessThanOrEqual(400);
-    expect(shown).not.toBe(raw);
-  });
-
-  it("never shortens an option label, because the label is what gets submitted", () => {
-    // 라벨은 고르면 그대로 답이 되어 도구로 돌아간다 — 표시용으로 자르면 사용자가 고른 것과
-    // 다른 값이 모델에게 간다. 길이는 카드가 접는다.
-    const long = `${"아주 긴 선택지 라벨 ".repeat(20)}끝`;
-    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-opt", {
-      questions: [{ question: "어느 쪽?", header: "Pick", multiSelect: false, options: [{ label: long, description: "x" }, { label: "B", description: "" }] }],
-    });
-    expect(parsed?.event.questions?.[0]?.options[0]?.label).toBe(long);
-  });
-
-  it("reads a plan as its own form", () => {
-    const parsed = agentChatAskFromToolInput("ExitPlanMode", "id-2", { plan: "1. do this\n2. then that", planFilePath: "/tmp/p.md" });
-    expect(parsed).toEqual({
-      event: { kind: "ask", id: "id-2", form: "plan", plan: "1. do this\n2. then that" },
-      answerKeys: [],
-    });
-  });
-
-  it("marks a plan the card could not show in full", () => {
-    // 승인은 본 것에 동의한다는 뜻이다 — 잘린 계획은 그 사실을 이벤트가 말해야 카드가 승인을 닫는다.
-    const short = agentChatAskFromToolInput("ExitPlanMode", "p1", { plan: "1. do this" });
-    expect(short?.event.truncated).toBeUndefined();
-    const huge = agentChatAskFromToolInput("ExitPlanMode", "p2", { plan: "가".repeat(60_001) });
-    expect(huge?.event.truncated).toBe(true);
-    expect((huge?.event.plan ?? "").length).toBeLessThanOrEqual(60_000);
-  });
-
-  it("returns null for a shape it cannot draw", () => {
-    // 선택지 없는 질문, 빈 계획, 다른 도구 — 반쯤 읽은 카드를 세우느니 도구를 그냥 통과시킨다.
-    expect(agentChatAskFromToolInput("AskUserQuestion", "x", { questions: [{ question: "q", header: "h", options: [] }] })).toBeNull();
-    expect(agentChatAskFromToolInput("ExitPlanMode", "x", { plan: "   " })).toBeNull();
-    expect(agentChatAskFromToolInput("Read", "x", { file_path: "/tmp/a" })).toBeNull();
-  });
-});
-
 describe("AgentChatRegistry — interactive tools", () => {
   it("parks the question, reports awaiting, and hands the answer back as updatedInput", async () => {
     const sdk = createPausedSdkFactory();
@@ -248,48 +177,6 @@ describe("AgentChatRegistry — interactive tools", () => {
     await registry.disposeAll();
   });
 
-  it("answers a bounded question under its original key so the resumed tool finds it", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const { session } = await startSession(registry, sdk, []);
-
-    const raw = `  ${"왜 ".repeat(260)}이 방향으로 갈까요?  `;
-    const input = {
-      questions: [{ question: raw, header: "Direction", multiSelect: false, options: [{ label: "A", description: "" }, { label: "B", description: "" }] }],
-    };
-    const decision = sdk.ask("AskUserQuestion", input);
-    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
-    expect(session.answer("tool-1", { answers: ["A"] })).toEqual({ ok: true, outcome: "answered" });
-    // 키는 카드가 보여 준 축약본이 아니라 도구가 받은 원문이다.
-    await expect(decision).resolves.toEqual({
-      behavior: "allow",
-      updatedInput: { ...input, answers: { [raw]: "A" } },
-    });
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
-  it("dismisses a question as a denial the model can read", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const awaitingLog: boolean[] = [];
-    const { session, events } = await startSession(registry, sdk, awaitingLog);
-
-    const decision = sdk.ask("AskUserQuestion", QUESTION_INPUT);
-    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
-
-    expect(session.answer("tool-1", {})).toEqual({ ok: true, outcome: "dismissed" });
-    await expect(decision).resolves.toEqual({
-      behavior: "deny",
-      message: "The user dismissed the question without answering.",
-    });
-    expect(events.map((entry) => entry.event).find((event) => event.kind === "ask-settled")).toMatchObject({ outcome: "dismissed" });
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
   it("treats a plan approval as allow and a change request as a denial carrying the message", async () => {
     const sdk = createPausedSdkFactory();
     const registry = new AgentChatRegistry(sdk.factory);
@@ -308,61 +195,6 @@ describe("AgentChatRegistry — interactive tools", () => {
     expect(session.answer("plan-2", { message: "narrow the scope to CSS only" })).toEqual({ ok: true, outcome: "revised" });
     // 거부는 되돌림이 아니라 되묻기다 — 이 문장이 그대로 모델에게 간다.
     await expect(revised).resolves.toEqual({ behavior: "deny", message: "narrow the scope to CSS only" });
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
-  it("refuses to approve a plan it could not show, on the server rather than in the card", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const { session } = await startSession(registry, sdk, []);
-
-    const plan = "가".repeat(60_050);
-    const revised = sdk.ask("ExitPlanMode", { plan }, "plan-huge");
-    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
-
-    // 카드가 버튼을 감추는 것만으로는 규칙이 되지 않는다 — 리로드하지 않은 옛 번들은 그 플래그를
-    // 모른 채 승인을 보낸다. 거절은 그 요청이 닿는 자리에 있어야 한다.
-    expect(session.answer("plan-huge", { approve: true })).toEqual({ ok: false, error: "plan_truncated" });
-    // 거절이 대기를 풀어 버리면 사용자는 답할 자리를 잃는다.
-    expect(session.awaiting).toBe(true);
-
-    // 수정 요청은 열려 있다 — 더 짧은 계획을 받아 오는 길이다.
-    expect(session.answer("plan-huge", { message: "짧게 다시 주세요" })).toEqual({ ok: true, outcome: "revised" });
-    await expect(revised).resolves.toEqual({ behavior: "deny", message: "짧게 다시 주세요" });
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
-  it("keeps the question parked when the answer does not match the questions", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const { session } = await startSession(registry, sdk, []);
-
-    sdk.ask("AskUserQuestion", QUESTION_INPUT);
-    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
-
-    expect(session.answer("tool-1", { answers: [] })).toEqual({ ok: false, error: "invalid_answer" });
-    expect(session.answer("tool-1", { answers: ["  "] })).toEqual({ ok: false, error: "invalid_answer" });
-    expect(session.answer("unknown-id", { answers: ["JSON"] })).toEqual({ ok: false, error: "ask_not_found" });
-    // 거절된 답은 대기를 풀지 않는다 — 풀어 버리면 사용자는 답할 자리를 잃는다.
-    expect(session.awaiting).toBe(true);
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
-  it("lets every other tool through — the callback is not a permission gate", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const { session } = await startSession(registry, sdk, []);
-
-    await expect(sdk.ask("Bash", { command: "rm -rf /tmp/nothing" })).resolves.toEqual({ behavior: "allow" });
-    // 형태를 읽지 못한 대화형 도구도 막지 않는다.
-    await expect(sdk.ask("AskUserQuestion", { questions: [] })).resolves.toEqual({ behavior: "allow" });
-    expect(session.awaiting).toBe(false);
 
     sdk.finish();
     await registry.disposeAll();

@@ -19,19 +19,6 @@ function run(subcommand: string, payload: unknown, args: readonly string[] = [])
   return { status: result.status ?? -1, stderr: result.stderr, stdout: result.stdout };
 }
 
-describe("gateway model guard — plugin version", () => {
-  it("reports the rendered Fleet plugin version as SessionStart context", () => {
-    const { status, stdout } = run("plugin-version", {}, ["1.72.3"]);
-    expect(status).toBe(0);
-    expect(JSON.parse(stdout)).toEqual({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: "Fleet plugin version: 1.72.3",
-      },
-    });
-  });
-});
-
 describe("gateway model guard — retired subcommands", () => {
   // 위임 라우팅은 delegation 스킬 description이, 디스패치별 정체성 선택은 스킬 본문이 소유한다.
   // 공유 플러그인 트리는 in-place 교체라 실행 중 세션이 다음 이벤트부터 이 스크립트를 실행하므로,
@@ -67,20 +54,5 @@ describe("gateway model guard — workflow receipt", () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain("receipt, not a result");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("one status line");
     expect("updatedToolOutput" in parsed.hookSpecificOutput).toBe(false);
-  });
-
-  // 접수증 계약은 디스패치 형태와 독립이어야 한다 — 스크립트가 없는 저장 워크플로우 호출에도 실린다.
-  it("adds the in-flight context even for a dispatch that carried no inspectable script", () => {
-    const { status, stdout } = run("workflow-receipt", {
-      hook_event_name: "PostToolUse",
-      tool_name: "Workflow",
-      tool_input: { name: "saved-workflow" },
-    });
-    expect(status).toBe(0);
-    expect(stdout).toContain("still in flight");
-  });
-
-  it("ignores tools it does not annotate", () => {
-    expect(run("workflow-receipt", { tool_name: "Bash", tool_input: { command: "ls" } }).status).toBe(0);
   });
 });

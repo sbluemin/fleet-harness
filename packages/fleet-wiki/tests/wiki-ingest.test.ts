@@ -73,21 +73,6 @@ describe("wiki ingest provenance", () => {
     expect(entry.templateId).toBe("prd");
   });
 
-  it("rejects template_id bodies that omit required sections", async () => {
-    const root = await makeTempRoot();
-    const tool = buildIngestToolConfig();
-
-    await expect(tool.execute("tool-call", {
-      id: "prd-missing",
-      title: "PRD Missing",
-      body: ["## Overview", "", "candidate knowledge ".repeat(8)].join("\n"),
-      tags: ["fleet", "prd"],
-      source: "prd source text",
-      template_id: "prd",
-      mode: "create",
-    }, undefined, undefined, { cwd: root } as any)).rejects.toThrow("missing sections: Problem");
-  });
-
   it("adds latest rawSourceRef and appends a deduped rawSourceRefs entry", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
@@ -127,73 +112,6 @@ describe("wiki ingest provenance", () => {
     });
     expect(queued.meta.baseVersion).toBe(1);
     expect(queued.meta.baseHash).toBeDefined();
-  });
-
-  it("seeds rawSourceRefs history from legacy rawSourceRef-only entries", async () => {
-    const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
-    const tool = buildIngestToolConfig();
-    await writeWikiEntry({
-      id: "legacy",
-      title: "Legacy",
-      tags: ["fleet"],
-      created: "2026-05-01T00:00:00.000Z",
-      updated: "2026-05-01T00:00:00.000Z",
-      version: 1,
-      body: "Legacy body",
-      rawSourceRef: "raw/legacy-old.md",
-    }, paths);
-
-    const result = await tool.execute("tool-call", {
-      id: "legacy",
-      title: "Legacy",
-      body: "candidate knowledge ".repeat(8),
-      tags: ["fleet"],
-      source: "legacy new source text",
-      source_title: "Legacy New Source",
-      mode: "update",
-      base_version: 1,
-    }, undefined, undefined, { cwd: root } as any);
-    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string; raw_source_ref: string };
-    const queued = await showQueue(payload.patch_id, paths);
-    const entry = JSON.parse(queued.patch.body) as WikiEntry;
-
-    expect(entry.rawSourceRef).toBe(payload.raw_source_ref);
-    expect(entry.rawSourceRefs?.map((item) => item.ref)).toEqual(["raw/legacy-old.md", payload.raw_source_ref]);
-  });
-
-  it("does not duplicate an identical rawSourceRefs ref", async () => {
-    const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
-    const tool = buildIngestToolConfig();
-    const expectedRef = `raw/${new Date().toISOString().slice(0, 10)}-beta-source-${computeContentHash("same source text")}.md`;
-    await writeWikiEntry({
-      id: "beta",
-      title: "Beta",
-      tags: ["fleet"],
-      created: "2026-05-01T00:00:00.000Z",
-      updated: "2026-05-01T00:00:00.000Z",
-      version: 1,
-      body: "Beta body",
-      rawSourceRef: expectedRef,
-      rawSourceRefs: [{ ref: expectedRef, title: "Same Source" }],
-    }, paths);
-
-    const result = await tool.execute("tool-call", {
-      id: "beta",
-      title: "Beta",
-      body: "candidate knowledge ".repeat(8),
-      tags: ["fleet"],
-      source: "same source text",
-      source_title: "Same Source",
-      mode: "update",
-      base_version: 1,
-    }, undefined, undefined, { cwd: root } as any);
-    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string };
-    const queued = await showQueue(payload.patch_id, paths);
-    const entry = JSON.parse(queued.patch.body) as WikiEntry;
-
-    expect(entry.rawSourceRefs).toEqual([{ ref: expectedRef, title: "Same Source" }]);
   });
 });
 

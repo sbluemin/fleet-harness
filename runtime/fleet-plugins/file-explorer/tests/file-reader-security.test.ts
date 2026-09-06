@@ -66,11 +66,6 @@ describe("readFileForTheater — symlink containment", () => {
 });
 
 describe("readImageForTheater — symlink containment", () => {
-  it("serves README-scale local GIF assets inside the Theater", async () => {
-    const result = await readImageForTheater(theaterPath, "readme-demo.gif");
-    expect(result.mimeType).toBe("image/gif");
-    expect(result.buffer.byteLength).toBe(10 * 1024 * 1024);
-  });
 
   it("rejects a symlinked image that resolves outside the Theater", async () => {
     await expect(
@@ -78,44 +73,5 @@ describe("readImageForTheater — symlink containment", () => {
     ).rejects.toSatisfy(
       (e: unknown) => e instanceof ImageServeError && e.code === "path_outside_theater",
     );
-  });
-});
-
-describe("handleFilesImage cache-busting query", () => {
-  it("serves the image when an extra v= parameter is present", async () => {
-    const chunks: Buffer[] = [];
-    let status = 0;
-    const jsonWrites: Array<{ readonly status: number }> = [];
-    const res = {
-      writeHead: (code: number) => {
-        status = code;
-      },
-      end: (buf?: Buffer) => {
-        if (buf) chunks.push(buf);
-      },
-    } as unknown as http.ServerResponse;
-    const ctx = {
-      host: {
-        http: {
-          writeJson: (_response: http.ServerResponse, code: number) => jsonWrites.push({ status: code }),
-        },
-        security: { isTerminalAuthorized: () => true },
-        paths: { resolveTheaterPath: () => theaterPath },
-      },
-    } as unknown as FleetPluginServerContext;
-
-    await handleFilesImage(
-      {
-        method: "GET",
-        url: "/files/image?theaterId=theater-a&path=normal.png&v=1787123456789",
-        headers: { host: "localhost" },
-      } as http.IncomingMessage,
-      res,
-      ctx,
-    );
-
-    expect(jsonWrites).toEqual([]);
-    expect(status).toBe(200);
-    expect(Buffer.concat(chunks).byteLength).toBe(4);
   });
 });

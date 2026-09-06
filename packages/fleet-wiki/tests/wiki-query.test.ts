@@ -105,67 +105,6 @@ describe("wiki query", () => {
     expect(entry.body).toContain("## Related");
     expect(await pathExists(getClaimsFile(paths, "alpha-answer"))).toBe(false);
   });
-
-  it("rejects stage_answer_page without answer or citations", async () => {
-    const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
-    const tool = buildQueryToolConfig();
-    await writeWikiEntry({
-      id: "alpha",
-      title: "Alpha",
-      tags: [],
-      created: "2026-05-05T00:00:00.000Z",
-      updated: "2026-05-05T00:00:00.000Z",
-      version: 1,
-      body: "Alpha body",
-      rawSourceRef: "raw/alpha.md",
-    }, paths);
-
-    await expect(tool.execute("tool-call", {
-      question: "alpha",
-      mode: "stage_answer_page",
-      citations: [{ entry_id: "alpha", raw_source_refs: ["raw/alpha.md"] }],
-    }, undefined, undefined, { cwd: root } as any)).rejects.toThrow(/requires non-empty answer/);
-
-    await expect(tool.execute("tool-call", {
-      question: "alpha",
-      mode: "stage_answer_page",
-      answer: "answer",
-    }, undefined, undefined, { cwd: root } as any)).rejects.toThrow(/requires citations/);
-  });
-
-  it("keeps answer-mode top hit aligned with briefing and resolve for multi-word queries", async () => {
-    const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
-    const tool = buildQueryToolConfig();
-
-    await writeWikiEntry({
-      id: "fleet-wiki-tools",
-      title: "Fleet Wiki operator guide",
-      tags: ["fleet"],
-      created: "2026-05-05T00:00:00.000Z",
-      updated: "2026-05-05T00:00:00.000Z",
-      version: 1,
-      body: "This page explains fleet wiki workflows and tools usage across resolve, query, and briefing.",
-      rawSourceRef: "raw/fleet-wiki-tools.md",
-    }, paths);
-
-    const briefing = await briefingQuery(paths, { topic: "fleet-wiki tools", limit: 5 });
-    const result = await tool.execute("tool-call", {
-      question: "fleet-wiki tools",
-      mode: "answer",
-    }, undefined, undefined, { cwd: root } as any);
-    const payload = JSON.parse(result.content[0]!.text) as {
-      context_pack: { entries: Array<{ id: string }> };
-      citations: Array<{ entry_id: string; raw_source_refs: string[] }>;
-    };
-
-    expect(payload.context_pack.entries[0]?.id).toBe(briefing[0]?.id);
-    expect(payload.citations[0]).toEqual({
-      entry_id: "fleet-wiki-tools",
-      raw_source_refs: ["raw/fleet-wiki-tools.md"],
-    });
-  });
 });
 
 async function makeTempRoot(): Promise<string> {

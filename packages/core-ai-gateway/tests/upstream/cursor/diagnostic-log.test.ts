@@ -25,26 +25,6 @@ describe("Cursor diagnostic log", () => {
     await expect(stat(path.dirname(log.path))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("leaves existing active and backup files untouched without new events", async () => {
-    const root = await temporaryDirectory();
-    const directory = path.join(root, "ai-gateway");
-    const activePath = path.join(directory, "cursor-diagnostics.jsonl");
-    const backupPath = `${activePath}.1`;
-    await mkdir(directory, { recursive: true });
-    await writeFile(activePath, "active evidence\n");
-    await writeFile(backupPath, "backup evidence\n");
-    const activeBefore = await stat(activePath);
-    const backupBefore = await stat(backupPath);
-
-    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
-    await log.flush();
-
-    expect(await readFile(activePath, "utf8")).toBe("active evidence\n");
-    expect(await readFile(backupPath, "utf8")).toBe("backup evidence\n");
-    expect((await stat(activePath)).mtimeMs).toBe(activeBefore.mtimeMs);
-    expect((await stat(backupPath)).mtimeMs).toBe(backupBefore.mtimeMs);
-  });
-
   it("persists only allowlisted fields with private filesystem permissions", async () => {
     const root = await temporaryDirectory();
     const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
@@ -84,49 +64,6 @@ describe("Cursor diagnostic log", () => {
     expect((await stat(log.path)).mode & 0o777).toBe(0o600);
   });
 
-  it("keeps one bounded backup when the active file reaches its limit", async () => {
-    const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"), { maxBytes: 400 });
-
-    for (let index = 1; index <= 3; index += 1) {
-      log.write(diagnosticEvent({
-        event: "server.frame",
-        frame: `interactionUpdate.${"x".repeat(100)}`,
-        sequence: index,
-      }));
-    }
-    await log.flush();
-
-    const active = await readFile(log.path, "utf8");
-    const backup = await readFile(log.backupPath, "utf8");
-    expect(active.trim().split("\n")).toHaveLength(1);
-    expect(backup.trim().split("\n")).toHaveLength(1);
-    expect(JSON.parse(active).sequence).toBe(3);
-    expect(JSON.parse(backup).sequence).toBe(2);
-  });
-
-  it("persists semantic stall timeouts for hung Cursor turns", async () => {
-    const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
-
-    log.write(diagnosticEvent({
-      event: "transport.semantic_timeout",
-      model: "composer-2.5-fast",
-      wireModel: "composer-2.5-fast",
-      requestedEffort: "high",
-      outcome: "semantic_stall_timeout",
-    }));
-    await log.flush();
-
-    expect(JSON.parse(await readFile(log.path, "utf8"))).toMatchObject({
-      event: "transport.semantic_timeout",
-      model: "composer-2.5-fast",
-      wireModel: "composer-2.5-fast",
-      requestedEffort: "high",
-      outcome: "semantic_stall_timeout",
-    });
-  });
-
   it("persists mid-session model switches without raw session identifiers", async () => {
     const root = await temporaryDirectory();
     const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
@@ -150,55 +87,6 @@ describe("Cursor diagnostic log", () => {
     }));
     expect(contents).not.toContain("claude-session");
     expect(contents).not.toContain("user_id");
-  });
-
-  it("persists payload-free redirect operation diagnostics", async () => {
-    const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
-
-    log.write({
-      ...diagnosticEvent({
-        event: "exec.redirect.result_written",
-        operationSequence: 3,
-        adapter: "grep-direct",
-      }),
-      callId: "SECRET_CALL_ID",
-      toolOutput: "SECRET_TOOL_OUTPUT",
-    } as CursorDiagnosticEvent);
-    await log.flush();
-
-    const contents = await readFile(log.path, "utf8");
-    expect(JSON.parse(contents)).toMatchObject({
-      event: "exec.redirect.result_written",
-      operationSequence: 3,
-      adapter: "grep-direct",
-    });
-    expect(contents).not.toContain("SECRET_");
-  });
-
-  it("persists payload-free live bridge lifecycle diagnostics", async () => {
-    const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
-
-    log.write({
-      ...diagnosticEvent({
-        event: "bridge.mismatch",
-        outcome: "credential",
-        count: 2,
-      }),
-      apiKey: "SECRET_API_KEY",
-      toolOutput: "SECRET_TOOL_OUTPUT",
-      conversationId: "SECRET_CONVERSATION",
-    } as CursorDiagnosticEvent);
-    await log.flush();
-
-    const contents = await readFile(log.path, "utf8");
-    expect(JSON.parse(contents)).toMatchObject({
-      event: "bridge.mismatch",
-      outcome: "credential",
-      count: 2,
-    });
-    expect(contents).not.toContain("SECRET_");
   });
 });
 

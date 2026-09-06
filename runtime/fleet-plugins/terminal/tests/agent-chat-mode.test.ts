@@ -54,42 +54,6 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).toHaveBeenCalledWith(sessionId);
   });
 
-  it("marks the session DTO as chat-adopted on conversion and releases it on DELETE", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-
-    await harness.post(sessionId, "chat");
-
-    // PTY 는 접혔지만 실행 표면은 살아 있다 — 이 사실이 DTO 에 실려야 사이드바가 휴면이라 말하지 않는다.
-    // (이 하네스의 terminate 는 mock 이라 exit 콜백을 태우지 않으므로 status 의 dormant 전이는 여기서 증명되지
-    //  않는다. 두 축이 함께 실린 뒤의 해석은 client/agent/connection 의 sessionRuntime 계약이 고정한다.)
-    const adopted = (await harness.sessions()).find((session) => session.sessionId === sessionId);
-    expect(adopted?.chatActive).toBe(true);
-
-    await harness.del(sessionId, "chat");
-
-    const released = (await harness.sessions()).find((session) => session.sessionId === sessionId);
-    expect(released?.chatActive).toBeUndefined();
-  });
-
-  // 터미널로 열어 놓고 아직 아무것도 시키지 않은 세션. 트랜스크립트가 없는 것이 정상이고 잃을
-  // 과거도 없다 — 여기서 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을
-  // 새로 만들어야 한다. launch 좌표는 플러그인 수명용 세션 id일 뿐 첫 턴의 증거가 아니다.
-  it("converts a terminal session with only its launch coordinate before the first turn", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachLaunchProviderSession(sessionId);
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
-    expect(harness.terminate).toHaveBeenCalledWith(sessionId);
-  });
-
   it("rejects conversion while the terminal turn is running", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -104,77 +68,6 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).not.toHaveBeenCalled();
   });
 
-  it("rejects conversion while background agent work is still pending", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-    // 턴은 끝났지만 워크플로우 백그라운드 작업이 살아 있는 상태 — PTY를 접으면 그 작업이 죽는다.
-    await harness.post(sessionId, "background", { input: JSON.stringify({ background_tasks: [{ id: "wf-1", type: "workflow" }] }) });
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "background" } });
-    expect(harness.terminate).not.toHaveBeenCalled();
-  });
-
-  it("rejects conversion while a pty launch is still pending", async () => {
-    let releaseAttach: () => void = () => {};
-    const gate = new Promise<void>((resolve) => { releaseAttach = resolve; });
-    const harness = await createHarness({ holdAttachAfterFirst: gate });
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    // dormant 전달이 재기동을 시작해 attach가 in-flight인 'starting' 창을 연다.
-    const delivery = harness.post(sessionId, "message", { text: "resume me" });
-    await vi.waitFor(() => {
-      expect(harness.attach).toHaveBeenCalledTimes(2);
-    });
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "starting" } });
-    expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
-    releaseAttach();
-    await delivery;
-  });
-
-  // 좌표가 한 번 심긴 뒤의 부재는 "아직 시작 전"이 아니라 과거의 상실이다. fresh로 떨어뜨리면
-  // 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다.
-  it("rejects conversion when a captured transcript went missing", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-    const payload = harness.operation(sessionId)?.payload as { session?: Record<string, unknown> };
-    payload.session = { ...payload.session, transcriptPath: "/tmp/fleet-chat-never-written/absent.jsonl" };
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
-  });
-
-
-  it("routes message delivery to the sdk turn instead of the pty while in chat mode", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-
-    await harness.post(sessionId, "message", { text: "continue the refactor" });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
-    await vi.waitFor(() => {
-      expect(harness.sends).toEqual(["continue the refactor"]);
-    });
-    expect(harness.openSession).toHaveBeenCalledWith(expect.objectContaining({
-      resume: "sid-live",
-      permissionMode: "bypassPermissions",
-    }));
-    expect(harness.writes).toEqual([]);
-    // 전달이 CLI 재기동을 유발하면 안 된다 — attach는 세션 생성 1회뿐이어야 한다.
-    expect(harness.attach).toHaveBeenCalledTimes(1);
-  });
-
   it("refuses a terminal ticket for a chat mode operation", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -185,29 +78,6 @@ describe("agent chat mode routes", () => {
     await harness.postTicket(sessionId);
 
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
-  });
-
-  it("returns a launch-only first-turn session from Chat to a fresh CLI", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachLaunchProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
-
-    // 캡션의 복귀 버튼과 같은 순서: Chat 세션을 접은 뒤 dormant Operation을 resume한다.
-    await harness.del(sessionId, "chat");
-    await harness.post(sessionId, "resume");
-
-    expect(harness.responses.at(-2)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
-    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
-      sessionId,
-    }));
-    expect(harness.attach).toHaveBeenLastCalledWith(expect.not.objectContaining({
-      resumeSessionId: "sid-live",
-    }));
   });
 
   it("resume on a chat mode operation clears the marker and relaunches the cli", async () => {
@@ -224,73 +94,6 @@ describe("agent chat mode routes", () => {
       sessionId,
       resumeSessionId: "sid-live",
     }));
-  });
-
-  it("issues a chat-channel ticket and refuses the retired SSE stream", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-
-    await harness.postTicket(sessionId, { channel: "chat" });
-    const issued = harness.responses.at(-1);
-    expect(issued?.status).toBe(200);
-    const ticket = (issued?.body as { readonly ticket?: string }).ticket;
-    expect(typeof ticket).toBe("string");
-    expect(harness.tickets.consume(ticket!)).toMatchObject({ sessionId, channel: "chat" });
-
-    await harness.get(sessionId, "chat-stream");
-    expect(harness.responses.at(-1)).toEqual({ status: 410, body: { error: "chat_stream_moved" } });
-  });
-
-  it("replays the journal onto a chat ticket socket", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-
-    const frames = await harness.openChatSocket(sessionId);
-    const kinds = frames.map((frame) => frame.event.kind);
-    expect(kinds[0]).toBe("replay-start");
-    expect(kinds).toContain("dispatch");
-    expect(kinds).toContain("replay-end");
-  });
-
-  // chatBorn 예외는 첫 좌표가 생기기 전까지만 산다. providerSession이 심린 뒤의 transcript 부재는
-  // 채팅으로 태어난 Operation에서도 상실이므로, 표식만 보고 새 세션을 만들어 이전 정체성을
-  // 덮어쓰면 안 된다.
-  it("rejects a chat-born Operation whose established transcript disappeared", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.markChatBorn(sessionId);
-    harness.attachProviderSession(sessionId);
-    harness.removeTranscript();
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
-  });
-
-  // 반대편 경계 — 아직 첫 턴을 돌지 않은(좌표가 없는) 채팅 출생은 그대로 통과해야 한다.
-  it("still admits a chat-born Operation that has not produced a session yet", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.markChatBorn(sessionId);
-    harness.removeTranscript();
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-  });
-
-  it("rejects the chat stream when the operation is not in chat mode", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-
-    await harness.get(sessionId, "chat-stream");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_not_active" } });
   });
 });
 

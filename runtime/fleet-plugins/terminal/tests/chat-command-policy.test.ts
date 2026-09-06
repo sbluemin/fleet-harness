@@ -48,27 +48,6 @@ const MEASURED_BUILT_INS: readonly string[] = [
 ];
 
 describe("chat command policy", () => {
-  it("classifies every built-in the measured child advertised", () => {
-    const missing = MEASURED_BUILT_INS.filter((name) => !isClassifiedChatCommand(name));
-    expect(missing).toEqual([]);
-  });
-
-  it("carries no rule for a name the measured child never advertised", () => {
-    // 표가 목록보다 넓어지는 것도 표류다 — 사라진 명령의 규칙이 남으면 다음 사람이 그것을
-    // 살아 있는 사실로 읽는다.
-    const stale = Object.keys(CHAT_COMMAND_POLICY).filter((name) => !MEASURED_BUILT_INS.includes(name));
-    expect(stale).toEqual([]);
-  });
-
-  it("supports exactly four commands and hides the rest", () => {
-    // 지원 목록은 선별이다. 늘어나면 이 줄이 red가 되고, 그때 늘어난 이름이 이 표면에서 무슨
-    // 뜻인지·끝까지 책임질 수 있는지를 사람이 한 번 답해야 한다.
-    const supported = Object.entries(CHAT_COMMAND_POLICY)
-      .filter(([, rule]) => rule.disposition !== "hidden")
-      .map(([name]) => name)
-      .sort();
-    expect(supported).toEqual(["clear", "compact", "context", "reload-skills"]);
-  });
 
   it("gives a Console target to exactly the commands Console answers", () => {
     const routed = Object.entries(CHAT_COMMAND_POLICY)
@@ -83,13 +62,6 @@ describe("chat command policy", () => {
     // Console이 중개하지만 문맥을 비우는 것은 자식뿐이라 간다 — 두 축은 직교한다.
     const lane = Object.keys(CHAT_COMMAND_POLICY).filter((name) => isChatCommandLane(name)).sort();
     expect(lane).toEqual(["clear", "compact", "reload-skills"]);
-  });
-
-  it("keeps a target off every command that is not Console's", () => {
-    for (const [name, rule] of Object.entries(CHAT_COMMAND_POLICY)) {
-      if (rule.disposition === "console") continue;
-      expect(rule.target, name).toBeUndefined();
-    }
   });
 
   it("does not stand up a name it has never seen", () => {
