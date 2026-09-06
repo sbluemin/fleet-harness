@@ -1490,34 +1490,21 @@ describe("Instrument core design contract", () => {
     }
   });
 
-  it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {
+  it("pins the AI Gateway provider-priority grammar — ink rank only, no signal colour, no brass", () => {
     // 소진 순서는 상태가 아니라 사용자 선호다. 신호색이나 brass를 빌리는 순간 같은 카드의
     // 상태·위치 채널과 충돌해 순위가 활동처럼 읽힌다 — 등급 배지와 같은 잉크 문법을 강제한다.
+    // 순위는 프로바이더 카드의 셀렉트로 정하고, 로스터 줄의 순번 배지·가장자리 선으로만 되비친다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
-    const toggleRules = [...css.matchAll(/([^{}]*\.ai-gateway-priority[^{}]*)\{([^}]*)\}/g)];
-    expect(toggleRules.length).toBeGreaterThan(0);
-    for (const [, , body] of toggleRules) {
+    const priorityRules = [...css.matchAll(/([^{}]*\.ai-gateway-priority[^{}]*)\{([^}]*)\}/g)];
+    expect(priorityRules.length).toBeGreaterThan(0);
+    for (const [, , body] of priorityRules) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
     }
-    const ranked = css.match(/\.ai-gateway-priority-toggle\.is-ranked \{[^}]*\}/)?.[0] ?? "";
-    expect(ranked).toContain("border-color: var(--surface-rim-strong);");
-    expect(ranked).toContain("color: var(--text-primary);");
-
-    // 말풍선은 hover와 키보드 포커스 양쪽에서 열려야 한다 — 포인터만 여는 요약은 키보드
-    // 사용자에게는 존재하지 않는 설명이 된다.
-    const tip = css.match(/\.ai-gateway-priority-tip \{[^}]*\}/)?.[0] ?? "";
-    expect(tip).toContain("visibility: hidden;");
-    expect(tip).toContain("pointer-events: none;");
-    expect(css).toContain(".ai-gateway-priority-toggle:hover + .ai-gateway-priority-tip,");
-    expect(css).toContain(".ai-gateway-priority-toggle:focus-visible + .ai-gateway-priority-tip {");
-
-    // 말풍선의 기준 상자는 토글이 아니라 헤드 행이고 상한은 그 폭이다 — 토글 기준으로 두면
-    // 시작점이 행 중간이라 어떤 상한을 줘도 좁은 화면에서 오른쪽으로 넘친다.
-    expect(tip).toContain("max-width: 100%;");
-    const head = css.match(/\.ai-gateway-provider-head \{[^}]*\}/)?.[0] ?? "";
-    expect(head).toContain("position: relative;");
-    // 좁아지면 부제부터 접혀야 글리프·이름·토글이 잘리지 않는다.
-    expect(head).toContain("flex-wrap: wrap;");
+    const rank = css.match(/\.ai-gateway-priority-rank \{[^}]*\}/)?.[0] ?? "";
+    expect(rank).toContain("border: 1px solid var(--surface-rim-strong);");
+    expect(rank).toContain("color: var(--text-primary);");
+    const edge = css.match(/\.ai-gateway-model-row\.is-ranked::before \{[^}]*\}/)?.[0] ?? "";
+    expect(edge).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
   });
 
   it("pins the AI Gateway effort badge grammar — chip shell, segmented selection, no disclosure", () => {
