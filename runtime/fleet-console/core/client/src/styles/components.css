@@ -5277,7 +5277,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   gap: var(--space-1);
 }
 
-/* Theater 묶음의 머리 — 목록 헤더와 같은 이니셜 타일이 선다. 활성 Theater는 brass 링(위치 채널). */
+/* Theater 묶음의 머리 — 목록 헤더와 같은 이니셜 배지 채움으로 활성 위치를 표시한다. */
 .side-bar-rail-theater {
   display: grid;
   place-items: center;
@@ -5293,10 +5293,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-rail-theater:hover {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
-}
-
-.side-bar-rail-section--theater.is-active .side-bar-rail-theater {
-  border-color: var(--brass);
 }
 
 .side-bar-rail-theater:focus-visible {
@@ -5692,7 +5688,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
    서로 다른 거리에서 말한다. 채움 위 글자는 brass 전용 텍스트 티어를 쓴다 — 라이트에서
    자기 채움 위 AA를 보장하는 유일한 값이다. 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지
    않는다. */
-.side-bar-theater-header.is-active .side-bar-theater-anchor {
+.side-bar-theater-header.is-active .side-bar-theater-anchor,
+.side-bar-rail-section--theater.is-active .side-bar-theater-anchor {
   background: var(--brass);
   color: var(--text-on-brass);
 }
