@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+
 import type { GlobalSettingsState } from "../core/client/src/types.js";
 
 const deferred = new Map<string, { resolve: (value: unknown) => void; reject: (reason: unknown) => void }>();
@@ -23,6 +25,7 @@ const BASE: GlobalSettingsState = {
   unfocusedPanelFade: 50,
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
+  experiments: DEFAULT_EXPERIMENT_SETTINGS,
 };
 
 /**

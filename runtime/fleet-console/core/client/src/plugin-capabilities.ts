@@ -1,8 +1,11 @@
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 
+import { collectExperimentModelOptions } from "./experiment-model-options.js";
+import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { applySearchParams, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-marks.js";
 import { subscribeConsoleChannel } from "./operations-sse.js";
 import { openRailPanel } from "./rail/rail-store.js";
@@ -16,6 +19,14 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       emit: (notification) => raiseOperationNotification(notification),
       dismiss: (operationId) => dismissNotificationsForOperation(operationId),
     },
+    // 실험 설정은 코어 general 설정의 한 항목이다 — 플러그인은 스토어 스냅샷에서 읽고 같은 구독으로 깨어난다.
+    experiments: {
+      read: () => getGlobalSettingsStoreState().state?.experiments ?? null,
+      subscribe: (listener) => subscribeGlobalSettings(listener),
+      update: (next) => setGlobalSettingsField("experiments", next),
+      saving: () => isSavingGlobalSettingsField("experiments"),
+      modelOptions: () => collectExperimentModelOptions(),
+    },
     runtime: {
       set: (operationId, runtimeState) => setOperationRuntime(operationId, runtimeState),
       clear: (operationId) => clearOperationRuntime(operationId),
@@ -27,6 +38,16 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     consoleState: {
       getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label })),
+      getOperations: () => {
+        const snapshot = getState();
+        return snapshot.operations.map((operation) => ({
+          id: operation.id,
+          theaterId: operation.theaterId,
+          type: operation.type,
+          title: operation.title,
+          activity: resolveOperationActivity(operation, snapshot.operationRuntime),
+        }));
+      },
       getActiveTheaterId: () => getState().activeTheaterId,
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),

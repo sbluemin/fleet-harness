@@ -1,3 +1,4 @@
+import { resolveExperimentSettings } from "@fleet-console/sdk/settings/browser";
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
 import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, REMOTE_PORT_MAX, REMOTE_PORT_MIN, isValidRemoteAccessAcknowledgment, isValidRemoteAccessId, isValidRemoteAccessPort, isValidRemoteAccessState, isValidRemoteFingerprint, isValidRemoteTimestamp, type ConsoleLanguagePreference, type GlobalSettingsMutationResult, type GlobalSettingsState, type RemoteAccessClass, type RemoteAccessInterface, type RemoteAccessLink, type RemoteAccessLinkSummary, type RemoteAccessPairedDevice, type RemoteAccessStatus } from "./types.js";
@@ -165,6 +166,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     unfocusedPanelFade: isUnfocusedPanelFade(payload.unfocusedPanelFade) ? payload.unfocusedPanelFade : 50,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,
+    // 구서버 응답에는 없다 — 옵트인의 기본은 꺼짐이므로 부재를 기본값으로 정규화한다.
+    experiments: resolveExperimentSettings(payload.experiments),
   };
 }
 

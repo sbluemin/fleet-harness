@@ -660,6 +660,9 @@ importers:
       '@dotobokuri/core-ai-gateway':
         specifier: workspace:*
         version: link:../../../packages/core-ai-gateway
+      '@dotobokuri/fleet-wiki':
+        specifier: workspace:*
+        version: link:../../../packages/fleet-wiki
       '@fleet-console/markdown':
         specifier: workspace:*
         version: link:../../fleet-console/markdown
@@ -669,6 +672,9 @@ importers:
       react:
         specifier: ^19.2.3
         version: 19.2.7
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

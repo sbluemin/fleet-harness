@@ -5,6 +5,7 @@ import { AnswerBubble } from "./answer-bubble.js";
 import { ArrivalBubble } from "./arrival-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
+import { readConsoleSnapshot } from "./console-read.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { DepartureBubble } from "./departure-bubble.js";
 import { connectScuttlebuttMentions } from "./mention-bridge.js";
@@ -83,6 +84,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     admiral,
     fetch: (path, init) => pluginApi.fetch(path, init),
     locale: () => localeRef.current,
+    console: readConsoleSnapshot,
   })), [pluginApi]);
   React.useEffect(() => () => {
     for (const session of sessions) session.close();

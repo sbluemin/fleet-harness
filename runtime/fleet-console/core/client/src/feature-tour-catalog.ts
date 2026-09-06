@@ -67,6 +67,34 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     ],
   },
   {
+    id: "quick-launch-suggest",
+    // 실험 "런치 제안"의 버튼은 설정에서 켜고 프롬프트를 쓴 뒤에만 서므로 존재가 곧 판정이다.
+    // 컴포저의 다른 투어와 같은 마운트에서 연달아 뜨지 않게 한 박자 미룬다.
+    spotlight: null,
+    deferAfterAnotherTour: true,
+    walkthrough: [
+      {
+        anchor: ".quick-launch-suggest-trigger",
+        titleKey: "featureTour.quickLaunchSuggest.step1Title",
+        bodyKey: "featureTour.quickLaunchSuggest.step1Body",
+      },
+    ],
+  },
+  {
+    id: "session-watch",
+    // 실험 "세션 관찰"의 눈 버튼은 설정에서 켠 뒤 Agent Operation 캡션에만 서므로 존재가 곧 판정이다.
+    // 버튼은 의미 속성(data-caption-action)으로 짚는다 — 캡션 안의 순서가 바뀌어도 앵커가 살아남는다.
+    spotlight: null,
+    deferAfterAnotherTour: true,
+    walkthrough: [
+      {
+        anchor: '[data-caption-action="session-watch"]',
+        titleKey: "featureTour.sessionWatch.step1Title",
+        bodyKey: "featureTour.sessionWatch.step1Body",
+      },
+    ],
+  },
+  {
     id: "war-room",
     // 활성화 앵커(첫 non-null 앵커)는 두 조건을 동시에 만족해야 한다: War Room에서 항상 있을 것,
     // 그리고 War Room에서만 있을 것. 무대는 대기 건이, 덱은 살아 있는 Operation이 있어야 서고,

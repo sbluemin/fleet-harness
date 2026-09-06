@@ -10,7 +10,52 @@ import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatal
 import type { RailEntryDescriptor, RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
-import type { SettingsSectionDescriptor } from "../settings/types.js";
+import type { ConsoleExperimentSettings, ExperimentModelOption, SettingsSectionDescriptor } from "../settings/types.js";
+
+/**
+ * 실험 기능 "프롬프트 다듬기"의 입력. 코어는 프롬프트와 Theater 이름만 넘긴다 — transcript나
+ * 경로는 이 계약에 없다. 어느 플러그인이 고쳐 쓰는지는 코어가 모르며, 런치 종류의 소유자가 답한다.
+ */
+export interface PromptRefineInput {
+  readonly prompt: string;
+  readonly theaterLabel: string | null;
+  readonly language: ConsoleLocale;
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * 고쳐 쓴 초안. 코어는 사용자가 적용하기 전까지 입력창을 바꾸지 않는다. `notes`는 초안이 무엇을
+ * 보탰거나 확인이 필요한지 짧게 적은 줄들이다.
+ */
+export interface PromptRefinement {
+  readonly prompt: string;
+  readonly notes: readonly string[];
+}
+
+/** 실험 기능 "런치 컨텍스트 팩"의 후보 한 줄. `text`가 프롬프트 뒤에 붙는 본문이다. */
+export interface LaunchContextCandidate {
+  readonly id: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly detail?: string;
+  readonly text: string;
+}
+
+export interface LaunchContextInput {
+  readonly prompt: string;
+  readonly theaterId: string;
+  readonly language: ConsoleLocale;
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * 런치 직전 후보를 내놓는 공급자. 코어는 Wiki도 git도 모르므로 그것을 아는 플러그인이 등록한다.
+ * 모델을 부르지 않는 조회여야 한다 — 이 표면의 비용 약속은 "검색만"이다.
+ */
+export interface LaunchContextProvider {
+  readonly id: string;
+  readonly collect: (input: LaunchContextInput) => Promise<readonly LaunchContextCandidate[]>;
+}
 
 export interface LaunchContext {
   readonly theaterId: string;
@@ -162,6 +207,18 @@ export interface FleetClientPlugin {
   /** Best-effort discard of an uploaded-but-unsent attachment (composer chip removal). */
   readonly discardLaunchAttachment?: (id: string) => Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
+  /**
+   * 실험 기능 "프롬프트 다듬기". 코어가 켜져 있을 때만 부르고, 답이 늦거나 없으면 조용히 수동
+   * 흐름으로 남는다. 런치 종류의 소유자만 선언한다.
+   */
+  readonly refinePrompt?: (input: PromptRefineInput) => Promise<PromptRefinement | null>;
+  /** 실험 기능 "런치 컨텍스트 팩"의 공급자들. */
+  readonly launchContextProviders?: readonly LaunchContextProvider[];
+  /**
+   * 모델 좌석 선택지에 보태는 모델들. 코어는 Claude 별칭만 알고, Gateway에서 켠 모델은 그것을
+   * 아는 플러그인이 내놓는다.
+   */
+  readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
 }
 
 export interface PluginInstallContext {
@@ -180,6 +237,26 @@ export interface PluginInstallContext {
   readonly navigation: ClientNavigationCapability;
   readonly rail: ClientRailCapability;
   readonly consoleEvents: ClientConsoleEventsCapability;
+  readonly experiments: ClientExperimentsCapability;
+}
+
+/**
+ * 실험 기능 설정의 읽기. 설정 자체는 코어 general 설정이고 소유자도 코어다 — 플러그인은 무엇이
+ * 켜져 있고 어느 좌석에 무엇이 앉았는지만 읽는다. 아직 읽히지 않았으면 null이며, 그때는 전부
+ * 꺼진 것으로 다뤄야 한다(옵트인의 기본은 꺼짐).
+ */
+export interface ClientExperimentsCapability {
+  read(): ConsoleExperimentSettings | null;
+  subscribe(listener: () => void): () => void;
+  /** 설정 저장 — 코어의 general 설정 한 필드를 통째로 바꾼다. 플러그인은 자기 행만 고쳐 넘긴다. */
+  update(next: ConsoleExperimentSettings): Promise<boolean>;
+  /**
+   * 코어가 experiments 필드를 지금 저장 중인지. 같은 필드의 겹친 저장은 코어가 거절하므로(false),
+   * 플러그인 행은 이 동안 자기 컨트롤을 잠가 눌린 값이 조용히 버려지는 일을 막는다.
+   */
+  saving(): boolean;
+  /** 모델 선택지 — Claude 별칭 + 등록된 플러그인이 내놓는 Gateway 모델. 플러그인 카드가 자기 행의 선택기에 쓴다. */
+  modelOptions(): Promise<readonly ExperimentModelOption[]>;
 }
 
 /**
@@ -277,6 +354,11 @@ export interface ClientOperationsCapability {
  */
 export interface ClientConsoleStateCapability {
   getTheaters(): readonly ConsoleTheaterSummary[];
+  /**
+   * Operation 목록의 브라우저 DTO 몫 — 제목·Theater·종류·활동. 활동은 코어가 런타임 축에서 읽는
+   * 값이며, 어느 플러그인이 그 축의 권위인지는 플러그인이 알 필요가 없다. transcript·경로는 없다.
+   */
+  getOperations(): readonly ConsoleOperationSummary[];
   getActiveTheaterId(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
@@ -285,6 +367,14 @@ export interface ClientConsoleStateCapability {
 export interface ConsoleTheaterSummary {
   readonly id: string;
   readonly label: string;
+}
+
+export interface ConsoleOperationSummary {
+  readonly id: string;
+  readonly theaterId: string;
+  readonly type: string;
+  readonly title: string;
+  readonly activity: "idle" | "running" | "awaiting" | "background" | "ended";
 }
 
 /**
@@ -516,6 +606,16 @@ export interface FleetPluginHostCapabilities {
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
   readonly theaterFlags: FleetPluginTheaterFlagsHost;
+  /**
+   * 실험 설정 읽기. 이 능력이 없는 호스트(구버전·테스트 스텁)에서는 전부 꺼진 것으로 읽어야 한다 —
+   * 옵트인의 부재는 꺼짐이다.
+   */
+  readonly experiments?: FleetPluginExperimentsHost;
+}
+
+/** 서버 쪽 실험 설정 읽기 — 저장값을 매번 읽으므로 설정을 바꾼 직후의 요청부터 새 값을 본다. */
+export interface FleetPluginExperimentsHost {
+  read(): ConsoleExperimentSettings;
 }
 
 export interface FleetPluginServerHost {

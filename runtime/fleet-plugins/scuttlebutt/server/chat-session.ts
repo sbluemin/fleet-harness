@@ -3,6 +3,7 @@ import {
   createClaudeGatewaySdk,
   type ClaudeExecutionEvent,
   type ClaudeExecutionLoop,
+  type ClaudeGatewayMcpServer,
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
 
@@ -164,6 +165,15 @@ export interface ChatSessionOptions {
   readonly baseUrl: string;
   readonly onEvent?: (event: ChatEvent) => void;
   /**
+   * 실험 "부관의 Console 읽기". 켜져 있을 때만 실린다 — 모델은 부관의 기본 모델 그대로이고, 읽기 도구가
+   * 웹 검색 옆에 선다. 없으면 오늘과 완전히 같은 부관이다.
+   */
+  readonly consoleRead?: {
+    readonly server: ClaudeGatewayMcpServer;
+    readonly allowedTools: readonly string[];
+    readonly promptAddendum: string;
+  };
+  /**
    * 테스트 seam. 세션이 조립한 생성 인자를 그대로 받는다 — 인자 없이 받으면 조립 자체가 검증
    * 밖으로 나가고, 잘못된 baseUrl을 넘겨도 테스트가 통과한다.
    */
@@ -186,18 +196,26 @@ export class ChatSession implements ChatSessionLike {
   constructor(options: ChatSessionOptions) {
     this.options = { ...options };
     const redact = (value: string) => redactScratchPath(value, this.options.cwd);
+    const consoleRead = this.options.consoleRead;
+    const model = SCUTTLEBUTT_AGENT.model;
     this.loop = createClaudeExecutionLoop({
       createSdk: () => {
-        const create = { baseUrl: this.options.baseUrl, models: [SCUTTLEBUTT_AGENT.model] };
+        const create = { baseUrl: this.options.baseUrl, models: [model] };
         return this.options.createSdk?.(create) ?? createClaudeGatewaySdk(create);
       },
       buildTurn: () => ({
-        model: SCUTTLEBUTT_AGENT.model,
+        model,
         effort: SCUTTLEBUTT_AGENT.effort,
-        systemPrompt: { mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS[this.options.admiral] },
+        systemPrompt: {
+          mode: "replace",
+          text: consoleRead
+            ? `${ADMIRAL_SYSTEM_PROMPTS[this.options.admiral]}\n\n${consoleRead.promptAddendum}`
+            : ADMIRAL_SYSTEM_PROMPTS[this.options.admiral],
+        },
         cwd: this.options.cwd,
         tools: [...PET_TOOLS],
-        allowedTools: [...PET_TOOLS],
+        allowedTools: [...PET_TOOLS, ...(consoleRead?.allowedTools ?? [])],
+        ...(consoleRead ? { mcpServers: { console: consoleRead.server } } : {}),
         permissionMode: "dontAsk",
         // 텍스트를 흘려 보내려면 부분 메시지가 필요하다. SSE `chunk` 계약이 그것으로 만들어진다.
         includePartialMessages: true,

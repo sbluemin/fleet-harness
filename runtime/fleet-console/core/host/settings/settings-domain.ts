@@ -10,6 +10,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId, resolveExperimentSettings, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../paths.js";
 
@@ -72,6 +73,11 @@ export interface ConsoleGeneralSettings {
    */
   readonly unfocusedPanelFade?: number;
   readonly uiFont?: UiFontSettings;
+  /**
+   * 실험 기능과 모델 좌석. 부재는 전부 꺼짐이다 — 켜는 행위가 곧 동의이므로 기본값이 켜짐일 수 없다.
+   * 형태와 정제기는 SDK가 소유한다(플러그인 서버·브라우저가 같은 규칙으로 읽는다).
+   */
+  readonly experiments?: ConsoleExperimentSettings;
 }
 
 /** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
@@ -270,6 +276,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
+  const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -280,6 +287,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(liquidGlass !== undefined ? { liquidGlass } : {}),
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
+    ...(experiments !== undefined ? { experiments } : {}),
   };
 }
 
@@ -417,6 +425,7 @@ interface GlobalSettingsBody {
   readonly liquidGlass?: unknown;
   readonly unfocusedPanelFade?: unknown;
   readonly uiFont?: unknown;
+  readonly experiments?: unknown;
 }
 
 const GLOBAL_SETTINGS_MIN_STATIC_PORT = 1024;
@@ -527,6 +536,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
   }
+  if (body.experiments !== undefined && !isExperimentSettingsInput(body.experiments)) {
+    deps.writeJson(res, 400, { error: "invalid_experiments" });
+    return;
+  }
   const theme = body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon"
     || body.theme === "whites"
     ? body.theme
@@ -548,6 +561,7 @@ async function mutateGlobalSettings(
       ...(typeof body.liquidGlass === "boolean" ? { liquidGlass: body.liquidGlass } : {}),
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
+      ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
     },
     plugins: current.plugins,
   }));
@@ -615,7 +629,29 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     liquidGlass: general.liquidGlass ?? true,
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
+    experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
   };
+}
+
+/** 저장된 실험 설정 — 플러그인 호스트 능력이 매 요청마다 읽는다. */
+export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsData>): ConsoleExperimentSettings {
+  return store.load().general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS;
+}
+
+/**
+ * 쓰기는 읽기보다 엄격하다. 정제기는 알 수 없는 값을 기본값으로 접지만, 요청이 잘못된 모델 id를
+ * 실어 보냈다면 그것은 400이지 조용한 기본값 대체가 아니다 — 화면이 저장됐다고 믿는 값과 저장된
+ * 값이 갈라지면 안 된다.
+ */
+function isExperimentSettingsInput(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  for (const key of ["promptRefine", "launchContextPack", "sessionWatch", "aideConsoleRead"]) {
+    if (key in value && typeof value[key] !== "boolean") return false;
+  }
+  for (const key of ["promptRefineModel", "sessionWatchModel"]) {
+    if (key in value && !isExperimentModelId(value[key])) return false;
+  }
+  return true;
 }
 
 function isGlobalSettingsJsonRequest(req: http.IncomingMessage): boolean {

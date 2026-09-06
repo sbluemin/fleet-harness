@@ -55,6 +55,8 @@ interface AgentRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
+  readonly onTurnEnded?: (operationId: string) => void;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -1511,6 +1513,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
+        // 채팅 턴의 끝은 Stop hook 대신 세션이 직접 알린다 — 세션 관찰이 두 얼굴 모두에서 돈다.
+        onTurnEnded: () => deps.onTurnEnded?.(node.id),
         reportActivity: (working) => {
           const updated = observability.setTerminalSessionChatWorking(node.id, working);
           // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
@@ -1558,7 +1562,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       : observability.setTerminalSessionBackgroundPending(sessionId, report.pending, report.settledAgentIds) ?? updated;
     observability.notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
-    if (turnState === "ended") scheduleIdentityRefresh(sessionId);
+    if (turnState === "ended") {
+      scheduleIdentityRefresh(sessionId);
+      deps.onTurnEnded?.(sessionId);
+    }
     return true;
   }
 

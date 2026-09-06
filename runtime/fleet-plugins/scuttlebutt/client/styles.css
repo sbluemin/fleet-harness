@@ -1,7 +1,43 @@
+/* 출근 중인 부관 — 복수 선택 알약 한 줄. 켜진 알약은 위치 채널(brass)로 서고, 상태색은 쓰지 않는다. */
 .scuttlebutt-settings-roster {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  justify-items: start;
+}
+
+.scuttlebutt-roster-pick {
+  padding: 3px 11px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-roster-pick:hover:not(:disabled):not([aria-pressed="true"]) {
+  color: var(--text-primary);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.scuttlebutt-roster-pick[aria-pressed="true"] {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: var(--brass-glow);
+}
+
+.scuttlebutt-roster-pick:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-roster-pick:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .scuttlebutt-settings-sizes {

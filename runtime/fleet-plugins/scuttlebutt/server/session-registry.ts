@@ -52,6 +52,11 @@ export class SessionRegistry {
     }
   }
 
+  /** 살아 있는 세션 id — 세션 밖의 부속 상태(Console 스냅샷)를 이 목록으로 걷는다. */
+  liveIds(): readonly string[] {
+    return [...this.entries.keys()];
+  }
+
   async message(chatId: string, text: string): Promise<"accepted" | "not_found" | "busy"> {
     const entry = this.entries.get(chatId);
     if (!entry || entry.status === "stopped") return "not_found";

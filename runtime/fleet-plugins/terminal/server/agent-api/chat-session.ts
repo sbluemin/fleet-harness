@@ -130,6 +130,12 @@ export interface AgentChatSessionSeed {
    */
   readonly reportActivity: (working: boolean) => boolean;
   /**
+   * 자식에 닿았던 턴이 닫힐 때 한 번 불린다. PTY 런치는 Stop hook이 같은 사실을 HTTP로 알리지만
+   * 채팅 자식은 세션 식별자를 물려받지 않아 그 hook이 여기에 닿지 않는다 — 턴 뒤에 도는 것들
+   * (세션 관찰)은 이 자리로 같은 신호를 받는다.
+   */
+  readonly onTurnEnded?: () => void;
+  /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
    * 두 번째 메시지가 조기 턴 종료 신호를 만든다.
@@ -1923,6 +1929,7 @@ class AgentChatSession {
   private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
+    const reachedChild = this.turnReachedChild;
     this.turnReachedChild = false;
     this.push({
       kind: "turn-end",
@@ -1950,6 +1957,8 @@ class AgentChatSession {
     // 이 답은 30초쯤 뒤에 도착해 카테고리를 정정한다(실측). 세션이 없으면 물어볼 상대도 없다.
     const session = this.session;
     if (session) this.requestContextSnapshot(session, "end");
+    // 자식이 실제로 돈 턴만 알린다 — 자식에 닿기 전에 닫힌 턴은 transcript에 아무것도 더하지 않았다.
+    if (reachedChild && end.stopped !== true) this.seed.onTurnEnded?.();
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */

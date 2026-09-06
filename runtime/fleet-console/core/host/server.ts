@@ -23,7 +23,7 @@ import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyD
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
 import { backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
-import { createGlobalSettingsRouter } from "./settings/settings-domain.js";
+import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -650,6 +650,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           if (pluginTheaterFlags.get(flag) === resolve) pluginTheaterFlags.delete(flag);
         };
       },
+    },
+    experiments: {
+      read: () => readExperimentSettings(consoleSettingsStore),
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),

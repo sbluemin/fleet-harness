@@ -63,6 +63,15 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         return () => disposables.delete(cleanup);
       },
     },
+    // 기본은 "아직 읽히지 않음"이다 — 실험 기능의 부재는 곧 꺼짐이므로 호스트가 덮어쓰기 전까지
+    // 어떤 플러그인도 실험을 켜진 것으로 읽을 수 없다.
+    experiments: {
+      read: () => null,
+      subscribe: () => () => undefined,
+      update: async () => false,
+      saving: () => false,
+      modelOptions: async () => [],
+    },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {
         const response = await fetch(resolvePluginPath(pluginId, path), {
@@ -85,6 +94,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     // no-op으로 두고, Console이 실제 구현으로 덮는다.
     consoleState: {
       getTheaters: () => [],
+      getOperations: () => [],
       getActiveTheaterId: () => null,
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,
