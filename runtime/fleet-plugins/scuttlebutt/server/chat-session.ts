@@ -185,7 +185,7 @@ export type ChatUsage = ClaudeExecutionUsage;
 
 export type ChatEvent =
   | { readonly type: "chunk"; readonly text: string }
-  | { readonly type: "tool"; readonly title: string; readonly status: string; readonly url?: string }
+  | { readonly type: "tool"; readonly id?: string; readonly title: string; readonly status: string; readonly url?: string }
   | { readonly type: "complete"; readonly usage?: ChatUsage }
   | { readonly type: "cancelled" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
@@ -313,8 +313,10 @@ export function toChatEvents(
   if (event.kind === "thinking") return [];
   if (event.kind === "tool-start") {
     const url = toolUrl(event.input);
+    // 도구 호출 id는 자식이 붙인 불투명한 값이라 세션 정체를 드러내지 않는다 — 시작과 끝을 짝짓는 데만 쓴다.
     return [{
       type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
       title: redact(toolTitle(event.name, event.input)),
       status: "running",
       ...(url === null ? {} : { url }),
@@ -323,6 +325,7 @@ export function toChatEvents(
   if (event.kind === "tool-end") {
     return [{
       type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
       title: redact(event.name ?? "tool"),
       status: event.isError ? "error" : "done",
     }];

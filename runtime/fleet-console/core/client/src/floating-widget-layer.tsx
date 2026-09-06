@@ -296,13 +296,16 @@ function readKeepOutRects(): readonly FloatingWidgetRect[] {
       rects.push(toRect(rect));
       continue;
     }
-    // 화면을 덮는 커튼은 그 안의 카드가 실제 표면이다 — 첫 자식 요소의 상자를 쓴다. 그것마저
-    // 커튼이면(취역·제어권 인계) 부관이 설 곳이 없으므로 넣지 않는다.
-    const card = element.firstElementChild;
-    if (!(card instanceof HTMLElement)) continue;
-    const cardRect = card.getBoundingClientRect();
-    if (cardRect.width <= 0 || cardRect.height <= 0 || isCurtain(cardRect)) continue;
-    rects.push(toRect(cardRect));
+    // 화면을 덮는 커튼은 그 안의 카드가 실제 표면이다 — 자식 중 커튼이 아닌 첫 상자를 쓴다.
+    // 스크림이 카드보다 먼저 서는 모달(What's New)에서 첫 자식은 또 하나의 커튼이라 건너뛴다.
+    // 커튼 아닌 자식이 없으면(취역·제어권 인계) 부관이 설 곳이 없으므로 넣지 않는다.
+    for (const child of Array.from(element.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      const cardRect = child.getBoundingClientRect();
+      if (cardRect.width <= 0 || cardRect.height <= 0 || isCurtain(cardRect)) continue;
+      rects.push(toRect(cardRect));
+      break;
+    }
   }
   return rects;
 }

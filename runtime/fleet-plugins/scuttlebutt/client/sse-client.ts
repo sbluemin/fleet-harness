@@ -7,7 +7,7 @@ export interface ChatStreamUsage {
 export type ChatStreamEvent =
   | { readonly type: "connected" }
   | { readonly type: "chunk"; readonly text: string }
-  | { readonly type: "tool"; readonly title: string; readonly status: string; readonly url?: string }
+  | { readonly type: "tool"; readonly id?: string; readonly title: string; readonly status: string; readonly url?: string }
   | { readonly type: "complete"; readonly usage?: ChatStreamUsage }
   | { readonly type: "cancelled" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
@@ -25,6 +25,7 @@ function parseChatStreamEvent(data: string): ChatStreamEvent | null {
     if (value.type === "tool" && typeof value.title === "string" && typeof value.status === "string") {
       return {
         type: "tool",
+        ...(typeof value.id === "string" ? { id: value.id } : {}),
         title: value.title,
         status: value.status,
         ...(typeof value.url === "string" ? { url: value.url } : {}),
