@@ -1777,9 +1777,12 @@ function AiGatewayModelPalette({
   );
   const matched = filterAiGatewayPalette(entries, query, providerLabel);
   const enabledIds = new Set((selection.models ?? []).map((entry) => entry.id));
+  // 키 공급자는 인증 상태가 도착하기 전에도 잠긴 것으로 본다 — 로딩·실패 중에 풀어 두면
+  // 키 없는 경로를 저장할 수 있다. 서버 응답이 오면 그 답이 우선한다.
   const isLocked = (providerId: string): boolean => {
     const providerAuth = authOf(providerId);
-    return providerAuth !== undefined && !providerAuth.signedIn;
+    if (providerAuth === undefined) return AI_GATEWAY_KEY_PROVIDER_IDS.has(providerId);
+    return !providerAuth.signedIn;
   };
   // 로그인되지 않은 공급자의 모델은 고를 수 없으므로 목록에서 감춘다 — 머리글만 남아 로그인 자리가 된다.
   const hits = matched.filter((hit) => !isLocked(hit.provider.id));
@@ -1860,13 +1863,18 @@ function AiGatewayModelPalette({
     rootRef.current?.querySelector(".ai-gateway-palette-hit.is-active")?.scrollIntoView({ block: "nearest" });
   }, [activeHit]);
 
-  const rankOptions = [
-    { value: "", label: t("terminal.settings.aiGatewayPriorityNone") },
-    ...Array.from({ length: Math.min(priority.length + 1, providers.length) }, (_, index) => ({
-      value: String(index),
-      label: t("terminal.settings.aiGatewayPriorityRank", { rank: index + 1 }),
-    })),
-  ];
+  // 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가 늘지 않는다 — 한 칸 더 주면
+  // placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
+  const rankOptionsFor = (providerId: string) => {
+    const slots = priority.includes(providerId as AiGatewayProviderId) ? priority.length : priority.length + 1;
+    return [
+      { value: "", label: t("terminal.settings.aiGatewayPriorityNone") },
+      ...Array.from({ length: Math.min(slots, providers.length) }, (_, index) => ({
+        value: String(index),
+        label: t("terminal.settings.aiGatewayPriorityRank", { rank: index + 1 }),
+      })),
+    ];
+  };
 
   return (
     <div ref={rootRef} className="ai-gateway-palette" role="dialog" aria-label={t("terminal.settings.aiGatewayAddModel")}>
@@ -1904,7 +1912,7 @@ function AiGatewayModelPalette({
               <AiGatewayPaletteGroupHead
                 provider={provider}
                 rank={rank}
-                rankOptions={rankOptions}
+                rankOptions={rankOptionsFor(provider.id)}
                 auth={providerAuth}
                 busy={authBusy === provider.id}
                 saving={saving}
@@ -2092,7 +2100,7 @@ function AiGatewayPaletteGroupHead({
   const locked = auth !== undefined && !auth.signedIn;
   return (
     <>
-      <div className={`ai-gateway-palette-group is-${provider.id}`} role="presentation">
+      <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
         <span className="ai-gateway-palette-group-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
         <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayInCatalog", { count: provider.models.length })}</span>
@@ -2171,7 +2179,7 @@ export function AiGatewayModelRow({
   const ladder = model.effort?.levels ?? [];
 
   return (
-    <div className={`ai-gateway-model-row is-${provider.id}${rank >= 0 ? " is-ranked" : ""}`}>
+    <div className={`ai-gateway-model-row ai-gateway-provider is-${provider.id}${rank >= 0 ? " is-ranked" : ""}`}>
       <span className="ai-gateway-provider-cell">
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
         <span className="ai-gateway-provider-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>

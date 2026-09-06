@@ -214,7 +214,7 @@
 /* 공급자 마크의 색 대조표는 --provider-* 하나뿐이다 — 여기 빠진 공급자는 톤이 미정의가 되어
    color-mix()가 통째로 무효화되고, 칩 테두리·배경만 사라진 채 마크가 회색으로 남는다. Quota
    레일의 대조표(.quota-provider__mark--*)와 같은 축을 써야 두 화면이 같은 공급자를 같은 색으로 부른다.
-   로스터 줄·공급자 줄·팔레트 머리글이 모두 이 셀렉터로 톤을 받는다. */
+   로스터 줄과 팔레트 머리글이 .ai-gateway-provider.is-* 두 클래스를 함께 달아 이 톤을 받는다. */
 .ai-gateway-provider.is-antigravity { --ai-gateway-provider-tone: var(--provider-antigravity); }
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
