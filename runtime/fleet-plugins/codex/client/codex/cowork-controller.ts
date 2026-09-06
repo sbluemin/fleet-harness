@@ -456,7 +456,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (disposed) return;
     // 복원된 세션이 이미 돌고 있으면 — 다른 탭이 보냈거나 새로고침 — 스트림을 받을 턴을 세운다.
     if (session?.state === "running" && !currentTurn()) {
-      turns = [...turns, newTurn("", null, 0)];
+      turns = [...turns, { ...newTurn(consoleT()("codex.cowork.remoteTurn"), null, 0), state: "running" }];
     }
     subscribe();
     redraw();
@@ -487,6 +487,14 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       lastEventId = Math.max(lastEventId, id);
       const wasRunning = session?.state === "running";
       if (event.session) session = event.session;
+      // 다른 창이 보낸 지시로 세션이 돌기 시작하면 이 창에도 스트림을 받을 턴이 있어야 한다 —
+      // 턴이 없으면 transcript가 버려지고 중지 버튼도 서지 않는다(마운트 시 복원과 같은 계약).
+      if (event.type === "session" && !wasRunning && session?.state === "running" && !currentTurn()) {
+        reply = "";
+        renderedReplyText = "";
+        renderedReplyHtml = "";
+        turns = [...turns, { ...newTurn(consoleT()("codex.cowork.remoteTurn"), null, 0), state: "running" }];
+      }
       const turn = currentTurn();
       if (event.type === "transcript" && event.text && session?.state === "running") {
         if (!turn) return;
