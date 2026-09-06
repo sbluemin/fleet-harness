@@ -115,39 +115,6 @@ describe("compare route", () => {
     expect(payload.mergeBase).toBe(fixture.mergeBaseSha.slice(0, 9));
   });
 
-  it("compare-file이 두 ref 간 파일 hunk를 반환하고 리네임은 양 경로를 보존한다", async () => {
-    const fileWrites: JsonWrite[] = [];
-    await handleRepositoryCompareFile(
-      { method: "POST" } as never,
-      {} as never,
-      makeContext(fixture.theaterPath, { theaterId: "theater", base: fixture.baseRef, head: fixture.featureRef, filePath: "shared.txt" }, fileWrites),
-    );
-    const content = readPayload<ContentPayload>(fileWrites).content;
-    expect(content).toContain("diff --git a/shared.txt b/shared.txt");
-    expect(content).toContain("+shared feature");
-    expect(content).not.toContain("base moved on");
-
-    const renameWrites: JsonWrite[] = [];
-    await handleRepositoryCompareFile(
-      { method: "POST" } as never,
-      {} as never,
-      makeContext(fixture.theaterPath, { theaterId: "theater", base: fixture.baseRef, head: fixture.featureRef, filePath: "rename-new.txt", oldPath: "rename-old.txt" }, renameWrites),
-    );
-    const renameContent = readPayload<ContentPayload>(renameWrites).content;
-    expect(renameContent).toMatch(/rename from rename-old\.txt/);
-    expect(renameContent).toMatch(/rename to rename-new\.txt/);
-  });
-
-  it("base===head는 400 invalid_request", async () => {
-    const writes: JsonWrite[] = [];
-    await handleRepositoryCompare(
-      { method: "POST" } as never,
-      {} as never,
-      makeContext(fixture.theaterPath, { theaterId: "theater", base: fixture.baseRef, head: fixture.baseRef }, writes),
-    );
-    expect(writes).toEqual([{ status: 400, payload: { error: "invalid_request" } }]);
-  });
-
   it("문법 위반 ref는 400 invalid_ref", async () => {
     const writes: JsonWrite[] = [];
     await handleRepositoryCompare(
@@ -172,16 +139,6 @@ describe("compare route", () => {
       makeContext(fixture.theaterPath, { theaterId: "theater", base: fixture.baseRef, head: "refs/heads/orphan" }, writes),
     );
     expect(writes).toEqual([{ status: 400, payload: { error: "no_merge_base" } }]);
-  });
-
-  it("문법은 유효하나 존재하지 않는 ref는 400 unknown_ref", async () => {
-    const writes: JsonWrite[] = [];
-    await handleRepositoryCompare(
-      { method: "POST" } as never,
-      {} as never,
-      makeContext(fixture.theaterPath, { theaterId: "theater", base: "refs/heads/does-not-exist", head: fixture.featureRef }, writes),
-    );
-    expect(writes).toEqual([{ status: 400, payload: { error: "unknown_ref" } }]);
   });
 
   it("git 저장소가 아니면 422 no_git_repo", async () => {

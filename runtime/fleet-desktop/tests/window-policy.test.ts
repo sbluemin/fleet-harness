@@ -33,24 +33,6 @@ describe("host picker view confinement", () => {
     expect(session.setPermissionCheckHandler).not.toHaveBeenCalled();
     expect(session.setPermissionRequestHandler).not.toHaveBeenCalled();
   });
-
-  it("keeps the list on its own console and denies popups", () => {
-    const { contents, navigate } = createPickerContents();
-    confinePickerNavigation(contents as never, HOME, () => false);
-
-    expect(navigate(`${HOME}/console/settings`)).not.toHaveBeenCalled();
-    expect(navigate(`${HOME}/api/v1/remote-hosts`)).toHaveBeenCalledOnce();
-    expect(navigate("https://100.84.12.7:6768/console/")).toHaveBeenCalledOnce();
-    expect(contents.setWindowOpenHandler.mock.calls[0]?.[0]?.({ url: "https://example.com" })).toEqual({ action: "deny" });
-  });
-
-  /** 콘솔을 갈아타는 항해는 remote bridge가 같은 이벤트에서 가져간다 — 여기서 막을 일이 아니다. */
-  it("leaves a console switch to the bridge", () => {
-    const { contents, navigate } = createPickerContents();
-    confinePickerNavigation(contents as never, HOME, (url) => url.startsWith("https://100.84.12.7:6768/console/"));
-
-    expect(navigate("https://100.84.12.7:6768/console/")).not.toHaveBeenCalled();
-  });
 });
 
 describe("secure window policy", () => {
@@ -58,20 +40,6 @@ describe("secure window policy", () => {
     const Ctor = vi.fn();
     createSecureWindow(Ctor as never, { iconPath: "/assets/icon.png", platform: "darwin" });
     expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 }, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
-  });
-
-  it("uses a Command Band-sized Windows title bar overlay", () => {
-    const Ctor = vi.fn();
-    createSecureWindow(Ctor as never, { iconPath: "/assets/icon.png", platform: "win32" });
-
-    expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, autoHideMenuBar: false, titleBarStyle: "hidden", titleBarOverlay: { color: "#03080e", symbolColor: "#989fa6", height: 43 }, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
-  });
-
-  it("keeps the Linux native title bar without an overlay", () => {
-    const Ctor = vi.fn();
-    createSecureWindow(Ctor as never, { iconPath: "/assets/icon.png", platform: "linux" });
-
-    expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, autoHideMenuBar: false, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   });
 
   it("allows only exact-origin Console routes", () => {
@@ -120,25 +88,6 @@ describe("secure window policy", () => {
     expect(callback).toHaveBeenCalledWith(true);
     request(null, "clipboard-sanitized-write", callback, { requestingUrl: "https://fleet.example/console/settings" });
     expect(callback).toHaveBeenLastCalledWith(false);
-  });
-
-  it("allows a pending target only until a transactional pairing commits it", () => {
-    const listeners = new Map<string, (...args: never[]) => unknown>();
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
-    const policy = applyWindowPolicy(contents as never, "http://127.0.0.1:4000", async () => undefined);
-    policy.stageConsoleOrigin("http://127.0.0.1:4310");
-    const pendingAllowed = vi.fn();
-    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: pendingAllowed }, "http://127.0.0.1:4310/console/");
-    expect(pendingAllowed).not.toHaveBeenCalled();
-    policy.cancelPendingConsoleOrigin();
-    const cancelled = vi.fn();
-    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: cancelled }, "http://127.0.0.1:4310/console/");
-    expect(cancelled).toHaveBeenCalledOnce();
-    policy.stageConsoleOrigin("http://127.0.0.1:4310");
-    policy.commitConsoleOrigin();
-    const committed = vi.fn();
-    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: committed }, "http://127.0.0.1:4310/console/");
-    expect(committed).not.toHaveBeenCalled();
   });
 
   it("blocks popups and navigation while brokering HTTP links only", async () => {

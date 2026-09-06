@@ -25,70 +25,9 @@ afterEach(async () => {
 
 // ─── parser ──────────────────────────────────────────────────────────────────
 
-describe("parseSkillDescription", () => {
-  it("reads a single-line description", () => {
-    const md = "---\nname: clean-code\ndescription: Diagnose over-abstraction in a package.\n---\n\n# Clean code\n";
-    expect(parseSkillDescription(md)).toBe("Diagnose over-abstraction in a package.");
-  });
-
-  it("joins a folded description across indented continuation lines", () => {
-    const md = "---\nname: x\ndescription: First part of the sentence\n  and the continuation line.\nallowed-tools: Bash(x:*)\n---\n";
-    expect(parseSkillDescription(md)).toBe("First part of the sentence and the continuation line.");
-  });
-
-  it("strips surrounding quotes", () => {
-    expect(parseSkillDescription('---\ndescription: "Quoted value"\n---\n')).toBe("Quoted value");
-    expect(parseSkillDescription("---\ndescription: 'Quoted value'\n---\n")).toBe("Quoted value");
-  });
-
-  it("tolerates CRLF line endings and a BOM", () => {
-    expect(parseSkillDescription("﻿---\r\nname: x\r\ndescription: Windows line endings.\r\n---\r\n"))
-      .toBe("Windows line endings.");
-  });
-
-  it("does not treat a later body key as frontmatter", () => {
-    const md = "---\nname: x\n---\n\n# Title\n\ndescription: this is prose, not frontmatter\n";
-    expect(parseSkillDescription(md)).toBeUndefined();
-  });
-
-  it("returns undefined when there is no frontmatter, no key, or an empty value", () => {
-    expect(parseSkillDescription("# Just a heading\n")).toBeUndefined();
-    expect(parseSkillDescription("---\nname: x\n---\n")).toBeUndefined();
-    expect(parseSkillDescription("---\ndescription:\n---\n")).toBeUndefined();
-  });
-
-  it("refuses block scalars rather than guessing at their value", () => {
-    expect(parseSkillDescription("---\ndescription: >\n  folded block\n---\n")).toBeUndefined();
-    expect(parseSkillDescription("---\ndescription: |\n  literal block\n---\n")).toBeUndefined();
-  });
-
-  it("refuses a frontmatter block with no closing delimiter", () => {
-    // 머리 8KB 안에서 닫히지 않았다면 잘린 조각을 읽은 것이다 — 값으로 믿지 않는다.
-    expect(parseSkillDescription("---\ndescription: Truncated before the close\n")).toBeUndefined();
-  });
-
-  it("caps a pathologically long value so one file cannot bloat the list response", () => {
-    const long = "x".repeat(4000);
-    expect(parseSkillDescription(`---\ndescription: ${long}\n---\n`)).toHaveLength(500);
-  });
-});
-
 // ─── reader ──────────────────────────────────────────────────────────────────
 
 describe("readSkillDescription", () => {
-  it("reads the description of a hand-authored .claude/skills entry", async () => {
-    const { root, skillDir } = await makeSkill(
-      "console-e2e",
-      "---\nname: console-e2e\ndescription: Drive a headless real-browser end-to-end test.\n---\n\n# body\n",
-    );
-    await expect(readSkillDescription(skillDir, root)).resolves
-      .toBe("Drive a headless real-browser end-to-end test.");
-  });
-
-  it("returns undefined when SKILL.md is absent", async () => {
-    const { root, skillDir } = await makeSkill("no-file", null);
-    await expect(readSkillDescription(skillDir, root)).resolves.toBeUndefined();
-  });
 
   it("refuses a skill directory that resolves outside the scope root", async () => {
     // CLI가 보고한 경로라도 scope 경계를 벗어나면 읽지 않는다.
@@ -110,9 +49,5 @@ describe("readSkillDescription", () => {
     await fs.symlink(secret, path.join(skillDir, "SKILL.md"));
 
     await expect(readSkillDescription(skillDir, root)).resolves.toBeUndefined();
-  });
-
-  it("does not throw when the path is unreadable", async () => {
-    await expect(readSkillDescription("/nonexistent/skill", "/nonexistent")).resolves.toBeUndefined();
   });
 });

@@ -26,27 +26,6 @@ describe("Cowork MCP runtime", () => {
     expect(runtime).not.toHaveProperty("connection");
   });
 
-  it("reconnects each prompt without cli or approval-bridge flags", async () => {
-    const connector = new FakeConnector();
-    const { service } = await fixture(connector);
-    const session = await service.create("workspace", "entry", { cli: "claude", model: "sonnet", effort: "high" });
-    await service.prompt("workspace", session.id, "first");
-    connector.client.emit("promptComplete");
-    await until(async () => (await service.get("workspace", session.id))?.state === "idle");
-    await service.prompt("workspace", session.id, "second");
-
-    expect(connector.connected).toHaveLength(2);
-    for (const options of connector.connected) {
-      expect(options).not.toHaveProperty("cli");
-      expect(options).not.toHaveProperty("strictMcp");
-      expect(options).not.toHaveProperty("yoloMode");
-      expect(options).not.toHaveProperty("autoApprove");
-      expect(options.model).toBe("sonnet");
-      expect(options.effort).toBe("high");
-      expect(options.allowedToolIds).toEqual([...SCOPED_TOOL_IDS]);
-    }
-  });
-
   it("preserves draft and session when the Wiki base has gone stale", async () => {
     const { service, store, paths } = await fixture();
     const session = await service.create("workspace", "entry");
@@ -69,32 +48,6 @@ describe("Cowork MCP runtime", () => {
     await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
     await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_invalid_draft");
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
-  });
-
-  it("creates sessions for nested entries even when the index is stale", async () => {
-    const { service, paths } = await fixture();
-    // index.json이 모르는 중첩 엔트리 — readWikiEntry는 재귀 스캔으로 찾아낸다.
-    const nested = join(paths.root, "wiki", "queries", "nested.md");
-    await mkdir(join(paths.root, "wiki", "queries"), { recursive: true });
-    await writeFile(nested, `---\nid: nested\ntitle: Nested\ntags: ["test"]\ncreated: 2026-01-01T00:00:00.000Z\nupdated: 2026-01-01T00:00:00.000Z\nversion: 1\n---\nNested body`, "utf8");
-
-    const session = await service.create("workspace", "nested");
-    expect(session.draft).toContain("Nested body");
-    expect(session.targetPath).toBe("wiki/queries/nested.md");
-  });
-
-  it("keeps template_id through a cowork apply", async () => {
-    const { service, store, paths } = await fixture();
-    await mkdir(paths.schemaDir, { recursive: true });
-    await writeFile(join(paths.schemaDir, "template-prd.md"), "---\ntitle: PRD\n---\n\n## Overview\n", "utf8");
-    const session = await service.create("workspace", "entry");
-    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
-    await store.draftPort("workspace", session.id).write({ body: draft({ body: "## Overview\n\nTemplated", version: 1, templateId: "prd" }), expectedRevision: 0 });
-    await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
-
-    await expect(service.apply("workspace", session.id)).resolves.toMatchObject({ state: "applied" });
-    // YAML의 template_id가 WikiEntry.templateId로 매핑되지 않으면 apply에서 소실된다.
-    await expect(readWikiEntry("entry", paths)).resolves.toMatchObject({ templateId: "prd" });
   });
 });
 

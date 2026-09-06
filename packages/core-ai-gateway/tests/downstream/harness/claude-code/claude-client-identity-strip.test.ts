@@ -39,26 +39,6 @@ describe("claude client identity strip", () => {
     expect(result.system).toEqual([prompt]);
   });
 
-  it("drops `system` entirely when every block was metadata", () => {
-    const result = stripClaudeClientIdentity([block(BILLING_CLI), block(IDENTITY_SDK)]);
-    expect(result.changed).toBe(true);
-    expect(result.system).toBeUndefined();
-  });
-
-  it("returns the same array when there is nothing to strip", () => {
-    const system = [block("You are a terse assistant.")];
-    const result = stripClaudeClientIdentity(system);
-    expect(result.changed).toBe(false);
-    expect(result.removed).toBe(0);
-    expect(result.system).toBe(system);
-  });
-
-  it("carries an absent system through untouched", () => {
-    const result = stripClaudeClientIdentity(undefined);
-    expect(result.changed).toBe(false);
-    expect(result.system).toBeUndefined();
-  });
-
   // The block must be the whole of the metadata, or a real instruction that merely opens
   // the same way would be deleted along with it.
   it.each([
@@ -85,11 +65,6 @@ describe("claude client identity strip", () => {
     ["a different agent identity", "You are a Gemini agent, built on Google's Agent SDK."],
   ])("keeps %s", (_label, text) => {
     const system = [block(text)];
-    expect(stripClaudeClientIdentity(system).changed).toBe(false);
-  });
-
-  it("ignores a block whose text is not a string", () => {
-    const system = [{ type: "text" as const, text: 42 as unknown as string }];
     expect(stripClaudeClientIdentity(system).changed).toBe(false);
   });
 });

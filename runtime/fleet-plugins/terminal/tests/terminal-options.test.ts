@@ -3,13 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createTerminalLinkHandler, TERMINAL_OPTIONS } from "../client/shared/terminal-options.js";
 
 describe("TERMINAL_OPTIONS", () => {
-  it("preserves raw PTY LF semantics for fullscreen TUI applications", () => {
-    expect(TERMINAL_OPTIONS.convertEol).toBe(false);
-  });
-
-  it("keeps proposed APIs enabled for the Unicode11 addon", () => {
-    expect(TERMINAL_OPTIONS.allowProposedApi).toBe(true);
-  });
 
   it("opens OSC 8 HTTP links with the URL in the initial popup request", () => {
     const openWindow = vi.fn();

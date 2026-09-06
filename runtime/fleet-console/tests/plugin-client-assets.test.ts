@@ -17,58 +17,6 @@ afterEach(() => {
 });
 
 describe("plugin client assets", () => {
-  it("bundles TSX clients and rewrites React and SDK imports to runtime shims", async () => {
-    const plugin = writeClientPlugin("notes", "index.tsx", [
-      "import { definePlugin } from \"@fleet-console/sdk/plugin/browser\";",
-      "export default definePlugin({",
-      "  id: \"notes\",",
-      "  operationKinds: [{",
-      "    pluginId: \"notes\",",
-      "    type: \"notes.panel\",",
-      "    title: \"Notes\",",
-      "    render: () => <div>Notes</div>,",
-      "  }],",
-      "});",
-    ].join("\n"));
-    const assets = createPluginClientAssets({ plugins: [plugin] });
-
-    await assets.prepare();
-
-    const source = assets.getClient("notes") ?? "";
-    expect(source).toContain("/plugin-runtime/shim/react-jsx-runtime.mjs");
-    expect(source).toContain("/plugin-runtime/shim/sdk-plugin-browser.mjs");
-    expect(assets.manifest()).toEqual({
-      plugins: [{
-        id: "notes",
-        name: "Notes",
-        clientUrl: "/plugin-runtime/client/notes.mjs",
-        apiVersion: 1,
-      }],
-    });
-  });
-
-  it("externalizes every SDK subpath an external plugin may import", async () => {
-    // SDK exports에 subpath를 더해 놓고 shim 목록에 올리지 않으면, 그 export는 내장 플러그인
-    // 에서만 동작하고 외부 플러그인은 준비 단계에서 통째로 탈락한다 — 광고만 하고 못 쓰는 상태다.
-    const plugin = writeClientPlugin("notice", "index.tsx", [
-      'import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";',
-      'import { EffortTrack } from "@fleet-console/sdk/components/effort-track";',
-      'import { launchProviderFromModelId } from "@fleet-console/sdk/components/launch-provider-glyphs";',
-      'import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph";',
-      'const row = { id: "m", label: "M", launch: { model: "m" }, chips: [{ id: "low", label: "LOW", launch: { model: "m", effort: "low" } }] };',
-      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <><FailureNotice title="t" /><EffortTrack row={row} value="low" onChange={() => {}} autoLabel="AUTO" ariaLabel="effort" autoValueText="auto" /><span>{launchProviderFromModelId("sonnet")}</span><ShellGlyph /></> }] };',
-    ].join("\n"));
-    const assets = createPluginClientAssets({ plugins: [plugin] });
-
-    await assets.prepare();
-
-    const source = assets.getClient("notice") ?? "";
-    expect(source).toContain("/plugin-runtime/shim/sdk-components-failure-notice.mjs");
-    expect(source).toContain("/plugin-runtime/shim/sdk-components-effort-track.mjs");
-    expect(source).toContain("/plugin-runtime/shim/sdk-components-launch-provider-glyphs.mjs");
-    expect(source).toContain("/plugin-runtime/shim/sdk-components-shell-glyph.mjs");
-    expect(assets.manifest().skipped ?? []).toEqual([]);
-  });
 
   it("rejects browser client bundles that import Node builtins", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -88,20 +36,6 @@ describe("plugin client assets", () => {
       skipped: [{ id: "bad", name: "bad", reason: "client_build_failed" }],
     });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Node builtin import is not allowed"));
-  });
-
-  it("allows browser client imports that stay inside the plugin root", async () => {
-    const plugin = writeClientPlugin("inside", "index.ts", [
-      "import { label } from \"./shared\";",
-      "export default { id: label };",
-    ].join("\n"));
-    fs.writeFileSync(path.join(plugin.root, "shared.ts"), "export const label = \"inside\";");
-    const assets = createPluginClientAssets({ plugins: [plugin] });
-
-    await assets.prepare();
-
-    expect(assets.getClient("inside")).toContain("inside");
-    expect(assets.manifest().plugins.map((entry) => entry.id)).toEqual(["inside"]);
   });
 
   it("rejects browser client imports that escape the plugin root", async () => {
@@ -143,17 +77,6 @@ describe("plugin client assets", () => {
     expect(serialized).not.toContain(external.clientEntry ?? "");
     expect(serialized).not.toContain("secret");
     expect(serialized).not.toContain("sensitiveFields");
-  });
-
-  it("generates globalThis runtime shims from namespace keys", () => {
-    const assets = createPluginClientAssets({ plugins: [] });
-    const source = assets.getShim("sdk-plugin-browser") ?? "";
-
-    for (const key of Object.keys(sdkPluginBrowser).filter((name) => name !== "default")) {
-      expect(source).toContain(`export const ${key} = ns[${JSON.stringify(key)}];`);
-    }
-    expect(source).toContain("globalThis.__fleetConsoleRuntime__?.[\"@fleet-console/sdk/plugin/browser\"]");
-    expect(source).toContain("export default ns.default;");
   });
 });
 

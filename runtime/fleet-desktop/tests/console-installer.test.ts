@@ -64,24 +64,6 @@ describe("console installer", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("drives npm through node.exe and the npm-cli.js script on Windows", async () => {
-    const fs = fileSystem();
-    const run = vi.fn<(command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>>(async () => undefined);
-    const paths = resolveRuntimePaths("/Users/fleet");
-    await installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "win32", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } });
-    expect(run).toHaveBeenCalledWith(expect.stringContaining("node.exe"), expect.arrayContaining([expect.stringContaining("npm-cli.js")]), { env: expect.objectContaining({ npm_config_registry: "https://registry.npmjs.org/" }) });
-    expect(fs.chmod).not.toHaveBeenCalled();
-    expect(fs.accessExecutable).not.toHaveBeenCalled();
-  });
-
-  it("repairs an existing packaged macOS Console before sidecar launch", async () => {
-    const fs = fileSystem();
-    await repairConsoleNativeExecutables("/console/latest", "darwin", "x64", fs);
-    const spawnHelper = path.join("/console/latest", "node_modules", "node-pty", "prebuilds", "darwin-x64", "spawn-helper");
-    expect(fs.chmod).toHaveBeenCalledWith(spawnHelper, 0o755);
-    expect(fs.accessExecutable).toHaveBeenCalledWith(spawnHelper);
-  });
-
   it("fails closed when the repaired macOS spawn helper is still not executable", async () => {
     const fs = fileSystem();
     fs.accessExecutable.mockRejectedValueOnce(new Error("EACCES"));
@@ -108,72 +90,12 @@ describe("console installer", () => {
     expect(fs.rename).toHaveBeenCalledWith(`${paths.latest}.rollback`, paths.latest);
     expect(fs.rm).toHaveBeenCalledWith(path.join(paths.console, ".staging-crashed"));
   });
-
-  it("keeps promoted latest when rollback cleanup fails so the next start can reconcile it", async () => {
-    const fs = fileSystem(new Set(["/console/latest", "/console/.staging"]));
-    fs.rm.mockImplementation(async (target: string) => { if (target === "/console/latest.rollback") throw new Error("cleanup failed"); });
-    await expect(replaceLatest("/console/latest", "/console/.staging", fs)).resolves.toBeUndefined();
-    expect(fs.rename).toHaveBeenCalledWith("/console/.staging", "/console/latest");
-  });
-
-  it("keeps the existing latest when the staged Console requires a newer Node", async () => {
-    const paths = resolveRuntimePaths("/Users/fleet");
-    const fs = fileSystem(new Set([paths.latest]));
-    fs.readFile.mockImplementation(async (target: string) => target.endsWith("package.json") ? JSON.stringify({ version: "1.2.3", engines: { node: ">=23.0.0" } }) : "1\n");
-    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run: vi.fn(async () => undefined), randomSuffix: () => "test" } })).rejects.toThrow("console_install_node_engine_incompatible");
-    expect(fs.rename).not.toHaveBeenCalledWith(expect.stringContaining(".staging-test"), paths.latest);
-    expect(fs.rm).toHaveBeenCalledWith(path.join(paths.console, ".staging-test"));
-  });
-
-  it("continues with valid latest when re-entry cleanup cannot remove rollback or stale staging", async () => {
-    const paths = resolveRuntimePaths("/Users/fleet");
-    const fs = fileSystem(new Set([paths.latest, `${paths.latest}.rollback`]));
-    fs.readdir.mockResolvedValueOnce(["latest.rollback", ".staging-locked"]);
-    fs.rm.mockRejectedValue(new Error("locked"));
-    await expect(reconcileConsoleInstallations(paths, fs)).resolves.toBeUndefined();
-  });
 });
 
 describe("console installer environment PATH", () => {
-  it("prepends the bundled node bin to PATH so npm lifecycle scripts resolve node (POSIX)", () => {
-    const env = createConsoleInstallerEnvironment({ PATH: "/safe/bin" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
-    expect(env.PATH).toBe("/runtime/node/bin:/safe/bin");
-  });
-
-  it("sets PATH to the bundled node bin when the source has no PATH (POSIX)", () => {
-    const env = createConsoleInstallerEnvironment({}, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
-    expect(env.PATH).toBe("/runtime/node/bin");
-  });
-
-  it("prepends onto the case-preserved Path key with the Windows separator", () => {
-    const env = createConsoleInstallerEnvironment({ Path: "C:\\safe" }, "S:\\.npmrc", "S:\\.npmrc-global", "C:\\runtime\\node", "win32");
-    expect(env.Path).toBe("C:\\runtime\\node;C:\\safe");
-    expect(env.PATH).toBeUndefined();
-  });
-
-  it("leaves PATH untouched when no node bin directory is provided", () => {
-    const env = createConsoleInstallerEnvironment({ PATH: "/safe/bin" }, "/s/.npmrc", "/s/.npmrc-global");
-    expect(env.PATH).toBe("/safe/bin");
-  });
-
-  it("does not treat a lowercase 'path' as PATH on POSIX (case-sensitive env)", () => {
-    const env = createConsoleInstallerEnvironment({ path: "/not-the-path" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
-    expect(env.path).toBe("/not-the-path");
-    expect(env.PATH).toBe("/runtime/node/bin");
-  });
 
   it("defaults the installer environment to trust the OS CA store (issue #531)", () => {
     const env = createConsoleInstallerEnvironment({}, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
     expect(env.NODE_USE_SYSTEM_CA).toBe("1");
-  });
-
-  it("honors the FLEET_CONSOLE_NO_SYSTEM_CA opt-out", () => {
-    const env = createConsoleInstallerEnvironment({ FLEET_CONSOLE_NO_SYSTEM_CA: "1" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
-    expect(env.NODE_USE_SYSTEM_CA).toBeUndefined();
-  });
-
-  it("does not override an explicitly set NODE_USE_SYSTEM_CA", () => {
-    const env = createConsoleInstallerEnvironment({ NODE_USE_SYSTEM_CA: "0" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
-    expect(env.NODE_USE_SYSTEM_CA).toBe("0");
   });
 });

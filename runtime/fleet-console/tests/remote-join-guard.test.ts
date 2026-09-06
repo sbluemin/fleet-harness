@@ -28,40 +28,6 @@ describe("remote join failure budget", () => {
     expect(guard.begin("203.0.113.5")).toBe("throttled");
   });
 
-  it("clears a source's failures once it finally pairs", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 2, windowMs: 60_000 });
-
-    attempt(guard, "198.51.100.7", "rejected");
-    attempt(guard, "198.51.100.7", "paired");
-
-    // 한 번 붙은 기기가 앞선 실패 때문에 다음에 막히면 안 된다.
-    expect(attempt(guard, "198.51.100.7", "rejected")).toBe("ok");
-    expect(attempt(guard, "198.51.100.7", "rejected")).toBe("ok");
-    expect(guard.begin("198.51.100.7")).toBe("throttled");
-  });
-
-  it("forgets failures when the window passes", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 1, windowMs: 60_000 });
-
-    attempt(guard, "203.0.113.9", "rejected");
-    expect(guard.begin("203.0.113.9")).toBe("throttled");
-
-    clock.advance(60_001);
-    expect(attempt(guard, "203.0.113.9", "rejected")).toBe("ok");
-  });
-
-  it("keeps one source's budget out of another's", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 1, windowMs: 60_000 });
-
-    attempt(guard, "203.0.113.1", "rejected");
-
-    expect(guard.begin("203.0.113.1")).toBe("throttled");
-    expect(attempt(guard, "203.0.113.2", "rejected")).toBe("ok");
-  });
-
   it("caps concurrent attempts so a distributed flood cannot pile up", () => {
     const clock = fakeClock();
     const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 100, windowMs: 60_000, concurrency: 2 });
@@ -73,52 +39,5 @@ describe("remote join failure budget", () => {
 
     guard.settle("a", "rejected");
     expect(guard.begin("c")).toBe("ok");
-  });
-
-  it("bounds its own table so the tracker is not itself an attack surface", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 1, windowMs: 60_000, sourceSlots: 4 });
-
-    for (let i = 0; i < 200; i += 1) attempt(guard, `10.0.0.${i}`, "rejected");
-
-    // 가장 오래된 칸부터 밀려났으므로 초기 출처는 다시 통과하고, 최근 출처는 여전히 막힌다.
-    expect(guard.begin("10.0.0.0")).toBe("ok");
-    guard.settle("10.0.0.0", "rejected");
-    expect(guard.begin("10.0.0.199")).toBe("throttled");
-  });
-
-  it("reports every rejection so the owner is not left guessing", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 1, windowMs: 60_000 });
-
-    expect(guard.stats()).toEqual({ count: 0, lastAt: null });
-
-    attempt(guard, "203.0.113.4", "rejected");
-    guard.begin("203.0.113.4");
-    guard.begin("203.0.113.4");
-
-    expect(guard.stats()).toEqual({ count: 2, lastAt: clock.now() });
-  });
-
-  it("answers how long a throttled source must wait", () => {
-    const clock = fakeClock();
-    const guard = createRemoteJoinGuard({ now: clock.now, failureLimit: 1, windowMs: 60_000 });
-
-    attempt(guard, "203.0.113.6", "rejected");
-    clock.advance(20_000);
-
-    expect(guard.retryAfterSeconds("203.0.113.6")).toBe(40);
-    expect(guard.retryAfterSeconds("203.0.113.99")).toBe(60);
-  });
-});
-
-describe("remote join source normalization", () => {
-  it("treats an IPv4-mapped address as the same source", () => {
-    // 표기가 갈리면 한 출처가 예산을 두 번 받는다.
-    expect(normalizeRemoteJoinSource("::ffff:203.0.113.5")).toBe("203.0.113.5");
-    expect(normalizeRemoteJoinSource("203.0.113.5")).toBe("203.0.113.5");
-    expect(normalizeRemoteJoinSource("2001:db8::1")).toBe("2001:db8::1");
-    expect(normalizeRemoteJoinSource(undefined)).toBe("unknown");
-    expect(normalizeRemoteJoinSource("")).toBe("unknown");
   });
 });

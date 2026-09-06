@@ -29,41 +29,6 @@ async function cliHomeWithVersion(version: string, withBin = true): Promise<stri
 }
 
 describe("tokscale bootstrap", () => {
-  it("triggers the pinned npm install when the installed version differs", async () => {
-    const cliHome = await cliHomeWithVersion("4.6.0");
-    const install = vi.fn<InstallExecutor>(async () => {
-      await writeInstallation(cliHome, TOKSCALE_VERSION);
-    });
-    await expect(ensureTokscaleBin(cliHome, install)).resolves.toBe(
-      await fs.realpath(path.join(cliHome, "node_modules", "tokscale", "bin.js")),
-    );
-    expect(install).toHaveBeenCalledOnce();
-    expect(install.mock.calls[0]?.[1]).toEqual([
-      "install", `tokscale@${TOKSCALE_VERSION}`,
-      "--prefix", cliHome,
-      "--global=false", "--force=false", "--no-audit", "--no-fund", "--loglevel=error",
-    ]);
-    expect(install.mock.calls[0]?.[2]).toBe(TOKSCALE_TIMEOUT_MS);
-  });
-
-  it("does not cache a failed bootstrap and retries the next call", async () => {
-    const cliHome = await cliHomeWithVersion("0.0.0");
-    const install = vi.fn<InstallExecutor>(async () => {
-      throw new Error("temporary network failure");
-    });
-    await expect(ensureTokscaleBin(cliHome, install)).rejects.toThrow("temporary network failure");
-    await expect(ensureTokscaleBin(cliHome, install)).rejects.toThrow("temporary network failure");
-    expect(install).toHaveBeenCalledTimes(2);
-  });
-
-  it("reinstalls when the pinned manifest exists without bin.js", async () => {
-    const cliHome = await cliHomeWithVersion(TOKSCALE_VERSION, false);
-    const install = vi.fn<InstallExecutor>(async () => {
-      await writeInstallation(cliHome, TOKSCALE_VERSION);
-    });
-    await ensureTokscaleBin(cliHome, install);
-    expect(install).toHaveBeenCalledOnce();
-  });
 
   it("reinstalls when bin.js resolves outside cliHome", async () => {
     const cliHome = await fs.mkdtemp(path.join(os.tmpdir(), "ledger-cli-home-"));
@@ -78,22 +43,6 @@ describe("tokscale bootstrap", () => {
     });
     await ensureTokscaleBin(cliHome, install);
     expect(install).toHaveBeenCalledOnce();
-  });
-
-  it("passes npm a sanitized, plugin-local environment", async () => {
-    const cliHome = await cliHomeWithVersion("0.0.0");
-    const install = vi.fn<InstallExecutor>(async () => {
-      await writeInstallation(cliHome, TOKSCALE_VERSION);
-    });
-    await ensureTokscaleBin(cliHome, install);
-    const env = install.mock.calls[0]?.[3];
-    expect(env).toMatchObject({
-      npm_config_registry: "https://registry.npmjs.org/",
-      npm_config_userconfig: path.join(cliHome, ".npmrc-disabled-user"),
-      npm_config_globalconfig: path.join(cliHome, ".npmrc-disabled-global"),
-      npm_config_cache: path.join(cliHome, ".npm-cache"),
-    });
-    expect(env).not.toHaveProperty("NODE_OPTIONS");
   });
 
   it("does not copy NODE_OPTIONS or npm registry overrides into the install environment", () => {

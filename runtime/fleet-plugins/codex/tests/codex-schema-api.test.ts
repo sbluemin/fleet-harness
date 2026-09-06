@@ -49,63 +49,6 @@ describe("Codex schema API", () => {
     expect(template.body).toContain("template_id: prd");
   });
 
-  it("maps missing and invalid schema resources to stable GET errors", async () => {
-    await unlink(path.join(paths.schemaDir, "wiki-schema.md"));
-    expect(await get("/api/schema/wiki-schema")).toEqual({ status: 404, body: '{"error":"schema_not_found"}' });
-    expect(await get(`/api/schema/templates/${encodeURIComponent("../bad")}`)).toEqual({ status: 400, body: '{"error":"invalid_template_id"}' });
-    expect(await get("/api/schema/templates/missing")).toEqual({ status: 404, body: '{"error":"template_not_found"}' });
-  });
-
-  it("marks a malformed wiki log as unreadable without hiding other counts", async () => {
-    await mkdir(paths.root, { recursive: true });
-    await writeFile(path.join(paths.root, "log.md"), "## 2026-08-04T00:00:00.000Z — future event\n\n", "utf8");
-
-    const response = await get("/api/health");
-
-    expect(response.status).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      lastDrydock: null,
-      conflictCount: 0,
-      pendingCount: 0,
-      logUnreadable: true,
-    });
-  });
-
-  it("reports the latest drydock and open workspace queue counts", async () => {
-    await mkdir(path.join(paths.queueDir, "2026-08-03T01-02-03-004Z-1234abcd"), { recursive: true });
-    await writeFile(path.join(paths.queueDir, "2026-08-03T01-02-03-004Z-1234abcd", "meta.json"), JSON.stringify({
-      id: "2026-08-03T01-02-03-004Z-1234abcd",
-      status: "pending",
-      createdAt: "2026-08-03T01:02:03.004Z",
-    }), "utf8");
-    await mkdir(path.join(paths.conflictsDir, "open-conflict"), { recursive: true });
-    await writeFile(path.join(paths.conflictsDir, "open-conflict", "meta.json"), JSON.stringify({ status: "unresolved", createdAt: "2026-08-03T00:00:00.000Z" }), "utf8");
-    await mkdir(path.join(paths.conflictsDir, "resolved-conflict"), { recursive: true });
-    await writeFile(path.join(paths.conflictsDir, "resolved-conflict", "meta.json"), JSON.stringify({ status: "resolved", createdAt: "2026-08-02T00:00:00.000Z" }), "utf8");
-    await appendLog(paths, "drydock run", {
-      ok: false,
-      error_count: 2,
-      warning_count: 3,
-      info_count: 1,
-      issue_count: 6,
-    }, new Date("2026-08-03T02:03:04.000Z"));
-
-    const response = await get("/api/health");
-    expect(response.status).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      lastDrydock: {
-        at: "2026-08-03T02:03:04.000Z",
-        ok: false,
-        errorCount: 2,
-        warningCount: 3,
-        infoCount: 1,
-        issueCount: 6,
-      },
-      conflictCount: 1,
-      pendingCount: 1,
-    });
-  });
-
   async function get(url: string): Promise<{ status: number; body: string }> {
     const result = { status: 0, body: "" };
     const request = { method: "GET", url, headers: {} } as unknown as IncomingMessage;

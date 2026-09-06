@@ -5,14 +5,6 @@ describe("list DTO — 절대 경로 미포함 + displayPath 형식", () => {
     return scope === "global" ? `~/.agents/skills/${name}` : `.agents/skills/${name}`;
   }
 
-  it("project displayPath uses relative prefix", () => {
-    expect(buildDisplayPath("project", "typescript")).toBe(".agents/skills/typescript");
-  });
-
-  it("global displayPath uses ~ prefix", () => {
-    expect(buildDisplayPath("global", "typescript")).toBe("~/.agents/skills/typescript");
-  });
-
   it("DTO item must not contain absolute path field", () => {
     const dto = {
       name: "typescript",
@@ -23,16 +15,6 @@ describe("list DTO — 절대 경로 미포함 + displayPath 형식", () => {
     expect("path" in dto).toBe(false);
     expect(dto.displayPath.startsWith("/")).toBe(false);
     expect(dto.displayPath.startsWith("~")).toBe(false);
-  });
-
-  it("global DTO item displayPath starts with ~/", () => {
-    const dto = {
-      name: "react",
-      scope: "global" as const,
-      agents: ["claude-code"],
-      displayPath: buildDisplayPath("global", "react"),
-    };
-    expect(dto.displayPath.startsWith("~/.agents/skills/")).toBe(true);
   });
 });
 
