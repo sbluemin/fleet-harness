@@ -3,20 +3,31 @@ import {
   createClaudeGatewaySdk,
   type ClaudeExecutionEvent,
   type ClaudeExecutionLoop,
+  type ClaudeExecutionUsage,
+  type ClaudeGatewayEffort,
   type ClaudeGatewayMcpServer,
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
+/**
+ * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 id가 아니라 별칭인 것이
+ * 의도이고, 별칭은 자식이 보내기 전에 스스로 푼다 — 실측하면 `sonnet`이 와이어에서
+ * `claude-sonnet-5`가 되므로 세대를 고정하지 않는다. 게이트웨이 카탈로그에 없는 별칭은 라우터가
+ * 호출자 자격증명으로 Anthropic에 원문 중계한다. 즉 경로만 게이트웨이로 가고 과금처는 그대로다.
+ */
 export const SCUTTLEBUTT_AGENT = {
-  /**
-   * 오늘과 같은 모델·강도. 구체 id가 아니라 별칭인 것이 오늘의 동작이고, 별칭은 자식이 보내기 전에
-   * 스스로 푼다 — 실측하면 `sonnet`이 와이어에서 `claude-sonnet-5`가 되므로 세대를 고정하지 않는다.
-   * 게이트웨이 카탈로그에 sonnet은 없으므로 라우터가 호출자 자격증명으로 Anthropic에 원문 중계한다.
-   * 즉 경로만 게이트웨이로 옮겨가고 과금처는 그대로다.
-   */
   model: "sonnet",
   effort: "low",
 } as const;
+
+/** 부관이 고를 수 있는 강도. 빠른 답이 일이라 xhigh·max는 두지 않는다. */
+export const AIDE_EFFORTS = ["low", "medium", "high"] as const;
+export type AideEffort = (typeof AIDE_EFFORTS)[number];
+
+export function isAideEffort(value: unknown): value is AideEffort {
+  return typeof value === "string" && (AIDE_EFFORTS as readonly string[]).includes(value);
+}
 
 /**
  * 펫이 가질 수 있는 툴 전부.
@@ -131,7 +142,8 @@ ${bearing}
 3. Read only as far as settles the question. One search is usually enough; stop
    the moment you can answer.
 4. Separate what a source says from what you infer. Say so when you are unsure.
-5. Name the sources you used in one short line at the end when you searched.
+5. When you searched, end with one short "Sources:" line listing the pages you actually
+   used, as plain URLs so the Admiral can open them.
 
 # End goal
 
@@ -152,15 +164,39 @@ work without opening a terminal, a project, or a browser tab.
 - ${voice}`;
 }
 
+/**
+ * Console 언어에 맞춘 한 단락. 프롬프트 본문은 영어지만 호칭과 기본 답 언어는 사용자의 언어를
+ * 따라야 한다 — "쓴 언어로 답하라"만으로는 짧은 영어 고유명사 질문이 영어 답으로 돌아온다.
+ */
+export function localeAddendum(locale: ConsoleLocale | undefined): string {
+  if (locale === "ko") {
+    return `# Console language
+
+The Console is set to Korean. Answer in Korean unless the user clearly writes in another
+language. Address the user as 대원수.`;
+  }
+  return `# Console language
+
+The Console is set to English. Answer in English unless the user clearly writes in another
+language.`;
+}
+
+export type ChatUsage = ClaudeExecutionUsage;
+
 export type ChatEvent =
   | { readonly type: "chunk"; readonly text: string }
-  | { readonly type: "tool"; readonly title: string; readonly status: string }
-  | { readonly type: "complete" }
+  | { readonly type: "tool"; readonly id?: string; readonly title: string; readonly status: string; readonly url?: string }
+  | { readonly type: "complete"; readonly usage?: ChatUsage }
+  | { readonly type: "cancelled" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
 export interface ChatSessionOptions {
   readonly cwd: string;
   readonly admiral: AdmiralId;
+  /** 사용자가 고른 모델·강도. 없으면 기본값. */
+  readonly model?: string;
+  readonly effort?: AideEffort;
+  readonly locale?: ConsoleLocale;
   /** Console이 서빙 중인 AI gateway의 절대 URL. 호스트만 아는 값이라 주입받는다. */
   readonly baseUrl: string;
   readonly onEvent?: (event: ChatEvent) => void;
@@ -186,6 +222,8 @@ export interface ChatSessionOptions {
 export interface ChatSessionLike {
   start(): Promise<void>;
   send(text: string): Promise<void>;
+  /** 진행 중인 턴만 멈춘다. 세션은 살아 있어 다음 질문을 이어 받는다. */
+  cancel(): void;
   dispose(): Promise<void>;
 }
 
@@ -197,7 +235,13 @@ export class ChatSession implements ChatSessionLike {
     this.options = { ...options };
     const redact = (value: string) => redactScratchPath(value, this.options.cwd);
     const consoleRead = this.options.consoleRead;
-    const model = SCUTTLEBUTT_AGENT.model;
+    const model = this.options.model ?? SCUTTLEBUTT_AGENT.model;
+    const effort: ClaudeGatewayEffort = this.options.effort ?? SCUTTLEBUTT_AGENT.effort;
+    const systemPrompt = [
+      ADMIRAL_SYSTEM_PROMPTS[this.options.admiral],
+      localeAddendum(this.options.locale),
+      ...(consoleRead ? [consoleRead.promptAddendum] : []),
+    ].join("\n\n");
     this.loop = createClaudeExecutionLoop({
       createSdk: () => {
         const create = { baseUrl: this.options.baseUrl, models: [model] };
@@ -205,13 +249,8 @@ export class ChatSession implements ChatSessionLike {
       },
       buildTurn: () => ({
         model,
-        effort: SCUTTLEBUTT_AGENT.effort,
-        systemPrompt: {
-          mode: "replace",
-          text: consoleRead
-            ? `${ADMIRAL_SYSTEM_PROMPTS[this.options.admiral]}\n\n${consoleRead.promptAddendum}`
-            : ADMIRAL_SYSTEM_PROMPTS[this.options.admiral],
-        },
+        effort,
+        systemPrompt: { mode: "replace", text: systemPrompt },
         cwd: this.options.cwd,
         tools: [...PET_TOOLS],
         allowedTools: [...PET_TOOLS, ...(consoleRead?.allowedTools ?? [])],
@@ -230,6 +269,15 @@ export class ChatSession implements ChatSessionLike {
 
   start(): Promise<void> {
     return this.loop.start();
+  }
+
+  /**
+   * 취소는 루프에 맡기고 클라이언트에는 `cancelled` 하나만 알린다 — 결과 이벤트가 없으니
+   * `complete`가 오지 않고, 그대로 두면 카드가 "생각 중"에 굳는다.
+   */
+  cancel(): void {
+    this.loop.cancel();
+    this.options.onEvent?.({ type: "cancelled" });
   }
 
   send(text: string): Promise<void> {
@@ -264,11 +312,20 @@ export function toChatEvents(
   if (event.kind === "text") return [{ type: "chunk", text: redact(event.text) }];
   if (event.kind === "thinking") return [];
   if (event.kind === "tool-start") {
-    return [{ type: "tool", title: redact(toolTitle(event.name, event.input)), status: "running" }];
+    const url = toolUrl(event.input);
+    // 도구 호출 id는 자식이 붙인 불투명한 값이라 세션 정체를 드러내지 않는다 — 시작과 끝을 짝짓는 데만 쓴다.
+    return [{
+      type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
+      title: redact(toolTitle(event.name, event.input)),
+      status: "running",
+      ...(url === null ? {} : { url }),
+    }];
   }
   if (event.kind === "tool-end") {
     return [{
       type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
       title: redact(event.name ?? "tool"),
       status: event.isError ? "error" : "done",
     }];
@@ -280,9 +337,17 @@ export function toChatEvents(
         error: { code: "chat_error", message: redact(event.detail ?? "Chat turn failed") },
       }];
     }
-    return [{ type: "complete" }];
+    return [{ type: "complete", ...(event.usage ? { usage: event.usage } : {}) }];
   }
   return [];
+}
+
+/** WebFetch의 `url`만 출처가 된다 — 검색 질의는 출처가 아니라 질문이다. */
+function toolUrl(input: unknown): string | null {
+  const value = record(input).url;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^https?:\/\//iu.test(trimmed) ? trimmed : null;
 }
 
 function toolTitle(name: string, input: unknown): string {

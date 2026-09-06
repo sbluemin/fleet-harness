@@ -3,12 +3,17 @@ import { useNavigate } from "react-router-dom";
 import type {
   FloatingWidgetArrival,
   FloatingWidgetArrivalsCapability,
+  FloatingWidgetAwaiting,
+  FloatingWidgetAwaitingsCapability,
+  FloatingWidgetComposerCapability,
   FloatingWidgetContext,
   FloatingWidgetDeparture,
   FloatingWidgetDeparturesCapability,
   FloatingWidgetDescriptor,
   FloatingWidgetFleetSignals,
+  FloatingWidgetKeepOutCapability,
   FloatingWidgetOperationsCapability,
+  FloatingWidgetRect,
   FloatingWidgetSignalsCapability,
 } from "@fleet-console/sdk/floating";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -19,7 +24,7 @@ import { resolveOperationActivity } from "./operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "./operation-marks.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
-import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
+import { focusOperation, getState, openQuickLaunch, openQuickLaunchWithDraft, subscribe as subscribeStore } from "./store.js";
 
 export function FloatingWidgetLayer() {
   const { floatingWidgets } = usePluginRegistry();
@@ -28,10 +33,20 @@ export function FloatingWidgetLayer() {
   const capabilities = useMemo(() => createHostCapabilities(), []);
   const arrivals = useMemo(() => createManagedArrivalsCapability(), []);
   const departures = useMemo(() => createManagedDeparturesCapability(), []);
+  const awaitings = useMemo(() => createManagedAwaitingsCapability(), []);
+  const keepOut = useMemo(() => createManagedKeepOutCapability(), []);
   const signals = useMemo(() => createManagedSignalsCapability(), []);
   useEffect(() => () => arrivals.dispose(), [arrivals]);
   useEffect(() => () => departures.dispose(), [departures]);
+  useEffect(() => () => awaitings.dispose(), [awaitings]);
+  useEffect(() => () => keepOut.dispose(), [keepOut]);
   useEffect(() => () => signals.dispose(), [signals]);
+  const composer = useMemo<FloatingWidgetComposerCapability>(() => ({
+    open: (options) => {
+      if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
+      else openQuickLaunch();
+    },
+  }), []);
   // 스토어 갱신만으로는 /operations 밖(설정 등)에서 아무 일도 보이지 않는다 —
   // pendingOperationFocus는 operations 페이지가 소비하므로 rail 알림·검색과 같은 순서로 이동을 동반한다.
   const operations = useMemo<FloatingWidgetOperationsCapability>(() => ({
@@ -44,12 +59,15 @@ export function FloatingWidgetLayer() {
     api: capabilities.api,
     arrivals: arrivals.capability,
     departures: departures.capability,
+    awaitings: awaitings.capability,
+    keepOut: keepOut.capability,
+    composer,
     operations,
     signals: signals.capability,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,
     language,
-  }), [arrivals, capabilities, departures, language, operations, signals]);
+  }), [arrivals, awaitings, capabilities, composer, departures, keepOut, language, operations, signals]);
 
   if (floatingWidgets.length === 0) return null;
 
@@ -181,6 +199,138 @@ function createManagedDeparturesCapability(): ManagedDeparturesCapability {
 
   return {
     capability: { list, subscribe },
+    dispose: () => {
+      for (const unsubscribe of [...activeSubscriptions]) unsubscribe();
+    },
+  };
+}
+
+interface ManagedAwaitingsCapability {
+  readonly capability: FloatingWidgetAwaitingsCapability;
+  readonly dispose: () => void;
+}
+
+/**
+ * 입력·승인을 기다리는 Operation의 정체를 넘긴다. 집계(signals.awaiting)만으로는 위젯이
+ * "누가" 기다리는지 말할 수 없어 알림이 자세 하나로 끝난다 — 도착·출발과 같은 원장 계약이다.
+ */
+function createManagedAwaitingsCapability(): ManagedAwaitingsCapability {
+  const activeSubscriptions = new Set<() => void>();
+
+  const list = (): readonly FloatingWidgetAwaiting[] => {
+    const state = getState();
+    const awaitings: FloatingWidgetAwaiting[] = [];
+    for (const operation of state.operations) {
+      if (resolveOperationActivity(operation, state.operationRuntime) !== "awaiting") continue;
+      awaitings.push({ operationId: operation.id, title: operation.title });
+    }
+    return awaitings;
+  };
+
+  const subscribe: FloatingWidgetAwaitingsCapability["subscribe"] = (listener) => {
+    let previous = list();
+    let active = true;
+    const notifyIfChanged = () => {
+      const next = list();
+      if (arrivalsEqual(previous, next)) return;
+      previous = next;
+      listener(next);
+    };
+    const unsubscribeStore = subscribeStore(notifyIfChanged);
+    const unsubscribe = () => {
+      if (!active) return;
+      active = false;
+      unsubscribeStore();
+      activeSubscriptions.delete(unsubscribe);
+    };
+    activeSubscriptions.add(unsubscribe);
+    try {
+      listener(previous);
+    } catch (error) {
+      unsubscribe();
+      throw error;
+    }
+    return unsubscribe;
+  };
+
+  return {
+    capability: { list, subscribe },
+    dispose: () => {
+      for (const unsubscribe of [...activeSubscriptions]) unsubscribe();
+    },
+  };
+}
+
+interface ManagedKeepOutCapability {
+  readonly capability: FloatingWidgetKeepOutCapability;
+  readonly dispose: () => void;
+}
+
+/**
+ * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), Quick Launch 카드와 그 덱, 모달
+ * 대화상자의 본문이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
+ * 곳이 없고, 그런 표면은 이미 위젯의 포인터 입력을 막는다(layout.css 계약).
+ */
+const KEEP_OUT_SELECTOR = [
+  ".rail-pane:not(.is-parked)",
+  ".quick-launch-card",
+  ".quick-launch-overlay [role=\"listbox\"]",
+  "[aria-modal=\"true\"]",
+  "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.quick-launch-overlay):not(.floating-widget-layer *)",
+].join(", ");
+const KEEP_OUT_CURTAIN_FRACTION = 0.85;
+
+function toRect(rect: DOMRect): FloatingWidgetRect {
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+}
+
+function readKeepOutRects(): readonly FloatingWidgetRect[] {
+  if (typeof document === "undefined") return [];
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  const isCurtain = (rect: DOMRect) => (rect.width * rect.height) / viewportArea >= KEEP_OUT_CURTAIN_FRACTION;
+  const rects: FloatingWidgetRect[] = [];
+  for (const element of document.querySelectorAll<HTMLElement>(KEEP_OUT_SELECTOR)) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    if (!isCurtain(rect)) {
+      rects.push(toRect(rect));
+      continue;
+    }
+    // 화면을 덮는 커튼은 그 안의 카드가 실제 표면이다 — 자식 중 커튼이 아닌 첫 상자를 쓴다.
+    // 스크림이 카드보다 먼저 서는 모달(What's New)에서 첫 자식은 또 하나의 커튼이라 건너뛴다.
+    // 커튼 아닌 자식이 없으면(취역·제어권 인계) 부관이 설 곳이 없으므로 넣지 않는다.
+    for (const child of Array.from(element.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      const cardRect = child.getBoundingClientRect();
+      if (cardRect.width <= 0 || cardRect.height <= 0 || isCurtain(cardRect)) continue;
+      rects.push(toRect(cardRect));
+      break;
+    }
+  }
+  return rects;
+}
+
+function createManagedKeepOutCapability(): ManagedKeepOutCapability {
+  const activeSubscriptions = new Set<() => void>();
+
+  const subscribe: FloatingWidgetKeepOutCapability["subscribe"] = (listener) => {
+    let active = true;
+    // 스토어가 여닫는 표면(Quick Launch·검색·대화상자)만 즉시 알린다. 레일 페인은 자기 스토어를
+    // 가지므로 여기서 잡히지 않고, 위젯의 주기 재측정이 그 지연을 메운다 — DOM 전체를 관찰하면
+    // 위젯 자신의 자세 변화까지 알림이 되어 값보다 비용이 크다.
+    const unsubscribeStore = subscribeStore(listener);
+    const unsubscribe = () => {
+      if (!active) return;
+      active = false;
+      unsubscribeStore();
+      activeSubscriptions.delete(unsubscribe);
+    };
+    activeSubscriptions.add(unsubscribe);
+    return unsubscribe;
+  };
+
+  return {
+    capability: { list: readKeepOutRects, subscribe },
     dispose: () => {
       for (const unsubscribe of [...activeSubscriptions]) unsubscribe();
     },

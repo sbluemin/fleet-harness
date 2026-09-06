@@ -9,7 +9,8 @@ import { resolveOperationActivity } from "./operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-marks.js";
 import { subscribeConsoleChannel } from "./operations-sse.js";
 import { openRailPanel } from "./rail/rail-store.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
+  openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
   const base = createClientCapabilities(resync);
@@ -74,6 +75,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;
         if (mentionOperationId) openQuickLaunchForOperation(mentionOperationId);
+        else if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
         else openQuickLaunch();
       },
     },

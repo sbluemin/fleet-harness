@@ -45,6 +45,62 @@ describe("chat routes", () => {
   });
 });
 
+describe("session controls", () => {
+  it("passes the chosen model, effort and locale to the session and rejects an unsafe model id", async () => {
+    // 모델 id는 `--model`에 그대로 들어간다 — 모양이 어긋난 값은 자식에게 닿기 전에 거절한다.
+    const created: unknown[] = [];
+    const harness = createHarness(true, { admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
+    registerChatRoutes(harness.ctx, {
+      createSession: (options) => {
+        created.push(options);
+        return new FakeSession();
+      },
+      id: () => "chat-a",
+      ensureDir: async () => undefined,
+      removeDir: async () => undefined,
+    });
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
+    expect(created[0]).toMatchObject({ admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
+    expect((created[0] as { cwd: string }).cwd).toContain("/workspace/tori/chat-a");
+
+    const unsafe = createHarness(true, { admiral: "tori", model: "sonnet --dangerously-skip" });
+    registerChatRoutes(unsafe.ctx, { createSession: () => new FakeSession(), ensureDir: async () => undefined });
+    await unsafe.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    expect(unsafe.writeJson.mock.calls.at(-1)?.[1]).toBe(400);
+  });
+
+  it("cancels only the active turn and keeps the session for the next question", async () => {
+    const harness = createHarness(true, {});
+    const session = new FakeSession();
+    const registry = registerChatRoutes(harness.ctx);
+    await registry.start("chat", (onEvent) => {
+      session.onEvent = onEvent;
+      return session;
+    });
+    expect(await registry.message("chat", "first")).toBe("accepted");
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/chat/cancel",
+    });
+    expect(session.cancelled).toBe(1);
+    expect(harness.writeJson.mock.calls.at(-1)?.[2]).toEqual({ cancelled: true });
+    session.onEvent?.({ type: "cancelled" });
+    expect(registry.status("chat")).toBe("idle");
+    expect(await registry.message("chat", "second")).toBe("accepted");
+    await registry.dispose();
+  });
+});
+
 describe("AI gateway binding", () => {
   it("refuses to start before the Console has an origin instead of guessing a port", async () => {
     // 포트를 추측해 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
@@ -129,8 +185,14 @@ function response(): {
 
 class FakeSession implements ChatSessionLike {
   onEvent?: (event: ChatEvent) => void;
+  cancelled = 0;
   async start(): Promise<void> {}
-  async send(): Promise<void> {}
+  send(): Promise<void> {
+    return new Promise(() => undefined);
+  }
+  cancel(): void {
+    this.cancelled += 1;
+  }
   async dispose(): Promise<void> {}
 }
 

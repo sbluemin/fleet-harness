@@ -20,7 +20,15 @@ export type ClaudeExecutionEvent =
       readonly isError: boolean;
       readonly detail?: string;
       readonly source: "message" | "incomplete" | "watchdog";
+      /** 자식이 보고한 턴의 사용량. 결과 메시지가 싣지 않으면 없다. */
+      readonly usage?: ClaudeExecutionUsage;
     };
+
+export interface ClaudeExecutionUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly costUsd?: number;
+}
 
 export interface ClaudeExecutionEventDecoder {
   decode(message: ClaudeGatewayMessage): readonly ClaudeExecutionEvent[];
@@ -101,12 +109,34 @@ function decodeUser(
 }
 
 function decodeResult(message: Record<string, unknown>): readonly ClaudeExecutionEvent[] {
+  const usage = decodeUsage(message);
   return [{
     kind: "result",
     isError: message.is_error === true,
     ...(typeof message.result === "string" ? { detail: message.result } : {}),
     source: "message",
+    ...(usage === null ? {} : { usage }),
   }];
+}
+
+/** `usage.input_tokens/output_tokens`와 `total_cost_usd`만 읽는다 — 그 밖의 집계는 원장의 몫이다. */
+function decodeUsage(message: Record<string, unknown>): ClaudeExecutionUsage | null {
+  const usage = record(message.usage);
+  const inputTokens = usage.input_tokens;
+  const outputTokens = usage.output_tokens;
+  if (typeof inputTokens !== "number" || typeof outputTokens !== "number") return null;
+  // 캐시로 읽은 입력도 입력이다 — 빼면 "토큰 235에 $0.05"처럼 수와 값이 서로 설명하지 못한다.
+  const cached = numberOr(usage.cache_read_input_tokens) + numberOr(usage.cache_creation_input_tokens);
+  const cost = message.total_cost_usd;
+  return {
+    inputTokens: inputTokens + cached,
+    outputTokens,
+    ...(typeof cost === "number" && Number.isFinite(cost) ? { costUsd: cost } : {}),
+  };
+}
+
+function numberOr(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function blocks(message: unknown): readonly Record<string, unknown>[] {

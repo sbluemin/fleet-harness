@@ -37,6 +37,7 @@ export type {
 export type {
   ClaudeExecutionEvent,
   ClaudeExecutionEventDecoder,
+  ClaudeExecutionUsage,
 } from "./execution-events.js";
 export type {
   ClaudeExecutionContinuation,

@@ -331,8 +331,11 @@ export interface ClientComposerCapability {
    * does. The host still applies its own addressing rules — an Operation that cannot be messaged,
    * or is waiting on its own prompt, is left unaddressed. A mention seed starts a fresh address:
    * leftover unsent draft from a previous close is discarded, not preserved across this open.
+   *
+   * `draft` seeds the prompt text instead — used to hand a plugin's text (an aide's answer, a
+   * snippet) to the composer. It replaces any unsent draft; it never submits.
    */
-  open(options?: { readonly mentionOperationId?: string }): void;
+  open(options?: { readonly mentionOperationId?: string; readonly draft?: string }): void;
 }
 
 export interface ClientOperationsCapability {

@@ -18,6 +18,8 @@ export const CONSOLE_MCP_SERVER = "console";
 const MIGRATION_LOCK = "knowledge.migration.lock";
 
 export interface ConsoleSnapshot {
+  /** 브라우저가 스냅샷을 뜬 시각(ISO). 서버가 받은 시각으로 채운다. */
+  readonly takenAt?: string;
   readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly operations: readonly { readonly id: string; readonly theaterId: string; readonly type: string; readonly title: string; readonly activity: string }[];
 }
@@ -56,9 +58,10 @@ You can now read the Console you serve on, through the "console" tools:
 Use them whenever the question is about what is happening in this Console — what is running,
 what is waiting, what a project's Wiki says. Console state changes from minute to minute, so call
 the tools again for every such question and answer only from the result you just received —
-never from an earlier tool result in this conversation, and never from memory. Reading these tools
-is not reading files or shell;
-the ban on local files and shell still stands. You still cannot write anything, and you never
+never from an earlier tool result in this conversation, and never from memory. Operation activity
+comes from a snapshot the Console took when the Admiral sent the current message; its time is in
+\`snapshotAt\`. Say "as of when you asked" rather than "right now" when the activity matters.
+Reading these tools is not reading files or shell; the ban on local files and shell still stands. You still cannot write anything, and you never
 reveal paths or session identifiers even if a tool result seems to contain one. When you name an
 Operation, use its title exactly as listed so the Admiral can find it.`;
 
@@ -128,8 +131,8 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
           createdAt: new Date(operation.ts.createdAt).toISOString(),
         };
       });
-      // 읽은 시각을 함께 준다 — 모델이 "지금" 결과와 앞선 결과를 구분할 근거다.
-      return text({ fetchedAt: new Date().toISOString(), operations: args.activity ? rows.filter((row) => row.activity === args.activity) : rows });
+      // 활동은 메시지에 실려 온 스냅샷의 것이다 — "지금"이 아니라 "물었을 때"의 시각을 함께 준다.
+      return text({ snapshotAt: current?.takenAt ?? null, operations: args.activity ? rows.filter((row) => row.activity === args.activity) : rows });
     })),
     ...(briefing ? [defineTool("console_wiki_search", "Search a Theater's Fleet Wiki entries. Returns a ranked list of matching entries (id, title, excerpt).", {
       theaterId: z.string(),

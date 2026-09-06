@@ -1,5 +1,5 @@
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import type { ConsoleExperimentSettings, ExperimentModelOption } from "@fleet-console/sdk/settings";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -37,6 +37,11 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
       activity: operation.activity,
     })),
   };
+}
+
+/** 모델 선택지 — Claude 별칭 + Gateway 모델. 호스트가 아직 없으면 빈 목록. */
+export function readModelOptions(): Promise<readonly ExperimentModelOption[]> {
+  return experiments?.modelOptions() ?? Promise.resolve([]);
 }
 
 /** 코어가 experiments 필드를 저장 중이면 true — 그동안 이 행의 스위치는 잠긴다. */

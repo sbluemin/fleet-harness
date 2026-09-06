@@ -7,7 +7,7 @@ import { registerChatRoutes } from "./server/chat-routes.js";
 
 export default definePlugin({
   id: "scuttlebutt",
-  name: "Scuttlebutt",
+  name: "Quaker Aides",
   async register(ctx) {
     await fs.mkdir(path.join(ctx.host.paths.pluginDataDir("scuttlebutt"), "workspace"), { recursive: true });
     registerChatRoutes(ctx);

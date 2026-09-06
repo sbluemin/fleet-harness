@@ -710,6 +710,31 @@ export function openQuickLaunchForOperation(operationId: string): void {
   });
 }
 
+/**
+ * 초안을 들고 컴포저를 연다 — 플러그인이 자기 텍스트(부관의 답)를 Operation 지시로 넘기는
+ * 진입점. 남은 초안은 교체된다: 이 호출은 "이 문장으로 시작하라"는 뜻이지 이어 쓰기가 아니다.
+ * 고정 컴포저는 초안 도착 효과가 싣고, 모달은 열림 전이의 복원 경로가 싣는다.
+ */
+export function openQuickLaunchWithDraft(draft: string): void {
+  if (isQuickLaunchDocked()) {
+    setState({
+      quickLaunchDraft: draft,
+      quickLaunchDraftAttachments: null,
+      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
+      quickLaunchError: null,
+      quickLaunchErrorShortenBy: null,
+    });
+    return;
+  }
+  setState({
+    quickLaunchDraft: draft,
+    quickLaunchDraftAttachments: null,
+    quickLaunchOpen: true,
+    quickLaunchError: null,
+    quickLaunchErrorShortenBy: null,
+  });
+}
+
 export function consumeQuickLaunchMentionSeed(): void {
   if (state.quickLaunchMentionSeed === null) return;
   setState({ quickLaunchMentionSeed: null });

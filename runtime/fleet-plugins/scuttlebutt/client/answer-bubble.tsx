@@ -2,6 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
+import { sourceLabel } from "./chat-card.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { isConsoleReadEnabled } from "./console-read.js";
@@ -106,6 +107,7 @@ export function AnswerBubble({
   }, [onDismiss]);
 
   const answer = readAnswerText(state);
+  const sources = readAnswerSources(state);
   const working = state.phase === "starting" || state.phase === "thinking";
   const name = t(`chat.label.${admiral}` as "chat.label.tori");
 
@@ -131,6 +133,14 @@ export function AnswerBubble({
         {answer === null
           ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>
           : <p className="scuttlebutt-answer-text">{answer}</p>}
+        {!working && sources.length > 0 ? (
+          <span className="scuttlebutt-sources">
+            <span className="scuttlebutt-sources-label">{t("sources.label")}</span>
+            {sources.map((url) => (
+              <a key={url} className="scuttlebutt-source" href={url} target="_blank" rel="noreferrer noopener" title={url}>{sourceLabel(url)}</a>
+            ))}
+          </span>
+        ) : null}
         {/* 말풍선은 앞부분과 입구다 — 전문과 이어 묻기는 원래 있던 카드가 받는다. */}
         <button type="button" className="scuttlebutt-answer-expand" onClick={onExpand}>
           {t("answer.expand")}
@@ -162,6 +172,15 @@ function readAnswerText(state: ChatState): string | null {
     if (entry && (entry.kind === "assistant" || entry.kind === "error") && entry.text.length > 0) return entry.text;
   }
   return null;
+}
+
+function readAnswerSources(state: ChatState): readonly string[] {
+  const entries = currentExchange(state);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.kind === "assistant") return entry.sources;
+  }
+  return [];
 }
 
 /**
