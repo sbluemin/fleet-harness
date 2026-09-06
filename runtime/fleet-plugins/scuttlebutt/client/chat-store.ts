@@ -54,9 +54,17 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
     if (last?.kind === "assistant") {
       return { ...state, entries: [...state.entries.slice(0, -1), { ...last, text: last.text + event.text }], phase: "thinking" };
     }
+    // 한 문답 안에서 답이 도구 행으로 끊기면 새 답 항목이 선다 — 앞 조각에 붙은 출처는 이 조각이
+    // 이어받는다. 카드와 말풍선은 마지막 답 항목의 출처만 읽기 때문이다.
+    const inherited = exchangeSources(state);
     return {
       ...state,
-      entries: [...state.entries, { id: nextId(), kind: "assistant" as const, text: event.text, sources: state.pendingSources }],
+      entries: [...state.entries, {
+        id: nextId(),
+        kind: "assistant" as const,
+        text: event.text,
+        sources: [...inherited, ...state.pendingSources.filter((url) => !inherited.includes(url))],
+      }],
       phase: "thinking",
       pendingSources: [],
     };
@@ -107,6 +115,16 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
     pendingSources: [],
     fetching: {},
   };
+}
+
+/** 지금 문답의 앞선 답 조각들이 모은 출처. */
+function exchangeSources(state: ChatState): readonly string[] {
+  const sources: string[] = [];
+  for (const entry of currentExchange(state)) {
+    if (entry.kind !== "assistant") continue;
+    for (const url of entry.sources) if (!sources.includes(url)) sources.push(url);
+  }
+  return sources;
 }
 
 /** 마지막 질문과 그 뒤의 것. 말풍선은 이것만 보여 준다(카드는 전체를 스크롤한다). */

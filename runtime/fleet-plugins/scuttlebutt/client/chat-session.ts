@@ -82,8 +82,8 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
   let snapshot = INITIAL_SNAPSHOT;
   let stream: ChatStreamConnection | null = null;
   let chatId: string | null = null;
-  /** 지금 세션을 띄울 때의 모델·강도. 설정이 바뀌면 다음 질문은 새 세션으로 간다. */
-  let launched: ChatLaunchChoice | null = null;
+  /** 지금 세션을 띄울 때의 모델·강도·언어. 어느 하나라도 바뀌면 다음 질문은 새 세션으로 간다. */
+  let launched: { readonly choice: ChatLaunchChoice | null; readonly locale: ConsoleLocale | undefined } | null = null;
   let closed = false;
   const name = () => getT(deps.locale?.())(`bird.${deps.admiral}`);
 
@@ -99,11 +99,16 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     launched = null;
   }
 
-  /** 설정의 모델·강도가 띄운 세션과 다르면 옛 세션을 거두고 잊는다 — 「다음 질문부터 적용」의 실체다. */
+  /**
+   * 설정의 모델·강도나 Console 언어가 띄운 세션과 다르면 옛 세션을 거두고 잊는다 — 「다음 질문부터
+   * 적용」의 실체다. 언어는 서버의 프롬프트 한 단락에 굳어 있으므로 세션을 바꿔야 따라온다.
+   */
   function retireIfLaunchChanged(): void {
-    if (chatId === null) return;
+    if (chatId === null || launched === null) return;
     const current = deps.launch?.() ?? null;
-    if (!current || !launched || (current.model === launched.model && current.effort === launched.effort)) return;
+    const locale = deps.locale?.();
+    const sameChoice = current?.model === launched.choice?.model && current?.effort === launched.choice?.effort;
+    if (sameChoice && locale === launched.locale) return;
     const stale = chatId;
     forgetSession();
     // 서버 세션은 유휴 축출로도 사라지지만, 자식 프로세스를 그때까지 두지 않는다.
@@ -144,7 +149,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
       ...(locale ? { locale } : {}),
     }) as { readonly chatId?: unknown } | null;
     if (!payload || typeof payload.chatId !== "string") throw new ChatRequestError("generic");
-    launched = launch;
+    launched = { choice: launch, locale };
     return payload.chatId;
   }
 
