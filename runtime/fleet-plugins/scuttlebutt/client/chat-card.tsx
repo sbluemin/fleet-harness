@@ -211,7 +211,7 @@ export function ChatCard({
             </div>
           </div>
         ) : null}
-        {state.phase === "error" ? (
+        {state.phase === "error" && lastError(state)?.retryable ? (
           <div className="scuttlebutt-answer-toolbar">
             <button type="button" className="scuttlebutt-answer-action" onClick={onRetry}>{t("action.retry")}</button>
           </div>
@@ -267,6 +267,16 @@ function renderEntry(entry: ChatEntry, t: ReturnType<typeof getT>): React.ReactN
       {entry.text}
     </div>
   );
+}
+
+/** 마지막 오류 항목. 재시도 버튼은 그 항목이 재시도 가능하다고 말할 때만 선다. */
+function lastError(state: ChatState): Extract<ChatEntry, { kind: "error" }> | null {
+  for (let index = state.entries.length - 1; index >= 0; index -= 1) {
+    const entry = state.entries[index];
+    if (entry?.kind === "error") return entry;
+    if (entry?.kind === "user") return null;
+  }
+  return null;
 }
 
 /** 출처 칩의 글자 — 호스트 이름과 경로 첫 조각. 전체 URL은 title로 남긴다. */

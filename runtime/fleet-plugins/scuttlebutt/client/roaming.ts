@@ -230,6 +230,12 @@ function verticalBounds(body: BirdBody, viewport: Viewport): [number, number] {
   return low > high ? [viewport.height / 2, viewport.height / 2] : [low, high];
 }
 
+/** 중심 좌표를 화면 안으로 되돌린다. 편대 루프가 돌지 않는 화면(모션 줄임)에서 키보드 이동이 쓴다. */
+export function clampToViewport(body: BirdBody, viewport: Viewport): void {
+  body.x = clamp(body.x, ...horizontalBounds(body, viewport));
+  body.y = clamp(body.y, ...verticalBounds(body, viewport));
+}
+
 export function stayPutFractions(body: BirdBody, viewport: Viewport): { nx: number; ny: number } {
   const nx = viewport.width > 0 ? body.x / viewport.width : 0.5;
   const ny = viewport.height > 0 ? body.y / viewport.height : 0.5;

@@ -82,6 +82,8 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
   let snapshot = INITIAL_SNAPSHOT;
   let stream: ChatStreamConnection | null = null;
   let chatId: string | null = null;
+  /** 지금 세션을 띄울 때의 모델·강도. 설정이 바뀌면 다음 질문은 새 세션으로 간다. */
+  let launched: ChatLaunchChoice | null = null;
   let closed = false;
   const name = () => getT(deps.locale?.())(`bird.${deps.admiral}`);
 
@@ -94,6 +96,18 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     stream?.close();
     stream = null;
     chatId = null;
+    launched = null;
+  }
+
+  /** 설정의 모델·강도가 띄운 세션과 다르면 옛 세션을 거두고 잊는다 — 「다음 질문부터 적용」의 실체다. */
+  function retireIfLaunchChanged(): void {
+    if (chatId === null) return;
+    const current = deps.launch?.() ?? null;
+    if (!current || !launched || (current.model === launched.model && current.effort === launched.effort)) return;
+    const stale = chatId;
+    forgetSession();
+    // 서버 세션은 유휴 축출로도 사라지지만, 자식 프로세스를 그때까지 두지 않는다.
+    void request(`chat/${encodeURIComponent(stale)}/stop`, {}).catch(() => undefined);
   }
 
   function receive(event: ChatStreamEvent): void {
@@ -130,10 +144,12 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
       ...(locale ? { locale } : {}),
     }) as { readonly chatId?: unknown } | null;
     if (!payload || typeof payload.chatId !== "string") throw new ChatRequestError("generic");
+    launched = launch;
     return payload.chatId;
   }
 
   async function ensureSession(): Promise<string> {
+    retireIfLaunchChanged();
     if (chatId !== null) return chatId;
     const started = await start();
     if (closed) throw new ChatRequestError("closed");

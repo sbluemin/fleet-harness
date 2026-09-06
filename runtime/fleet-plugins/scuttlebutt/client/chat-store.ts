@@ -22,9 +22,11 @@ export interface ChatState {
   readonly phase: "idle" | "starting" | "thinking" | "ready" | "error";
   /** 답 항목이 서기 전에 읽힌 출처. 답이 서는 순간 그리로 옮겨 간다. */
   readonly pendingSources: readonly string[];
+  /** 지금 읽는 중인 페이지. 읽기가 성공으로 끝나야 출처가 된다 — 실패한 페이지는 읽은 것이 아니다. */
+  readonly fetching: string | null;
 }
 
-export const initialChatState: ChatState = { entries: [], phase: "idle", pendingSources: [] };
+export const initialChatState: ChatState = { entries: [], phase: "idle", pendingSources: [], fetching: null };
 
 /** 오류 코드에서 사용자 문구. 코드를 모르면 일반 문구로 떨어진다 — 원문 코드는 화면에 내지 않는다. */
 export function errorMessage(code: string, name: string, locale?: ConsoleLocale): string {
@@ -50,6 +52,7 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
       return { ...state, entries: [...state.entries.slice(0, -1), { ...last, text: last.text + event.text }], phase: "thinking" };
     }
     return {
+      ...state,
       entries: [...state.entries, { id: nextId(), kind: "assistant" as const, text: event.text, sources: state.pendingSources }],
       phase: "thinking",
       pendingSources: [],
@@ -62,7 +65,9 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
       ? [...state.entries.slice(0, -1), { ...last, text }]
       : [...state.entries, { id: nextId(), kind: "tool" as const, text }];
     const next: ChatState = { ...state, entries, phase: "thinking" };
-    return event.url ? attachSource(next, event.url) : next;
+    if (event.status === "running") return { ...next, fetching: event.url ?? null };
+    if (event.status === "done" && state.fetching) return attachSource({ ...next, fetching: null }, state.fetching);
+    return { ...next, fetching: null };
   }
   if (event.type === "complete") {
     const last = state.entries.at(-1);
@@ -70,13 +75,14 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
     const entries = last?.kind === "assistant" && event.usage
       ? [...state.entries.slice(0, -1), { ...last, usage: event.usage }]
       : state.entries;
-    return { entries: settleTools(entries, locale), phase: "ready", pendingSources: [] };
+    return { entries: settleTools(entries, locale), phase: "ready", pendingSources: [], fetching: null };
   }
   if (event.type === "cancelled") {
     return {
       entries: [...settleTools(state.entries, locale), { id: nextId(), kind: "notice", text: getT(locale)("notice.cancelled") }],
       phase: "ready",
       pendingSources: [],
+      fetching: null,
     };
   }
   return {
@@ -89,6 +95,7 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, name: 
     }],
     phase: "error",
     pendingSources: [],
+    fetching: null,
   };
 }
 
@@ -123,6 +130,7 @@ export function appendUser(state: ChatState, text: string): ChatState {
     entries: [...state.entries, { id: nextId(), kind: "user", text }],
     phase: "thinking",
     pendingSources: [],
+    fetching: null,
   };
 }
 

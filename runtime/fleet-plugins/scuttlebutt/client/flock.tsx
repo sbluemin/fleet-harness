@@ -13,6 +13,7 @@ import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
   birdSize,
+  clampToViewport,
   createBirdBody,
   insideKeepOut,
   parkedLayout,
@@ -404,6 +405,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const viewport = viewportRef.current;
     body.x += dx;
     body.y += dy;
+    // 모션을 줄인 화면에서는 편대 루프의 경계 clamp가 돌지 않는다 — 여기서 화면 안에 붙든다.
+    clampToViewport(body, viewport);
     body.vx = 0;
     body.vy = 0;
     body.mode = "fly";
