@@ -1790,6 +1790,18 @@ export function QuickLaunch() {
               <RefineSparkIcon />
             </button>
           ) : null}
+          {/* 파일 픽커 — 붙여넣기·드롭과 같은 입구의 명시적 형태. 능력 있는 대상에서만 선다.
+              입력 행에 사는 이유: 첨부는 초안에 붙는 내용이라 발사 좌표(하단 행)가 아니라 글이 있는 자리의
+              도구다. 하단 행은 전송이 한 줄을 지켜야 하는 고정 예산이기도 하다(components.css의
+              .quick-launch-bar 주석). */}
+          {attachmentPlugin?.uploadLaunchAttachment ? (
+            // 입구 폭은 paste·드롭과 같다(image/*, 블록 기본값) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
+            <ComposerAttachControl
+              className="quick-launch-attach"
+              label={t("chrome.quickLaunch.attachmentAdd")}
+              onFiles={(files) => addAttachmentFiles([...files])}
+            />
+          ) : null}
           </span>
           {attachments.length > 0 ? (
             <div className="quick-launch-attachments" role="group" aria-label={t("chrome.quickLaunch.attachments")}>
@@ -1993,17 +2005,9 @@ export function QuickLaunch() {
               도킹이 접힌 화면에서는 눌러도 설 자리가 없고, 물러난 바에서는 높이 0 + inert라 누를 수
               없다 — 둘 다 아예 내놓지 않아, 이 버튼의 존재가 곧 "지금 누를 수 있다"가 되게 한다
               (화면 안내가 이 버튼을 앵커로 삼으므로, 존재만으로 판정이 서야 한다). */}
-          {/* 파일 픽커 — 붙여넣기·드롭과 같은 입구의 명시적 형태. 능력 있는 대상에서만 선다. */}
-          {attachmentPlugin?.uploadLaunchAttachment ? (
-            // 입구 폭은 paste·드롭과 같다(image/*, 블록 기본값) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
-            <ComposerAttachControl
-              className="quick-launch-attach"
-              label={t("chrome.quickLaunch.attachmentAdd")}
-              onFiles={(files) => addAttachmentFiles([...files])}
-            />
-          ) : null}
           {dockSuppressed || showStrip ? null : (
-            <>
+            // 두 옵트인 토글은 한 무리다 — 전송과는 다른 종류(설정)라 간격으로 묶어 전송과 떨어뜨린다.
+            <span className="quick-launch-bar-toggles">
               <button
                 type="button"
                 className="quick-launch-mention-focus"
@@ -2024,7 +2028,7 @@ export function QuickLaunch() {
               >
                 <PinIcon />
               </button>
-            </>
+            </span>
           )}
           <ComposerSubmitButton
             className="quick-launch-submit"

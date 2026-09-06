@@ -14277,6 +14277,14 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 /* 고정·포커스 멘션 토글 — 켜지면 brass로 자기 상태를 말한다(위치/행선지 채널). */
+/* 두 옵트인 토글은 한 무리다 — 안쪽 간격을 바의 간격보다 좁혀 전송과 다른 종류임을 간격으로 말한다. */
+.quick-launch-bar-toggles {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+}
+
 .quick-launch-pin,
 .quick-launch-mention-focus {
   display: inline-flex;
@@ -14545,22 +14553,35 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 /* 파일 픽커 — 고정 토글과 같은 무채 유틸 버튼 문법. */
+/* 입력 행 오른쪽 위에 선다 — 제안 다듬기(✦)와 같은 자리·치수의 도구 슬롯. 첨부는 초안에 붙는
+   내용이라 여기가 맞고, 하단 행은 전송의 한 줄 예산을 위해 비워 둔다(.quick-launch-bar 주석). */
 .quick-launch-attach {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+/* 둘이 같이 서면 ✦가 왼쪽으로 한 칸 물러난다(첨부가 오른쪽 끝). */
+.quick-launch-input-wrap:has(.quick-launch-attach) .quick-launch-suggest-trigger {
+  right: 30px;
 }
 
 .quick-launch-attach:hover {
   color: var(--brass);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
 }
 
 .quick-launch-attach:focus-visible {
@@ -14569,8 +14590,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-attach svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 /* 드래그 중 카드 강조 — brass는 위치/포커스 채널이라 "여기 놓으라"는 지시에 맞는 색이다. */
@@ -14829,9 +14850,14 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   50% { transform: scale(1.14); }
 }
 
-/* 버튼이 서는 동안 글자가 그 아래로 들어가지 않게 입력 오른쪽에 자리를 남긴다. */
-.quick-launch-input-wrap:has(.quick-launch-suggest-trigger) .quick-launch-input {
+/* 도구가 서는 동안 글자가 그 아래로 들어가지 않게 입력 오른쪽에 자리를 남긴다 — 하나면 한 칸, 둘이면 두 칸. */
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger) .quick-launch-input,
+.quick-launch-input-wrap:has(.quick-launch-attach) .quick-launch-input {
   padding-right: 32px;
+}
+
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger):has(.quick-launch-attach) .quick-launch-input {
+  padding-right: 62px;
 }
 
 .quick-launch-card.is-suggesting {
@@ -15262,9 +15288,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-launch-sel {
   display: inline-flex;
   align-items: center;
-  /* 좁은 화면에서는 줄을 바꾼다. overflow: hidden은 접힘 애니메이션의 것이라, 줄을 못 바꾸면
-     추론강도 트랙이 잘려 보이지도 만져지지도 않는다(모바일 375px에서 실측). */
-  flex-wrap: wrap;
+  /* 한 줄에서는 줄을 바꾸지 않는다 — 모자라는 폭은 칩 라벨 말줄임이 받는다(.quick-launch-chip).
+     모바일 폭에서는 미디어 질의가 wrap으로 되돌린다: overflow: hidden은 접힘 애니메이션의 것이라,
+     그 폭에서 줄을 못 바꾸면 추론강도 트랙이 잘려 보이지도 만져지지도 않는다(375px에서 실측). */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   overflow: hidden;
   /* 접힘 클립이 전역 포커스 링(2px + offset 2px = 4px 돌출)을 자르면 칩의 링이 좌우 호 두 개로
@@ -15273,9 +15300,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 5px;
   margin: -5px;
   max-width: min(640px, 100%);
-  /* inline-flex의 auto 최소폭은 min-content라, 줄이 빠듯해지면 이 묶음이 자리를 내주는 대신
-     바 전체를 밀어 Run 버튼을 아랫줄 왼쪽으로 떨어뜨린다(ULTRACODE 칩이 설 때 실측).
-     0으로 눌러, 모자라는 폭은 이미 그 경우를 위해 설계된 **묶음 안쪽 줄바꿈**이 흡수하게 한다. */
+  /* inline-flex의 auto 최소폭은 min-content라, 0으로 눌러야 바가 nowrap일 때 이 묶음이 실제로
+     줄어들 수 있다. 줄어든 폭은 안쪽 칩(flex: 0 1 auto)이 나눠 받고, 트랙·토글·라벨은 고정이다. */
   min-width: 0;
   opacity: 1;
   transition:
@@ -15344,12 +15370,15 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-bar {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  /* 한 줄 계약: 전송은 언제나 첫 줄 오른쪽 끝이다. wrap으로 두면 flex가 줄 나눔을 **수축 전**
+     가정 폭(max-content)으로 먼저 정하므로, 왼쪽 묶음이 예산을 넘는 순간 뒤 아이템이 다음 줄로
+     내려가고 묶음의 min-width: 0은 발동할 기회를 얻지 못한다(760px 카드, ULTRACODE 게이트 열림,
+     14자 모델명에서 전송만 둘째 줄로 떨어지는 것으로 실측). nowrap이면 모자라는 폭은 묶음 안의
+     칩 라벨 말줄임이 받는다. 모바일 폭은 아래 미디어 질의가 wrap으로 되돌린다. */
+  flex-wrap: nowrap;
   align-items: center;
-  /* 줄이 넘치면 뒤쪽 아이콘 무리(첨부·고정·Run)가 다음 줄로 함께 내려간다. 기본 정렬로 두면
-     그 무리가 아랫줄 **왼쪽**에 서서 Run이 자리를 옮긴 것처럼 읽힌다 — spacer가 첫 줄에 남기
-     때문이다. 넘친 줄에서도 오른쪽 끝을 지키게 한다(첫 줄은 flex:1 spacer가 이미 다 먹어
-     이 정렬이 아무것도 바꾸지 않는다). */
+  /* 넘친 줄이 생기는 모바일에서 뒤쪽 무리(고정·Run)가 아랫줄 오른쪽 끝을 지키게 한다
+     (한 줄에서는 flex:1 spacer가 이미 다 먹어 이 정렬이 아무것도 바꾸지 않는다). */
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
@@ -15365,11 +15394,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  /* 이름 길이가 카드 폭을 정하면 바가 아니라 화면이 밀린다. 상한은 바 폭이고, 그 안에서는 줄이지
-     않고 줄을 바꾼다(flex: none) — 자리가 남는데도 이름부터 깎으면 칩이 빈 알약으로 읽힌다.
-     min-width: 0은 auto(=min-content)가 상한을 이기는 것을 막는 짝이다. */
-  flex: none;
-  min-width: 0;
+  /* 이름 길이가 카드 폭을 정하면 바가 아니라 화면이 밀린다. 자리가 남는 동안은 한 글자도 깎지
+     않고(flex-basis auto = 이름 폭), 한 줄 예산이 모자랄 때만 줄어들어 라벨이 말줄임된다 —
+     전송이 줄을 옮기는 것보다 이름 끝이 잘리는 쪽이 싼 손실이고, 전체 이름은 메뉴와 title에 남는다.
+     하한은 마크·캐럿·여백에 이름 몇 글자를 더한 값이라 빈 알약이 되지 않는다. */
+  flex: 0 1 auto;
+  min-width: 92px;
   max-width: 100%;
   padding: 6px 11px;
   border: 1px solid var(--surface-rim);
@@ -15383,6 +15413,11 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring);
+}
+
+/* 모델 칩은 종류 글리프 슬롯(14px + 간격)이 하나 더 있어 하한도 그만큼 넓다. */
+.quick-launch-chip--model {
+  min-width: 108px;
 }
 
 .quick-launch-chip:hover:not(:disabled) {
@@ -15591,6 +15626,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
    다투다 자기 폭 아래로 짜부라지고, 접힘용 overflow: hidden이 추론강도 트랙을 잘라 낸다.
    줄을 통째로 내주면 트랙이 온전히 서고 전송은 아래 줄로 내려간다. */
 @media (max-width: 767px) {
+  /* 한 줄 계약을 푼다 — 이 폭에서는 말줄임으로도 예산이 안 나와, 선택 줄이 한 줄을 통째로 갖고
+     전송이 아래 줄로 내려가는 것이 설계다. */
+  .quick-launch-bar,
+  .quick-launch-launch-sel {
+    flex-wrap: wrap;
+  }
+
   .quick-launch-launch-sel {
     flex: 1 1 100%;
   }
@@ -15945,6 +15987,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* 상한 초과 안내 — 상태 신호이므로 warn 채널을 쓴다. */
 .quick-launch-overflow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--warn);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
