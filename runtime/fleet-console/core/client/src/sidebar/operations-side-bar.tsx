@@ -516,6 +516,12 @@ export function OperationsSideBar({
       setSideBarCollapsed(false);
       return false;
     }
+    // 좁힌 레일에서는 칩이 가려져 있다 — 팔레트 동작(이름 바꾸기·그룹·강조·최소화)은 목록으로 넓힌 뒤
+    // 다시 그려진 칩이 소비한다(칩은 .is-narrow 안에서 사양한다).
+    if (narrow) {
+      setSideBarMapNarrow(false);
+      return false;
+    }
     if (collapsedTheaters.includes(operation.theaterId)) {
       setTheaterCollapsed(operation.theaterId, false);
       return false;
@@ -537,7 +543,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, narrow, operationRuntime, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
