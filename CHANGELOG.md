@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.85.0] - 2026-09-06
+
+### fleet-cli
+
+#### Added
+- Add 10 missing current-generation and distinct-lineup models to OpenCode Go, including Grok 4.6, GLM 5.3, and DeepSeek V4 Flash Vision Exp with image forwarding.
+
+#### Changed
+- Replace single-source benchmark rankings with a normalized CursorBench and LiveBench cohort, preserving exact effort profiles and excluding incomplete measurements.
+
+### fleet-console
+
+#### Added
+- Add an "Experiments" settings category with four opt-in features that all start off: prompt refinement (a button beside the Quick Launch prompt rewrites your request into a task brief with goal, scope, constraints, and open questions, shown as a draft you apply, discard, or restore), a launch context pack (related Wiki entries and recent commits are listed before launch and only the ones you check are appended to the prompt), session watch (a Watch action on each Agent Operation has the Session Analyst review every finished turn for scope drift, repeated failures, and destructive attempts and notify you), and Console reading for Scuttlebutt aides (read-only Operation, Theater, and Wiki lookups). Each feature that calls a model has its own model picker beside its switch (Claude aliases by default, AI Gateway models added by their plugin), and a watched Operation's caption button shows when the last review ran and whether it found anything. The Experiments page also hosts the Quaker aides card (with Console reading as one of its rows) and the Console port and remote access cards; hovering the Experiments chip explains what the category means.
+- Expand the OpenCode Go model picker with 10 missing current-generation and distinct-lineup models while preserving existing selections.
+
+#### Changed
+- Rebuild the AI Gateway model settings around one roster and one search palette. Enabled models sit in a single list, one line each with provider, name, grade, context window, Fast, effort ladder, and host-only; "Add model" opens a palette that searches providers and model families together, groups results by provider, and picks a context-window or Fast variant from a single segment before adding one model at a time. Each provider heading in the palette carries that provider's settings: sign in with an inline API key field or sign out, a "Spend first" rank select, and the xAI endpoint switch; ranked providers are marked on their roster rows, and models of a signed-out provider stay hidden until you sign in. The separate "API keys for AI Gateway" card is removed.
+- Organize Repository around History and Changes with a single repository/worktree picker, scoped reference search, a calm empty state with Amend access, checkout-specific in-memory commit drafts, and a fixed action-result line.
+- Replace the sidebar Groups/Status segment with a single "View by status" toggle (Alt+S) that groups each Theater by awaiting/running/idle, hide empty status sections and shelves, add a "Narrow to a rail" toggle that shrinks the sidebar to a 64px rail grouped by Theater in Cruise/Tactical and by status in War Room (where the rail is the default) with hover expansion, group rail tools by Theater and Fleet scope with the Settings gear at the column tail, and fix the command band tray width so the mode switch no longer drifts between modes.
+- Simplify Skills browsing with quiet rows, a unified detail and install sheet, explicit scope and agent selection, keyboard navigation, and distinct search and loading failures.
+
 ## [1.84.0] - 2026-09-05
 
 ### fleet-cli
