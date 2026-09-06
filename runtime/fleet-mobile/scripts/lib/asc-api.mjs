@@ -1,5 +1,6 @@
 import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { fail } from "./android-tools.mjs";
 
 /**
@@ -14,6 +15,17 @@ export const ASC_GROUPS_ENV = "FLEET_ASC_BETA_GROUPS";
 export const WHATS_NEW_LOCALE = "en-US";
 // Apple은 20분을 넘는 만료를 거부한다. 폴링이 길어져도 만료 전에 새로 발급하도록 짧게 잡는다.
 export const TOKEN_LIFETIME_SECONDS = 900;
+// 처리 대기 폴링은 30분을 넘게 이 API를 두드린다. 그 사이 러너와 Apple 사이의 연결이 한 번
+// 끊기면(ConnectTimeoutError 등) 업로드가 이미 성공한 배포가 통째로 실패한다. 일시적 전송
+// 오류와 Apple의 혼잡 응답은 재시도로 흡수하고, 영구적인 거절만 호출자에게 올린다.
+export const RETRY_ATTEMPTS = 4;
+export const RETRY_BASE_DELAY_MS = 2000;
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+/** 재시도가 의미 있는 상태 코드인지. 4xx 인증·검증 실패는 다시 보내도 같은 답이 온다. */
+export function isRetryableStatus(status) {
+  return RETRYABLE_STATUS.has(status);
+}
 
 export function parseGroupNames(raw) {
   return [...new Set(String(raw ?? "").split(",").map((name) => name.trim()).filter(Boolean))];
@@ -66,7 +78,7 @@ export function pickBuild(builds, buildNumber) {
   return builds.find((entry) => entry?.attributes?.version === buildNumber) ?? null;
 }
 
-export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, now = () => Date.now() }) {
+export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, now = () => Date.now(), sleep = delay }) {
   const privateKeyPem = readFileSync(keyPath, "utf8");
   let cached = null;
 
@@ -78,7 +90,7 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
     return cached.value;
   }
 
-  async function request(method, path, body) {
+  async function send(method, path, body) {
     const response = await fetchImpl(`${ASC_BASE_URL}${path}`, {
       method,
       headers: {
@@ -95,6 +107,37 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
     } catch {
       return { status: response.status, error: describeApiError(method, path, response.status, text) };
     }
+  }
+
+  /**
+   * 전송이 끊기거나 Apple이 혼잡을 알리면 지수 백오프로 다시 보낸다. 재시도가 소진되면 마지막
+   * 결과를 그대로 돌려주므로, 호출자가 보는 성공/실패 모양은 달라지지 않는다. 이미 처리된 POST를
+   * 다시 보낼 가능성은 남지만 생성 계열 호출은 모두 중복(409·이미 배정됨) 복구 경로를 갖고 있다.
+   */
+  async function request(method, path, body) {
+    for (let attempt = 1; ; attempt += 1) {
+      let result;
+      try {
+        result = await send(method, path, body);
+      } catch (cause) {
+        if (attempt >= RETRY_ATTEMPTS) {
+          return { status: 0, error: `App Store Connect ${method} ${path} could not be reached: ${cause?.message ?? cause}` };
+        }
+        await backoff(method, path, attempt, cause?.message ?? String(cause));
+        continue;
+      }
+      if (!result.error || !isRetryableStatus(result.status) || attempt >= RETRY_ATTEMPTS) return result;
+      await backoff(method, path, attempt, `HTTP ${result.status}`);
+    }
+  }
+
+  async function backoff(method, path, attempt, reason) {
+    const waitMs = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+    process.stdout.write(
+      `  ${method} ${path} failed (${reason}); retrying in ${Math.round(waitMs / 1000)}s ` +
+        `(attempt ${attempt + 1}/${RETRY_ATTEMPTS})\n`,
+    );
+    await sleep(waitMs);
   }
 
   async function requireOk(method, path, body) {

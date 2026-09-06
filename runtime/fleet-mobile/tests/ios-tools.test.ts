@@ -1,7 +1,9 @@
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { createAscClient } from "../scripts/lib/asc-api.mjs";
 import {
   BUNDLE_ID,
   inspectInfoPlist,
@@ -138,5 +140,55 @@ describe.skipIf(process.platform !== "darwin")("provisioning profile fields", ()
       <key>UUID</key><string>u</string>${CERTIFICATE_DATA}
       <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.example.other</string></dict>`);
     expect(() => readProfileFields(file)).toThrow(/com\.example\.other/);
+  });
+});
+
+// 처리 대기 폴링은 30분 동안 App Store Connect를 두드린다. 여기서 연결이 한 번 끊겨 예외가
+// 그대로 올라오면, 업로드가 이미 받아들여진 릴리스가 그룹 배정도 노트도 없이 실패로 끝난다.
+describe("App Store Connect transport", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "fleet-asc-"));
+  const keyFile = path.join(dir, "AuthKey_TEST.p8");
+  writeFileSync(
+    keyFile,
+    generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }) as string,
+  );
+
+  const client = (fetchImpl: typeof fetch) =>
+    createAscClient({ keyId: "TESTKEYID", issuerId: "test-issuer", keyPath: keyFile, fetchImpl, sleep: async () => {} });
+
+  const ok = (body: unknown) =>
+    ({ status: 200, ok: true, text: async () => JSON.stringify(body) }) as unknown as Response;
+
+  it("retries a dropped connection instead of aborting the distribution", async () => {
+    let calls = 0;
+    const build = await client(async () => {
+      calls += 1;
+      if (calls < 3) throw new TypeError("fetch failed");
+      return ok({ data: [{ id: "b1", attributes: { version: "4", processingState: "VALID" } }] });
+    }).findBuild("app1", "0.3.1", "4");
+
+    expect(calls).toBe(3);
+    expect(build?.id).toBe("b1");
+  });
+
+  // 재시도가 소진되면 조용히 성공한 척하지 않고, 원인을 담은 실패로 끝나야 한다.
+  it("fails with the transport cause once retries are exhausted", async () => {
+    await expect(
+      client(async () => {
+        throw new TypeError("fetch failed");
+      }).findBuild("app1", "0.3.1", "4"),
+    ).rejects.toThrow(/could not be reached: fetch failed/);
+  });
+
+  // 인증·검증 실패는 다시 보내도 같은 답이 온다 — 잡을 몇 배로 늘리기만 한다.
+  it("does not retry a permanent rejection", async () => {
+    let calls = 0;
+    await expect(
+      client(async () => {
+        calls += 1;
+        return { status: 401, ok: false, text: async () => '{"errors":[{"title":"NOT_AUTHORIZED"}]}' } as unknown as Response;
+      }).findBuild("app1", "0.3.1", "4"),
+    ).rejects.toThrow(/401/);
+    expect(calls).toBe(1);
   });
 });
