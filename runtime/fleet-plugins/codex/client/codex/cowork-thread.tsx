@@ -95,18 +95,34 @@ export function CoworkThread({ state, actions }: { readonly state: CoworkThreadS
   const t = useT();
   // 초안이 살아 있으면(복원된 세션) 빈 화면이 아니다 — 리뷰 도크가 그 자리를 진다.
   const empty = state.turns.length === 0 && state.annotations.length === 0 && !state.running && !state.dirty;
+  // 이력만 스크롤한다 — 리뷰 도크와 컴포저(중지·적용)는 스크롤포트 밖에 남아 언제나 손에 닿는다.
+  // 스트리밍 중에는 읽던 끝을 따라간다: 사용자가 위로 올려 읽는 중이면 따라가지 않는다.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pinnedRef = useRef(true);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !pinnedRef.current) return;
+    element.scrollTop = element.scrollHeight;
+  });
+  const onScroll = () => {
+    const element = scrollRef.current;
+    if (!element) return;
+    pinnedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+  };
   return (
     <div className="cowork-thread-root">
-      {empty ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
-      {state.turns.length > 0 ? (
-        <ol className="cowork-thread" aria-label={t("codex.cowork.threadAria")}>
-          {state.turns.map((turn, index) => (
-            <TurnView key={turn.id} turn={turn} last={index === state.turns.length - 1} state={state} />
-          ))}
-        </ol>
-      ) : null}
-      {state.notice ? <NoticeCard notice={state.notice} actions={actions} /> : null}
-      {state.panelOpen ? <AnnotationPanel state={state} actions={actions} /> : null}
+      <div ref={scrollRef} className="cowork-thread-scroll" onScroll={onScroll}>
+        {empty ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
+        {state.turns.length > 0 ? (
+          <ol className="cowork-thread" aria-label={t("codex.cowork.threadAria")}>
+            {state.turns.map((turn, index) => (
+              <TurnView key={turn.id} turn={turn} last={index === state.turns.length - 1} state={state} />
+            ))}
+          </ol>
+        ) : null}
+        {state.notice ? <NoticeCard notice={state.notice} actions={actions} /> : null}
+        {state.panelOpen ? <AnnotationPanel state={state} actions={actions} /> : null}
+      </div>
       {state.dirty && !state.running ? <ReviewDock state={state} actions={actions} /> : null}
       <Composer state={state} actions={actions} />
     </div>

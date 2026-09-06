@@ -55,11 +55,20 @@ const TICK_MS = 1000;
  * 안내를 엔트리별로 잠시 맡긴다. 다음 마운트가 한 번 꺼내 쓰고 지운다.
  */
 const pendingNotices = new Map<string, CoworkNotice>();
+/**
+ * 서버가 던지는 오류 코드 → 사용자에게 보이는 원인별 문구. 서비스는 연결 준비 실패를
+ * `provider_unavailable`(HTTP는 `cowork_provider_unavailable`)로, 그 밖의 provider 실패는 커넥터의
+ * `cowork_*` 코드 또는 `provider_error`로 낸다.
+ */
 const NOTICE_BY_CODE: Readonly<Record<string, CoworkNotice["kind"]>> = {
+  provider_unavailable: "gateway",
+  cowork_provider_unavailable: "gateway",
   cowork_gateway_unavailable: "gateway",
+  provider_error: "turn",
   cowork_turn_timeout: "timeout",
   cowork_turn_incomplete: "turn",
   cowork_turn_failed: "turn",
+  cowork_model_not_enabled: "noModel",
   cowork_apply_stale: "stale",
   cowork_apply_stale_revision: "stale",
   cowork_apply_busy: "stale",
@@ -714,13 +723,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   function noticeFromCode(code: string): CoworkNotice {
     const t = consoleT();
-    // 라우터의 403은 코드가 아니라 문장으로 온다 — 켜지지 않은 모델은 설정으로 안내한다.
-    if (/model is not enabled/iu.test(code)) return { kind: "noModel", message: t("codex.cowork.modelNotEnabled") };
     const kind = NOTICE_BY_CODE[code] ?? (code.startsWith("cowork_") ? "turn" : "generic");
     const message = kind === "gateway" ? t("codex.cowork.gatewayUnavailable")
       : kind === "timeout" ? t("codex.cowork.turnTimeout")
         : kind === "stale" ? t("codex.cowork.applyStale")
-          : t("codex.cowork.requestFailed");
+          : kind === "noModel" ? t("codex.cowork.modelNotEnabled")
+            : t("codex.cowork.requestFailed");
     return { kind, message };
   }
 

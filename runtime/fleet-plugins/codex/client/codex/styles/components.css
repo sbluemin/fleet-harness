@@ -3011,10 +3011,18 @@ button.chip:focus-visible {
   width: min(720px, 100%);
   margin-inline: auto;
   padding: var(--space-3) var(--space-4) var(--space-3);
-  max-height: min(56vh, 520px);
+}
+/* 이력만 스크롤포트다 — 리뷰 도크·컴포저는 아래 고정 행이라 답이 길어져도 중지·적용이 보인다.
+   빈 영역(첫 진입)은 높이를 차지하지 않는다. */
+.cowork-thread-scroll {
+  display: grid;
+  gap: var(--space-3);
+  min-height: 0;
+  max-height: min(44vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+.cowork-thread-scroll:empty { display: none; }
 
 /* 빈 상태 — Analyst hero와 같은 짜임. */
 .cowork-hero { display: grid; gap: var(--space-1); padding: var(--space-2) 0 var(--space-1); }

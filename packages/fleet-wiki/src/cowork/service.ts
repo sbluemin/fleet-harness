@@ -105,7 +105,14 @@ export class CoworkService {
       client.on("toolCallUpdate", (title, status, _sid, data) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}${data ? ` · ${JSON.stringify(data).slice(0, 220)}` : ""}`, false).then(() => this.emit(workspaceId, id, "session")); });
       client.on("messageChunk", (text) => { this.streamBuffers.set(id, (this.streamBuffers.get(id) ?? "") + text); void this.emit(workspaceId, id, "transcript", text, false); });
       client.on("promptComplete", () => { void this.finishPrompt(workspaceId, id, client, null); });
-      client.on("error", (error) => { console.error(`[cowork] provider error (session ${id}):`, error && typeof error === "object" && "message" in error ? error.message : error); void this.finishPrompt(workspaceId, id, client, "provider_error"); });
+      // 커넥터가 `cowork_*` 코드로 분류한 실패는 그 코드를 클라이언트까지 보낸다 — 시간 초과·꺼진 모델처럼
+      // 사용자가 고칠 수 있는 원인은 코드가 있어야 안내가 선다. 그 밖의 원문 메시지는 로그에만 남긴다.
+      client.on("error", (error) => {
+        const message = error && typeof error === "object" && "message" in error ? error.message : error;
+        const detail = error && typeof error === "object" && "detail" in error ? (error as { detail?: unknown }).detail : undefined;
+        console.error(`[cowork] provider error (session ${id}):`, detail ?? message);
+        void this.finishPrompt(workspaceId, id, client, coworkErrorCode(message));
+      });
       client.sendMessage(this.composePrompt(prompt, annotations, session.selection, history)).catch((error: unknown) => {
         console.error(`[cowork] sendMessage failed (session ${id}):`, error instanceof Error ? error.message : error);
         void this.finishPrompt(workspaceId, id, client, "provider_error");
@@ -214,4 +221,9 @@ function reviveQuoted(value: string): unknown {
     try { return JSON.parse(trimmed); } catch { return value; }
   }
   return value;
+}
+
+/** 커넥터 오류를 이벤트 코드로 좁힌다 — `cowork_*` 코드만 통과하고 나머지는 provider_error다. */
+function coworkErrorCode(message: unknown): string {
+  return typeof message === "string" && /^cowork_[a-z_]+$/u.test(message) ? message : "provider_error";
 }
