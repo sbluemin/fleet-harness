@@ -8,7 +8,7 @@ import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki"
 import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
-import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
+import { AI_GATEWAY_ROUTE_SEGMENT, resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
 import type { AllowedAccessSets } from "./contracts.js";
@@ -55,6 +55,11 @@ interface CodexGatewayDeps {
    * 유일한 지점이다.
    */
   readonly whenRegistrationsSettle?: () => Promise<void>;
+  /**
+   * 사용자가 켠 Gateway 모델 선별. Cowork 모델 목록이 켜진 좌표만 싣도록 요청마다 읽는다 —
+   * 등록 시점에 고정하면 이후 설정 변경이 목록에 반영되지 않는다. 생략하면 카탈로그 모델을 싣지 않는다.
+   */
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly security: {
     readonly validateHost: (request: IncomingMessage) => boolean;
     readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
@@ -219,6 +224,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       externalMode: true,
       admitted: deps.security.isWriteAdmitted(request),
       coworkService,
+      enabledGatewayModelIds: new Set(
+        deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()).models.map((model) => model.id) : [],
+      ),
     });
     request.url = originalUrl;
     // 감시는 요청을 처리한 *뒤에* 시작한다 — 지식 루트를 만드는 것은 그 요청이고,

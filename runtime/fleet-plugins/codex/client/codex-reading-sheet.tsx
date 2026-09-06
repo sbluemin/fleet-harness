@@ -263,6 +263,10 @@ export function CodexReadingSheet() {
       const mod = e.metaKey || e.ctrlKey;
 
       if (e.key === "Escape") {
+        // Cowork 턴이 도는 동안 컴포저의 Esc는 "중지"고, 열린 모델 메뉴(본문 밖 포털)의 Esc는
+        // "메뉴 닫기"다 — 둘 다 자기 핸들러가 처리하도록 시트는 비켜선다. 이 리스너는 window
+        // 캡처라 여기서 먹으면 그 핸들러가 도착하지 못한다.
+        if (target instanceof HTMLElement && target.closest(".cowork-composer-frame.is-working, .cowork-model-menu, .cowork-model-chip[aria-expanded=\"true\"]")) return;
         e.preventDefault();
         e.stopPropagation();
         if (findOpen) {

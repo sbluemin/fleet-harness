@@ -966,8 +966,8 @@ function renderQueueRow(item: DrydockListItem): string {
   const timeSource = item.meta.status === "pending" ? createdAtMs : (Number.isNaN(decidedAtMs) ? createdAtMs : decidedAtMs);
   const time = Number.isNaN(timeSource) ? "" : formatRelativeTime(timeSource, consoleLocale());
   const metaParts = [
-    item.proposer ?? "",
-    time,
+    item.proposer ? renderProposer(item.proposer) : "",
+    time ? escapeHtml(time) : "",
   ].filter(Boolean);
   const diffstat = item.diffstat
     ? `<span class="queue-row-diffstat" aria-label="${escapeAttribute(t("codex.reading.diffStatAria", { added: item.diffstat.added, removed: item.diffstat.removed }))}"><ins>+${item.diffstat.added}</ins><del>\u2212${item.diffstat.removed}</del></span>`
@@ -987,7 +987,7 @@ function renderQueueRow(item: DrydockListItem): string {
           ${decided}
         </span>
         ${item.summary ? `<span class="queue-row-summary">${escapeHtml(item.summary)}</span>` : ""}
-        ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.map(escapeHtml).join(" \u00b7 ")}</span>` : ""}
+        ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.join(" \u00b7 ")}</span>` : ""}
       </span>
     </button>
   `;
@@ -1034,7 +1034,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
       <div class="queue-decision-dock">
         <div class="queue-decision-dock-copy">
           <span class="queue-decision-dock-title"><span class="op-badge" aria-label="${escapeAttribute(label)}">${glyph}</span> ${escapeHtml(wikiEntry.title)}</span>
-          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${escapeHtml(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
+          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${renderProposer(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
         </div>
         <div class="queue-decision-dock-actions" data-decision-bar-wrap>
           ${isPending ? renderDecisionBarContent("idle", null) : renderDecidedState(meta)}
@@ -1110,9 +1110,24 @@ function remapDiffHeadingIds(html: string): string {
   return document.body.innerHTML;
 }
 
+/**
+ * 제안자 각인 — 패치 frontmatter의 proposer는 "tool:wiki_compile_source"나 "wiki_query" 같은
+ * 기계 식별자다. 접두를 걷어 도구 이름만 남기고, 도구 표식과 함께 읽기 전용으로 그린다.
+ * 컨트롤처럼 보이면 거짓 약속이므로 버튼이 아니다.
+ */
+function renderProposer(proposer: string): string {
+  const t = consoleT();
+  const trimmed = proposer.trim();
+  const tool = trimmed.replace(/^tool:/u, "");
+  const isTool = trimmed.startsWith("tool:") || /^wiki_[a-z_]+$/u.test(trimmed);
+  const label = isTool ? tool : trimmed;
+  return `<span class="queue-proposer" title="${escapeAttribute(t("codex.reading.proposedBy", { name: label }))}">`
+    + `<span class="queue-proposer-mark" aria-hidden="true">${isTool ? "⚙" : "◎"}</span>${escapeHtml(label)}</span>`;
+}
+
 function renderPatchMetaChips(proposer: string, tags: string[]): string {
   const parts: string[] = [];
-  if (proposer) parts.push(`<span class="meta-chip">${escapeHtml(proposer)}</span>`);
+  if (proposer) parts.push(`<span class="meta-chip meta-chip--proposer">${renderProposer(proposer)}</span>`);
   if (tags.length > 0) parts.push(renderTagChips(tags));
   if (parts.length === 0) return "";
   return `<div class="meta-chips">${parts.join("")}</div>`;

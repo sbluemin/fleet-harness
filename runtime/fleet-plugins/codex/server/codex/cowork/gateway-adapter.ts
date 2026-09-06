@@ -130,6 +130,12 @@ class CoworkGatewayClient extends EventEmitter implements CoworkAgentClient {
       return;
     }
     if (event.isError) {
+      // 라우터가 켜지지 않은 모델을 거절하면 사용자가 고칠 수 있는 원인이다 — 서비스가 클라이언트에
+      // 넘길 수 있는 코드로 분류하고, 원문은 로그용 detail로 함께 싣는다.
+      if (event.detail && /model is not enabled/iu.test(event.detail)) {
+        this.emit("error", { message: "cowork_model_not_enabled", detail: event.detail });
+        return;
+      }
       this.emit("error", { message: event.detail ?? "cowork_turn_failed" });
       return;
     }
