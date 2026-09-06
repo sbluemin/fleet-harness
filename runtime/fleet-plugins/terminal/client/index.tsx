@@ -19,7 +19,7 @@ const AGENT_OPERATION_TYPES = new Set(["agent"]);
 const terminalPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
-  settingsSections: [harnessSettingsSection, generalSettingsSection, agentSettingsSection],
+  settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   railEntries: [globalShellEntry],
   expandedSurfaces: [shellSurface],
@@ -63,7 +63,7 @@ const terminalPlugin = definePlugin({
 });
 
 export const operationKinds = [agentOperationKind] as const;
-export const settingsSections = [harnessSettingsSection, generalSettingsSection, agentSettingsSection] as const;
+export const settingsSections = [generalSettingsSection, harnessSettingsSection, agentSettingsSection] as const;
 export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;
 
