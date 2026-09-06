@@ -210,7 +210,7 @@ function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
-  settingsSections: [harnessSettingsSection, generalSettingsSection, agentSettingsSection],
+  settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
