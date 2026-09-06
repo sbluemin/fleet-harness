@@ -207,20 +207,14 @@
   overflow-wrap: anywhere;
 }
 
-/* AI Gateway 모델 선별 카드. 프로바이더 정체성은 mark+wash 문법으로만 칠하고,
-   칩은 속성 정보라 신호 토큰 없이 중립 ink 톤을 유지한다. */
-.ai-gateway-provider {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
-}
+/* AI Gateway 모델 카드. 켜진 모델은 공급자 구분 없이 한 로스터에 한 줄씩 서고, 추가는
+   검색 팔레트 하나가 진다. 프로바이더 정체성은 mark+wash 문법으로만 칠하고, 칩은 속성
+   정보라 신호 토큰 없이 중립 ink 톤을 유지한다. */
 
 /* 공급자 마크의 색 대조표는 --provider-* 하나뿐이다 — 여기 빠진 공급자는 톤이 미정의가 되어
    color-mix()가 통째로 무효화되고, 칩 테두리·배경만 사라진 채 마크가 회색으로 남는다. Quota
-   레일의 대조표(.quota-provider__mark--*)와 같은 축을 써야 두 화면이 같은 공급자를 같은 색으로 부른다. */
+   레일의 대조표(.quota-provider__mark--*)와 같은 축을 써야 두 화면이 같은 공급자를 같은 색으로 부른다.
+   로스터 줄·공급자 줄·팔레트 머리글이 모두 이 셀렉터로 톤을 받는다. */
 .ai-gateway-provider.is-antigravity { --ai-gateway-provider-tone: var(--provider-antigravity); }
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
@@ -228,24 +222,13 @@
 .ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
 .ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }
 
-/* 헤드는 말풍선의 기준 상자이기도 하다 — 기준을 토글로 두면 말풍선 폭이 토글 폭에서
-   자라 좁은 화면에서 카드 밖으로 넘는다. 좁아지면 부제부터 다음 줄로 접어 글리프·이름·
-   토글이 잘리지 않게 한다. */
-.ai-gateway-provider-head {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-}
-
 .ai-gateway-provider-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border: 1px solid color-mix(in oklch, var(--ai-gateway-provider-tone) 32%, transparent);
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ai-gateway-provider-tone) 12%, transparent);
@@ -253,20 +236,43 @@
 }
 
 .ai-gateway-provider-glyph svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .ai-gateway-provider-name {
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .ai-gateway-provider-sub {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* 로스터 머리 줄 — 추가 버튼과 개수. 팔레트의 기준 상자이기도 하다: 기준을 버튼으로 두면
+   fit-content의 가용 폭이 버튼 폭이 되어 팔레트가 하한으로 접힌다. */
+.ai-gateway-roster-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.ai-gateway-palette-anchor {
+  position: static;
+}
+
+.ai-gateway-roster-count {
   margin-left: auto;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -274,33 +280,77 @@
   letter-spacing: 0.06em;
 }
 
+/* 카드 폭이 기준이다 — 설정은 좁은 사이드바와 넓은 확대 표면 양쪽에 같은 카드로 서므로,
+   뷰포트가 아니라 이 상자의 폭에 따라 한 줄 레코드가 세로로 접힌다. */
+.ai-gateway-stack {
+  container-type: inline-size;
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* 목록이 열을 소유한다 — 행마다 자기 격자를 세우면 공급자 열이 행마다 다른 폭으로 서거나
+   최소 폭을 고정해 짧은 이름 뒤에 빈 자리가 남는다. 행은 subgrid로 이 열을 물려받아, 가장
+   긴 공급자 이름 하나가 모든 행의 첫 열 폭을 정한다. */
 .ai-gateway-rows {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-2);
 }
 
-/* 행은 호스트 전용 말풍선의 기준 상자이기도 하다 — 기준을 버튼으로 두면 말풍선 폭이 버튼
-   폭에서 자라 카드 밖으로 넘는다(공급자 헤드가 우선 소진 말풍선에 대해 택한 규율과 같다). */
+/* 한 줄 레코드: 공급자 → 모델 → 조작. 행은 호스트 전용 말풍선의 기준 상자이기도
+   하다 — 기준을 버튼으로 두면 말풍선 폭이 버튼 폭에서 자라 카드 밖으로 넘는다. */
 .ai-gateway-model-row {
   position: relative;
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) 10px;
   border: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-veil) 40%, transparent);
 }
 
-.ai-gateway-model-text {
-  display: grid;
-  gap: 2px;
-  flex: 1 1 auto;
+/* 우선 소진 순위는 상태가 아니라 선호라 신호색도 brass도 빌리지 않는다 — 왼쪽 가장자리의
+   잉크 선 하나와 잉크 순번으로만 되비친다(등급 배지와 같은 규율). */
+.ai-gateway-model-row.is-ranked {
+  border-color: var(--surface-rim-strong);
+}
+
+.ai-gateway-model-row.is-ranked::before {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--text-tertiary);
+}
+
+.ai-gateway-provider-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
 }
 
-.ai-gateway-model-head {
+.ai-gateway-priority-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+}
+
+.ai-gateway-model-text {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -315,11 +365,12 @@
   font-weight: var(--weight-medium);
 }
 
-.ai-gateway-model-id {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  overflow-wrap: anywhere;
+.ai-gateway-model-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 /* 등급은 상태가 아니라 프로바이더가 주장하는 속성이므로 신호색을 빌리지 않는다. 세 등급의
@@ -357,13 +408,6 @@
   color: var(--text-tertiary);
 }
 
-.ai-gateway-chips {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
 .ai-gateway-chip {
   display: inline-flex;
   align-items: center;
@@ -373,6 +417,7 @@
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -390,104 +435,8 @@
   font-size: var(--t-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-/* 우선 소진 토글 — 공급자 헤드에서 이름 바로 오른쪽에 붙어 그 공급자 하나의 소진 순서 참여와
-   자리를 함께 말한다. 상태가 아니라 사용자 선호이므로 등급 배지와 같은 규율로 신호색·brass
-   없이 잉크 농도와 순위 숫자로만 말한다. */
-.ai-gateway-priority-toggle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   white-space: nowrap;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
 }
-
-.ai-gateway-priority-toggle:hover:not(:disabled):not(.is-ranked) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-secondary);
-}
-
-.ai-gateway-priority-toggle:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-}
-
-.ai-gateway-priority-toggle:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.ai-gateway-priority-toggle:disabled {
-  cursor: not-allowed;
-  opacity: var(--control-disabled-opacity);
-}
-
-.ai-gateway-priority-toggle.is-ranked {
-  border-color: var(--surface-rim-strong);
-  color: var(--text-primary);
-}
-
-/* 의미를 말하던 라벨·도움말 줄이 사라졌으므로, 한 줄 요약 말풍선이 hover·키보드 포커스에서
-   그 자리를 진다. 헤드는 카드 위쪽 가장자리에 붙으므로 말풍선은 아래로 편다 — 위로 펴면
-   첫 공급자에서 카드 밖으로 잘린다. 기준 상자는 헤드 행이라 폭 상한이 카드 폭이 된다:
-   토글을 기준으로 삼으면 상한을 창 폭으로 줘도 시작점이 토글이라 오른쪽으로 넘친다. */
-.ai-gateway-priority-tip {
-  position: absolute;
-  z-index: 1;
-  top: calc(100% + var(--space-1));
-  left: 0;
-  visibility: hidden;
-  /* absolute 요소의 기본 폭은 기준 상자에 맞춰 줄어든다 — max-width만 걸면 상한만 정해질 뿐
-     한 줄 요약이 세로로 접힌다. max-content가 폭의 기준이고 상한은 헤드 폭이 진다. */
-  width: max-content;
-  max-width: 100%;
-  padding: 3px var(--space-2);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: var(--ink-veil);
-  color: var(--text-primary);
-  font-size: var(--t-2xs);
-  letter-spacing: 0;
-  line-height: 1.4;
-  text-align: left;
-  text-transform: none;
-  /* 버튼이 자기 라벨을 위해 건 nowrap이 상속되면 한 줄 요약이 카드 밖으로 자란다. */
-  white-space: normal;
-  pointer-events: none;
-}
-
-.ai-gateway-priority-toggle:hover + .ai-gateway-priority-tip,
-.ai-gateway-priority-toggle:focus-visible + .ai-gateway-priority-tip {
-  visibility: visible;
-}
-
-/* 순위는 켜짐의 부속 표시가 아니라 그 자체가 값이므로, 켜짐 농도 위에 테두리 한 겹으로 센다. */
-.ai-gateway-priority-rank {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 13px;
-  height: 13px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text-primary);
-  font-weight: var(--weight-bold);
-}
-
 
 /* 호스트 전용 예약 토글. 켜짐은 brass 워시로만 말한다 — 이 축은 상태가 아니라 사용자가
    고른 위치(어느 표면에 내보낼지)이고, 등급 배지처럼 신호색을 빌리지 않는다. */
@@ -538,14 +487,14 @@
 }
 
 /* 라벨 두 단어로는 "와이어에는 남고 로스터에서만 빠진다"를 읽을 수 없으므로, 한 줄 요약
-   말풍선이 hover·키보드 포커스에서 그 설명을 진다 — 우선 소진 토글이 세운 문법 그대로다.
-   네이티브 title은 쓰지 않는다: 브라우저가 그려서 지연이 길고 토큰을 안 따르며 스크린샷에
-   잡히지 않아 떴는지 확인할 방법이 없다. 행이 기준 상자라 폭 상한이 행 폭이 된다. */
+   말풍선이 hover·키보드 포커스에서 그 설명을 진다. 네이티브 title은 쓰지 않는다: 브라우저가
+   그려서 지연이 길고 토큰을 안 따르며 스크린샷에 잡히지 않아 떴는지 확인할 방법이 없다.
+   행이 기준 상자라 폭 상한이 행 폭이 된다. */
 .ai-gateway-host-only-tip {
   position: absolute;
   z-index: 1;
   top: calc(100% + var(--space-1));
-  left: 0;
+  right: 0;
   visibility: hidden;
   /* absolute 요소의 기본 폭은 기준 상자에 맞춰 줄어든다 — max-width만 걸면 한 줄 요약이
      세로로 접힌다. max-content가 폭의 기준이고 상한은 행 폭이 진다. */
@@ -673,74 +622,7 @@
   opacity: var(--control-disabled-opacity);
 }
 
-.ai-gateway-composer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px dashed color-mix(in oklch, var(--surface-rim-strong) 80%, transparent);
-  border-radius: var(--radius-xs);
-}
-
-.ai-gateway-axis-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  cursor: pointer;
-}
-
-.ai-gateway-axis-toggle::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--ink-rim);
-  transition: background var(--duration-fast) var(--ease-spring);
-}
-
-.ai-gateway-axis-toggle:hover:not(:disabled):not(.is-on) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.ai-gateway-axis-toggle:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-}
-
-.ai-gateway-axis-toggle.is-on {
-  border-color: transparent;
-  background: var(--control-wash);
-  color: var(--brass-ink);
-}
-
-.ai-gateway-axis-toggle.is-on::before {
-  background: var(--brass);
-}
-
-.ai-gateway-axis-toggle:active:not(:disabled),
-.ai-gateway-add-button:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.ai-gateway-composer-note {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
 .ai-gateway-add-button {
-  margin-left: auto;
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--control-hover-rim);
   border-radius: var(--radius-xs);
@@ -751,10 +633,12 @@
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.ai-gateway-add-button:hover:not(:disabled) {
+.ai-gateway-add-button:hover:not(:disabled),
+.ai-gateway-add-button[aria-expanded="true"] {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
   color: var(--text-primary);
@@ -765,11 +649,497 @@
   outline-offset: 2px;
 }
 
+.ai-gateway-add-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .ai-gateway-add-button:disabled,
-.ai-gateway-axis-toggle:disabled,
 .ai-gateway-remove:disabled {
   opacity: var(--control-disabled-opacity);
   cursor: not-allowed;
+}
+
+/* ── 검색 팔레트 ──────────────────────────────────────────────────────
+   코어 Select 팝업(불투명 면·옵션 테두리·체크마크)을 빌리지 않는다 — 이것은 선택지 하나를
+   고르는 컨트롤이 아니라 카탈로그 60종을 훑어 하나를 켜는 작업 면이다. 유리 면 위에 검색 줄,
+   목록, 변형 줄 세 층을 분할선 둘이 가르고, 활성 항목은 저채도 워시 하나로만 말한다.
+   폭은 내용이 정한다: 하한 380px, 상한 600px과 뷰포트 안쪽 중 작은 값. */
+.ai-gateway-palette {
+  position: absolute;
+  /* 코어 Select 팝업과 같은 층(--z-select-popover)이다 — 그 토큰은 코어 시트 스코프라 여기서는 값을 적는다. */
+  z-index: 40;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  width: fit-content;
+  min-width: 380px;
+  max-width: min(600px, calc(100vw - var(--space-12)));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(14px);
+}
+
+.ai-gateway-palette-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ai-gateway-palette-search-glyph {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.ai-gateway-palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  outline: none;
+}
+
+.ai-gateway-palette-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.ai-gateway-palette-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.ai-gateway-palette-kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.ai-gateway-palette-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-1) 6px;
+}
+
+/* 공급자 머리글은 선택지가 아니다 — 필드 라벨 문법으로 서고 스크롤에 붙는다. */
+.ai-gateway-palette-group {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  background: color-mix(in oklch, var(--ink-deep) 96%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.ai-gateway-palette-group .ai-gateway-provider-glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.ai-gateway-palette-group .ai-gateway-provider-glyph svg {
+  width: 10px;
+  height: 10px;
+}
+
+.ai-gateway-palette-group-name {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 머리글 오른쪽의 프로바이더 설정 — [엔드포인트(xAI)] [구독/API key] [로그인·로그아웃] [순위].
+   묶음 라벨이 곧 설정 줄이라 별도 카드가 없다. */
+.ai-gateway-palette-group-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* API key 글자가 곧 로그인 버튼이다 — 라벨과 버튼을 따로 세우면 머리글이 두 마디로 늘어난다.
+   부제와 같은 잉크로 서고 hover에서만 밑줄로 눌림을 예고한다. */
+.ai-gateway-palette-signin {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ai-gateway-palette-signin:hover:not(:disabled),
+.ai-gateway-palette-signin[aria-expanded="true"] {
+  color: var(--text-primary);
+  text-decoration-style: solid;
+}
+
+.ai-gateway-palette-signin:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.ai-gateway-palette-signin:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
+}
+
+/* 순위 셀렉트의 말풍선 — 라벨 대신 hover·키보드 포커스에서 뜻을 말하고, 목록이 열리면
+   물러난다(열린 목록 위에 겹치면 두 층이 같은 자리를 다툰다). 기준 상자는 이 래퍼다. */
+.ai-gateway-priority-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.ai-gateway-priority-tip {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  visibility: hidden;
+  width: max-content;
+  max-width: 260px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.ai-gateway-priority-wrap:hover:not(:has([aria-expanded="true"])) .ai-gateway-priority-tip,
+.ai-gateway-priority-wrap:has(:focus-visible):not(:has([aria-expanded="true"])) .ai-gateway-priority-tip {
+  visibility: visible;
+}
+
+/* 머리글 아래 접히는 키 입력 줄 — 항목과 같은 들여쓰기로 그 프로바이더에 속함을 말한다. */
+.ai-gateway-palette-list .ai-gateway-key-form {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: var(--space-1) var(--space-2) var(--space-2) 34px;
+}
+
+.ai-gateway-palette-list .ai-gateway-key-input {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+.ai-gateway-palette-hit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  justify-items: start;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 7px var(--space-2) 7px 34px;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ai-gateway-palette-hit:hover {
+  background: var(--control-hover-fill);
+}
+
+.ai-gateway-palette-hit.is-active {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.ai-gateway-palette-hit.is-locked {
+  opacity: 0.55;
+}
+
+.ai-gateway-palette-hit-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.ai-gateway-palette-hit-provider {
+  color: var(--text-tertiary);
+  font-weight: var(--weight-regular);
+}
+
+.ai-gateway-palette-hit-hint {
+  justify-self: end;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ai-gateway-palette-empty {
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  text-align: center;
+}
+
+/* 바닥 줄 — 변형 세그먼트와 추가 버튼이 한 줄에 선다. 잠긴 공급자를 고르면 같은 자리가 키 폼이 된다.
+   줄을 접지 않는다: 버튼이 아래로 내려가면 세그먼트와 버튼이 한 문장("이 변형을 추가")으로 읽히지 않는다. */
+.ai-gateway-palette-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--ink-abyss) 50%, transparent);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* 변형 줄 — 컨텍스트 창과 Fast를 같은 등급의 칸으로 한 세그먼트에 펼치고 하나만 고른다.
+   고른 칸만 brass, 이미 켠 칸은 잉크 농도와 점 하나로 구분한다. */
+.ai-gateway-variant-row {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.ai-gateway-variant {
+  padding: 5px var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.ai-gateway-variant + .ai-gateway-variant {
+  border-left: 1px solid var(--hairline);
+}
+
+.ai-gateway-variant:hover:not(.is-on) {
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.ai-gateway-variant:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
+
+.ai-gateway-variant.is-enabled {
+  color: var(--text-tertiary);
+}
+
+.ai-gateway-variant.is-enabled::after {
+  content: " ·";
+  color: var(--text-tertiary);
+}
+
+.ai-gateway-variant.is-on {
+  background: var(--control-tint-fill);
+  color: var(--control-tint-ink);
+  box-shadow: inset 0 0 0 1px var(--control-hover-rim);
+}
+
+/* 추가 버튼은 변형 칸과 같은 높이·서체·여백으로 서서 한 줄의 마지막 칸처럼 읽힌다. */
+.ai-gateway-palette-add {
+  margin-left: auto;
+  padding: 5px var(--space-3);
+  font-size: var(--t-xs);
+  letter-spacing: 0.04em;
+}
+
+/* ── 프로바이더 설정 컨트롤(팔레트 머리글) ─────────────────────── */
+/* 순위가 있는 셀렉트는 트리거 글자만 한 단계 진한 잉크 — 순번 배지와 같은 농도 문법이다. */
+.ai-gateway-priority-select.is-ranked {
+  --fc-select-compact-tone: var(--text-primary);
+}
+
+.ai-gateway-endpoint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ai-gateway-endpoint .segmented-option {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px var(--space-3);
+  font-size: var(--t-2xs);
+}
+
+/* API key 로그인 폼 — 공급자 줄 안과 팔레트 바닥 줄에 같은 폼이 선다. */
+.ai-gateway-key-form {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ai-gateway-key-form.is-compact {
+  flex: 1 1 auto;
+}
+
+.ai-gateway-key-input {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 260px;
+  min-height: 30px;
+  padding: 4px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-glass) 60%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.04em;
+}
+
+.ai-gateway-key-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.ai-gateway-key-input:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+}
+
+.ai-gateway-key-input:focus-visible {
+  border-color: var(--control-hover-rim);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.ai-gateway-key-input:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
+}
+
+.ai-gateway-key-form .ai-gateway-add-button {
+  padding: var(--space-1) var(--space-3);
+}
+
+/* 로그인 상태 점 — aurora 점 + 모노 대문자. 구독 공급자의 "연결됨"도 같은 문법이다. */
+.ai-gateway-key-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ai-gateway-key-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-rim);
+}
+
+.ai-gateway-key-status.is-on {
+  color: var(--aurora-ink);
+}
+
+.ai-gateway-key-status.is-on::before {
+  background: var(--aurora);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+/* 머리글의 로그아웃 — 상태 점 없이 글자 하나. 로그인됨은 로그아웃 버튼이 있다는 사실이 말한다. */
+.ai-gateway-key-signout {
+  padding: 1px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.ai-gateway-key-signout:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  color: var(--text-primary);
+}
+
+.ai-gateway-key-signout:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.ai-gateway-key-signout:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
+}
+
+@container (max-width: 720px) {
+  .ai-gateway-rows {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-gateway-model-controls {
+    justify-content: flex-start;
+  }
+
+  .ai-gateway-palette {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* 좁은 카드에서는 변형 줄이 한 줄을 다 쓰고 칸이 접힌다 — 넓은 폭의 "한 줄" 규율은 폭이
+     있을 때의 이야기이고, 여기서 nowrap을 고집하면 추가 버튼이 카드 밖으로 나간다. */
+  .ai-gateway-palette-foot {
+    flex-wrap: wrap;
+  }
+
+  .ai-gateway-variant-row {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
 }
 
 .compact-timing-preview {
@@ -997,7 +1367,7 @@
 /* 고대비(forced-colors) — 워시·잉크 워시가 걷히는 환경에서는 켜짐을 시스템 선택색으로 말한다. */
 @media (forced-colors: active) {
   .ai-gateway-host-only.is-on,
-  .ai-gateway-axis-toggle.is-on,
+  .ai-gateway-variant.is-on,
   .ai-gateway-effort-level.is-on {
     background: SelectedItem;
     color: SelectedItemText;
