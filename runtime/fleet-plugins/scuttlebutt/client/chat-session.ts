@@ -27,6 +27,16 @@ export interface ChatSessionDeps {
     onEvent: (event: ChatStreamEvent) => void,
   ) => ChatStreamConnection;
   readonly locale?: () => ConsoleLocale | undefined;
+  /**
+   * 실험 "부관의 Console 읽기"가 켜졌을 때 메시지에 실을 Console 스냅샷. 꺼져 있으면 null을 돌려주고
+   * 본문은 오늘과 같은 `{ text }`다 — 서버도 그 경우 도구를 붙이지 않는다.
+   */
+  readonly console?: () => ConsoleSnapshotPayload | null;
+}
+
+export interface ConsoleSnapshotPayload {
+  readonly theaters: readonly { readonly id: string; readonly label: string }[];
+  readonly operations: readonly { readonly id: string; readonly theaterId: string; readonly type: string; readonly title: string; readonly activity: string }[];
 }
 
 export interface ChatSession {
@@ -103,7 +113,10 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
         const response = await deps.fetch(`chat/${encodeURIComponent(chatId)}/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: question }),
+          body: JSON.stringify((() => {
+            const console = deps.console?.() ?? null;
+            return console ? { text: question, console } : { text: question };
+          })()),
         });
         if (!response.ok) throw new Error(await readError(response));
         // 답이 이 응답보다 먼저 끝났을 수 있다 — 그때는 도착한 상태를 덮지 않는다.

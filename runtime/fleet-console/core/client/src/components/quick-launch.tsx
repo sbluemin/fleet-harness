@@ -4,9 +4,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
+import type { LaunchContextCandidate, PromptRefinement } from "@fleet-console/sdk/plugin";
+
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { useT } from "../i18n/index.js";
+import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
+import { appendLaunchContext, collectLaunchContext } from "../launch-experiments.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -92,6 +96,15 @@ interface ComposerAttachment {
   readonly uploading: boolean;
 }
 
+/** 다듬기 버튼의 마크 — 네 갈래 반짝임. 위치·호버 채널(brass)만 쓰고 상태색은 쓰지 않는다. */
+function RefineSparkIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+      <path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function QuickLaunch() {
   const state = useConsoleState();
   const t = useT();
@@ -133,6 +146,17 @@ export function QuickLaunch() {
   // 시작 표면. 모델·강도와 같은 "고르면 기억" 계층에서 초기값을 읽는다 — 무장이 안내줄과
   // 카드 외곽선으로 상시 보이므로 기억이 숨은 모드를 만들지 않는다.
   const [startView, setStartView] = useState<QuickLaunchStartView>(() => readQuickLaunchSelection().view);
+  // 실험 기능 — 둘 다 기본 꺼짐이고, 꺼져 있으면 아래 상태는 영원히 null이라 컴포저는 예전 그대로다.
+  const experiments = useGlobalSettingsStore().state?.experiments ?? null;
+  const locale = useConsoleLocale();
+  const [refinement, setRefinement] = useState<PromptRefinement | null>(null);
+  const [refining, setRefining] = useState(false);
+  /** 적용한 초안의 원문 — 문면이 바뀌기 전까지 "원래대로"가 이 값을 되살린다. */
+  const [refinedFrom, setRefinedFrom] = useState<string | null>(null);
+  const refineEpochRef = useRef(0);
+  const [contextPack, setContextPack] = useState<{ readonly candidates: readonly LaunchContextCandidate[]; readonly selected: ReadonlySet<string> } | null>(null);
+  const [contextPending, setContextPending] = useState(false);
+  const contextEpochRef = useRef(0);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [mentionErrorKey, setMentionErrorKey] = useState<string | null>(null);
   // '/' 커맨드 덱: 문면("/model sol")이 레벨의 원천이라 별도 레벨 상태가 없다 — 여기는 파싱
@@ -188,6 +212,10 @@ export function QuickLaunch() {
   // 성립하지 않고 발사는 터미널로 정규화된다(카탈로그가 늦게 오는 첫 프레임도 같은 계약).
   const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
   const chatStart = chatStartAvailable && startView === "chat";
+  const targetPlugin = target ? registry.plugins.find((plugin) => plugin.id === target.pluginId) ?? null : null;
+  const refineEnabled = experiments?.promptRefine === true && typeof targetPlugin?.refinePrompt === "function";
+  const contextProviders = useMemo(() => registry.plugins.flatMap((plugin) => plugin.launchContextProviders ?? []), [registry.plugins]);
+  const contextEnabled = experiments?.launchContextPack === true && contextProviders.length > 0;
 
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
@@ -360,6 +388,10 @@ export function QuickLaunch() {
     const discardDraft = mentionSeedRef.current !== null;
     const restoredPrompt = discardDraft ? "" : (state.quickLaunchDraft ?? "");
     setPrompt(restoredPrompt);
+    // 실험 상태는 세션마다 새로 시작한다 — 지난 세션의 후보 카드가 다음 프롬프트에 붙으면 안 된다.
+    contextEpochRef.current += 1;
+    setContextPack(null);
+    setContextPending(false);
     // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것을 먼저 거둔다 — 미리보기 URL과
     // 첨부 칩은 초안 슬롯의 보존분과, 컴포저가 닫힌 동안에도 상태에 남아 있던 미보존분(닫힘
     // 시점에 업로드 중이던 칩과 그 뒤 완료된 칩)을 병합해 되살린다 — 텍스트 초안은 살아남는데
@@ -642,8 +674,75 @@ export function QuickLaunch() {
     inputRef.current?.focus();
   }, []);
 
+  // ── 실험: 프롬프트 다듬기 ───────────────────────────────────────────────────
+  // 사용자가 버튼을 눌렀을 때만 묻는다. 초안은 카드에 서고 입력창은 "적용"을 눌러야 바뀐다. 문면이
+  // 바뀌면 지난 초안은 낡은 것이므로 에포크로 버린다.
+  const refineAbortRef = useRef<AbortController | null>(null);
+  const canRefine = open && refineEnabled && mentionTarget === null && target !== null
+    && prompt.trim().length > 0 && prompt.trim().length <= QUICK_LAUNCH_PROMPT_MAX_CHARS;
+  useEffect(() => {
+    refineEpochRef.current += 1;
+    refineAbortRef.current?.abort();
+    refineAbortRef.current = null;
+    setRefinement(null);
+    setRefining(false);
+    // 적용된 초안을 사용자가 고치기 시작하면 "원래대로"는 더 이상 그 문면을 가리키지 않는다.
+    setRefinedFrom((current) => (current !== null && prompt === lastAppliedRef.current ? current : null));
+  }, [prompt, open, mentionTarget]);
+  const lastAppliedRef = useRef<string | null>(null);
+  const requestRefinement = useCallback(() => {
+    if (!canRefine || !targetPlugin?.refinePrompt || refining) return;
+    const epoch = ++refineEpochRef.current;
+    const abort = new AbortController();
+    refineAbortRef.current = abort;
+    setRefining(true);
+    setRefinement(null);
+    const theaterLabel = (stateRef.current.theaters ?? []).find((theater) => theater.id === theaterIdRef.current)?.label ?? null;
+    void targetPlugin.refinePrompt({ prompt: prompt.trim(), theaterLabel, language: locale, signal: abort.signal })
+      .then((next) => { if (epoch === refineEpochRef.current) setRefinement(next && next.prompt.trim().length > 0 ? next : null); })
+      .catch(() => { if (epoch === refineEpochRef.current) setRefinement(null); })
+      .finally(() => { if (epoch === refineEpochRef.current) { setRefining(false); refineAbortRef.current = null; } });
+  }, [canRefine, targetPlugin, refining, prompt, locale]);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const theaterIdRef = useRef(theaterId);
+  theaterIdRef.current = theaterId;
+
+  const applyRefinement = useCallback(() => {
+    if (!refinement) return;
+    const original = prompt;
+    const next = refinement.prompt.trim();
+    lastAppliedRef.current = next;
+    applyCommandPrompt(next);
+    // prompt 효과가 refinement를 비우고 refinedFrom을 검사한다 — 적용 직후의 문면은 lastApplied와 같으므로 살아남는다.
+    setRefinedFrom(original);
+    inputRef.current?.focus();
+  }, [refinement, prompt]);
+
+  const revertRefinement = useCallback(() => {
+    if (refinedFrom === null) return;
+    const original = refinedFrom;
+    lastAppliedRef.current = null;
+    setRefinedFrom(null);
+    applyCommandPrompt(original);
+    inputRef.current?.focus();
+  }, [refinedFrom]);
+
+  const dismissRefinement = useCallback(() => {
+    refineEpochRef.current += 1;
+    setRefinement(null);
+    inputRef.current?.focus();
+  }, []);
+
   // 커맨드 확정("/model ")과 값 적용(비움) 모두 프로그램 쓰기라 textarea input 이벤트가 없다 —
   // 파싱 상태를 문면과 같은 자리에서 함께 갱신해야 덱이 입력과 어긋나지 않는다.
+  // 후보 카드가 선 뒤 문면이 바뀌면 후보는 낡은 것이다 — 다음 Enter가 다시 묻는다.
+  useEffect(() => {
+    contextEpochRef.current += 1;
+    setContextPack(null);
+    setContextPending(false);
+  }, [prompt]);
+
   const applyCommandPrompt = useCallback((next: string) => {
     setPrompt(next);
     setCommandInput(readCommandInput(next, next.length));
@@ -1020,6 +1119,13 @@ export function QuickLaunch() {
     // 멘션 전달은 전달된 칩을 스스로 정확히 걷어냈다 — 남은 칩(전달 중 새로 붙은 것)은 산 초안이다.
     if (!options.keepAttachments) setAttachments([]);
     setAttachmentErrorKey(null);
+    contextEpochRef.current += 1;
+    setContextPack(null);
+    setContextPending(false);
+    refineEpochRef.current += 1;
+    setRefinement(null);
+    setRefinedFrom(null);
+    lastAppliedRef.current = null;
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
       // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
@@ -1051,6 +1157,39 @@ export function QuickLaunch() {
       element.blur();
     }
   }, []);
+
+  // 실제 발사 — 프롬프트 문면은 이미 확정됐다(컨텍스트 블록이 붙었다면 붙은 채로 온다).
+  const launchOperation = useCallback((text: string) => {
+    if (!theaterId || !target || !selectedRow) return;
+    setSubmitting(true);
+    const variant: Record<string, string> = { prompt: text };
+    if (model) variant.model = model;
+    if (effort) variant.effort = effort;
+    // 터미널은 키를 생략한다 — 기본이 곧 계약이라, 이 키를 모르는 구버전 플러그인도 같은 길을 탄다.
+    if (chatStart) variant.viewMode = "chat";
+    // 첨부는 서버가 만든 불투명 id의 CSV로 실린다(variant는 flat string 레코드 계약).
+    // 이름·미리보기는 거절 복원용 자취로 실행 의도에 따로 실린다 — 경로는 어느 쪽에도 없다.
+    const launchedAttachments: QuickLaunchDraftAttachment[] = attachments
+      .filter((attachment) => attachment.id !== null)
+      .map((attachment) => ({ id: attachment.id as string, name: attachment.name, previewUrl: attachment.previewUrl }));
+    if (launchedAttachments.length > 0) variant.attachments = launchedAttachments.map((attachment) => attachment.id).join(",");
+    // 고정은 저장된 값을 그대로 다시 쓴다 — 화면별 실효값(설정에서는 접어 두므로 거짓)을 저장하면
+    // 그 화면에서 한 번 실행한 것만으로 사용자의 고정 설정이 조용히 꺼진다.
+    // 시작 표면도 같은 전체 되쓰기에 실린다 — 한 필드라도 빠지면 그 옵트인이 조용히 꺼진다.
+    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused, view: startView });
+    // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
+    // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
+    setActiveTheater(theaterId);
+    requestQuickLaunch({
+      theaterId,
+      pluginId: target.pluginId,
+      kind: target.kind,
+      variant,
+      ...(launchedAttachments.length > 0 ? { attachments: launchedAttachments } : {}),
+    });
+    navigate("/operations");
+    finishSubmission();
+  }, [attachments, chatStart, effort, finishSubmission, mentionFocused, model, navigate, selectedRow, startView, state.quickLaunchPinned, target, theaterId]);
 
   const submit = useCallback(() => {
     const text = prompt.trim();
@@ -1130,35 +1269,36 @@ export function QuickLaunch() {
       return;
     }
     if (!theaterId || !target || !selectedRow) return;
-    setSubmitting(true);
-    const variant: Record<string, string> = { prompt: text };
-    if (model) variant.model = model;
-    if (effort) variant.effort = effort;
-    // 터미널은 키를 생략한다 — 기본이 곧 계약이라, 이 키를 모르는 구버전 플러그인도 같은 길을 탄다.
-    if (chatStart) variant.viewMode = "chat";
-    // 첨부는 서버가 만든 불투명 id의 CSV로 실린다(variant는 flat string 레코드 계약).
-    // 이름·미리보기는 거절 복원용 자취로 실행 의도에 따로 실린다 — 경로는 어느 쪽에도 없다.
-    const launchedAttachments: QuickLaunchDraftAttachment[] = attachments
-      .filter((attachment) => attachment.id !== null)
-      .map((attachment) => ({ id: attachment.id as string, name: attachment.name, previewUrl: attachment.previewUrl }));
-    if (launchedAttachments.length > 0) variant.attachments = launchedAttachments.map((attachment) => attachment.id).join(",");
-    // 고정은 저장된 값을 그대로 다시 쓴다 — 화면별 실효값(설정에서는 접어 두므로 거짓)을 저장하면
-    // 그 화면에서 한 번 실행한 것만으로 사용자의 고정 설정이 조용히 꺼진다.
-    // 시작 표면도 같은 전체 되쓰기에 실린다 — 한 필드라도 빠지면 그 옵트인이 조용히 꺼진다.
-    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused, view: startView });
-    // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
-    // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
-    setActiveTheater(theaterId);
-    requestQuickLaunch({
-      theaterId,
-      pluginId: target.pluginId,
-      kind: target.kind,
-      variant,
-      ...(launchedAttachments.length > 0 ? { attachments: launchedAttachments } : {}),
-    });
-    navigate("/operations");
-    finishSubmission();
-  }, [attachments, chatStart, commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionFocused, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, startView, state.quickLaunchPinned, submitting, target, theaterId]);
+    // 실험: 런치 컨텍스트 팩. 켜져 있고 아직 후보를 묻지 않았으면 먼저 묻는다 — 후보가 없으면
+    // 바로 발사하고, 있으면 카드를 세워 사용자가 고른 뒤 다시 이 함수로 돌아온다(contextPack이
+    // 이미 결정된 상태). 조회 중 Enter를 다시 눌러도 두 번 묻지 않는다.
+    if (contextEnabled && contextPack === null && !contextPending) {
+      const epoch = ++contextEpochRef.current;
+      setContextPending(true);
+      void collectLaunchContext(contextProviders, { prompt: text, theaterId, language: locale })
+        .then((candidates) => {
+          if (epoch !== contextEpochRef.current) return;
+          setContextPending(false);
+          if (candidates.length === 0) {
+            launchOperation(text);
+            return;
+          }
+          setContextPack({ candidates, selected: new Set(candidates.map((candidate) => candidate.id)) });
+        })
+        .catch(() => {
+          if (epoch !== contextEpochRef.current) return;
+          setContextPending(false);
+          launchOperation(text);
+        });
+      return;
+    }
+    if (contextPack !== null) {
+      const chosen = contextPack.candidates.filter((candidate) => contextPack.selected.has(candidate.id));
+      launchOperation(appendLaunchContext(text, chosen, QUICK_LAUNCH_PROMPT_MAX_CHARS));
+      return;
+    }
+    launchOperation(text);
+  }, [attachments, commandDeckHasRows, contextEnabled, contextPack, contextPending, contextProviders, deckHasRows, launchOperation, locale, mentionTarget, prompt, registry.plugins, selectedRow, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -1360,7 +1500,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart ? " is-chat-start" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${refining ? " is-suggesting" : ""}${chatStart ? " is-chat-start" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1636,6 +1776,18 @@ export function QuickLaunch() {
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
           />
+          {canRefine || refining ? (
+            <button
+              type="button"
+              className={`quick-launch-suggest-trigger${refining ? " is-busy" : ""}`}
+              aria-label={t(refining ? "chrome.quickLaunch.refinePending" : "chrome.quickLaunch.refineTrigger")}
+              title={t(refining ? "chrome.quickLaunch.refinePending" : "chrome.quickLaunch.refineTrigger")}
+              disabled={refining}
+              onClick={requestRefinement}
+            >
+              <RefineSparkIcon />
+            </button>
+          ) : null}
           </span>
           {attachments.length > 0 ? (
             <div className="quick-launch-attachments" role="group" aria-label={t("chrome.quickLaunch.attachments")}>
@@ -1680,6 +1832,62 @@ export function QuickLaunch() {
             </div>
           ) : null}
         </ComposerField>
+        {refinement ? (
+          <div className="quick-launch-refine" role="group" aria-label={t("chrome.quickLaunch.refineAria")}>
+            <p className="quick-launch-context-title">{t("chrome.quickLaunch.refineTitle")}</p>
+            <pre className="quick-launch-refine-draft">{refinement.prompt}</pre>
+            {refinement.notes.length > 0 ? (
+              <ul className="quick-launch-refine-notes">
+                {refinement.notes.map((note, index) => <li key={index}>{note}</li>)}
+              </ul>
+            ) : null}
+            <p className="quick-launch-context-actions">
+              <button type="button" className="quick-launch-context-confirm" onClick={applyRefinement}>{t("chrome.quickLaunch.refineApply")}</button>
+              <button type="button" className="quick-launch-context-skip" onClick={dismissRefinement}>{t("chrome.quickLaunch.refineDiscard")}</button>
+              <span className="quick-launch-context-hint">{t("chrome.quickLaunch.refineHint")}</span>
+            </p>
+          </div>
+        ) : refinedFrom !== null ? (
+          <div className="quick-launch-suggest" role="status">
+            <span className="quick-launch-suggest-lead">{t("chrome.quickLaunch.refineApplied")}</span>
+            <span className="quick-launch-suggest-actions">
+              <button type="button" className="quick-launch-suggest-dismiss" onClick={revertRefinement}>{t("chrome.quickLaunch.refineRevert")}</button>
+            </span>
+          </div>
+        ) : null}
+        {contextPack ? (
+          <div className="quick-launch-context" role="group" aria-label={t("chrome.quickLaunch.contextAria")}>
+            <p className="quick-launch-context-title">
+              {t("chrome.quickLaunch.contextTitle")}
+              <span className="quick-launch-context-count">{t(contextPack.selected.size === 1 ? "chrome.quickLaunch.contextCount_one" : "chrome.quickLaunch.contextCount_other", { count: contextPack.selected.size })}</span>
+            </p>
+            {contextPack.candidates.map((candidate) => (
+              <label className="quick-launch-context-item" key={`${candidate.kind}:${candidate.id}`}>
+                <input
+                  type="checkbox"
+                  checked={contextPack.selected.has(candidate.id)}
+                  onChange={(event) => {
+                    const next = new Set(contextPack.selected);
+                    if (event.currentTarget.checked) next.add(candidate.id); else next.delete(candidate.id);
+                    setContextPack({ candidates: contextPack.candidates, selected: next });
+                  }}
+                />
+                <span className="quick-launch-context-kind">{candidate.kind}</span>
+                <span className="quick-launch-context-name">{candidate.title}</span>
+                {candidate.detail ? <span className="quick-launch-context-detail">{candidate.detail}</span> : null}
+              </label>
+            ))}
+            <p className="quick-launch-context-actions">
+              <button type="button" className="quick-launch-context-confirm" onClick={submit}>{t("chrome.quickLaunch.contextConfirm")}</button>
+              <button type="button" className="quick-launch-context-skip" onClick={() => { setContextPack({ candidates: contextPack.candidates, selected: new Set() }); }}>{t("chrome.quickLaunch.contextClear")}</button>
+              <span className="quick-launch-context-hint">{t("chrome.quickLaunch.contextHint")}</span>
+            </p>
+          </div>
+        ) : contextPending ? (
+          <div className="quick-launch-context is-pending" aria-live="polite">
+            <p className="quick-launch-context-title">{t("chrome.quickLaunch.contextPending")}</p>
+          </div>
+        ) : null}
 
         <ComposerBar className="quick-launch-bar" ref={barRef} inert={showStrip || undefined}>
           {/* 멘션이 확정되면 런치 3종(theater/model/effort)은 접히고 행선지 태그가 그 자리를 잇는다 —

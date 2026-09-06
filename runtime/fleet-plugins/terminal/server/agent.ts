@@ -55,6 +55,8 @@ interface AgentRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
+  readonly onTurnEnded?: (operationId: string) => void;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -1558,7 +1560,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       : observability.setTerminalSessionBackgroundPending(sessionId, report.pending, report.settledAgentIds) ?? updated;
     observability.notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
-    if (turnState === "ended") scheduleIdentityRefresh(sessionId);
+    if (turnState === "ended") {
+      scheduleIdentityRefresh(sessionId);
+      deps.onTurnEnded?.(sessionId);
+    }
     return true;
   }
 

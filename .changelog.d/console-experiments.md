@@ -1,0 +1,8 @@
+---
+branch: console-experiments
+---
+
+### fleet-console
+#### Added
+- Add an "Experiments" settings category with four opt-in features that all start off: prompt refinement (a button beside the Quick Launch prompt rewrites your request into a task brief with goal, scope, constraints, and open questions, shown as a draft you apply, discard, or restore), a launch context pack (related Wiki entries and recent commits are listed before launch and only the ones you check are appended to the prompt), session watch (a Watch action on each Agent Operation has the Session Analyst review every finished turn for scope drift, repeated failures, and destructive attempts and notify you), and Console reading for Scuttlebutt aides (read-only Operation, Theater, and Wiki lookups). Each feature that calls a model has its own model picker beside its switch (Claude aliases by default, AI Gateway models added by their plugin), and a watched Operation's caption button shows when the last review ran and whether it found anything.
+  ko: 설정에 「실험 기능」 카테고리를 추가하고 모두 기본 꺼짐인 옵트인 기능 네 가지를 넣었습니다. 프롬프트 다듬기(Quick Launch 입력창 옆 버튼이 요청을 목표·범위·제약·확인할 질문이 있는 작업 지시문으로 고쳐 쓴 초안을 보여 주며, 적용·버리기·원래대로를 사용자가 고릅니다), 런치 컨텍스트 팩(런치 직전 관련 Wiki 항목과 최근 커밋을 보여 주고 체크한 것만 프롬프트 뒤에 붙입니다), 세션 관찰(Agent Operation마다 관찰 버튼이 생기고 턴이 끝날 때마다 세션 분석가가 범위 이탈·반복 실패·파괴적 시도를 검사해 알립니다), 부관의 Console 읽기(Scuttlebutt 부관이 Operation·Theater·Wiki를 읽기 전용으로 조회합니다)입니다. 모델을 부르는 기능은 스위치 옆에 자기 모델 선택기를 갖습니다(기본은 Claude 별칭, AI Gateway 모델은 그 플러그인이 보탭니다). 관찰 중인 Operation의 캡션 버튼은 마지막 검토 시각과 결과(이상 없음·경고·실패)를 보여 줍니다.

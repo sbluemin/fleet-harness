@@ -1,6 +1,8 @@
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
+import { connectConsoleRead, isConsoleReadEnabled } from "./console-read.js";
+
 import type { AdmiralId } from "./chat-session.js";
 import { ScuttlebuttFlock } from "./flock.js";
 import { readScuttlebuttMentionBridge } from "./mention-bridge.js";
@@ -25,8 +27,8 @@ function mentionTargets(): readonly MentionTargetDescriptor[] {
     id: admiral,
     label: bridge.label(admiral),
     categoryLabel: t("mention.category"),
-    capabilityLabel: t("mention.capability"),
-    description: t("mention.description", { name: bridge.label(admiral) }),
+    capabilityLabel: t(isConsoleReadEnabled() ? "mention.capabilityConsole" : "mention.capability"),
+    description: t(isConsoleReadEnabled() ? "mention.descriptionConsole" : "mention.description", { name: bridge.label(admiral) }),
     renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
   }));
 }
@@ -46,7 +48,10 @@ const scuttlebuttPlugin = definePlugin({
   settingsSections: [scuttlebuttSettingsSection],
   mentionTargets,
   messageMentionTarget,
-  install: (context) => connectScuttlebuttSettings(context.settings),
+  install: (context) => {
+    connectConsoleRead(context);
+    return connectScuttlebuttSettings(context.settings);
+  },
 });
 
 export const plugins = [scuttlebuttPlugin] as const;

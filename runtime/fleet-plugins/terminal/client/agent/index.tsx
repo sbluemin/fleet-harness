@@ -12,9 +12,12 @@ import {
   CaptionChatGlyph,
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
+  CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
 import { SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
-import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ClientExperimentsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import { fetchAnalysisCatalog } from "./analysis-api.js";
+import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
@@ -184,6 +187,12 @@ const agentEndedNotification = defineNotificationKind({
   title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
+// 세션 관찰(실험) 알림 — 개입하지 않는 조언이다. id에 end/done을 넣지 않아 입력 대기 층으로 분류된다.
+const agentWatchNotification = defineNotificationKind({
+  id: "agent.watch",
+  title: (locale) => getT(locale)("terminal.experiments.watchNotification"),
+});
+
 // resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
 // ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
 const agentResumeFailedNotification = defineNotificationKind({
@@ -206,8 +215,16 @@ export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
   settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification, agentWatchNotification],
   install: (ctx) => installAgentPlugin(ctx),
+  // 실험: 프롬프트 다듬기 — 코어가 켜져 있을 때만 부른다. 서버가 꺼져 있다고 답하면 null로 조용히 물러난다.
+  refinePrompt: (input) => refineLaunchPrompt(installedApi, input),
+  // 실험: 모델 좌석 선택지 — 분석가 카탈로그가 곧 "이 호스트가 실행할 수 있는 모델"이다.
+  experimentModelOptions: async () => {
+    if (!installedApi) return [];
+    const catalog = await fetchAnalysisCatalog(installedApi);
+    return catalog.clis.flatMap((cli) => cli.models.map((model) => ({ id: model.id, label: model.label })));
+  },
   closeOperation: async (operationId) => {
     try {
       await terminateAgentSession(operationId);
@@ -271,8 +288,25 @@ export const plugins = [agentPlugin] as const;
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: PluginInstallContext["notifications"] | null = null;
 
+let installedApi: PluginInstallContext["api"] | null = null;
+let installedExperiments: ClientExperimentsCapability | null = null;
+
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
   installedNotifications = ctx.notifications;
+  installedApi = ctx.api;
+  installedExperiments = ctx.experiments;
+  // 세션 관찰 알림 — 서버가 코어 SSE에 실어 보낸 조언을 알림 층에 올린다. 관찰이 꺼진 Operation은
+  // 서버가 애초에 검토하지 않으므로 여기서 거를 것이 없다.
+  const disposeWatch = ctx.consoleEvents.subscribe(SESSION_WATCH_EVENT_CHANNEL, (payload) => {
+    if (!isSessionWatchEvent(payload)) return;
+    recordSessionWatchEvent(payload);
+    if (!isSessionWatchAlert(payload)) return;
+    ctx.notifications.emit({
+      kind: agentWatchNotification.id,
+      operationId: payload.operationId,
+      message: payload.body ? `${payload.title} — ${payload.body}` : payload.title,
+    });
+  });
   // 이 플러그인은 런타임 축의 권위를 가진다 — 첫 스냅샷이 도착하기 전까지는 그 축을 신뢰할 수 없다고
   // 먼저 선언하고 시작한다.
   ctx.runtime.setHydration("pending");
@@ -284,8 +318,20 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
   });
   return () => {
     installedNotifications = null;
+    installedApi = null;
+    installedExperiments = null;
+    disposeWatch();
     disposeConnection();
   };
+}
+
+/** 실험 설정 구독 — 설정에서 껐다 켜는 즉시 캡션 버튼이 따라간다. */
+function useExperimentsSnapshot() {
+  return React.useSyncExternalStore(
+    (listener) => installedExperiments?.subscribe(listener) ?? (() => undefined),
+    () => installedExperiments?.read() ?? null,
+    () => null,
+  );
 }
 
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
@@ -532,9 +578,51 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     </CaptionActionButton>
   );
 
+  // 실험: 세션 관찰. 설정에서 켠 경우에만 서고, 관찰 중인지는 Operation payload가 말한다(서버가 쓴다).
+  const experiments = useExperimentsSnapshot();
+  const watchEnabled = readWatchEnabled(context.operation.payload);
+  const [watchPending, setWatchPending] = React.useState(false);
+  const review = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
+  // 라벨이 곧 상태다: 켜져 있으면 마지막 검토 결과(검토 중·이상 없음·실패·경고)를 시각과 함께 말한다.
+  const watchLabel = !watchEnabled
+    ? t("terminal.experiments.watchOn")
+    : review === null
+      ? t("terminal.experiments.watchOffIdle")
+      : t(review.phase === "started"
+        ? "terminal.experiments.watchReviewing"
+        : review.phase === "clear"
+          ? "terminal.experiments.watchClear"
+          : review.phase === "failed"
+            ? (review.reason === "transcript_missing" ? "terminal.experiments.watchNoTranscript" : "terminal.experiments.watchFailed")
+            : "terminal.experiments.watchAlert", { time: new Date(review.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), title: review.title ?? "" });
+  const watchAction = experiments?.sessionWatch !== true ? null : (
+    <span className="session-watch-host">
+    <CaptionActionButton
+      actionId="session-watch"
+      label={watchLabel}
+      pressed={watchEnabled}
+      disabled={watchPending || !installedApi}
+      pending={watchPending}
+      busy={watchEnabled && review?.phase === "started"}
+      onClick={() => {
+        if (!installedApi) return;
+        setWatchPending(true);
+        void setSessionWatch(installedApi, context.operationId, !watchEnabled, context.language ?? "en")
+          .then(() => context.api.resync())
+          .catch(() => undefined)
+          .finally(() => setWatchPending(false));
+      }}
+    >
+      <CaptionWatchGlyph />
+    </CaptionActionButton>
+    {watchEnabled ? <SessionWatchBubble context={context} review={review} /> : null}
+    </span>
+  );
+
   return (
     <>
       {analyst}
+      {watchAction}
       {viewSwitch}
       {readingWidthAction}
     </>
@@ -610,6 +698,67 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
+    </div>
+  );
+}
+
+/**
+ * 세션 관찰(실험)의 결과 말풍선 — 캡션의 눈 버튼 아래에 선다. 검토가 시작되거나 끝날 때 뜨고,
+ * 사용자가 무엇이든 누르거나 입력하면 사라진다: 결과는 알려야 하지만 화면을 차지해서는 안 된다.
+ * 새 결과가 오면 다시 뜬다. 마지막 결과 자체는 눈 버튼 툴팁이 계속 갖고 있다.
+ */
+function SessionWatchBubble({ context, review }: { readonly context: OperationRenderContext; readonly review: SessionWatchReview | null }) {
+  const t = getT(context.language ?? "en");
+  const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const key = review ? `${review.phase}:${review.at}` : null;
+  const keyRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (key === null || key === keyRef.current) return;
+    keyRef.current = key;
+    setVisibleFor(review?.at ?? null);
+    setExpanded(false);
+  }, [key, review]);
+  React.useEffect(() => {
+    if (visibleFor === null) return;
+    // 이 말풍선 안의 클릭(자세히)은 닫지 않는다 — 그 밖의 어떤 누름·입력이든 닫는다.
+    const dismiss = (event: Event) => {
+      if (event.target instanceof Node && bubbleRef.current?.contains(event.target)) return;
+      setVisibleFor(null);
+    };
+    // 뜬 직후의 같은 프레임에 들어온 이벤트(검토를 시작시킨 Enter 등)가 곧바로 닫지 않게 한 박자 뒤에 듣는다.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", dismiss, true);
+      document.addEventListener("keydown", dismiss, true);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("keydown", dismiss, true);
+    };
+  }, [visibleFor]);
+  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  if (visibleFor === null || !review) return null;
+  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const tone = review.phase === "alert" ? "is-alert" : review.phase === "failed" ? "is-failed" : review.phase === "started" ? "is-reviewing" : "";
+  const summary = review.phase === "started"
+    ? t("terminal.experiments.barReviewing")
+    : review.phase === "alert"
+      ? t("terminal.experiments.barAlert", { time: time(review.at), title: review.title ?? "" })
+      : review.phase === "failed"
+        ? t(review.reason === "transcript_missing" ? "terminal.experiments.barNoTranscript" : "terminal.experiments.barFailed", { time: time(review.at) })
+        : t("terminal.experiments.barClear", { time: time(review.at) });
+  return (
+    <div ref={bubbleRef} className={`session-watch-bubble ${tone}`} role="status" aria-live="polite">
+      <span className="session-watch-bubble__text">{summary}</span>
+      {review.phase === "alert" && review.body ? (
+        <>
+          <button type="button" className="session-watch-bubble__toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+            {t(expanded ? "terminal.experiments.barLess" : "terminal.experiments.barMore")}
+          </button>
+          {expanded ? <p className="session-watch-bubble__body">{review.body}</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }

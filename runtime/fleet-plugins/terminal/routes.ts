@@ -18,6 +18,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
+import { registerExperimentRoutes } from "./server/agent-api/experiments-routes.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
@@ -111,6 +112,7 @@ export default definePlugin({
       // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
       readAiGatewaySettings: aiGatewayStore.read,
     });
+    const sessionWatch = registerExperimentRoutes(ctx, {});
     const agentLaunchKinds = await registerAgentRoutes(ctx, runtime, {
       globalOptionsService: infraServices.globalOptionsService,
       readAiGatewaySettings: aiGatewayStore.read,
@@ -119,6 +121,7 @@ export default definePlugin({
         origin: () => ctx.host.server.origin(),
         compactHookToken: aiGatewayRuntime.compactHookToken,
       },
+      onTurnEnded: (operationId) => sessionWatch.onTurnEnded(operationId),
     });
     registerLaunchCatalog(ctx, async () => agentLaunchKinds());
   },

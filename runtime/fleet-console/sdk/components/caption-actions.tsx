@@ -28,6 +28,16 @@ const STROKE = {
   strokeLinejoin: "round",
 } as const;
 
+/** 세션 관찰(실험) — 눈 하나. 분석가의 ✳과 짝을 이루되, 지켜보는 쪽이라는 뜻을 따로 진다. */
+export function CaptionWatchGlyph() {
+  return (
+    <CaptionGlyph>
+      <path d="M1.8 8c1.6-2.9 3.7-4.3 6.2-4.3S12.6 5.1 14.2 8c-1.6 2.9-3.7 4.3-6.2 4.3S3.4 10.9 1.8 8Z" {...STROKE} />
+      <circle cx="8" cy="8" r="1.9" {...STROKE} />
+    </CaptionGlyph>
+  );
+}
+
 /** Session Analyst — 제품이 이미 쓰는 ✳ 표식을 선으로 옮겨 그린 것. */
 export function CaptionAnalystGlyph() {
   return (

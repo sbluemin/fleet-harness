@@ -9,8 +9,9 @@ import type { LocalizedText } from "../i18n/types.js";
  * - `setup`   콘솔이 어떻게 보이고 어떤 말을 쓰는가. 자주 오고 되돌리기 쉽다.
  * - `work`    작업 도구가 어떻게 움직이는가. 플러그인 섹션의 기본 자리.
  * - `machine` 이 기계와 바깥의 관계. 드물고 결과가 무겁다.
+ * - `experiments` 아직 다듬는 중인 기능. 전부 기본 꺼짐이고 켜는 것이 곧 동의다.
  */
-export type SettingsSectionGroup = "setup" | "work" | "machine";
+export type SettingsSectionGroup = "setup" | "work" | "machine" | "experiments";
 
 export interface SettingsSectionDescriptor {
   readonly id: string;
@@ -25,3 +26,20 @@ export interface SettingsSectionDescriptor {
   readonly keywords?: readonly LocalizedText[];
   readonly render?: () => ReactNode;
 }
+
+export type {
+  ConsoleExperimentSettings,
+  ExperimentFeatureId,
+  ExperimentModelFeatureId,
+  ExperimentModelOption,
+} from "./experiments.js";
+export {
+  CLAUDE_EXPERIMENT_MODEL_OPTIONS,
+  DEFAULT_EXPERIMENT_MODELS,
+  DEFAULT_EXPERIMENT_SETTINGS,
+  EXPERIMENT_FEATURES,
+  EXPERIMENT_MODEL_FEATURES,
+  experimentFeatureModel,
+  isExperimentModelId,
+  resolveExperimentSettings,
+} from "./experiments.js";

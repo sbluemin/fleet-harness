@@ -395,3 +395,19 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
 }
+
+/* ── 세션 관찰(실험) 결과 말풍선 — 캡션 눈 버튼 아래 ────────────────────────
+   캡션 이름표(.fleet-caption-tip)와 같은 문법의 부유면이되, 겨눔이 아니라 도착으로 뜨고 누름·입력으로
+   진다. 이상 없음은 조용히, 경고는 warn, 실패는 coral. 검토 중에는 글리프가 숨 쉰다. */
+.session-watch-host { position: relative; display: inline-flex; }
+.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: 0; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
+.session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 10px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
+.session-watch-bubble__text { min-width: 0; }
+.session-watch-bubble.is-reviewing { color: var(--text-tertiary); }
+.session-watch-bubble.is-alert { border-color: color-mix(in oklch, var(--warn) 55%, transparent); color: var(--text-primary); }
+.session-watch-bubble.is-alert::before { border-color: color-mix(in oklch, var(--warn) 55%, transparent); }
+.session-watch-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
+.session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.session-watch-bubble__toggle:hover { color: var(--brass); border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.session-watch-bubble__toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.session-watch-bubble__body { flex-basis: 100%; margin: 0; font-family: var(--font-body); font-size: var(--t-sm); letter-spacing: 0; color: var(--text-primary); white-space: pre-wrap; }

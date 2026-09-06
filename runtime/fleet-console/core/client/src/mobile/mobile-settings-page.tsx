@@ -174,13 +174,29 @@ function buildMobileSettingsGroups(
     };
     if (section.group === "setup") setupRows.push(row);
     else if (section.group === "machine") machineRows.push(row);
+    else if (section.group === "experiments") continue;
     else workRows.push(row);
   }
 
   const groups: MobileSettingsGroup[] = [{ key: "setup", label: t("settings.group.setup"), rows: setupRows }];
   if (workRows.length > 0) groups.push({ key: "work", label: t("settings.group.work"), rows: workRows });
   groups.push({ key: "machine", label: t("settings.group.machine"), rows: machineRows });
+  const experimentRows: MobileSettingsRow[] = [
+    { id: "experiments", title: t("settings.core.experiments.label"), value: describeExperiments(state, t), icon: <PluginIcon /> },
+  ];
+  for (const section of pluginSections) {
+    if (section.group !== "experiments") continue;
+    experimentRows.push({ id: section.id, title: section.sectionTitle, value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel, icon: <PluginIcon /> });
+  }
+  groups.push({ key: "experiments", label: t("settings.group.experiments"), rows: experimentRows });
   return groups;
+}
+
+function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
+  if (state === null) return null;
+  const { experiments } = state;
+  const on = [experiments.promptRefine, experiments.launchContextPack, experiments.sessionWatch, experiments.aideConsoleRead].filter(Boolean).length;
+  return on === 0 ? t("mobile.settings.off") : `${on} ${t("mobile.settings.on")}`;
 }
 
 function describeAppearance(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {

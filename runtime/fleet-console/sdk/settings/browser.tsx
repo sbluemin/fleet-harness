@@ -3,6 +3,18 @@ import * as React from "react";
 import { Select } from "../react/browser.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
+// 실험 설정의 순수 도우미 — 브라우저 번들은 이 진입점만 공유 shim으로 노출되므로 여기서도 낸다.
+export {
+  CLAUDE_EXPERIMENT_MODEL_OPTIONS,
+  DEFAULT_EXPERIMENT_MODELS,
+  DEFAULT_EXPERIMENT_SETTINGS,
+  EXPERIMENT_FEATURES,
+  EXPERIMENT_MODEL_FEATURES,
+  experimentFeatureModel,
+  isExperimentModelId,
+  resolveExperimentSettings,
+} from "./experiments.js";
+
 export interface SettingsCardProps {
   readonly title?: React.ReactNode;
   readonly description?: string;

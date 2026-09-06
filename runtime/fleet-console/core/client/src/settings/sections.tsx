@@ -11,6 +11,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { SettingsHelp } from "../components/settings-help.js";
+import { ExperimentsSection } from "./experiments-section.js";
 import { PairDeviceDialog } from "../components/pair-device-dialog.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../global-settings-store.js";
@@ -39,7 +40,7 @@ interface PortModeOption {
   readonly label: string;
 }
 
-export type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced";
+export type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced" | "experiments";
 type PluginSettingsSectionId = `${string}:${string}`;
 export type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
@@ -88,12 +89,13 @@ export interface PluginSettingsNavItem {
   readonly render?: () => ReactNode;
 }
 
-export const SETTINGS_GROUP_ORDER: readonly SettingsSectionGroup[] = ["setup", "work", "machine"];
+export const SETTINGS_GROUP_ORDER: readonly SettingsSectionGroup[] = ["setup", "work", "machine", "experiments"];
 
 export const SETTINGS_GROUP_LABEL_KEYS: Readonly<Record<SettingsSectionGroup, CoreMessageKey>> = {
   setup: "settings.group.setup",
   work: "settings.group.work",
   machine: "settings.group.machine",
+  experiments: "settings.group.experiments",
 };
 
 type T = Translate<CoreMessageKey>;
@@ -164,6 +166,18 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       label: t("settings.core.advanced.label"),
       entries: [t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
     },
+    {
+      id: "experiments",
+      group: "experiments",
+      label: t("settings.core.experiments.label"),
+      entries: [
+        t("settings.experiments.promptRefine.title"),
+        t("settings.experiments.launchContextPack.title"),
+        t("settings.experiments.sessionWatch.title"),
+        t("settings.experiments.aideConsoleRead.title"),
+        t("settings.core.experiments.keywords"),
+      ],
+    },
   ];
 }
 
@@ -218,6 +232,9 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
       );
     case "advanced":
       return <BackendApiSection />;
+    case "experiments":
+      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
+      return <ExperimentsSection state={state} saving={saving} />;
   }
 }
 

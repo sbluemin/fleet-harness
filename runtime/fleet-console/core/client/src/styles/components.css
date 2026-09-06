@@ -822,6 +822,13 @@
   line-height: 1.6;
 }
 
+/* 실험 기능 카드 — AI를 쓰는 행은 제목 아래 모델 선택기 한 줄을 갖는다. 카드의 기존 문법과
+   공유 fc-select만 쓰고 새 색을 들이지 않는다. */
+.experiments-model-select {
+  margin-top: var(--space-1);
+  max-width: 28ch;
+}
+
 .operations-mutation-error {
   display: flex;
   align-items: center;
@@ -14720,6 +14727,338 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: var(--space-2);
   color: var(--text-tertiary);
   font-size: var(--t-md);
+}
+
+/* ── 실험: 런치 제안 버튼 · 처리 중 링 ──────────────────────────────────
+   버튼은 입력 오른쪽 끝에 서고 위치 채널(brass)만 쓴다. 처리 중에는 ultracode의 rim 문법을
+   brass로 빌려 카드 테두리를 한 바퀴 돈다 — 같은 기하, 다른 색: apex는 ultracode, brass는
+   "콘솔이 지금 당신 대신 읽는 중"이다. 결과가 오면 링은 꺼지고 제안 띠가 선다. */
+.quick-launch-suggest-trigger {
+  position: absolute;
+  top: 0;
+  right: 0;
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.quick-launch-suggest-trigger:hover:not(:disabled) {
+  color: var(--brass);
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.quick-launch-suggest-trigger:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+/* 쉬는 동안의 물결 — 아이콘에서 brass 고리가 천천히 퍼져 나간다. "여기 눌러 볼 것이 있다"를 말하는
+   위치 채널이지 상태가 아니다. 두 고리를 반 박자 어긋나게 겹쳐 끊김 없는 물결이 되게 한다. */
+.quick-launch-suggest-trigger::before,
+.quick-launch-suggest-trigger::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in oklch, var(--brass) 70%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  animation: quick-launch-suggest-ripple 3.2s var(--ease-glide) infinite;
+}
+
+.quick-launch-suggest-trigger::after {
+  animation-delay: 1.6s;
+}
+
+.quick-launch-suggest-trigger:not(.is-busy) svg {
+  animation: quick-launch-suggest-breathe 3.2s ease-in-out infinite;
+}
+
+.quick-launch-suggest-trigger.is-busy::before,
+.quick-launch-suggest-trigger.is-busy::after,
+.quick-launch-suggest-trigger:hover::before,
+.quick-launch-suggest-trigger:hover::after {
+  animation: none;
+  opacity: 0;
+}
+
+.quick-launch-suggest-trigger.is-busy {
+  color: var(--brass);
+  cursor: progress;
+  animation: quick-launch-suggest-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes quick-launch-suggest-ripple {
+  0% { transform: scale(0.55); opacity: 0; }
+  12% { opacity: 0.55; }
+  70% { transform: scale(1.75); opacity: 0; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+
+@keyframes quick-launch-suggest-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.14); }
+}
+
+/* 버튼이 서는 동안 글자가 그 아래로 들어가지 않게 입력 오른쪽에 자리를 남긴다. */
+.quick-launch-input-wrap:has(.quick-launch-suggest-trigger) .quick-launch-input {
+  padding-right: 32px;
+}
+
+.quick-launch-card.is-suggesting {
+  box-shadow:
+    var(--shadow-floating),
+    0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent),
+    0 0 22px -8px var(--brass-glow);
+}
+
+.quick-launch-card.is-suggesting::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--radius-md) + 1px);
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--quick-launch-rim-angle),
+    transparent 0deg,
+    color-mix(in oklch, var(--brass) 88%, transparent) 40deg,
+    color-mix(in oklch, var(--brass) 40%, transparent) 80deg,
+    transparent 120deg,
+    transparent 360deg
+  );
+  /* [doctrine] `black`은 칠이 아니라 스텐실이다(알파 1만 쓴다) — ultracode 링과 같은 마스크 합성. */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: quick-launch-ultracode-rim 2.2s linear infinite;
+}
+
+@keyframes quick-launch-suggest-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-launch-suggest-trigger.is-busy,
+  .quick-launch-suggest-trigger::before,
+  .quick-launch-suggest-trigger::after,
+  .quick-launch-suggest-trigger:not(.is-busy) svg,
+  .quick-launch-card.is-suggesting::after {
+    animation: none;
+  }
+}
+
+/* ── 실험: 런치 제안 · 컨텍스트 팩 ────────────────────────────────────────
+   둘 다 입력 필드와 바 사이에 선다. 제안은 한 줄 칩 띠 — 적용 전까지 아무것도 바꾸지 않으므로
+   상태색을 쓰지 않고 위치 채널(brass)만 빌려 "여기 제안이 있다"를 말한다. 컨텍스트 팩은 체크
+   목록이라 행 문법이며, 종류 라벨은 모노 대문자 캡션이다. */
+.quick-launch-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+
+.quick-launch-suggest-lead {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.quick-launch-suggest-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.quick-launch-suggest-field {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.quick-launch-suggest-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+.quick-launch-suggest-apply,
+.quick-launch-suggest-dismiss,
+.quick-launch-context-confirm,
+.quick-launch-context-skip {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.quick-launch-suggest-apply,
+.quick-launch-context-confirm {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  color: var(--brass);
+}
+
+.quick-launch-suggest-apply:hover,
+.quick-launch-suggest-dismiss:hover,
+.quick-launch-context-confirm:hover,
+.quick-launch-context-skip:hover {
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+}
+
+.quick-launch-suggest-apply:focus-visible,
+.quick-launch-suggest-dismiss:focus-visible,
+.quick-launch-context-confirm:focus-visible,
+.quick-launch-context-skip:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* 다듬은 초안 카드 — 컨텍스트 팩과 같은 카드 문법. 초안은 원문 그대로 줄바꿈을 지킨다. */
+.quick-launch-refine {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 6%, transparent);
+  font-size: var(--t-sm);
+}
+
+.quick-launch-refine-draft {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+
+.quick-launch-refine-notes {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  display: grid;
+  gap: 2px;
+}
+
+.quick-launch-context {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--ink-deep) 42%, transparent);
+  font-size: var(--t-sm);
+}
+
+.quick-launch-context.is-pending {
+  color: var(--text-tertiary);
+}
+
+.quick-launch-context-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.quick-launch-context-count {
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary);
+}
+
+.quick-launch-context-item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.quick-launch-context-item input {
+  accent-color: var(--brass);
+  margin: 0;
+  align-self: center;
+}
+
+.quick-launch-context-kind {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.quick-launch-context-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-launch-context-detail {
+  grid-column: 3;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-launch-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+.quick-launch-context-hint {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
 }
 
 /* ── '/' 커맨드 덱 ──────────────────────────────────────────────────────

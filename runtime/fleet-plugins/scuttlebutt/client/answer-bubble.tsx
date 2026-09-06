@@ -4,6 +4,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { AdmiralId } from "./chat-session.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import { getT } from "./scuttlebutt-catalog.js";
+import { isConsoleReadEnabled } from "./console-read.js";
 
 /**
  * Quick Launch에서 물은 답이 서는 자리.
@@ -125,7 +126,7 @@ export function AnswerBubble({
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
           {name}
-          <span className="scuttlebutt-answer-capability">{t("mention.capability")}</span>
+          <span className="scuttlebutt-answer-capability">{t(isConsoleReadEnabled() ? "mention.capabilityConsole" : "mention.capability")}</span>
         </span>
         {answer === null
           ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>

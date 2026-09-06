@@ -1,3 +1,4 @@
+import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import type { ConsoleThemeId, UiFontSettings } from "./settings/settings-domain.js";
 
 export interface ConsoleLockPayload {
@@ -307,6 +308,8 @@ export interface GlobalSettingsState {
   /** 포커스하지 않은 패널 본문이 물러나는 세기(백분율, 0~70). 0은 물러나지 않음. */
   readonly unfocusedPanelFade: number;
   readonly uiFont: UiFontSettings;
+  /** 실험 기능과 모델 좌석 — 항상 실린다(기본은 전부 꺼짐). */
+  readonly experiments: ConsoleExperimentSettings;
 }
 
 export interface GlobalSettingsMutationResult {
