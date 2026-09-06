@@ -550,6 +550,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       // running→idle 전이는 done/error 직전에도 오고, 다른 탭의 취소처럼 홀로 오기도 한다. 결과
       // 이벤트가 곧 따라오면 그쪽이 턴을 닫고, 오지 않으면 잠시 뒤 중지로 정산한다.
       if (event.type === "session" && wasRunning && session?.state !== "running" && turn) scheduleSettle(turn.id);
+      // 마운트 직후의 리플레이는 옛 idle 스냅샷 뒤에 현재 running 스냅샷을 다시 싣는다 — 최신이
+      // running이면 앞선 idle은 전이가 아니라 과거이므로 정산 유예를 거둔다.
+      if (event.type === "session" && session?.state === "running") clearSettle();
       redraw();
     });
   }
