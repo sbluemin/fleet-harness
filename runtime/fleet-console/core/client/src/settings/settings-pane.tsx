@@ -41,6 +41,7 @@ import {
   SettingsScope,
   type PluginSettingsNavItem,
   type SettingsSectionId,
+  type SettingsSectionNavItem,
 } from "./sections.js";
 
 /**
@@ -165,6 +166,23 @@ export const settingsPanes: readonly PaneDescriptor[] = [
   },
 ];
 
+/**
+ * 칩이 없는 섹션(다른 칩 안에 묻힌 것)으로 들어온 경로를 그 칩으로 옮긴다 — 연결 설정을 여는 원격 접속
+ * 픽커와 경로 어댑터는 여전히 "connectivity"를 말하고, 페인은 그 카드가 사는 실험 기능 칩을 연다.
+ */
+function hostSectionOf(
+  requested: string | null,
+  coreSections: readonly SettingsSectionNavItem[],
+  pluginSections: readonly PluginSettingsNavItem[],
+): string | null {
+  if (requested === null) return null;
+  const core = coreSections.find((section) => section.id === requested);
+  if (core?.embeddedIn) return core.embeddedIn;
+  const plugin = pluginSections.find((section) => section.id === requested);
+  if (plugin?.group === "experiments") return "experiments";
+  return requested;
+}
+
 /** 확대 슬롯 머리가 부르는 제목 — 레지스트리 스냅샷으로 섹션 이름을 찾고, 못 찾으면 "설정". */
 function resolveSectionTitle(requested: string | null, locale: ConsoleLocale): string {
   const t = getT(locale);
@@ -194,7 +212,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
   const chips = useMemo(() => buildChips(coreSections, pluginSections), [coreSections, pluginSections]);
   const available = useMemo(() => new Set<string>(chips.map((chip) => chip.id)), [chips]);
-  const activeId = resolveSettingsSectionId(ctx.params.section ?? null, available) ?? "appearance";
+  const activeId = resolveSettingsSectionId(hostSectionOf(ctx.params.section ?? null, coreSections, pluginSections), available) ?? "appearance";
 
   const selectSection = (id: SettingsSectionId) => {
     setQuery("");

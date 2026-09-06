@@ -688,7 +688,8 @@ export function QuickLaunch() {
     setRefining(false);
     // 적용된 초안을 사용자가 고치기 시작하면 "원래대로"는 더 이상 그 문면을 가리키지 않는다.
     setRefinedFrom((current) => (current !== null && prompt === lastAppliedRef.current ? current : null));
-  }, [prompt, open, mentionTarget]);
+    // Theater도 본다 — 요청이 Theater 이름을 싣고 가므로, 바꾸면 진행 중·표시 중인 초안은 다른 프로젝트의 것이다.
+  }, [prompt, open, mentionTarget, theaterId]);
   const lastAppliedRef = useRef<string | null>(null);
   const requestRefinement = useCallback(() => {
     if (!canRefine || !targetPlugin?.refinePrompt || refining) return;

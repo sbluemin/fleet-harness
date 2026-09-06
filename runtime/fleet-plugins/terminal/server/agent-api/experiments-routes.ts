@@ -361,11 +361,14 @@ export function registerExperimentRoutes(ctx: FleetPluginServerContext, deps: Ex
   async function handleWatch(req: http.IncomingMessage, res: http.ServerResponse, operationId: string): Promise<boolean> {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!readExperiments(ctx).sessionWatch) { ctx.host.http.writeJson(res, 404, { error: "experiment_disabled" }); return true; }
-    const operation = getAgentOperation(ctx, operationId);
-    if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    if (!getAgentOperation(ctx, operationId)) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
     const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
     if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const language = body.language === "ko" ? "ko" : "en";
+    // 본문을 기다리는 사이 capture hook·채팅 세션이 payload.session을 갱신했을 수 있다 — patch 직전의
+    // 값 위에 watch만 얹어야 그 좌표를 덮어쓰지 않는다.
+    const operation = getAgentOperation(ctx, operationId);
+    if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
     const payload = { ...(operation.payload ?? {}) };
     if (body.enabled) payload.watch = { enabled: true, language };
     else delete payload.watch;
