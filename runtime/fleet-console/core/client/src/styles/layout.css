@@ -708,6 +708,9 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   flex: none;
   align-items: center;
   gap: 2px;
+  /* 트레이는 모드마다 승객 수가 다르다(Cruise 3 · Tactical 3 · War Room 2+수치). 슬롯 폭을 고정해
+     모드를 오갈 때 중앙 묶음의 폭이 바뀌지 않게 한다 — 안 그러면 모드 스위치가 몇 px씩 떠다닌다. */
+  min-width: 116px;
 }
 
 .command-band-mode-tray-divider {

@@ -1834,19 +1834,34 @@ describe("Instrument core design contract", () => {
 
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
-    // 축 스위치는 사이드바에 하나만 선다 — Theater 행에 되돌리면 배치가 스코프를 속인다.
+    // 상태별 보기는 스위치 하나다 — 스트립에 토글로 한 번만 서고(Theater 행에 되돌리면 배치가
+    // 스코프를 속인다), 켜지면 Theater마다 상태 섹션이 선다. 기본 화면은 Theater 묶음만 말한다.
+    const triageSidebar = source("sidebar/triage-side-bar.tsx");
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
-    expect(sidebar).toContain('className="operations-side-bar-axis"');
-    expect(sidebar).toContain('data-sidebar-axis={statusAxis ? "status" : "group"}');
-    expect(sidebar).toContain('title={t("sidebar.theater.sortByStatusTitle")}');
+    expect(sidebar).not.toContain("operations-side-bar-axis");
+    expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} />");
     expect(sidebar).toContain("groupTheaterStatusEntries(");
-    expect(sidebar).toContain("minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id)");
     expect(sidebar).toContain("<StatusRecoveryShelves");
+    // 0건 섹션·선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
+    expect(sidebar).toContain("statusSections.filter((section) => section.entries.length > 0)");
+    expect(sidebar).toContain("if (minimizedSection.entries.length === 0 && dormantSection.entries.length === 0) return null;");
+    expect(triageSidebar).toContain("const visibleLivingSections = livingSections.filter((section) => section.entries.length > 0);");
+    expect(triageSidebar).toContain("{minimizedEntries.length > 0 ? (");
+    // 선반은 목록 뒤에 흐른다 — 카드 바닥에 고정하면 목록과 선반 사이가 War Room 사이드바의 구멍이 된다.
+    expect(components).toMatch(/\.triage-side-bar \.side-bar-wide > \.operations-side-bar-chips \{[^}]*flex: 0 1 auto;/);
+    // 좁힌 레일은 두 사이드바가 같은 문법으로 쓴다 — War Room은 상태 묶음, Cruise/Tactical은 Theater 묶음.
+    expect(sidebar).toContain('className="side-bar-rail-sections"');
+    expect(triageSidebar).toContain('className="side-bar-rail-sections"');
+    expect(sidebar).toContain("<SideBarNarrowToggle narrow={mapNarrow}");
+    expect(operations).toContain("setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);");
+    expect(components).toMatch(/\.operations-side-bar\.is-narrow \{[^}]*width: var\(--queue-rail-width, 64px\);/);
+    expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*color: var\(--brass-ink\);/);
     expect(sidebar).not.toContain("triage-side-bar-caption");
     expect(components).not.toContain(".triage-side-bar-caption");
     expect(components).toContain(".side-bar-status-section--minimized {");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
+    expect(triageSidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
     expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
     expect(sidebar).toContain("if (!statusAxis) {");
@@ -2045,11 +2060,14 @@ describe("Instrument core design contract", () => {
     expect(rail).not.toContain("grid-template-rows: 32px minmax(0, 1fr);");
     expect(rightRail).not.toContain("HEAD_REVEAL");
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
-    // Doctrine: the gear stands first in the icon column and a divider splits it from the
-    // panel tablist — governing the console and choosing a work panel are different kinds
-    // of act. The gear is the settings surface's one door: it toggles the core settings
-    // pane and never appears again as a tab below the divider.
-    expect(rightRail).toMatch(/right-rail-settings-btn[\s\S]{0,800}right-rail-divider[\s\S]{0,600}right-rail-tabs/);
+    // Doctrine: the gear stands last in the icon column, below a spacer and a divider that
+    // split it from the tool runs — governing the console and choosing a work tool are
+    // different kinds of act. Tools group by scope (Theater-scoped first, Fleet-scoped after
+    // a divider), each scope in plugin composition order. The gear is the settings surface's
+    // one door: it toggles the core settings pane and never appears again as a tab.
+    expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)[\s\S]{0,1200}right-rail-spacer[\s\S]{0,300}right-rail-divider[\s\S]{0,300}right-rail-settings-btn/);
+    expect(rightRail).toContain('binding.entry.scope ?? "theater"');
+    expect(rail).toMatch(/\.right-rail-spacer \{[^}]*flex: 1 1 0;/);
     expect(rightRail).toContain('toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);

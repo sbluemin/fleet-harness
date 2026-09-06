@@ -160,6 +160,9 @@ export function OperationsSideBarChip({
     const chip = chipRef.current;
     if (!chip) return false;
     if (chip.closest("[inert]")) return false;
+    // 좁힌 레일(.is-narrow) 안의 칩은 display:none으로 가려져 있을 수 있다 — 접힘(inert)과 같은
+    // 사양 계약이다: 소비하지 않고 남겨 두면 사이드바가 먼저 넓히고, 다시 그려진 칩이 소비한다.
+    if (chip.closest(".operations-side-bar.is-narrow")) return false;
     if (request.action === "rename") {
       rename.begin();
       return true;

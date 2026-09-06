@@ -1,6 +1,6 @@
 import { useT } from "../i18n/index.js";
-import { sideBarShortcutLabel } from "../shortcuts.js";
-import { setSideBarCollapsed, useSideBarState } from "./operations-side-bar-store.js";
+import { sideBarShortcutLabel, sideBarStatusViewShortcutLabel } from "../shortcuts.js";
+import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from "./operations-side-bar-store.js";
 
 // 접기는 패널 자신의 동사다(Periscope 문법 — 밴드 토글 퇴역). 도킹 중에는 접기 셰브런이,
 // 엣지 독이 되부른 픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서
@@ -34,4 +34,49 @@ function CollapseIcon() {
 
 function KeepOpenIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.5h5.6M6.4 2.5v3.1L4.6 7.7v1h6.8v-1L9.6 5.6V2.5M8 8.7v4.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// 상태별 보기 토글 — 목록을 Theater 묶음에서 대기·실행 중·유휴의 평면 목록으로 뒤집는 하나짜리
+// 세션 스위치다. 눌림(aria-pressed)은 레일 아이콘의 켜짐과 같은 문법(brass 잉크·어두운 면)으로
+// "지금 이 보기"를 말한다. 축은 의도적으로 세션 메모리에만 산다(operations-side-bar-store).
+export function SideBarStatusViewToggle({ active }: { readonly active: boolean }) {
+  const t = useT();
+  const label = t("sidebar.view.byStatus", { shortcut: sideBarStatusViewShortcutLabel() });
+  return (
+    <button
+      type="button"
+      className="side-bar-status-view-toggle"
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      onClick={() => toggleSideBarStatusAxis()}
+    >
+      <StatusViewIcon />
+    </button>
+  );
+}
+
+function StatusViewIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.6v10.8M5 13.4 2.8 11.2M5 13.4l2.2-2.2M11 13.4V2.6M11 2.6 8.8 4.8M11 2.6l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// 레일로 좁히기 / 목록으로 펼치기 — 카드 폭을 64px 레일과 사용자 폭 사이에서 뒤집는다. Cruise/Tactical은
+// 이 선택을 기억하고(localStorage), War Room은 레일이 기본이라 세션 안에서만 펼친 채 둔다.
+export function SideBarNarrowToggle({ narrow, onToggle }: { readonly narrow: boolean; readonly onToggle: () => void }) {
+  const t = useT();
+  const label = t(narrow ? "sidebar.view.widen" : "sidebar.view.narrow");
+  return (
+    <button
+      type="button"
+      className="side-bar-status-view-toggle side-bar-narrow-toggle"
+      aria-pressed={narrow}
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      {narrow
+        ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 3.6 10.6 8l-4.4 4.4M3.5 3.6v8.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        : <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 3.6 5.4 8l4.4 4.4M12.5 3.6v8.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+    </button>
+  );
 }

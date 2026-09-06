@@ -238,6 +238,11 @@ export function sideBarShortcutLabel(): string {
   return `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
 }
 
+// Alt+S는 플랫폼 수식키 표기와 무관하게 Alt 그대로다(operations.tsx의 KeyS 핸들러가 altKey를 본다).
+export function sideBarStatusViewShortcutLabel(): string {
+  return "Alt+S";
+}
+
 export function railShortcutLabel(): string {
   const modLabel = resolveModLabel();
   return `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
