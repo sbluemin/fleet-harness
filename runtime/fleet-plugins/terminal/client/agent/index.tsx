@@ -1887,6 +1887,7 @@ function AiGatewayModelPalette({
           role="combobox"
           aria-expanded="true"
           aria-controls={listboxId}
+          aria-activedescendant={activeHit ? `${listboxId}-${activeHit.provider.id}-${activeHit.family.key}` : undefined}
           aria-autocomplete="list"
           aria-label={t("terminal.settings.aiGatewaySearchAria")}
           placeholder={t("terminal.settings.aiGatewaySearchPlaceholder")}
@@ -1927,6 +1928,7 @@ function AiGatewayModelPalette({
                 return (
                   <div
                     key={hit.family.key}
+                    id={`${listboxId}-${hit.provider.id}-${hit.family.key}`}
                     role="option"
                     aria-selected={isActive}
                     className={`ai-gateway-palette-hit${isActive ? " is-active" : ""}`}
