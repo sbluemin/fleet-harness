@@ -5,8 +5,8 @@ The tool returns facts as JSON and stops there: nothing in the payload recommend
 ## The payload's frame
 
 - **Models sit under the allowance they spend.** `providers` is keyed by provider id, and the window to read against a model is one in the same entry — never a join across entries.
-- **The `claude` entry is always present and serves no roster model by design.** It is the allowance an inherited dispatch — one that named no identity — spends, and therefore the baseline any offload is measured against. It can only be spared by naming another identity, never selected.
-- **`revision` moves on deliberate edits only** — exposure, catalog, benchmark refresh, spend priority — never on allowance movement. Equal revisions never mean equal quotas; re-read before a later dispatch instead of carrying a reading forward.
+- **`providers`에는 노출 모델이 있는 공급자만 남고 `signed_out` 공급자는 제외된다.** 호스트 전용 모델이나 상속 실행의 quota를 보여 주려고 빈 공급자를 추가하지 않는다. 공급자 누락은 quota 소진이나 여유의 증거가 아니다.
+- **`revision`은 의도적인 설정 변경에만 바뀐다** — 노출, catalog, benchmark 갱신, 소비 순위. quota나 로그인 상태 변화로는 바뀌지 않는다. 같은 revision에서도 반환 공급자는 달라질 수 있으므로 다음 위임 전에 다시 읽는다.
 - **Absence is never safety.** A derived field is omitted when the reading could not support it, and `status: "unsupported"` means the allowance could not be read at all — not that it is healthy, and not that it is exhausted either.
 
 ## Reading an allowance
@@ -31,7 +31,8 @@ Three constraint fields answer three different questions, and none implies anoth
 
 - **`homolineage` marks a Claude-family model**, derived from the model id alone. It decides independence — shared blind spots with a Claude-based subject — and never cost.
 - **The provider entry a model sits under decides cost** — whose subscription the run bills to — and never independence. The two come apart: a Claude-lineage identity billed elsewhere is a legitimate way to move spend and a useless way to buy an independent verdict.
-- **`providerPriority` is the user's standing spend order, on the allowance axis only.** Listed providers spend first, in order, everywhere allowance decides. It outranks the pressure forecast, `critical` included — the owner chose to drain that allowance — so leave a listed provider only on observed failure: runs returning empty after a retry. It never lifts an identity across a quality band, and an absent field changes nothing.
+- **`quotaConsumptionPriority`는 일반적인 모델 선호도가 아니라 사용자가 정한 quota 우선 소비 순서다.** `source: "user_settings"`는 잔여량으로 자동 계산한 순위가 아님을 뜻한다. `providers`의 `rank`는 1부터 시작하고 `rankMeaning: "1_consumes_first"`대로 작은 숫자의 quota부터 소비한다. 배열 위치로 방향을 추측하지 않는다. 현재 로드아웃에서 제외된 공급자는 순위에서도 빠지고 남은 순위는 1부터 다시 매겨진다. 해당 공급자가 없으면 필드 자체가 생략된다.
+- **소비 순위는 품질 평가를 대체하지 않는다.** `withinQualityBand: true`이므로 같은 품질 밴드 안에서만 적용한다. `overridesQuotaPressure: true`는 `critical`까지 포함한 quota 압력 예측보다 사용자 소비 순서가 우선한다는 뜻이다. `fallback: "observed_failure_after_retry"`대로 재시도 후에도 빈 결과 등 실제 실패가 관측될 때 다음 순위로 이동한다. 미지정 공급자에는 기존 allowance 판단을 적용한다.
 
 ## Names
 

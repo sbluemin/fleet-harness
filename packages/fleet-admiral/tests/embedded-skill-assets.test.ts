@@ -44,7 +44,7 @@ const TAUGHT_LOADOUT_FIELDS = [
   "paceRatio",
   "pressure",
   "projectedExhaustionAt",
-  "providerPriority",
+  "quotaConsumptionPriority",
   "quotaScope",
   "recoveryHalfLifeMs",
   "revision",
