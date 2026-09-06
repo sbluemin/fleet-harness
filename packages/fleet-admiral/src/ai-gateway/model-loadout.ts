@@ -206,9 +206,12 @@ function toLoadoutModel(
   // 사다리는 카탈로그가 아니라 이 세션이 정체성으로 등록한 것을 말해야 한다.
   // 등록되지 않은 단계를 사다리에 남기면 호스트가 해석할 수 없는 이름을 고른다.
   const effortLadder = exposedEffortLadder(model.id, catalog.effortLadder, exposure);
-  const constraints = effortLadder === catalog.effortLadder
-    ? catalog
-    : { ...catalog, effortLadder };
+  const { benchmark, ...baseConstraints } = catalog;
+  const constraints = {
+    ...baseConstraints,
+    effortLadder,
+    ...(benchmark && effortLadder.includes(benchmark.effort) ? { benchmark } : {}),
+  };
   return {
     agentTypes: toAgentTypeSelectors(modelId, constraints),
     modelId,

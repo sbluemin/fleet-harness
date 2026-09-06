@@ -49,7 +49,7 @@ const TAUGHT_LOADOUT_FIELDS = [
   "recoveryHalfLifeMs",
   "revision",
   "routingTieBandPoints",
-  "tokensPerTask",
+  "sourceScores",
   "usedPercent",
 ] as const;
 
@@ -98,6 +98,23 @@ function representativeLoadout() {
 }
 
 describe("embedded Fleet skills", () => {
+  it("keeps normalized quality evidence only at an exposed measured effort", () => {
+    const model = catalogModel("codex--gpt-5.6-sol");
+    const measured = model.benchmark!;
+    const exposed = buildGatewayLoadout({
+      exposed: [model],
+      effortExposure: { [model.id]: [measured.effort] },
+    });
+    expect(exposed.providers.codex?.models[0]?.constraints.benchmark).toEqual(measured);
+
+    const unmeasured = buildGatewayLoadout({
+      exposed: [model],
+      effortExposure: { [model.id]: ["low"] },
+    });
+    expect(unmeasured.providers.codex?.models[0]?.constraints.effortLadder).toEqual(["low"]);
+    expect(unmeasured.providers.codex?.models[0]?.constraints.benchmark).toBeUndefined();
+  });
+
   it("embeds exactly the two selected on-demand skills and the delegation references", () => {
     expect(EMBEDDED_AGENT_CLI_SKILL_ASSETS.map((entry) => entry.relativePath)).toEqual([
       "delegation/SKILL.md",

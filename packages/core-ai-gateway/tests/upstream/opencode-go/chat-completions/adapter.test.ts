@@ -209,10 +209,33 @@ describe("opencode go wire routing", () => {
   it("sends chat-wire requests to the Go chat completions endpoint with Bearer auth", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     const goAdapter = createOpencodeGoAdapter("chat-completions", { fetch: fetchMock });
-    await goAdapter.stream(request({ model: "deepseek-v4-flash" }), { apiKey: "sk-go" });
+    const input: CanonicalResponseRequest["input"] = [{
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Describe this image." },
+        { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=" },
+      ],
+    }];
+    await goAdapter.stream(request({ model: "deepseek-v4-flash-vision-exp", input }), { apiKey: "sk-go" });
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe(OPENCODE_GO_CHAT_COMPLETIONS_URL);
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer sk-go");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      model: "deepseek-v4-flash-vision-exp",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Describe this image." },
+          { type: "image_url", image_url: { url: "data:image/png;base64,aGVsbG8=" } },
+        ],
+      }],
+    });
+
+    await goAdapter.stream(request({ model: "deepseek-v4-flash", input }), { apiKey: "sk-go" });
+    const textOnlyBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(textOnlyBody.model).toBe("deepseek-v4-flash");
+    expect(JSON.stringify(textOnlyBody.messages)).not.toContain("image_url");
   });
 });
 
