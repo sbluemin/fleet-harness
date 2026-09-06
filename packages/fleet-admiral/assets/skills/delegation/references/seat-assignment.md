@@ -42,7 +42,7 @@ Bulk fan-out on the session's model is the pattern with no case: it concentrates
 ## Sizing a mechanical fan
 
 - **The task sets the branch count.** An allowance reading never trims it below what the work needs, and a window still called `ok` is not a reason to run fewer branches.
-- **A spend priority displaces the even split for the providers it names.** Concentrate on the first listed provider and spill down the list on observed failure; unlisted providers share the remainder evenly.
+- **`quotaConsumptionPriority`는 지정 공급자의 quota를 먼저 소비하도록 균등 분배를 대체한다.** 가장 작은 `rank`부터 소비하고, 재시도 후에도 실행이 실패할 때 다음 순위로 이동한다. 배열 위치가 아니라 명시된 순위 숫자를 따른다. 미지정 공급자는 남은 작업을 균등 분배한다.
 - **Split evenly across eligible providers** — readable window, not `critical` — with no provider more than one branch above another, counting providers rather than identities: a provider exposing two models does not draw twice the share.
 - **One eligible provider left carries the whole fan**, whatever its percentage reads; the only place left to move is the session's own allowance, which the rules above already price.
 - **An unreadable allowance joins no even split** — absence is not headroom — but it is not exhausted either: give it a bounded share and promote it once runs return.

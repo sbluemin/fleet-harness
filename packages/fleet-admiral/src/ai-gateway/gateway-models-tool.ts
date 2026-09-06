@@ -43,12 +43,12 @@ const GATEWAY_MODELS_DOCTRINE = {
   // 여기에 둔다. 나머지 판정 규칙 — 응답을 어떻게 읽고 판단하는가 — 은 delegation 스킬의
   // references가 온디맨드로 소유한다. 여기에 겹쳐 실으면 같은 사실이 두 곳에서 따로 늙는다.
   description:
-    `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
-    + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`
+    `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and their current allowances with the user's ranked quota consumption priority.`
+    + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session; signed-out providers and providers without roster models are omitted. It is editable while this session runs, so it is resolved at call time rather than remembered.`
     + ` Two spellings, never interchangeable: agentTypes names a registered identity — the Agent tool's subagent_type and a workflow stage's opts.agentType both resolve it from the same registry — while modelId is the model as a value for a field that takes a model rather than a name, such as a workflow stage's opts.model. Neither spelling converts into the other.`
     + ` Names are registered once at session start while this roster is re-read live, so a model or reasoning rung exposed mid-session appears here under a name that will not resolve until a new session.`,
   promptSnippet:
-    `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's provider priority.`,
+    `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's ranked quota consumption priority.`,
   whenToUse: [],
   whenNotToUse: [],
   usageGuidelines: [],

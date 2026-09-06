@@ -84,11 +84,7 @@ export interface GatewayLoadoutProviderQuota {
   readonly fetchedAt?: number;
 }
 
-/**
- * Quota keyed by provider id. `claude` is meaningful here even though it serves
- * no gateway model: it is the allowance an inherited (unpinned) stage spends,
- * and therefore the baseline any offload is measured against.
- */
+/** 공급자별 quota 원본. 로드아웃은 노출 모델이 있는 공급자만 사용한다. */
 export type GatewayQuotaSnapshot = Readonly<Record<string, GatewayProviderQuota>>;
 
 /**
@@ -132,12 +128,7 @@ export interface GatewayLoadoutProvider {
    * never that the allowance is healthy.
    */
   readonly quota: GatewayLoadoutProviderQuota | { readonly status: "unsupported" };
-  /**
-   * The exposed models this provider serves. Empty means it serves none of them,
-   * which for `claude` is its permanent state: it is listed because an unpinned
-   * run spends that allowance, making it the baseline an offload is measured
-   * against, not because its models were all turned off.
-   */
+  /** 이 공급자의 노출 모델. 모델이 없거나 signed_out인 공급자는 반환하지 않는다. */
   readonly models: readonly GatewayLoadoutModel[];
 }
 
@@ -148,12 +139,15 @@ export interface GatewayLoadout {
    */
   readonly revision: string;
   readonly catalogUpdatedAt: string;
-  /**
-   * The user's opt-in ordered spend preference across providers; it weights the
-   * allowance axis only and never overrides quality evidence; absent when the
-   * user set none.
-   */
-  readonly providerPriority?: readonly GatewayProvider[];
+  /** 사용자 설정의 quota 소비 순서. 현재 로드아웃에 해당 공급자가 없으면 생략한다. */
+  readonly quotaConsumptionPriority?: {
+    readonly source: "user_settings";
+    readonly rankMeaning: "1_consumes_first";
+    readonly withinQualityBand: true;
+    readonly overridesQuotaPressure: true;
+    readonly fallback: "observed_failure_after_retry";
+    readonly providers: readonly { readonly provider: GatewayProvider; readonly rank: number }[];
+  };
   /**
    * Keyed by provider id. Each model sits under the allowance it spends, so the
    * window to read against a model is the one in the same entry — no join.
@@ -177,22 +171,29 @@ export interface BuildGatewayLoadoutInput {
 
 const UNSUPPORTED_QUOTA = Object.freeze({ status: "unsupported" as const });
 
-/** The session's own subscription — what an unpinned stage spends. */
-const PARENT_PROVIDER_ID = "claude";
-
 export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoadout {
   const placed = input.exposed.map((model) => ({
     provider: model.provider as string,
     entry: toLoadoutModel(model, input.effortExposure),
   }));
-  const providerPriority = input.providerPriority
-    ? Object.freeze([...input.providerPriority])
-    : undefined;
+  const providers = buildProviders(placed, input.quota, input.now ?? Date.now);
+  const priority = [...new Set(input.providerPriority ?? [])]
+    .filter((provider) => Object.hasOwn(providers, provider))
+    .map((provider, index) => ({ provider, rank: index + 1 }));
   return {
-    revision: loadoutRevision(placed.map(({ entry }) => entry), providerPriority),
+    revision: loadoutRevision(placed.map(({ entry }) => entry), input.providerPriority),
     catalogUpdatedAt: GATEWAY_MODELS_UPDATED_AT,
-    providers: buildProviders(placed, input.quota, input.now ?? Date.now),
-    ...(providerPriority ? { providerPriority } : {}),
+    providers,
+    ...(priority.length > 0 ? {
+      quotaConsumptionPriority: {
+        source: "user_settings" as const,
+        rankMeaning: "1_consumes_first" as const,
+        withinQualityBand: true as const,
+        overridesQuotaPressure: true as const,
+        fallback: "observed_failure_after_retry" as const,
+        providers: Object.freeze(priority),
+      },
+    } : {}),
   };
 }
 
@@ -242,19 +243,9 @@ function buildProviders(
   quota: GatewayQuotaSnapshot | undefined,
   now: () => number,
 ): Readonly<Record<string, GatewayLoadoutProvider>> {
-  // 어느 예산이 상속분인지는 이 로스터가 알 수 없다. 세션의 시작 모델은 런치 시점에
-  // 프로세스 환경으로 한 번 정해지고 그 뒤 세션 안에서 바뀔 수 있는데, 도구는 런타임
-  // 단위로 한 번 등록되어 모든 세션을 상대하므로 어느 세션이 무엇으로 떴는지 볼 자리가
-  // 없다. 설정값을 대신 추적하면 이미 떠 있는 세션과 어긋난 답을 자신 있게 내놓는다.
-  // 그래서 여기서는 부모 구독을 포함한 모든 프로바이더의 사용량을 사실대로 늘어놓고,
-  // 자기 세션이 무엇으로 도는지 이미 아는 호스트가 그 조인을 맡는다.
-  const ids: string[] = [PARENT_PROVIDER_ID];
-  for (const { provider } of placed) {
-    if (!ids.includes(provider)) ids.push(provider);
-  }
-  for (const id of Object.keys(quota ?? {})) {
-    if (!ids.includes(id)) ids.push(id);
-  }
+  // quota만 있는 공급자는 위임 후보가 아니다. 읽기 실패는 signed_out과 구별해 남긴다.
+  const ids = [...new Set(placed.map(({ provider }) => provider))]
+    .filter((id) => quota?.[id]?.status !== "signed_out");
   return Object.freeze(Object.fromEntries(ids.map((id) => [id, {
     quota: enrichProviderQuota(quota?.[id], now) ?? UNSUPPORTED_QUOTA,
     models: Object.freeze(
