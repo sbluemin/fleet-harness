@@ -736,12 +736,13 @@ export function QuickLaunch() {
 
   // 커맨드 확정("/model ")과 값 적용(비움) 모두 프로그램 쓰기라 textarea input 이벤트가 없다 —
   // 파싱 상태를 문면과 같은 자리에서 함께 갱신해야 덱이 입력과 어긋나지 않는다.
-  // 후보 카드가 선 뒤 문면이 바뀌면 후보는 낡은 것이다 — 다음 Enter가 다시 묻는다.
+  // 후보 카드가 선 뒤 문면이나 Theater가 바뀌면 후보는 낡은 것이다 — 다음 Enter가 다시 묻는다.
+  // Theater도 같이 본다: 조회 중에 프로젝트를 바꾸면 이전 Theater의 Wiki·커밋이 다음 런치에 붙는다.
   useEffect(() => {
     contextEpochRef.current += 1;
     setContextPack(null);
     setContextPending(false);
-  }, [prompt]);
+  }, [prompt, theaterId]);
 
   const applyCommandPrompt = useCallback((next: string) => {
     setPrompt(next);

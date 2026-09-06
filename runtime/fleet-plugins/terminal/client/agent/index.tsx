@@ -17,7 +17,7 @@ import {
 import { SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExperimentsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
@@ -582,7 +582,10 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   const experiments = useExperimentsSnapshot();
   const watchEnabled = readWatchEnabled(context.operation.payload);
   const [watchPending, setWatchPending] = React.useState(false);
-  const review = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
+  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
+  // 산 이벤트가 없으면(새로고침·다른 창) 서버가 payload에 남긴 마지막 결과를 읽는다. 말풍선은 산 이벤트에만
+  // 뜬다 — 지난 결과가 화면을 열 때마다 다시 튀어나오면 안 된다.
+  const review = liveReview ?? readWatchLast(context.operation.payload);
   // 라벨이 곧 상태다: 켜져 있으면 마지막 검토 결과(검토 중·이상 없음·실패·경고)를 시각과 함께 말한다.
   const watchLabel = !watchEnabled
     ? t("terminal.experiments.watchOn")
@@ -615,7 +618,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     >
       <CaptionWatchGlyph />
     </CaptionActionButton>
-    {watchEnabled ? <SessionWatchBubble context={context} review={review} /> : null}
+    {watchEnabled ? <SessionWatchBubble context={context} review={liveReview} /> : null}
     </span>
   );
 

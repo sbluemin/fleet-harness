@@ -50,6 +50,10 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     }
     const routePath = pathname.slice(`${ctx.basePath}/chat`.length) || "/";
     if (routePath === "/start") {
+      // 레지스트리는 용량 초과·자식 종료로도 세션을 지운다 — 그 경로는 이 맵을 모르므로 새 세션이
+      // 설 때마다 산 세션의 것만 남긴다. 맵의 크기는 언제나 동시 세션 상한을 넘지 않는다.
+      const live = new Set(registry.liveIds());
+      for (const key of [...snapshots.keys()]) if (!live.has(key)) snapshots.delete(key);
       return handleStart(ctx, req, res, registry, createSession, id, ensureDir, snapshots);
     }
     const match = routePath.match(/^\/([^/]+)\/(message|stream|stop)$/u);
@@ -148,8 +152,10 @@ async function handleMessage(
   }
   if (body.console !== undefined) snapshots.set(chatId, body.console);
   const result = await registry.message(chatId, body.text);
-  if (result === "not_found") ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-  else if (result === "busy") ctx.host.http.writeJson(res, 409, { error: "session_busy" });
+  if (result === "not_found") {
+    snapshots.delete(chatId);
+    ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+  } else if (result === "busy") ctx.host.http.writeJson(res, 409, { error: "session_busy" });
   else ctx.host.http.writeJson(res, 200, { accepted: true });
   return true;
 }

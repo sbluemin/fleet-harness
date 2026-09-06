@@ -170,7 +170,16 @@ export function readWatchFlag(payload: Record<string, unknown> | undefined): Wat
   return { enabled: true, language: record.language === "ko" ? "ko" : "en" };
 }
 
-function parseWatchVerdict(text: string): Omit<SessionWatchAlert, "operationId" | "at" | "phase"> | null {
+type WatchVerdict =
+  | { readonly verdict: "clear" }
+  | ({ readonly verdict: "alert" } & Omit<SessionWatchAlert, "operationId" | "at" | "phase">);
+
+/**
+ * 분석가의 답에서 판정을 읽는다. "이상 없음"은 `alert:false`를 명시한 답에서만 나온다 — 빈 답이나
+ * 깨진 JSON을 이상 없음으로 읽으면 관찰이 아무것도 보지 못한 채 안심시키는 셈이다. 그런 답은 null이고,
+ * 부르는 쪽이 실패로 기록한다.
+ */
+function parseWatchVerdict(text: string): WatchVerdict | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
@@ -178,12 +187,13 @@ function parseWatchVerdict(text: string): Omit<SessionWatchAlert, "operationId" 
   try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
   if (!parsed || typeof parsed !== "object") return null;
   const record = parsed as Record<string, unknown>;
+  if (record.alert === false) return { verdict: "clear" };
   if (record.alert !== true) return null;
   const kind = record.kind === "drift" || record.kind === "repeat" || record.kind === "destructive" ? record.kind : "drift";
   const title = typeof record.title === "string" ? record.title.slice(0, 120) : "";
   const body = typeof record.body === "string" ? record.body.slice(0, 600) : "";
   if (title.length === 0 && body.length === 0) return null;
-  return { kind, title: title || body.slice(0, 80), body };
+  return { verdict: "alert", kind, title: title || body.slice(0, 80), body };
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -256,11 +266,17 @@ export function registerExperimentRoutes(ctx: FleetPluginServerContext, deps: Ex
     }
     const verdict = parseWatchVerdict(text);
     if (!verdict) {
+      rememberReview(operation.id, { phase: "failed", at: Date.now(), reason: "unreadable_verdict" });
+      ctx.host.events.publish(SESSION_WATCH_EVENT_CHANNEL, { operationId: operation.id, phase: "failed", reason: "unreadable_verdict", at: Date.now() });
+      return;
+    }
+    if (verdict.verdict === "clear") {
       rememberReview(operation.id, { phase: "clear", at: Date.now() });
       ctx.host.events.publish(SESSION_WATCH_EVENT_CHANNEL, { operationId: operation.id, phase: "clear", at: Date.now() });
       return;
     }
-    const alert: SessionWatchAlert = { operationId: operation.id, phase: "alert", ...verdict, at: Date.now() };
+    const { verdict: _verdict, ...found } = verdict;
+    const alert: SessionWatchAlert = { operationId: operation.id, phase: "alert", ...found, at: Date.now() };
     rememberReview(operation.id, { phase: "alert", at: alert.at, kind: alert.kind, title: alert.title, body: alert.body });
     ctx.host.events.publish(SESSION_WATCH_EVENT_CHANNEL, alert);
   }

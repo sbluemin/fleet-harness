@@ -78,6 +78,29 @@ export function readWatchEnabled(payload: Record<string, unknown> | undefined): 
   return !!watch && typeof watch === "object" && (watch as { enabled?: unknown }).enabled === true;
 }
 
+/**
+ * 서버가 payload.watch.last에 남긴 마지막 검토 결과. 새로고침이나 다른 창은 SSE로 지난 이벤트를 받지
+ * 못하므로, 산 이벤트가 없을 때 라벨은 이것을 읽는다. 모양이 맞지 않으면 없는 것으로 친다.
+ */
+export function readWatchLast(payload: Record<string, unknown> | undefined): SessionWatchReview | null {
+  const watch = payload?.watch;
+  if (!watch || typeof watch !== "object") return null;
+  const last = (watch as { last?: unknown }).last;
+  if (!last || typeof last !== "object") return null;
+  const record = last as Record<string, unknown>;
+  const phase = record.phase;
+  if ((phase !== "clear" && phase !== "failed" && phase !== "alert") || typeof record.at !== "number") return null;
+  const kind = record.kind === "drift" || record.kind === "repeat" || record.kind === "destructive" ? record.kind : undefined;
+  return {
+    phase,
+    at: record.at,
+    ...(typeof record.title === "string" ? { title: record.title } : {}),
+    ...(typeof record.body === "string" ? { body: record.body } : {}),
+    ...(kind ? { kind } : {}),
+    ...(typeof record.reason === "string" ? { reason: record.reason } : {}),
+  };
+}
+
 export async function setSessionWatch(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
   await api.fetch("terminal", `experiments/sessions/${encodeURIComponent(operationId)}/watch`, {
     method: "POST",
