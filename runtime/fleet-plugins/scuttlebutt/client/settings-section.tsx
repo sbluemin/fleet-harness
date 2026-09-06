@@ -9,7 +9,7 @@ import {
   defineSettingsSection,
 } from "@fleet-console/sdk/settings/browser";
 
-import { readExperiments, subscribeConsoleRead, writeConsoleRead } from "./console-read.js";
+import { isExperimentsSaving, readExperiments, subscribeConsoleRead, writeConsoleRead } from "./console-read.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -191,6 +191,9 @@ function ScuttlebuttSettingsSection() {
  */
 function ConsoleReadRow({ t, saving }: { readonly t: ReturnType<typeof getT>; readonly saving: boolean }) {
   const experiments = useStoreSnapshot(subscribeConsoleRead, readExperiments);
+  // 코어의 AI 확장 행이 같은 experiments 필드를 저장하는 동안은 이 스위치도 잠근다 — 겹친 저장은
+  // 코어가 거절하므로, 열어 두면 눌린 값이 아무 말 없이 버려진다.
+  const coreSaving = useStoreSnapshot(subscribeConsoleRead, isExperimentsSaving);
   const [busy, setBusy] = React.useState(false);
   if (!experiments) return null;
   const write = async (enabled: boolean) => {
@@ -209,7 +212,7 @@ function ConsoleReadRow({ t, saving }: { readonly t: ReturnType<typeof getT>; re
       <SettingsToggle
         ariaLabel={t("settings.section.consoleReadToggle")}
         checked={experiments.aideConsoleRead}
-        disabled={saving || busy}
+        disabled={saving || busy || coreSaving}
         onChange={(enabled) => void write(enabled)}
       />
     </SettingsRow>

@@ -96,18 +96,24 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
     return ctx.host.paths.resolveTheaterPath(theaterId);
   };
 
+  // 도구는 세션이 시작될 때 실리지만 옵트인은 매 호출에 다시 묻는다 — 대화 도중 실험을 끄면 이미 붙은
+  // 도구가 남은 세션 내내 Console을 읽을 수 있어서는 안 된다. 켜짐만 읽고, 없으면 꺼짐이다.
+  const enabled = (): boolean => ctx.host.experiments?.read().aideConsoleRead === true;
+  const gated = <Args, Extra>(run: (args: Args, extra: Extra) => Promise<ReturnType<typeof text>>) =>
+    async (args: Args, extra: Extra) => (enabled() ? run(args, extra) : text({ error: "console_read_disabled", hint: "The user turned Console reading off. Do not answer from earlier Console results." }));
+
   const names = ["console_theaters", "console_operations", ...(briefing ? ["console_wiki_search"] : []), ...(read ? ["console_wiki_read"] : [])];
   const tools = [
     // 입력 스키마는 zod raw shape다 — 게이트웨이 SDK의 in-process 도구가 그 모양만 받는다(분석가 도구와 같은 계약).
-    defineTool("console_theaters", "List the projects (Theaters) registered in this Console: id and name.", {}, async () => {
+    defineTool("console_theaters", "List the projects (Theaters) registered in this Console: id and name.", {}, gated(async () => {
       const fromSnapshot = snapshot()?.theaters ?? [];
       const ids = new Set(fromSnapshot.map((theater) => theater.id));
       for (const operation of ctx.host.operations.list()) ids.add(operation.theaterId);
       return text([...ids].map((id) => ({ id, name: theaterLabel(id) })));
-    }),
+    })),
     defineTool("console_operations", "List Operations in this Console with title, Theater, kind, and activity. Optionally filter by activity.", {
       activity: z.enum(["idle", "running", "awaiting", "background", "ended"]).optional().describe("Only Operations in this activity state."),
-    }, async (args: { readonly activity?: string }) => {
+    }, gated(async (args: { readonly activity?: string }) => {
       const current = snapshot();
       const byId = new Map((current?.operations ?? []).map((operation) => [operation.id, operation]));
       const rows = ctx.host.operations.list().map((operation) => {
@@ -124,26 +130,26 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
       });
       // 읽은 시각을 함께 준다 — 모델이 "지금" 결과와 앞선 결과를 구분할 근거다.
       return text({ fetchedAt: new Date().toISOString(), operations: args.activity ? rows.filter((row) => row.activity === args.activity) : rows });
-    }),
+    })),
     ...(briefing ? [defineTool("console_wiki_search", "Search a Theater's Fleet Wiki entries. Returns a ranked list of matching entries (id, title, excerpt).", {
       theaterId: z.string(),
       query: z.string(),
       limit: z.number().optional(),
-    }, async (args: { readonly theaterId: string; readonly query: string; readonly limit?: number }, extra) => {
+    }, gated(async (args: { readonly theaterId: string; readonly query: string; readonly limit?: number }, extra: unknown) => {
       const cwd = resolveTheaterCwd(args.theaterId);
       if (!cwd) return text({ error: "unknown_theater" });
       const result = await briefing.execute({ topic: args.query, ...(args.limit ? { limit: args.limit } : {}) }, { cwd, signal: (extra as { signal?: AbortSignal } | undefined)?.signal });
       return text(toolContent(result));
-    })] : []),
+    }))] : []),
     ...(read ? [defineTool("console_wiki_read", "Read one Fleet Wiki entry of a Theater by id.", {
       theaterId: z.string(),
       id: z.string(),
-    }, async (args: { readonly theaterId: string; readonly id: string }, extra) => {
+    }, gated(async (args: { readonly theaterId: string; readonly id: string }, extra: unknown) => {
       const cwd = resolveTheaterCwd(args.theaterId);
       if (!cwd) return text({ error: "unknown_theater" });
       const result = await read.execute({ ids: [args.id] }, { cwd, signal: (extra as { signal?: AbortSignal } | undefined)?.signal });
       return text(toolContent(result));
-    })] : []),
+    }))] : []),
   ];
 
   return {

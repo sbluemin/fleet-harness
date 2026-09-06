@@ -39,6 +39,11 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
   };
 }
 
+/** 코어가 experiments 필드를 저장 중이면 true — 그동안 이 행의 스위치는 잠긴다. */
+export function isExperimentsSaving(): boolean {
+  return experiments?.saving() === true;
+}
+
 /** 설정 카드가 읽는 실험 설정 전체 — 없으면(호스트가 아직 안 실었으면) null. */
 export function readExperiments(): ConsoleExperimentSettings | null {
   return experiments?.read() ?? null;

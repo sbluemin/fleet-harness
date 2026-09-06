@@ -25,8 +25,18 @@ export async function collectLaunchContext(
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    const settled = await Promise.allSettled(providers.map((provider) =>
-      provider.collect({ ...input, signal: abort.signal })));
+    // 신호를 무시하는 공급자는 abort로 끝나지 않는다. 시한은 부르는 쪽이 지킨다 — 시한이 오면 그때까지
+    // 답한 공급자만 남기고, 아직 매달린 것은 실패로 친다.
+    const settled = await Promise.all(providers.map((provider) =>
+      Promise.race([
+        Promise.resolve().then(() => provider.collect({ ...input, signal: abort.signal })).then(
+          (value): PromiseSettledResult<readonly LaunchContextCandidate[]> => ({ status: "fulfilled", value }),
+          (reason): PromiseSettledResult<readonly LaunchContextCandidate[]> => ({ status: "rejected", reason }),
+        ),
+        new Promise<PromiseSettledResult<readonly LaunchContextCandidate[]>>((resolve) => {
+          abort.signal.addEventListener("abort", () => resolve({ status: "rejected", reason: abort.signal.reason }), { once: true });
+        }),
+      ])));
     const seen = new Set<string>();
     const merged: LaunchContextCandidate[] = [];
     for (const result of settled) {

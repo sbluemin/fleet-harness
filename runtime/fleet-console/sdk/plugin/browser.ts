@@ -69,6 +69,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       read: () => null,
       subscribe: () => () => undefined,
       update: async () => false,
+      saving: () => false,
       modelOptions: async () => [],
     },
     terminal: {

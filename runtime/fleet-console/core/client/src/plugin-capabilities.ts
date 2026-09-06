@@ -2,7 +2,7 @@ import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import { collectExperimentModelOptions } from "./experiment-model-options.js";
-import { getGlobalSettingsStoreState, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
+import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { applySearchParams, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { resolveOperationActivity } from "./operation-activity.js";
@@ -24,6 +24,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       read: () => getGlobalSettingsStoreState().state?.experiments ?? null,
       subscribe: (listener) => subscribeGlobalSettings(listener),
       update: (next) => setGlobalSettingsField("experiments", next),
+      saving: () => isSavingGlobalSettingsField("experiments"),
       modelOptions: () => collectExperimentModelOptions(),
     },
     runtime: {

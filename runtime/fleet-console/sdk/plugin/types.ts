@@ -250,6 +250,11 @@ export interface ClientExperimentsCapability {
   subscribe(listener: () => void): () => void;
   /** 설정 저장 — 코어의 general 설정 한 필드를 통째로 바꾼다. 플러그인은 자기 행만 고쳐 넘긴다. */
   update(next: ConsoleExperimentSettings): Promise<boolean>;
+  /**
+   * 코어가 experiments 필드를 지금 저장 중인지. 같은 필드의 겹친 저장은 코어가 거절하므로(false),
+   * 플러그인 행은 이 동안 자기 컨트롤을 잠가 눌린 값이 조용히 버려지는 일을 막는다.
+   */
+  saving(): boolean;
   /** 모델 선택지 — Claude 별칭 + 등록된 플러그인이 내놓는 Gateway 모델. 플러그인 카드가 자기 행의 선택기에 쓴다. */
   modelOptions(): Promise<readonly ExperimentModelOption[]>;
 }
