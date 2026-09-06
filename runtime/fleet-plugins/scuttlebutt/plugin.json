@@ -1,6 +1,6 @@
 {
   "id": "scuttlebutt",
-  "name": "Scuttlebutt",
+  "name": "Quaker Aides",
   "apiVersion": 1,
   "routes": "routes.ts",
   "client": "client/index.tsx"

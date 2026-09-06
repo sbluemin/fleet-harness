@@ -14,6 +14,12 @@ export type StayPutMap = Record<ScuttlebuttAideId, AideStayPut>;
 /** 부관별 렌더 폭(px). 범위와 격자는 roaming.ts 가 소유한다. */
 export type SizeMap = Record<ScuttlebuttAideId, number>;
 
+export type AideEffort = "low" | "medium" | "high";
+export const AIDE_EFFORTS: readonly AideEffort[] = ["low", "medium", "high"];
+export const DEFAULT_AIDE_MODEL = "sonnet";
+export const DEFAULT_AIDE_EFFORT: AideEffort = "low";
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._\-\[\]:]{0,127}$/u;
+
 export interface ScuttlebuttSettings {
   readonly tori: boolean;
   readonly bori: boolean;
@@ -21,6 +27,11 @@ export interface ScuttlebuttSettings {
   readonly departureBell: boolean;
   readonly stayPut: StayPutMap;
   readonly sizes: SizeMap;
+  /** 부관단 공통 모델·강도. 실험 설정의 모델 좌석과 같은 id 규약이다. */
+  readonly model: string;
+  readonly effort: AideEffort;
+  /** 첫 출근 소개를 이미 보았는지. */
+  readonly introduced: boolean;
 }
 
 const IDLE_STAY_PUT: AideStayPut = Object.freeze({ enabled: false, nx: null, ny: null });
@@ -43,6 +54,9 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   departureBell: true,
   stayPut: DEFAULT_STAY_PUT,
   sizes: DEFAULT_SIZES,
+  model: DEFAULT_AIDE_MODEL,
+  effort: DEFAULT_AIDE_EFFORT,
+  introduced: false,
 };
 
 /** 확정된 상태. 아직 저장에 부치지 않은 미리보기는 여기에 섞이지 않는다. */
@@ -136,6 +150,9 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     departureBell: typeof value.departureBell === "boolean" ? value.departureBell : true,
     stayPut: parseStayPutMap(value.stayPut),
     sizes: parseSizeMap(value.sizes),
+    model: typeof value.model === "string" && MODEL_ID.test(value.model) ? value.model : DEFAULT_AIDE_MODEL,
+    effort: AIDE_EFFORTS.includes(value.effort as AideEffort) ? value.effort as AideEffort : DEFAULT_AIDE_EFFORT,
+    introduced: value.introduced === true,
   };
 }
 

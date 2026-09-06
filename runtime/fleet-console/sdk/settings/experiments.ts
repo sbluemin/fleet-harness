@@ -6,7 +6,7 @@
  * 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
  *
  * 모델은 기능마다 고른다. AI를 쓰는 기능은 자기 모델 필드를 갖고, 쓰지 않는 기능(컨텍스트 팩)이나
- * 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기)은 없다.
+ * 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 — 부관단 카드가 모델을 갖는다)은 없다.
  */
 
 export type ExperimentFeatureId = "promptRefine" | "launchContextPack" | "sessionWatch" | "aideConsoleRead";
@@ -27,7 +27,7 @@ export interface ConsoleExperimentSettings {
   /** Operation마다 켜는 세션 분석가 관찰. */
   readonly sessionWatch: boolean;
   readonly sessionWatchModel: string;
-  /** Scuttlebutt 부관이 Console을 읽는다 — 모델은 부관의 기본 모델을 따른다. */
+  /** 퀘이커 부관이 Console을 읽는다 — 모델은 부관단 카드의 모델 설정을 따른다. */
   readonly aideConsoleRead: boolean;
 }
 

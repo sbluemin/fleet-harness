@@ -481,7 +481,10 @@
   transform: scaleY(0.5);
 }
 
-.scuttlebutt-arrival-bubble {
+/* ── Operation 소식 말풍선 ──────────────────────────────────────────────────
+   완료·시작·입력 대기·첫 소개가 한 봉투를 입는다. 색은 신호 채널을 따른다: 완료는 positive,
+   시작·대기는 warn(amber), 소개는 brass(새가 말하고 있다). */
+.scuttlebutt-notice-bubble {
   position: fixed;
   z-index: 2;
   pointer-events: auto;
@@ -493,14 +496,11 @@
   gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: positive wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
+  /* 팝업 판독성 계약: 신호 wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
-    linear-gradient(
-      color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong)),
-      color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong))
-    ),
+    linear-gradient(var(--scuttlebutt-notice-wash, var(--glass-tint-strong)), var(--scuttlebutt-notice-wash, var(--glass-tint-strong))),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
@@ -513,7 +513,33 @@
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
 }
 
-.scuttlebutt-arrival-body {
+.scuttlebutt-notice-bubble.is-arrival {
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-ink: var(--positive);
+  border-color: color-mix(in oklch, var(--positive) 50%, var(--hairline));
+}
+
+/* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
+   alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
+.scuttlebutt-notice-bubble.is-departure,
+.scuttlebutt-notice-bubble.is-awaiting {
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-ink: var(--warn-ink);
+  border-color: color-mix(in oklch, var(--warn) 55%, transparent);
+}
+
+.scuttlebutt-notice-bubble.is-awaiting {
+  border-color: color-mix(in oklch, var(--aurora) 55%, transparent);
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-ink: color-mix(in oklch, var(--aurora) 80%, var(--text-primary));
+}
+
+.scuttlebutt-notice-bubble.is-intro {
+  --scuttlebutt-notice-ink: var(--brass);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-notice-body {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
@@ -521,7 +547,7 @@
 }
 
 /* 본문 액션은 카드 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 호버만 veil로 알린다. */
-.scuttlebutt-arrival-open {
+.scuttlebutt-notice-open {
   display: grid;
   min-width: 0;
   padding: 0;
@@ -534,11 +560,11 @@
   text-align: left;
 }
 
-.scuttlebutt-arrival-open:hover {
+.scuttlebutt-notice-open:hover {
   background: var(--ink-veil);
 }
 
-.scuttlebutt-arrival-dismiss {
+.scuttlebutt-notice-dismiss {
   align-self: start;
   display: inline-flex;
   min-width: 24px;
@@ -555,9 +581,66 @@
   font-weight: var(--weight-regular);
 }
 
-.scuttlebutt-arrival-dismiss:hover {
+.scuttlebutt-notice-dismiss:hover {
   background: var(--ink-veil);
   color: var(--text-primary);
+}
+
+.scuttlebutt-notice-more {
+  color: var(--text-tertiary);
+}
+
+.scuttlebutt-notice-label {
+  color: var(--scuttlebutt-notice-ink, var(--text-secondary));
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-notice-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.scuttlebutt-notice-open:focus-visible,
+.scuttlebutt-notice-dismiss:focus-visible,
+.scuttlebutt-intro-ok:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-intro-text {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.scuttlebutt-intro-ok {
+  justify-self: start;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--brass);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-intro-ok:hover {
+  background: var(--ink-veil);
 }
 
 /* ── Quick Launch 답변 말풍선 ────────────────────────────────────────────────
@@ -634,13 +717,11 @@
 }
 
 /* 말풍선은 앞부분과 입구다 — 넘치는 분량은 자르고 전문은 카드가 받는다. */
+/* 긴 답은 자르지 않고 안에서 스크롤한다 — 잘린 답은 읽는 사람이 무엇을 잃었는지 모른다. */
 .scuttlebutt-answer-text {
   margin: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 7;
-  line-clamp: 7;
-  overflow: hidden;
+  max-height: min(11.5em, 40vh);
+  overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -711,147 +792,6 @@
 @keyframes scuttlebutt-answer-wait {
   from { background-position: -40% 0; }
   to { background-position: 140% 0; }
-}
-
-.scuttlebutt-arrival-more {
-  color: var(--text-tertiary);
-}
-
-.scuttlebutt-arrival-label {
-  color: color-mix(in oklch, var(--positive) 72%, var(--text-secondary));
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-/* 제목은 길이 상한이 없다 — 두 줄까지 흘리고 그 아래만 자른다.
-   "완료"라는 사실은 위 라벨이 고정으로 들고 있으므로 잘려도 소식은 남는다. */
-.scuttlebutt-arrival-detail {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.scuttlebutt-arrival-open:focus-visible,
-.scuttlebutt-arrival-dismiss:focus-visible {
-  outline: 2px solid var(--positive);
-  outline-offset: 2px;
-}
-
-.scuttlebutt-departure-bubble {
-  position: fixed;
-  z-index: 2;
-  pointer-events: auto;
-  visibility: hidden;
-  display: grid;
-  max-width: min(360px, calc(100vw - var(--space-6)));
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  overflow: hidden;
-  /* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
-     alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
-  border: 1px solid color-mix(in oklch, var(--warn) 55%, transparent);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong)),
-      color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong))
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
-  color: var(--text-primary);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  line-height: 1.35;
-  text-align: left;
-  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
-}
-
-.scuttlebutt-departure-body {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-}
-
-.scuttlebutt-departure-open {
-  display: grid;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.scuttlebutt-departure-open:hover {
-  background: var(--ink-veil);
-}
-
-.scuttlebutt-departure-dismiss {
-  align-self: start;
-  display: inline-flex;
-  min-width: 24px;
-  min-height: 24px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-weight: var(--weight-regular);
-}
-
-.scuttlebutt-departure-dismiss:hover {
-  background: var(--ink-veil);
-  color: var(--text-primary);
-}
-
-.scuttlebutt-departure-more {
-  color: var(--text-tertiary);
-}
-
-.scuttlebutt-departure-label {
-  color: var(--warn-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.scuttlebutt-departure-detail {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.scuttlebutt-departure-open:focus-visible,
-.scuttlebutt-departure-dismiss:focus-visible {
-  outline: 2px solid var(--warn);
-  outline-offset: 2px;
 }
 
 /* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
@@ -992,9 +932,12 @@
   outline: 2px solid var(--brass);
 }
 
+/* 대화 전체를 보여 주므로 카드가 끝없이 자란다 — 여기서 높이를 잡아야 카드가 부관 위·아래에
+   서고, 옆으로 밀려 부관을 덮는 일이 없다. 넘치는 문답은 안에서 스크롤한다. */
 .scuttlebutt-chat-log {
   display: flex;
   min-height: 0;
+  max-height: min(340px, 45vh);
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
@@ -1091,8 +1034,13 @@
   background: var(--surface-glass);
 }
 
-.scuttlebutt-composer input {
+.scuttlebutt-composer {
+  align-items: flex-end;
+}
+
+.scuttlebutt-composer textarea {
   min-width: 0;
+  max-height: 9.5em;
   flex: 1 1 auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
@@ -1102,12 +1050,173 @@
   font: inherit;
   font-size: var(--t-md);
   font-weight: var(--weight-regular);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
 }
 
-.scuttlebutt-composer input:focus {
+.scuttlebutt-composer textarea:focus {
   border-color: var(--brass);
   outline: none;
   box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.scuttlebutt-composer textarea:disabled {
+  opacity: 0.6;
+}
+
+.scuttlebutt-chat-clear {
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-chat-clear:hover:not(:disabled) {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-chat-clear:focus-visible {
+  outline: 2px solid var(--brass);
+}
+
+.scuttlebutt-chat-clear:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.scuttlebutt-stop {
+  margin-left: auto;
+  padding: 2px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--coral) 45%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: color-mix(in oklch, var(--coral) 80%, var(--text-primary));
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-stop:hover {
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+}
+
+.scuttlebutt-stop:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-status-row.is-notice {
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+}
+
+.scuttlebutt-answer-actions {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--t-xs);
+}
+
+.scuttlebutt-sources-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-source {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scuttlebutt-source:hover {
+  border-color: var(--brass);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-source:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-answer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-answer-action {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-answer-action:hover {
+  border-color: var(--brass);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-answer-action:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-usage {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.scuttlebutt-settings-model {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .scuttlebutt-send {
@@ -1345,8 +1454,7 @@
 
   .scuttlebutt-qk,
   .scuttlebutt-qk *,
-  .scuttlebutt-arrival-bubble,
-  .scuttlebutt-departure-bubble,
+  .scuttlebutt-notice-bubble,
   .scuttlebutt-answer-bubble,
   .scuttlebutt-answer-wait,
   .scuttlebutt-thinking i,

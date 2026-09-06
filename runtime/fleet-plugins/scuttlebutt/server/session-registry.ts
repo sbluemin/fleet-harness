@@ -24,7 +24,7 @@ export class SessionRegistry {
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.status === "stopped") return;
-      if (event.type === "complete") entry.status = "idle";
+      if (event.type === "complete" || event.type === "cancelled") entry.status = "idle";
       this.publish(entry, event);
       if (event.type === "error" && event.error.code === "chat_exited") void this.stopEntry(chatId, entry);
     });
@@ -70,6 +70,14 @@ export class SessionRegistry {
         error: { code: "chat_error", message: "Chat request failed." },
       });
     });
+    return "accepted";
+  }
+
+  /** 진행 중인 턴을 멈춘다. 유휴 세션에는 할 일이 없어 그대로 참을 돌려준다. */
+  cancel(chatId: string): "accepted" | "not_found" {
+    const entry = this.entries.get(chatId);
+    if (!entry || entry.status === "stopped") return "not_found";
+    if (entry.status === "busy") entry.session.cancel();
     return "accepted";
   }
 

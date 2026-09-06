@@ -2,31 +2,35 @@ import type { FloatingWidgetContext } from "@fleet-console/sdk/floating";
 import { React, usePluginApi, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import { AnswerBubble } from "./answer-bubble.js";
-import { ArrivalBubble } from "./arrival-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
 import { readConsoleSnapshot } from "./console-read.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
-import { DepartureBubble } from "./departure-bubble.js";
+import { IntroBubble } from "./intro-bubble.js";
 import { connectScuttlebuttMentions } from "./mention-bridge.js";
+import { NoticeBubble } from "./notice-bubble.js";
 import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
   birdSize,
   createBirdBody,
+  insideKeepOut,
   parkedLayout,
   PERSONAS,
   pickWaypoint,
   placeStayPut,
   stayPutFractions,
+  stayPutPoint,
   stepFlock,
   type BirdBody,
   type BirdFrame,
+  type KeepOutRect,
 } from "./roaming.js";
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
   writeAideStayPut,
+  writeScuttlebuttSettings,
 } from "./settings-store.js";
 
 const MORPHS = ["tori", "bori", "dori"] as const;
@@ -38,6 +42,14 @@ const CHEER_DURATION_MS = 2_400;
 const SAY_DURATION_MS = 1_700;
 const CLICK_DELAY_MS = 260;
 const PARKED_GAP = 8;
+/** 회피 영역 재측정 주기. 레일 페인처럼 스토어 밖에서 여닫히는 표면은 이 주기로 따라잡는다. */
+const KEEP_OUT_POLL_MS = 400;
+const KEYBOARD_STEP_PX = 24;
+const KEYBOARD_STEP_FAST_PX = 96;
+
+function isAideShortcut(event: KeyboardEvent): boolean {
+  return (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.code === "KeyQ";
+}
 
 /** 첫 rAF 전에도 제자리에 그려야 세 마리가 좌상단에 겹쳤다가 흩어지는 깜빡임이 없다. */
 function framesFromBodies(bodies: readonly BirdBody[]): readonly BirdFrame[] {
@@ -84,6 +96,10 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     admiral,
     fetch: (path, init) => pluginApi.fetch(path, init),
     locale: () => localeRef.current,
+    launch: () => {
+      const current = getScuttlebuttSettings();
+      return { model: current.model, effort: current.effort };
+    },
     console: readConsoleSnapshot,
   })), [pluginApi]);
   React.useEffect(() => () => {
@@ -101,6 +117,27 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
   const [fleetSignals, setFleetSignals] = React.useState(() => context.signals.read());
   React.useEffect(() => context.signals.subscribe(setFleetSignals), [context.signals]);
+
+  // 회피 영역은 ref로 든다 — 프레임마다 읽히는 값이라 상태로 두면 리렌더가 따라온다. 스토어가
+  // 알리는 여닫힘은 즉시, 그 밖은 주기로 다시 잰다.
+  const keepOutRef = React.useRef<readonly KeepOutRect[]>([]);
+  const [keepOutRevision, setKeepOutRevision] = React.useState(0);
+  React.useEffect(() => {
+    const read = () => {
+      const next = context.keepOut.list();
+      if (!sameRects(keepOutRef.current, next)) {
+        keepOutRef.current = next;
+        setKeepOutRevision((revision) => revision + 1);
+      }
+    };
+    read();
+    const unsubscribe = context.keepOut.subscribe(read);
+    const timer = window.setInterval(read, KEEP_OUT_POLL_MS);
+    return () => {
+      unsubscribe();
+      window.clearInterval(timer);
+    };
+  }, [context.keepOut]);
 
   const viewportRef = React.useRef({
     width: window.innerWidth,
@@ -143,6 +180,10 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [lines, setLines] = React.useState<readonly string[]>(["", "", ""]);
   const [saying, setSaying] = React.useState<readonly boolean[]>([false, false, false]);
   const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
+  // 단축키가 여는 부관 — 마지막으로 말을 건 쪽. 없으면 근무 중인 첫 부관.
+  const lastSpokenRef = React.useRef<AdmiralId | null>(null);
+  // 보조 기술에 읽어 줄 지저귐. 보이는 말풍선은 aria-hidden이라 여기서 한 번 알린다.
+  const [announcedLine, setAnnouncedLine] = React.useState("");
   // Quick Launch에서 물은 답이 떠 있는 부관들. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
   // 한 자리로 두면 뒤에 물은 부관이 앞 부관의 답을 덮어써, 도착한 답이 어디에도 서지 못한다.
   const [answering, setAnswering] = React.useState<readonly AdmiralId[]>([]);
@@ -167,7 +208,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           body.mode = "fly";
           body.modeUntil = 0;
           body.pauseUntil = 0;
-          pickWaypoint(body, viewportRef.current, Math.random);
+          pickWaypoint(body, viewportRef.current, Math.random, keepOutRef.current);
         }
       }
       return next;
@@ -323,7 +364,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const morph = MORPHS[index]!;
     const choice = Math.floor(Math.random() * 3) + 1;
     const key = `line.${morph}.${choice}` as ScuttlebuttMessageKey;
-    setLines((current) => replaceAt(current, index, getT(localeRef.current)(key)));
+    const line = getT(localeRef.current)(key);
+    setAnnouncedLine(`${getT(localeRef.current)(`bird.${morph}`)}: ${line}`);
+    setLines((current) => replaceAt(current, index, line));
     setSaying((current) => replaceAt(current, index, true));
     clearTimer(sayTimersRef, index);
     sayTimersRef.current[index] = window.setTimeout(() => {
@@ -335,8 +378,49 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const clickAction = React.useCallback((index: number) => {
     triggerOneShot(index, "salute", SALUTE_DURATION_MS);
     const admiral = MORPHS[index]!;
+    lastSpokenRef.current = admiral;
     setOpenAdmiral((current) => current === admiral ? null : admiral);
   }, [triggerOneShot]);
+
+  // Ctrl/⌘+Shift+Q — 마지막으로 말을 건 부관의 카드를 여닫는다. 모달이 입력을 독점 중이면 받지 않는다.
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isAideShortcut(event) || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const onDuty = MORPHS.filter((morph) => settingsRef.current[morph]);
+      if (onDuty.length === 0) return;
+      const target = lastSpokenRef.current && onDuty.includes(lastSpokenRef.current) ? lastSpokenRef.current : onDuty[0]!;
+      event.preventDefault();
+      clickAction(MORPHS.indexOf(target));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [clickAction]);
+
+  /** 방향키로 옮기기. 정박 중이면 새 자리를 저장하고, 아니면 그 자리를 다음 목적지로 삼는다. */
+  const nudge = React.useCallback((index: number, dx: number, dy: number) => {
+    const body = bodiesRef.current?.[index];
+    if (!body) return;
+    const viewport = viewportRef.current;
+    body.x += dx;
+    body.y += dy;
+    body.vx = 0;
+    body.vy = 0;
+    body.mode = "fly";
+    body.pauseUntil = performance.now() / 1000 + 1.2;
+    body.tx = body.x;
+    body.ty = body.y;
+    const admiral = MORPHS[index]!;
+    if (body.moored && !mentionMooredRef.current.has(admiral)) {
+      const { nx, ny } = stayPutFractions(body, viewport);
+      writeAideStayPut(admiral, { enabled: true, nx, ny }).catch(() => undefined);
+    }
+    const element = birdRefs.current[index];
+    if (element) {
+      element.style.transform = `translate(${body.x - body.size.halfWidth}px, ${body.y - body.size.halfHeight}px) rotate(0deg)`;
+    }
+    setPositionRevision((revision) => revision + 1);
+  }, []);
 
   const focusAdmiral = React.useCallback((admiral: AdmiralId) => {
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
@@ -380,6 +464,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       activeIndices.map((index) => bodies[index]!.size),
       viewport,
       PARKED_GAP,
+      keepOutRef.current,
     );
     const parkedFrames = [...motionFramesRef.current];
     activeIndices.forEach((index, activeIndex) => {
@@ -429,7 +514,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         placeStayPut(body, viewport, stay.nx, stay.ny);
       } else if (!body.moored && !fleetSignals.reducedMotion) {
         // 새 치수로는 지금 목적지가 닿지 않는 자리일 수 있다.
-        pickWaypoint(body, viewport, Math.random);
+        pickWaypoint(body, viewport, Math.random, keepOutRef.current);
       }
       const left = body.x - body.size.halfWidth;
       const top = body.y - body.size.halfHeight;
@@ -459,6 +544,11 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     return () => window.removeEventListener("resize", resize);
   }, [fleetSignals.reducedMotion, parkBirds]);
 
+  // 모션을 줄인 화면에서는 편대 루프가 돌지 않으므로 표면이 여닫힐 때 주차 줄을 직접 다시 세운다.
+  React.useEffect(() => {
+    if (fleetSignals.reducedMotion && activeIndices.length > 0) parkBirds();
+  }, [activeIndices.length, fleetSignals.reducedMotion, keepOutRevision, parkBirds]);
+
   React.useEffect(() => {
     if (activeIndices.length === 0) return;
     if (fleetSignals.reducedMotion) {
@@ -471,7 +561,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       const body = bodies[index]!;
       body.mode = "fly";
       body.pauseUntil = 0;
-      pickWaypoint(body, viewportRef.current, Math.random);
+      pickWaypoint(body, viewportRef.current, Math.random, keepOutRef.current);
     }
     let animationFrame = 0;
     let last = performance.now();
@@ -480,6 +570,21 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       last = now;
       const activeBodies = activeIndices.map((index) => bodies[index]!);
       const activePersonas = activeIndices.map((index) => FLOCK_PERSONAS[index]!);
+      const keepOut = keepOutRef.current;
+      // 비켜섰던 정박 부관은 표면이 닫히면 저장된 자리로 돌아간다 — stepFlock은 정박 부관을 움직이지
+      // 않으므로 여기서 되돌린다. 저장된 자리가 아직 막혀 있으면 그대로 둔다.
+      for (const index of activeIndices) {
+        const body = bodies[index]!;
+        if (!body.moored || body.grab) continue;
+        const stay = settingsRef.current.stayPut[MORPHS[index]!];
+        if (!stay.enabled || stay.nx == null || stay.ny == null) continue;
+        const home = stayPutPoint(body, viewportRef.current, stay.nx, stay.ny);
+        const dist = Math.hypot(home.x - body.x, home.y - body.y);
+        if (dist < 1 || insideKeepOut(home.x, home.y, body.size, keepOut)) continue;
+        const step = Math.min(dist, 220 * dt);
+        body.x += ((home.x - body.x) / dist) * step;
+        body.y += ((home.y - body.y) / dist) * step;
+      }
       const activeFrames = stepFlock(
         activeBodies,
         activePersonas,
@@ -487,6 +592,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         dt,
         now / 1000,
         Math.random,
+        keepOut,
       );
       const frames = [...motionFramesRef.current];
       let motionChanged = false;
@@ -579,7 +685,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     }
     body.grab = null;
     body.pauseUntil = 0;
-    pickWaypoint(body, viewportRef.current, Math.random);
+    pickWaypoint(body, viewportRef.current, Math.random, keepOutRef.current);
     gesturesRef.current[index] = null;
     setGrabbed((current) => replaceAt(current, index, false));
     const admiral = MORPHS[index]!;
@@ -592,6 +698,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const t = getT(context.language);
   // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다.
   if (activeIndices.length === 0) return null;
+  const quiet = !openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking");
 
   return (
     <>
@@ -635,6 +742,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             <QuakerFigure morph={morph} />
             <span className="scuttlebutt-bird-tag" aria-hidden="true">{t(`bird.${morph}`)}</span>
             <span className="scuttlebutt-bird-say" aria-hidden="true">{lines[index]}</span>
+            <span className="scuttlebutt-visually-hidden" id={`scuttlebutt-bird-hint-${morph}`}>
+              {t("bird.keyboardHint", { name: t(`bird.${morph}`) })}
+            </span>
           </>
         );
         return (
@@ -647,34 +757,81 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             type="button"
             aria-label={t(`chat.label.${morph}`)}
             aria-expanded={openAdmiral === morph}
+            aria-describedby={`scuttlebutt-bird-hint-${morph}`}
             onClick={(event) => {
               if (event.detail === 0) clickAction(index);
+            }}
+            onKeyDown={(event) => {
+              // 방향키는 자리를, Space는 정박을 맡는다. Enter는 버튼 기본 동작(click)으로 카드를 연다.
+              const fast = event.shiftKey ? KEYBOARD_STEP_FAST_PX : KEYBOARD_STEP_PX;
+              const move: Record<string, readonly [number, number]> = {
+                ArrowLeft: [-fast, 0],
+                ArrowRight: [fast, 0],
+                ArrowUp: [0, -fast],
+                ArrowDown: [0, fast],
+              };
+              const delta = move[event.key];
+              if (delta) {
+                event.preventDefault();
+                nudge(index, delta[0], delta[1]);
+                return;
+              }
+              if (event.key === " " || event.code === "Space") {
+                event.preventDefault();
+                toggleMoored(index);
+              }
+            }}
+            onKeyUp={(event) => {
+              // keydown에서 막아도 keyup의 기본 click이 남는다 — 둘 다 막아야 카드가 열리지 않는다.
+              if (event.key === " " || event.code === "Space") event.preventDefault();
             }}
           >
             {children}
           </button>
         );
       })}
-      <ArrivalBubble
-        arrivals={context.arrivals}
+      <span className="scuttlebutt-visually-hidden" aria-live="polite" aria-atomic="true">{announcedLine}</span>
+      <NoticeBubble
+        kind="arrival"
+        source={context.arrivals}
         operations={context.operations}
         locale={context.language}
         mascot={announcerRef}
-        quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
+        quiet={quiet}
         positionRevision={positionRevision}
-        onShow={() => {
-          cheerAll();
-        }}
+        onShow={cheerAll}
       />
       {settings.departureBell ? (
-        <DepartureBubble
-          departures={context.departures}
+        <NoticeBubble
+          kind="departure"
+          source={context.departures}
           operations={context.operations}
           locale={context.language}
           mascot={announcerRef}
-          quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
+          quiet={quiet}
           positionRevision={positionRevision}
           onShow={saluteAll}
+        />
+      ) : null}
+      <NoticeBubble
+        kind="awaiting"
+        source={context.awaitings}
+        operations={context.operations}
+        locale={context.language}
+        mascot={announcerRef}
+        quiet={quiet}
+        positionRevision={positionRevision}
+        onShow={saluteAll}
+      />
+      {!settings.introduced && quiet ? (
+        <IntroBubble
+          admiral={MORPHS[activeIndices[0]!]!}
+          locale={context.language}
+          mascot={announcerRef}
+          positionRevision={positionRevision}
+          onDismiss={() => {
+            writeScuttlebuttSettings({ introduced: true }).catch(() => undefined);
+          }}
         />
       ) : null}
       {/* Quick Launch 답변. 카드가 열리면 카드가 전문을 맡으므로 그 부관의 말풍선만 물러난다. */}
@@ -710,13 +867,23 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           moored={moored[MORPHS.indexOf(openAdmiral)] ?? false}
           locale={context.language}
           positionRevision={positionRevision}
-          onAsk={(text) => void sessions[MORPHS.indexOf(openAdmiral)]!.ask(text)}
+          onAsk={(text) => {
+            lastSpokenRef.current = openAdmiral;
+            void sessions[MORPHS.indexOf(openAdmiral)]!.ask(text);
+          }}
+          onRetry={() => void sessions[MORPHS.indexOf(openAdmiral)]!.retry()}
+          onStop={() => void sessions[MORPHS.indexOf(openAdmiral)]!.stop()}
+          onClear={() => sessions[MORPHS.indexOf(openAdmiral)]!.clear()}
+          onHandoff={(text) => {
+            setOpenAdmiral(null);
+            context.composer.open({ draft: text });
+          }}
           onDraftChange={sessions[MORPHS.indexOf(openAdmiral)]!.setDraft}
           onToggleMoored={() => toggleMoored(MORPHS.indexOf(openAdmiral))}
-          onClose={() => {
+          onClose={(restoreFocus) => {
             const admiral = openAdmiral;
             setOpenAdmiral(null);
-            focusAdmiral(admiral);
+            if (restoreFocus) focusAdmiral(admiral);
           }}
           onTuck={() => {
             const admiral = openAdmiral;
@@ -731,4 +898,15 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function sameRects(left: readonly KeepOutRect[], right: readonly KeepOutRect[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index]!;
+    const b = right[index]!;
+    if (Math.abs(a.left - b.left) > 0.5 || Math.abs(a.top - b.top) > 0.5
+      || Math.abs(a.width - b.width) > 0.5 || Math.abs(a.height - b.height) > 0.5) return false;
+  }
+  return true;
 }

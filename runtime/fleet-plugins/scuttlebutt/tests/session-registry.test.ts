@@ -48,5 +48,6 @@ class FakeSession implements ChatSessionLike {
   onEvent?: (event: ChatEvent) => void;
   readonly start = vi.fn(async () => undefined);
   readonly send = vi.fn(async () => new Promise<void>(() => undefined));
+  readonly cancel = vi.fn(() => undefined);
   readonly dispose = vi.fn(async () => undefined);
 }

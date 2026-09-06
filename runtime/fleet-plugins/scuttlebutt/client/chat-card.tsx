@@ -2,10 +2,11 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { currentExchange, type ChatState } from "./chat-store.js";
+import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
 import { getT } from "./scuttlebutt-catalog.js";
+import type { ChatStreamUsage } from "./sse-client.js";
 
 export function ChatCard({
   state,
@@ -14,6 +15,10 @@ export function ChatCard({
   mascot,
   moored,
   onAsk,
+  onRetry,
+  onStop,
+  onClear,
+  onHandoff,
   onDraftChange,
   onToggleMoored,
   onClose,
@@ -27,18 +32,28 @@ export function ChatCard({
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly moored: boolean;
   readonly onAsk: (text: string) => void;
+  readonly onRetry: () => void;
+  readonly onStop: () => void;
+  readonly onClear: () => void;
+  /** 답을 Quick Launch 초안으로 넘긴다 — 빠른 답을 Operation 지시로 잇는 손잡이. */
+  readonly onHandoff: (text: string) => void;
   readonly onDraftChange: (text: string) => void;
   readonly onToggleMoored: () => void;
-  readonly onClose: () => void;
+  /**
+   * `restoreFocus`는 키보드로 닫았을 때만 참이다. 마우스로 바깥을 눌러 닫고도 새에 포커스를
+   * 되돌리면 `:focus-visible` 링이 새를 감싼 채 남는다(답변 말풍선과 같은 계약).
+   */
+  readonly onClose: (restoreFocus: boolean) => void;
   readonly onTuck: () => void;
   readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
 }) {
   const t = getT(locale);
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
+  const [copied, setCopied] = React.useState(false);
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -79,6 +94,17 @@ export function ChatCard({
     position();
   }, [state.entries, state.phase, position]);
 
+  // 입력 높이는 내용에 맞춘다 — 한 줄로 시작해 붙여넣은 문단만큼 자라고, 상한은 CSS가 정한다.
+  React.useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.height = "0px";
+    const max = Number.parseFloat(getComputedStyle(input).maxHeight) || Number.POSITIVE_INFINITY;
+    input.style.height = `${Math.min(input.scrollHeight, max)}px`;
+    // 상한에 닿기 전에는 스크롤바를 두지 않는다 — 한 줄짜리 입력에 스크롤 홈이 보이면 잘린 것처럼 읽힌다.
+    input.style.overflowY = input.scrollHeight > max ? "auto" : "hidden";
+  }, [draft]);
+
   // 카드 바깥을 누르면 닫는다. 캡처 단계나 preventDefault를 쓰지 않으므로 그 클릭은
   // 아래 콘솔에 그대로 도달한다 — 마스코트 위 누름은 드래그 시작이라 닫힘에서 제외한다.
   React.useEffect(() => {
@@ -87,15 +113,33 @@ export function ChatCard({
       if (!target) return;
       if (cardRef.current?.contains(target)) return;
       if (mascot.current?.contains(target)) return;
-      onClose();
+      onClose(false);
     };
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [mascot, onClose]);
 
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1_600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
   const style = placementStyle(placement);
   const busy = state.phase === "starting" || state.phase === "thinking";
-  const visibleEntries = currentExchange(state);
+  const answer = lastAnswer(state);
+  const canSend = !busy && draft.trim().length > 0;
+  const submit = () => {
+    if (canSend) onAsk(draft);
+  };
+  const copyAnswer = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      // 클립보드가 막힌 컨텍스트(권한·비보안 origin)에서는 조용히 둔다 — 텍스트는 화면에 있다.
+    }
+  };
   return (
     <div
       ref={cardRef}
@@ -106,7 +150,7 @@ export function ChatCard({
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
-          onClose();
+          onClose(true);
         }
       }}
     >
@@ -123,45 +167,131 @@ export function ChatCard({
           <span className="scuttlebutt-chat-moor-track" aria-hidden="true"><i /></span>
           {t("chat.stayPut")}
         </button>
+        {state.entries.length > 0 ? (
+          <button
+            type="button"
+            className="scuttlebutt-chat-clear"
+            title={t("action.clear")}
+            aria-label={t("action.clear")}
+            disabled={busy}
+            onClick={onClear}
+          >
+            ⌫
+          </button>
+        ) : null}
         <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
-        {visibleEntries.length === 0 ? (
+        {state.entries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
             {t(`chat.greeting.${admiral}`)}
           </div>
         ) : null}
-        {visibleEntries.map((entry) => entry.kind === "assistant" ? (
-          <div
-            key={entry.id}
-            className="scuttlebutt-message-sam scuttlebutt-markdown-body"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text).html }}
-          />
-        ) : entry.kind === "user" ? (
-          <div key={entry.id} className="scuttlebutt-message-user">{entry.text}</div>
-        ) : (
-          <div key={entry.id} className={`scuttlebutt-status-row${entry.kind === "error" ? " is-error" : ""}`}>
-            {entry.text}
+        {state.entries.map((entry) => renderEntry(entry, t))}
+        {answer && !busy ? (
+          <div className="scuttlebutt-answer-actions">
+            {answer.sources.length > 0 ? (
+              <div className="scuttlebutt-sources">
+                <span className="scuttlebutt-sources-label">{t("sources.label")}</span>
+                {answer.sources.map((url) => (
+                  <a key={url} className="scuttlebutt-source" href={url} target="_blank" rel="noreferrer noopener" title={url}>
+                    {sourceLabel(url)}
+                  </a>
+                ))}
+              </div>
+            ) : null}
+            <div className="scuttlebutt-answer-toolbar">
+              <button type="button" className="scuttlebutt-answer-action" onClick={() => void copyAnswer(answer.text)}>
+                {copied ? t("action.copied") : t("action.copy")}
+              </button>
+              <button type="button" className="scuttlebutt-answer-action" onClick={() => onHandoff(answer.text)}>
+                {t("action.handoff")}
+              </button>
+              {answer.usage ? <span className="scuttlebutt-usage">{usageLine(answer.usage, t)}</span> : null}
+            </div>
           </div>
-        ))}
+        ) : null}
+        {state.phase === "error" ? (
+          <div className="scuttlebutt-answer-toolbar">
+            <button type="button" className="scuttlebutt-answer-action" onClick={onRetry}>{t("action.retry")}</button>
+          </div>
+        ) : null}
       </div>
-      {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t(`chat.thinking.${admiral}`)}</div> : null}
+      {busy ? (
+        <div className="scuttlebutt-thinking">
+          <i /><i /><i />{t(`chat.thinking.${admiral}`)}
+          <button type="button" className="scuttlebutt-stop" onClick={onStop}>{t("action.stop")}</button>
+        </div>
+      ) : null}
       <form className="scuttlebutt-composer" onSubmit={(event) => {
         event.preventDefault();
-        onAsk(draft);
+        submit();
       }}>
-        <input
+        <textarea
           ref={inputRef}
           value={draft}
           disabled={busy}
+          rows={1}
           placeholder={t(`chat.placeholder.${admiral}`)}
           autoComplete="off"
           onChange={(event) => onDraftChange(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            // Enter는 보내기, Shift+Enter는 줄바꿈 — Quick Launch 컴포저와 같은 문법.
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              submit();
+            }
+          }}
         />
-        <button type="submit" className="scuttlebutt-send" disabled={busy || !draft.trim()}>{t("chat.send")}</button>
+        <button type="submit" className="scuttlebutt-send" disabled={!canSend}>{t("chat.send")}</button>
       </form>
     </div>
   );
+}
+
+function renderEntry(entry: ChatEntry, t: ReturnType<typeof getT>): React.ReactNode {
+  if (entry.kind === "assistant") {
+    return (
+      <div
+        key={entry.id}
+        className="scuttlebutt-message-sam scuttlebutt-markdown-body"
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text).html }}
+      />
+    );
+  }
+  if (entry.kind === "user") return <div key={entry.id} className="scuttlebutt-message-user">{entry.text}</div>;
+  if (entry.kind === "notice") return <div key={entry.id} className="scuttlebutt-status-row is-notice">{entry.text}</div>;
+  void t;
+  return (
+    <div key={entry.id} className={`scuttlebutt-status-row${entry.kind === "error" ? " is-error" : ""}`}>
+      {entry.text}
+    </div>
+  );
+}
+
+/** 출처 칩의 글자 — 호스트 이름과 경로 첫 조각. 전체 URL은 title로 남긴다. */
+export function sourceLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./u, "");
+    const segment = parsed.pathname.split("/").filter(Boolean)[0];
+    return segment ? `${host}/${segment.length > 24 ? `${segment.slice(0, 22)}…` : segment}` : host;
+  } catch {
+    return url;
+  }
+}
+
+export function usageLine(usage: ChatStreamUsage, t: ReturnType<typeof getT>): string {
+  const tokens = formatTokens(usage.inputTokens + usage.outputTokens);
+  if (typeof usage.costUsd !== "number") return t("usage.lineNoCost", { tokens });
+  const cost = usage.costUsd < 0.01 ? "<$0.01" : `$${usage.costUsd.toFixed(2)}`;
+  return t("usage.line", { tokens, cost });
+}
+
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
 }
 
 function placementStyle(placement: CardPlacement | null): React.CSSProperties {

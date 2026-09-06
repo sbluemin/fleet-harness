@@ -46,6 +46,60 @@ export interface Viewport {
   readonly height: number;
 }
 
+/** 부관이 서면 안 되는 화면 영역(열린 페인·Quick Launch·대화상자). 호스트가 실측해 준다. */
+export interface KeepOutRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+const KEEP_OUT_PADDING = 12;
+
+/** 중심 (x, y)에 선 부관의 상자가 회피 영역과 겹치는가. */
+export function insideKeepOut(x: number, y: number, size: BirdSize, keepOut: readonly KeepOutRect[]): boolean {
+  for (const rect of keepOut) {
+    if (x + size.halfWidth + KEEP_OUT_PADDING <= rect.left) continue;
+    if (x - size.halfWidth - KEEP_OUT_PADDING >= rect.left + rect.width) continue;
+    if (y + size.halfHeight + KEEP_OUT_PADDING <= rect.top) continue;
+    if (y - size.halfHeight - KEEP_OUT_PADDING >= rect.top + rect.height) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 회피 영역 안에 선 부관을 가장 가까운 바깥 자리로 옮긴다 — 표면이 부관 위에 열렸을 때 쓴다.
+ * 네 방향 중 가장 짧은 이동을 고르고, 화면 밖이면 그다음을 본다. 모두 막히면 제자리다.
+ */
+export function nearestOutside(
+  body: BirdBody,
+  viewport: Viewport,
+  keepOut: readonly KeepOutRect[],
+): { readonly x: number; readonly y: number } | null {
+  if (!insideKeepOut(body.x, body.y, body.size, keepOut)) return null;
+  const [minX, maxX] = horizontalBounds(body, viewport);
+  const [minY, maxY] = verticalBounds(body, viewport);
+  const candidates: { x: number; y: number; cost: number }[] = [];
+  for (const rect of keepOut) {
+    const pad = KEEP_OUT_PADDING + 4;
+    const options = [
+      { x: rect.left - body.size.halfWidth - pad, y: body.y },
+      { x: rect.left + rect.width + body.size.halfWidth + pad, y: body.y },
+      { x: body.x, y: rect.top - body.size.halfHeight - pad },
+      { x: body.x, y: rect.top + rect.height + body.size.halfHeight + pad },
+    ];
+    for (const option of options) {
+      if (option.x < minX || option.x > maxX || option.y < minY || option.y > maxY) continue;
+      if (insideKeepOut(option.x, option.y, body.size, keepOut)) continue;
+      candidates.push({ ...option, cost: Math.hypot(option.x - body.x, option.y - body.y) });
+    }
+  }
+  candidates.sort((left, right) => left.cost - right.cost);
+  const best = candidates[0];
+  return best ? { x: best.x, y: best.y } : null;
+}
+
 /** 한 프레임의 렌더 지시 — 호출자는 이 값을 그대로 transform/클래스에 꽂는다. */
 export interface BirdFrame {
   readonly left: number;
@@ -142,10 +196,19 @@ function stepMooredBehavior(body: BirdBody, time: number, random: () => number):
   body.modeUntil = time + rand(picked.span[0], picked.span[1], random);
 }
 
+/** 저장된 화면비 좌표가 현재 뷰포트에서 가리키는 중심점. */
+export function stayPutPoint(body: BirdBody, viewport: Viewport, nx: number, ny: number): { readonly x: number; readonly y: number } {
+  return {
+    x: clamp(nx * viewport.width, ...horizontalBounds(body, viewport)),
+    y: clamp(ny * viewport.height, ...verticalBounds(body, viewport)),
+  };
+}
+
 /** 저장된 화면비 좌표를 현재 뷰포트에 다시 얹는다 — 창 크기가 바뀌어도 같은 자리에 가깝게 선다. */
 export function placeStayPut(body: BirdBody, viewport: Viewport, nx: number, ny: number): void {
-  body.x = clamp(nx * viewport.width, ...horizontalBounds(body, viewport));
-  body.y = clamp(ny * viewport.height, ...verticalBounds(body, viewport));
+  const point = stayPutPoint(body, viewport, nx, ny);
+  body.x = point.x;
+  body.y = point.y;
   body.vx = 0;
   body.vy = 0;
 }
@@ -181,12 +244,22 @@ export function stayPutFractions(body: BirdBody, viewport: Viewport): { nx: numb
  * (70/80/110)은 84px 한 크기를 전제한 값이라, 더 큰 부관에게는 clamp 밖의 목표를 주어
  * 도착 판정(dist < 26)이 영영 오지 않는 가장자리 배회를 만든다.
  */
-export function pickWaypoint(body: BirdBody, viewport: Viewport, random: () => number): void {
+export function pickWaypoint(
+  body: BirdBody,
+  viewport: Viewport,
+  random: () => number,
+  keepOut: readonly KeepOutRect[] = [],
+): void {
   const [minX, maxX] = horizontalBounds(body, viewport);
   const [minY, maxY] = verticalBounds(body, viewport);
   body.deckPlan = false;
-  body.tx = randWithin(Math.max(70, minX), Math.min(viewport.width - 70, maxX), minX, maxX, random);
-  body.ty = randWithin(Math.max(80, minY), Math.min(viewport.height - 110, maxY), minY, maxY, random);
+  // 회피 영역 밖의 목적지를 몇 번 더 뽑는다. 다 막혀 있으면 마지막 후보로 간다 — 서 있을 곳이
+  // 없는 화면에서 영영 고르지 못하는 것보다 낫다.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    body.tx = randWithin(Math.max(70, minX), Math.min(viewport.width - 70, maxX), minX, maxX, random);
+    body.ty = randWithin(Math.max(80, minY), Math.min(viewport.height - 110, maxY), minY, maxY, random);
+    if (!insideKeepOut(body.tx, body.ty, body.size, keepOut)) return;
+  }
 }
 
 /**
@@ -220,6 +293,7 @@ export function parkedLayout(
   sizes: readonly BirdSize[],
   viewport: Viewport,
   gap: number,
+  keepOut: readonly KeepOutRect[] = [],
 ): readonly { readonly left: number; readonly top: number }[] {
   if (sizes.length === 0) return [];
   const totalWidth = sizes.reduce((sum, size) => sum + size.width, 0);
@@ -228,12 +302,29 @@ export function parkedLayout(
     ? Math.min(gap, (available - totalWidth) / (sizes.length - 1))
     : 0;
   const runWidth = totalWidth + spacing * (sizes.length - 1);
-  let cursor = Math.max(8, viewport.width - 16 - runWidth);
+  const tallest = Math.max(...sizes.map((size) => size.height));
+  // 주차 줄은 오른쪽 아래가 기본이다. 그 자리를 덮는 표면(도킹된 Quick Launch·오른쪽 페인)이
+  // 있으면 줄 전체를 그 위 또는 왼쪽으로 옮긴다 — 부관 하나만 옮기면 줄이 깨진다.
+  let right = viewport.width - 16;
+  let bottom = viewport.height - 16;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const blocking = keepOut.find((rect) =>
+      right - runWidth < rect.left + rect.width && right > rect.left
+      && bottom - tallest < rect.top + rect.height && bottom > rect.top);
+    if (!blocking) break;
+    const liftTo = blocking.top - KEEP_OUT_PADDING;
+    const shiftTo = blocking.left - KEEP_OUT_PADDING;
+    // 위로 올리는 편이 짧으면 올리고, 아니면 왼쪽으로 민다. 둘 다 화면 밖이면 그대로 둔다.
+    if (bottom - liftTo <= right - shiftTo && liftTo - tallest >= 8) bottom = liftTo;
+    else if (shiftTo - runWidth >= 8) right = shiftTo;
+    else break;
+  }
+  let cursor = Math.max(8, right - runWidth);
   return sizes.map((size) => {
     const left = cursor;
     cursor += size.width + spacing;
     // 바닥은 부관마다 자기 높이로 잰다 — 그래야 크기가 달라도 발끝이 한 줄로 선다.
-    return { left, top: Math.max(8, viewport.height - 16 - size.height) };
+    return { left, top: Math.max(8, bottom - size.height) };
   });
 }
 
@@ -244,12 +335,47 @@ export function stepFlock(
   dt: number,
   time: number,
   random: () => number,
+  keepOut: readonly KeepOutRect[] = [],
 ): readonly BirdFrame[] {
   const frames: BirdFrame[] = [];
 
   for (let index = 0; index < bodies.length; index += 1) {
     const body = bodies[index]!;
     const persona = personas[index]!;
+
+    // 표면이 부관 위에 열렸다 — 잡혀 있지 않은 부관은 가장 가까운 바깥으로 비켜선다. 정박·고정도
+    // 예외가 아니다: 사용자가 세워 둔 자리라도 그 위에 설정 스위치가 열리면 스위치가 우선이다.
+    // 비켜선 뒤 표면이 닫히면 정박 부관은 저장된 자리로 돌아간다(flock이 placeStayPut으로 되돌린다).
+    if (!body.grab && keepOut.length > 0) {
+      const outside = nearestOutside(body, viewport, keepOut);
+      if (outside) {
+        const dx = outside.x - body.x;
+        const dy = outside.y - body.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const step = Math.min(dist, Math.max(persona.max, 160) * dt);
+        body.x += (dx / dist) * step;
+        body.y += (dy / dist) * step;
+        body.vx = (dx / dist) * Math.min(dist * 2, 160);
+        body.vy = (dy / dist) * Math.min(dist * 2, 160);
+        if (body.mode !== "fly") {
+          body.mode = "fly";
+          body.modeUntil = 0;
+        }
+        if (!body.moored && !body.anchored) {
+          body.tx = outside.x;
+          body.ty = outside.y;
+          body.pauseUntil = 0;
+        }
+        frames.push({
+          left: body.x - body.size.halfWidth,
+          top: body.y - body.size.halfHeight,
+          tilt: clamp(body.vx * 0.08, -12, 12),
+          flight: "cruise",
+          mode: "fly",
+        });
+        continue;
+      }
+    }
 
     if (body.grab) {
       // 포인터 좌표를 직접 대입하면 손의 미세 움직임이 지나치게 딱딱해진다.
@@ -280,13 +406,13 @@ export function stepFlock(
           body.vx = 0;
         } else {
           body.mode = "fly";
-          pickWaypoint(body, viewport, random);
+          pickWaypoint(body, viewport, random, keepOut);
         }
       }
     } else if (body.mode === "sleep" || body.mode === "preen") {
       if (time > body.modeUntil) {
         body.mode = "fly";
-        pickWaypoint(body, viewport, random);
+        pickWaypoint(body, viewport, random, keepOut);
       }
     } else if (time < body.pauseUntil) {
       body.vx *= Math.max(0, 1 - dt * 3);
@@ -298,7 +424,7 @@ export function stepFlock(
       if (body.pauseUntil) {
         body.pauseUntil = 0;
         const next = random();
-        if (next < 0.26) {
+        if (next < 0.26 && !insideKeepOut(body.x, deckY(body, viewport), body.size, keepOut)) {
           body.deckPlan = true;
           body.tx = rand(80, viewport.width - 80, random);
           body.ty = deckY(body, viewport);
@@ -307,7 +433,7 @@ export function stepFlock(
           body.modeUntil = time + rand(2.4, 4, random);
           preening = true;
         } else {
-          pickWaypoint(body, viewport, random);
+          pickWaypoint(body, viewport, random, keepOut);
         }
       }
 

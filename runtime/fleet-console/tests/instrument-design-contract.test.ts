@@ -2141,9 +2141,8 @@ describe("Instrument core design contract", () => {
     for (const selector of [
       ".scuttlebutt-bird-tag",
       ".scuttlebutt-bird-say",
-      ".scuttlebutt-arrival-bubble",
+      ".scuttlebutt-notice-bubble",
       ".scuttlebutt-answer-bubble",
-      ".scuttlebutt-departure-bubble",
       ".scuttlebutt-chat-card",
     ]) {
       const scoped = selector.replace(/\./g, "\\.");

@@ -5,14 +5,17 @@ import type http from "node:http";
 import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "@fleet-console/sdk/settings";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { createConsoleReadTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
 
 import {
   ADMIRAL_IDS,
   ChatSession,
+  isAideEffort,
   type AdmiralId,
+  type AideEffort,
   type ChatSessionLike,
 } from "./chat-session.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -21,7 +24,11 @@ export interface ChatRouteDeps {
   readonly createSession?: (options: ConstructorParameters<typeof ChatSession>[0]) => ChatSessionLike;
   readonly id?: () => string;
   readonly ensureDir?: (dir: string) => Promise<void>;
+  readonly removeDir?: (dir: string) => Promise<void>;
 }
+
+/** 사용자 노출 이름. 플러그인 id(`scuttlebutt`)는 경로·저장 키로만 남는다. */
+const API_CATEGORY = "Quaker Aides";
 
 /**
  * AI gateway를 서빙하는 것은 terminal 플러그인이다. 경로 조각은 core-ai-gateway가 소유하지만
@@ -40,6 +47,12 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
   const ensureDir = deps.ensureDir ?? (async (dir: string) => {
     await fs.mkdir(dir, { recursive: true });
   });
+  const removeDir = deps.removeDir ?? (async (dir: string) => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  // 세션마다 자기 작업 디렉터리를 갖는다 — 같은 부관을 두 기기에서 쓰면 CLI 자식 둘이 한 cwd를
+  // 나눠 갖게 되므로. 종료 시 지우고, 시작 때 죽은 세션의 잔여를 함께 걷는다.
+  const workspaces = new Map<string, string>();
 
   // 실험 "부관의 Console 읽기"의 활동 스냅샷 — 세션마다 브라우저가 메시지에 실어 보낸 마지막 것.
   const snapshots = new Map<string, ConsoleSnapshot>();
@@ -54,9 +67,14 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
       // 설 때마다 산 세션의 것만 남긴다. 맵의 크기는 언제나 동시 세션 상한을 넘지 않는다.
       const live = new Set(registry.liveIds());
       for (const key of [...snapshots.keys()]) if (!live.has(key)) snapshots.delete(key);
-      return handleStart(ctx, req, res, registry, createSession, id, ensureDir, snapshots);
+      for (const [key, dir] of [...workspaces]) {
+        if (live.has(key)) continue;
+        workspaces.delete(key);
+        void removeDir(dir).catch(() => undefined);
+      }
+      return handleStart(ctx, req, res, registry, createSession, id, ensureDir, snapshots, workspaces);
     }
-    const match = routePath.match(/^\/([^/]+)\/(message|stream|stop)$/u);
+    const match = routePath.match(/^\/([^/]+)\/(message|stream|stop|cancel)$/u);
     if (!match) return false;
     const chatId = decodePathSegment(match[1]);
     if (chatId === null) {
@@ -65,13 +83,19 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     }
     if (match[2] === "message") return handleMessage(ctx, req, res, chatId, registry, snapshots);
     if (match[2] === "stream") return handleStream(ctx, req, res, chatId, registry);
+    if (match[2] === "cancel") return handleCancel(ctx, req, res, chatId, registry);
     snapshots.delete(chatId);
-    return handleStop(ctx, req, res, chatId, registry);
+    const workspace = workspaces.get(chatId);
+    workspaces.delete(chatId);
+    const handled = await handleStop(ctx, req, res, chatId, registry);
+    if (workspace) void removeDir(workspace).catch(() => undefined);
+    return handled;
   }, [
-    { method: "POST", path: "/start", summary: "Start a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/:chatId/message", summary: "Send a Scuttlebutt chat message.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/:chatId/stream", summary: "Stream a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "sse" },
-    { method: "POST", path: "/:chatId/stop", summary: "Stop a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/start", summary: "Start a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:chatId/message", summary: "Send a message to a Quaker aide.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:chatId/stream", summary: "Stream a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "sse" },
+    { method: "POST", path: "/:chatId/cancel", summary: "Stop the aide's current answer, keeping the session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:chatId/stop", summary: "Stop a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
   ]);
 
   ctx.host.lifecycle.registerCleanup(() => registry.dispose());
@@ -87,6 +111,7 @@ async function handleStart(
   id: () => string,
   ensureDir: (dir: string) => Promise<void>,
   snapshots: Map<string, ConsoleSnapshot>,
+  workspaces: Map<string, string>,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -96,11 +121,12 @@ async function handleStart(
     return true;
   }
   const chatId = id();
-  const workspace = `${ctx.host.paths.pluginDataDir("scuttlebutt")}/workspace/${body.admiral}`;
+  const workspace = `${ctx.host.paths.pluginDataDir("scuttlebutt")}/workspace/${body.admiral}/${chatId}`;
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   try {
     // pluginDataDir 은 경로만 만들어 준다 — 없는 디렉터리에서 CLI를 띄우면 기동 자체가 실패한다.
     await ensureDir(workspace);
+    workspaces.set(chatId, workspace);
     // 리슨이 확정되기 전에는 origin이 없다. 포트를 추측하지 않고 시작을 거절한다 — 잘못된 주소로
     // 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
     const origin = ctx.host.server.origin();
@@ -113,6 +139,9 @@ async function handleStart(
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,
       admiral: body.admiral,
+      ...(body.model ? { model: body.model } : {}),
+      ...(body.effort ? { effort: body.effort } : {}),
+      ...(body.locale ? { locale: body.locale } : {}),
       baseUrl: resolveAiGatewayBaseUrl(origin),
       onEvent,
       ...(consoleRead ? { consoleRead } : {}),
@@ -150,7 +179,7 @@ async function handleMessage(
     ctx.host.http.writeJson(res, 400, { error: "invalid_message" });
     return true;
   }
-  if (body.console !== undefined) snapshots.set(chatId, body.console);
+  if (body.console !== undefined) snapshots.set(chatId, { ...body.console, takenAt: new Date().toISOString() });
   const result = await registry.message(chatId, body.text);
   if (result === "not_found") {
     snapshots.delete(chatId);
@@ -193,6 +222,26 @@ function handleStream(
   return true;
 }
 
+async function handleCancel(
+  ctx: FleetPluginServerContext,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  chatId: string,
+  registry: SessionRegistry,
+): Promise<boolean> {
+  if (req.method !== "POST") return methodNotAllowed(ctx, res);
+  if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
+  const body = await ctx.host.http.readJsonBody<unknown>(req);
+  if (!isRecord(body) || Object.keys(body).length > 0) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_cancel" });
+    return true;
+  }
+  const result = registry.cancel(chatId);
+  if (result === "not_found") ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+  else ctx.host.http.writeJson(res, 200, { cancelled: true });
+  return true;
+}
+
 async function handleStop(
   ctx: FleetPluginServerContext,
   req: http.IncomingMessage,
@@ -220,11 +269,28 @@ function isMessageBody(value: unknown): value is { readonly text: string; readon
   return value.console === undefined || isConsoleSnapshot(value.console);
 }
 
-function isStartBody(value: unknown): value is { readonly admiral: AdmiralId } {
-  return isRecord(value)
-    && Object.keys(value).length === 1
-    && typeof value.admiral === "string"
-    && ADMIRAL_IDS.some((admiral) => admiral === value.admiral);
+const LOCALES: readonly ConsoleLocale[] = ["en", "ko"];
+
+interface StartBody {
+  readonly admiral: AdmiralId;
+  readonly model?: string;
+  readonly effort?: AideEffort;
+  readonly locale?: ConsoleLocale;
+}
+
+/**
+ * 모델·강도·언어는 선택이며 모양이 엄격하다 — 모델 id는 `--model`에 그대로 들어가는 값이라
+ * 실험 설정과 같은 정제기를 쓰고, 알 수 없는 키는 거절한다.
+ */
+function isStartBody(value: unknown): value is StartBody {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value).filter((key) => !["admiral", "model", "effort", "locale"].includes(key));
+  if (keys.length > 0) return false;
+  if (typeof value.admiral !== "string" || !ADMIRAL_IDS.some((admiral) => admiral === value.admiral)) return false;
+  if (value.model !== undefined && !isExperimentModelId(value.model)) return false;
+  if (value.effort !== undefined && !isAideEffort(value.effort)) return false;
+  if (value.locale !== undefined && !(LOCALES as readonly unknown[]).includes(value.locale)) return false;
+  return true;
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {
