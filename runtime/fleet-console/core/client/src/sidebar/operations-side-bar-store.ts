@@ -13,7 +13,12 @@ interface SideBarState {
   readonly collapsed: boolean;
   /** 접힌 카드를 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정이며 아레나 인셋에 불참한다. */
   readonly peeking: boolean;
+  /** War Room 대기열이 레일(QUEUE_RAIL_WIDTH)로 좁혀진 상태 — 아레나 인셋과 레일 폭 예산이 이 폭을 쓴다. */
+  readonly narrow: boolean;
 }
+
+/** War Room 대기열 레일의 폭 — 타일 한 열(40px)과 좌우 여백. */
+export const QUEUE_RAIL_WIDTH = 64;
 
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_COLLAPSED = "fleet-console.operations.side-collapsed";
@@ -30,7 +35,24 @@ let sideBarState: SideBarState = {
   width: readInitialWidth(),
   collapsed: readInitialCollapsed(),
   peeking: false,
+  narrow: false,
 };
+// 대기열 레일 고정(펼친 채 두기)은 STATUS 축과 같은 세션 메모리다 — War Room을 드나들 때마다
+// 레일로 돌아오고, 새 페이지 로드에서도 레일부터 시작한다.
+let queueRailPinned = false;
+const queueRailPinnedListeners = new Set<() => void>();
+// Cruise/Tactical의 레일로 좁히기는 접힘처럼 사용자가 고른 크롬 배치라 localStorage에 남는다.
+const STORAGE_KEY_NARROW = "fleet-console.operations.side-narrow";
+let mapNarrow = readInitialMapNarrow();
+const mapNarrowListeners = new Set<() => void>();
+
+function readInitialMapNarrow(): boolean {
+  try {
+    return typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_NARROW) === "true";
+  } catch {
+    return false;
+  }
+}
 let collapsedTheaterIds = readInitialCollapsedTheaters();
 // STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
 // 합류시키지 않아 새 페이지 로드마다 GROUP 축(false)에서 시작한다.
@@ -114,6 +136,59 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
   } catch { /* ignore */ }
   notifyCollapsedTheaterListeners();
+}
+
+/** 카드가 실제로 차지하는 폭 — 접힘 0, 대기열 레일이면 레일 폭, 아니면 사용자가 정한 폭. */
+export function sideBarOccupiedWidth(state: SideBarState): number {
+  if (state.collapsed) return 0;
+  return state.narrow ? QUEUE_RAIL_WIDTH : state.width;
+}
+
+export function setSideBarNarrow(narrow: boolean): void {
+  if (sideBarState.narrow === narrow) return;
+  sideBarState = { ...sideBarState, narrow };
+  notifyListeners();
+}
+
+export function setSideBarMapNarrow(narrow: boolean): void {
+  if (mapNarrow === narrow) return;
+  mapNarrow = narrow;
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_NARROW, String(narrow));
+  } catch { /* ignore */ }
+  for (const listener of mapNarrowListeners) listener();
+}
+
+export function getSideBarMapNarrow(): boolean {
+  return mapNarrow;
+}
+
+export function subscribeSideBarMapNarrow(listener: () => void): () => void {
+  mapNarrowListeners.add(listener);
+  return () => mapNarrowListeners.delete(listener);
+}
+
+export function useSideBarMapNarrow(): boolean {
+  return useSyncExternalStore(subscribeSideBarMapNarrow, getSideBarMapNarrow, getSideBarMapNarrow);
+}
+
+export function setQueueRailPinned(pinned: boolean): void {
+  if (queueRailPinned === pinned) return;
+  queueRailPinned = pinned;
+  for (const listener of queueRailPinnedListeners) listener();
+}
+
+export function getQueueRailPinned(): boolean {
+  return queueRailPinned;
+}
+
+export function subscribeQueueRailPinned(listener: () => void): () => void {
+  queueRailPinnedListeners.add(listener);
+  return () => queueRailPinnedListeners.delete(listener);
+}
+
+export function useQueueRailPinned(): boolean {
+  return useSyncExternalStore(subscribeQueueRailPinned, getQueueRailPinned, getQueueRailPinned);
 }
 
 export function setSideBarStatusAxis(active: boolean): void {

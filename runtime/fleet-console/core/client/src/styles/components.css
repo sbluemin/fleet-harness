@@ -2624,12 +2624,6 @@
   content: none;
 }
 
-/* 24px 높이의 좁은 세그먼트(사이드바 축)는 다텀도 한 치수 좁게 선다. */
-.operations-side-bar-axis > .segmented-thumb::after {
-  bottom: 2px;
-  width: 12px;
-}
-
 /* 고대비(forced-colors) — 워시·다텀·그림자가 모두 걷히는 환경에서는 선택을 시스템
    선택색으로 직접 말한다. 썸 장식은 배경을 잃어 유령이 되므로 감추고, 자체 face 소거
    규칙(:has)보다 나중에 같은 대상을 다시 세워 폴백 face가 항상 이긴다. */
@@ -2638,8 +2632,7 @@
 
   .segmented-option.is-active,
   .segmented:has(> .segmented-thumb.is-placed) .segmented-option.is-active,
-  .operations-side-bar-axis-seg[aria-pressed="true"],
-  .operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"],
+  .side-bar-status-view-toggle[aria-pressed="true"],
   .canvas-operation-icon-button.is-active,
   .fleet-caption-action[aria-pressed="true"],
   .codex-reader-tool[aria-pressed="true"],
@@ -5330,6 +5323,196 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding-top: var(--space-1);
 }
 
+/* 펼친 목록의 몸통 — 두 사이드바가 같은 래퍼를 쓴다. Map 사이드바는 Theater 목록 하나가 몸통을
+   채우고, War Room은 섹션 목록과 두 선반을 한 열로 세운다. 선반은 목록 뒤에 흐른다(카드 바닥에
+   고정하지 않는다 — 목록과 선반 사이의 빈 면이 War Room 사이드바의 구멍이었다). */
+.side-bar-wide {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.triage-side-bar .side-bar-wide > .operations-side-bar-chips {
+  flex: 0 1 auto;
+}
+
+.triage-side-bar-empty {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+}
+
+/* ── 좁힌 레일 ────────────────────────────────────────────────────────────
+   왼쪽 열은 64px 레일로 좁혀 설 수 있다. War Room은 상태 묶음(덱이 Theater 띠와 건수를 이미
+   말한다), Cruise/Tactical은 Theater 묶음이다. 호버로 사용자 폭까지 펼쳐지는 오버레이이며(인셋
+   불참), 스트립 토글로 다시 넓힌다. 키보드는 그 토글로 펼친다 — focus-within 펼침은 포커스한
+   타일을 감춰 포커스를 잃는다. 상태별 보기(Alt+S)와 좁히기는 서로 다른 축이라 같이 켤 수 있다. */
+.operations-side-bar.is-narrow {
+  width: var(--queue-rail-width, 64px);
+}
+
+/* 엣지 독이 되부른 픽(.is-peeking)은 호버 펼침과 같은 상태다 — 접힌 레일을 가장자리에서 되부르면
+   카드는 사용자 폭으로 서므로 내용도 펼친 목록이어야 한다. 레일 타일이 넓은 카드 가운데 서는
+   것은 두 규칙이 어긋난 결함이었다. */
+.operations-side-bar.is-narrow:hover,
+.operations-side-bar.is-narrow.is-peeking {
+  width: var(--side-bar-width, 280px);
+}
+
+.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-wide,
+.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-top-strip-eyebrow,
+.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-status-view-toggle:not(.side-bar-narrow-toggle),
+.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-collapse {
+  display: none;
+}
+
+.operations-side-bar.is-narrow:hover .side-bar-rail-sections,
+.operations-side-bar.is-narrow.is-peeking .side-bar-rail-sections {
+  display: none;
+}
+
+.operations-side-bar.is-narrow .side-bar-top-strip {
+  justify-content: center;
+}
+
+.operations-side-bar.is-narrow:hover .side-bar-top-strip,
+.operations-side-bar.is-narrow.is-peeking .side-bar-top-strip {
+  justify-content: flex-start;
+}
+
+.side-bar-rail-sections,
+.side-bar-rail-tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.side-bar-rail-sections {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-3);
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.side-bar-rail-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Theater 묶음의 머리 — 목록 헤더와 같은 이니셜 타일이 선다. 활성 Theater는 brass 링(위치 채널). */
+.side-bar-rail-theater {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: pointer;
+}
+
+.side-bar-rail-theater:hover {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
+.side-bar-rail-section--theater.is-active .side-bar-rail-theater {
+  border-color: var(--brass);
+}
+
+.side-bar-rail-theater:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.side-bar-rail-tile.is-minimized {
+  opacity: 0.55;
+}
+
+/* 섹션 표식 — 헤더의 신호색 점과 건수를 40px 열에 맞춰 한 줄로 줄인 것. 색 채널은 상태 헤더와 같다. */
+.side-bar-rail-section-mark {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 40px;
+  padding: 0 var(--space-1);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-bar-rail-section-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--activity-color, var(--ink-fog));
+}
+
+.side-bar-rail-section--awaiting { --activity-color: var(--aurora); }
+.side-bar-rail-section--running { --activity-color: var(--warn); }
+.side-bar-rail-section--idle { --activity-color: var(--positive); }
+.side-bar-rail-section--shelved,
+.side-bar-rail-section--empty { --activity-color: var(--ink-fog); }
+
+.side-bar-rail-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 타일 — Theater 이니셜 + 비콘. 활성(무대)은 brass 링으로만 말한다(위치 채널). */
+.side-bar-rail-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: var(--control-wash);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-rail-tile:hover {
+  background: var(--control-hover-fill);
+  border-color: var(--control-hover-rim);
+  color: var(--text-primary);
+}
+
+.side-bar-rail-tile.is-active {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+}
+
+.side-bar-rail-tile:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.side-bar-rail-tile-beacon {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
 .triage-side-bar-dormant-shelf {
   flex: none;
   border-top: 1px solid var(--surface-rim);
@@ -5358,18 +5541,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-.side-bar-status-recovery-shelves {
-  list-style: none;
-}
-
-.side-bar-status-recovery-shelf {
-  min-width: 0;
-}
-
-.side-bar-status-recovery-shelf .side-bar-status-section {
-  padding-bottom: 0;
 }
 
 .side-bar-theater-error {
@@ -5424,84 +5595,65 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--text-primary);
 }
 
-/* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
-   .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
-   새 어휘가 아니다. 눌림은 Quiet Controls C′의 워시+다텀이 말하고 상자는 없다.
-   바깥 여백은 top-strip이 소유한다. */
-.operations-side-bar-axis {
-  position: relative;
-  display: flex;
+/* 스트립의 낱말 — 목록의 읽는 법(Theater 묶음 · 상태별 · 대기열)을 상태 캡션과 같은 모노 소문자로 말한다. */
+.side-bar-top-strip-eyebrow {
   flex: 1;
-  align-items: center;
-  gap: var(--space-1);
   min-width: 0;
+  padding-left: var(--space-2);
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.operations-side-bar-axis-seg {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  /* 커맨드 밴드 .command-band-mode-seg와 같은 치수·서체다 — 좁은 열에 맞춘 변종이 아니라
-     같은 세그먼트여야 두 표면의 뷰 스위치가 한 어휘로 읽힌다. 폭만 열을 채우도록 늘린다. */
+/* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 레일 아이콘의 켜짐과 같은 문법
+   (brass 잉크 · 어두운 면 · rim-strong 테두리)이라 왼쪽 열과 오른쪽 열의 "지금 이 보기"가 한 어휘다. */
+.side-bar-status-view-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
   height: 24px;
-  padding: 0 var(--space-2);
-  /* 이웃 행 버튼과 같은 보더 링 hover 문법 — 채움형 사각 hover 금지. */
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
 }
 
-.operations-side-bar-axis-seg:hover {
-  background: var(--control-wash-hover);
-  color: var(--text-secondary);
+.side-bar-status-view-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 
-.operations-side-bar-axis-seg[aria-pressed="true"] {
-  background: var(--control-wash);
+.side-bar-status-view-toggle:hover,
+.side-bar-status-view-toggle:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
-.operations-side-bar-axis-seg[aria-pressed="true"]::after {
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
-  width: 12px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  transform: translateX(-50%);
-  content: "";
+.side-bar-status-view-toggle[aria-pressed="true"] {
+  color: var(--brass-ink);
+  border-color: var(--surface-rim-strong);
+  background: var(--ink-deep);
 }
 
-.operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"] {
-  background: transparent;
-}
-
-.operations-side-bar-axis:has(> .segmented-thumb.is-placed) .operations-side-bar-axis-seg[aria-pressed="true"]::after {
-  content: none;
-}
-
-.operations-side-bar-axis-seg:focus-visible {
+.side-bar-status-view-toggle:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
 
 .operations-side-bar-chips {
   flex: 1;
+  min-height: 0;
   list-style: none;
   margin: 0;
   padding: var(--space-1) 0;
@@ -6344,7 +6496,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     transition: none;
   }
 
-  .operations-side-bar-axis-seg {
+  .side-bar-status-view-toggle {
     transition: none;
   }
 

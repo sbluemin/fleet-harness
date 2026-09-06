@@ -639,6 +639,7 @@ export const ledgerEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
   panes: ["ledger"],
+  scope: "fleet",
 };
 
 /** 지표판 한 열. 옆에 설 상세가 없으므로 detail 페인도 없다. */

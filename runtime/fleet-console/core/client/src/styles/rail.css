@@ -230,6 +230,12 @@
   border-left: 1px solid var(--surface-rim);
 }
 
+/* 톱니를 열 꼬리(카드 바닥)로 밀어내는 숨 — 도구 열과 톱니 사이의 남는 높이를 먹는다. */
+.right-rail-spacer {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
 .right-rail-ico {
   width: 32px;
   height: 32px;

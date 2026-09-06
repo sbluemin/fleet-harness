@@ -1018,6 +1018,7 @@ export const quotaEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("quota.panel.title"),
   icon: QuotaIcon,
   panes: ["quota"],
+  scope: "fleet",
 };
 
 /** 계기판 한 열. 카드 순서와 접힘은 서버에 남으므로 닫혀도 잃을 것이 없다. */

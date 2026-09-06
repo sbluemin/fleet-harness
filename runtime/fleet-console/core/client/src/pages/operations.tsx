@@ -25,7 +25,7 @@ import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { TriageSideBar } from "../sidebar/triage-side-bar.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
-import { toggleSideBarStatusAxis, useSideBarState } from "../sidebar/operations-side-bar-store.js";
+import { setSideBarNarrow, sideBarOccupiedWidth, toggleSideBarStatusAxis, useQueueRailPinned, useSideBarMapNarrow, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import { useRailOccupiedPx } from "../rail/rail-store.js";
 import { ExpandedSurfaceLayer } from "../expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -77,13 +77,22 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
   // Cruise는 인셋을 알고 Tactical은 모르는 감사 실패 양식이 재발한다.
   const sideBar = useSideBarState();
+  const queueRailPinned = useQueueRailPinned();
+  const mapNarrow = useSideBarMapNarrow();
+  // 왼쪽 열은 64px 레일로 좁혀 설 수 있다. War Room은 레일이 기본이다 — 덱이 이미 Theater 띠와
+  // 건수를 말하므로 순서와 비콘만 남기고, 고정(펼친 채 두기)하면 세션 안에서 사용자 폭이다.
+  // Cruise/Tactical은 사용자가 고른 배치(localStorage)다. 호버 펼침은 오버레이라 인셋에 불참한다.
+  useEffect(() => {
+    setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);
+  }, [triageActive, queueRailPinned, mapNarrow]);
   const railOccupiedPx = useRailOccupiedPx();
+  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar);
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
-    left: sideBar.collapsed ? 0 : sideBar.width + CHROME_FLOAT_GUTTER,
+    left: sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     top: 0,
     right: railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     bottom: 0,
-  }), [railOccupiedPx, sideBar.collapsed, sideBar.width]);
+  }), [railOccupiedPx, sideBarOccupiedPx]);
   useEffect(() => {
     setCanvasArenaInsets(arenaInsets);
   }, [arenaInsets]);
@@ -735,6 +744,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <TriageSideBar
           theaters={state.theaters}
           operations={state.operations}
+          groups={state.groups}
           operationRuntime={state.operationRuntime}
           operationNotifications={state.operationNotifications}
           catalog={catalog}

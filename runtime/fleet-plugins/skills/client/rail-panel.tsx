@@ -229,6 +229,7 @@ export const skillsEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("skills.panel.title"),
   icon: SkillsIcon,
   panes: ["skills"],
+  scope: "fleet",
 };
 
 /**

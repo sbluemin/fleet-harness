@@ -98,6 +98,12 @@ export interface RailEntryDescriptor {
   readonly icon: ReactNode | (() => ReactNode);
   readonly side?: "right";
   /**
+   * 이 도구가 다루는 범위. `theater`(기본)는 활성 Theater의 파일·저장소·Shell처럼 지금 서 있는
+   * 작전구역을 다루고, `fleet`은 스킬·원장·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
+   * 구분선으로 갈라 세운다 — 순서는 범위 안에서 등록 순서 그대로다.
+   */
+  readonly scope?: "theater" | "fleet";
+  /**
    * 이 엔트리가 레일 표면에 세우는 페인들의 id. 순서가 곧 왼쪽부터의 배치이며, 호스트는
    * 이 목록에서 `role: "primary"`인 것을 처음에 세우고 나머지는 `panes.open`을 기다린다.
    *

@@ -14,7 +14,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
-import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
+import { sideBarOccupiedWidth, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPeeking } from "./rail-store.js";
@@ -78,13 +78,17 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
   // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
   // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
-  const pluginRuns: { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] }[] = [];
+  // 범위(entry.scope)만은 순서 위에 선다: Theater를 다루는 도구가 먼저, Console 전체의 도구가
+  // 구분선 아래 — 각 범위 안에서는 합성 순서 그대로다.
+  type PluginRun = { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] };
+  const runsByScope: Record<"theater" | "fleet", PluginRun[]> = { theater: [], fleet: [] };
   for (const binding of bindings) {
     if (binding.core) continue;
+    const runs = runsByScope[binding.entry.scope ?? "theater"];
     const kind = binding.panes.length > 0 ? "panes" : "action";
-    const tail = pluginRuns[pluginRuns.length - 1];
+    const tail = runs[runs.length - 1];
     if (tail !== undefined && tail.kind === kind) tail.bindings.push(binding);
-    else pluginRuns.push({ kind, key: binding.entry.id, bindings: [binding] });
+    else runs.push({ kind, key: binding.entry.id, bindings: [binding] });
   }
   // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
   const { instances: openSurfaces } = useExpandedSurfaces();
@@ -103,7 +107,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 겹침을 막아 주지 않는다. 레일 폭 상한이 이 점유를 빼지 않으면 드래그·End 키 한 번에
   // 레일 카드가 사이드바 카드를 덮는다(Codex 리뷰 확정). 아레나 좌측 인셋과 같은 산식이다.
   const sideBar = useSideBarState();
-  const sideBarOccupiedPx = sideBar.collapsed ? 0 : sideBar.width + 24;
+  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + 24 : 0;
   // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
   const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
@@ -316,10 +320,23 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         >
           {railPeeking ? <RailKeepOpenGlyph /> : <RailCollapseGlyph />}
         </button>
-        {/* 설정은 창 동사 아래, 도구 열의 머리에 서고 디바이더가 패널 탭과 갈라 놓는다 —
-            콘솔을 다스리는 일과 작업 패널을 고르는 일은 다른 종류의 동작이다. 톱니는 이제
-            메뉴가 아니라 설정 표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로
-            "지금 여기"를 말한다. */}
+        {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
+            설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
+        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+          {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
+          ))}
+        </div>
+        {renderRuns(runsByScope.theater)}
+        {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0
+          ? <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
+          : null}
+        {renderRuns(runsByScope.fleet)}
+        {/* 설정은 열의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
+            구분선 아래 마지막 자리(VS Code Manage와 같은 자리, 카드 바닥)에 둔다. 톱니는 메뉴가 아니라 설정
+            표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
+        <span className="right-rail-spacer" aria-hidden="true" />
+        <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
         <button
           id="rail-settings-toggle"
           type="button"
@@ -332,15 +349,12 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         >
           <GearGlyph />
         </button>
-        <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
-        {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
-            설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
-        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-          {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
-          ))}
-        </div>
-        {pluginRuns.map((run) => run.kind === "action"
+      </nav>
+    </div>
+  );
+
+  function renderRuns(runs: readonly PluginRun[]) {
+    return runs.map((run) => run.kind === "action"
           ? (
             <Fragment key={run.key}>
               {run.bindings.map(({ entry }) => (
@@ -362,10 +376,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
                 <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
               ))}
             </div>
-          ))}
-      </nav>
-    </div>
-  );
+          ));
+  }
 }
 
 interface RailSectionProps {

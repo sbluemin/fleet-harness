@@ -5,12 +5,12 @@ import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
-import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { OperationStatusIcon } from "../components/operation-status-icon.js";
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -27,18 +27,19 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
+import { SideBarCollapseControl, SideBarNarrowToggle, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
 import {
   consumeStatusLandings,
   setSideBarCollapsed,
   setSideBarPeeking,
-  setSideBarStatusAxis,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
   trackOperationActivityTransitions,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
+  setSideBarMapNarrow,
+  useSideBarMapNarrow,
   useSideBarState,
   useSideBarStatusAxis,
   useSideBarStatusSectionCollapsed,
@@ -274,22 +275,28 @@ function StatusRecoveryShelves({
   readonly dormantSection: StatusSection;
   readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "ended") => ReactNode;
 }) {
+  // 0건 선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
+  if (minimizedSection.entries.length === 0 && dormantSection.entries.length === 0) return null;
   return (
     <li className="side-bar-status-recovery-shelves">
-      <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
-          <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
-            {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
-          </StatusSectionSlot>
-        </ol>
-      </section>
-      <footer className="triage-side-bar-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <ol className="triage-side-bar-dormant-list" aria-label={dormantSection.label}>
-          <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
-            {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
-          </StatusSectionSlot>
-        </ol>
-      </footer>
+      {minimizedSection.entries.length > 0 ? (
+        <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
+            <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
+              {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
+            </StatusSectionSlot>
+          </ol>
+        </section>
+      ) : null}
+      {dormantSection.entries.length > 0 ? (
+        <footer className="triage-side-bar-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <ol className="triage-side-bar-dormant-list" aria-label={dormantSection.label}>
+            <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
+              {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
+            </StatusSectionSlot>
+          </ol>
+        </footer>
+      ) : null}
     </li>
   );
 }
@@ -343,6 +350,8 @@ export function OperationsSideBar({
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
   const statusAxis = useSideBarStatusAxis();
+  const mapNarrow = useSideBarMapNarrow();
+  const narrow = sideBar.narrow;
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
@@ -913,7 +922,7 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
+      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${narrow ? " is-narrow" : ""}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}
@@ -933,40 +942,75 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 축은 목록 전체를 다시 쓰는 하나짜리 세션 스위치다 — Theater 행에 두면 배치가 국소라고
-          말하면서 효과는 전역이라 읽는 사람이 스코프를 오해한다. 목록 위 고정 스트립에
-          한 번만 서고, 눌림이 아니라 낱말로 현재 축을 말한다. Theater가 없으면 정리할
-          목록도 없으므로 스트립도 서지 않는다. 스트립 우단은 패널 자신의 접기 컨트롤이
-          맡는다(Periscope — 밴드 토글 퇴역). */}
+      {/* 스트립은 목록의 제목줄이다 — 왼쪽 낱말이 지금 목록을 어떻게 읽는지(Theater 묶음 · 상태별)
+          말하고, 오른쪽의 두 토글이 상태별 보기와 레일로 좁히기를 뒤집는다. 상태별 보기는 목록
+          전체를 다시 쓰는 하나짜리 세션 스위치라 Theater 행이 아니라 여기 한 번만 선다. Theater가
+          없으면 정리할 목록도 없으므로 낱말과 토글도 서지 않는다. 스트립 우단은 패널 자신의 접기
+          컨트롤이 맡는다(Periscope — 밴드 토글 퇴역). 레일 상태에서는 낱말이 접히고 토글만 남는다. */}
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
-        <div className="operations-side-bar-axis" role="group" aria-label={t("sidebar.axis.aria")}>
-          <SegmentedThumb />
-          <button
-            type="button"
-            className="operations-side-bar-axis-seg"
-            data-axis="group"
-            aria-pressed={!statusAxis}
-            title={t("sidebar.axis.groupTitle")}
-            onClick={() => setSideBarStatusAxis(false)}
-          >
-            {t("sidebar.axis.group")}
-          </button>
-          <button
-            type="button"
-            className="operations-side-bar-axis-seg"
-            data-axis="status"
-            aria-pressed={statusAxis}
-            title={t("sidebar.theater.sortByStatusTitle")}
-            onClick={() => setSideBarStatusAxis(true)}
-          >
-            {t("sidebar.axis.status")}
-          </button>
-        </div>
+          <>
+            <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
+            <SideBarStatusViewToggle active={statusAxis} />
+            <SideBarNarrowToggle narrow={mapNarrow} onToggle={() => setSideBarMapNarrow(!mapNarrow)} />
+          </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
         <SideBarCollapseControl />
       </div>
 
+      {/* 좁힌 레일 — Theater 이니셜 타일이 묶음의 머리에 서고, 그 아래 Operation 타일이 제목 이니셜과
+          비콘으로 선다(묶음이 이미 말하는 Theater는 타일이 되풀이하지 않는다). 순서는 펼친 목록과
+          같다. 호버로 펼친 목록이 오버레이로 서고, 토글로 다시 넓힌다. */}
+      {narrow ? (
+        <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.railAria")}>
+          {theaters.map((theater) => {
+            const theaterCanvas = theater.id === activeTheaterId ? canvas : getTheaterCanvasSnapshot(theater.id);
+            const railEntries = theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
+              theaterId: theater.id,
+              operations,
+              operationOrder: theaterCanvas.operationOrder,
+              minimizedSet: new Set(theaterCanvas.minimized),
+              activeOperationId: null,
+              operationNotifications,
+              operationRuntime,
+            });
+            const isActiveTheater = theater.id === activeTheaterId;
+            return (
+              <li key={theater.id} className={`side-bar-rail-section side-bar-rail-section--theater${isActiveTheater ? " is-active" : ""}`}>
+                <button
+                  type="button"
+                  className="side-bar-rail-theater"
+                  aria-label={isActiveTheater ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
+                  title={theater.label}
+                  aria-current={isActiveTheater ? "true" : undefined}
+                  onClick={() => onSelectTheater(theater.id)}
+                >
+                  <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
+                </button>
+                <ol className="side-bar-rail-tiles">
+                  {railEntries.map((entry) => (
+                    <li key={entry.operation.id}>
+                      <button
+                        type="button"
+                        className={`side-bar-rail-tile${entry.active ? " is-active" : ""}${entry.minimized ? " is-minimized" : ""}`}
+                        aria-label={entry.operation.title}
+                        title={entry.operation.title}
+                        aria-current={entry.active ? "true" : undefined}
+                        onClick={() => onFocus(entry.operation.id)}
+                      >
+                        <span className="side-bar-rail-tile-initials" aria-hidden="true">{theaterInitials(entry.operation.title)}</span>
+                        <OperationStatusIcon status={entry.mark ?? entry.status} decorative className="side-bar-rail-tile-beacon" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+
+      <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
@@ -1065,7 +1109,7 @@ export function OperationsSideBar({
               />
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
-                {statusAxis ? statusSections.map((section) => (
+                {statusAxis ? statusSections.filter((section) => section.entries.length > 0).map((section) => (
                   <StatusSectionSlot
                     key={section.status}
                     theaterId={theater.id}
@@ -1186,8 +1230,9 @@ export function OperationsSideBar({
           </button>
         </li>
       </ol>
+      </div>
 
-      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
+      {narrow ? null : <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />}
 
       {newMenu ? createPortal(
         <CanvasContextMenu
@@ -1647,7 +1692,7 @@ function TheaterInactiveSection({
       />
       {!collapsed && (statusAxis ? statusSections.length : sections.length) > 0 ? (
         <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
-          {statusAxis ? statusSections.map((section) => (
+          {statusAxis ? statusSections.filter((section) => section.entries.length > 0).map((section) => (
             <StatusSectionSlot
               key={section.status}
               theaterId={theater.id}

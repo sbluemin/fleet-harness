@@ -7,25 +7,27 @@ import type { OperationRuntimeState, FleetClientPlugin } from "@fleet-console/sd
 
 import { useT } from "../i18n/index.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { OperationStatusIcon } from "../components/operation-status-icon.js";
 import { resumeOperationInPlace } from "../operation-actions.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
-import type { OperationNode, OperationNotification } from "../types.js";
+import type { OperationGroup, OperationNode, OperationNotification } from "../types.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
+import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, theaterInitials, type StatusSection } from "./operations-side-bar.js";
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
-import { setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
-import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
+import { consumeStatusLandings, getStatusTransitionTick, setQueueRailPinned, setSideBarPeeking, useQueueRailPinned, useSideBarState } from "./operations-side-bar-store.js";
+import { SideBarCollapseControl, SideBarNarrowToggle } from "./side-bar-collapse-control.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
 // Theater 키가 아니라 전역 선별 고유 키 하나로 접힘을 기억한다.
 const TRIAGE_SIDE_BAR_SECTION_KEY = "__triage__";
 const EMPTY_MINIMIZED: ReadonlySet<string> = new Set();
+const STATUS_LANDING_DURATION_MS = 500;
 
 // 전역 선별 목록도 Map 사이드바의 표현 문법(상태 섹션 헤더 + 칩)을 그대로 쓴다 — 모드가 바뀌어도
 // 왼쪽 열의 읽는 법이 바뀌지 않아야 한다. 세 living 섹션은 큐 문법을 공유하되, 휴면은 큐에 합류하지
@@ -36,7 +38,7 @@ export function resolveTriageSideBarSections(
   t?: Parameters<typeof groupOperationsByStatus>[2],
 ): StatusSection[] {
   const queueIndexById = new Map(queue.map((entry, index) => [entry.operation.id, index]));
-  return groupOperationsByStatus(entries, undefined, t).map((section) => section.status !== "awaiting"
+  return groupOperationsByStatus(entries, getStatusTransitionTick, t).map((section) => section.status !== "awaiting"
     ? section
     : {
         ...section,
@@ -49,6 +51,8 @@ export function resolveTriageSideBarSections(
 interface TriageSideBarProps {
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
+  /** 그룹 마크(이름·id 톤) — 평면 목록에서도 칩은 자기 그룹을 정체성 채널로만 말한다. */
+  readonly groups?: readonly OperationGroup[];
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
@@ -66,6 +70,7 @@ interface TriageSideBarProps {
 export function TriageSideBar({
   theaters,
   operations,
+  groups = [],
   operationRuntime,
   operationNotifications,
   catalog,
@@ -90,7 +95,38 @@ export function TriageSideBar({
   // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — ⌘B와 패널 접기 컨트롤이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
+  const queueRailPinned = useQueueRailPinned();
+  const narrow = sideBar.narrow;
   const rootRef = useRef<HTMLElement | null>(null);
+  // 상태 착지 flash — 칩이 다른 섹션으로 옮겨 앉은 순간을 0.5초 aurora로 알린다. 착지는
+  // 전이 추적(App 구독)이 쌓고 이 목록이 소비한다. Theater 묶음 카드는 섹션이 없어 소비하지 않는다.
+  const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
+  const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
+  const statusSignature = operations
+    .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationRuntime)}`)
+    .join("\0");
+  useEffect(() => {
+    const landedIds = consumeStatusLandings();
+    if (landedIds.length === 0) return;
+    setStatusLandingIds((current) => {
+      const next = new Set(current);
+      for (const id of landedIds) next.add(id);
+      return next;
+    });
+    const timeoutId = window.setTimeout(() => {
+      statusLandingTimeoutsRef.current.delete(timeoutId);
+      setStatusLandingIds((current) => {
+        const next = new Set(current);
+        for (const id of landedIds) next.delete(id);
+        return next.size === current.size ? current : next;
+      });
+    }, STATUS_LANDING_DURATION_MS);
+    statusLandingTimeoutsRef.current.add(timeoutId);
+  }, [statusSignature]);
+  useEffect(() => () => {
+    for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
+    statusLandingTimeoutsRef.current.clear();
+  }, []);
   const previousCollapsedRef = useRef(sideBar.collapsed);
   // Map 사이드바와 같은 접힘 포커스 인계 — 접히는 순간 포커스가 카드 안에 있으면 inert에
   // 버려지기 전에 엣지 독 트리거로 넘긴다(Codex P2).
@@ -136,6 +172,10 @@ export function TriageSideBar({
   const queue = resolveTriageQueue(operations, operationRuntime);
   const stagedOperationId = getTriagePick() ?? queue[0]?.operation.id ?? null;
   const theaterLabelById = new Map(theaters.map((theater) => [theater.id, theater.label]));
+  const groupMarkByGroupId = new Map(groups.map((group) => {
+    const color = resolveAccentColor(group.color);
+    return [group.id, color ? { name: group.name, color } : null] as const;
+  }));
   const entries = theaters.flatMap((theater) => buildTheaterEntries({
     theaterId: theater.id,
     operations,
@@ -161,9 +201,13 @@ export function TriageSideBar({
   const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "ended");
   const endedSection = sections.find((section) => section.status === "ended");
-  const dormantSection = endedSection
+  // 0건 섹션과 0건 선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다. 살아 있는 섹션이
+  // 하나도 없을 때만 한 줄로 그 사실을 말한다.
+  const visibleLivingSections = livingSections.filter((section) => section.entries.length > 0);
+  const dormantSection = endedSection && endedSection.entries.length > 0
     ? { ...endedSection, label: t("triageSidebar.dormantShelf") }
     : undefined;
+  const shelvedCount = minimizedEntries.length + (dormantSection?.entries.length ?? 0);
   const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none") => {
     const dormant = shelf === "ended";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
@@ -184,8 +228,10 @@ export function TriageSideBar({
         index={index}
         isCloseArmed={armedCloseId === entry.operation.id}
         accentValue={accentKey ? resolveAccentColor(accentKey) : null}
+        groupMark={entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null}
         theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
         statusAxis
+        statusLanded={shelf === "none" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
         minimizeEnabled={false}
         menuEnabled={!dormant && onOpenOperationMenu !== undefined}
@@ -205,10 +251,26 @@ export function TriageSideBar({
       />
     );
   };
+  // 레일 타일 — 이름 대신 Theater 이니셜과 비콘으로 서는 대기열. 순서·섹션은 펼친 목록과 같다.
+  const renderTile = (entry: SideBarEntry) => (
+    <li key={entry.operation.id}>
+      <button
+        type="button"
+        className={`side-bar-rail-tile${entry.active ? " is-active" : ""}`}
+        aria-label={`${entry.operation.title} · ${theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}`}
+        title={`${entry.operation.title} · ${theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}`}
+        aria-current={entry.active ? "true" : undefined}
+        onClick={() => onPick(entry.operation.id)}
+      >
+        <span className="side-bar-rail-tile-initials" aria-hidden="true">{theaterInitials(theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId)}</span>
+        <OperationStatusIcon status={entry.mark ?? entry.status} decorative className="side-bar-rail-tile-beacon" />
+      </button>
+    </li>
+  );
   return (
     <aside
       ref={rootRef}
-      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
+      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${narrow ? " is-narrow" : ""}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
       data-resizing={resizing ? "true" : undefined}
@@ -224,32 +286,62 @@ export function TriageSideBar({
         setSideBarPeeking(false);
       }}
     >
-      {/* 접기 컨트롤은 두 사이드바가 같은 문법으로 소유한다 — 선별 사이드바에는 축 스트립이
-          없으므로 스트립은 컨트롤 하나를 우단에 세우는 자리로만 선다. */}
+      {/* 스트립 — 낱말(대기열)이 이 목록의 읽는 법을 말하고, 그 옆의 토글이 레일로 좁히기/펼치기를
+          뒤집는다(War Room은 레일이 기본이라 펼침은 세션 안의 고정이다). 우단은 두 사이드바가 같은
+          문법으로 소유하는 접기 컨트롤이다. 레일 상태에서는 낱말이 접히고 토글만 남는다. */}
       <div className="side-bar-top-strip">
-        <span className="side-bar-top-strip-spacer" aria-hidden="true" />
+        <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.queueEyebrow")}</span>
+        <SideBarNarrowToggle narrow={!queueRailPinned} onToggle={() => setQueueRailPinned(!queueRailPinned)} />
         <SideBarCollapseControl />
       </div>
-      {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·유휴는 War Room이 읽는
-          축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
-          "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}
+      {/* 좁힌 대기열 레일 — 덱이 Theater 띠와 건수를 이미 말하므로 여기서는 상태 묶음의 순서와 비콘만
+          남긴다. 타일은 Theater 이니셜이다(묶음이 말하지 않는 것을 타일이 말한다). */}
+      {narrow ? (
+        <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.queueRailAria")}>
+          {visibleLivingSections.map((section) => (
+            <li key={section.status} className={`side-bar-rail-section side-bar-rail-section--${section.status}`}>
+              <span className="side-bar-rail-section-mark" aria-label={`${section.label} ${section.entries.length}`} title={`${section.label} ${section.entries.length}`}>
+                <span className="side-bar-rail-section-dot" aria-hidden="true" />
+                <span className="side-bar-rail-section-count">{section.entries.length}</span>
+              </span>
+              <ol className="side-bar-rail-tiles">{section.entries.map(renderTile)}</ol>
+            </li>
+          ))}
+          {visibleLivingSections.length === 0 ? (
+            <li className="side-bar-rail-section side-bar-rail-section--empty" aria-label={t("sidebar.view.empty")} title={t("sidebar.view.empty")}>
+              <span className="side-bar-rail-section-mark"><span className="side-bar-rail-section-dot" aria-hidden="true" /><span className="side-bar-rail-section-count">0</span></span>
+            </li>
+          ) : null}
+          {shelvedCount > 0 ? (
+            <li className="side-bar-rail-section side-bar-rail-section--shelved">
+              <span className="side-bar-rail-section-mark" aria-label={`${minimizedSection.label} ${minimizedEntries.length}${dormantSection ? ` · ${dormantSection.label} ${dormantSection.entries.length}` : ""}`}>
+                <span className="side-bar-rail-section-dot" aria-hidden="true" />
+                <span className="side-bar-rail-section-count">{shelvedCount}</span>
+              </span>
+            </li>
+          ) : null}
+        </ol>
+      ) : null}
+      <div className="side-bar-wide">
       <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
-        {livingSections.map((section) => (
+        {visibleLivingSections.map((section) => (
           <StatusSectionSlot key={section.status} theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={section}>
             {section.entries.map((entry, index) => renderChip(entry, index))}
           </StatusSectionSlot>
         ))}
+        {visibleLivingSections.length === 0 ? <li className="triage-side-bar-empty">{t("sidebar.view.empty")}</li> : null}
       </ol>
       {/* 최소화 선반은 휴면 선반과 같은 문법을 쓰되 그 위에 선다 — 내가 직접 내린 것이 세션이 스스로
-          잠든 것보다 손에 가깝다. 휴면처럼 0건이어도 자리를 지킨다: 되찾을 곳이 상황에 따라 나타났다
-          사라지면 어디를 봐야 하는지가 매번 달라진다. */}
-      <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
-          <StatusSectionSlot theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={minimizedSection}>
-            {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
-          </StatusSectionSlot>
-        </ol>
-      </section>
+          잠든 것보다 손에 가깝다. 두 선반은 목록 뒤에 흐른다 — 바닥에 고정하면 목록과 선반 사이가 빈다. */}
+      {minimizedEntries.length > 0 ? (
+        <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
+            <StatusSectionSlot theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={minimizedSection}>
+              {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
+            </StatusSectionSlot>
+          </ol>
+        </section>
+      ) : null}
       {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
           "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
           아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
@@ -266,7 +358,8 @@ export function TriageSideBar({
           </ol>
         </footer>
       ) : null}
-      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
+      </div>
+      {narrow ? null : <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />}
 
       {launchMenu ? createPortal(
         <CanvasContextMenu

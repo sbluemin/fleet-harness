@@ -105,21 +105,23 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     // 접힌 사이드바(:not(.is-closed))도 같은 이유로 배제한다 — 접혀도 자식은 DOM에 남고 폭 0 +
     // visibility:hidden으로만 가려지므로, 배제하지 않으면 사용자가 본 적 없는 안내가 재생되고
     // 시청 기록에 그대로 남는다.
+    // 대기열 레일(.is-narrow)도 같다 — 펼친 목록은 DOM에 있지만 display:none이라 앵커가 보이지 않는다.
+    // 안내는 사용자가 레일을 고정해 목록을 펼쳤을 때 재생된다.
     spotlight: null,
     deferAfterAnotherTour: true,
     walkthrough: [
       {
-        anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)",
+        anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)",
         titleKey: "featureTour.warRoomSidebar.step1Title",
         bodyKey: "featureTour.warRoomSidebar.step1Body",
       },
       {
-        anchor: ".triage-side-bar:not(.is-closed) .triage-side-bar-minimized-shelf .side-bar-status-header",
+        anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .triage-side-bar-minimized-shelf .side-bar-status-header",
         titleKey: "featureTour.warRoomSidebar.step2Title",
         bodyKey: "featureTour.warRoomSidebar.step2Body",
       },
       {
-        anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting .side-bar-chip",
+        anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .side-bar-status-section--awaiting .side-bar-chip",
         titleKey: "featureTour.warRoomSidebar.step3Title",
         bodyKey: "featureTour.warRoomSidebar.step3Body",
       },
