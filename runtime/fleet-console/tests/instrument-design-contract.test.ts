@@ -1963,7 +1963,7 @@ describe("Instrument core design contract", () => {
     const activeSection = components.match(/\.side-bar-theater-section--active \{[^}]*\}/)?.[0] ?? "";
     const headerHover = components.match(/\.side-bar-theater-header:hover,\n\.side-bar-theater-header:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const activeHeader = components.match(/\.side-bar-theater-header\.is-active \{[^}]*\}/)?.[0] ?? "";
-    const activeAnchor = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-anchor \{[^}]*\}/)?.[0] ?? "";
+    const activeAnchor = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-anchor,\s*\.side-bar-rail-section--theater\.is-active \.side-bar-theater-anchor \{[^}]*\}/)?.[0] ?? "";
     const activeName = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-name \{[^}]*\}/)?.[0] ?? "";
 
     // 활성은 구역 왼쪽 2px brass 스파인이 나른다. 헤더가 아니라 구역에 붙으므로 헤더가 스크롤
