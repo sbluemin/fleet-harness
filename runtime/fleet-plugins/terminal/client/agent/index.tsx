@@ -1726,7 +1726,10 @@ export function filterAiGatewayPalette(
   const tokens = query.trim().toLowerCase().split(/\s+/).filter((token) => token.length > 0);
   if (tokens.length === 0) return [...entries];
   return entries.filter(({ provider, family }) => {
-    const haystack = `${provider.id} ${providerLabel(provider.id)} ${family.name}`.toLowerCase();
+    // 변형의 카탈로그 이름·id도 건더기다 — 계열로 접으면 "K3-256K"·"gpt-6-astra-1m" 같은 정확한
+    // 이름이 계열 이름에서 사라지므로, 그 이름으로 찾는 사용자에게도 같은 계열이 걸려야 한다.
+    const variants = family.variants.map((variant) => `${variant.model.name} ${variant.model.id}`).join(" ");
+    const haystack = `${provider.id} ${providerLabel(provider.id)} ${family.name} ${variants}`.toLowerCase();
     return tokens.every((token) => haystack.includes(token));
   });
 }
@@ -1828,8 +1831,16 @@ function AiGatewayModelPalette({
 
   const pick = (hit: AiGatewayPaletteHit): void => {
     setPicked({ providerId: hit.provider.id, familyKey: hit.family.key });
-    // 기본 선택은 아직 켜지 않은 첫 칸. 전부 켜져 있으면 첫 칸을 두어 "이미 켜져 있음"이 보이게 한다.
-    const first = hit.family.variants.find((candidate) => !enabledIds.has(candidate.model.id)) ?? hit.family.variants[0];
+    // 검색어가 변형 이름("astra-1m", "K3-256K")을 짚었으면 그 칸을 먼저 놓는다. 그렇지 않으면 아직
+    // 켜지 않은 첫 칸이고, 전부 켜져 있으면 첫 칸을 두어 "이미 켜져 있음"이 보이게 한다.
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter((token) => token.length > 0);
+    const named = tokens.length > 0
+      ? hit.family.variants.find((candidate) =>
+        tokens.every((token) => `${candidate.model.name} ${candidate.model.id}`.toLowerCase().includes(token)))
+      : undefined;
+    const first = named
+      ?? hit.family.variants.find((candidate) => !enabledIds.has(candidate.model.id))
+      ?? hit.family.variants[0];
     setVariantId(first?.model.id ?? null);
     searchRef.current?.focus();
   };
@@ -1886,7 +1897,7 @@ function AiGatewayModelPalette({
           className="ai-gateway-palette-input"
           role="combobox"
           aria-expanded="true"
-          aria-controls={listboxId}
+          aria-controls={activeHit ? `${listboxId}-${activeHit.provider.id}` : undefined}
           aria-activedescendant={activeHit ? `${listboxId}-${activeHit.provider.id}-${activeHit.family.key}` : undefined}
           aria-autocomplete="list"
           aria-label={t("terminal.settings.aiGatewaySearchAria")}
@@ -1904,7 +1915,9 @@ function AiGatewayModelPalette({
         <kbd className="ai-gateway-palette-kbd" aria-hidden="true">↑↓</kbd>
         <kbd className="ai-gateway-palette-kbd" aria-hidden="true">Enter</kbd>
       </div>
-      <div className="ai-gateway-palette-list" role="listbox" id={listboxId} aria-label={t("terminal.settings.aiGatewayModels")}>
+      {/* 목록 전체가 listbox가 아니다 — 머리글에 로그인·순위·엔드포인트 컨트롤이 서므로, 옵션만 담는
+          listbox는 프로바이더마다 하나씩이고 바깥은 구조 없는 스크롤 면이다. */}
+      <div className="ai-gateway-palette-list">
         {headingProviders.map((provider) => {
           const rank = priority.indexOf(provider.id as AiGatewayProviderId);
           const providerAuth = authOf(provider.id);
@@ -1922,6 +1935,7 @@ function AiGatewayModelPalette({
                 onKeyLineDone={() => setKeyLineFor(null)}
                 onRank={(next) => onSavePriority(placeAiGatewayPriority(priority, provider.id as AiGatewayProviderId, next))}
               />
+              <div role="listbox" id={`${listboxId}-${provider.id}`} aria-label={providerLabel(provider.id)}>
               {hits.filter((hit) => hit.provider === provider).map((hit) => {
                 const allEnabled = hit.family.variants.every((candidate) => enabledIds.has(candidate.model.id));
                 const isActive = hit === activeHit;
@@ -1946,6 +1960,7 @@ function AiGatewayModelPalette({
                   </div>
                 );
               })}
+              </div>
             </React.Fragment>
           );
         })}
