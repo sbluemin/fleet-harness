@@ -20,11 +20,24 @@ export const TOKEN_LIFETIME_SECONDS = 900;
 // 오류와 Apple의 혼잡 응답은 재시도로 흡수하고, 영구적인 거절만 호출자에게 올린다.
 export const RETRY_ATTEMPTS = 4;
 export const RETRY_BASE_DELAY_MS = 2000;
+// Apple이 Retry-After로 지정한 대기가 이보다 길면 재시도해도 백오프 안에서 같은 창에 갇힌다.
+// 그때는 조용히 소진하는 대신 서버가 요구한 대기 시간을 담아 즉시 실패시킨다.
+export const RETRY_AFTER_CAP_MS = 60_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 /** 재시도가 의미 있는 상태 코드인지. 4xx 인증·검증 실패는 다시 보내도 같은 답이 온다. */
 export function isRetryableStatus(status) {
   return RETRYABLE_STATUS.has(status);
+}
+
+/** Retry-After는 초 또는 HTTP-date로 온다. 읽을 수 없으면 백오프만 쓰도록 undefined를 준다. */
+export function parseRetryAfter(raw, nowMs = Date.now()) {
+  const value = String(raw ?? "").trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value) * 1000;
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, at - nowMs);
 }
 
 export function parseGroupNames(raw) {
@@ -101,7 +114,11 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
     });
     if (response.status === 204) return { status: 204, data: null };
     const text = await response.text();
-    if (!response.ok) return { status: response.status, error: describeApiError(method, path, response.status, text) };
+    if (!response.ok) {
+      // Apple이 얼마나 기다리라고 했는지는 여기서만 볼 수 있다 — 오류와 함께 위로 넘긴다.
+      const retryAfterMs = parseRetryAfter(response.headers?.get?.("retry-after"), now());
+      return { status: response.status, error: describeApiError(method, path, response.status, text), retryAfterMs };
+    }
     try {
       return { status: response.status, data: text ? JSON.parse(text) : null };
     } catch {
@@ -127,12 +144,20 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
         continue;
       }
       if (!result.error || !isRetryableStatus(result.status) || attempt >= RETRY_ATTEMPTS) return result;
-      await backoff(method, path, attempt, `HTTP ${result.status}`);
+      // 고정 백오프로 다시 보내면 Apple이 지정한 창 안에 그대로 갇힌다. 서버가 말한 대기가 더
+      // 길면 그만큼 기다리고, 백오프로는 도저히 넘길 수 없는 창이면 재시도를 접는다.
+      if (result.retryAfterMs !== undefined && result.retryAfterMs > RETRY_AFTER_CAP_MS) {
+        return {
+          ...result,
+          error: `${result.error} — Apple asked to wait ${Math.round(result.retryAfterMs / 1000)}s, longer than this job retries`,
+        };
+      }
+      await backoff(method, path, attempt, `HTTP ${result.status}`, result.retryAfterMs);
     }
   }
 
-  async function backoff(method, path, attempt, reason) {
-    const waitMs = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  async function backoff(method, path, attempt, reason, retryAfterMs) {
+    const waitMs = Math.max(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), retryAfterMs ?? 0);
     process.stdout.write(
       `  ${method} ${path} failed (${reason}); retrying in ${Math.round(waitMs / 1000)}s ` +
         `(attempt ${attempt + 1}/${RETRY_ATTEMPTS})\n`,

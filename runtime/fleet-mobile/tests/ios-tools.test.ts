@@ -159,6 +159,14 @@ describe("App Store Connect transport", () => {
   const ok = (body: unknown) =>
     ({ status: 200, ok: true, text: async () => JSON.stringify(body) }) as unknown as Response;
 
+  const throttled = (retryAfter: string) =>
+    ({
+      status: 429,
+      ok: false,
+      headers: { get: (name: string) => (name.toLowerCase() === "retry-after" ? retryAfter : null) },
+      text: async () => '{"errors":[{"title":"RATE_LIMIT"}]}',
+    }) as unknown as Response;
+
   it("retries a dropped connection instead of aborting the distribution", async () => {
     let calls = 0;
     const build = await client(async () => {
@@ -189,6 +197,39 @@ describe("App Store Connect transport", () => {
         return { status: 401, ok: false, text: async () => '{"errors":[{"title":"NOT_AUTHORIZED"}]}' } as unknown as Response;
       }).findBuild("app1", "0.3.1", "4"),
     ).rejects.toThrow(/401/);
+    expect(calls).toBe(1);
+  });
+
+  // 고정 백오프로 다시 보내면 Apple이 지정한 창 안에 그대로 갇혀 네 번 모두 헛돈다.
+  it("waits at least as long as Retry-After before retrying a throttled request", async () => {
+    const waits: number[] = [];
+    let calls = 0;
+    const build = await createAscClient({
+      keyId: "TESTKEYID",
+      issuerId: "test-issuer",
+      keyPath: keyFile,
+      sleep: async (ms: number) => void waits.push(ms),
+      fetchImpl: async () => {
+        calls += 1;
+        return calls === 1
+          ? throttled("30")
+          : ok({ data: [{ id: "b1", attributes: { version: "4", processingState: "VALID" } }] });
+      },
+    }).findBuild("app1", "0.3.1", "4");
+
+    expect(waits).toEqual([30_000]);
+    expect(build?.id).toBe("b1");
+  });
+
+  // 재시도로는 넘길 수 없는 창이면, 네 번 헛돌고 끝나는 대신 요구된 대기를 알리며 바로 실패한다.
+  it("stops retrying when Retry-After exceeds what the job can wait out", async () => {
+    let calls = 0;
+    await expect(
+      client(async () => {
+        calls += 1;
+        return throttled("3600");
+      }).findBuild("app1", "0.3.1", "4"),
+    ).rejects.toThrow(/Apple asked to wait 3600s/);
     expect(calls).toBe(1);
   });
 });
