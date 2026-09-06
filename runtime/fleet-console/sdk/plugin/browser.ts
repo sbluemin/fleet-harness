@@ -68,6 +68,8 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     experiments: {
       read: () => null,
       subscribe: () => () => undefined,
+      update: async () => false,
+      modelOptions: async () => [],
     },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {

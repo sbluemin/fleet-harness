@@ -248,6 +248,10 @@ export interface PluginInstallContext {
 export interface ClientExperimentsCapability {
   read(): ConsoleExperimentSettings | null;
   subscribe(listener: () => void): () => void;
+  /** 설정 저장 — 코어의 general 설정 한 필드를 통째로 바꾼다. 플러그인은 자기 행만 고쳐 넘긴다. */
+  update(next: ConsoleExperimentSettings): Promise<boolean>;
+  /** 모델 선택지 — Claude 별칭 + 등록된 플러그인이 내놓는 Gateway 모델. 플러그인 카드가 자기 행의 선택기에 쓴다. */
+  modelOptions(): Promise<readonly ExperimentModelOption[]>;
 }
 
 /**

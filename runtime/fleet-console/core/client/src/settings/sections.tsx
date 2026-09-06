@@ -77,6 +77,13 @@ export interface SettingsSectionNavItem {
   readonly label: string;
   /** 검색이 이 섹션에 닿는 말. 제목에 없는 이름으로도 찾을 수 있어야 한다. */
   readonly entries: readonly string[];
+  /** 칩 옆 '?'가 여는 설명. 카드 본문에는 되풀이하지 않는다. */
+  readonly help?: string;
+  /**
+   * 자기 칩 없이 다른 섹션의 페이지 안에 카드로 서는 섹션. id는 주소·확대 표면·팔레트 링크를 위해
+   * 살아 있되, 칩 줄에는 나타나지 않고 검색은 품는 섹션으로 데려간다.
+   */
+  readonly embeddedIn?: CoreSettingsSectionId;
 }
 
 export interface PluginSettingsNavItem {
@@ -151,7 +158,8 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
     },
     {
       id: "connectivity",
-      group: "machine",
+      group: "experiments",
+      embeddedIn: "experiments",
       label: t("settings.core.connectivity.label"),
       entries: [
         t("settings.port.title"),
@@ -170,7 +178,9 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "experiments",
       group: "experiments",
       label: t("settings.core.experiments.label"),
+      help: t("settings.experiments.intro"),
       entries: [
+        t("settings.experiments.aiCard"),
         t("settings.experiments.promptRefine.title"),
         t("settings.experiments.launchContextPack.title"),
         t("settings.experiments.sessionWatch.title"),
@@ -201,6 +211,8 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
 export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
   /** 데스크톱 페인이 테마 카드에 덧세우는 행(우측 사이드바 불투명도) — 레일 없는 모바일은 넘기지 않는다. */
   readonly themeCardExtras?: ReactNode;
+  /** 데스크톱 페인이 연결 카드를 요약(관리는 확대 표면)으로 바꿔 넘긴다 — 없으면 전체 카드를 그린다. */
+  readonly connectivity?: ReactNode;
 }) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
@@ -234,8 +246,33 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
       return <BackendApiSection />;
     case "experiments":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
-      return <ExperimentsSection state={state} saving={saving} />;
+      return (
+        <>
+          <ExperimentsSection state={state} saving={saving} />
+          {renderEmbeddedPluginSections(pluginSections, t)}
+          {options?.connectivity ?? (
+            <>
+              <ConsolePortCard state={state} saving={saving} />
+              {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
+            </>
+          )}
+        </>
+      );
   }
+}
+
+/**
+ * 실험 그룹의 플러그인 섹션은 자기 칩이 없고 여기 카드로 선다. 각 섹션은 자기 경계 안에서 렌더된다 —
+ * 한 플러그인 카드의 실패가 코어 카드까지 지우지 않는다.
+ */
+export function renderEmbeddedPluginSections(pluginSections: readonly PluginSettingsNavItem[], t: T): ReactNode {
+  return pluginSections
+    .filter((section) => section.group === "experiments")
+    .map((section) => (
+      <PluginErrorBoundary key={section.id} fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
+        {section.render ? <PluginSettingsSectionBody render={section.render} /> : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>}
+      </PluginErrorBoundary>
+    ));
 }
 
 export function collectPluginSettingsSections(

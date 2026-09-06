@@ -648,7 +648,7 @@ function isExperimentSettingsInput(value: unknown): boolean {
   for (const key of ["promptRefine", "launchContextPack", "sessionWatch", "aideConsoleRead"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
-  for (const key of ["promptRefineModel", "sessionWatchModel", "aideConsoleReadModel"]) {
+  for (const key of ["promptRefineModel", "sessionWatchModel"]) {
     if (key in value && !isExperimentModelId(value[key])) return false;
   }
   return true;

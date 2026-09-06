@@ -47,6 +47,7 @@ import { MobileTheaterPage } from "./mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
+import { syncExperimentModelOptionPlugins } from "./experiment-model-options.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -135,7 +136,7 @@ export function App() {
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
   const railBindings = useRailEntries();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
-  useEffect(() => { syncSettingsSearchPlugins(registry.plugins); }, [registry.plugins]);
+  useEffect(() => { syncSettingsSearchPlugins(registry.plugins); syncExperimentModelOptionPlugins(registry.plugins); }, [registry.plugins]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.

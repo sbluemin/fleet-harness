@@ -1,4 +1,5 @@
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -36,4 +37,16 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
       activity: operation.activity,
     })),
   };
+}
+
+/** 설정 카드가 읽는 실험 설정 전체 — 없으면(호스트가 아직 안 실었으면) null. */
+export function readExperiments(): ConsoleExperimentSettings | null {
+  return experiments?.read() ?? null;
+}
+
+/** 부관의 Console 읽기 행 저장 — 코어 general 설정의 experiments 필드를 통째로 넘긴다. */
+export async function writeConsoleRead(enabled: boolean): Promise<boolean> {
+  const current = experiments?.read();
+  if (!experiments || !current) return false;
+  return experiments.update({ ...current, aideConsoleRead: enabled });
 }

@@ -103,9 +103,8 @@ async function handleStart(
     if (!origin) throw new Error("Console origin is not available yet");
     // 실험: 세션이 시작되는 순간의 설정으로 정한다 — 대화 도중 켜고 끄면 다음 세션부터 따른다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
-    const consoleReadModel = experiments.aideConsoleRead ? experiments.aideConsoleReadModel : null;
-    const consoleRead = consoleReadModel
-      ? { model: consoleReadModel, ...createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null) }
+    const consoleRead = experiments.aideConsoleRead
+      ? createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null)
       : undefined;
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,

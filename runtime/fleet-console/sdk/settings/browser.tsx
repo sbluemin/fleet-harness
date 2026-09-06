@@ -46,7 +46,10 @@ export interface SettingsHelpTipProps {
 export interface SettingsToggleProps {
   readonly checked: boolean;
   readonly onChange: (next: boolean) => void;
+  /** 스위치 옆에 보이는 글. 행 라벨이 이미 뜻을 말하면 비우고 `ariaLabel`만 준다. */
   readonly label?: string;
+  /** 보이지 않는 접근성 이름 — 행 라벨을 되풀이하는 눈에 띄는 글 없이 스위치를 이름 짓는다. */
+  readonly ariaLabel?: string;
   readonly disabled?: boolean;
 }
 
@@ -272,7 +275,7 @@ export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps
  * 같은 뜻이 한 화면에서 세 모양으로 갈렸다. 켜짐은 선택이자 위치이므로 brass가 칠하고,
  * 신호 토큰(aurora/warn/coral)은 상태를 말하는 자리에만 남는다.
  */
-export function SettingsToggle({ checked, onChange, label, disabled = false }: SettingsToggleProps): React.ReactElement {
+export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
   return (
     <label className="fc-settings-toggle" htmlFor={id}>
@@ -282,7 +285,7 @@ export function SettingsToggle({ checked, onChange, label, disabled = false }: S
         type="checkbox"
         checked={checked}
         disabled={disabled}
-        aria-label={label ? undefined : "Toggle setting"}
+        aria-label={ariaLabel ?? (label ? undefined : "Toggle setting")}
         onChange={(event) => onChange(event.currentTarget.checked)}
       />
       <span className="settings-switch fc-settings-toggle__control" aria-hidden="true">

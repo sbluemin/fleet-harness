@@ -165,11 +165,10 @@ export interface ChatSessionOptions {
   readonly baseUrl: string;
   readonly onEvent?: (event: ChatEvent) => void;
   /**
-   * 실험 "부관의 Console 읽기". 켜져 있을 때만 실린다 — 모델은 standard 좌석을 따르고, 읽기 도구가
+   * 실험 "부관의 Console 읽기". 켜져 있을 때만 실린다 — 모델은 부관의 기본 모델 그대로이고, 읽기 도구가
    * 웹 검색 옆에 선다. 없으면 오늘과 완전히 같은 부관이다.
    */
   readonly consoleRead?: {
-    readonly model: string;
     readonly server: ClaudeGatewayMcpServer;
     readonly allowedTools: readonly string[];
     readonly promptAddendum: string;
@@ -198,7 +197,7 @@ export class ChatSession implements ChatSessionLike {
     this.options = { ...options };
     const redact = (value: string) => redactScratchPath(value, this.options.cwd);
     const consoleRead = this.options.consoleRead;
-    const model = consoleRead?.model ?? SCUTTLEBUTT_AGENT.model;
+    const model = SCUTTLEBUTT_AGENT.model;
     this.loop = createClaudeExecutionLoop({
       createSdk: () => {
         const create = { baseUrl: this.options.baseUrl, models: [model] };

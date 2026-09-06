@@ -354,6 +354,18 @@
   gap: 4px;
 }
 
+/* 도움말이 있는 칩의 슬롯 — 말풍선(.settings-help-tip__bubble)의 기준면. 칩 자체가 hover로
+   말풍선을 열므로 옆에 '?'를 세우지 않는다. */
+.settings-chip-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-chip-slot > .settings-help-tip__bubble {
+  left: 0;
+}
+
 .settings-chip {
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
@@ -822,11 +834,20 @@
   line-height: 1.6;
 }
 
-/* 실험 기능 카드 — AI를 쓰는 행은 제목 아래 모델 선택기 한 줄을 갖는다. 카드의 기존 문법과
-   공유 fc-select만 쓰고 새 색을 들이지 않는다. */
+/* 실험 기능 카드 — 행은 한 줄이다: 왼쪽 제목, 오른쪽에 모델 선택기와 스위치. 공유 fc-select만 쓰고
+   새 색을 들이지 않는다. 좁은 컨테이너에서는 카드 규칙대로 세로로 접힌다. */
+.experiments-row { align-items: center; }
+
+.experiments-row-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .experiments-model-select {
-  margin-top: var(--space-1);
-  max-width: 28ch;
+  width: 22ch;
+  max-width: 40vw;
 }
 
 .operations-mutation-error {

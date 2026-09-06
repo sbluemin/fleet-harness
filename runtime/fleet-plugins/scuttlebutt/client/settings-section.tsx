@@ -9,6 +9,8 @@ import {
   defineSettingsSection,
 } from "@fleet-console/sdk/settings/browser";
 
+import { readExperiments, subscribeConsoleRead, writeConsoleRead } from "./console-read.js";
+
 import {
   BIRD_WIDTH_STEP,
   DEFAULT_BIRD_WIDTH,
@@ -30,12 +32,14 @@ const AIDES = ["tori", "bori", "dori"] as const;
 export const scuttlebuttSettingsSection = defineSettingsSection({
   id: "scuttlebutt",
   title: (locale) => getT(locale)("settings.section.title"),
-  group: "work",
+  // 실험 그룹 — 자기 칩 없이 코어의 「실험 기능」 페이지 안에 카드로 선다.
+  group: "experiments",
   keywords: [
     (locale) => [
       getT(locale)("settings.section.roster"),
       getT(locale)("settings.section.departure"),
       getT(locale)("settings.section.size"),
+      getT(locale)("settings.section.consoleRead"),
     ].join(" "),
     "aide quaker tori bori dori mascot bell announce chat size scale figure px",
     "부관 퀘이커 마스코트 알림 대화 크기 조절 슬라이더",
@@ -98,15 +102,19 @@ function ScuttlebuttSettingsSection() {
           </SettingsHelpTip>
         }
       >
-        <div className="scuttlebutt-settings-roster">
+        {/* 복수 선택 — 스위치 세 개 대신 누른 만큼 켜지는 알약 한 줄. aria-pressed가 상태이고 색은 위치 채널이다. */}
+        <div className="scuttlebutt-settings-roster" role="group" aria-label={t("settings.section.roster")}>
           {AIDES.map((aide) => (
-            <SettingsToggle
+            <button
               key={aide}
-              label={t(`bird.${aide}`)}
-              checked={settings[aide]}
+              type="button"
+              className="scuttlebutt-roster-pick"
+              aria-pressed={settings[aide]}
               disabled={saving}
-              onChange={(enabled) => void save({ [aide]: enabled })}
-            />
+              onClick={() => void save({ [aide]: !settings[aide] })}
+            >
+              {t(`bird.${aide}`)}
+            </button>
           ))}
         </div>
       </SettingsRow>
@@ -157,6 +165,7 @@ function ScuttlebuttSettingsSection() {
           </div>
         </SettingsRow>
       ) : null}
+      <ConsoleReadRow t={t} saving={saving} />
       <SettingsRow
         label={t("settings.section.departure")}
         helpTip={
@@ -166,12 +175,43 @@ function ScuttlebuttSettingsSection() {
         }
       >
         <SettingsToggle
-          label={t("settings.section.departureToggle")}
+          ariaLabel={t("settings.section.departureToggle")}
           checked={settings.departureBell}
           disabled={saving}
           onChange={(enabled) => void save({ departureBell: enabled })}
         />
       </SettingsRow>
     </SettingsCard>
+  );
+}
+
+/**
+ * 실험 "부관의 Console 읽기" — 설정은 코어 general의 experiments 필드이고 이 카드는 자기 행만 고쳐
+ * 넘긴다. 모델은 부관의 기본 모델을 따르므로 고를 것이 없다.
+ */
+function ConsoleReadRow({ t, saving }: { readonly t: ReturnType<typeof getT>; readonly saving: boolean }) {
+  const experiments = useStoreSnapshot(subscribeConsoleRead, readExperiments);
+  const [busy, setBusy] = React.useState(false);
+  if (!experiments) return null;
+  const write = async (enabled: boolean) => {
+    setBusy(true);
+    try { await writeConsoleRead(enabled); } finally { setBusy(false); }
+  };
+  return (
+    <SettingsRow
+      label={t("settings.section.consoleRead")}
+      helpTip={
+        <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.consoleRead") })}>
+          {t("settings.section.consoleReadHint")}
+        </SettingsHelpTip>
+      }
+    >
+      <SettingsToggle
+        ariaLabel={t("settings.section.consoleReadToggle")}
+        checked={experiments.aideConsoleRead}
+        disabled={saving || busy}
+        onChange={(enabled) => void write(enabled)}
+      />
+    </SettingsRow>
   );
 }

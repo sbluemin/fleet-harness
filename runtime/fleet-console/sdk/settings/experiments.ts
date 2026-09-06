@@ -5,7 +5,8 @@
  * 설정 한 곳이다. 같은 정제기를 서버·브라우저·플러그인이 나눠 쓰지 않으면 세 곳이 각자 다른
  * 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
  *
- * 모델은 기능마다 고른다. AI를 쓰는 기능은 자기 모델 필드를 갖고, 쓰지 않는 기능(컨텍스트 팩)은 없다.
+ * 모델은 기능마다 고른다. AI를 쓰는 기능은 자기 모델 필드를 갖고, 쓰지 않는 기능(컨텍스트 팩)이나
+ * 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기)은 없다.
  */
 
 export type ExperimentFeatureId = "promptRefine" | "launchContextPack" | "sessionWatch" | "aideConsoleRead";
@@ -13,9 +14,9 @@ export type ExperimentFeatureId = "promptRefine" | "launchContextPack" | "sessio
 export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "launchContextPack", "sessionWatch", "aideConsoleRead"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
-export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch" | "aideConsoleRead";
+export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
 
-export const EXPERIMENT_MODEL_FEATURES: readonly ExperimentModelFeatureId[] = ["promptRefine", "sessionWatch", "aideConsoleRead"];
+export const EXPERIMENT_MODEL_FEATURES: readonly ExperimentModelFeatureId[] = ["promptRefine", "sessionWatch"];
 
 export interface ConsoleExperimentSettings {
   /** Quick Launch가 사용자의 요청을 명확한 작업 지시문으로 고쳐 쓴 초안을 내놓는다(메타 프롬프팅). */
@@ -26,9 +27,8 @@ export interface ConsoleExperimentSettings {
   /** Operation마다 켜는 세션 분석가 관찰. */
   readonly sessionWatch: boolean;
   readonly sessionWatchModel: string;
-  /** Scuttlebutt 부관이 Console을 읽는다. */
+  /** Scuttlebutt 부관이 Console을 읽는다 — 모델은 부관의 기본 모델을 따른다. */
   readonly aideConsoleRead: boolean;
-  readonly aideConsoleReadModel: string;
 }
 
 /**
@@ -38,7 +38,6 @@ export interface ConsoleExperimentSettings {
 export const DEFAULT_EXPERIMENT_MODELS: Readonly<Record<ExperimentModelFeatureId, string>> = {
   promptRefine: "sonnet",
   sessionWatch: "sonnet",
-  aideConsoleRead: "sonnet",
 };
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
@@ -48,7 +47,6 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   sessionWatch: false,
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   aideConsoleRead: false,
-  aideConsoleReadModel: DEFAULT_EXPERIMENT_MODELS.aideConsoleRead,
 };
 
 /** 모델 선택지 — 플러그인이 내놓는 모델 한 줄. id는 Claude Code `--model`에 그대로 들어가는 값이다. */
@@ -92,7 +90,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     sessionWatch: record.sessionWatch === true,
     sessionWatchModel: model("sessionWatch"),
     aideConsoleRead: record.aideConsoleRead === true,
-    aideConsoleReadModel: model("aideConsoleRead"),
   };
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
@@ -76,6 +76,8 @@ interface SettingsChip {
   readonly id: SettingsSectionId;
   readonly group: SettingsSectionGroup;
   readonly label: string;
+  /** 칩 옆 '?'가 여는 설명. */
+  readonly help?: string;
   /** 검색이 이 섹션에 닿는 말 — 제목·플러그인 이름·키워드를 전부 합친다. */
   readonly haystack: string;
 }
@@ -84,14 +86,26 @@ function buildChips(
   coreSections: ReturnType<typeof buildCoreSettingsSections>,
   pluginSections: readonly PluginSettingsNavItem[],
 ): readonly SettingsChip[] {
+  // 품긴 섹션(코어 embeddedIn·플러그인 experiments 그룹)은 칩을 갖지 않는다 — 그 말들은 품는 칩의
+  // 검색어로 합쳐져, 찾으면 품는 페이지로 간다.
+  const embeddedWords = new Map<SettingsSectionId, string[]>();
+  for (const section of coreSections) {
+    if (!section.embeddedIn) continue;
+    embeddedWords.set(section.embeddedIn, [...(embeddedWords.get(section.embeddedIn) ?? []), section.label, ...section.entries]);
+  }
+  for (const section of pluginSections) {
+    if (section.group !== "experiments") continue;
+    embeddedWords.set("experiments", [...(embeddedWords.get("experiments") ?? []), section.sectionTitle, section.pluginLabel, ...section.entries]);
+  }
   const merged: SettingsChip[] = [
-    ...coreSections.map((section) => ({
+    ...coreSections.filter((section) => !section.embeddedIn).map((section) => ({
       id: section.id as SettingsSectionId,
       group: section.group,
       label: section.label,
-      haystack: [section.label, ...section.entries].join(" ").toLowerCase(),
+      ...(section.help ? { help: section.help } : {}),
+      haystack: [section.label, ...section.entries, ...(embeddedWords.get(section.id as SettingsSectionId) ?? [])].join(" ").toLowerCase(),
     })),
-    ...pluginSections.map((section) => ({
+    ...pluginSections.filter((section) => section.group !== "experiments").map((section) => ({
       id: section.id,
       group: section.group,
       label: section.sectionTitle,
@@ -238,15 +252,13 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
           재가된 트레이드오프이고, 그룹 순서(환경→작업→기계)만 배열로 남긴다. */}
       <div className="settings-pane-chips" role="group" aria-label={t("settings.pane.chipsAria")}>
         {chips.map((chip) => (
-          <button
+          <SettingsChip
             key={chip.id}
-            type="button"
-            className={`settings-chip${chip.id === activeId ? " is-active" : ""}`}
-            aria-pressed={chip.id === activeId}
-            onClick={() => selectSection(chip.id)}
-          >
-            {chip.label}
-          </button>
+            label={chip.label}
+            help={chip.help}
+            active={chip.id === activeId}
+            onSelect={() => selectSection(chip.id)}
+          />
         ))}
       </div>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
@@ -277,12 +289,61 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
           ) : (
             /* 톱니 메뉴가 들고 있던 레일 취향은 테마 카드의 한 행이 된다 — 비포커스 패널
                흐리기 아래(재가된 배치). 행 주입은 데스크톱 페인만 한다: 레일 없는 모바일이
-               같은 헬퍼를 본문으로 쓰기 때문이다. */
-            renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <ChromeMaterialRows /> })
+               같은 헬퍼를 본문으로 쓰기 때문이다. 연결 카드도 같은 이유로 페인에서만 요약이다. */
+            renderSettingsSection(activeId, state, saving, pluginSections, t, {
+              themeCardExtras: <ChromeMaterialRows />,
+              ...(state === null ? {} : {
+                connectivity: (
+                  <>
+                    <ConsolePortCard state={state} saving={saving} />
+                    {state.remoteAccess === undefined ? null : (
+                      <RemoteSummaryCard remote={state.remoteAccess} onManage={() => openExpandedSection("connectivity")} />
+                    )}
+                  </>
+                ),
+              }),
+            })
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 그룹 칩. 도움말이 있는 칩은 별도 '?' 없이 칩 자체가 hover 말풍선을 연다 — 칩은 이미
+ * 버튼이라 옆에 버튼을 하나 더 세우면 한 줄에 누를 것이 둘이 된다. 말풍선은 hover·포커스
+ * 동안만 서고 클릭은 그대로 섹션 선택이다. aria-describedby로 보조기기에도 같은 글이 읽힌다.
+ */
+function SettingsChip({ label, help, active, onSelect }: {
+  readonly label: string;
+  readonly help?: string | undefined;
+  readonly active: boolean;
+  readonly onSelect: () => void;
+}) {
+  const bubbleId = useId();
+  const [open, setOpen] = useState(false);
+  const button = (
+    <button
+      type="button"
+      className={`settings-chip${active ? " is-active" : ""}`}
+      aria-pressed={active}
+      aria-describedby={help ? bubbleId : undefined}
+      onClick={onSelect}
+      onFocus={help ? () => setOpen(true) : undefined}
+      onBlur={help ? () => setOpen(false) : undefined}
+    >
+      {label}
+    </button>
+  );
+  if (!help) return button;
+  return (
+    <span className="settings-chip-slot" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      {button}
+      <div className="settings-help-tip__bubble" role="tooltip" id={bubbleId} hidden={!open}>
+        {help}
+      </div>
+    </span>
   );
 }
 
