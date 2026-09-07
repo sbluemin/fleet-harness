@@ -49,10 +49,18 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   aideConsoleRead: false,
 };
 
-/** 모델 선택지 — 플러그인이 내놓는 모델 한 줄. id는 Claude Code `--model`에 그대로 들어가는 값이다. */
+/**
+ * 모델 선택지 — 플러그인이 내놓는 모델 한 줄. id는 Claude Code `--model`에 그대로 들어가는 값이다.
+ * 나머지 필드는 설정 화면의 ModelPicker가 밴드·메타·강도 사다리를 그리는 데 쓰는 선택 정보다 —
+ * 없으면 밴드는 id 형식(`cursor--…`)에서 읽고, 메타와 사다리는 비운다.
+ */
 export interface ExperimentModelOption {
   readonly id: string;
   readonly label: string;
+  /** 프로바이더 밴드를 id 형식 대신 명시할 때. 런치 글리프 id(`claude`·`cursor`…)여야 한다. */
+  readonly provider?: string;
+  readonly contextWindow?: number | null;
+  readonly effortLevels?: readonly string[];
 }
 
 /**

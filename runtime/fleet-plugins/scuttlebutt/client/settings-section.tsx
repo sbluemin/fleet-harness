@@ -1,15 +1,14 @@
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
-import { Select } from "@fleet-console/sdk/react/browser";
-import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
 import {
-  CLAUDE_EXPERIMENT_MODEL_OPTIONS,
   ExperimentalBadge,
+  ModelPicker,
   SettingsCard,
   SettingsHelpTip,
   SettingsRow,
   SettingsSlider,
   SettingsToggle,
   defineSettingsSection,
+  useModelPickerOptions,
 } from "@fleet-console/sdk/settings/browser";
 
 import { isExperimentsSaving, readExperiments, readModelOptions, subscribeConsoleRead, writeConsoleRead } from "./console-read.js";
@@ -192,20 +191,6 @@ function ScuttlebuttSettingsSection() {
   );
 }
 
-function useAideModelOptions(): readonly ExperimentModelOption[] {
-  const [options, setOptions] = React.useState<readonly ExperimentModelOption[]>(CLAUDE_EXPERIMENT_MODEL_OPTIONS);
-  React.useEffect(() => {
-    let cancelled = false;
-    void readModelOptions().then((next) => {
-      if (!cancelled && next.length > 0) setOptions(next);
-    }).catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return options;
-}
-
 /**
  * 부관단 공통 모델·강도. 실험 페이지의 규약 — 모델을 쓰는 기능은 자기 선택기를 갖는다 — 를
  * 이 카드도 따른다. 부관마다 다르게 두지 않는다: 셋의 정체성은 목소리이지 모델이 아니다.
@@ -217,13 +202,7 @@ function ModelRow({ t, saving, model, effort, onSave }: {
   readonly effort: AideEffort;
   readonly onSave: (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => Promise<void>;
 }) {
-  const options = useAideModelOptions();
-  const known = options.some((option) => option.id === model);
-  const modelOptions = [
-    ...options.map((option) => ({ value: option.id, label: option.label })),
-    ...(known ? [] : [{ value: model, label: model }]),
-  ];
-  const effortOptions = AIDE_EFFORTS.map((value) => ({ value, label: t(`effort.${value}`) }));
+  const options = useModelPickerOptions(readModelOptions);
   return (
     <SettingsRow
       label={t("settings.section.model")}
@@ -233,24 +212,20 @@ function ModelRow({ t, saving, model, effort, onSave }: {
         </SettingsHelpTip>
       }
     >
-      <div className="scuttlebutt-settings-model">
-        <Select
-          value={model}
-          options={modelOptions}
-          disabled={saving}
-          compact
-          label={t("settings.section.modelAria")}
-          onChange={(next) => void onSave({ model: next })}
-        />
-        <Select
-          value={effort}
-          options={effortOptions}
-          disabled={saving}
-          compact
-          label={t("settings.section.effortAria")}
-          onChange={(next) => void onSave({ effort: next as AideEffort })}
-        />
-      </div>
+      <ModelPicker
+        value={model}
+        options={options}
+        disabled={saving}
+        label={t("settings.section.modelAria")}
+        onChange={(next) => void onSave({ model: next })}
+        effort={{
+          value: effort,
+          levels: AIDE_EFFORTS,
+          ariaLabel: t("settings.section.effortAria"),
+          labelOf: (level) => t(`effort.${level as AideEffort}`),
+          onChange: (next) => void onSave({ effort: next as AideEffort }),
+        }}
+      />
     </SettingsRow>
   );
 }

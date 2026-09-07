@@ -45,13 +45,19 @@ export type LaunchProviderModelGroup<T> = {
   readonly models: readonly T[];
 };
 
-/** Group a flat catalog the way the canvas launch menu bands providers. */
+/**
+ * Group a flat catalog the way the canvas launch menu bands providers.
+ *
+ * `providerOf` overrides the id-format lookup for catalogs whose ids carry no provider
+ * prefix (a raw Gateway catalog keyed per provider); a `null` return falls back to the id.
+ */
 export function groupModelsByLaunchProvider<T extends { readonly id: string }>(
   models: readonly T[],
+  providerOf?: (model: T) => LaunchProviderGlyphId | null,
 ): readonly LaunchProviderModelGroup<T>[] {
   const buckets = new Map<LaunchProviderGlyphId | "etc", T[]>();
   for (const model of models) {
-    const provider = launchProviderFromModelId(model.id);
+    const provider = providerOf?.(model) ?? launchProviderFromModelId(model.id);
     const key = provider ?? "etc";
     const list = buckets.get(key) ?? [];
     list.push(model);

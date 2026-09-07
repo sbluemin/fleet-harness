@@ -845,11 +845,6 @@
   gap: var(--space-3);
 }
 
-.experiments-model-select {
-  width: 22ch;
-  max-width: 40vw;
-}
-
 .operations-mutation-error {
   display: flex;
   align-items: center;
@@ -8686,6 +8681,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .operation-launch-variant-caption.is-xai,
 .quick-launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
+/* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
+.fc-model-picker__glyph.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
+.fc-model-picker__glyph.is-codex { --launch-provider-tone: var(--provider-codex); }
+.fc-model-picker__glyph.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.fc-model-picker__glyph.is-kimi { --launch-provider-tone: var(--provider-kimi); }
+.fc-model-picker__glyph.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.fc-model-picker__glyph.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
 .operation-launch-provider-glyph--etc {
@@ -12057,7 +12060,6 @@ body[data-codex-side="true"] .command-card {
 
 .fc-settings-row__label,
 .fc-settings-toggle__label,
-.fc-settings-select__label,
 .fc-settings-field__label {
   color: var(--text-primary);
   font-size: var(--t-md);
@@ -12200,7 +12202,6 @@ body[data-codex-side="true"] .command-card {
   opacity: var(--control-disabled-opacity);
 }
 
-.fc-settings-select,
 .fc-settings-field {
   display: grid;
   gap: var(--space-2);
@@ -13802,6 +13803,89 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   font-family: var(--font-mono); color: var(--fc-select-compact-tone, var(--text-secondary)); padding: 7px 16px 7px 10px;
 }
 .fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }
+
+/* ── ModelPicker — 설정에서 모델 하나를 고르는 단일 문법 ───────────────────────────
+   fc-select의 트리거·팝업 레시피 위에 글리프·메타·프로바이더 밴드를 얹고, 강도는 세그먼트가 이어
+   붙는다. 크기 변형은 없다: 34px 한 높이가 설정 행의 스위치·칩과 같은 무게로 선다. */
+.fc-model-picker {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+}
+/* 선택기는 24ch를 바라되 담긴 열(fc-settings-row의 컨트롤 열 등)이 좁으면 강도 세그먼트를
+   남기고 자기 폭을 내준다 — 세그먼트가 먼저 접히면 "이 모델의 강도"가 다음 줄로 떨어진다. */
+.fc-model-picker__select { flex: 1 1 24ch; min-width: 120px; max-width: 280px; }
+/* 트리거는 Quick Launch의 모델 칩과 같은 알약 — 런치에서 고른 모델을 설정에서 같은 물건으로 알아보게 한다. */
+.fc-model-picker__trigger {
+  min-height: 34px;
+  padding: 0 11px;
+  gap: 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+  box-shadow: none;
+}
+.fc-model-picker__trigger[aria-expanded="true"] { color: var(--brass); background: var(--brass-glow); }
+.fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: 0; border-end-end-radius: 0; }
+/* 트리거의 마크는 칩의 종류 글리프처럼 상자 없이 공급자 톤만 입고, 밴드의 마크는 런치 메뉴의 배지 그대로다. */
+.fc-model-picker__glyph--mark {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--launch-provider-tone, var(--text-tertiary));
+}
+.fc-model-picker__glyph--mark svg { width: 100%; height: 100%; }
+.fc-model-picker__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+.fc-model-picker__name.is-unknown { font-family: var(--font-mono); font-size: var(--t-sm); color: var(--text-tertiary); }
+.fc-model-picker__meta {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.04em;
+}
+/* 밴드는 quick-launch-pop-band와 같은 자간·여백 — 두 메뉴가 같은 목록으로 읽혀야 한다. */
+.fc-model-picker__band {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-2) 6px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.fc-model-picker__band + .fc-model-picker__band { display: none; }
+.fc-model-picker__option { padding: 7px 10px; }
+.fc-model-picker__option .fc-model-picker__name { flex: 1; }
+/* 세그먼트는 트리거의 왼쪽 테두리를 나눠 쓴다 — 한 물건으로 읽혀야 "이 모델의 강도"가 된다. */
+.fc-model-picker__effort {
+  align-self: stretch;
+  gap: 0;
+  padding: 2px 4px 2px 2px;
+  margin-inline-start: -1px;
+  border: 1px solid var(--surface-rim);
+  border-start-end-radius: var(--radius-pill);
+  border-end-end-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+}
+.fc-model-picker__effort .segmented-option {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 10px;
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .fc-select__trigger,
