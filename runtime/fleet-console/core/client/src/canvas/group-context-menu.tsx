@@ -18,6 +18,10 @@ export interface GroupContextMenuHeaderActions {
   readonly onUngroupAll: () => void;
 }
 
+// 카드의 어느 변을 앵커에 맞추는가. 우클릭(커서 앵커)은 start — 커서에서 오른쪽으로 펼친다.
+// 캡션의 More 버튼은 end — 버튼 오른쪽 변에 맞춰 패널 안쪽으로 펼친다(패널 밖으로 삐져나가지 않는다).
+export type GroupContextMenuAlign = "start" | "end";
+
 type GroupContextMenuProps =
   | {
       readonly kind: "chip";
@@ -25,6 +29,7 @@ type GroupContextMenuProps =
       readonly groups: readonly OperationGroup[];
       readonly accentKey: string | null;
       readonly anchor: DOMRect;
+      readonly align?: GroupContextMenuAlign;
       readonly actions: GroupContextMenuChipActions;
       readonly onClose: () => void;
     }
@@ -32,28 +37,40 @@ type GroupContextMenuProps =
       readonly kind: "group-header";
       readonly group: OperationGroup;
       readonly anchor: DOMRect;
+      readonly align?: GroupContextMenuAlign;
       readonly actions: GroupContextMenuHeaderActions;
       readonly onClose: () => void;
     };
 
-const POPOVER_GAP = 8;
-const POPOVER_ESTIMATED_HEIGHT = 320;
+const POPOVER_GAP = 6;
+const VIEWPORT_MARGIN = 8;
 
 export function GroupContextMenu(props: GroupContextMenuProps) {
   const t = useT();
   const { anchor, onClose } = props;
+  const align = props.align ?? "start";
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
 
+  // 자리는 실측으로 정한다 — 카드를 먼저 숨긴 채 그려 폭·높이를 읽는다. 추정 높이로 뒤집기를
+  // 판정하면 섹션 하나가 늘어날 때마다 화면 아래에서 조용히 잘린다.
   useLayoutEffect(() => {
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - 208));
+    const card = cardRef.current;
+    if (!card) return;
+    const width = card.offsetWidth;
+    const height = card.offsetHeight;
+    const rawLeft = align === "end" ? anchor.right - width : anchor.left;
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(rawLeft, window.innerWidth - width - VIEWPORT_MARGIN));
     const below = anchor.bottom + POPOVER_GAP;
-    const flipUp = below + POPOVER_ESTIMATED_HEIGHT > window.innerHeight;
-    setStyle(
-      flipUp
-        ? { position: "fixed", left, top: "auto", bottom: Math.round(window.innerHeight - anchor.top + POPOVER_GAP) }
-        : { position: "fixed", left, top: Math.round(below) },
-    );
-  }, [anchor]);
+    const above = anchor.top - POPOVER_GAP - height;
+    // 아래가 맞으면 아래, 아니면 위. 양쪽 다 모자라면 뷰포트 안으로 밀어 넣는다 — 잘리는 것보다 겹치는 편이 낫다.
+    const top = below + height + VIEWPORT_MARGIN <= window.innerHeight
+      ? below
+      : above >= VIEWPORT_MARGIN
+        ? above
+        : Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN);
+    setStyle({ position: "fixed", left, top: Math.round(top) });
+  }, [align, anchor]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -71,21 +88,20 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
 
   return createPortal(
     <div className="group-context-menu-overlay" data-keep-operation-active role="presentation" onPointerDown={onClose}>
-      {style ? (
-        <div
-          className="group-context-menu-card"
-          role="menu"
-          aria-label={props.kind === "chip" ? t("canvas.groupMenu.operationOptions") : t("canvas.groupMenu.groupOptions", { name: props.group.name })}
-          style={style}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {props.kind === "chip" ? (
-            <ChipMenuContent {...props} />
-          ) : (
-            <GroupHeaderMenuContent {...props} />
-          )}
-        </div>
-      ) : null}
+      <div
+        ref={cardRef}
+        className="group-context-menu-card"
+        role="menu"
+        aria-label={props.kind === "chip" ? t("canvas.groupMenu.operationOptions") : t("canvas.groupMenu.groupOptions", { name: props.group.name })}
+        style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {props.kind === "chip" ? (
+          <ChipMenuContent {...props} />
+        ) : (
+          <GroupHeaderMenuContent {...props} />
+        )}
+      </div>
     </div>,
     document.body,
   );
@@ -142,7 +158,7 @@ function ChipMenuContent({
               aria-hidden="true"
             />
             <span className="group-context-menu-item__name">{group.name}</span>
-            {isSelected ? <CheckMark /> : null}
+            <CheckMark />
           </button>
         );
       })}
@@ -170,12 +186,13 @@ function ChipMenuContent({
           role="menuitem"
           onClick={() => setShowNewInput(true)}
         >
-          <span className="group-context-menu-item__new-label">{t("canvas.groupMenu.newGroup")}</span>
+          <PlusMark />
+          <span className="group-context-menu-item__name">{t("canvas.groupMenu.newGroup")}</span>
         </button>
       )}
       <div className="group-context-menu-divider" aria-hidden="true" />
-      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionAccent")}</div>
       <AccentToneList
+        label={t("canvas.groupMenu.sectionAccent")}
         accentKey={accentKey}
         includeNone
         onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
@@ -208,8 +225,8 @@ function GroupHeaderMenuContent({
   return (
     <>
       {/* 그룹 색은 durable 스키마상 팔레트 키 중 하나로 필수다(무색 그룹 미지원). None 항목은 제공하지 않는다. */}
-      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionColor")}</div>
       <AccentToneList
+        label={t("canvas.groupMenu.sectionColor")}
         accentKey={group.color}
         includeNone={false}
         onSelect={(key) => {
@@ -248,6 +265,14 @@ function GroupHeaderMenuContent({
         {ungroupArmed ? t("canvas.groupMenu.confirmUngroupAll") : t("canvas.groupMenu.ungroupAll")}
       </button>
     </>
+  );
+}
+
+function PlusMark() {
+  return (
+    <svg viewBox="0 0 14 14" className="group-context-menu-item__plus" aria-hidden="true">
+      <path d="M7 2.5v9M2.5 7h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   );
 }
 

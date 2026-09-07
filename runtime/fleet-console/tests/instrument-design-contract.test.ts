@@ -170,6 +170,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--grp-color",
   // Sidebar chip TSX injects the group marker tone for each rendered mark.
   "--group-mark",
+  // Accent swatch TSX injects each --id-* tone onto its own swatch dot.
+  "--accent-swatch-color",
   // What's New TSX injects each section's reveal delay.
   "--whatsnew-delay",
   // Right Rail TSX injects the current panel width.
@@ -1321,17 +1323,20 @@ describe("Instrument core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps user identity on the mark grammar and off the caption fill and state border channel", () => {
+  it("keeps user identity on the title ink and mark grammar and off the caption fill and state border channel", () => {
     const frame = source("canvas/operation-frame.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
-    const markBlock = components.match(/\.canvas-operation-id-mark \{[^}]*\}/)?.[0] ?? "";
+    const titleIdleBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
+    const titleActiveBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\]\.is-active > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
     const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
     const minimapDotBlock = components.match(/\.canvas-minimap-operation\[style\*="--user-accent"\]::after \{[^}]*\}/)?.[0] ?? "";
     const accentSources = [frame, chip, components].join("\n");
 
     expect(frame).toContain('{ "--user-accent": accentColor }');
-    expect(frame).toContain('className="canvas-operation-id-mark"');
+    // 명판 마크는 퇴역했다 — 캡션의 정체성은 제목 글자의 잉크가 진다.
+    expect(frame).not.toContain("canvas-operation-id-mark");
+    expect(components).not.toContain(".canvas-operation-id-mark");
     expect(chip).toContain('{ "--user-accent": accentValue }');
     // Map의 좌측 스파인과 캡션 워시는 폐기됐다 — 패널 본문과 언포커스 캡션은 어떤 정체성
     // 색도 지지 않고, 정체성은 캡션 위 마크에서 말한다. 선택자·렌더·클래스 어느 쪽으로도
@@ -1343,9 +1348,10 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
     // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
     expect(components).not.toContain("border-color: var(--user-accent)");
-    expect(markBlock).toContain("width: 8px;");
-    expect(markBlock).toContain("height: 14px;");
-    expect(markBlock).toContain("background: var(--user-accent);");
+    // 언포커스는 면이 아니라 3티어 글자색 쪽으로 섞는다 — Whites에서 13px 본문 AA를 지키는 유일한 방향이다.
+    expect(titleIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
+    expect(titleIdleBlock).not.toContain("var(--surface-panel)");
+    expect(titleActiveBlock).toContain("color: var(--user-accent);");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
     expect(chipAccentBlock).toContain("bottom: 7px;");
@@ -1353,9 +1359,9 @@ describe("Instrument core design contract", () => {
     expect(chipAccentBlock).toContain("pointer-events: none;");
     expect(chipAccentBlock).not.toMatch(/animation/);
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    // 3개 소비처: 미니맵 도트 · 명판 마크 · 사이드바 칩 스파인.
-    // Map에서 accent는 마크에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(3);
+    // 4개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 스파인.
+    // Map에서 accent는 제목 잉크에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(4);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 

@@ -4998,17 +4998,21 @@ body[data-side-bar-animating="true"] .canvas-operation {
   --caption-rail: var(--positive);
 }
 
-/* Map에서 사용자 accent(정체성)는 명판 마크만 소유한다 — 좌측 스파인과 캡션 워시는 폐기됐다.
-   패널 본문과 언포커스 캡션은 어떤 정체성 색도 지지 않고, 정체성은 캡션 위 마크에서 말한다.
+/* Map에서 사용자 accent(정체성)는 제목 글자만 소유한다 — 좌측 스파인·캡션 워시·명판 마크는 폐기됐다.
+   패널 본문과 캡션 채움은 어떤 정체성 색도 지지 않고, 정체성은 제목의 잉크로 말한다.
    캡션 채움은 액센트가 없을 때와 같다: 언포커스는 --surface-panel, 포커스는 brass 워시.
    패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용으로 남는다.
-   사이드바 칩의 3px accent 스파인은 레일 소속이라 그대로 남는다. */
-.canvas-operation-id-mark {
-  flex: none;
-  width: 8px;
-  height: 14px;
-  border-radius: 2px;
-  background: var(--user-accent);
+   사이드바 칩의 3px accent 스파인과 미니맵 도트는 각자의 레일·지도 소속이라 그대로 남는다.
+   언포커스 제목은 중립 제목과 같은 한 단계 물러남을 accent 위에서 반복한다 — 면이 아니라 3티어 글자색
+   쪽으로 섞는다. 면 쪽으로 섞으면 Whites의 --id-*(L50~56)가 밝아져 13px 본문 AA(4.5:1)를 잃는다(3.1~3.7:1);
+   글자색 쪽 30% 믹스는 네 테마 모두 5.1:1 이상을 지키면서 한 단계 물러난 톤을 준다. */
+.canvas-operation[style*="--user-accent"] > .canvas-operation-titlebar .canvas-operation-identity-name {
+  color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));
+}
+
+.canvas-operation[style*="--user-accent"] > .canvas-operation-titlebar .canvas-operation-identity-name:hover,
+.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar .canvas-operation-identity-name {
+  color: var(--user-accent);
 }
 
 /* 그룹 소속 = 도트(정체성 mark 문법) + 중립 티어 이름. 색은 도트 하나만 지고, 이름은 캡션의
@@ -6775,7 +6779,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 /* 캡션 More 버튼 — 사이드바 우클릭과 같은 Operation 메뉴를 여는 문.
-   accent-immune: 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
+   accent-immune: 사용자 accent는 어디에도 새지 않는다. hover·포커스·열림은 창 컨트롤과 같은
+   brass(위치) 문법을 쓴다 — 한 줄에 두 벌의 hover가 서지 않게. */
 .canvas-operation-more-button {
   position: static;
   display: grid;
@@ -6798,16 +6803,23 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .canvas-operation-more-button svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
-.canvas-operation-more-button:hover,
-.canvas-operation-more-button:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 32%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  color: var(--text-secondary);
+.canvas-operation-more-button:hover:not([aria-expanded="true"]),
+.canvas-operation-more-button:focus-visible:not([aria-expanded="true"]) {
+  color: var(--brass-bright);
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   outline: none;
+}
+
+/* 열림 = 워시 + 글리프 — 창 컨트롤의 불리언 ON과 같은 문법. */
+.canvas-operation-more-button[aria-expanded="true"] {
+  color: var(--brass-bright);
+  border-color: transparent;
+  background: var(--control-wash);
 }
 
 /* accent 설정 팝업 — 패널/Dock 좌측 인디케이터 클릭으로 열린다. 트리거에 앵커되는 오버레이 팝업.
@@ -6823,12 +6835,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .group-context-menu-card {
   position: fixed;
   z-index: 1;
-  min-width: 192px;
+  min-width: 208px;
   max-width: 240px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px;
+  padding: 4px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
@@ -6841,75 +6852,89 @@ body[data-side-bar-animating="true"] .canvas-operation {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-anchor);
+  /* 그림자는 깊이만 진다 — brass 링(shadow-anchor)은 위치 채널이라 중립 메뉴에 두르지 않는다. */
+  box-shadow: var(--shadow-floating);
 }
 
+/* 섹션 라벨은 항목과 다른 티어다 — 본문 산세리프 소문자, 항목보다 한 단계 작고 흐리게.
+   오른쪽 읽기는 겨눈 스와치의 이름을 말한다(스와치 줄이 이름 행을 대신하므로). */
 .group-context-menu-section-label {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px 10px 4px;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
   color: var(--text-tertiary);
-  padding: 4px 6px 2px;
 }
 
+.group-context-menu-section-readout {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-regular);
+  color: var(--text-secondary);
+}
+
+/* 행은 테두리 없이 채움만으로 말한다 — hover는 중립 워시, 포커스는 brass 글로우, 선택은 체크 글리프. */
 .group-context-menu-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 5px 8px;
-  border: 1px solid transparent;
+  gap: 9px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
   cursor: pointer;
   text-align: left;
   font-family: var(--font-body);
   font-size: var(--t-md);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   color: var(--text-secondary);
   transition:
     background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
+    color var(--duration-fast) var(--ease-spring);
 }
 
-.group-context-menu-item:hover,
+.group-context-menu-item:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 7%, transparent);
+  color: var(--text-primary);
+}
+
 .group-context-menu-item:focus-visible {
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
   outline: none;
-}
-
-.group-context-menu-item:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
+  color: var(--text-primary);
 }
 
 .group-context-menu-item.is-selected {
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary));
-}
-
-.group-context-menu-item--new {
-  color: var(--text-tertiary);
-  font-style: italic;
+  color: var(--text-primary);
 }
 
 .group-context-menu-item--danger {
   color: var(--coral-ink);
 }
 
+.group-context-menu-item--danger:hover {
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  color: var(--coral-ink);
+}
+
 .group-context-menu-item--danger.is-armed {
   background: color-mix(in oklch, var(--coral) 12%, transparent);
-  border-color: color-mix(in oklch, var(--coral) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--coral) 30%, transparent);
   font-weight: var(--weight-bold);
 }
 
 .group-context-menu-item__dot {
   display: block;
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--ink-fog);
 }
@@ -6926,91 +6951,102 @@ body[data-side-bar-animating="true"] .canvas-operation {
   width: 12px;
   height: 12px;
   color: var(--brass-ink);
+  visibility: hidden;
 }
 
-.group-context-menu-item__new-label {
+.group-context-menu-item.is-selected .group-context-menu-item__check {
+  visibility: visible;
+}
+
+.group-context-menu-item__plus {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 -2px;
   color: var(--text-tertiary);
 }
 
 .group-context-menu-new-input {
   display: block;
   width: 100%;
+  height: 28px;
+  margin: 2px 0;
   box-sizing: border-box;
-  padding: 4px 8px;
-  border: 1px solid color-mix(in oklch, var(--ink-fog) 30%, transparent);
+  padding: 0 9px;
+  border: 1px solid color-mix(in oklch, var(--brass) 60%, transparent);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
-  color: var(--text-secondary);
+  background: var(--ink-deep);
+  color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--t-md);
   outline: none;
 }
 
 .group-context-menu-new-input:focus {
-  border-color: color-mix(in oklch, var(--brass) 60%, transparent);
+  border-color: var(--brass);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
 }
 
+/* 구분선은 카드 안쪽 여백을 넘어 변까지 닿는다 — 잘린 선은 항목처럼 읽힌다. */
 .group-context-menu-divider {
   height: 1px;
-  margin: 4px 0;
+  margin: 4px -4px;
   background: var(--surface-rim);
 }
 
-/* 정체성 톤 행 — 팝오버·칩 메뉴·그룹 메뉴가 공유하는 단일 피커 문법. */
-.accent-tone-row {
+/* 정체성 톤 스와치 줄 — 칩 메뉴·그룹 헤더 메뉴가 공유하는 단일 피커 문법.
+   색은 --id-* 마크로만 말하고, 선택·포커스 링은 brass(위치 채널)다. */
+.accent-swatch-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 5px 9px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  text-align: left;
+  gap: 4px;
+  padding: 4px 10px 8px;
 }
 
-.accent-tone-row:hover,
-.accent-tone-row:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  outline: none;
-}
-
-.accent-tone-row:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
-}
-
-.accent-tone-row[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
-}
-
-.accent-tone-flag {
+.accent-swatch {
+  display: grid;
+  place-items: center;
   flex: none;
-  width: 8px;
-  height: 14px;
-  border-radius: 2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
 }
 
-.accent-tone-flag--none {
-  border: 1px solid var(--ink-rim);
+.accent-swatch__dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-swatch-color);
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.accent-swatch--none .accent-swatch__dot {
+  border: 1.5px dashed var(--ink-fog);
   background: transparent;
 }
 
-.accent-tone-name {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
+.accent-swatch:hover .accent-swatch__dot {
+  transform: scale(1.18);
 }
 
-.accent-tone-row--clear .accent-tone-name {
-  color: var(--text-tertiary);
+.accent-swatch[aria-checked="true"] {
+  box-shadow: 0 0 0 1.5px var(--brass);
+}
+
+.accent-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1.5px var(--brass), 0 0 0 4px var(--brass-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accent-swatch__dot {
+    transition: none;
+  }
 }
 
 .canvas-operation-job-count {
@@ -7205,6 +7241,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .fleet-caption-slot:has(:focus-visible) .fleet-caption-tip {
   opacity: 1;
   transition-delay: 0.35s;
+}
+
+/* 메뉴가 열리면 이름표는 물러난다 — 메뉴가 곧 그 버튼의 뜻이고, 카드 뒤에 비치는 풍선은 잔상이다. */
+.fleet-caption-slot:has([aria-expanded="true"]) .fleet-caption-tip {
+  opacity: 0;
+  transition-delay: 0s;
 }
 
 /* 판면이 100ch(reading 상한)보다 좁으면 읽기 폭 프리셋 사이에 그려질 차이가 없다 — 뜻이 없어진

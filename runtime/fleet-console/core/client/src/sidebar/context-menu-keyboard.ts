@@ -67,14 +67,21 @@ export function useContextMenuKeyboard({
           document.activeElement.click();
           return;
         }
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        // 스와치는 한 줄로 서므로 좌우 화살표는 그 줄 안에서만 돈다 — 줄 밖(새 그룹·그룹 해제)으로
+        // 새지 않는다. 위아래는 메뉴 전체를 계속 훑는다.
+        const onSwatch = document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute(ACCENT_OPTION_ATTRIBUTE);
+        const horizontal = onSwatch && (event.key === "ArrowRight" || event.key === "ArrowLeft");
+        const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
+        if (!horizontal && !vertical) return;
         event.preventDefault();
         event.stopPropagation();
-        const currentIndex = currentItems.findIndex((item) => item === document.activeElement);
-        const nextIndex = event.key === "ArrowDown"
-          ? (currentIndex + 1) % currentItems.length
-          : currentIndex <= 0 ? currentItems.length - 1 : currentIndex - 1;
-        setCurrent(nextIndex, true);
+        const ring = horizontal ? currentItems.filter((item) => item.hasAttribute(ACCENT_OPTION_ATTRIBUTE)) : currentItems;
+        const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
+        const ringIndex = ring.findIndex((item) => item === document.activeElement);
+        const nextInRing = forward
+          ? (ringIndex + 1) % ring.length
+          : ringIndex <= 0 ? ring.length - 1 : ringIndex - 1;
+        setCurrent(currentItems.indexOf(ring[nextInRing]!), true);
       };
       const handleFocusIn = (event: FocusEvent) => {
         if (!(event.target instanceof HTMLInputElement)) return;
