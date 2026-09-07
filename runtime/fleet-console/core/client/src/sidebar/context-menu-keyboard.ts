@@ -67,11 +67,15 @@ export function useContextMenuKeyboard({
           document.activeElement.click();
           return;
         }
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        // 스와치는 한 줄로 서므로 좌우 화살표도 그 줄 안에서는 앞뒤 이동이다.
+        const onSwatch = document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute(ACCENT_OPTION_ATTRIBUTE);
+        const forward = event.key === "ArrowDown" || (onSwatch && event.key === "ArrowRight");
+        const backward = event.key === "ArrowUp" || (onSwatch && event.key === "ArrowLeft");
+        if (!forward && !backward) return;
         event.preventDefault();
         event.stopPropagation();
         const currentIndex = currentItems.findIndex((item) => item === document.activeElement);
-        const nextIndex = event.key === "ArrowDown"
+        const nextIndex = forward
           ? (currentIndex + 1) % currentItems.length
           : currentIndex <= 0 ? currentItems.length - 1 : currentIndex - 1;
         setCurrent(nextIndex, true);

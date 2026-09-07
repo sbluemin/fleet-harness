@@ -15,7 +15,7 @@ import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, c
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { GroupContextMenu } from "../canvas/group-context-menu.js";
+import { GroupContextMenu, type GroupContextMenuAlign } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode } from "../canvas/operation-accent.js";
 import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -69,6 +69,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly operationId: string;
     readonly anchor: DOMRect;
     readonly returnFocus?: HTMLElement | null;
+    readonly align?: GroupContextMenuAlign;
   } | null>(null);
   const triageActive = useTriageActive();
 
@@ -575,9 +576,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     );
   }, [refreshOperationsAndGroups, runMutation]);
 
-  const openOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
+  const openOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null, align?: GroupContextMenuAlign) => {
     if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
-    setOperationMenu({ operationId, anchor, returnFocus });
+    setOperationMenu({ operationId, anchor, returnFocus, align });
   }, []);
   // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
   // 이중 호출에서 focus()가 두 번 실행된다.
@@ -810,6 +811,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onOpenAll={handleOpenAll}
           onRename={handleRename}
           onOpenOperationMenu={openOperationMenu}
+          openMenuOperationId={operationMenu?.operationId ?? null}
           onDismissOperationMenu={dismissOperationMenu}
         />
       </div>
@@ -828,6 +830,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           accentKey={getTheaterCanvasSnapshot(menuOperation.theaterId).operationAccent[menuOperation.id]
             ?? operationAccentFromNode(menuOperation)}
           anchor={operationMenu.anchor}
+          align={operationMenu.align}
           actions={{
             onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
             onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),

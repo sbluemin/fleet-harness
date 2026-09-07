@@ -29,6 +29,7 @@ import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
+import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { FleetMap } from "./fleet-map.js";
 import { anchorViewportToPoint, resolveFleetContentCenter, resolveFleetMapActive, resolveFleetMapZoomAnchor } from "./fleet-map-layout.js";
 import { OperationFrame } from "./operation-frame.js";
@@ -55,7 +56,9 @@ interface OperationsCanvasProps {
   /** 빈 캔버스의 일괄 열기 — 대기 목록에 보인 순서(updatedAt 내림차순) 그대로 id를 넘긴다. */
   readonly onOpenAll: (operationIds: readonly string[]) => void;
   readonly onRename: (operationId: string, title: string) => void;
-  readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null, align?: GroupContextMenuAlign) => void;
+  // 지금 메뉴가 열린 Operation — 그 패널의 More 버튼만 열림 상태를 말한다.
+  readonly openMenuOperationId?: string | null;
   /** 그 Operation의 패널이 focus layer 뒤로 숨었다 — 그 패널이 주인인 메뉴가 열려 있으면 거둔다. */
   readonly onDismissOperationMenu?: (operationId: string) => void;
 }
@@ -110,6 +113,7 @@ export function OperationsCanvas({
   onOpenAll,
   onRename,
   onOpenOperationMenu,
+  openMenuOperationId = null,
   onDismissOperationMenu,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -1165,9 +1169,10 @@ export function OperationsCanvas({
             onRename: (title) => {
               onRename(operation.id, title);
             },
-            onOpenMenu: (anchor, returnFocus) => {
-              onOpenOperationMenu?.(operation.id, anchor, returnFocus);
+            onOpenMenu: (anchor, returnFocus, align) => {
+              onOpenOperationMenu?.(operation.id, anchor, returnFocus, align);
             },
+            menuOpen: openMenuOperationId === operation.id,
             onRenderHiddenDismissMenu: () => {
               onDismissOperationMenu?.(operation.id);
             },
@@ -1487,7 +1492,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onMinimize: () => void;
   readonly onMaximize: () => void;
   readonly onRename: (title: string) => void;
-  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null, align: GroupContextMenuAlign) => void;
+  readonly menuOpen: boolean;
   readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
@@ -1536,6 +1542,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         onMaximize={options.onMaximize}
         onRename={options.onRename}
         onOpenMenu={options.onOpenMenu}
+        menuOpen={options.menuOpen}
         onRenderHiddenDismissMenu={options.onRenderHiddenDismissMenu}
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}

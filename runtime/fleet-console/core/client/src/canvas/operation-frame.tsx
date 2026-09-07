@@ -7,6 +7,7 @@ import { useT } from "../i18n/index.js";
 import { operationActivityVisual, type OperationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { GlanceHudModel } from "./glance-hud.js";
+import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { resolveAccentColor } from "./operation-accent.js";
 
 interface OperationFrameProps {
@@ -45,7 +46,9 @@ interface OperationFrameProps {
   readonly onMaximize?: () => void;
   readonly onRename: (title: string) => void;
   /** 캡션 More 버튼이 여는 Operation 메뉴 — 사이드바 우클릭과 같은 메뉴를 부모가 소유한다. */
-  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null, align: GroupContextMenuAlign) => void;
+  // 이 패널의 More 메뉴가 열려 있는가 — 버튼이 aria-expanded와 켜짐 워시로 말한다.
+  readonly menuOpen?: boolean;
   /**
    * 이 프레임이 focus layer 뒤로 숨을 때의 통지. 메뉴는 부모 소유이고 프레임은 자기가 숨는 것만
    * 아므로, 보이지 않는 패널의 메뉴가 화면에 남지 않도록 부모가 이 신호로 자기 메뉴를 거둔다.
@@ -89,7 +92,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -122,7 +125,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       restoreIdentityFocusRef.current = true;
     },
   });
-  // 사용자 accent(정체성)는 명판 마크만 소유한다. 캡션 채움은 액센트가 없을 때와 같다.
+  // 사용자 accent(정체성)는 제목 글자의 잉크만 소유한다. 캡션 채움은 액센트가 없을 때와 같다.
   // 패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용이다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   // 그룹 소속은 개인 accent와 다른 축이므로 자기 마크(도트)와 중립 티어 이름으로 따로 선다 —
@@ -402,7 +405,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const openOperationMenu = (anchor: DOMRect, returnFocus: HTMLElement | null) => {
     disarmClose();
     onActivate();
-    onOpenMenu?.(anchor, returnFocus);
+    // 캡션에서 연 메뉴는 버튼 오른쪽 변에 맞춰 패널 안쪽으로 펼친다.
+    onOpenMenu?.(anchor, returnFocus, "end");
   };
 
   const close = () => {
@@ -491,7 +495,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             <span className="canvas-operation-group-name">{groupName}</span>
           </span>
         ) : null}
-        {accentColor ? <span className="canvas-operation-id-mark" aria-hidden="true" /> : null}
         {rename.renaming ? (
           <input
             ref={rename.inputRef}
@@ -541,6 +544,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
               onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
               aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
               aria-haspopup="menu"
+              aria-expanded={menuOpen}
             >
               <MoreIcon />
             </button>
@@ -644,11 +648,12 @@ function frameStatusClass(status: OperationActivityVisual | undefined): string {
 
 function MoreIcon() {
   // 가로 3점 — 이 Operation에 대한 나머지 동작이 메뉴로 열린다는 표준 문법.
+  // 창 컨트롤과 같은 14px 격자에 그린다 — 한 줄의 마크가 한 굵기로 읽힌다.
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <circle cx="3.5" cy="7" r="1.1" fill="currentColor" />
+      <circle cx="7" cy="7" r="1.1" fill="currentColor" />
+      <circle cx="10.5" cy="7" r="1.1" fill="currentColor" />
     </svg>
   );
 }
