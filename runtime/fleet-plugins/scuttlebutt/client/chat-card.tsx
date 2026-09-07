@@ -4,6 +4,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
+import { useCopyAnswer } from "./copy-answer.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
@@ -53,7 +54,7 @@ export function ChatCard({
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
-  const [copied, setCopied] = React.useState(false);
+  const { copied, copy: copyAnswer } = useCopyAnswer();
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -119,26 +120,12 @@ export function ChatCard({
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [mascot, onClose]);
 
-  React.useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_600);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
   const style = placementStyle(placement);
   const busy = state.phase === "starting" || state.phase === "thinking";
   const answer = lastAnswer(state);
   const canSend = !busy && draft.trim().length > 0;
   const submit = () => {
     if (canSend) onAsk(draft);
-  };
-  const copyAnswer = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      // 클립보드가 막힌 컨텍스트(권한·비보안 origin)에서는 조용히 둔다 — 텍스트는 화면에 있다.
-    }
   };
   return (
     <div

@@ -1,9 +1,11 @@
+import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
 import { sourceLabel } from "./chat-card.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
+import { useCopyAnswer } from "./copy-answer.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { isConsoleReadEnabled } from "./console-read.js";
 
@@ -17,6 +19,11 @@ import { isConsoleReadEnabled } from "./console-read.js";
  *
  * 도착 알림과 다른 점 하나: **자동으로 사라지지 않는다.** 6초는 읽는 시간이 아니라 알아채는
  * 시간이고, 답을 읽기 전에 지우면 물어본 사람이 잃는다.
+ *
+ * 말풍선은 **읽기 표면**이고 카드는 **대화 표면**이다. 답은 카드와 같은 마크다운 조판으로 여기서
+ * 끝까지 읽히고, 새 위아래로 남은 공간(최대 60vh)까지 자란 뒤에야 안에서 스크롤한다. 카드는 전문을
+ * 보는 곳이 아니라 이어 묻고 넘기는 곳이라 「이어 묻기」로 연다 — 다 보이는 답 아래의 「전문 보기」는
+ * 무엇이 더 있다는 거짓말이다.
  */
 export function AnswerBubble({
   admiral,
@@ -41,18 +48,37 @@ export function AnswerBubble({
   readonly onDismiss: (restoreFocus: boolean) => void;
 }) {
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  const textRef = React.useRef<HTMLDivElement | null>(null);
   const t = getT(locale);
+  const { copied, copy } = useCopyAnswer();
 
   const updatePlacement = React.useCallback(() => {
     const mascotElement = mascot.current;
     const bubble = bubbleRef.current;
     if (!mascotElement || !bubble) return;
     const mascotRect = mascotElement.getBoundingClientRect();
-    const bubbleRect = bubble.getBoundingClientRect();
     const margin = 8;
     const gap = 8;
     const alignRight = mascotRect.left + mascotRect.width / 2 > window.innerWidth / 2;
     const placeAbove = mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2;
+    // 본문은 새 위(아래)로 남은 공간까지 자란다 — 고정 40vh는 화면 반이 비어 있어도 답을 접었다.
+    // 60vh를 넘기면 답이 아니라 벽이 되므로 거기서 멈추고 안에서 스크롤한다. 봉투(머리·출처·버튼)는
+    // 본문과 무관한 높이라, 봉투 전체에서 본문을 뺀 만큼을 가용 공간에서 덜어 본문 상한을 정한다.
+    const text = textRef.current;
+    if (text) {
+      const room = placeAbove
+        ? mascotRect.top - gap - margin
+        : window.innerHeight - mascotRect.bottom - gap - margin;
+      const chrome = bubble.offsetHeight - text.offsetHeight;
+      const ceiling = Math.min(room, window.innerHeight * 0.6) - chrome;
+      text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
+      // 넘치는 답은 아래 가장자리를 흐려 "더 있다"고 말하고, 키보드로도 굴릴 수 있게 포커스 자리를 준다.
+      const clipped = text.scrollHeight > text.clientHeight + 1;
+      text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
+      if (clipped) text.setAttribute("tabindex", "0");
+      else text.removeAttribute("tabindex");
+    }
+    const bubbleRect = bubble.getBoundingClientRect();
     const preferredLeft = alignRight ? mascotRect.right - bubbleRect.width : mascotRect.left;
     const left = clamp(preferredLeft, margin, window.innerWidth - bubbleRect.width - margin);
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
@@ -106,7 +132,7 @@ export function AnswerBubble({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDismiss]);
 
-  const answer = readAnswerText(state);
+  const answer = readAnswer(state);
   const sources = readAnswerSources(state);
   const working = state.phase === "starting" || state.phase === "thinking";
   const name = t(`chat.label.${admiral}` as "chat.label.tori");
@@ -123,7 +149,7 @@ export function AnswerBubble({
           읽힌다. 상시 존재하는 이 영역은 턴이 정착한 뒤에만 내용을 갖고, 그래서 한 번만 읽힌다
           (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). */}
       <span className="scuttlebutt-answer-announce" aria-live="polite" aria-atomic="true">
-        {working ? "" : answer ?? ""}
+        {working ? "" : answer?.text ?? ""}
       </span>
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
@@ -132,7 +158,15 @@ export function AnswerBubble({
         </span>
         {answer === null
           ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>
-          : <p className="scuttlebutt-answer-text">{answer}</p>}
+          : answer.kind === "error"
+            ? <div ref={textRef} className="scuttlebutt-answer-text is-error">{answer.text}</div>
+            : (
+              <div
+                ref={textRef}
+                className="scuttlebutt-answer-text scuttlebutt-markdown-body"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text).html }}
+              />
+            )}
         {!working && sources.length > 0 ? (
           <span className="scuttlebutt-sources">
             <span className="scuttlebutt-sources-label">{t("sources.label")}</span>
@@ -141,10 +175,17 @@ export function AnswerBubble({
             ))}
           </span>
         ) : null}
-        {/* 말풍선은 앞부분과 입구다 — 전문과 이어 묻기는 원래 있던 카드가 받는다. */}
-        <button type="button" className="scuttlebutt-answer-expand" onClick={onExpand}>
-          {t("answer.expand")}
-        </button>
+        {/* 답은 여기서 다 읽힌다 — 다음 행동은 이어 묻기(카드) 아니면 복사다. */}
+        <span className="scuttlebutt-answer-foot">
+          <button type="button" className="scuttlebutt-answer-expand" onClick={onExpand}>
+            {t("answer.followUp")}
+          </button>
+          {!working && answer?.kind === "assistant" ? (
+            <button type="button" className="scuttlebutt-answer-expand" onClick={() => void copy(answer.text)}>
+              {copied ? t("action.copied") : t("action.copy")}
+            </button>
+          ) : null}
+        </span>
       </div>
       <button
         type="button"
@@ -161,15 +202,20 @@ export function AnswerBubble({
   );
 }
 
+/** 본문이 이보다 낮아지면 한두 줄도 못 담는다 — 새가 화면 가장자리에 붙어도 이만큼은 읽힌다. */
+const ANSWER_MIN_HEIGHT_PX = 72;
+
 /**
  * 지금 문답의 답만 읽는다. 아직 한 글자도 오지 않았으면 null이고, 그때는 상태 문구가 대신 선다 —
- * 빈 말풍선은 "실패했나"로 읽힌다.
+ * 빈 말풍선은 "실패했나"로 읽힌다. 오류 문구는 마크다운이 아니라 그대로 선다.
  */
-function readAnswerText(state: ChatState): string | null {
+function readAnswer(state: ChatState): { readonly kind: "assistant" | "error"; readonly text: string } | null {
   const entries = currentExchange(state);
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry && (entry.kind === "assistant" || entry.kind === "error") && entry.text.length > 0) return entry.text;
+    if (entry && (entry.kind === "assistant" || entry.kind === "error") && entry.text.length > 0) {
+      return { kind: entry.kind, text: entry.text };
+    }
   }
   return null;
 }
