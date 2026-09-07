@@ -2023,6 +2023,53 @@
 
 .remote-row-actions { display: flex; gap: var(--space-4); justify-content: flex-end; }
 
+/* 원격 관리도 레일 안에 선다. 좁은 폭에서는 각 항목의 라벨과 동작을 세로로 유지한다. */
+@container (max-width: 640px) {
+  .settings-pane .remote-card-head { flex-wrap: wrap; }
+  .settings-pane .remote-interface-presets { grid-template-columns: repeat(auto-fit, minmax(min(196px, 100%), 1fr)); }
+  .settings-pane .remote-host { grid-template-columns: 8px minmax(0, 1fr); }
+  .settings-pane .remote-host > button { grid-column: 2; justify-self: start; }
+  .settings-pane .remote-host-text small { overflow-wrap: anywhere; }
+  .settings-pane .remote-link-field { flex-wrap: wrap; }
+  .settings-pane .remote-link-field input { flex-basis: 100%; width: 100%; }
+  .settings-pane .remote-link-field button { min-height: 32px; }
+  .settings-pane .remote-table,
+  .settings-pane .remote-table tbody { display: block; }
+  .settings-pane .remote-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .settings-pane .remote-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--surface-rim);
+  }
+  .settings-pane .remote-table td {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: var(--space-1) var(--space-3);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .settings-pane .remote-table td[data-label]::before {
+    content: attr(data-label);
+    flex-basis: 100%;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+  }
+}
+
 /*
   접속을 끊는 것은 되돌릴 수 있고, 페어링을 지우는 것은 되돌릴 수 없다. coral은 뒤에 오는
   파괴적 행동 하나만 쓰고, 이쪽은 중립 서체 색으로 두어 두 버튼의 무게를 눈으로 가른다.

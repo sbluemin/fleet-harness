@@ -1510,10 +1510,10 @@ function RemoteLinksCard({
             <tr><td colSpan={4} className="remote-table-empty">{t("settings.remote.table.empty")}</td></tr>
           ) : rows.map((row) => (
             <tr key={row.key}>
-              <td>{row.name}</td>
-              <td><span className={`remote-access-chip is-${row.access}`}>{row.access}</span></td>
-              <td>{row.when}</td>
-              <td className="remote-row-actions">
+              <td data-label={t("settings.remote.table.device")}>{row.name}</td>
+              <td data-label={t("settings.remote.table.access")}><span className={`remote-access-chip is-${row.access}`}>{row.access}</span></td>
+              <td data-label={t("settings.remote.table.lastUsedHead")}>{row.when}</td>
+              <td className="remote-row-actions" data-label={t("settings.remote.table.actionsHead")}>
                 {row.disconnect ? (
                   <button type="button" className="remote-disconnect" disabled={busy !== null} onClick={row.disconnect}>{t("settings.remote.disconnect")}</button>
                 ) : null}
