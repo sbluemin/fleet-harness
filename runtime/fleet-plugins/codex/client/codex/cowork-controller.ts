@@ -165,6 +165,23 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(t) }).html;
   };
 
+  // 선택 댓글은 읽기 스크롤포트와 부유 도크 사이의 보이는 영역 안에 둔다.
+  const positionAnchor = () => {
+    const element = anchor.firstElementChild as HTMLElement | null;
+    if (!selection || !element) return;
+    const scrollport = options.article.closest<HTMLElement>(".codex-doc-scroll, .codex-reading-sheet-read");
+    if (!scrollport) return;
+    const viewport = scrollport.getBoundingClientRect();
+    const host = options.article.getBoundingClientRect();
+    const dock = dockZone.getBoundingClientRect();
+    const top = Math.max(viewport.top, 0) + 8;
+    const bottom = Math.min(viewport.bottom, window.innerHeight, dock.height > 0 ? dock.top : window.innerHeight) - 8;
+    element.style.maxHeight = `${Math.max(0, bottom - top)}px`;
+    element.style.overflowY = "auto";
+    const height = element.getBoundingClientRect().height;
+    element.style.top = `${Math.max(top, Math.min(host.top + selection.top, bottom - height)) - host.top}px`;
+  };
+
   const renderAnchor = () => {
     if (disposed) return;
     if (!selection) { anchor.innerHTML = ""; return; }
@@ -185,7 +202,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
           </div>
         </div>`
       : `<button type="button" class="cowork-pill" data-cowork-action="comment" ${at}><span aria-hidden="true">✦</span>${escapeHtml(t("codex.cowork.comment"))}</button>`;
-    if (composerOpen) anchor.querySelector<HTMLTextAreaElement>(".cowork-composer-input")?.focus();
+    positionAnchor();
+    if (composerOpen) anchor.querySelector<HTMLTextAreaElement>(".cowork-composer-input")?.focus({ preventScroll: true });
   };
 
   const threadState = (): CoworkThreadState => {
@@ -814,6 +832,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   };
   const onMouseLeaveArticle = () => { tip.hidden = true; };
 
+  document.addEventListener("scroll", positionAnchor, true);
+  window.addEventListener("resize", positionAnchor);
   options.article.addEventListener("mouseup", onMouseUp);
   options.article.addEventListener("mousedown", onMouseDown);
   options.article.addEventListener("keydown", onKeyDown);
@@ -833,6 +853,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       clearSettle();
       syncTick(false);
       unsubscribe?.();
+      document.removeEventListener("scroll", positionAnchor, true);
+      window.removeEventListener("resize", positionAnchor);
       options.article.removeEventListener("mouseup", onMouseUp);
       options.article.removeEventListener("mousedown", onMouseDown);
       options.article.removeEventListener("keydown", onKeyDown);

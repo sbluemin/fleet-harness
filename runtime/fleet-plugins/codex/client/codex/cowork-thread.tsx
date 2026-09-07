@@ -93,8 +93,6 @@ export interface CoworkThreadActions {
 
 export function CoworkThread({ state, actions }: { readonly state: CoworkThreadState; readonly actions: CoworkThreadActions }) {
   const t = useT();
-  // 초안이 살아 있으면(복원된 세션) 빈 화면이 아니다 — 리뷰 도크가 그 자리를 진다.
-  const empty = state.turns.length === 0 && state.annotations.length === 0 && !state.running && !state.dirty;
   // 이력만 스크롤한다 — 리뷰 도크와 컴포저(중지·적용)는 스크롤포트 밖에 남아 언제나 손에 닿는다.
   // 스트리밍 중에는 읽던 끝을 따라간다: 사용자가 위로 올려 읽는 중이면 따라가지 않는다.
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -112,7 +110,6 @@ export function CoworkThread({ state, actions }: { readonly state: CoworkThreadS
   return (
     <div className="cowork-thread-root">
       <div ref={scrollRef} className="cowork-thread-scroll" onScroll={onScroll}>
-        {empty ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
         {state.turns.length > 0 ? (
           <ol className="cowork-thread" aria-label={t("codex.cowork.threadAria")}>
             {state.turns.map((turn, index) => (
@@ -327,6 +324,8 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
   const t = useT();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingComments = state.annotations.filter((card) => card.status !== "done").length;
+  const showOnboarding = state.promptText.length === 0 && state.turns.length === 0
+    && state.annotations.length === 0 && !state.running && !state.dirty;
   // 도는 동안에도 입력은 열려 있다 — Esc 중지의 초점 자리이고, 다음 지시를 미리 써 둘 수 있다.
   // 전송만 canSend가 막는다.
   const placeholder = state.running
@@ -358,14 +357,15 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
   };
   return (
     <div className={`cowork-composer-frame${state.running ? " is-working" : ""}`}>
-      <ComposerField className="cowork-composer-field">
+      <ComposerField className={`cowork-composer-field${showOnboarding ? " is-onboarding" : ""}`}>
+        {showOnboarding ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
         <ComposerInput
           ref={inputRef}
           className="cowork-composer-input"
           name="prompt"
           rows={1}
           value={state.promptText}
-          placeholder={placeholder}
+          placeholder={showOnboarding ? undefined : placeholder}
           aria-label={t("codex.cowork.instructionAria")}
           onChange={(event) => actions.onPromptChange(event.target.value)}
           onKeyDown={onKeyDown}
