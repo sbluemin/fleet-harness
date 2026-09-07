@@ -168,7 +168,7 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "featureTour.remoteAccess.step4Body": "액세스 링크가 이 지문을 실어, Fleet Console 앱이 이 콘솔과 사칭을 구분합니다. 지문을 갱신하면 연결된 모든 기기가 한 번에 끊깁니다.",
   "featureTour.remoteAccess.step5Title": "액세스 링크를 건넵니다",
   "featureTour.remoteAccess.step5Body": "링크는 처음 한 번만 쓰이고 기기 하나와 페어링됩니다. full 링크는 그 기기가 이 기계에서 명령을 실행할 수 있게 하고, monitoring 링크는 그럴 수 없습니다. 링크는 비밀로 다루세요.",
-  "common.experimental": "실험 기능",
+  "common.experimental": "실험",
   "launchKind.claudeGateway.description": "Claude Code 내장 Claude와 설정에서 켠 Gateway 모델을 실행",
   "launchKind.claudeGateway.brief": "내장 + Gateway",
   "launchVariants.group.native": "Claude",

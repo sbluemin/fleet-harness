@@ -432,14 +432,27 @@
   }
 
   .settings-pane .fc-settings-row {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
   }
 
-  .settings-pane .settings-slider-field {
+  .settings-pane .fc-settings-row__copy {
+    max-width: none;
+  }
+
+  /* 접힌 행에서 컨트롤 묶음은 행 폭을 다 쓴다 — ModelPicker가 남은 폭을 채우고 옆 스위치는 제 폭을 지킨다. */
+  .settings-pane .fc-settings-row__control,
+  .settings-pane .experiments-row-controls {
     width: 100%;
   }
 
-  .settings-pane .settings-slider {
+  /* 접힌 행에서 연속값 컨트롤은 행 폭을 다 쓴다 — 트랙이 늘어나고 스테퍼·값·기본값은 제자리. */
+  .settings-pane .fc-settings-slider {
+    width: 100%;
+  }
+
+  .settings-pane .fc-settings-slider__range {
     width: 100%;
     min-width: 0;
     flex: 1 1 auto;
@@ -772,6 +785,15 @@
   flex: none;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* 설정 행의 선택기 값은 한 줄로 말줄임한다 — 폭은 fc-select 기본과 ModelPicker가 각자 진다. */
+.global-settings-row .fc-select__value,
+.fc-settings-row .fc-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .operations-mutation-error {
@@ -1747,8 +1769,8 @@
   .remote-port-control input[type="radio"] { appearance: auto; }
 }
 
-/* 켬/끔은 콘솔 전체에서 이 한 모양이다. 코어의 리퀴드 글래스, 원격 리스너, 그리고 플러그인
-   SDK의 SettingsToggle이 모두 이 클래스를 소비한다 — 같은 뜻이 화면마다 다른 모양을 갖지 않게.
+/* 켬/끔은 콘솔 전체에서 이 한 모양이다. 그리는 컴포넌트도 하나 — SDK의 SettingsToggle이 코어의
+   리퀴드 글래스·원격 리스너·실험 기능과 플러그인 카드를 모두 담당하고, 이 클래스는 그 트랙과 손잡이다.
    켜짐은 선택이자 위치이므로 brass가 칠하고, 신호 토큰은 상태를 말하는 자리에만 남는다. */
 .settings-switch {
   flex: none;
@@ -1770,12 +1792,8 @@
   transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
-.settings-switch:hover:not(:disabled):not(.is-on) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-/* 불리언 ON = 워시 + 글리프 — 트랙이 은은한 워시로 밝아지고 켬을 말하는 accent는 brass 손잡이뿐이다. */
-.settings-switch.is-on { background: var(--control-wash); }
-.settings-switch.is-on .settings-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
-.settings-switch:active:not(:disabled) { transform: translateY(1px); }
-.settings-switch:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+/* 불리언 ON = 워시 + 글리프 — 트랙이 은은한 워시로 밝아지고 켬을 말하는 accent는 brass 손잡이뿐이다.
+   hover·checked·disabled 상태는 SDK 토글 블록(.fc-settings-toggle*)이 입력의 상태로 그린다. */
 
 /* 한 단으로 흐른다. 옆 칸에 세우면 그리드 행 높이를 따라 늘어나, 짧은 쪽이 제 legend에서 100px 넘게 떨어진다. */
 .remote-endpoint-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
@@ -2097,7 +2115,6 @@
 }
 
 .theme-card:disabled,
-.typography-reset:disabled,
 .font-card:disabled {
   cursor: not-allowed;
   opacity: var(--control-disabled-opacity);
@@ -2212,33 +2229,6 @@
   .theme-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.typography-reset {
-  flex: none;
-  min-height: 34px;
-  padding: 7px var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.typography-reset:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.typography-reset:active:not(:disabled) {
-  transform: translateY(1px);
 }
 
 .global-settings-row.is-stack {
@@ -2641,7 +2631,6 @@
   .host-switcher-panel > button.is-current,
   .remote-interface-preset.is-selected,
   .theme-card.is-active,
-  .settings-switch.is-on,
   .fc-settings-toggle__input:checked + .settings-switch {
     background: SelectedItem;
     color: SelectedItemText;
@@ -12058,25 +12047,46 @@ body[data-codex-side="true"] .command-card {
 
 .fc-settings-card__body {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
+/* 플러그인 행은 코어 행(.global-settings-row)과 한 문법이다 — 평행 행, 형제 사이 hairline.
+   예전에는 행마다 테두리·유리·둥근 모서리를 둘러 "카드 속 카드"였고, 같은 실험 기능 페이지에서
+   위 카드(코어)는 한 덩어리로, 아래 카드(플러그인)는 작은 카드 다섯 장으로 읽혔다. 테두리와
+   그림자는 카드 한 층만 진다. */
 .fc-settings-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+  display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 78%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 54%, transparent);
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.fc-settings-row + .fc-settings-row {
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
 }
 
 .fc-settings-row__copy {
+  display: grid;
+  gap: var(--space-2);
   min-width: 0;
+  max-width: 48ch;
 }
 
-.fc-settings-row__label,
+/* 행 제목은 코어 .global-settings-resp-title과 같은 서체다 — 같은 페이지에서 17px과 13px이
+   섞이면 두 카드가 다른 위계로 읽힌다. '?' 팁과 범위 칩은 제목 뒤 같은 간격으로 선다. */
+.fc-settings-row__label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+}
+
 .fc-settings-toggle__label,
 .fc-settings-field__label {
   color: var(--text-primary);
@@ -12085,7 +12095,15 @@ body[data-codex-side="true"] .command-card {
   letter-spacing: 0;
 }
 
-.fc-settings-row__hint,
+/* 행 설명은 코어 .global-settings-help와 같은 모노 각주다. */
+.fc-settings-row__hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.6;
+}
+
 .fc-settings-field__hint {
   margin: 4px 0 0;
   color: var(--text-tertiary);
@@ -12094,8 +12112,13 @@ body[data-codex-side="true"] .command-card {
 }
 
 .fc-settings-row__control {
-  justify-self: end;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
+  max-width: 100%;
 }
 
 /* SDK 연속값 행 — 트랙과 손잡이는 공유 `.fleet-slider`가 그리고, 여기서는 배치와 스테퍼만
@@ -12109,7 +12132,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .fc-settings-slider__range {
-  width: 132px;
+  width: 168px;
   min-width: 72px;
 }
 
@@ -12124,8 +12147,8 @@ body[data-codex-side="true"] .command-card {
   flex: none;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   background: transparent;
@@ -12155,15 +12178,57 @@ body[data-codex-side="true"] .command-card {
   cursor: not-allowed;
 }
 
-/* 값은 tabular-nums라 끌 때 자리가 흔들리지 않고, 폭은 세 자리+단위를 담는 최소치로 고정한다. */
+/* 값은 tabular-nums라 끌 때 자리가 흔들리지 않고, 폭은 세 자리+단위를 담는 최소치로 고정한다.
+   색은 코어 슬라이더 값과 같은 brass-ink — 이 숫자는 "지금 실린 값"이라 위치 채널이다. */
 .fc-settings-slider__value {
   flex: none;
   min-width: 46px;
-  color: var(--text-secondary);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px, 부관 크기가
+   24px 버튼을 따로 가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 스테퍼와 같은 28px 높이. */
+.fc-settings-reset {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.fc-settings-reset:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.fc-settings-reset:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+.fc-settings-reset:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.fc-settings-reset:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
 }
 
 .fc-settings-toggle {
@@ -12203,6 +12268,10 @@ body[data-codex-side="true"] .command-card {
 .fc-settings-toggle:has(.fc-settings-toggle__input:disabled) {
   cursor: not-allowed;
   opacity: var(--control-disabled-opacity);
+}
+
+.fc-settings-toggle:active:not(:has(.fc-settings-toggle__input:disabled)) .settings-switch {
+  transform: translateY(1px);
 }
 
 .fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible) .settings-switch,
@@ -12310,11 +12379,9 @@ body[data-codex-side="true"] .command-card {
 
 @media (max-width: 720px) {
   .fc-settings-row {
-    grid-template-columns: 1fr;
-  }
-
-  .fc-settings-row__control {
-    justify-self: stretch;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
   }
 }
 
@@ -16254,26 +16321,3 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   }
 }
 
-/* 설정의 연속값 행 — 손잡이와 값이 한 줄로 붙는다. 값은 tabular-nums라 끌 때 자리가 흔들리지
-   않고, 폭은 두 자리+기호를 담는 최소치로 고정한다. */
-.settings-slider-field {
-  display: flex;
-  flex: none;
-  gap: 10px;
-  align-items: center;
-}
-
-.settings-slider {
-  width: 168px;
-  min-width: 120px;
-}
-
-.settings-slider-value {
-  flex: none;
-  width: 42px;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  color: var(--brass-ink);
-}

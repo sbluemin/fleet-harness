@@ -1,4 +1,4 @@
-import { ExperimentalBadge, ModelPicker, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, ModelPicker, SettingsToggle, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
 import type { ConsoleExperimentSettings, ExperimentFeatureId, ExperimentModelFeatureId } from "@fleet-console/sdk/settings";
 
 import { SettingsHelp } from "../components/settings-help.js";
@@ -7,7 +7,7 @@ import { useT } from "../i18n/index.js";
 import type { CoreMessageKey } from "../i18n/messages/index.js";
 import { collectExperimentModelOptions } from "../experiment-model-options.js";
 import type { GlobalSettingsState } from "../types.js";
-import { SettingsScope, SettingsSwitch } from "./sections.js";
+import { SettingsScope } from "./sections.js";
 
 interface FeatureRow {
   readonly id: ExperimentFeatureId;
@@ -34,8 +34,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
     <section className="global-settings-card" aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
-        <ExperimentalBadge>{t("settings.experiments.badge")}</ExperimentalBadge>
-        <SettingsScope kind="live" />
+        <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
       </h3>
       {FEATURE_ROWS.map((row) => {
         const enabled = experiments[row.id];
@@ -47,6 +46,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
               <p className="global-settings-resp-title">
                 {t(row.titleKey)}
                 <SettingsHelp title={t(row.titleKey)}>{t(row.helpKey)}</SettingsHelp>
+                <SettingsScope kind="live" />
               </p>
             </div>
             {/* 한 줄: 모델 선택기와 스위치가 오른쪽에 나란히 선다 — 어느 기능의 모델인지는 왼쪽 제목이 말한다.
@@ -61,10 +61,10 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
                   onChange={(value) => save({ ...experiments, [modelField]: value })}
                 />
               ) : null}
-              <SettingsSwitch
+              <SettingsToggle
                 checked={enabled}
                 disabled={saving}
-                label={t(row.titleKey)}
+                ariaLabel={t(row.titleKey)}
                 onChange={(next) => save({ ...experiments, [row.id]: next })}
               />
             </div>

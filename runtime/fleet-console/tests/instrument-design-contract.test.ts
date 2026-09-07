@@ -999,7 +999,8 @@ describe("Instrument core design contract", () => {
 
     // 페인 폭 대응은 컨테이너 쿼리 절 하나가 소유한다 — .rail-pane-body가 컨테이너다.
     expect(components).toMatch(/@container \(max-width: 640px\) \{[\s\S]{0,400}\.settings-pane \.global-settings-row \{/);
-    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+    // 플러그인 행도 같은 절 안에서 같은 스택 규칙을 받는다 — 코어 행과 한 문법이라 접히는 법도 하나다.
+    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*flex-direction: column;/);
     expect(source("styles/rail.css")).toContain("container-type: inline-size");
   });
 
@@ -2031,7 +2032,9 @@ describe("Instrument core design contract", () => {
     // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
     // dismantled and the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
-    expect(settingsPane).toContain("fleet-slider settings-slider");
+    // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
+    expect(settingsPane).toContain("<SettingsSlider");
+    expect(source("styles/components.css")).not.toContain(".settings-slider-field");
     expect(settingsPane).toContain("setRailOverlayAlpha");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
@@ -3484,7 +3487,7 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionTerminal).toContain("transition: none;");
     expect(source("canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
     expect(source("store.ts")).toContain("--unfocused-panel-opacity");
-    expect(source("settings/sections.tsx")).toContain('className="fleet-slider settings-slider"');
+    expect(source("settings/sections.tsx")).toContain("onPreview={previewPanelFade}");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,
