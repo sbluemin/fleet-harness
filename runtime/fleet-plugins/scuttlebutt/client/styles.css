@@ -716,14 +716,37 @@
   text-transform: none;
 }
 
-/* 말풍선은 앞부분과 입구다 — 넘치는 분량은 자르고 전문은 카드가 받는다. */
-/* 긴 답은 자르지 않고 안에서 스크롤한다 — 잘린 답은 읽는 사람이 무엇을 잃었는지 모른다. */
+/* 말풍선은 읽기 표면이다 — 답은 카드와 같은 마크다운 조판으로 여기서 끝까지 읽힌다.
+   높이 상한은 배치 루프가 새 위아래 가용 공간(최대 60vh)으로 인라인에 쓴다. 그 안에서 넘칠 때만
+   스크롤하고, 잘리지 않는다 — 잘린 답은 읽는 사람이 무엇을 잃었는지 모른다. */
 .scuttlebutt-answer-text {
   margin: 0;
-  max-height: min(11.5em, 40vh);
   overflow-y: auto;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* 첫 프레임: 배치 루프가 실제 가용 높이를 재기 전의 안전값. */
+  max-height: 60vh;
+}
+
+.scuttlebutt-answer-text.is-error {
+  white-space: pre-wrap;
+}
+
+/* 아직 아래가 남았을 때만 가장자리를 흐린다 — 끝까지 굴리면 흐림도 걷힌다. */
+.scuttlebutt-answer-text.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+}
+
+.scuttlebutt-answer-text:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  border-radius: var(--radius-xs);
+}
+
+.scuttlebutt-answer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
 }
 
 .scuttlebutt-answer-working {
@@ -736,7 +759,6 @@
 /* 본문 액션은 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 밑줄로만 누를 곳임을 알린다
    (도착 알림의 열기 행과 같은 계약). */
 .scuttlebutt-answer-expand {
-  justify-self: start;
   padding: 0;
   border: 0;
   background: transparent;
@@ -971,6 +993,11 @@
 .scuttlebutt-markdown-body ul,
 .scuttlebutt-markdown-body ol {
   margin: 0 0 var(--space-2) var(--space-4);
+}
+
+/* 마지막 블록의 아래 여백은 봉투의 gap과 겹친다 — 말풍선에서는 버튼 행이 멀어 보인다. */
+.scuttlebutt-markdown-body > :last-child {
+  margin-bottom: 0;
 }
 
 .scuttlebutt-markdown-body code {

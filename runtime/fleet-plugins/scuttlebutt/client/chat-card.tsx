@@ -1,11 +1,13 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
+import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
-import { getT } from "./scuttlebutt-catalog.js";
+import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 
 export function ChatCard({
@@ -53,7 +55,7 @@ export function ChatCard({
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
-  const [copied, setCopied] = React.useState(false);
+  const { copied, copy: copyAnswer } = useCopyAnswer();
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -94,6 +96,12 @@ export function ChatCard({
     position();
   }, [state.entries, state.phase, position]);
 
+  // `mermaid` 펜스의 자리표시자를 도식으로 채운다 — 말풍선과 같은 설치 계약.
+  React.useEffect(() => {
+    const log = logRef.current;
+    if (log) installDiagramHydrator(log, diagramHydratorLabels(locale));
+  }, [locale]);
+
   // 입력 높이는 내용에 맞춘다 — 한 줄로 시작해 붙여넣은 문단만큼 자라고, 상한은 CSS가 정한다.
   React.useLayoutEffect(() => {
     const input = inputRef.current;
@@ -119,26 +127,12 @@ export function ChatCard({
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [mascot, onClose]);
 
-  React.useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_600);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
   const style = placementStyle(placement);
   const busy = state.phase === "starting" || state.phase === "thinking";
   const answer = lastAnswer(state);
   const canSend = !busy && draft.trim().length > 0;
   const submit = () => {
     if (canSend) onAsk(draft);
-  };
-  const copyAnswer = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      // 클립보드가 막힌 컨텍스트(권한·비보안 origin)에서는 조용히 둔다 — 텍스트는 화면에 있다.
-    }
   };
   return (
     <div
@@ -181,13 +175,13 @@ export function ChatCard({
         ) : null}
         <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
       </div>
-      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
+      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
         {state.entries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
             {t(`chat.greeting.${admiral}`)}
           </div>
         ) : null}
-        {state.entries.map((entry) => renderEntry(entry, t))}
+        {state.entries.map((entry) => renderEntry(entry, locale))}
         {answer && !busy ? (
           <div className="scuttlebutt-answer-actions">
             {answer.sources.length > 0 ? (
@@ -249,19 +243,18 @@ export function ChatCard({
   );
 }
 
-function renderEntry(entry: ChatEntry, t: ReturnType<typeof getT>): React.ReactNode {
+function renderEntry(entry: ChatEntry, locale: ConsoleLocale | undefined): React.ReactNode {
   if (entry.kind === "assistant") {
     return (
       <div
         key={entry.id}
         className="scuttlebutt-message-sam scuttlebutt-markdown-body"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text).html }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text, markdownRenderOptions(locale)).html }}
       />
     );
   }
   if (entry.kind === "user") return <div key={entry.id} className="scuttlebutt-message-user">{entry.text}</div>;
   if (entry.kind === "notice") return <div key={entry.id} className="scuttlebutt-status-row is-notice">{entry.text}</div>;
-  void t;
   return (
     <div key={entry.id} className={`scuttlebutt-status-row${entry.kind === "error" ? " is-error" : ""}`}>
       {entry.text}
