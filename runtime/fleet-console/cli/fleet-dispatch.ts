@@ -5,16 +5,7 @@ import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
 import { dispatchGatewayCommand } from "./gateway/dispatcher.js";
 import { dispatchDoctorCommand } from "./doctor.js";
-import { readFleetCliRelease } from "./release.js";
-import {
-  buildConsoleHelpText,
-  openFleetConsole,
-  parseConsoleCliMode,
-  runConsoleRestart,
-  runConsoleStatus,
-  runConsoleStop,
-} from "../core/host/console-lifecycle.js";
-import { describeConsoleLaunch } from "../core/host/failure-notice.js";
+import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/console-lifecycle.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 import { resolveSiblingConsoleCliPath } from "./update/stop-console.js";
 
@@ -106,26 +97,7 @@ export async function dispatchFleetArgv(
   if (dispatch.kind === "console") {
     try {
       const mode = parseConsoleCliMode(dispatch.consoleArgv);
-      if (mode === "help") {
-        const release = readFleetCliRelease();
-        io.stdout.write(`${buildConsoleHelpText({ env, isTTY: io.stdout.isTTY, release: `${release.version} · ${release.channel}` })}\n`);
-        return 0;
-      }
-      if (mode === "status") {
-        io.stdout.write(`${await runConsoleStatus()}\n`);
-        return 0;
-      }
-      if (mode === "stop") {
-        io.stdout.write(`${await runConsoleStop()}\n`);
-        return 0;
-      }
-      if (mode === "restart") {
-        const restarted = await runConsoleRestart();
-        io.stdout.write(`${describeConsoleLaunch("Fleet Console restarted.", restarted)}\n${await runConsoleStatus()}\n`);
-        return 0;
-      }
-      const opened = await openFleetConsole();
-      io.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
+      await runConsolePublishedCommand(mode, { stdout: io.stdout, env });
       return 0;
     } catch (error: unknown) {
       io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

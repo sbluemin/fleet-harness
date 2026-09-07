@@ -6,7 +6,7 @@ import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { ClipboardUnavailableError, copyPathToClipboard, PathActionError } from "./path-actions.js";
+import { ClipboardUnavailableError, copyPathToClipboard, isPathContained, PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
 import { FileReadError, READ_MAX_LINES_CAP, readFileForTheater } from "./file-reader.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
@@ -555,7 +555,7 @@ export async function searchTheaterFiles(
         }
         try {
           realPath = await fsp.realpath(absolutePath);
-          if (!isContained(realRoot, realPath)) continue;
+          if (!isPathContained(realRoot, realPath)) continue;
           // 별칭 심링크가 가리키는 VCS 날것도 검색 대상에서 제외한다.
           if (vcsSegmentOf(realRoot, realPath)) continue;
           const stat = await fsp.stat(realPath);
@@ -723,11 +723,6 @@ function compareFileSearchItem(left: FileSearchItem, right: FileSearchItem, quer
   const leftRank = leftName === lowQuery ? 0 : leftName.startsWith(lowQuery) ? 1 : 2;
   const rightRank = rightName === lowQuery ? 0 : rightName.startsWith(lowQuery) ? 1 : 2;
   return leftRank - rightRank || left.relativePath.localeCompare(right.relativePath);
-}
-
-function isContained(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 // ═══ handlers ════════════════════════════════════════════════════════════════

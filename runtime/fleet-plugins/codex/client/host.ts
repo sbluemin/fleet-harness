@@ -56,21 +56,9 @@ export function setConsoleTheme(next: ConsoleTheme | undefined): void {
   if (next) theme = next;
 }
 
-export function consoleTheme(): ConsoleTheme {
-  return theme;
-}
-
 /** 로케일은 호스트가 알려준다 — 플러그인이 전역 설정 스토어를 읽지 않는다. */
 export function setConsoleLocale(locale: ConsoleLocale | undefined): void {
   setActiveLocale(locale);
-}
-
-export function activeTheaterId(): string | null {
-  return capabilities?.consoleState.getActiveTheaterId() ?? null;
-}
-
-export function setActiveTheater(theaterId: string): void {
-  capabilities?.consoleState.setActiveTheater(theaterId);
 }
 
 /** 공유 링크로 들어오면 Codex 패널이 아직 서 있지 않다 — 그 자리를 세운다. */
@@ -91,10 +79,6 @@ export function openCodexReaderByAddress(entryId: string, theaterId: string | nu
     codexTheater: theaterId,
     codexView: null,
   }, { replace: false });
-}
-
-export function subscribeConsoleState(listener: () => void): () => void {
-  return capabilities?.consoleState.subscribe(listener) ?? (() => undefined);
 }
 
 export function resolveActiveLocaleFromHost(): ConsoleLocale {

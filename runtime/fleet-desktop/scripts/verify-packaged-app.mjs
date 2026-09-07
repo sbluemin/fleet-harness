@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
+import { isUpdaterArtifact } from "./strip-updater-artifacts.mjs";
 
 const execFileAsync = promisify(execFile);
 const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -204,7 +205,7 @@ function normalizeAsarEntryPath(file) {
 async function assertNoUpdaterArtifacts(root) {
   if (!existsSync(root)) return;
   const entries = await readdir(root, { withFileTypes: true, recursive: true });
-  for (const entry of entries) if (entry.isFile() && (/^latest.*\.yml$/i.test(entry.name) || entry.name.endsWith(".blockmap"))) throw new Error(`Updater artifact is forbidden: ${join(entry.parentPath, entry.name)}`);
+  for (const entry of entries) if (entry.isFile() && isUpdaterArtifact(entry.name)) throw new Error(`Updater artifact is forbidden: ${join(entry.parentPath, entry.name)}`);
 }
 
 function parseCliArguments(argumentsList) {

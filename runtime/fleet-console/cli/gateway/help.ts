@@ -1,12 +1,9 @@
 import {
-  ASCII_FLEET_BANNER,
-  FLEET_COMMAND,
-  GRADIENT_COLORS,
   command,
   commandRow,
   dim,
   optionRow,
-  paint,
+  paintFleetHelpBanner,
   resolveColorEnabled,
   section,
   stripAnsi,
@@ -20,16 +17,11 @@ export interface BuildGatewayHelpTextOptions {
   readonly release?: FleetCliRelease;
 }
 
-const HELP_BANNER_INDENT = "  ";
-
 export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}): string {
   const release = options.release ?? readFleetCliRelease();
   const colorEnabled = resolveColorEnabled(options);
   const lines = [
-    ...ASCII_FLEET_BANNER.map(
-      (line: string, index: number) =>
-        `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
-    ),
+    ...paintFleetHelpBanner(colorEnabled),
     dim(`Fleet AI Gateway · ${release.version} · ${release.channel}`, colorEnabled),
     "",
     dim("One Anthropic-compatible endpoint over your Codex, Cursor, Kimi, OpenCode,", colorEnabled),

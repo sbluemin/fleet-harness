@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
-import type { SkillListItem } from "../server/skill-types.js";
+import type { Scope, SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 import { filterInstalled, namesInOtherScope } from "./installed-view.js";
 import { JobStatusDock } from "./skill-feedback.js";
@@ -14,7 +14,6 @@ import {
   setInstalledState,
   setScope,
   skillsContextKey,
-  type Scope,
   useSkillsStore,
 } from "./skills-store.js";
 import { useJobLog } from "./use-job-log.js";

@@ -15,4 +15,3 @@ export { createPluginTerminalTicketRegistry, readSocketRole, readTicketChannel }
 export type { TerminalTicketRegistry, TerminalTicketRegistryDeps } from "./tickets.js";
 export { createTerminalRuntime } from "./runtime.js";
 export type { TerminalRuntime, TerminalLaunchResolver } from "./runtime.js";
-export { createWorkspaceChangeScanner, parseGitStatusPorcelainZ } from "./workspace-scanner.js";

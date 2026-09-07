@@ -4,8 +4,6 @@ export type AgentId = "claude-code" | "codex" | "cursor" | "opencode";
 
 export type Scope = "project" | "global";
 
-export type JobStatus = "running" | "done" | "error";
-
 export interface SkillListItem {
   readonly name: string;
   readonly scope: Scope;
@@ -43,11 +41,4 @@ export interface SkillSearchItem {
 
 export interface SkillSearchResult {
   readonly skills: SkillSearchItem[];
-}
-
-export interface JobPollResult {
-  readonly lines: string[];
-  readonly nextCursor: number;
-  readonly status: JobStatus;
-  readonly exitCode?: number;
 }

@@ -17,24 +17,7 @@ import type { AiGatewayRouteDeps } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-export {
-  AI_GATEWAY_MODEL_ENV,
-  AI_GATEWAY_ROUTE_SEGMENT,
-  ANTHROPIC_MESSAGES_URL,
-  KIMI_MESSAGES_URL,
-  OPENCODE_MESSAGES_URL,
-  callerAnthropicCredential,
-  createAiGatewayRouter,
-  readAntigravitySubscriptionToken,
-  readCodexSubscriptionAuth,
-  readCursorSubscriptionToken,
-  readXaiSubscriptionToken,
-} from "@dotobokuri/core-ai-gateway";
-export type {
-  AiGatewayRouteDeps,
-  AiGatewayRouter,
-  CodexSubscriptionAuth,
-} from "@dotobokuri/core-ai-gateway";
+export { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,

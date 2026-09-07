@@ -52,14 +52,19 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  // 배열도 typeof "object"다 — 그 한 글자를 빠뜨리면 `skills: []`가 "읽어낸 빈 lock"으로
-  // 통과하고, 모든 스킬이 다시 관리 밖(=로컬)으로 단언된다.
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function rejectUnless(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  method: "GET" | "POST",
+): boolean {
+  if (req.method !== method) { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return true; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+  return false;
 }
 
 function hasSourceEntry(table: Record<string, unknown>): boolean {
-  return Object.values(table).some((entry) => isRecord(entry) && typeof entry["source"] === "string");
+  return Object.values(table).some((entry) => isPlainObject(entry) && typeof entry["source"] === "string");
 }
 
 /**
@@ -76,15 +81,15 @@ function hasSourceEntry(table: Record<string, unknown>): boolean {
  * lock으로 인정한다.
  */
 function isLockShape(parsed: unknown): parsed is LockFile {
-  if (!isRecord(parsed)) return false;
-  if ("skills" in parsed) return isRecord(parsed["skills"]);
+  if (!isPlainObject(parsed)) return false;
+  if ("skills" in parsed) return isPlainObject(parsed["skills"]);
   return hasSourceEntry(parsed);
 }
 
 function collectLockSources(lock: LockFile, sources: Map<string, string>): void {
-  const table = isRecord(lock.skills) ? lock.skills : (lock as Record<string, unknown>);
+  const table = isPlainObject(lock.skills) ? lock.skills : (lock as Record<string, unknown>);
   for (const [name, entry] of Object.entries(table)) {
-    if (isRecord(entry) && typeof entry["source"] === "string") {
+    if (isPlainObject(entry) && typeof entry["source"] === "string") {
       sources.set(name, entry["source"]);
     }
   }
@@ -271,8 +276,7 @@ export async function handleList(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "GET")) return;
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -308,8 +312,7 @@ export async function handlePaletteSearch(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
   const body = await ctx.host.http.readJsonBody<{
     readonly theaterId?: unknown;
     readonly query?: unknown;
@@ -353,8 +356,7 @@ export async function handleSearch(
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
 ): Promise<void> {
-  if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "GET")) return;
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -378,8 +380,7 @@ export async function handleInstall(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -426,8 +427,7 @@ export async function handleUpdate(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -465,8 +465,7 @@ export async function handleGetJob(
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
 ): Promise<void> {
-  if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "GET")) return;
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   if (url.searchParams.has("relPath")) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -488,8 +487,7 @@ export async function handleRemove(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -533,8 +531,7 @@ export async function handlePreview(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
@@ -571,8 +568,7 @@ export async function handleInstalledFile(
   ctx: FleetPluginServerContext,
   executor: CliExecutor,
 ): Promise<void> {
-  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
-  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  if (rejectUnless(req, res, ctx, "POST")) return;
 
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }

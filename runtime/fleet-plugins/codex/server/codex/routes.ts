@@ -648,7 +648,7 @@ function sanitizeSearchExcerpt(value: string): string {
     .trim();
 }
 
-export function centerSearchExcerpt(value: string, query: string): string {
+function centerSearchExcerpt(value: string, query: string): string {
   const maxLength = 180;
   if (value.length <= maxLength) return value;
   const matchIndex = value.toLowerCase().indexOf(query.trim().toLowerCase());
@@ -755,13 +755,6 @@ function normalizeOriginHostname(hostname: string): string | null {
     }
   }
   return unbracketed;
-}
-
-function normalizeRemoteAddress(address: string | undefined): string | null {
-  if (!address) return null;
-  const normalized = stripIpv6Brackets(address).toLowerCase();
-  if (normalized === "::ffff:127.0.0.1") return "127.0.0.1";
-  return normalized;
 }
 
 function stripIpv6Brackets(host: string): string {

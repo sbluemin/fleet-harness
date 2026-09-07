@@ -1,11 +1,10 @@
 import { useSyncExternalStore } from "react";
 
-import type { SkillListItem, SkillSearchItem } from "../server/skill-types.js";
+import type { Scope, SkillListItem, SkillSearchItem } from "../server/skill-types.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 export type ActiveTab = "installed" | "find";
-export type Scope = "project" | "global";
 
 export interface SkillsState {
   readonly activeTab: ActiveTab;
@@ -17,8 +16,6 @@ export interface SkillsState {
   readonly installedList: readonly SkillListItem[];
   readonly installedLoading: boolean;
   readonly installedContextKey: string | null;
-  readonly updateJobId: string | null;
-  readonly updateJobScope: Scope | null;
 }
 
 type Listener = () => void;
@@ -35,8 +32,6 @@ const DEFAULT_STATE: SkillsState = {
   installedList: [],
   installedLoading: false,
   installedContextKey: null,
-  updateJobId: null,
-  updateJobScope: null,
 };
 
 // ─── module state ─────────────────────────────────────────────────────────────

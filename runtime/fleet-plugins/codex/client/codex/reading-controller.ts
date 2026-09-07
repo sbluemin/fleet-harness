@@ -33,9 +33,8 @@ import { mountCoworkInline } from "./cowork-controller.js";
 import type { CoworkController } from "./cowork-controller.js";
 import { CODEX_LIVE_CHANGED_EVENT } from "./live.js";
 import type { CodexLiveChangedDetail } from "./live.js";
-import { entryPath } from "./router.js";
 import { getState } from "./state.js";
-import { escapeAttribute, escapeHtml } from "./utils.js";
+import { entryPath, escapeAttribute, escapeHtml } from "./utils.js";
 
 type T = Translate<CoreMessageKey>;
 

@@ -75,11 +75,6 @@ interface CodexGatewayDeps {
   readonly onWorkspaceReleased?: (workspaceId: string) => void;
 }
 
-interface ParsedHostHeader {
-  host: string;
-  port: number;
-}
-
 type WorkspaceSelection =
   | { kind: "workspace"; workspace: WorkspaceRegistration | null; rewrittenUrl?: string }
   | { kind: "missing-workspace" }
@@ -382,15 +377,6 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
   return { kind: "workspace", workspace: workspaces.getMru(), rewrittenUrl: `${url.pathname}${url.search}` };
 }
 
-function isHostAllowed(rawHeaders: string[], requestUrl: string, allowedHosts: Set<string>, serverPort: number): boolean {
-  if (/^https?:\/\//i.test(requestUrl)) return false;
-  const hostHeaders = readRawHeaderValues(rawHeaders, "host");
-  if (hostHeaders.length !== 1) return false;
-  const parsed = parseHostHeader(hostHeaders[0] ?? "");
-  if (!parsed || parsed.port !== serverPort) return false;
-  return allowedHosts.has(parsed.host);
-}
-
 function sendMethodNotAllowed(response: ServerResponse): void {
   response.writeHead(405, withSecurityHeaders({ allow: "GET, HEAD, POST", "content-type": "application/json; charset=utf-8" }));
   response.end(JSON.stringify({ error: "method_not_allowed" }));
@@ -471,35 +457,6 @@ function isIpv4MappedAddress(host: string): boolean {
 
 function isWildcardBindHost(host: string): boolean {
   return WILDCARD_HOSTS.has(stripIpv6Brackets(host).toLowerCase());
-}
-
-function parseHostHeader(value: string): ParsedHostHeader | null {
-  if (!value || value.includes(",") || /^https?:\/\//i.test(value)) return null;
-  if (value.startsWith("[")) {
-    const match = value.match(/^\[([^\]]+)\]:(\d+)$/);
-    if (!match) return null;
-    const host = canonicalizeAllowedHost(match[1] ?? "");
-    const port = Number(match[2] ?? "");
-    if (!host || !Number.isInteger(port)) return null;
-    return { host, port };
-  }
-  const parts = value.split(":");
-  if (parts.length !== 2) return null;
-  const host = canonicalizeAllowedHost(parts[0] ?? "");
-  const port = Number(parts[1] ?? "");
-  if (!host || !Number.isInteger(port)) return null;
-  if (net.isIP(host) === 6) return null;
-  return { host, port };
-}
-
-function readRawHeaderValues(rawHeaders: string[], name: string): string[] {
-  const values: string[] = [];
-  for (let index = 0; index < rawHeaders.length; index += 2) {
-    if ((rawHeaders[index] ?? "").toLowerCase() === name) {
-      values.push(rawHeaders[index + 1] ?? "");
-    }
-  }
-  return values;
 }
 
 function stripIpv6Brackets(host: string): string {

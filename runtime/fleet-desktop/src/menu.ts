@@ -31,7 +31,7 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
       submenu: [
         { label: "Show", click: actions.show },
         { type: "separator" },
-        ...(actions.updates.enabled() ? [{ label: "Check for Updates", click: () => void actions.updates.check() }, ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : [])] : []),
+        ...buildUpdateMenuItems(actions),
         { type: "separator" },
         { label: "Diagnostics", click: actions.diagnostics },
         { role: "quit", click: actions.quit },
@@ -41,6 +41,17 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
     { label: "View", submenu: darwinConsoleActions(actions) },
   ];
   MenuCtor.setApplicationMenu(MenuCtor.buildFromTemplate(template));
+}
+
+export function buildUpdateMenuItems(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
+  return actions.updates.enabled()
+    ? [
+        { label: "Check for Updates", click: () => void actions.updates.check() },
+        ...(actions.updates.availableVersion()
+          ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }]
+          : []),
+      ]
+    : [];
 }
 
 function darwinConsoleActions(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
