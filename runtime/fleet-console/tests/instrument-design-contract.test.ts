@@ -1348,7 +1348,9 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
     // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
     expect(components).not.toContain("border-color: var(--user-accent)");
-    expect(titleIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 78%, var(--surface-panel));");
+    // 언포커스는 면이 아니라 3티어 글자색 쪽으로 섞는다 — Whites에서 13px 본문 AA를 지키는 유일한 방향이다.
+    expect(titleIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
+    expect(titleIdleBlock).not.toContain("var(--surface-panel)");
     expect(titleActiveBlock).toContain("color: var(--user-accent);");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
