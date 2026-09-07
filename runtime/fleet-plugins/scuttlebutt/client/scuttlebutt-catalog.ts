@@ -1,3 +1,4 @@
+import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
@@ -89,6 +90,18 @@ const scuttlebuttEn = {
   "mention.descriptionConsole": "{name} answers from web search and can read Operation titles, status, and Wiki entries — no repository or file access.",
   "answer.dismiss": "Dismiss",
   "answer.followUp": "Ask a follow-up",
+  "diagram.renderFailed": "Diagram render failed: {message}",
+  "diagram.openExpandedAria": "Open diagram in expanded view",
+  "diagram.lightboxTitle": "MANIFEST · DIAGRAM",
+  "diagram.close": "Close",
+  "diagram.closeExpandedAria": "Close expanded diagram",
+  "diagram.zoomControlsAria": "Diagram zoom controls",
+  "diagram.zoomOutAria": "Zoom out",
+  "diagram.zoomInAria": "Zoom in",
+  "diagram.fit": "Fit",
+  "diagram.fitAria": "Fit diagram to viewport",
+  "diagram.reset": "Reset",
+  "diagram.resetAria": "Reset diagram zoom",
   "answer.working": "Looking it up…",
   "bird.tori": "Tori",
   "bird.bori": "Bori",
@@ -194,6 +207,18 @@ const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
   "mention.descriptionConsole": "{name}은(는) 웹 검색과 함께 Operation 제목·상태·Wiki 항목을 읽고 답합니다 — 저장소와 파일에는 접근하지 않습니다.",
   "answer.dismiss": "닫기",
   "answer.followUp": "이어 묻기",
+  "diagram.renderFailed": "다이어그램 렌더 실패: {message}",
+  "diagram.openExpandedAria": "다이어그램을 확대 보기로 열기",
+  "diagram.lightboxTitle": "MANIFEST · DIAGRAM",
+  "diagram.close": "닫기",
+  "diagram.closeExpandedAria": "확대된 다이어그램 닫기",
+  "diagram.zoomControlsAria": "다이어그램 확대/축소 컨트롤",
+  "diagram.zoomOutAria": "축소",
+  "diagram.zoomInAria": "확대",
+  "diagram.fit": "맞춤",
+  "diagram.fitAria": "뷰포트에 다이어그램 맞추기",
+  "diagram.reset": "초기화",
+  "diagram.resetAria": "다이어그램 확대/축소 초기화",
   "answer.working": "찾아보는 중…",
   "bird.tori": "토리",
   "bird.bori": "보리",
@@ -221,4 +246,23 @@ const translators: Record<ConsoleLocale, Translate<ScuttlebuttMessageKey>> = {
 
 export function getT(locale: ConsoleLocale | undefined): Translate<ScuttlebuttMessageKey> {
   return translators[locale ?? "en"];
+}
+
+/** Mermaid 하이드레이터의 라벨은 모듈 전역이라, 이 표면이 설치할 때마다 자기 로케일로 다시 채운다. */
+export function diagramHydratorLabels(locale: ConsoleLocale | undefined): DiagramHydratorLabels {
+  const t = getT(locale);
+  return {
+    renderFailed: (message) => t("diagram.renderFailed", { message }),
+    openExpandedAria: t("diagram.openExpandedAria"),
+    lightboxTitle: t("diagram.lightboxTitle"),
+    close: t("diagram.close"),
+    closeExpandedAria: t("diagram.closeExpandedAria"),
+    zoomControlsAria: t("diagram.zoomControlsAria"),
+    zoomOutAria: t("diagram.zoomOutAria"),
+    zoomInAria: t("diagram.zoomInAria"),
+    fit: t("diagram.fit"),
+    fitAria: t("diagram.fitAria"),
+    reset: t("diagram.reset"),
+    resetAria: t("diagram.resetAria"),
+  };
 }

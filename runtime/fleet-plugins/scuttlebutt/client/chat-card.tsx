@@ -7,7 +7,7 @@ import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
-import { getT } from "./scuttlebutt-catalog.js";
+import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 
 export function ChatCard({
@@ -99,8 +99,8 @@ export function ChatCard({
   // `mermaid` 펜스의 자리표시자를 도식으로 채운다 — 말풍선과 같은 설치 계약.
   React.useEffect(() => {
     const log = logRef.current;
-    if (log) installDiagramHydrator(log);
-  }, []);
+    if (log) installDiagramHydrator(log, diagramHydratorLabels(locale));
+  }, [locale]);
 
   // 입력 높이는 내용에 맞춘다 — 한 줄로 시작해 붙여넣은 문단만큼 자라고, 상한은 CSS가 정한다.
   React.useLayoutEffect(() => {

@@ -7,7 +7,7 @@ import type { AdmiralId } from "./chat-session.js";
 import { sourceLabel } from "./chat-card.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
-import { getT } from "./scuttlebutt-catalog.js";
+import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
 import { isConsoleReadEnabled } from "./console-read.js";
 
 /**
@@ -75,19 +75,19 @@ export function AnswerBubble({
     });
     const text = textRef.current;
     const chrome = text ? bubble.offsetHeight - text.offsetHeight : bubble.offsetHeight;
+    // 레인은 지난 프레임의 높이가 아니라 **답이 원하는 높이**(본문 전체, 60vh 상한)로 잰다. 실제 높이로
+    // 재면 레인 때문에 줄어든 말풍선이 다음 프레임에 앞 말풍선과 안 겹쳐 레인이 0이 되고, 다시 자라
+    // 겹치는 진동이 프레임마다 돈다. 원하는 높이는 상한이 어떻든 같으므로 한 값으로 정착한다.
+    const width = bubble.getBoundingClientRect().width;
+    const wanted = chrome + (text ? Math.min(text.scrollHeight, window.innerHeight * 0.6) : 0);
+    const laneLeft = clamp(alignRight ? mascotRect.right - width : mascotRect.left, margin, window.innerWidth - width - margin);
     // 앞선 말풍선을 피해 물러선 만큼은 이미 쓰인 공간이다 — 그것을 빼지 않으면 뒤 말풍선이 남은 공간
     // 전부로 자란 뒤 레인만큼 더 밀려 화면 밖에 선다(두 부관이 긴 답을 나란히 낼 때). 새가 있는 쪽
     // (화면 반으로 가른 넓은 쪽)에 본문 한 줄도 못 세우면 반대쪽으로 연다 — 앞 답이 위를 다 썼으면 뒤 답은 아래다.
-    const current = bubble.getBoundingClientRect();
     const roomOn = (above: boolean) => {
-      const lane = measureLane(
-        above,
-        clamp(alignRight ? mascotRect.right - current.width : mascotRect.left, margin, window.innerWidth - current.width - margin),
-        current.width,
-        current.height,
-      );
+      const lane = measureLane(above, laneLeft, width, wanted);
       const free = above ? mascotRect.top - gap - margin : window.innerHeight - mascotRect.bottom - gap - margin;
-      return { above, room: free - lane };
+      return { above, lane, room: free - lane };
     };
     const preferred = roomOn(mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2);
     const fallback = roomOn(!preferred.above);
@@ -105,15 +105,12 @@ export function AnswerBubble({
       if (clipped) text.setAttribute("tabindex", "0");
       else text.removeAttribute("tabindex");
     }
-    const bubbleRect = bubble.getBoundingClientRect();
-    const preferredLeft = alignRight ? mascotRect.right - bubbleRect.width : mascotRect.left;
-    const left = clamp(preferredLeft, margin, window.innerWidth - bubbleRect.width - margin);
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
     // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
     // 겹치는 앞 말풍선만큼만 세로로 비켜선다 — 멀리 떨어진 말풍선까지 밀어내면 이유 없이 떠오른다.
-    const lane = measureLane(placeAbove, left, bubbleRect.width, bubbleRect.height);
+    const lane = side.lane;
     // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다(도착 알림과 같다).
-    bubble.style.left = `${left}px`;
+    bubble.style.left = `${laneLeft}px`;
     if (placeAbove) {
       bubble.style.top = "";
       bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap + lane}px`;
@@ -138,8 +135,8 @@ export function AnswerBubble({
   // 원문까지 사라진다(Analyst 채팅과 같은 설치 계약).
   React.useEffect(() => {
     const bubble = bubbleRef.current;
-    if (bubble) installDiagramHydrator(bubble);
-  }, []);
+    if (bubble) installDiagramHydrator(bubble, diagramHydratorLabels(locale));
+  }, [locale]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -233,16 +230,17 @@ const ANSWER_MIN_HEIGHT_PX = 72;
 /**
  * 지금 문답의 답만 읽는다. 아직 한 글자도 오지 않았으면 null이고, 그때는 상태 문구가 대신 선다 —
  * 빈 말풍선은 "실패했나"로 읽힌다. 오류 문구는 마크다운이 아니라 그대로 선다.
+ *
+ * 답이 도구 행으로 끊기면 스토어는 뒤 조각을 새 항목으로 세운다 — 마지막 항목만 읽으면 도구 호출
+ * 앞에 쓴 문단이 통째로 빠진다. 카드가 모든 조각을 그리듯 여기서도 조각을 이어 붙인다.
  */
 function readAnswer(state: ChatState): { readonly kind: "assistant" | "error"; readonly text: string } | null {
   const entries = currentExchange(state);
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry && (entry.kind === "assistant" || entry.kind === "error") && entry.text.length > 0) {
-      return { kind: entry.kind, text: entry.text };
-    }
-  }
-  return null;
+  const last = entries.at(-1);
+  if (last?.kind === "error" && last.text.length > 0) return { kind: "error", text: last.text };
+  const fragments = entries.filter((entry) => entry.kind === "assistant" && entry.text.length > 0).map((entry) => entry.text);
+  if (fragments.length === 0) return null;
+  return { kind: "assistant", text: fragments.join("\n\n") };
 }
 
 function readAnswerSources(state: ChatState): readonly string[] {
