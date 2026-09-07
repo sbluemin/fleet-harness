@@ -5875,15 +5875,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 /* 사이드바 칩의 사용자 accent(정체성)는 캡션 제목과 같은 문법으로 이름 글자의 잉크만 소유한다 —
-   3px 좌측 스파인은 폐기됐다. 언포커스는 캡션과 같은 3티어 글자색 쪽 30% 믹스(네 테마 5.1:1 이상),
-   hover·active(brass 배경)는 accent 원색. brass 포커스·aurora/warn 상태는 각자의 채널을 그대로 갖는다. */
+   3px 좌측 스파인은 폐기됐다. 언포커스는 캡션과 같은 3티어 글자색 쪽 30% 믹스(네 테마 5.1:1 이상).
+   hover·active는 한 단계 올라간 2티어 글자색 쪽 25% 믹스다 — 13px 이름을 accent 원색으로 두면
+   Whites의 --id-*(L50~56)가 chrome 면의 hover/active 워시 위에서 AA(4.5:1)를 잃는다(amber 3.8~3.9:1);
+   25% 믹스는 여덟 톤 모두 4.5:1 이상(최소 amber active 4.59:1)을 지키면서 다크 3종에서는 원색과 같은 채도로 읽힌다.
+   brass 포커스·aurora/warn 상태는 각자의 채널을 그대로 갖는다. */
 .side-bar-chip[style*="--user-accent"] .side-bar-chip-name {
   color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));
 }
 
 .side-bar-chip[style*="--user-accent"]:hover .side-bar-chip-name,
 .side-bar-chip[style*="--user-accent"].side-bar-chip--active .side-bar-chip-name {
-  color: var(--user-accent);
+  color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));
 }
 
 /* 이름 왼쪽 상태 슬롯 — 조작 표면이 아니라 마크를 담는 자리다(칩 본체가 클릭을 소유한다). */

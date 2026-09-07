@@ -1358,7 +1358,8 @@ describe("Instrument core design contract", () => {
     // 정체성이 레일에서는 선으로, Map에서는 글자로 두 문법으로 말한다.
     expect(components).not.toContain('.side-bar-chip[style*="--user-accent"]::before');
     expect(chipIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
-    expect(chipActiveBlock).toContain("color: var(--user-accent);");
+    // hover/active도 원색이 아니라 2티어 글자색 쪽 25% 믹스 — Whites chrome 워시 위 13px AA의 하한이다.
+    expect(chipActiveBlock).toContain("color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));");
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
     // 5개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 이름(언포커스 믹스 + hover/active).
     // accent는 어디서나 제목 잉크에만 머물고 면·선 채널은 열지 않는다.
