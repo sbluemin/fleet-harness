@@ -14,7 +14,7 @@ import {
   CaptionTerminalGlyph,
   CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { ModelPicker, SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExperimentsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
@@ -223,7 +223,7 @@ export const agentPlugin = definePlugin({
   experimentModelOptions: async () => {
     if (!installedApi) return [];
     const catalog = await fetchAnalysisCatalog(installedApi);
-    return catalog.clis.flatMap((cli) => cli.models.map((model) => ({ id: model.id, label: model.label })));
+    return catalog.clis.flatMap((cli) => cli.models.map((model) => ({ id: model.id, label: model.label, effortLevels: model.effortLevels })));
   },
   closeOperation: async (operationId) => {
     try {
@@ -1306,8 +1306,9 @@ function AiGatewayCompactTimingCard() {
 
   const ceiling = state.compactCeiling;
   const policy = compactPolicyFromCeiling(ceiling);
-  const previewModels = state.aiGatewayCatalog.providers.flatMap((provider) => provider.models)
-    .filter((model) => typeof model.contextWindow === "number" && model.contextWindow > 0);
+  const previewModels = state.aiGatewayCatalog.providers.flatMap((provider) => provider.models
+    .filter((model) => typeof model.contextWindow === "number" && model.contextWindow > 0)
+    .map((model) => ({ ...model, provider: provider.id })));
   const preview = previewModels.find((model) => model.id === previewId) ?? previewModels[0];
   const previewWindow = preview?.contextWindow ?? 272_000;
   const liveCeiling: CompactCeiling | null = policy === "custom" && dragPercent !== null
@@ -1382,21 +1383,18 @@ function AiGatewayCompactTimingCard() {
         </div>
       </div>
       {previewModels.length > 0 ? (
-        <div className="compact-timing-preview">
-          {/* 팁은 라벨 밖 형제로 둔다 — 라벨 안의 버튼은 자기 접근성 이름을 셀렉트 이름에 싣는다. */}
-          <div className="compact-timing-preview-head">
-            <label className="compact-timing-preview-label" htmlFor="compact-timing-preview">
-              {t("terminal.settings.compactTimingPreview")}
-            </label>
-            <SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>
+        <div className="global-settings-row">
+          <div className="global-settings-row-text">
+            <p className="global-settings-resp-title">
+              {/* id는 제목 글자만 감싼 span이 진다 — 팁 버튼이 제목 안에 서면 그 접근성 이름까지 선택기 이름에 딸려 들어간다. */}
+              <span id="compact-timing-preview-label">{t("terminal.settings.compactTimingPreview")}</span>
+              <SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>
+            </p>
           </div>
-          <Select
-            id="compact-timing-preview"
+          <ModelPicker
             value={preview?.id ?? ""}
-            options={previewModels.map((model) => ({
-              value: model.id,
-              label: `${model.name} — ${formatAiGatewayContextWindow(model.contextWindow)}`,
-            }))}
+            options={previewModels.map((model) => ({ id: model.id, label: model.name, provider: model.provider, contextWindow: model.contextWindow }))}
+            aria-labelledby="compact-timing-preview-label"
             onChange={(id) => setPreviewId(id)}
             disabled={saving}
           />

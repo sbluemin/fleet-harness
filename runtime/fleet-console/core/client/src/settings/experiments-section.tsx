@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
-import { Select } from "@fleet-console/sdk/react/browser";
-import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, ExperimentalBadge } from "@fleet-console/sdk/settings/browser";
-import type { ConsoleExperimentSettings, ExperimentFeatureId, ExperimentModelFeatureId, ExperimentModelOption } from "@fleet-console/sdk/settings";
+import { ExperimentalBadge, ModelPicker, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
+import type { ConsoleExperimentSettings, ExperimentFeatureId, ExperimentModelFeatureId } from "@fleet-console/sdk/settings";
 
 import { SettingsHelp } from "../components/settings-help.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
@@ -26,20 +24,10 @@ const FEATURE_ROWS: readonly FeatureRow[] = [
   { id: "sessionWatch", titleKey: "settings.experiments.sessionWatch.title", helpKey: "settings.experiments.sessionWatch.help", model: "sessionWatch" },
 ];
 
-function useExperimentModelOptions(): readonly ExperimentModelOption[] {
-  const [options, setOptions] = useState<readonly ExperimentModelOption[]>(CLAUDE_EXPERIMENT_MODEL_OPTIONS);
-  useEffect(() => {
-    let cancelled = false;
-    void collectExperimentModelOptions().then((next) => { if (!cancelled) setOptions(next); });
-    return () => { cancelled = true; };
-  }, []);
-  return options;
-}
-
 export function ExperimentsSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
   const t = useT();
   const experiments = state.experiments;
-  const options = useExperimentModelOptions();
+  const options = useModelPickerOptions(collectExperimentModelOptions);
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
@@ -53,11 +41,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
         const enabled = experiments[row.id];
         const modelField = row.model === null ? null : (`${row.model}Model` as const);
         const current = modelField === null ? null : experiments[modelField];
-        const known = current === null || options.some((option) => option.id === current);
-        const selectOptions = [
-          ...options.map((option) => ({ value: option.id, label: option.label })),
-          ...(known || current === null ? [] : [{ value: current, label: current }]),
-        ];
         return (
           <div className="global-settings-row experiments-row" key={row.id}>
             <div className="global-settings-row-text">
@@ -66,13 +49,13 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
                 <SettingsHelp title={t(row.titleKey)}>{t(row.helpKey)}</SettingsHelp>
               </p>
             </div>
-            {/* 한 줄: 모델 선택기와 스위치가 오른쪽에 나란히 선다 — 어느 기능의 모델인지는 왼쪽 제목이 말한다. */}
+            {/* 한 줄: 모델 선택기와 스위치가 오른쪽에 나란히 선다 — 어느 기능의 모델인지는 왼쪽 제목이 말한다.
+                스위치가 행 제목을 이름으로 쓰므로 선택기는 "{기능} 모델"로 구별해 이름 짓는다. */}
             <div className="experiments-row-controls">
               {modelField !== null && current !== null ? (
-                <Select
-                  className="experiments-model-select"
+                <ModelPicker
                   value={current}
-                  options={selectOptions}
+                  options={options}
                   disabled={saving}
                   label={t("settings.experiments.modelAria", { feature: t(row.titleKey) })}
                   onChange={(value) => save({ ...experiments, [modelField]: value })}

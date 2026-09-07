@@ -1,6 +1,9 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 
-import { Select } from "../react/browser.js";
+import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
+import { SegmentedThumb, useSelect } from "../react/browser.js";
+import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
 // 실험 설정의 순수 도우미 — 브라우저 번들은 이 진입점만 공유 shim으로 노출되므로 여기서도 낸다.
@@ -50,19 +53,6 @@ export interface SettingsToggleProps {
   readonly label?: string;
   /** 보이지 않는 접근성 이름 — 행 라벨을 되풀이하는 눈에 띄는 글 없이 스위치를 이름 짓는다. */
   readonly ariaLabel?: string;
-  readonly disabled?: boolean;
-}
-
-export interface SettingsSelectOption {
-  readonly value: string;
-  readonly label: string;
-}
-
-export interface SettingsSelectProps {
-  readonly value: string;
-  readonly options: readonly SettingsSelectOption[];
-  readonly onChange: (next: string) => void;
-  readonly label?: string;
   readonly disabled?: boolean;
 }
 
@@ -296,26 +286,190 @@ export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled =
   );
 }
 
-export function SettingsSelect({ value, options, onChange, label, disabled = false }: SettingsSelectProps): React.ReactElement {
-  const labelId = React.useId();
-  const selectOptions = options.map((option) => ({ value: option.value, label: option.label }));
-  const control = (
-    <Select
-      value={value}
-      options={selectOptions}
-      onChange={onChange}
-      disabled={disabled}
-      label={label ? undefined : "Select setting"}
-      aria-labelledby={label ? labelId : undefined}
-    />
+export interface ModelPickerEffort {
+  readonly value: string;
+  /** 사다리 — 호출자가 자기 계약(기능 고정 사다리 또는 선택된 모델의 `effortLevels`)으로 넘긴다. */
+  readonly levels: readonly string[];
+  readonly onChange: (next: string) => void;
+  readonly ariaLabel: string;
+  /** 단 이름의 표시 문구. 없으면 단 id를 그대로 쓴다. */
+  readonly labelOf?: (level: string) => string;
+}
+
+export interface ModelPickerProps {
+  readonly value: string;
+  readonly options: readonly ExperimentModelOption[];
+  readonly onChange: (next: string) => void;
+  /** 주면 트리거 오른쪽에 강도 세그먼트가 이어 붙는다. 사다리가 비면 그려지지 않는다. */
+  readonly effort?: ModelPickerEffort;
+  readonly disabled?: boolean;
+  readonly id?: string;
+  readonly className?: string;
+  /** 행 제목이 이름이 된다. 행 제목이 없는 자리만 `label`로 보이지 않는 이름을 준다. */
+  readonly "aria-labelledby"?: string;
+  readonly label?: string;
+}
+
+/**
+ * 모델 선택지를 비동기로 채우는 한 훅. Claude 별칭은 즉시 서고, 로더(코어의 수집기 또는
+ * 플러그인 브리지)가 늦거나 실패해도 별칭은 남는다 — 카드마다 같은 useState/useEffect를
+ * 되풀이하면 그중 하나가 빈 목록으로 떨어지는 날이 온다.
+ */
+export function useModelPickerOptions(load: () => Promise<readonly ExperimentModelOption[]>): readonly ExperimentModelOption[] {
+  const [options, setOptions] = React.useState<readonly ExperimentModelOption[]>(CLAUDE_EXPERIMENT_MODEL_OPTIONS);
+  React.useEffect(() => {
+    let cancelled = false;
+    void load().then((next) => {
+      if (!cancelled && next.length > 0) setOptions(next);
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+  return options;
+}
+
+function formatModelContextWindow(contextWindow: number | null | undefined): string | null {
+  if (contextWindow === null || contextWindow === undefined || contextWindow <= 0) return null;
+  return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+}
+
+function modelPickerProviderOf(option: ExperimentModelOption): LaunchProviderGlyphId | null {
+  return option.provider !== undefined && isLaunchProviderGlyphId(option.provider) ? option.provider : null;
+}
+
+/**
+ * 설정 화면에서 모델 하나를 고르는 단일 문법.
+ *
+ * 트리거는 프로바이더 글리프·표시 이름·컨텍스트 메타를 한 줄로 말하고, 팝업은 런치 메뉴와 같은
+ * 순서·같은 글리프 배지(공급자 톤)로 프로바이더 밴드를 세운다 — 런치에서 고른 모델이 설정에서 다른 얼굴로 보이면 같은
+ * 모델인지 사람이 대조해야 한다. 크기 변형은 두지 않는다: 실험 카드의 42px 필드와 부관단
+ * 카드의 무테 11px 텍스트가 한 페이지에 서던 것이 이 컴포넌트가 지우는 어긋남이다.
+ *
+ * 저장된 값이 목록에 없으면(플러그인이 꺼졌거나 모델이 사라짐) 그 id를 마지막 밴드에 세워
+ * 선택이 화면에서 사라지지 않게 한다 — 사라지면 첫 옵션이 골라진 것처럼 읽히고, 다음 저장이
+ * 그 값을 조용히 덮어쓴다.
+ */
+export function ModelPicker({
+  value,
+  options,
+  onChange,
+  effort,
+  disabled = false,
+  id,
+  className,
+  "aria-labelledby": ariaLabelledBy,
+  label,
+}: ModelPickerProps): React.ReactElement {
+  const groups = React.useMemo(() => {
+    const known = options.some((option) => option.id === value);
+    const listed = known || value === "" ? options : [...options, { id: value, label: value }];
+    return groupModelsByLaunchProvider(listed, modelPickerProviderOf);
+  }, [options, value]);
+  const flat = React.useMemo(() => groups.flatMap((group) => group.models), [groups]);
+  const selectOptions = React.useMemo(() => flat.map((option) => ({ value: option.id, label: option.label })), [flat]);
+  const select = useSelect({ value, options: selectOptions, onChange, disabled, id });
+  const selected = flat.find((option) => option.id === value);
+  const selectedProvider = selected ? modelPickerProviderOf(selected) ?? groups.find((group) => group.models.includes(selected))?.provider ?? null : null;
+  const selectedMeta = formatModelContextWindow(selected?.contextWindow);
+  const known = options.some((option) => option.id === value);
+
+  const nameProps = ariaLabelledBy
+    ? { "aria-labelledby": ariaLabelledBy }
+    : label
+      ? { "aria-label": label }
+      : {};
+  const levels = effort?.levels ?? [];
+  const rootClassName = ["fc-model-picker", levels.length > 0 ? "has-effort" : "", className ?? ""].filter(Boolean).join(" ");
+
+  let index = -1;
+  return (
+    <div className={rootClassName}>
+      <div ref={select.rootRef} className={`${select.rootProps.className} fc-model-picker__select`}>
+        <button {...select.triggerProps} {...nameProps} className="fc-select__trigger fc-model-picker__trigger">
+          {selectedProvider ? <span className={`fc-model-picker__glyph fc-model-picker__glyph--mark is-${selectedProvider}`} aria-hidden="true">{launchProviderGlyph(selectedProvider)}</span> : null}
+          <span className={`fc-select__value fc-model-picker__name${known ? "" : " is-unknown"}`}>{selected?.label ?? value}</span>
+          {selectedMeta ? <span className="fc-model-picker__meta">{selectedMeta}</span> : null}
+          <span className="fc-select__caret" aria-hidden="true">⌄</span>
+        </button>
+        {select.isOpen
+          ? createPortal(
+              <ul {...select.listboxProps} {...nameProps} className={`${select.listboxProps.className} fc-model-picker__popup`}>
+                {groups.map((group) => (
+                  <React.Fragment key={group.provider ?? "etc"}>
+                    {/* 밴드는 옵션이 아니다 — listbox의 activedescendant 순서는 옵션만 센다. */}
+                    <li role="presentation" className="fc-model-picker__band">
+                      {group.provider ? <span className={`operation-launch-provider-glyph fc-model-picker__glyph is-${group.provider}`} aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
+                      {group.provider ? launchProviderCaption(group.provider) : "…"}
+                    </li>
+                    {group.models.map((option) => {
+                      index += 1;
+                      const meta = formatModelContextWindow(option.contextWindow);
+                      const optionProps = select.getOptionProps(index);
+                      return (
+                        <li key={option.id} {...optionProps} className={`${optionProps.className} fc-model-picker__option`}>
+                          <span className="fc-model-picker__name">{option.label}</span>
+                          {meta ? <span className="fc-model-picker__meta">{meta}</span> : null}
+                        </li>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </ul>,
+              document.body,
+            )
+          : null}
+      </div>
+      {effort && levels.length > 0 ? (
+        <ModelPickerEffortSegments effort={effort} levels={levels} disabled={disabled} />
+      ) : null}
+    </div>
   );
-  return label ? (
-    <label className="fc-settings-select">
-      <span className="fc-settings-select__label" id={labelId}>{label}</span>
-      {control}
-    </label>
-  ) : (
-    <div className="fc-settings-select">{control}</div>
+}
+
+/**
+ * 강도는 배타 선택이라 세그먼트 문법(SegmentedThumb의 brass 다텀)을 쓴다 — Gateway 로스터의
+ * 다중 on 사다리(잉크 워시)와 모양이 다른 것은 뜻이 다르기 때문이다.
+ */
+function ModelPickerEffortSegments({ effort, levels, disabled }: {
+  readonly effort: ModelPickerEffort;
+  readonly levels: readonly string[];
+  readonly disabled: boolean;
+}): React.ReactElement {
+  const groupRef = React.useRef<HTMLDivElement | null>(null);
+  const current = levels.includes(effort.value) ? effort.value : levels[Math.floor(levels.length / 2)] ?? levels[0]!;
+  const move = (direction: 1 | -1) => {
+    const at = levels.indexOf(current);
+    const next = levels[(at + direction + levels.length) % levels.length];
+    if (next === undefined) return;
+    effort.onChange(next);
+    window.setTimeout(() => groupRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus(), 0);
+  };
+  return (
+    <div ref={groupRef} className="segmented fc-model-picker__effort" role="radiogroup" aria-label={effort.ariaLabel}>
+      <SegmentedThumb />
+      {levels.map((level) => {
+        const isOn = level === current;
+        return (
+          <button
+            key={level}
+            type="button"
+            role="radio"
+            aria-checked={isOn}
+            tabIndex={isOn ? 0 : -1}
+            className={`segmented-option${isOn ? " is-active" : ""}`}
+            disabled={disabled}
+            onClick={() => effort.onChange(level)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowRight" || event.key === "ArrowDown") { event.preventDefault(); move(1); }
+              else if (event.key === "ArrowLeft" || event.key === "ArrowUp") { event.preventDefault(); move(-1); }
+            }}
+          >
+            {effort.labelOf ? effort.labelOf(level) : level}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
