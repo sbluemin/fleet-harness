@@ -1885,7 +1885,8 @@
 .repository-context-trigger strong { flex: 1; }
 .repository-context-trigger .repository-context-branch { max-width: 32%; }
 .repository-context-trigger:focus-visible, .repository-source-tabs button:focus-visible, .repository-staging-amend-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.repository-context-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; width: min(480px, calc(100cqw - 24px)); max-height: min(440px, 65vh); display: flex; flex-direction: column; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--surface-glass-strong); box-shadow: var(--shadow-floating); overflow: hidden; }
+/* 반투명 테마 재질 아래 불투명 바탕을 깔아 뒤쪽 브랜치·커밋 텍스트를 차폐한다. */
+.repository-context-popover { position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; width: min(480px, calc(100cqw - 24px)); max-height: min(440px, 65vh); display: flex; flex-direction: column; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)), var(--ink-deep); box-shadow: var(--shadow-floating); overflow: hidden; }
 .repository-context-options { min-height: 0; overflow-y: auto; }
 .repository-identity .repository-context-options span { color: inherit; font: inherit; }
 .repository-context-heading { padding: 9px 12px 4px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
