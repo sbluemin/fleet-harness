@@ -147,10 +147,10 @@ export const settingsPanes: readonly PaneDescriptor[] = [
     id: SETTINGS_PANE_ID,
     role: "primary",
     mounts: ["rail"],
-    // 안에서 테마 격자가 2열로 서야 하는 본문이다. 픽셀을 직접 고르던 시절의 360은 자기
-    // 컨테이너 문턱(components.css의 `@container (max-width: 420px)`) 아래여서, 기본 상태의
-    // 설정 페인이 그 격자를 한 번도 2열로 세우지 못했다. 등급이 그 어긋남을 대신 막는다.
-    widthClass: "wide",
+    // 설정은 열자마자 모든 행이 제목 왼쪽·컨트롤 오른쪽의 한 줄 꼴로 서야 한다. 픽셀을 직접
+    // 고르던 시절의 360은 테마 격자 문턱(420) 아래였고, `wide`(440)도 행 스택 문턱(640) 아래라
+    // 기본 상태의 설정이 늘 접힌 채로 열렸다. 등급표가 그 문턱들을 한곳에서 지킨다.
+    widthClass: "broad",
     title: () => (locale: ConsoleLocale) => getT(locale)("settings.title"),
     render: (ctx) => <SettingsPaneBody ctx={ctx} />,
     search: settingsSearchProvider,

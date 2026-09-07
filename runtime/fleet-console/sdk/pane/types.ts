@@ -118,6 +118,7 @@ export interface PaneDescriptor {
    * - `narrow` — 폭이 판독을 거의 바꾸지 않는 목록.
    * - `standard` — 계량기·행 카드가 한 줄에 서야 하는 본문.
    * - `wide` — 안에서 2열 격자가 서야 하는 본문.
+   * - `broad` — 제목·컨트롤 행이 세로로 접히지 않고 한 줄에 서야 하는 본문(설정).
    *
    * `defaultWidth`를 함께 선언하면 픽셀이 이긴다. 새 페인은 등급만 쓰는 것이 좋다.
    */
@@ -148,7 +149,7 @@ export interface PaneDescriptor {
 /**
  * 페인이 처음 설 때 원하는 폭의 등급. px 해석은 호스트가 소유한다.
  */
-export type PaneWidthClass = "narrow" | "standard" | "wide";
+export type PaneWidthClass = "narrow" | "standard" | "wide" | "broad";
 
 export type PaneRole = "primary" | "detail" | "aside";
 
