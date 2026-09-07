@@ -1324,13 +1324,14 @@ describe("Instrument core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps user identity on the title ink and mark grammar and off the caption fill and state border channel", () => {
+  it("keeps user identity on the caption and chip title ink and off the caption fill, chip spine, and state border channel", () => {
     const frame = source("canvas/operation-frame.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const titleIdleBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
     const titleActiveBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\]\.is-active > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
-    const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
+    const chipIdleBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\] \.side-bar-chip-name \{[^}]*\}/)?.[0] ?? "";
+    const chipActiveBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]\.side-bar-chip--active \.side-bar-chip-name \{[^}]*\}/)?.[0] ?? "";
     const minimapDotBlock = components.match(/\.canvas-minimap-operation\[style\*="--user-accent"\]::after \{[^}]*\}/)?.[0] ?? "";
     const accentSources = [frame, chip, components].join("\n");
 
@@ -1353,16 +1354,15 @@ describe("Instrument core design contract", () => {
     expect(titleIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
     expect(titleIdleBlock).not.toContain("var(--surface-panel)");
     expect(titleActiveBlock).toContain("color: var(--user-accent);");
-    expect(chipAccentBlock).toContain("width: 3px;");
-    expect(chipAccentBlock).toContain("top: 7px;");
-    expect(chipAccentBlock).toContain("bottom: 7px;");
-    expect(chipAccentBlock).toContain("background: var(--user-accent);");
-    expect(chipAccentBlock).toContain("pointer-events: none;");
-    expect(chipAccentBlock).not.toMatch(/animation/);
+    // 사이드바 칩도 캡션과 같은 잉크 문법을 탄다 — 3px 좌측 스파인은 폐기됐다. 되살아나면 같은
+    // 정체성이 레일에서는 선으로, Map에서는 글자로 두 문법으로 말한다.
+    expect(components).not.toContain('.side-bar-chip[style*="--user-accent"]::before');
+    expect(chipIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
+    expect(chipActiveBlock).toContain("color: var(--user-accent);");
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    // 4개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 스파인.
-    // Map에서 accent는 제목 잉크에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(4);
+    // 5개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 이름(언포커스 믹스 + hover/active).
+    // accent는 어디서나 제목 잉크에만 머물고 면·선 채널은 열지 않는다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 

@@ -16,7 +16,7 @@ type AccentDef = {
 };
 
 // 8톤 정체성 팔레트 — theme.css의 --id-* 토큰을 참조해 테마별 채도 봉투를 그대로 추종한다.
-// 정체성은 스파인·명판 마크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
+// 정체성은 제목 잉크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
 const OPERATION_ACCENT_DEFS: readonly AccentDef[] = [
   { key: "crimson", labelKey: "canvas.accent.crimson", color: "var(--id-crimson)" },
   { key: "amber", labelKey: "canvas.accent.amber", color: "var(--id-amber)" },
