@@ -316,37 +316,6 @@
   min-width: 0;
 }
 
-/* 확대 버튼 — 캡션이 없는 primary 페인에서 "이 섹션을 넓게"로 가는 유일한 문. */
-.settings-pane-zoom {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
-}
-
-.settings-pane-zoom svg {
-  width: 14px;
-  height: 14px;
-}
-
-.settings-pane-zoom:hover {
-  color: var(--text-secondary);
-  background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
-}
-
-.settings-pane-zoom:focus-visible {
-  outline: none;
-  box-shadow: var(--control-focus-ring);
-}
-
 /* 칩은 전부 선다 — 줄바꿈이 접힘(+N)을 대신한다(재가된 변형 B의 계약). */
 .settings-pane-chips {
   display: flex;
@@ -447,46 +416,6 @@
    넓은 내용을 가진 카드가 8px씩 삐져나온다) — 줄이도록 풀어 주면 안쪽 flex-wrap이 받는다. */
 .settings-pane-sections > * {
   min-width: 0;
-}
-
-.settings-pane-manage {
-  flex: none;
-  padding: 5px 12px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
-}
-
-.settings-pane-manage:hover {
-  color: var(--text-primary);
-  background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
-}
-
-.settings-pane-manage:focus-visible {
-  outline: none;
-  box-shadow: var(--control-focus-ring);
-}
-
-/* 확대 표면의 섹션 캔버스 — 같은 섹션 레지스트리를 넓은 폭으로 편다. 자기 컨테이너를
-   선언해 카드 내부 @container(backend-api 등)가 페인에서와 같은 문법으로 판정한다. */
-.settings-expanded {
-  height: 100%;
-  overflow: auto;
-  container-type: inline-size;
-}
-
-.settings-expanded-canvas {
-  max-width: 920px;
-  margin: 0 auto;
-  padding: var(--space-5);
-  display: grid;
-  gap: var(--space-4);
-  align-content: start;
 }
 
 /* 페인 폭 대응 — 옛 페이지의 뷰포트 미디어(767/720/640px)는 데스크톱 뷰포트의 좁은
@@ -2093,6 +2022,53 @@
 .remote-revoke:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .remote-row-actions { display: flex; gap: var(--space-4); justify-content: flex-end; }
+
+/* 원격 관리도 레일 안에 선다. 좁은 폭에서는 각 항목의 라벨과 동작을 세로로 유지한다. */
+@container (max-width: 640px) {
+  .settings-pane .remote-card-head { flex-wrap: wrap; }
+  .settings-pane .remote-interface-presets { grid-template-columns: repeat(auto-fit, minmax(min(196px, 100%), 1fr)); }
+  .settings-pane .remote-host { grid-template-columns: 8px minmax(0, 1fr); }
+  .settings-pane .remote-host > button { grid-column: 2; justify-self: start; }
+  .settings-pane .remote-host-text small { overflow-wrap: anywhere; }
+  .settings-pane .remote-link-field { flex-wrap: wrap; }
+  .settings-pane .remote-link-field input { flex-basis: 100%; width: 100%; }
+  .settings-pane .remote-link-field button { min-height: 32px; }
+  .settings-pane .remote-table,
+  .settings-pane .remote-table tbody { display: block; }
+  .settings-pane .remote-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .settings-pane .remote-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--surface-rim);
+  }
+  .settings-pane .remote-table td {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: var(--space-1) var(--space-3);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .settings-pane .remote-table td[data-label]::before {
+    content: attr(data-label);
+    flex-basis: 100%;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--t-2xs);
+  }
+}
 
 /*
   접속을 끊는 것은 되돌릴 수 있고, 페어링을 지우는 것은 되돌릴 수 없다. coral은 뒤에 오는

@@ -8,7 +8,6 @@
 
 export const SETTINGS_RAIL_ENTRY_ID = "settings";
 export const SETTINGS_PANE_ID = "settings";
-export const SETTINGS_SECTION_PANE_ID = "settings.section";
 
 /**
  * 톱니 — 이가 링에 붙은 쐐기여야 16px에서 톱니로 읽힌다. 이 톱니는 이제 설정의 유일한
