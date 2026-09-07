@@ -79,6 +79,8 @@ export interface GatewayHarnessProfile {
   readonly retryableStatus?: (status: number) => number;
   /** The status that carries a gateway-side fault this client should retry. */
   readonly transientErrorStatus: number;
+  /** 완성된 스트리밍 호출부터 실행할 수 있는 읽기 전용 도구. 부재는 async 실행 미지원이다. */
+  readonly asyncToolNames?: readonly string[];
   /**
    * 이 클라이언트가 한 대화를 식별하는 값을, 그 클라이언트의 요청 헤더에서 읽는다.
    *

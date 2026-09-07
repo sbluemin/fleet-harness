@@ -152,6 +152,46 @@ describe("oversized skill payloads", () => {
 // 선별은 광고 목록이 아니라 지출 계약이다. 디스커버리가 켠 모델만 내놓아도 실행 경로가 카탈로그
 // 전체를 받아 주면, raw id를 아는 호출자가 사용자가 끈 모델로 그 구독을 그대로 쓴다.
 
+describe("Astra asynchronous tools", () => {
+  it("opts streaming read-only calls into async without widening caller execution authority", async () => {
+    const bodies: Array<Record<string, any>> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response('data: {"type":"response.completed","response":{"id":"r","model":"gpt-6-astra","usage":{"input_tokens":1,"output_tokens":1}}}\n\n', {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const tools = ["Read", "Grep", "Glob", "Bash", "Edit", "AskUserQuestion", "mcp__other__Read"]
+      .map((name) => ({ name, input_schema: { type: "object", properties: {}, additionalProperties: false } }));
+    const base = {
+      model: "claude-gateway--codex--gpt-6-astra-1m[1m]",
+      messages: [{ role: "user", content: "read the files" }], tools, stream: true, max_tokens: 128,
+    };
+    try {
+      for (const rawBody of [
+        base,
+        { ...base, stream: false },
+        { ...base, tool_choice: { type: "auto", disable_parallel_tool_use: true } },
+        { ...base, model: "claude-gateway--codex--gpt-5.6-sol" },
+      ]) {
+        const res = response();
+        await router.handle(ctx({ res, token: ANTHROPIC_CRED, rawBody }));
+        expect(res.status).toBe(200);
+      }
+      expect(bodies[0]?.tools.filter((tool: { async?: boolean }) => tool.async).map((tool: { name: string }) => tool.name))
+        .toEqual(["Read", "Grep", "Glob"]);
+      for (const body of bodies.slice(1)) {
+        expect(body.tools.every((tool: { async?: boolean }) => tool.async === undefined)).toBe(true);
+      }
+      expect(bodies[0]?.store).toBe(false);
+      expect(bodies[2]?.parallel_tool_calls).toBe(false);
+    } finally {
+      router.dispose();
+    }
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).
