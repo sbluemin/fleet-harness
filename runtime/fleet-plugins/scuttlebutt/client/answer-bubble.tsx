@@ -1,11 +1,12 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
 import { sourceLabel } from "./chat-card.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
-import { useCopyAnswer } from "./copy-answer.js";
+import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { isConsoleReadEnabled } from "./console-read.js";
 
@@ -60,17 +61,43 @@ export function AnswerBubble({
     const margin = 8;
     const gap = 8;
     const alignRight = mascotRect.left + mascotRect.width / 2 > window.innerWidth / 2;
-    const placeAbove = mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2;
+    const siblings = Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble"));
+    const measureLane = (above: boolean, left: number, width: number, height: number) => laneOffset({
+      bubble,
+      siblings,
+      left,
+      width,
+      height,
+      placeAbove: above,
+      anchorTop: mascotRect.top,
+      anchorBottom: mascotRect.bottom,
+      gap,
+    });
+    const text = textRef.current;
+    const chrome = text ? bubble.offsetHeight - text.offsetHeight : bubble.offsetHeight;
+    // 앞선 말풍선을 피해 물러선 만큼은 이미 쓰인 공간이다 — 그것을 빼지 않으면 뒤 말풍선이 남은 공간
+    // 전부로 자란 뒤 레인만큼 더 밀려 화면 밖에 선다(두 부관이 긴 답을 나란히 낼 때). 새가 있는 쪽
+    // (화면 반으로 가른 넓은 쪽)에 본문 한 줄도 못 세우면 반대쪽으로 연다 — 앞 답이 위를 다 썼으면 뒤 답은 아래다.
+    const current = bubble.getBoundingClientRect();
+    const roomOn = (above: boolean) => {
+      const lane = measureLane(
+        above,
+        clamp(alignRight ? mascotRect.right - current.width : mascotRect.left, margin, window.innerWidth - current.width - margin),
+        current.width,
+        current.height,
+      );
+      const free = above ? mascotRect.top - gap - margin : window.innerHeight - mascotRect.bottom - gap - margin;
+      return { above, room: free - lane };
+    };
+    const preferred = roomOn(mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2);
+    const fallback = roomOn(!preferred.above);
+    const side = preferred.room >= ANSWER_MIN_HEIGHT_PX + chrome || preferred.room >= fallback.room ? preferred : fallback;
+    const placeAbove = side.above;
     // 본문은 새 위(아래)로 남은 공간까지 자란다 — 고정 40vh는 화면 반이 비어 있어도 답을 접었다.
     // 60vh를 넘기면 답이 아니라 벽이 되므로 거기서 멈추고 안에서 스크롤한다. 봉투(머리·출처·버튼)는
     // 본문과 무관한 높이라, 봉투 전체에서 본문을 뺀 만큼을 가용 공간에서 덜어 본문 상한을 정한다.
-    const text = textRef.current;
     if (text) {
-      const room = placeAbove
-        ? mascotRect.top - gap - margin
-        : window.innerHeight - mascotRect.bottom - gap - margin;
-      const chrome = bubble.offsetHeight - text.offsetHeight;
-      const ceiling = Math.min(room, window.innerHeight * 0.6) - chrome;
+      const ceiling = Math.min(side.room, window.innerHeight * 0.6) - chrome;
       text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
       // 넘치는 답은 아래 가장자리를 흐려 "더 있다"고 말하고, 키보드로도 굴릴 수 있게 포커스 자리를 준다.
       const clipped = text.scrollHeight > text.clientHeight + 1;
@@ -84,17 +111,7 @@ export function AnswerBubble({
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
     // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
     // 겹치는 앞 말풍선만큼만 세로로 비켜선다 — 멀리 떨어진 말풍선까지 밀어내면 이유 없이 떠오른다.
-    const lane = laneOffset({
-      bubble,
-      siblings: Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble")),
-      left,
-      width: bubbleRect.width,
-      height: bubbleRect.height,
-      placeAbove,
-      anchorTop: mascotRect.top,
-      anchorBottom: mascotRect.bottom,
-      gap,
-    });
+    const lane = measureLane(placeAbove, left, bubbleRect.width, bubbleRect.height);
     // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다(도착 알림과 같다).
     bubble.style.left = `${left}px`;
     if (placeAbove) {
@@ -116,6 +133,13 @@ export function AnswerBubble({
     updatePlacement();
     return () => window.cancelAnimationFrame(frame);
   }, [positionRevision, updatePlacement]);
+
+  // 코드 펜스 중 `mermaid`는 렌더러가 빈 자리표시자로 바꿔 둔다 — 하이드레이터가 없으면 도식은 물론
+  // 원문까지 사라진다(Analyst 채팅과 같은 설치 계약).
+  React.useEffect(() => {
+    const bubble = bubbleRef.current;
+    if (bubble) installDiagramHydrator(bubble);
+  }, []);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -164,6 +188,7 @@ export function AnswerBubble({
               <div
                 ref={textRef}
                 className="scuttlebutt-answer-text scuttlebutt-markdown-body"
+                onClick={(event) => copyCodeBlock(event, t("action.copied"))}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text).html }}
               />
             )}

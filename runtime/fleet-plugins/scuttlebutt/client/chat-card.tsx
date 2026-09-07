@@ -1,10 +1,11 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
-import { useCopyAnswer } from "./copy-answer.js";
+import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
@@ -95,6 +96,12 @@ export function ChatCard({
     position();
   }, [state.entries, state.phase, position]);
 
+  // `mermaid` 펜스의 자리표시자를 도식으로 채운다 — 말풍선과 같은 설치 계약.
+  React.useEffect(() => {
+    const log = logRef.current;
+    if (log) installDiagramHydrator(log);
+  }, []);
+
   // 입력 높이는 내용에 맞춘다 — 한 줄로 시작해 붙여넣은 문단만큼 자라고, 상한은 CSS가 정한다.
   React.useLayoutEffect(() => {
     const input = inputRef.current;
@@ -168,7 +175,7 @@ export function ChatCard({
         ) : null}
         <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
       </div>
-      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
+      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
         {state.entries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
             {t(`chat.greeting.${admiral}`)}

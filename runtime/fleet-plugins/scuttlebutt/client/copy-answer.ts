@@ -21,3 +21,18 @@ export function useCopyAnswer(): { readonly copied: boolean; readonly copy: (tex
   }, []);
   return { copied, copy };
 }
+
+/**
+ * 마크다운 렌더러가 코드 블록마다 심는 Copy 버튼. 렌더러는 버튼만 그리고 동작은 표면이 위임으로
+ * 받는다(Skills·Analyst와 같은 계약). 말풍선과 카드가 같은 손잡이를 쓴다.
+ */
+export function copyCodeBlock(event: React.MouseEvent<HTMLElement>, copiedLabel: string): void {
+  const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+  if (!button) return;
+  const code = button.closest("pre")?.getAttribute("data-code");
+  if (!code) return;
+  void navigator.clipboard?.writeText(code);
+  const original = button.textContent;
+  button.textContent = copiedLabel;
+  window.setTimeout(() => { button.textContent = original; }, 1_200);
+}
