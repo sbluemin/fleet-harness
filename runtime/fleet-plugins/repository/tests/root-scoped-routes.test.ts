@@ -216,6 +216,28 @@ describe("Repository Theater-root Git routes", () => {
     const file = readPayload<ContentPayload>(fileWrites);
     expect(file.content).toContain("diff --git a/inside/changed.txt b/inside/changed.txt");
     expect(file.content).toContain("+after");
+
+    // 목록의 경로를 그대로 다시 열 수 있어야 한다. 인용된 Git 출력은 이 계약을 깨뜨린다.
+    const filePath = "문서/변경 이력.txt";
+    await runGit(["config", "core.quotePath", "true"], { cwd: fixture.theaterPath });
+    await fs.mkdir(path.join(fixture.theaterPath, "문서"));
+    await fs.writeFile(path.join(fixture.theaterPath, filePath), "CJK history content\n");
+    await runGit(["add", "."], { cwd: fixture.theaterPath });
+    await runGit(["commit", "-m", "CJK history"], { cwd: fixture.theaterPath });
+    const ref = (await runGit(["rev-parse", "HEAD"], { cwd: fixture.theaterPath })).stdout.trim();
+    const commitWrites: JsonWrite[] = [];
+    await handleRepositoryCommit(
+      { method: "POST" } as never, {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref }, commitWrites),
+    );
+    const entry = readPayload<CommitPayload>(commitWrites).files.find((entry) => entry.path === filePath);
+    expect(entry).toEqual({ path: filePath, status: "A", additions: 1, deletions: 0 });
+    const commitFileWrites: JsonWrite[] = [];
+    await handleRepositoryCommitFile(
+      { method: "POST" } as never, {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref, filePath: entry!.path }, commitFileWrites),
+    );
+    expect(readPayload<ContentPayload>(commitFileWrites).content).toContain("+CJK history content");
   });
 
   it("하위 디렉터리 Theater의 history는 Theater 밖 커밋을 제외한다", async () => {

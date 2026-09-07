@@ -19,41 +19,42 @@ function literalPathspec(relativePath: string): string {
   return `:(literal)${relativePath}`;
 }
 
-// git numstat 리네임 압축 표기 `{old => new}` 에서 new 경로를 추출
-function normalizeNumstatPath(p: string): string {
-  const match = /^(.*?)\{[^}]* => ([^}]*)\}(.*)$/.exec(p);
-  if (match) return (match[1] ?? "") + (match[2] ?? "") + (match[3] ?? "");
-  // Limitation: a literal filename containing ` => ` is indistinguishable from Git's non-NUL rename notation and gets zero stats.
-  const plainRename = /^.+ => (.+)$/.exec(p);
-  return plainRename?.[1] ?? p;
+export function parseNumstat(stdout: string): ReadonlyMap<string, { readonly additions: number; readonly deletions: number }> {
+  const map = new Map<string, { readonly additions: number; readonly deletions: number }>();
+  // -z는 경로를 인용하지 않는다. 마지막 NUL이 없는 잘린 레코드는 제외한다.
+  const records = stdout.split("\0").slice(0, -1);
+  for (let index = 0; index < records.length; index += 1) {
+    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(records[index]!);
+    if (!match) continue;
+    let filePath = match[3]!;
+    // 리네임은 통계 뒤에 빈 경로, 이전 경로, 새 경로가 각각 NUL로 구분된다.
+    if (filePath === "") {
+      filePath = records[index + 2] ?? "";
+      index += 2;
+    }
+    if (!filePath) continue;
+    map.set(filePath, {
+      additions: Number.parseInt(match[1]!, 10) || 0,
+      deletions: Number.parseInt(match[2]!, 10) || 0,
+    });
+  }
+  return map;
 }
 
 export function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
-  const numstatMap = new Map<string, { readonly additions: number; readonly deletions: number }>();
-  for (const line of numstatOutput.split("\n")) {
-    const parts = line.split("\t");
-    if (parts.length < 3) continue;
-    const [adds, dels] = parts;
-    const filePath = parts.length > 3 ? parts[parts.length - 1] : parts[2];
-    if (!filePath) continue;
-    numstatMap.set(normalizeNumstatPath(filePath), {
-      additions: parseInt(adds ?? "0", 10) || 0,
-      deletions: parseInt(dels ?? "0", 10) || 0,
-    });
-  }
-
+  const numstatMap = parseNumstat(numstatOutput);
+  const records = nameStatusOutput.split("\0").slice(0, -1);
   const files: DiffFileEntry[] = [];
-  for (const line of nameStatusOutput.split("\n")) {
-    if (!line.trim()) continue;
-    const [rawStatus, ...pathParts] = line.split("\t");
-    if (!rawStatus || pathParts.length === 0) continue;
-    const statusChar = rawStatus.charAt(0).toUpperCase();
+  for (let index = 0; index < records.length; index += 1) {
+    const statusChar = records[index]!.charAt(0);
+    const firstPath = records[++index];
+    const isRename = statusChar === "R" || statusChar === "C";
+    const filePath = isRename ? records[++index] : firstPath;
     if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R" && statusChar !== "T") continue;
-    const oldPath = statusChar === "R" ? pathParts[0] : undefined;
-    const filePath = statusChar === "R" ? (pathParts[1] ?? pathParts[0] ?? "") : (pathParts[0] ?? "");
     if (!filePath) continue;
+    const oldPath = statusChar === "R" ? firstPath : undefined;
     const nums = numstatMap.get(filePath) ?? { additions: 0, deletions: 0 };
-    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar as "M" | "A" | "D" | "R" | "T", ...nums });
+    files.push({ path: filePath, ...(oldPath ? { oldPath } : {}), status: statusChar, ...nums });
   }
   return files;
 }
@@ -61,8 +62,8 @@ export function parseDiffFileList(nameStatusOutput: string, numstatOutput: strin
 // untracked 파일은 추가 줄 수를 계산하지 않는다.
 // 파일별 git spawn(프로세스 폭주 위험)과 심링크를 통한 외부 파일 크기 노출을 동시에 방지.
 async function fetchUntrackedFiles(cwd: string): Promise<DiffFileEntry[]> {
-  const result = await runGit(["ls-files", "--others", "--exclude-standard", "--", "."], { cwd });
-  return result.stdout.split("\n").filter((p) => p.trim()).map((p): DiffFileEntry => ({
+  const result = await runGit(["ls-files", "--others", "--exclude-standard", "-z", "--", "."], { cwd });
+  return result.stdout.split("\0").slice(0, -1).filter(Boolean).map((p): DiffFileEntry => ({
     path: p,
     status: "U",
     additions: 0,
@@ -146,8 +147,8 @@ export async function handleRepositoryChanged(
     // git diff HEAD 통합 목록 시도 (staged+unstaged 합산)
     try {
       const [nameStatusResult, numstatResult] = await Promise.all([
-        runGit(["diff", "HEAD", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "HEAD", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--name-status", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "HEAD", "--relative", "--numstat", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
       truncated = nameStatusResult.truncated || numstatResult.truncated;
@@ -155,8 +156,8 @@ export async function handleRepositoryChanged(
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged 목록으로 graceful fallback
       const [nsResult, nsNumstat] = await Promise.all([
-        runGit(["diff", "--cached", "--relative", "--name-status", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
-        runGit(["diff", "--cached", "--relative", "--numstat", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--name-status", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+        runGit(["diff", "--cached", "--relative", "--numstat", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
       ]);
       files = parseDiffFileList(nsResult.stdout, nsNumstat.stdout);
       truncated = nsResult.truncated || nsNumstat.truncated;

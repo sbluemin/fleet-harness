@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { InvalidRepoError, resolveGitCwd } from "./diff.js";
+import { InvalidRepoError, parseNumstat, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
 import type { DiffFileEntry, StatusResult } from "./types.js";
 
@@ -11,28 +11,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 type NumstatMap = ReadonlyMap<string, { readonly additions: number; readonly deletions: number }>;
-
-function parseNumstat(stdout: string): NumstatMap {
-  const map = new Map<string, { readonly additions: number; readonly deletions: number }>();
-  // -z numstat: `adds\tdels\t경로` — 리네임은 경로 필드가 NUL로 갈라져 `adds\tdels\t` + `old` + `new`로 온다.
-  const records = stdout.split("\0");
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index]!;
-    const parts = record.split("\t");
-    if (parts.length < 3) continue;
-    let filePath = parts[2]!;
-    if (filePath === "" && index + 2 < records.length) {
-      filePath = records[index + 2]!;
-      index += 2;
-    }
-    if (!filePath) continue;
-    map.set(filePath, {
-      additions: Number.parseInt(parts[0] ?? "0", 10) || 0,
-      deletions: Number.parseInt(parts[1] ?? "0", 10) || 0,
-    });
-  }
-  return map;
-}
 
 const STATUS_CHARS = new Set(["M", "A", "D", "R", "T"]);
 

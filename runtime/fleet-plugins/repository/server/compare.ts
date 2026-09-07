@@ -102,8 +102,8 @@ export async function handleRepositoryCompare(
     const [mergeBaseResult, nameStatusResult, numstatResult] = await Promise.all([
       // 비교 컨텍스트 표기용 — 실패하면 응답에서 생략한다
       runGit(["merge-base", "--end-of-options", base, head], { cwd: gitCwd }).catch(() => null),
-      runGit(["diff", "--relative", "--name-status", "--diff-filter=MADRT", "-M", "--end-of-options", range, "--", "."], { cwd: gitCwd }),
-      runGit(["diff", "--relative", "--numstat", "--diff-filter=MADRT", "-M", "--end-of-options", range, "--", "."], { cwd: gitCwd }),
+      runGit(["diff", "--relative", "--name-status", "-z", "--diff-filter=MADRT", "-M", "--end-of-options", range, "--", "."], { cwd: gitCwd }),
+      runGit(["diff", "--relative", "--numstat", "-z", "--diff-filter=MADRT", "-M", "--end-of-options", range, "--", "."], { cwd: gitCwd }),
     ]);
     const mergeBase = mergeBaseResult?.stdout.trim().slice(0, 9);
     ctx.host.http.writeJson(res, 200, {
