@@ -29,8 +29,6 @@ export interface SettingsRowProps {
   readonly hint?: string;
   /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
   readonly helpTip?: React.ReactNode;
-  /** 팁 뒤에 서는 저장 범위 칩 — `<SettingsScope>` 노드. 범위는 카드가 아니라 줄마다 말한다. */
-  readonly scope?: React.ReactNode;
   readonly children: React.ReactNode;
 }
 
@@ -96,22 +94,6 @@ export function defineSettingsSection(descriptor: SettingsSectionDescriptor): Se
 
 export function ExperimentalBadge({ children }: { readonly children: React.ReactNode }): React.ReactElement {
   return <span className="experimental-badge">{children}</span>;
-}
-
-export type SettingsScopeKind = "live" | "restart" | "sessions";
-
-/**
- * 한 설정이 언제 효력을 갖는지 말하는 칩. 저장 위치와 적용 시점은 설정마다 한 번,
- * 이 한 모양으로만 말한다 — 카드마다 다른 문장으로 되풀이하면 서로 어긋나기 시작한다.
- * 문구는 호출자가 자기 카탈로그에서 가져온다(코어는 en/ko, 플러그인은 자기 로케일).
- */
-export function SettingsScope({ kind, label }: { readonly kind: SettingsScopeKind; readonly label: string }): React.ReactElement {
-  return (
-    <span className={`settings-scope is-${kind}`}>
-      <i aria-hidden="true" />
-      {label}
-    </span>
-  );
 }
 
 /**
@@ -252,7 +234,7 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, helpTip, scope, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
   return (
@@ -263,7 +245,6 @@ export function SettingsRow({ label, hint, helpTip, scope, children }: SettingsR
         <div className="fc-settings-row__label">
           <span id={labelId}>{label}</span>
           {helpTip}
-          {scope}
         </div>
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
       </div>

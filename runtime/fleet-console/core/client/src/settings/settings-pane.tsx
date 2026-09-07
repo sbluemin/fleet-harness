@@ -37,7 +37,6 @@ import {
   SearchIcon,
   SETTINGS_GROUP_LABEL_KEYS,
   SETTINGS_GROUP_ORDER,
-  SettingsScope,
   type PluginSettingsNavItem,
   type SettingsSectionId,
   type SettingsSectionNavItem,
@@ -340,7 +339,6 @@ function RailOpacityRow() {
         <p className="global-settings-resp-title">
           {t("settings.theme.railOpacity")}
           <SettingsHelp title={t("settings.theme.railOpacity")}>{t("settings.theme.railOpacityHelp")}</SettingsHelp>
-          <SettingsScope kind="live" />
         </p>
       </div>
       <SettingsSlider
@@ -372,7 +370,6 @@ function SideBarOpacityRow() {
         <p className="global-settings-resp-title">
           {t("settings.theme.sideBarOpacity")}
           <SettingsHelp title={t("settings.theme.sideBarOpacity")}>{t("settings.theme.sideBarOpacityHelp")}</SettingsHelp>
-          <SettingsScope kind="live" />
         </p>
       </div>
       <SettingsSlider
@@ -447,7 +444,6 @@ function SideBarBlurRow() {
           <SettingsHelp title={t("settings.theme.sideBarBlur")}>
             {t(glassOff ? "settings.theme.sideBarBlurOffHelp" : "settings.theme.sideBarBlurHelp")}
           </SettingsHelp>
-          <SettingsScope kind="live" />
         </p>
       </div>
       <SettingsSlider
