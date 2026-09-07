@@ -1,9 +1,10 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
+import { SettingsSlider } from "@fleet-console/sdk/settings/browser";
 
 import { SettingsHelp } from "../components/settings-help.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "../global-settings-store.js";
@@ -146,10 +147,10 @@ export const settingsPanes: readonly PaneDescriptor[] = [
     id: SETTINGS_PANE_ID,
     role: "primary",
     mounts: ["rail"],
-    // 안에서 테마 격자가 2열로 서야 하는 본문이다. 픽셀을 직접 고르던 시절의 360은 자기
-    // 컨테이너 문턱(components.css의 `@container (max-width: 420px)`) 아래여서, 기본 상태의
-    // 설정 페인이 그 격자를 한 번도 2열로 세우지 못했다. 등급이 그 어긋남을 대신 막는다.
-    widthClass: "wide",
+    // 설정은 열자마자 모든 행이 제목 왼쪽·컨트롤 오른쪽의 한 줄 꼴로 서야 한다. 픽셀을 직접
+    // 고르던 시절의 360은 테마 격자 문턱(420) 아래였고, `wide`(440)도 행 스택 문턱(640) 아래라
+    // 기본 상태의 설정이 늘 접힌 채로 열렸다. 등급표가 그 문턱들을 한곳에서 지킨다.
+    widthClass: "broad",
     title: () => (locale: ConsoleLocale) => getT(locale)("settings.title"),
     render: (ctx) => <SettingsPaneBody ctx={ctx} />,
     search: settingsSearchProvider,
@@ -342,22 +343,21 @@ function RailOpacityRow() {
           <SettingsScope kind="live" />
         </p>
       </div>
-      <div className="settings-slider-field">
-        <input
-          className="fleet-slider settings-slider"
-          type="range"
-          min={RAIL_OVERLAY_ALPHA_MIN}
-          max={RAIL_OVERLAY_ALPHA_MAX}
-          step={1}
-          value={overlayAlpha}
-          aria-label={t("settings.theme.railOpacity")}
-          aria-valuetext={`${overlayAlpha}%`}
-          style={{ "--slider-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
-          onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
-          onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
-        />
-        <output className="settings-slider-value">{`${overlayAlpha}%`}</output>
-      </div>
+      <SettingsSlider
+        value={overlayAlpha}
+        min={RAIL_OVERLAY_ALPHA_MIN}
+        max={RAIL_OVERLAY_ALPHA_MAX}
+        step={1}
+        label={t("settings.theme.railOpacity")}
+        formatValue={(value) => `${value}%`}
+        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.railOpacity") })}
+        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.railOpacity") })}
+        onPreview={setRailOverlayAlpha}
+        onCommit={setRailOverlayAlpha}
+        defaultValue={RAIL_OVERLAY_ALPHA_DEFAULT}
+        resetLabel={t("settings.slider.reset")}
+        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.railOpacity") })}
+      />
     </div>
   );
 }
@@ -375,22 +375,21 @@ function SideBarOpacityRow() {
           <SettingsScope kind="live" />
         </p>
       </div>
-      <div className="settings-slider-field">
-        <input
-          className="fleet-slider settings-slider"
-          type="range"
-          min={SIDE_BAR_GLASS_ALPHA_MIN}
-          max={SIDE_BAR_GLASS_ALPHA_MAX}
-          step={1}
-          value={glass.alpha}
-          aria-label={t("settings.theme.sideBarOpacity")}
-          aria-valuetext={`${glass.alpha}%`}
-          style={{ "--slider-fill": `${((glass.alpha - SIDE_BAR_GLASS_ALPHA_MIN) / (SIDE_BAR_GLASS_ALPHA_MAX - SIDE_BAR_GLASS_ALPHA_MIN)) * 100}%` } as CSSProperties}
-          onChange={(event) => setSideBarGlassAlpha(Number(event.currentTarget.value))}
-          onDoubleClick={() => setSideBarGlassAlpha(SIDE_BAR_GLASS_ALPHA_DEFAULT)}
-        />
-        <output className="settings-slider-value">{`${glass.alpha}%`}</output>
-      </div>
+      <SettingsSlider
+        value={glass.alpha}
+        min={SIDE_BAR_GLASS_ALPHA_MIN}
+        max={SIDE_BAR_GLASS_ALPHA_MAX}
+        step={1}
+        label={t("settings.theme.sideBarOpacity")}
+        formatValue={(value) => `${value}%`}
+        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.sideBarOpacity") })}
+        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.sideBarOpacity") })}
+        onPreview={setSideBarGlassAlpha}
+        onCommit={setSideBarGlassAlpha}
+        defaultValue={SIDE_BAR_GLASS_ALPHA_DEFAULT}
+        resetLabel={t("settings.slider.reset")}
+        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.sideBarOpacity") })}
+      />
     </div>
   );
 }
@@ -451,24 +450,22 @@ function SideBarBlurRow() {
           <SettingsScope kind="live" />
         </p>
       </div>
-      <div className="settings-slider-field">
-        <input
-          className="fleet-slider settings-slider"
-          type="range"
-          min={SIDE_BAR_GLASS_BLUR_MIN}
-          max={SIDE_BAR_GLASS_BLUR_MAX}
-          step={2}
-          value={glass.blur}
-          disabled={glassOff}
-          aria-label={t("settings.theme.sideBarBlur")}
-          aria-valuetext={`${glass.blur}px`}
-          style={{ "--slider-fill": `${((glass.blur - SIDE_BAR_GLASS_BLUR_MIN) / (SIDE_BAR_GLASS_BLUR_MAX - SIDE_BAR_GLASS_BLUR_MIN)) * 100}%` } as CSSProperties}
-          onChange={(event) => setSideBarGlassBlur(Number(event.currentTarget.value))}
-          onDoubleClick={() => setSideBarGlassBlur(SIDE_BAR_GLASS_BLUR_DEFAULT)}
-        />
-        {/* px 표기도 두 로케일에서 같은 문자열이라 메시지 키를 두지 않고 여기서 조립한다. */}
-        <output className="settings-slider-value">{`${glass.blur}px`}</output>
-      </div>
+      <SettingsSlider
+        value={glass.blur}
+        min={SIDE_BAR_GLASS_BLUR_MIN}
+        max={SIDE_BAR_GLASS_BLUR_MAX}
+        step={2}
+        disabled={glassOff}
+        label={t("settings.theme.sideBarBlur")}
+        formatValue={(value) => `${value}px`}
+        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.sideBarBlur") })}
+        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.sideBarBlur") })}
+        onPreview={setSideBarGlassBlur}
+        onCommit={setSideBarGlassBlur}
+        defaultValue={SIDE_BAR_GLASS_BLUR_DEFAULT}
+        resetLabel={t("settings.slider.reset")}
+        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.sideBarBlur") })}
+      />
     </div>
   );
 }

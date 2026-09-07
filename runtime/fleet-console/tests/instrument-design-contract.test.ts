@@ -999,7 +999,8 @@ describe("Instrument core design contract", () => {
 
     // 페인 폭 대응은 컨테이너 쿼리 절 하나가 소유한다 — .rail-pane-body가 컨테이너다.
     expect(components).toMatch(/@container \(max-width: 640px\) \{[\s\S]{0,400}\.settings-pane \.global-settings-row \{/);
-    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*grid-template-columns: minmax\(0, 1fr\);/);
+    // 플러그인 행도 같은 절 안에서 같은 스택 규칙을 받는다 — 코어 행과 한 문법이라 접히는 법도 하나다.
+    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*flex-direction: column;/);
     expect(source("styles/rail.css")).toContain("container-type: inline-size");
   });
 
@@ -2031,7 +2032,9 @@ describe("Instrument core design contract", () => {
     // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
     // dismantled and the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
-    expect(settingsPane).toContain("fleet-slider settings-slider");
+    // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
+    expect(settingsPane).toContain("<SettingsSlider");
+    expect(source("styles/components.css")).not.toContain(".settings-slider-field");
     expect(settingsPane).toContain("setRailOverlayAlpha");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
@@ -3484,7 +3487,7 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionTerminal).toContain("transition: none;");
     expect(source("canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
     expect(source("store.ts")).toContain("--unfocused-panel-opacity");
-    expect(source("settings/sections.tsx")).toContain('className="fleet-slider settings-slider"');
+    expect(source("settings/sections.tsx")).toContain("onPreview={previewPanelFade}");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,
@@ -4562,6 +4565,11 @@ describe("Pane width class contract", () => {
    * 테마 격자가 그것이다 — 실제로 어긋났던 자리도 여기다.
    */
   function themeGridCollapseBreakpoints(): number[] {
+    return containerBreakpointsTargeting(".settings-pane .theme-grid");
+  }
+
+  /** `@container (max-width: N)` 절 가운데 주어진 셀렉터를 겨냥하는 것들의 문턱. */
+  function containerBreakpointsTargeting(selector: string): number[] {
     const found: number[] = [];
     const pattern = /@container\s*\(max-width:\s*(\d+)px\)\s*\{/g;
     for (let match = pattern.exec(components); match !== null; match = pattern.exec(components)) {
@@ -4575,14 +4583,15 @@ describe("Pane width class contract", () => {
         index += 1;
       }
       const block = components.slice(match.index, index);
-      if (block.includes(".settings-pane .theme-grid")) found.push(Number(match[1]));
+      if (block.includes(selector)) found.push(Number(match[1]));
     }
     return found;
   }
 
   it("keeps the settings pane on the width class instead of an invented pixel", () => {
     // 픽셀을 되살리면 브레이크포인트와 다시 어긋날 수 있다 — 이 페인은 등급으로만 말한다.
-    expect(settingsPane).toContain('widthClass: "wide",');
+    // 등급은 broad — 설정은 열자마자 행이 접히지 않은 한 줄 꼴이어야 한다.
+    expect(settingsPane).toContain('widthClass: "broad",');
     expect(settingsPane).not.toMatch(/defaultWidth:\s*\d+/);
   });
 
@@ -4596,10 +4605,20 @@ describe("Pane width class contract", () => {
     }
   });
 
+  it("clears the settings row-stack breakpoint with the broad class", () => {
+    // 설정 행을 세로로 접는 컨테이너 절 — 기본 폭이 이 문턱 아래면 설정이 늘 접힌 채로 열린다.
+    const breakpoints = containerBreakpointsTargeting(".settings-pane .global-settings-row");
+    expect(breakpoints.length).toBeGreaterThan(0);
+    for (const breakpoint of breakpoints) {
+      expect(PANE_WIDTH_CLASS_PX.broad).toBeGreaterThan(breakpoint + PANE_CONTAINER_INSET_ALLOWANCE);
+    }
+  });
+
   it("keeps the class ladder ordered and above the card floor", () => {
     expect(PANE_WIDTH_CLASS_PX.narrow).toBeGreaterThan(MIN_PANEL_WIDTH);
     expect(PANE_WIDTH_CLASS_PX.standard).toBeGreaterThan(PANE_WIDTH_CLASS_PX.narrow);
     expect(PANE_WIDTH_CLASS_PX.wide).toBeGreaterThan(PANE_WIDTH_CLASS_PX.standard);
+    expect(PANE_WIDTH_CLASS_PX.broad).toBeGreaterThan(PANE_WIDTH_CLASS_PX.wide);
   });
 
   it("lets a declared pixel win over the class and falls back to the host default", () => {

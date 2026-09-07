@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
-import { ExperimentalBadge, SettingsScope as SettingsScopeChip, type SettingsScopeKind } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, SettingsScope as SettingsScopeChip, SettingsSlider, SettingsToggle, type SettingsScopeKind } from "@fleet-console/sdk/settings/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
@@ -153,6 +153,9 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
     {
       id: "language",
       group: "setup",
+      // 표시 언어는 자기 칩을 갖지 않고 겉모습 페이지의 첫 카드로 선다 — 언어도 콘솔이 어떻게
+      // 보이는가의 일부이고, 한 행짜리 칩은 목록만 길게 했다. 검색과 옛 주소는 겉모습으로 착지한다.
+      embeddedIn: "appearance",
       label: t("settings.core.language.label"),
       entries: [t("settings.language.title"), t("settings.language.label"), t("settings.core.language.keywords")],
     },
@@ -224,10 +227,12 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
     case "appearance":
       return (
         <>
+          {state === null ? null : <LanguageCard state={state} saving={saving} />}
           <ThemeCard state={state} saving={saving} extras={options?.themeCardExtras} />
           <TypographyCard state={state} saving={saving} />
         </>
       );
+    // 언어는 겉모습에 품겨 있다 — 주소로 직접 들어온 옛 링크만 이 가지를 탄다.
     case "language":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return <LanguageCard state={state} saving={saving} />;
@@ -306,28 +311,6 @@ export function SettingsScope({ kind }: { readonly kind: SettingsScopeKind }) {
   return <SettingsScopeChip kind={kind} label={label} />;
 }
 
-/** 켬/끔은 콘솔 전체에서 이 한 모양이다 — SDK의 SettingsToggle도 같은 클래스를 쓴다. */
-export function SettingsSwitch({ checked, disabled, label, onChange }: {
-  readonly checked: boolean;
-  readonly disabled: boolean;
-  readonly label: string;
-  readonly onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={`settings-switch ${checked ? "is-on" : ""}`}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="settings-switch-knob" aria-hidden="true" />
-    </button>
-  );
-}
-
 export function ThemeCard({
   state,
   saving,
@@ -387,10 +370,10 @@ export function ThemeCard({
   return (
     <section className="global-settings-card appearance-card" aria-label={t("settings.theme.aria")}>
       {/* CLI 테마 각주는 카드 전체의 이야기라 카드 제목 팁이 진다 — 행 팁은 자기 줄만 말한다. */}
-      <p className="global-settings-card-title">
+      <h3 className="global-settings-card-title">
         {t("settings.theme.title")}
         <SettingsHelp title={t("settings.theme.title")}>{t("settings.theme.cliNote")}</SettingsHelp>
-      </p>
+      </h3>
       <div className="appearance-controls">
           <div className="global-settings-row is-stack">
             <div className="global-settings-row-text">
@@ -440,10 +423,10 @@ export function ThemeCard({
                 <SettingsScope kind="live" />
               </p>
             </div>
-            <SettingsSwitch
+            <SettingsToggle
               checked={liquidGlass}
               disabled={saving || state === null || lightTheme}
-              label={t("settings.theme.liquidGlass")}
+              ariaLabel={t("settings.theme.liquidGlass")}
               onChange={toggleLiquidGlass}
             />
           </div>
@@ -457,28 +440,25 @@ export function ThemeCard({
               </p>
             </div>
             {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
-                것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다. */}
-            <div className="settings-slider-field">
-              <input
-                className="fleet-slider settings-slider"
-                type="range"
-                min={UNFOCUSED_PANEL_FADE_MIN}
-                max={UNFOCUSED_PANEL_FADE_MAX}
-                step={5}
-                value={panelFade}
-                disabled={saving || state === null}
-                aria-label={t("settings.theme.panelFade")}
-                aria-valuetext={`${panelFade}%`}
-                style={{ "--slider-fill": `${(panelFade / UNFOCUSED_PANEL_FADE_MAX) * 100}%` } as CSSProperties}
-                onChange={(event) => previewPanelFade(Number(event.currentTarget.value))}
-                onPointerUp={(event) => commitPanelFade(Number(event.currentTarget.value))}
-                onKeyUp={(event) => commitPanelFade(Number(event.currentTarget.value))}
-                onBlur={(event) => commitPanelFade(Number(event.currentTarget.value))}
-              />
-              {/* 백분율 표기는 번역 대상이 아니라 두 로케일에서 같은 문자열이다 — i18n parity 게이트가
-                  en===ko를 거부하므로 메시지 키를 두지 않고 여기서 조립한다. */}
-              <output className="settings-slider-value">{`${panelFade}%`}</output>
-            </div>
+                것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다.
+                연속값은 SDK 슬라이더 한 문법이다(−/+·값·기본값 버튼) — 백분율 표기는 두 로케일에서
+                같은 문자열이라 메시지 키 없이 여기서 조립한다. */}
+            <SettingsSlider
+              value={panelFade}
+              min={UNFOCUSED_PANEL_FADE_MIN}
+              max={UNFOCUSED_PANEL_FADE_MAX}
+              step={5}
+              disabled={saving || state === null}
+              label={t("settings.theme.panelFade")}
+              formatValue={(value) => `${value}%`}
+              decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.panelFade") })}
+              increaseLabel={t("settings.slider.increase", { title: t("settings.theme.panelFade") })}
+              onPreview={previewPanelFade}
+              onCommit={commitPanelFade}
+              defaultValue={UNFOCUSED_PANEL_FADE_DEFAULT}
+              resetLabel={t("settings.slider.reset")}
+              resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.panelFade") })}
+            />
           </div>
 
           {/* 재가된 배치: 우측 사이드바 불투명도는 비포커스 패널 흐리기 바로 아래에 서고, 좌측
@@ -541,7 +521,7 @@ export function TypographyCard({
 
   return (
     <section className="global-settings-card" aria-label={t("settings.typography.aria")}>
-      <p className="global-settings-card-title">{t("settings.typography.title")}</p>
+      <h3 className="global-settings-card-title">{t("settings.typography.title")}</h3>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -552,7 +532,7 @@ export function TypographyCard({
         </div>
         <button
           type="button"
-          className="typography-reset"
+          className="fc-settings-reset"
           disabled={!state || saving || activeUiFont.source === "builtin" && activeUiFont.id === "manrope" && activeUiFont.size === UI_FONT_SIZE_RANGE.defaultValue}
           onClick={() => saveUiFont(DEFAULT_UI_FONT)}
         >
@@ -663,7 +643,7 @@ export function ConsolePortCard({
   const consoleState = useConsoleState();
   return (
     <section className="global-settings-card" aria-label={t("settings.port.title")}>
-      <p className="global-settings-card-title">{t("settings.port.title")}</p>
+      <h3 className="global-settings-card-title">{t("settings.port.title")}</h3>
       <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
     </section>
   );
@@ -1101,12 +1081,12 @@ function RemoteListenerCard({
           {t("settings.remote.publicEndpoint.title")}
           <SettingsHelp title={t("settings.remote.publicEndpoint.title")}>{t("settings.remote.publicEndpoint.help")}</SettingsHelp>
         </p>
-        <button type="button" role="switch" aria-checked={draft.publicEndpointEnabled}
-          aria-label={t("settings.remote.publicEndpoint.title")}
-          className={`settings-switch ${draft.publicEndpointEnabled ? "is-on" : ""}`}
-          disabled={saving} onClick={() => edit({ publicEndpointEnabled: !draft.publicEndpointEnabled })}>
-          <span className="settings-switch-knob" aria-hidden="true" />
-        </button>
+        <SettingsToggle
+          checked={draft.publicEndpointEnabled}
+          disabled={saving}
+          ariaLabel={t("settings.remote.publicEndpoint.title")}
+          onChange={(next) => edit({ publicEndpointEnabled: next })}
+        />
       </div>
 
       {draft.publicEndpointEnabled ? (

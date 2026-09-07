@@ -29,6 +29,8 @@ export interface SettingsRowProps {
   readonly hint?: string;
   /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
   readonly helpTip?: React.ReactNode;
+  /** 팁 뒤에 서는 저장 범위 칩 — `<SettingsScope>` 노드. 범위는 카드가 아니라 줄마다 말한다. */
+  readonly scope?: React.ReactNode;
   readonly children: React.ReactNode;
 }
 
@@ -76,6 +78,16 @@ export interface SettingsSliderProps {
   readonly decreaseLabel: string;
   readonly increaseLabel: string;
   readonly disabled?: boolean;
+  /**
+   * 기본값. 주면 값 뒤에 "기본값" 버튼이 서고, 값이 기본값과 같을 때 비활성이다. 되돌리는 길은
+   * 숨은 제스처(더블클릭)가 아니라 보이는 버튼 하나여야 한다 — 손잡이를 잘못 밀어 본 사람이
+   * 찾는 것은 설명서가 아니라 버튼이다.
+   */
+  readonly defaultValue?: number;
+  /** 기본값 버튼의 보이는 글. `defaultValue`와 함께 준다. */
+  readonly resetLabel?: string;
+  /** 기본값 버튼의 접근성 이름 — 비우면 `resetLabel`. */
+  readonly resetAriaLabel?: string;
 }
 
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
@@ -240,7 +252,7 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, scope, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
   return (
@@ -251,6 +263,7 @@ export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps
         <div className="fc-settings-row__label">
           <span id={labelId}>{label}</span>
           {helpTip}
+          {scope}
         </div>
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
       </div>
@@ -511,6 +524,9 @@ export function SettingsSlider({
   decreaseLabel,
   increaseLabel,
   disabled = false,
+  defaultValue,
+  resetLabel,
+  resetAriaLabel,
 }: SettingsSliderProps): React.ReactElement {
   const clamp = (next: number): number => Math.max(min, Math.min(max, next));
   const read = (event: React.SyntheticEvent<HTMLInputElement>): number =>
@@ -574,6 +590,18 @@ export function SettingsSlider({
       {/* 값은 range 가 aria-valuetext 로 이미 읽어 준다. output 은 role=status(라이브 영역)라
           그대로 두면 한 번 움직일 때마다 같은 값을 두 번 말한다 — 눈으로만 읽는 표시로 남긴다. */}
       <output className="fc-settings-slider__value" aria-hidden="true">{formatValue(value)}</output>
+      {defaultValue !== undefined && resetLabel !== undefined ? (
+        <button
+          type="button"
+          className="fc-settings-reset"
+          disabled={disabled || value === defaultValue}
+          aria-label={resetAriaLabel ?? resetLabel}
+          title={resetAriaLabel}
+          onClick={() => commit(clamp(defaultValue), true)}
+        >
+          {resetLabel}
+        </button>
+      ) : null}
     </div>
   );
 }

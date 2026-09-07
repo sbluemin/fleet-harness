@@ -54,8 +54,6 @@ interface SettingToggleRowProps {
   readonly help: string;
   /** 카드 공통 각주처럼 이 행에도 해당하는 두 번째 문단 — 팁 안에서 help 뒤에 선다. */
   readonly helpMore?: string;
-  readonly onLabel: string;
-  readonly offLabel: string;
   readonly value: boolean;
   readonly disabled: boolean;
   readonly onToggle: () => void;
@@ -931,10 +929,10 @@ function ClaudeCodeHarnessCard() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
       {/* 카드 각주(실행 중인 세션의 정책 유지)는 카드 전체의 이야기라 카드 제목 팁이 진다. */}
-      <p className="global-settings-card-title">
+      <h3 className="global-settings-card-title">
         {t("terminal.settings.harnessClaudeCode")}
         <SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>
-      </p>
+      </h3>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <>
@@ -958,12 +956,11 @@ function ClaudeCodeHarnessCard() {
                 <p className="harness-hazard" role="note">{t("terminal.settings.skipPermissionsWarn")}</p>
               ) : null}
             </div>
+            {/* 행 제목이 뜻을 말하므로 스위치 옆에 "켬/끔" 글자를 따로 세우지 않는다 — Settings의 다른 스위치와 같다. */}
             <SettingsToggle
               checked={state.claudeCodeSkipPermissions}
               disabled={saving}
-              label={state.claudeCodeSkipPermissions
-                ? t("terminal.settings.skipPermissionsOn")
-                : t("terminal.settings.skipPermissionsOff")}
+              ariaLabel={t("terminal.settings.skipPermissionsTitle")}
               onChange={(next) => void setSystemPromptSettingsField("claudeCodeSkipPermissions", next)}
             />
           </div>
@@ -1093,7 +1090,7 @@ function AgentSessionsSettingsCard() {
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessAgentSessions")}>
-      <p className="global-settings-card-title">{t("terminal.settings.harnessAgentSessions")}</p>
+      <h3 className="global-settings-card-title">{t("terminal.settings.harnessAgentSessions")}</h3>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <div className="global-settings-row">
@@ -1508,8 +1505,6 @@ function AiGatewayDiagnosticsCard() {
         title={t("terminal.settings.aiGatewayDiagnostics")}
         help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
         helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
-        onLabel={t("terminal.settings.enabled")}
-        offLabel={t("terminal.settings.off")}
         value={state.cursorDiagnosticsEnabled}
         disabled={saving}
         onToggle={() => void setSystemPromptSettingsField(
@@ -1521,8 +1516,6 @@ function AiGatewayDiagnosticsCard() {
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
         helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
-        onLabel={t("terminal.settings.enabled")}
-        offLabel={t("terminal.settings.off")}
         value={state.wireLogEnabled}
         disabled={saving}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
@@ -2545,7 +2538,7 @@ function AiGatewayKeyForm({ provider, busy, compact = false, onSignedIn }: {
   );
 }
 
-function SettingToggleRow({ title, help, helpMore, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
+function SettingToggleRow({ title, help, helpMore, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
@@ -2556,15 +2549,13 @@ function SettingToggleRow({ title, help, helpMore, onLabel, offLabel, value, dis
           </SettingsHelp>
         </p>
       </div>
-      <button
-        type="button"
-        className={`global-settings-toggle ${value ? "is-on" : ""}`}
+      {/* 켬/끔은 콘솔 전체에서 SDK 스위치 한 모양이다 — 예전의 "Off" 글자 버튼은 스타일 없는 세 번째 문법이었다. */}
+      <SettingsToggle
+        checked={value}
         disabled={disabled}
-        aria-pressed={value}
-        onClick={onToggle}
-      >
-        <span>{value ? onLabel : offLabel}</span>
-      </button>
+        ariaLabel={title}
+        onChange={onToggle}
+      />
     </div>
   );
 }

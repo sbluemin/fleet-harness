@@ -154,8 +154,8 @@ function buildMobileSettingsGroups(
   t: (key: CoreMessageKey) => string,
 ): readonly MobileSettingsGroup[] {
   const setupRows: MobileSettingsRow[] = [
+    // 언어는 데스크톱과 같이 겉모습 페이지의 첫 카드다 — 폰에서만 별도 행으로 두면 같은 설정이 두 자리에 선다.
     { id: "appearance", title: t("settings.core.appearance.label"), value: describeAppearance(state, t), icon: <AppearanceIcon /> },
-    { id: "language", title: t("settings.core.language.label"), value: describeLanguage(state, t), icon: <ConsoleIcon /> },
   ];
   const machineRows: MobileSettingsRow[] = [
     { id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <ApiIcon /> },
@@ -197,11 +197,10 @@ function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMes
 
 function describeAppearance(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
   if (state === null) return null;
-  return [themeLabel(state.theme, t), fontLabel(state)].join(" · ");
+  return [languageLabel(state, t), themeLabel(state.theme, t), fontLabel(state)].join(" · ");
 }
 
-function describeLanguage(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
-  if (state === null) return null;
+function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => string): string {
   return state.language === "auto" ? t("settings.language.auto") : state.language === "ko" ? t("settings.language.ko") : t("settings.language.en");
 }
 
@@ -248,14 +247,6 @@ function AppearanceIcon() {
   );
 }
 
-function ConsoleIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4.5" width="14" height="11" rx="2" />
-      <path d="M6.5 9 8.5 11l-2 2M11 13h3" />
-    </svg>
-  );
-}
 
 function RemoteIcon() {
   return (
