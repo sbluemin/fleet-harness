@@ -2154,11 +2154,11 @@
   background: var(--control-hover-fill);
 }
 
+/* 선택은 워시와 오른쪽 체크가 말한다 — 왼쪽 brass 띠는 스파인(정체성 문법)처럼 읽혀 뺐다. */
 .theme-card.is-active {
   color: var(--text-primary);
   border-color: var(--surface-rim);
   background: var(--control-wash);
-  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .theme-card:active:not(:disabled) {

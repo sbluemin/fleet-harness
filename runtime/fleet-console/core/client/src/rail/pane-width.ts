@@ -32,14 +32,15 @@ export const DEFAULT_PANEL_WIDTH = 312;
  * - `wide` — 안에서 2열 격자가 서야 하는 본문. 코어 CSS의 설정 테마 격자 문턱(420px)을
  *   반드시 넘는다.
  * - `broad` — 제목·컨트롤 행이 한 줄에 서는 본문(설정). 설정 행이 세로로 접히는 문턱(640px)과
- *   고급 섹션의 Backend API 행 문턱(720px)을 넘어, 설정을 열면 모든 행이 처음부터 접히지 않은
- *   꼴로 선다. 화면이 좁으면 레일이 예산으로 클램프한다.
+ *   고급 섹션의 Backend API 행 문턱(720px)을 넘고, AI Gateway 모델 로스터의 한 줄 레코드
+ *   (공급자·모델·강도 사다리·호스트 전용)가 실측상 페인 958px부터 한 줄에 서므로 그 위에 둔다.
+ *   설정을 열면 모든 행이 처음부터 접히지 않은 꼴로 선다. 화면이 좁으면 레일이 예산으로 클램프한다.
  */
 export const PANE_WIDTH_CLASS_PX: Readonly<Record<PaneWidthClass, number>> = {
   narrow: 328,
   standard: 392,
   wide: 440,
-  broad: 760,
+  broad: 1000,
 };
 
 /**

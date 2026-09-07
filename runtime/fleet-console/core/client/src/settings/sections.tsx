@@ -153,6 +153,9 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
     {
       id: "language",
       group: "setup",
+      // 표시 언어는 자기 칩을 갖지 않고 겉모습 페이지의 첫 카드로 선다 — 언어도 콘솔이 어떻게
+      // 보이는가의 일부이고, 한 행짜리 칩은 목록만 길게 했다. 검색과 옛 주소는 겉모습으로 착지한다.
+      embeddedIn: "appearance",
       label: t("settings.core.language.label"),
       entries: [t("settings.language.title"), t("settings.language.label"), t("settings.core.language.keywords")],
     },
@@ -224,10 +227,12 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
     case "appearance":
       return (
         <>
+          {state === null ? null : <LanguageCard state={state} saving={saving} />}
           <ThemeCard state={state} saving={saving} extras={options?.themeCardExtras} />
           <TypographyCard state={state} saving={saving} />
         </>
       );
+    // 언어는 겉모습에 품겨 있다 — 주소로 직접 들어온 옛 링크만 이 가지를 탄다.
     case "language":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return <LanguageCard state={state} saving={saving} />;
