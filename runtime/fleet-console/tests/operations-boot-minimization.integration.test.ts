@@ -69,7 +69,10 @@ vi.mock("../core/client/src/api.js", () => ({
   updateGroup: vi.fn(),
 }));
 
-vi.mock("@fleet-console/sdk/operations/browser", () => ({ fetchOperationCatalog: vi.fn().mockResolvedValue([]) }));
+vi.mock("@fleet-console/sdk/operations/browser", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@fleet-console/sdk/operations/browser")>(),
+  fetchOperationCatalog: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../core/client/src/canvas/canvas.js", () => ({
   OperationsCanvas: ({ catalog, onLaunchAtGeometry, onLaunchKind, onRefreshCatalog }: {
     readonly catalog: readonly OperationCatalogPlugin[];

@@ -1,3 +1,5 @@
+import { OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
+
 export interface AiGatewayModelSelection {
   readonly id: string;
   /** 정체성으로 내보낼 강도. 부재 = 이 모델의 사다리 전체. */
@@ -99,7 +101,11 @@ export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpd
     signal,
   });
   await assertOk(response);
-  return assertSystemPromptSettingsState(await response.json(), response.status);
+  const state = assertSystemPromptSettingsState(await response.json(), response.status);
+  if ("aiGateway" in settings) {
+    window.dispatchEvent(new Event(OPERATION_CATALOG_CHANGED_EVENT));
+  }
+  return state;
 }
 
 async function assertOk(response: Response): Promise<void> {

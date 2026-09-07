@@ -23,6 +23,8 @@ export class ApiError extends Error {
   }
 }
 
+export const OPERATION_CATALOG_CHANGED_EVENT = "fleet:operation-catalog-changed";
+
 export async function fetchOperationCatalog(signal?: AbortSignal): Promise<readonly OperationCatalogPlugin[]> {
   const response = await fetch("/api/v1/operations/catalog", { signal });
   if (!response.ok) throw new ApiError(response.status, `Operation catalog request failed: ${response.status}`);

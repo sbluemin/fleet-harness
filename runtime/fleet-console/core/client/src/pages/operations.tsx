@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useT } from "../i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
+import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
@@ -141,8 +141,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       setCatalog([]);
       return;
     }
+    window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
     refreshCatalog();
-    return () => { catalogRequestEpochRef.current += 1; };
+    return () => {
+      window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
+      catalogRequestEpochRef.current += 1;
+    };
   }, [refreshCatalog, state.activeTheaterId]);
 
   // Alt+화살표는 캔버스 배치 순서와 패널 문법을 공유하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 따른다.
