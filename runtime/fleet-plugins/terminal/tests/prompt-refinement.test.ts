@@ -50,6 +50,7 @@ function harness() {
         return new Response(JSON.stringify(result.body), { status: result.status });
       },
       subscribe: () => () => {},
+      resync: vi.fn(),
     },
   };
 }
