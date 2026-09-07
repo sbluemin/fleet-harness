@@ -5889,6 +5889,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));
 }
 
+/* 최소화된 칩은 "치워둠" 티어(--ink-muted)를 accent 위에서도 유지한다 — 언포커스보다 한 단계 더 물러난
+   45% 믹스이며 hover로 되살아나지 않는다(무액센트 최소화 칩도 hover에 색을 바꾸지 않는다). 위 hover 규칙과
+   같은 명세성(0,3,1)이므로 반드시 그 뒤에 온다. Whites chrome 위 최소 5.5:1. */
+.side-bar-chip[style*="--user-accent"].side-bar-chip--minimized .side-bar-chip-name {
+  color: color-mix(in oklab, var(--user-accent) 55%, var(--ink-muted));
+}
+
 /* 이름 왼쪽 상태 슬롯 — 조작 표면이 아니라 마크를 담는 자리다(칩 본체가 클릭을 소유한다). */
 .side-bar-chip-beacon-button {
   display: grid;

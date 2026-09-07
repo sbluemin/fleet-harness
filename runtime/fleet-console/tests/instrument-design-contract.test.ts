@@ -1360,10 +1360,16 @@ describe("Instrument core design contract", () => {
     expect(chipIdleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
     // hover/active도 원색이 아니라 2티어 글자색 쪽 25% 믹스 — Whites chrome 워시 위 13px AA의 하한이다.
     expect(chipActiveBlock).toContain("color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));");
+    // 최소화 티어는 accent 위에서도 남는다 — hover 규칙과 같은 명세성이라 순서가 곧 계약이다.
+    const chipHoverIndex = components.indexOf('.side-bar-chip[style*="--user-accent"]:hover .side-bar-chip-name');
+    const chipMinimizedIndex = components.indexOf('.side-bar-chip[style*="--user-accent"].side-bar-chip--minimized .side-bar-chip-name {');
+    expect(chipHoverIndex).toBeGreaterThan(-1);
+    expect(chipMinimizedIndex).toBeGreaterThan(chipHoverIndex);
+    expect(components.slice(chipMinimizedIndex).match(/\{[^}]*\}/)?.[0]).toContain("color: color-mix(in oklab, var(--user-accent) 55%, var(--ink-muted));");
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    // 5개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 이름(언포커스 믹스 + hover/active).
+    // 6개 소비처: 미니맵 도트 · 캡션 제목(언포커스 믹스 + 포커스/hover) · 사이드바 칩 이름(언포커스 믹스 + hover/active + 최소화).
     // accent는 어디서나 제목 잉크에만 머물고 면·선 채널은 열지 않는다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(6);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
