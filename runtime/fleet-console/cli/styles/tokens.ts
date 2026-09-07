@@ -82,6 +82,12 @@ export function optionRow(
   return `  ${option(name, colorEnabled)}${padName(name, width)}${dim(description, colorEnabled)}`;
 }
 
+export function paintFleetHelpBanner(colorEnabled: boolean): readonly string[] {
+  return ASCII_FLEET_BANNER.map(
+    (line, index) => `  ${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+  );
+}
+
 export const ASCII_FLEET_BANNER: readonly string[] = [
   "███████╗██╗     ███████╗███████╗████████╗",
   "██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝",

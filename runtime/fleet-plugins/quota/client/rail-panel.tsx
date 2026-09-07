@@ -18,9 +18,6 @@ import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
-export { PROVIDER_ORDER_DEFAULT, sanitizeFoldedProviders, sanitizeProviderOrder, toggledFoldedProviders };
-export type { ProviderId };
-
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude" | "cursor";

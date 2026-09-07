@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
@@ -8,17 +8,11 @@ import { getT, useT } from "./i18n/index.js";
 import { useConsoleLocale } from "./reader-store.js";
 import {
   consumeRestoredReaderExpanded,
-  getCodexReaderHistoryState,
   mountNavigatorInto,
-  mountReaderInto,
-  navigateCodexReaderHistory,
-  refreshCodexHealth,
   refreshCodexLocale,
   restoreCodexReaderSession,
-  setNavigatorTagFilter,
   setNavigatorTheater,
   setOnRequestOpenReader,
-  subscribeCodexReaderHistory,
   teardownCodex,
   teardownReaderNodes,
 } from "./codex-host.js";
@@ -252,24 +246,6 @@ async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorks
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   return assertCodexWorkspace(await response.json());
-}
-
-function readOutlineCollapsed(): boolean {
-  // 기본은 접힌 스파인 — 펼침은 명시적 선택으로만 유지된다(전주가 본문 도달을 밀지 않도록).
-  try {
-    const stored = localStorage.getItem("fleet.codex.outline.collapsed");
-    return stored === null ? true : stored === "true";
-  } catch {
-    return true;
-  }
-}
-
-function writeOutlineCollapsed(collapsed: boolean): void {
-  try {
-    localStorage.setItem("fleet.codex.outline.collapsed", String(collapsed));
-  } catch {
-    // Storage is optional.
-  }
 }
 
 function assertCodexWorkspace(value: unknown): Omit<CodexWorkspaceState, "contextKey"> {

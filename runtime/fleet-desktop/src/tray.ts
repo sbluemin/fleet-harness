@@ -1,5 +1,6 @@
 import type { Menu, Tray } from "electron";
 
+import { buildUpdateMenuItems } from "./menu.js";
 import type { DesktopResourcePaths } from "./resource-paths.js";
 import type { UpdateController } from "./update-controller.js";
 
@@ -38,7 +39,7 @@ export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayAc
     consoleAction("Actual Size", "Ctrl+0", actions.actualSize, actions),
     consoleAction("Reload Console", "Ctrl+R", actions.reloadConsole, actions),
     { type: "separator" },
-    ...(actions.updates.enabled() ? [{ label: "Check for Updates", click: () => void actions.updates.check() }, ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : [])] : []),
+    ...buildUpdateMenuItems(actions),
     { type: "separator" },
     { label: "Diagnostics", click: actions.diagnostics },
     { type: "separator" },

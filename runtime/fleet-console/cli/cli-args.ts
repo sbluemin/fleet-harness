@@ -1,13 +1,10 @@
 import {
-  ASCII_FLEET_BANNER,
-  FLEET_COMMAND,
-  GRADIENT_COLORS,
   command,
   commandRow,
   dim,
   option,
   optionRow,
-  paint,
+  paintFleetHelpBanner,
   resolveColorEnabled,
   section,
   stripAnsi,
@@ -33,8 +30,6 @@ export interface BuildFleetHelpTextOptions {
   readonly release?: FleetCliRelease;
 }
 
-const HELP_BANNER_INDENT = "  ";
-
 /** SETTINGS 항목은 명령이 아니라 경로·환경변수라 이름이 길다 — 그 격자만 따로 넓힌다. */
 const SETTINGS_COLUMN = 28;
 
@@ -51,10 +46,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
   const colorEnabled = resolveColorEnabled(options);
   const subtitle = `Fleet Harness · ${release.version} · ${release.channel}`;
   const lines = [
-    ...ASCII_FLEET_BANNER.map(
-      (line: string, index: number) =>
-        `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
-    ),
+    ...paintFleetHelpBanner(colorEnabled),
     dim(subtitle, colorEnabled),
     "",
     section("USAGE", colorEnabled),

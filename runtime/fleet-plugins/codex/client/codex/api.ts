@@ -48,7 +48,6 @@ export type {
 };
 
 // 하위 호환 별칭 — navigator 참조
-export type WikiEntryResponse = EntryResponse;
 export type WikiIndexEntry = SearchEntry;
 
 export interface SearchOptions {

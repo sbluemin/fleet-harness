@@ -14,8 +14,7 @@ import { diffDraftBlocks, diffDraftLines } from "@fleet-console/markdown/diff";
 import type { DraftLine } from "@fleet-console/markdown/diff";
 import { CoworkThread } from "./cowork-thread.js";
 import type { CoworkNotice, CoworkStep, CoworkThreadActions, CoworkThreadState, CoworkTurn } from "./cowork-thread.js";
-import { entryPath } from "./router.js";
-import { escapeAttribute, escapeHtml } from "./utils.js";
+import { entryPath, escapeAttribute, escapeHtml } from "./utils.js";
 
 
 function consoleT() {

@@ -12,8 +12,6 @@ import {
 } from "../provider-order.js";
 
 export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
-export { PROVIDER_ORDER_DEFAULT, sanitizeFoldedProviders, sanitizeProviderOrder };
-export type { ProviderId as OrderableProviderId };
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
@@ -52,6 +50,30 @@ async function panelSettings(ctx: FleetPluginServerContext): Promise<{
   };
 }
 
+function rejectUnlessJsonPost(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): boolean {
+  if (req.method !== "POST") {
+    ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+  if (!ctx.host.security.isTerminalAuthorized(req)) {
+    ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+    return true;
+  }
+  const contentType = req.headers["content-type"];
+  const mediaType = typeof contentType === "string"
+    ? contentType.split(";", 1)[0]?.trim().toLowerCase()
+    : undefined;
+  if (mediaType !== "application/json") {
+    ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
+    return true;
+  }
+  return false;
+}
+
 export async function handleSummary(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -78,22 +100,7 @@ export async function handleConnect(
   service: QuotaService,
   serializeSettings: SettingsSerializer,
 ): Promise<void> {
-  if (req.method !== "POST") {
-    ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
-    return;
-  }
-  if (!ctx.host.security.isTerminalAuthorized(req)) {
-    ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
-    return;
-  }
-  const contentType = req.headers["content-type"];
-  const mediaType = typeof contentType === "string"
-    ? contentType.split(";", 1)[0]?.trim().toLowerCase()
-    : undefined;
-  if (mediaType !== "application/json") {
-    ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
-    return;
-  }
+  if (rejectUnlessJsonPost(req, res, ctx)) return;
   let body: { readonly provider?: unknown; readonly connected?: unknown } | null;
   try {
     body = await ctx.host.http.readJsonBody(req);
@@ -128,22 +135,7 @@ export async function handleOrder(
   ctx: FleetPluginServerContext,
   serializeSettings: SettingsSerializer,
 ): Promise<void> {
-  if (req.method !== "POST") {
-    ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
-    return;
-  }
-  if (!ctx.host.security.isTerminalAuthorized(req)) {
-    ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
-    return;
-  }
-  const contentType = req.headers["content-type"];
-  const mediaType = typeof contentType === "string"
-    ? contentType.split(";", 1)[0]?.trim().toLowerCase()
-    : undefined;
-  if (mediaType !== "application/json") {
-    ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
-    return;
-  }
+  if (rejectUnlessJsonPost(req, res, ctx)) return;
   let body: { readonly order?: unknown } | null;
   try {
     body = await ctx.host.http.readJsonBody(req);
@@ -181,22 +173,7 @@ export async function handleFold(
   ctx: FleetPluginServerContext,
   serializeSettings: SettingsSerializer,
 ): Promise<void> {
-  if (req.method !== "POST") {
-    ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
-    return;
-  }
-  if (!ctx.host.security.isTerminalAuthorized(req)) {
-    ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
-    return;
-  }
-  const contentType = req.headers["content-type"];
-  const mediaType = typeof contentType === "string"
-    ? contentType.split(";", 1)[0]?.trim().toLowerCase()
-    : undefined;
-  if (mediaType !== "application/json") {
-    ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
-    return;
-  }
+  if (rejectUnlessJsonPost(req, res, ctx)) return;
   let body: { readonly folded?: unknown } | null;
   try {
     body = await ctx.host.http.readJsonBody(req);

@@ -13,13 +13,10 @@ import { describeConsoleLaunch, describeDaemonStartFailure } from "./failure-not
 import { createConsoleHealthClient } from "./health.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
-  ASCII_FLEET_BANNER,
-  FLEET_COMMAND,
-  GRADIENT_COLORS,
   command,
   dim,
   option,
-  paint,
+  paintFleetHelpBanner,
   resolveColorEnabled,
   section,
   stripAnsi,
@@ -109,7 +106,6 @@ export interface BuildConsoleHelpTextOptions {
 }
 
 const FIXED_HOST = "127.0.0.1";
-const HELP_BANNER_INDENT = "  ";
 const STARTUP_TIMEOUT_MS = 60_000;
 const STARTUP_POLL_INTERVAL_MS = 100;
 const CHILD_CLEANUP_GRACE_MS = 500;
@@ -177,9 +173,7 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
   const release = options.release ?? formatConsoleHelpRelease();
   const subtitle = `Fleet Console · ${release}`;
   const lines = [
-    ...ASCII_FLEET_BANNER.map(
-      (line, index) => `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
-    ),
+    ...paintFleetHelpBanner(colorEnabled),
     dim(subtitle, colorEnabled),
     "",
     dim("Observe live output streams and console-owned terminal sessions.", colorEnabled),
@@ -640,27 +634,33 @@ export async function main(): Promise<void> {
     return;
   }
   const mode = parseConsoleCliMode(process.argv.slice(2));
+  await runConsolePublishedCommand(mode, { stdout: process.stdout, env: process.env });
+}
+
+// 두 published bin은 실행 순서와 결과 출력을 공유하되 각 진입점의 예외 경계는 유지한다.
+export async function runConsolePublishedCommand(
+  mode: ConsoleCliMode,
+  io: { readonly stdout: { write(chunk: string): boolean; readonly isTTY?: boolean }; readonly env?: NodeJS.ProcessEnv },
+): Promise<void> {
   if (mode === "help") {
-    process.stdout.write(`${buildConsoleHelpText({ env: process.env, isTTY: process.stdout.isTTY })}\n`);
+    io.stdout.write(`${buildConsoleHelpText({ env: io.env, isTTY: io.stdout.isTTY })}\n`);
     return;
   }
   if (mode === "status") {
-    process.stdout.write(`${await runConsoleStatus()}\n`);
+    io.stdout.write(`${await runConsoleStatus()}\n`);
     return;
   }
   if (mode === "stop") {
-    process.stdout.write(`${await runConsoleStop()}\n`);
+    io.stdout.write(`${await runConsoleStop()}\n`);
     return;
   }
-  // 두 published bin은 같은 사실을 말해야 한다 — 이 진입점이 결과를 버리면 `fleet console`은
-  // 주소를 건네는데 `fleet-console`은 열렸다고만 하는 모순이 남는다.
   if (mode === "restart") {
     const restarted = await runConsoleRestart();
-    process.stdout.write(`${describeConsoleLaunch("Fleet Console restarted.", restarted)}\n${await runConsoleStatus()}\n`);
+    io.stdout.write(`${describeConsoleLaunch("Fleet Console restarted.", restarted)}\n${await runConsoleStatus()}\n`);
     return;
   }
   const opened = await openFleetConsole();
-  process.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
+  io.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
 }
 
 export function resolveDefaultServerModulePath(moduleUrl: string = import.meta.url): string {

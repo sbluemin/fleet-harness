@@ -10,7 +10,6 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../src/index.js";
-import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString } from "../src/agent-cli/builders/toml.js";
 import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import { createAgentCliPlugin } from "../src/agent-cli/plugin/index.js";
 import type { AgentCliProfile, FleetHookExec } from "../src/agent-cli/types.js";
