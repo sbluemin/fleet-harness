@@ -119,7 +119,7 @@ export async function refineLaunchPrompt(api: ClientApiCapability | null, input:
     const response = await api.fetch("terminal", "experiments/refine-prompt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: input.prompt, theaterLabel: input.theaterLabel, language: input.language }),
+      body: JSON.stringify({ prompt: input.prompt, theaterLabel: input.theaterLabel, language: input.language, purpose: input.purpose ?? "launch" }),
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const payload = await response.json() as { readonly refinement?: unknown };

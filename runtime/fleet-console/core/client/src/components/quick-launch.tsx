@@ -5,6 +5,7 @@ import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-c
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import type { LaunchContextCandidate, PromptRefinement } from "@fleet-console/sdk/plugin";
+import { PROMPT_REFINE_MAX_CHARS } from "@fleet-console/sdk/plugin/browser";
 
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -213,7 +214,15 @@ export function QuickLaunch() {
   const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
   const chatStart = chatStartAvailable && startView === "chat";
   const targetPlugin = target ? registry.plugins.find((plugin) => plugin.id === target.pluginId) ?? null : null;
-  const refineEnabled = experiments?.promptRefine === true && typeof targetPlugin?.refinePrompt === "function";
+  const refinePlugin = mentionTarget === null ? targetPlugin
+    : mentionTarget.kind === "operation"
+      ? registry.plugins.find((plugin) => plugin.id === mentionTarget.entry.pluginId
+        && plugin.promptRefineOperationTypes?.includes(mentionTarget.entry.type)) ?? null
+      : null;
+  const refinePurpose = mentionTarget?.kind === "operation" ? "follow-up" : "launch";
+  const refineTheaterId = mentionTarget?.kind === "operation" ? mentionTarget.entry.theaterId : theaterId;
+  const refineTheaterLabel = theaters.find((theater) => theater.id === refineTheaterId)?.label ?? null;
+  const refineEnabled = experiments?.promptRefine === true && typeof refinePlugin?.refinePrompt === "function";
   const contextProviders = useMemo(() => registry.plugins.flatMap((plugin) => plugin.launchContextProviders ?? []), [registry.plugins]);
   const contextEnabled = experiments?.launchContextPack === true && contextProviders.length > 0;
 
@@ -678,8 +687,8 @@ export function QuickLaunch() {
   // 사용자가 버튼을 눌렀을 때만 묻는다. 초안은 카드에 서고 입력창은 "적용"을 눌러야 바뀐다. 문면이
   // 바뀌면 지난 초안은 낡은 것이므로 에포크로 버린다.
   const refineAbortRef = useRef<AbortController | null>(null);
-  const canRefine = open && refineEnabled && mentionTarget === null && target !== null
-    && prompt.trim().length > 0 && prompt.trim().length <= QUICK_LAUNCH_PROMPT_MAX_CHARS;
+  const canRefine = open && refineEnabled && !submitting
+    && prompt.trim().length > 0 && prompt.trim().length <= PROMPT_REFINE_MAX_CHARS;
   useEffect(() => {
     refineEpochRef.current += 1;
     refineAbortRef.current?.abort();
@@ -688,26 +697,35 @@ export function QuickLaunch() {
     setRefining(false);
     // 적용된 초안을 사용자가 고치기 시작하면 "원래대로"는 더 이상 그 문면을 가리키지 않는다.
     setRefinedFrom((current) => (current !== null && prompt === lastAppliedRef.current ? current : null));
-    // Theater도 본다 — 요청이 Theater 이름을 싣고 가므로, 바꾸면 진행 중·표시 중인 초안은 다른 프로젝트의 것이다.
-  }, [prompt, open, mentionTarget, theaterId]);
+    // 편집 의도·대상·설정이 달라진 뒤 도착한 초안은 적용하지 않는다.
+  }, [prompt, open, mentionTarget, refineTheaterId, refineTheaterLabel, refinePurpose, refinePlugin, refineEnabled, locale, submitting]);
+  useEffect(() => () => {
+    refineEpochRef.current += 1;
+    refineAbortRef.current?.abort();
+  }, []);
   const lastAppliedRef = useRef<string | null>(null);
   const requestRefinement = useCallback(() => {
-    if (!canRefine || !targetPlugin?.refinePrompt || refining) return;
+    if (!canRefine || !refinePlugin?.refinePrompt || refining) return;
     const epoch = ++refineEpochRef.current;
     const abort = new AbortController();
     refineAbortRef.current = abort;
     setRefining(true);
     setRefinement(null);
-    const theaterLabel = (stateRef.current.theaters ?? []).find((theater) => theater.id === theaterIdRef.current)?.label ?? null;
-    void targetPlugin.refinePrompt({ prompt: prompt.trim(), theaterLabel, language: locale, signal: abort.signal })
-      .then((next) => { if (epoch === refineEpochRef.current) setRefinement(next && next.prompt.trim().length > 0 ? next : null); })
-      .catch(() => { if (epoch === refineEpochRef.current) setRefinement(null); })
+    setMentionErrorKey(null);
+    void refinePlugin.refinePrompt({ prompt: prompt.trim(), theaterLabel: refineTheaterLabel, purpose: refinePurpose, language: locale, signal: abort.signal })
+      .then((next) => {
+        if (epoch !== refineEpochRef.current) return;
+        const valid = next && next.prompt.trim().length > 0 && next.prompt.trim().length <= PROMPT_REFINE_MAX_CHARS;
+        setRefinement(valid ? next : null);
+        if (!valid) setMentionErrorKey("chrome.quickLaunch.refineFailed");
+      })
+      .catch(() => {
+        if (epoch !== refineEpochRef.current) return;
+        setRefinement(null);
+        setMentionErrorKey("chrome.quickLaunch.refineFailed");
+      })
       .finally(() => { if (epoch === refineEpochRef.current) { setRefining(false); refineAbortRef.current = null; } });
-  }, [canRefine, targetPlugin, refining, prompt, locale]);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const theaterIdRef = useRef(theaterId);
-  theaterIdRef.current = theaterId;
+  }, [canRefine, refinePlugin, refineTheaterLabel, refinePurpose, refining, prompt, locale]);
 
   const applyRefinement = useCallback(() => {
     if (!refinement) return;
@@ -747,13 +765,13 @@ export function QuickLaunch() {
 
   const applyCommandPrompt = useCallback((next: string) => {
     setPrompt(next);
-    setCommandInput(readCommandInput(next, next.length));
+    setCommandInput(mentionTarget ? null : readCommandInput(next, next.length));
     setCommandActiveIndex(0);
     const element = inputRef.current;
     // 제어 컴포넌트라 값 반영 뒤에야 높이를 잴 수 있다(pickMention과 같은 계약).
     if (element) requestAnimationFrame(() => autoGrow(element));
     element?.focus();
-  }, []);
+  }, [mentionTarget]);
 
   const finishCommand = useCallback(() => {
     setPrompt("");

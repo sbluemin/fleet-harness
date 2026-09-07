@@ -31,6 +31,7 @@ export interface BoundOperationRuntime {
 }
 
 export { React };
+export { PROMPT_REFINE_MAX_CHARS } from "./types.js";
 
 export function definePlugin(definition: FleetClientPlugin): FleetClientPlugin {
   return definition;
