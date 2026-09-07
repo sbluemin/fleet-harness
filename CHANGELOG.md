@@ -5,6 +5,56 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.86.0] - 2026-09-07
+
+### fleet-cli
+
+#### Added
+- Offer Cursor's Fable 5.1 as a gateway model, with Low through Max reasoning and a Max Mode 1M variant billed against the Cursor API pool.
+
+#### Changed
+- Let GPT-6 Astra overlap read-only tools with independent work in streaming Claude Code sessions while preserving tool permissions and sequential-call constraints.
+- Omit signed-out providers and providers without exposed models from gateway_models, and make quota consumption priorities explicit with numbered ranks.
+
+### fleet-console
+
+#### Added
+- Offer GPT-5.6 Luna (Codex) in the Cowork model menu when it is enabled in Settings > AI Gateway.
+- Offer Cursor's Fable 5.1 as a gateway model, with Low through Max reasoning and a Max Mode 1M variant billed against the Cursor API pool.
+- Quaker aides get a shared model and effort picker in their Settings card (Claude aliases plus AI Gateway models), a one-time introduction bubble on first duty, and a Ctrl/Cmd+Shift+Q shortcut that opens the last aide you spoke with.
+- The aide chat card now keeps the whole conversation in view with a multi-line composer (Shift+Enter for a new line), a Stop button while an answer streams, Copy and Send to Quick Launch actions on the last answer, source chips for pages the aide read, a token and cost line per answer, and a Clear chat button.
+- Aides announce Operations waiting for your input with a bubble that opens the Operation, alongside the existing start and finish notices.
+- Aides can be moved with the arrow keys and moored with Space when focused, and their chirps are announced to assistive technology.
+
+#### Changed
+- Group the AI Gateway model roster by provider: each provider stands once as a heading with its glyph, enabled count, "Spend first" rank select, and (for xAI) the endpoint switch, and its enabled models sit indented beneath it with the grade badge leading each record. Rank choices are limited to providers with enabled models, and removing a provider's last model drops it from the spend order and closes the gap. The "Add model" palette opens larger (720 x 460 by default), can be resized by dragging its right edge, bottom edge, or corner, remembers that size per browser, leads each result with its grade badge, and labels provider headings with a plain model count.
+- Let GPT-6 Astra overlap read-only tools with independent work in streaming Claude Code sessions while preserving tool permissions and sequential-call constraints.
+- The Operation menu opened from a panel caption, a sidebar chip, or a group header shows the nine accent tones as one row of swatches with the aimed tone's name read out beside the label, replacing the nine-row list; the card uses plain sans-serif section labels, borderless rows, a check mark for the current group, and a neutral shadow.
+- A panel's accent now colors the caption title itself; the accent bar that stood before the title is gone. The sidebar chip spine and minimap dot still carry the accent.
+- The caption's more button draws its three dots on the same 14px grid as the window controls, highlights with the same brass hover, and stays lit while its menu is open.
+- Rebuild the Codex Cowork dock as a revision thread: each instruction becomes a turn with a live step ledger (thinking, tool runs, streaming answer), a "worked for" fold, a review dock with changes/full toggles, and per-cause notices for failures, timeouts, stale drafts, and disabled models.
+- Replace the Cowork composer and model menu with the Console composer grammar: an auto-growing input with Enter/Shift+Enter/Esc hints, a provider-glyph model chip with a banded menu, and an effort track beside it.
+- Float the Codex composer over both reading surfaces, with inline suggestions that collapse while typing and return when cleared; keep selection comments above the composer.
+- Render Drydock proposers as readable provenance marks instead of raw tool identifiers.
+- Quick Launch prompt refinement now supports Operation mentions without changing the composer design. Follow-up editing preserves references to the existing conversation, keeps the destination and attachments, and still requires explicit draft application before sending.
+- Aides keep clear of open surfaces: they fly out from under the Settings pane, Quick Launch, and dialogs instead of covering their controls, and moored aides return to their spot when the surface closes.
+- When the Console quietly ends an aide's session, the next question starts a new one automatically with a short notice instead of failing; chat errors read as plain sentences with a Try again button, lookup rows settle to "Searched the web" or "Read a source" when the answer completes, and long mention answers scroll inside their bubble.
+- The plugin is named Quaker Aides wherever it appears, and aides answer in the Console language by default.
+- The Quick Launch image-attach button moved from the control row to the top-right of the prompt input, next to the prompt refine button, and the mention and dock toggles now sit as one tighter group beside Run.
+- Quaker aide answers to Quick Launch mentions now render as Markdown in the bubble itself and grow to the space around the aide (up to 60% of the window) before scrolling, so the whole answer reads where it lands. The bubble offers Ask a follow-up, which opens the chat card, and Copy answer; the former Open the full answer link is gone.
+- Remove the expanded Settings surface and its button, and make remote access management available directly in the Settings pane.
+- Unify every model selector in Settings (AI extensions, Quaker Aides, compact timing preview) into one ModelPicker with provider bands, context-window meta, and an attached effort segment.
+- Settings reads as one product across every section: plugin cards use the same flat rows, row titles, help tips, and per-row scope chips as the core cards, model pickers share one bordered shape that keeps long Gateway model names on one line, every on/off is the same switch, and every slider carries -/+ steppers with a visible Default button instead of a hidden double-click reset.
+- The Quaker aides roster is a segmented control like the other Settings pickers, and the Experimental badge reads the same on every card.
+- Settings opens at a broad width where every row, including the AI Gateway model roster, shows its title on the left and its control on the right instead of stacking in a narrow card.
+- The Language chip is gone: the display language is the first card of Appearance, and the selected theme card no longer carries a brass stripe on its left edge.
+- A sidebar chip now shows its Operation's accent as the color of the chip title, matching the panel caption; the 3px accent bar that stood at the chip's left edge is gone. The focused chip and a hovered chip show the accent more strongly, and the rest show it one step quieter.
+
+#### Fixed
+- The caption menu opens inward from the more button's right edge instead of spilling past the panel, measures its own height before choosing to open above or below, and stays inside a short viewport; opening it with Enter now moves focus into the menu, and Left/Right arrows step across the accent swatches.
+- The selected row in the Operation menu no longer takes a green or pink border produced by hue interpolation, and the caption's more tooltip no longer lingers behind the open menu.
+- Quick Launch keeps the Run button on the control row even when a long model name or the open ULTRACODE gate fills the row; Theater and model chip labels shorten instead of pushing Run onto a second line.
+
 ## [1.85.0] - 2026-09-06
 
 ### fleet-cli
