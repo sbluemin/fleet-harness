@@ -585,6 +585,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             accountId: chatgptAccountId,
             headers: { originator: deps.originator },
             fetch: fetchImpl,
+            ...(body.stream === true && harness.asyncToolNames
+              ? { asyncToolNames: harness.asyncToolNames }
+              : {}),
           })
         : undefined;
       const gateway = deps.gateway

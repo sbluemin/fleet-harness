@@ -48,6 +48,14 @@ const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
  */
 const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 const CODEX_RETRY_DELAY_MS = 200;
+// HTTP caller는 응답이 끝난 뒤 결과를 반환한다. 이 경계를 알리지 않으면 Astra가
+// pending 도구를 polling하거나 재호출하므로 async 선언과 함께 전달한다.
+const ASYNC_TOOL_RESULT_INSTRUCTIONS = [
+  "Async tool results are delivered by the application after this response ends, not within this response.",
+  "After launching async tools, do independent work if useful, then END this response to wait for their results.",
+  "Never repeat a pending call or poll for it. Do not invent results.",
+  "Resume dependent work only after the next request supplies the original tool results.",
+].join(" ");
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
 // 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
@@ -77,6 +85,7 @@ interface OpenAIResponsesWireFunctionTool {
   description?: string;
   parameters: Record<string, unknown>;
   strict?: boolean;
+  async?: boolean;
 }
 
 /**
@@ -115,6 +124,8 @@ export interface OpenAIResponsesAdapterOptions {
   headers?: Readonly<Record<string, string>>;
   /** ChatGPT 백엔드가 거절하는 샘플링 필드를 제거한다. */
   dropSamplingParams?: boolean;
+  /** 호출자가 스트림 소비 중 안전하게 실행할 수 있는 도구. Codex Astra에만 적용한다. */
+  asyncToolNames?: readonly string[];
 }
 
 export class OpenAIResponsesAdapter implements AiGatewayAdapter {
@@ -125,11 +136,13 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
   private readonly url: string;
   private readonly extraHeaders: Readonly<Record<string, string>>;
   private readonly dropSamplingParams: boolean;
+  private readonly asyncToolNames: ReadonlySet<string>;
 
   constructor(options: OpenAIResponsesAdapterOptions = {}) {
     this.url = options.url ?? OPENAI_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
     this.dropSamplingParams = options.dropSamplingParams ?? false;
+    this.asyncToolNames = new Set(options.asyncToolNames);
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MAX_UPSTREAM_BODY_BYTES,
@@ -160,6 +173,19 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams);
+    if (this.dropSamplingParams && request.model === "gpt-6-astra"
+      && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
+      let hasAsyncTools = false;
+      for (const tool of payload.tools ?? []) {
+        if (tool.type === "function" && this.asyncToolNames.has(tool.name)) {
+          tool.async = true;
+          hasAsyncTools = true;
+        }
+      }
+      if (hasAsyncTools) {
+        payload.instructions = [payload.instructions, ASYNC_TOOL_RESULT_INSTRUCTIONS].filter(Boolean).join("\n\n");
+      }
+    }
     // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
     wireLog("openai.wire.request", { url: this.url, payload });
     let response: Response;
@@ -219,6 +245,8 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 }
 
 export interface CodexResponsesAdapterOptions {
+  /** 스트리밍 호출자가 비동기로 실행할 수 있는 읽기 전용 도구 이름. 기본은 비활성화다. */
+  asyncToolNames?: readonly string[];
   /** ChatGPT subscription account id; sent as the `chatgpt-account-id` header. */
   accountId?: string;
   /** 구독 경로가 요구하는 추가 헤더(예: originator). */
@@ -244,6 +272,7 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     super({
       url: CHATGPT_CODEX_RESPONSES_URL,
       dropSamplingParams: true,
+      ...(options.asyncToolNames ? { asyncToolNames: options.asyncToolNames } : {}),
       headers: {
         ...(options.accountId ? { "chatgpt-account-id": options.accountId } : {}),
         ...options.headers,
