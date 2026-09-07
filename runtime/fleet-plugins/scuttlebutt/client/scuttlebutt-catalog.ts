@@ -1,3 +1,4 @@
+import type { RenderMarkdownOptions } from "@fleet-console/markdown/core";
 import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
@@ -90,6 +91,8 @@ const scuttlebuttEn = {
   "mention.descriptionConsole": "{name} answers from web search and can read Operation titles, status, and Wiki entries — no repository or file access.",
   "answer.dismiss": "Dismiss",
   "answer.followUp": "Ask a follow-up",
+  "markdown.copy": "Copy",
+  "markdown.copyCodeAria": "Copy {language} code",
   "diagram.renderFailed": "Diagram render failed: {message}",
   "diagram.openExpandedAria": "Open diagram in expanded view",
   "diagram.lightboxTitle": "MANIFEST · DIAGRAM",
@@ -207,6 +210,8 @@ const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
   "mention.descriptionConsole": "{name}은(는) 웹 검색과 함께 Operation 제목·상태·Wiki 항목을 읽고 답합니다 — 저장소와 파일에는 접근하지 않습니다.",
   "answer.dismiss": "닫기",
   "answer.followUp": "이어 묻기",
+  "markdown.copy": "복사",
+  "markdown.copyCodeAria": "{language} 코드 복사",
   "diagram.renderFailed": "다이어그램 렌더 실패: {message}",
   "diagram.openExpandedAria": "다이어그램을 확대 보기로 열기",
   "diagram.lightboxTitle": "MANIFEST · DIAGRAM",
@@ -264,5 +269,14 @@ export function diagramHydratorLabels(locale: ConsoleLocale | undefined): Diagra
     fitAria: t("diagram.fitAria"),
     reset: t("diagram.reset"),
     resetAria: t("diagram.resetAria"),
+  };
+}
+
+/** 렌더러가 코드 블록마다 심는 Copy 버튼의 글자·aria-label. 답이 한국어면 버튼도 한국어여야 한다. */
+export function markdownRenderOptions(locale: ConsoleLocale | undefined): RenderMarkdownOptions {
+  const t = getT(locale);
+  return {
+    copyLabel: t("markdown.copy"),
+    copyAriaLabel: (language) => t("markdown.copyCodeAria", { language }),
   };
 }

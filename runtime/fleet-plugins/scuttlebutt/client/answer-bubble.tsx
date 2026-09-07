@@ -7,7 +7,7 @@ import type { AdmiralId } from "./chat-session.js";
 import { sourceLabel } from "./chat-card.js";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
-import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
+import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
 import { isConsoleReadEnabled } from "./console-read.js";
 
 /**
@@ -186,7 +186,7 @@ export function AnswerBubble({
                 ref={textRef}
                 className="scuttlebutt-answer-text scuttlebutt-markdown-body"
                 onClick={(event) => copyCodeBlock(event, t("action.copied"))}
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text).html }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text, markdownRenderOptions(locale)).html }}
               />
             )}
         {!working && sources.length > 0 ? (

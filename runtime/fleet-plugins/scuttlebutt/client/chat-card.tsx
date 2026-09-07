@@ -7,7 +7,7 @@ import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
-import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
+import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 
 export function ChatCard({
@@ -181,7 +181,7 @@ export function ChatCard({
             {t(`chat.greeting.${admiral}`)}
           </div>
         ) : null}
-        {state.entries.map((entry) => renderEntry(entry, t))}
+        {state.entries.map((entry) => renderEntry(entry, locale))}
         {answer && !busy ? (
           <div className="scuttlebutt-answer-actions">
             {answer.sources.length > 0 ? (
@@ -243,19 +243,18 @@ export function ChatCard({
   );
 }
 
-function renderEntry(entry: ChatEntry, t: ReturnType<typeof getT>): React.ReactNode {
+function renderEntry(entry: ChatEntry, locale: ConsoleLocale | undefined): React.ReactNode {
   if (entry.kind === "assistant") {
     return (
       <div
         key={entry.id}
         className="scuttlebutt-message-sam scuttlebutt-markdown-body"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text).html }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text, markdownRenderOptions(locale)).html }}
       />
     );
   }
   if (entry.kind === "user") return <div key={entry.id} className="scuttlebutt-message-user">{entry.text}</div>;
   if (entry.kind === "notice") return <div key={entry.id} className="scuttlebutt-status-row is-notice">{entry.text}</div>;
-  void t;
   return (
     <div key={entry.id} className={`scuttlebutt-status-row${entry.kind === "error" ? " is-error" : ""}`}>
       {entry.text}
