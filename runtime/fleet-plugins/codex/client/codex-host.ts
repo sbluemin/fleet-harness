@@ -59,6 +59,7 @@ let activeReaderSessionTheaterId: string | null = null;
 let activeEntryRequest: ((entryId: string) => void) | null = null;
 let lastReaderScrollTop = 0;
 let scrollRestoreCleanup: (() => void) | null = null;
+let composerSizeCleanup: (() => void) | null = null;
 let scrollSaveSlot: HTMLElement | null = null;
 let scrollSaveTimerId: ReturnType<typeof setTimeout> | null = null;
 let lastObservedScrollTop = 0;
@@ -269,6 +270,26 @@ export function mountReaderInto(
   if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
   if (tNode.parentElement !== tocSlot) tocSlot.appendChild(tNode);
   if (dNode.parentElement !== dockSlot) dockSlot.appendChild(dNode);
+  composerSizeCleanup?.();
+  let composerFrame = 0;
+  const syncComposerSize = () => {
+    const height = `${dockSlot.getBoundingClientRect().height}px`;
+    if (readSlot.style.getPropertyValue("--codex-composer-height") !== height) {
+      readSlot.style.setProperty("--codex-composer-height", height);
+    }
+  };
+  const composerObserver = new ResizeObserver(() => {
+    cancelAnimationFrame(composerFrame);
+    composerFrame = requestAnimationFrame(syncComposerSize);
+  });
+  composerObserver.observe(dockSlot);
+  syncComposerSize();
+  composerSizeCleanup = () => {
+    composerObserver.disconnect();
+    cancelAnimationFrame(composerFrame);
+    readSlot.style.removeProperty("--codex-composer-height");
+    composerSizeCleanup = null;
+  };
 
   const { sessionTheaterId: _sessionTheaterId, ...readingOpts } = opts;
   if (!readerController || activeReaderKind !== opts.kind || !sameTheater) {
@@ -338,6 +359,7 @@ export function teardownReaderNodes(): void {
   documentSnapshot = { entryId: null, title: "" };
   for (const listener of documentListeners) listener();
   scrollRestoreCleanup?.();
+  composerSizeCleanup?.();
   detachSessionScrollSaver();
   readerController?.destroy();
   readerController = null;

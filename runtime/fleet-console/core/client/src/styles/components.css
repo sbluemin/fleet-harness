@@ -13417,12 +13417,22 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   container-name: codex-reader;
 }
 
-/* Cowork 도크의 프레임 경계 슬롯 — 스크롤포트 아래 고정 행이라 본문을 가리지 않는다.
-   entry 밖 화면(대기열·충돌·스키마)에서는 도크가 없어 행 자체가 접힌다. */
+/* 일반 읽기와 확대 표면이 같은 부유 레이어를 사용한다. 본문 끝의 여유는 실제 높이를 따른다. */
+.codex-doc-pane,
+.codex-reading-sheet-main { position: relative; }
+
 .codex-reader-composer {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-glass) 55%, transparent);
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.codex-reader-composer .cowork-thread-root > * { pointer-events: auto; }
+.codex-doc-scroll,
+.codex-reading-sheet-read {
+  padding-bottom: calc(var(--codex-composer-height, 0px) + var(--space-10));
+  scroll-padding-bottom: calc(var(--codex-composer-height, 0px) + var(--space-4));
 }
 
 .codex-reader-composer:not(:has(.cowork-dock-zone.is-open)) {

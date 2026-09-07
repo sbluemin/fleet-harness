@@ -3021,6 +3021,9 @@ button.chip:focus-visible {
   max-height: min(44vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  background: var(--surface-panel);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 .cowork-thread-scroll:empty { display: none; }
 
@@ -3228,7 +3231,12 @@ button.chip:focus-visible {
 }
 .cowork-composer-frame:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
 .cowork-composer-frame.is-working { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)); }
-.cowork-composer-field { display: flex; padding: var(--space-3) var(--space-4) var(--space-2); }
+.cowork-composer-field { display: grid; padding: var(--space-3) var(--space-4) var(--space-2); }
+.cowork-composer-field.is-onboarding > * { grid-area: 1 / 1; }
+.cowork-composer-field.is-onboarding .cowork-hero { z-index: 1; pointer-events: none; padding: 0 0 var(--space-3); }
+.cowork-composer-field.is-onboarding .cowork-hero-sigil { display: none; }
+.cowork-composer-field.is-onboarding .cowork-hero-suggestions { pointer-events: auto; }
+.cowork-composer-field.is-onboarding .cowork-composer-input { height: 100% !important; max-height: none; }
 .cowork-composer-input {
   width: 100%;
   min-width: 0;
