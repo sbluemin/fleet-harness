@@ -62,6 +62,7 @@ const terminalPlugin = definePlugin({
   renderLaunchIcon: (kind) => agentPlugin.renderLaunchIcon?.(kind),
   // 실험 계약도 agent 구현의 것을 그대로 싣는다 — 래퍼가 빠뜨리면 코어는 "선언하지 않은 플러그인"으로 읽는다.
   refinePrompt: (input) => agentPlugin.refinePrompt?.(input) ?? Promise.resolve(null),
+  promptRefineOperationTypes: agentPlugin.promptRefineOperationTypes,
   experimentModelOptions: () => agentPlugin.experimentModelOptions?.() ?? Promise.resolve([]),
 });
 

@@ -219,6 +219,7 @@ export const agentPlugin = definePlugin({
   install: (ctx) => installAgentPlugin(ctx),
   // 실험: 프롬프트 다듬기 — 코어가 켜져 있을 때만 부른다. 서버가 꺼져 있다고 답하면 null로 조용히 물러난다.
   refinePrompt: (input) => refineLaunchPrompt(installedApi, input),
+  promptRefineOperationTypes: ["agent"],
   // 실험: 모델 좌석 선택지 — 분석가 카탈로그가 곧 "이 호스트가 실행할 수 있는 모델"이다.
   experimentModelOptions: async () => {
     if (!installedApi) return [];

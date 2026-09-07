@@ -12,11 +12,16 @@ import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { ConsoleExperimentSettings, ExperimentModelOption, SettingsSectionDescriptor } from "../settings/types.js";
 
+export const PROMPT_REFINE_MAX_CHARS = 8_000;
+export type PromptRefinePurpose = "launch" | "follow-up";
+
 /**
- * 실험 기능 "프롬프트 다듬기"의 입력. 코어는 프롬프트와 Theater 이름만 넘긴다 — transcript나
- * 경로는 이 계약에 없다. 어느 플러그인이 고쳐 쓰는지는 코어가 모르며, 런치 종류의 소유자가 답한다.
+ * 실험 기능 "프롬프트 다듬기"의 입력. 본문과 Theater 이름, 편집 의도만 넘긴다 — Operation id,
+ * transcript나 경로는 이 계약에 없다. 런치 또는 멘션 대상의 소유 플러그인이 답한다.
  */
 export interface PromptRefineInput {
+  /** 생략한 기존 호출은 새 작업 지시문으로 다룬다. */
+  readonly purpose?: PromptRefinePurpose;
   readonly prompt: string;
   readonly theaterLabel: string | null;
   readonly language: ConsoleLocale;
@@ -209,9 +214,11 @@ export interface FleetClientPlugin {
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
   /**
    * 실험 기능 "프롬프트 다듬기". 코어가 켜져 있을 때만 부르고, 답이 늦거나 없으면 조용히 수동
-   * 흐름으로 남는다. 런치 종류의 소유자만 선언한다.
+   * 흐름으로 남는다. 런치 또는 멘션 대상의 소유자가 선언한다.
    */
   readonly refinePrompt?: (input: PromptRefineInput) => Promise<PromptRefinement | null>;
+  /** 후속 메시지 편집을 명시적으로 지원하는 Operation 타입. 생략하면 런치만 지원한다. */
+  readonly promptRefineOperationTypes?: readonly string[];
   /** 실험 기능 "런치 컨텍스트 팩"의 공급자들. */
   readonly launchContextProviders?: readonly LaunchContextProvider[];
   /**
