@@ -1498,8 +1498,8 @@ function AiGatewayDiagnosticsCard() {
 }
 
 /**
- * 켜진 모델 한 줄. 로스터는 공급자 구분 없이 평탄한 목록이므로 공급자 정체성은 각 줄의
- * 왼쪽 열이 진다. 우선 소진 순위는 그 열의 순번과 왼쪽 가장자리 선으로만 되비친다.
+ * 켜진 모델 한 줄. 로스터는 공급자 묶음 아래에 모델을 들여 쓰므로 공급자 정체성은 묶음
+ * 머리글이 지고, 줄은 등급 → 이름·속성 → 조작만 말한다.
  */
 interface AiGatewayRosterEntry {
   readonly provider: AiGatewayCatalogProvider;
@@ -1508,6 +1508,24 @@ interface AiGatewayRosterEntry {
   readonly hostOnly: boolean;
   /** 우선 소진 순서에서의 0-기준 자리. 순서 밖이면 -1. */
   readonly rank: number;
+}
+
+/** 한 공급자의 켠 모델 묶음. 순위 셀렉트와 xAI 엔드포인트는 이 머리글에 선다. */
+interface AiGatewayRosterGroup {
+  readonly provider: AiGatewayCatalogProvider;
+  readonly rank: number;
+  readonly entries: readonly AiGatewayRosterEntry[];
+}
+
+/** 정렬된 로스터를 공급자 묶음으로 접는다 — 정렬이 공급자를 연속으로 두므로 한 번 훑으면 된다. */
+export function groupAiGatewayRoster(entries: readonly AiGatewayRosterEntry[]): AiGatewayRosterGroup[] {
+  const groups: { provider: AiGatewayCatalogProvider; rank: number; entries: AiGatewayRosterEntry[] }[] = [];
+  for (const entry of entries) {
+    const last = groups[groups.length - 1];
+    if (last && last.provider === entry.provider) last.entries.push(entry);
+    else groups.push({ provider: entry.provider, rank: entry.rank, entries: [entry] });
+  }
+  return groups;
 }
 
 /**
@@ -1587,15 +1605,20 @@ function AiGatewayModelsCard() {
 
   const selection = state.aiGateway ?? {};
   const enabled = selection.models ?? [];
+  // 순위는 켠 공급자에 대한 선호다 — 로드아웃이 켠 모델 없는 공급자를 거르고 다시 번호를 매기므로,
+  // 화면도 같은 순위를 읽는다. 예전 저장값에 남은 빈 공급자는 다음 순위 저장에서 함께 정리된다.
+  const enabledProviderIds = new Set(
+    providers.filter((provider) => provider.models.some((model) => enabled.some((entry) => entry.id === model.id))).map((provider) => provider.id),
+  );
   const priority = (selection.providerPriority ?? []).filter(
-    (id): id is AiGatewayProviderId => id in AI_GATEWAY_PROVIDER_LABEL_KEYS,
+    (id): id is AiGatewayProviderId => id in AI_GATEWAY_PROVIDER_LABEL_KEYS && enabledProviderIds.has(id),
   );
 
   const save = (next: AiGatewaySettings): void => {
     const models = next.models ?? [];
     // 우선순위는 이 저장에 싣지 않는다 — 키 부재를 서버가 "보존"으로 읽으므로, 다른
     // 호스트가 그 사이 바꾼 소진 순서를 모델 편집이 스테일 스냅숏으로 덮지 않는다.
-    // 우선순위를 싣는 유일한 경로는 순위 셀렉트(savePriority)다.
+    // 우선순위를 싣는 경로는 순위 셀렉트(savePriority)와, 순위가 실제로 바뀌는 제거뿐이다.
     const normalized = models.length === 0 ? null : { models };
     void setSystemPromptSettingsField("aiGateway", normalized);
   };
@@ -1617,7 +1640,18 @@ function AiGatewayModelsCard() {
     save({ ...selection, models: [...enabled, { id: model.id }] });
   };
   const removeModel = (id: string): void => {
-    save(composeAiGatewayRemoval(selection, id));
+    const next = composeAiGatewayRemoval(selection, id, providers);
+    // 마지막 모델이 빠져 순위가 실제로 바뀐 그 한 번만 순위를 함께 싣는다 — 로드아웃은 이미
+    // 켠 모델 없는 공급자를 거르므로, 저장값과 화면을 그 사실에 맞추는 것이다.
+    if ((next.providerPriority ?? []).length !== (selection.providerPriority ?? []).length) {
+      const models = next.models ?? [];
+      void setSystemPromptSettingsField(
+        "aiGateway",
+        models.length === 0 ? null : { models, providerPriority: next.providerPriority ?? [] },
+      );
+      return;
+    }
+    save(next);
   };
   // 사다리 전체는 부재로 접어 저장한다 — 저장형이 하나여야 "전체 노출"이 두 가지
   // 철자를 갖지 않는다. 마지막 한 단계는 UI가 끄지 못하게 막지만, 여기서도 지킨다.
@@ -1648,9 +1682,26 @@ function AiGatewayModelsCard() {
   };
 
   const roster = buildAiGatewayRoster(providers, selection, priority);
-  const providerCount = new Set(roster.map((entry) => entry.provider.id)).size;
+  const groups = groupAiGatewayRoster(roster);
+  const providerCount = groups.length;
   const authOf = (id: string): ModelAuthProviderState | undefined =>
     auth.state?.providers.find((entry) => entry.provider === id);
+
+  // 선택지는 켠 공급자 수까지만이다. 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가
+  // 늘지 않는다 — 한 칸 더 주면 placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
+  const rankOptionsFor = (providerId: string) => {
+    const slots = priority.includes(providerId as AiGatewayProviderId) ? priority.length : priority.length + 1;
+    return [
+      { value: "", label: t("terminal.settings.aiGatewayPriorityNone") },
+      ...Array.from({ length: Math.min(slots, groups.length) }, (_, index) => ({
+        value: String(index),
+        label: t("terminal.settings.aiGatewayPriorityRank", { rank: index + 1 }),
+      })),
+    ];
+  };
+  const rankProvider = (providerId: AiGatewayProviderId, rank: number | null): void => {
+    savePriority(placeAiGatewayPriority(priority, providerId, rank));
+  };
 
   return (
     <>
@@ -1684,12 +1735,10 @@ function AiGatewayModelsCard() {
               <AiGatewayModelPalette
                 providers={providers}
                 selection={selection}
-                priority={priority}
                 authOf={authOf}
                 authBusy={auth.busyProvider}
                 saving={saving}
                 onAdd={addModel}
-                onSavePriority={savePriority}
                 onClose={closePalette}
               />
             ) : null}
@@ -1703,17 +1752,52 @@ function AiGatewayModelsCard() {
         {roster.length === 0 ? (
           <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
         ) : (
-          <div className="ai-gateway-rows">
-            {roster.map((entry) => (
-              <AiGatewayModelRow
-                key={entry.model.id}
-                entry={entry}
-                saving={saving}
-                onRemove={() => removeModel(entry.model.id)}
-                onSetEfforts={(next) => setModelEfforts(entry.model, next)}
-                onToggleHostOnly={() => setModelHostOnly(entry.model, !entry.hostOnly)}
-              />
-            ))}
+          <div className="ai-gateway-groups">
+            {groups.map((group) => {
+              const providerId = group.provider.id as AiGatewayProviderId;
+              return (
+                <section
+                  key={group.provider.id}
+                  className={`ai-gateway-provider-group ai-gateway-provider is-${group.provider.id}${group.rank >= 0 ? " is-ranked" : ""}`}
+                  aria-label={t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId])}
+                >
+                  <div className="ai-gateway-group-head">
+                    <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(providerId)}</span>
+                    <span className="ai-gateway-provider-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId])}</span>
+                    <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayModelCount", { count: group.entries.length })}</span>
+                    <span className="ai-gateway-group-controls">
+                      {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={saving} /> : null}
+                      {/* 순위 셀렉트는 라벨과 함께 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
+                      <span className="ai-gateway-priority-wrap">
+                        <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayPriority")}</span>
+                        <Select
+                          compact
+                          className={group.rank >= 0 ? "ai-gateway-priority-select is-ranked" : "ai-gateway-priority-select"}
+                          label={t("terminal.settings.aiGatewayPriorityAria", { provider: t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId]) })}
+                          value={group.rank >= 0 ? String(group.rank) : ""}
+                          disabled={saving}
+                          options={rankOptionsFor(group.provider.id)}
+                          onChange={(value) => rankProvider(providerId, value === "" ? null : Number(value))}
+                        />
+                        <span className="ai-gateway-priority-tip" role="tooltip">{t("terminal.settings.aiGatewayPriorityTip")}</span>
+                      </span>
+                    </span>
+                  </div>
+                  <div className="ai-gateway-rows">
+                    {group.entries.map((entry) => (
+                      <AiGatewayModelRow
+                        key={entry.model.id}
+                        entry={entry}
+                        saving={saving}
+                        onRemove={() => removeModel(entry.model.id)}
+                        onSetEfforts={(next) => setModelEfforts(entry.model, next)}
+                        onToggleHostOnly={() => setModelHostOnly(entry.model, !entry.hostOnly)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
         </div>
@@ -1815,11 +1899,26 @@ function describeAiGatewayFamily(family: AiGatewayModelFamily, fastLabel: string
   return [context, fast].filter((part): part is string => part !== null).join(" · ");
 }
 
-export function composeAiGatewayRemoval(selection: AiGatewaySettings, id: string): AiGatewaySettings {
-  const { models, ...rest } = selection;
+export function composeAiGatewayRemoval(
+  selection: AiGatewaySettings,
+  id: string,
+  providers: readonly AiGatewayCatalogProvider[],
+): AiGatewaySettings {
+  const { models, providerPriority, ...rest } = selection;
+  const remaining = (models ?? []).filter((entry) => entry.id !== id);
+  // 그 공급자의 마지막 모델이 빠지면 순위에서도 지운다 — 뒤 순번은 배열 순서라 저절로 당겨진다.
+  // 순위는 켠 공급자에 대한 선호이지 공급자의 속성이 아니라, 다시 켜도 되돌리지 않는다.
+  const removedProvider = providers.find((provider) => provider.models.some((model) => model.id === id));
+  const stillEnabled = removedProvider !== undefined
+    && remaining.some((entry) => removedProvider.models.some((model) => model.id === entry.id));
+  const dropped = removedProvider !== undefined && !stillEnabled
+    && (providerPriority ?? []).includes(removedProvider.id as AiGatewayProviderId);
   return {
     ...rest,
-    models: (models ?? []).filter((entry) => entry.id !== id),
+    models: remaining,
+    ...(dropped
+      ? { providerPriority: (providerPriority ?? []).filter((entry) => entry !== removedProvider.id) }
+      : providerPriority !== undefined ? { providerPriority } : {}),
   };
 }
 
@@ -1851,13 +1950,123 @@ export function filterAiGatewayPalette(
 interface AiGatewayModelPaletteProps {
   readonly providers: readonly AiGatewayCatalogProvider[];
   readonly selection: AiGatewaySettings;
-  readonly priority: readonly AiGatewayProviderId[];
   readonly authOf: (id: string) => ModelAuthProviderState | undefined;
   readonly authBusy: string | null;
   readonly saving: boolean;
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
-  readonly onSavePriority: (next: readonly AiGatewayProviderId[]) => void;
   readonly onClose: () => void;
+}
+
+/** 팔레트 크기 — 폭과 목록 높이. 브라우저별 기억이라 사이드바 폭과 같은 localStorage에 둔다. */
+interface AiGatewayPaletteSize {
+  readonly width: number;
+  readonly listHeight: number;
+}
+
+const AI_GATEWAY_PALETTE_SIZE_KEY = "fleet.terminal.aiGatewayPalette.size";
+const AI_GATEWAY_PALETTE_DEFAULT_SIZE: AiGatewayPaletteSize = { width: 720, listHeight: 460 };
+const AI_GATEWAY_PALETTE_MIN_SIZE: AiGatewayPaletteSize = { width: 380, listHeight: 240 };
+
+function readAiGatewayPaletteSize(): AiGatewayPaletteSize {
+  try {
+    const raw = window.localStorage.getItem(AI_GATEWAY_PALETTE_SIZE_KEY);
+    if (!raw) return AI_GATEWAY_PALETTE_DEFAULT_SIZE;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" && parsed !== null
+      && typeof (parsed as { width?: unknown }).width === "number"
+      && typeof (parsed as { listHeight?: unknown }).listHeight === "number"
+    ) {
+      const { width, listHeight } = parsed as AiGatewayPaletteSize;
+      if (Number.isFinite(width) && Number.isFinite(listHeight)) return { width, listHeight };
+    }
+  } catch {
+    // 손상된 값은 기본 크기로 돌아간다.
+  }
+  return AI_GATEWAY_PALETTE_DEFAULT_SIZE;
+}
+
+function writeAiGatewayPaletteSize(size: AiGatewayPaletteSize): void {
+  try {
+    window.localStorage.setItem(AI_GATEWAY_PALETTE_SIZE_KEY, JSON.stringify(size));
+  } catch {
+    // 저장 불가는 이번 세션의 크기만 잃는다.
+  }
+}
+
+/** 크기를 앵커 폭과 뷰포트 안쪽으로 접는다 — 하한은 고정, 상한은 열린 자리에 따라 다르다. */
+export function clampAiGatewayPaletteSize(
+  size: AiGatewayPaletteSize,
+  bounds: { readonly maxWidth: number; readonly maxListHeight: number },
+): AiGatewayPaletteSize {
+  const width = Math.round(Math.min(Math.max(bounds.maxWidth, AI_GATEWAY_PALETTE_MIN_SIZE.width), Math.max(AI_GATEWAY_PALETTE_MIN_SIZE.width, size.width)));
+  const listHeight = Math.round(Math.min(Math.max(bounds.maxListHeight, AI_GATEWAY_PALETTE_MIN_SIZE.listHeight), Math.max(AI_GATEWAY_PALETTE_MIN_SIZE.listHeight, size.listHeight)));
+  return { width, listHeight };
+}
+
+type AiGatewayPaletteResizeEdge = "e" | "s" | "se";
+
+/**
+ * 팔레트 크기 조절. 오른쪽 변·아래 변·모서리를 끌면 폭과 목록 높이가 바뀌고, 놓으면 기억한다.
+ * 상한은 매 이동마다 다시 잰다 — 앵커(로스터 머리글) 폭과 뷰포트 바닥이 곧 팔레트가 설 자리다.
+ */
+function useAiGatewayPaletteResize(rootRef: React.RefObject<HTMLDivElement | null>) {
+  const [size, setSize] = React.useState<AiGatewayPaletteSize>(readAiGatewayPaletteSize);
+  const [resizing, setResizing] = React.useState<AiGatewayPaletteResizeEdge | null>(null);
+  const boundsOf = React.useCallback((): { maxWidth: number; maxListHeight: number } => {
+    const root = rootRef.current;
+    const anchor = root?.offsetParent as HTMLElement | null;
+    const list = root?.querySelector<HTMLElement>(".ai-gateway-palette-list");
+    const maxWidth = anchor ? anchor.clientWidth : Number.POSITIVE_INFINITY;
+    // 목록 위쪽(검색 줄)과 아래쪽(바닥 줄)은 크기가 정해져 있으므로, 남은 뷰포트가 목록의 상한이다.
+    const chrome = root && list ? root.getBoundingClientRect().height - list.getBoundingClientRect().height : 0;
+    const top = root ? root.getBoundingClientRect().top : 0;
+    const maxListHeight = window.innerHeight - top - chrome - 24;
+    return { maxWidth, maxListHeight };
+  }, [rootRef]);
+
+  // 열릴 때와 뷰포트가 바뀔 때 상한을 다시 적용한다 — 기억한 크기가 지금 자리보다 클 수 있다.
+  React.useLayoutEffect(() => {
+    const fit = (): void => setSize((current) => {
+      const next = clampAiGatewayPaletteSize(current, boundsOf());
+      return next.width === current.width && next.listHeight === current.listHeight ? current : next;
+    });
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [boundsOf]);
+
+  const startResize = (edge: AiGatewayPaletteResizeEdge) => (event: React.PointerEvent<HTMLElement>): void => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const origin = { x: event.clientX, y: event.clientY, ...size };
+    const pointerId = event.pointerId;
+    handle.setPointerCapture(pointerId);
+    setResizing(edge);
+    let latest = size;
+    const onMove = (move: PointerEvent): void => {
+      latest = clampAiGatewayPaletteSize({
+        width: edge === "s" ? origin.width : origin.width + (move.clientX - origin.x),
+        listHeight: edge === "e" ? origin.listHeight : origin.listHeight + (move.clientY - origin.y),
+      }, boundsOf());
+      setSize(latest);
+    };
+    const onUp = (): void => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+      setResizing(null);
+      writeAiGatewayPaletteSize(latest);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  };
+
+  return { size, resizing, startResize };
 }
 
 /**
@@ -1869,16 +2078,15 @@ interface AiGatewayModelPaletteProps {
 function AiGatewayModelPalette({
   providers,
   selection,
-  priority,
   authOf,
   authBusy,
   saving,
   onAdd,
-  onSavePriority,
   onClose,
 }: AiGatewayModelPaletteProps) {
   const t = getT(useTerminalLocale());
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const { size, resizing, startResize } = useAiGatewayPaletteResize(rootRef);
   const searchRef = React.useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = React.useState("");
   /** 머리글의 "로그인"으로 펼친 키 입력 줄의 공급자. 한 번에 하나만 펼친다. */
@@ -1988,21 +2196,14 @@ function AiGatewayModelPalette({
     rootRef.current?.querySelector(".ai-gateway-palette-hit.is-active")?.scrollIntoView({ block: "nearest" });
   }, [activeHit]);
 
-  // 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가 늘지 않는다 — 한 칸 더 주면
-  // placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
-  const rankOptionsFor = (providerId: string) => {
-    const slots = priority.includes(providerId as AiGatewayProviderId) ? priority.length : priority.length + 1;
-    return [
-      { value: "", label: t("terminal.settings.aiGatewayPriorityNone") },
-      ...Array.from({ length: Math.min(slots, providers.length) }, (_, index) => ({
-        value: String(index),
-        label: t("terminal.settings.aiGatewayPriorityRank", { rank: index + 1 }),
-      })),
-    ];
-  };
-
   return (
-    <div ref={rootRef} className="ai-gateway-palette" role="dialog" aria-label={t("terminal.settings.aiGatewayAddModel")}>
+    <div
+      ref={rootRef}
+      className={`ai-gateway-palette${resizing ? " is-resizing" : ""}`}
+      role="dialog"
+      aria-label={t("terminal.settings.aiGatewayAddModel")}
+      style={{ "--ai-gateway-palette-width": `${size.width}px`, "--ai-gateway-palette-list-height": `${size.listHeight}px` } as React.CSSProperties}
+    >
       <div className="ai-gateway-palette-search">
         <span className="ai-gateway-palette-search-glyph" aria-hidden="true">⌕</span>
         <input
@@ -2033,21 +2234,16 @@ function AiGatewayModelPalette({
           listbox는 프로바이더마다 하나씩이고 바깥은 구조 없는 스크롤 면이다. */}
       <div className="ai-gateway-palette-list">
         {headingProviders.map((provider) => {
-          const rank = priority.indexOf(provider.id as AiGatewayProviderId);
           const providerAuth = authOf(provider.id);
           return (
             <React.Fragment key={provider.id}>
               <AiGatewayPaletteGroupHead
                 provider={provider}
-                rank={rank}
-                rankOptions={rankOptionsFor(provider.id)}
                 auth={providerAuth}
                 busy={authBusy === provider.id}
-                saving={saving}
                 keyLineOpen={keyLineFor === provider.id}
                 onToggleKeyLine={() => setKeyLineFor((current) => current === provider.id ? null : provider.id)}
                 onKeyLineDone={() => setKeyLineFor(null)}
-                onRank={(next) => onSavePriority(placeAiGatewayPriority(priority, provider.id as AiGatewayProviderId, next))}
               />
               <div role="listbox" id={`${listboxId}-${provider.id}`} aria-label={providerLabel(provider.id)}>
               {hits.filter((hit) => hit.provider === provider).map((hit) => {
@@ -2063,11 +2259,8 @@ function AiGatewayModelPalette({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => pick(hit)}
                   >
-                    <span className="ai-gateway-palette-hit-name">
-                      <span className="ai-gateway-palette-hit-provider">{`${hit.provider.id} / `}</span>
-                      {hit.family.name}
-                    </span>
                     <AiGatewayCapabilityBadge capabilityClass={hit.family.capabilityClass} />
+                    <span className="ai-gateway-palette-hit-name">{hit.family.name}</span>
                     <span className="ai-gateway-palette-hit-hint">
                       {allEnabled ? t("terminal.settings.aiGatewayAllEnabled") : describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))}
                     </span>
@@ -2137,6 +2330,11 @@ function AiGatewayModelPalette({
           </>
         )}
       </div>
+      {/* 크기 손잡이 — 오른쪽 변은 폭, 아래 변은 목록 높이, 모서리는 둘 다. 보이는 것은 모서리 빗금뿐이고
+          손잡이는 포인터 전용이라 Tab 순서에 들지 않는다(기본 크기로 돌아오는 길은 설정이 아니라 다시 끄는 것). */}
+      <div className="ai-gateway-palette-resize is-e" aria-hidden="true" onPointerDown={startResize("e")} />
+      <div className="ai-gateway-palette-resize is-s" aria-hidden="true" onPointerDown={startResize("s")} />
+      <div className="ai-gateway-palette-resize is-se" title={t("terminal.settings.aiGatewayPaletteResize")} aria-hidden="true" onPointerDown={startResize("se")} />
     </div>
   );
 }
@@ -2196,34 +2394,26 @@ function AiGatewayXaiEndpointRow({ saving }: { readonly saving: boolean }) {
 
 interface AiGatewayPaletteGroupHeadProps {
   readonly provider: AiGatewayCatalogProvider;
-  readonly rank: number;
-  readonly rankOptions: readonly { readonly value: string; readonly label: string }[];
   readonly auth: ModelAuthProviderState | undefined;
   readonly busy: boolean;
-  readonly saving: boolean;
   readonly keyLineOpen: boolean;
   readonly onToggleKeyLine: () => void;
   readonly onKeyLineDone: () => void;
-  readonly onRank: (rank: number | null) => void;
 }
 
 /**
- * 팔레트의 프로바이더 머리글 — 목록의 묶음 라벨이자 그 프로바이더의 설정 줄이다. 오른쪽에
- * [엔드포인트(xAI)] [구독 / API key] [로그인·로그아웃] [순위 셀렉트]가 서고, 키가 없는
- * 프로바이더는 "로그인"이 머리글 아래에 키 입력 줄을 펼친다. 프로바이더 설정이 필요한 순간은
- * 그 프로바이더의 모델을 켤지 정하는 순간이라, 별도 카드 대신 여기에 둔다.
+ * 팔레트의 프로바이더 머리글 — 목록의 묶음 라벨이자 그 프로바이더의 인증 줄이다. 오른쪽에
+ * [구독 / API key] [로그인·로그아웃]이 서고, 키가 없는 프로바이더는 "API key"가 머리글 아래에
+ * 키 입력 줄을 펼친다. 로그인은 켠 모델이 없는 프로바이더에도 필요하므로 여기 남고, 우선 소진
+ * 순위와 xAI 엔드포인트는 켠 모델이 있어야 뜻이 있는 값이라 로스터의 묶음 머리글에 선다.
  */
 function AiGatewayPaletteGroupHead({
   provider,
-  rank,
-  rankOptions,
   auth,
   busy,
-  saving,
   keyLineOpen,
   onToggleKeyLine,
   onKeyLineDone,
-  onRank,
 }: AiGatewayPaletteGroupHeadProps) {
   const t = getT(useTerminalLocale());
   const id = provider.id as AiGatewayProviderId;
@@ -2234,9 +2424,8 @@ function AiGatewayPaletteGroupHead({
       <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
         <span className="ai-gateway-palette-group-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
-        <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayInCatalog", { count: provider.models.length })}</span>
+        <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayModelCount", { count: provider.models.length })}</span>
         <span className="ai-gateway-palette-group-controls">
-          {provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={saving} /> : null}
           {/* 인증 셀: 구독은 글자, API key는 글자 자체가 로그인 버튼, 로그인된 뒤에는 로그아웃만. */}
           {!keyed ? (
             <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayAuthSubscription")}</span>
@@ -2262,19 +2451,6 @@ function AiGatewayPaletteGroupHead({
               {busy ? t("terminal.auth.verifying") : t("terminal.settings.aiGatewayAuthApiKey")}
             </button>
           )}
-          {/* 순위 셀렉트는 라벨 없이 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
-          <span className="ai-gateway-priority-wrap">
-            <Select
-              compact
-              className={rank >= 0 ? "ai-gateway-priority-select is-ranked" : "ai-gateway-priority-select"}
-              label={t("terminal.settings.aiGatewayPriorityAria", { provider: t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id]) })}
-              value={rank >= 0 ? String(rank) : ""}
-              disabled={saving}
-              options={rankOptions}
-              onChange={(value) => onRank(value === "" ? null : Number(value))}
-            />
-            <span className="ai-gateway-priority-tip" role="tooltip">{t("terminal.settings.aiGatewayPriorityTip")}</span>
-          </span>
         </span>
       </div>
       {locked && keyLineOpen && auth ? (
@@ -2293,8 +2469,9 @@ interface AiGatewayModelRowProps {
 }
 
 /**
- * 한 줄 레코드: 공급자 → 모델 → 속성 → 조작. 같은 자리에 같은 것이 오므로 스무 줄이 되어도
- * 스캔이 된다. 게이트웨이 id는 이름과 공급자 열이 이미 말하는 정보라 적지 않는다.
+ * 들여쓴 레코드: 등급 → 모델·속성 → 조작. 공급자는 묶음 머리글이 말하므로 줄에는 없다. 같은
+ * 자리에 같은 것이 오므로 스무 줄이 되어도 스캔이 되고, 등급 열이 먼저라 이름 시작점이 맞는다.
+ * 게이트웨이 id는 이름과 묶음이 이미 말하는 정보라 적지 않는다.
  */
 export function AiGatewayModelRow({
   entry,
@@ -2304,23 +2481,15 @@ export function AiGatewayModelRow({
   onToggleHostOnly,
 }: AiGatewayModelRowProps) {
   const t = getT(useTerminalLocale());
-  const { provider, model, efforts, hostOnly, rank } = entry;
-  const id = provider.id as AiGatewayProviderId;
+  const { model, efforts, hostOnly } = entry;
   const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
   const ladder = model.effort?.levels ?? [];
 
   return (
-    <div className={`ai-gateway-model-row ai-gateway-provider is-${provider.id}${rank >= 0 ? " is-ranked" : ""}`}>
-      <span className="ai-gateway-provider-cell">
-        <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
-        <span className="ai-gateway-provider-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
-        {rank >= 0 ? (
-          <span className="ai-gateway-priority-rank" title={t("terminal.settings.aiGatewayPriorityRank", { rank: rank + 1 })}>{rank + 1}</span>
-        ) : null}
-      </span>
+    <div className="ai-gateway-model-row">
+      <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
       <span className="ai-gateway-model-text">
         <span className="ai-gateway-model-name">{model.name}</span>
-        <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
         {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
         {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
         {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}

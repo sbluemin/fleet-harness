@@ -1507,17 +1507,17 @@ describe("Instrument core design contract", () => {
   it("pins the AI Gateway provider-priority grammar — ink rank only, no signal colour, no brass", () => {
     // 소진 순서는 상태가 아니라 사용자 선호다. 신호색이나 brass를 빌리는 순간 같은 카드의
     // 상태·위치 채널과 충돌해 순위가 활동처럼 읽힌다 — 등급 배지와 같은 잉크 문법을 강제한다.
-    // 순위는 프로바이더 카드의 셀렉트로 정하고, 로스터 줄의 순번 배지·가장자리 선으로만 되비친다.
+    // 순위는 로스터 묶음 머리글의 셀렉트로 정하고, 묶음 왼쪽 가장자리 선으로만 되비친다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
     const priorityRules = [...css.matchAll(/([^{}]*\.ai-gateway-priority[^{}]*)\{([^}]*)\}/g)];
     expect(priorityRules.length).toBeGreaterThan(0);
     for (const [, , body] of priorityRules) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
     }
-    const rank = css.match(/\.ai-gateway-priority-rank \{[^}]*\}/)?.[0] ?? "";
-    expect(rank).toContain("border: 1px solid var(--surface-rim-strong);");
-    expect(rank).toContain("color: var(--text-primary);");
-    const edge = css.match(/\.ai-gateway-model-row\.is-ranked::before \{[^}]*\}/)?.[0] ?? "";
+    const ranked = css.match(/\.ai-gateway-priority-select\.is-ranked \{[^}]*\}/)?.[0] ?? "";
+    expect(ranked).toContain("--fc-select-compact-tone: var(--text-primary);");
+    const edge = css.match(/\.ai-gateway-provider-group\.is-ranked::before \{[^}]*\}/)?.[0] ?? "";
+    expect(edge).toContain("background: var(--text-tertiary);");
     expect(edge).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
   });
 
