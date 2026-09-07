@@ -7,7 +7,6 @@ import { useT } from "../i18n/index.js";
 import type { CoreMessageKey } from "../i18n/messages/index.js";
 import { collectExperimentModelOptions } from "../experiment-model-options.js";
 import type { GlobalSettingsState } from "../types.js";
-import { SettingsScope } from "./sections.js";
 
 interface FeatureRow {
   readonly id: ExperimentFeatureId;
@@ -46,7 +45,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
               <p className="global-settings-resp-title">
                 {t(row.titleKey)}
                 <SettingsHelp title={t(row.titleKey)}>{t(row.helpKey)}</SettingsHelp>
-                <SettingsScope kind="live" />
               </p>
             </div>
             {/* 한 줄: 모델 선택기와 스위치가 오른쪽에 나란히 선다 — 어느 기능의 모델인지는 왼쪽 제목이 말한다.

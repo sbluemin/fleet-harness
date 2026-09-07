@@ -14,7 +14,7 @@ import {
   CaptionTerminalGlyph,
   CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { ModelPicker, SettingsHelpTip, SettingsScope, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExperimentsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
@@ -52,8 +52,6 @@ import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./ty
 interface SettingToggleRowProps {
   readonly title: string;
   readonly help: string;
-  /** 카드 공통 각주처럼 이 행에도 해당하는 두 번째 문단 — 팁 안에서 help 뒤에 선다. */
-  readonly helpMore?: string;
   readonly value: boolean;
   readonly disabled: boolean;
   readonly onToggle: () => void;
@@ -945,11 +943,8 @@ function ClaudeCodeHarnessCard() {
               <p className="global-settings-resp-title">
                 <span id="claude-code-skip-permissions-label">{t("terminal.settings.skipPermissionsTitle")}</span>
                 <SettingsHelp title={t("terminal.settings.skipPermissionsTitle")}>
-                  <p>{t("terminal.settings.skipPermissionsHelp")}</p>
-                  {/* 적용 표면 칩은 도움말의 훑어 읽기 판본이므로 설명과 함께 팁 안에 선다. */}
-                  <HarnessSurfaceList />
+                  {t("terminal.settings.skipPermissionsHelp")}
                 </SettingsHelp>
-                <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
               </p>
               {/* 위험은 설명이 아니라 상태다 — 켜져 있는 동안 인라인에 남는다. */}
               {state.claudeCodeSkipPermissions ? (
@@ -969,7 +964,6 @@ function ClaudeCodeHarnessCard() {
               <p className="global-settings-resp-title">
                 <span id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</span>
                 <SettingsHelp title={t("terminal.settings.claudeSystemPromptTitle")}>{t("terminal.settings.claudeSystemPromptHelp")}</SettingsHelp>
-                <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
               </p>
             </div>
             <Select
@@ -991,22 +985,6 @@ function ClaudeCodeHarnessCard() {
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
     </section>
-  );
-}
-
-/**
- * 승인 게이트 선택이 실제로 닿는 표면. 도움말 문장이 같은 사실을 이미 말하므로 이 줄은
- * 훑어 읽는 판본이고, 그래서 칩만으로 뜻이 완성되지 않아도 된다. 채팅이 빠져 있는 것은
- * 결함이 아니라 계약이다 — 그 표면에는 승인을 물을 화면이 없다(admiral session.ts 참조).
- */
-function HarnessSurfaceList() {
-  const t = getT(useTerminalLocale());
-  return (
-    <ul className="harness-surfaces" aria-label={t("terminal.settings.harnessSurfaceLabel")}>
-      <li className="harness-surface is-on">{t("terminal.settings.harnessSurfaceTerminal")}</li>
-      <li className="harness-surface is-on">{t("terminal.settings.harnessSurfaceCli")}</li>
-      <li className="harness-surface is-off">{t("terminal.settings.harnessSurfaceChat")}</li>
-    </ul>
   );
 }
 
@@ -1100,7 +1078,6 @@ function AgentSessionsSettingsCard() {
               <SettingsHelp title={t("terminal.settings.idleAgent")} id="idle-agent-sessions-help">
                 {t("terminal.settings.idleAgentHelp")}
               </SettingsHelp>
-              <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
             </p>
           </div>
           <Select
@@ -1169,7 +1146,6 @@ function AgentCliAvailabilityCard() {
           {t("terminal.settings.agentCliAvailable")}
           <SettingsHelp title={t("terminal.settings.agentCliAvailable")}>
             <p>{t("terminal.settings.agentCliHelp")}</p>
-            <p>{t("terminal.settings.agentCliFoot")}</p>
           </SettingsHelp>
         </p>
       </div>
@@ -1360,7 +1336,6 @@ function AiGatewayCompactTimingCard() {
             <span id="compact-timing-label">{t("terminal.settings.compactTiming")}</span>
             <SettingsHelp title={t("terminal.settings.compactTiming")}>
               <p>{t("terminal.settings.compactTimingHelp")}</p>
-              <p>{t("terminal.settings.compactTimingFoot")}</p>
             </SettingsHelp>
           </p>
         </div>
@@ -1504,7 +1479,6 @@ function AiGatewayDiagnosticsCard() {
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayDiagnostics")}
         help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
-        helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
         value={state.cursorDiagnosticsEnabled}
         disabled={saving}
         onToggle={() => void setSystemPromptSettingsField(
@@ -1515,7 +1489,6 @@ function AiGatewayDiagnosticsCard() {
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
-        helpMore={t("terminal.settings.aiGatewayDiagnosticsFoot")}
         value={state.wireLogEnabled}
         disabled={saving}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
@@ -1687,9 +1660,6 @@ function AiGatewayModelsCard() {
             {t("terminal.settings.aiGatewayModels")}
             <SettingsHelp title={t("terminal.settings.aiGatewayModels")}>
               <p>{t("terminal.settings.aiGatewayModelsHelp")}</p>
-              <p>{t("terminal.settings.aiGatewayProvidersHelp")}</p>
-              <p>{t("terminal.auth.modelSignInHelp")}</p>
-              <p>{t("terminal.settings.aiGatewayModelsFoot")}</p>
             </SettingsHelp>
           </p>
         </div>
@@ -2538,14 +2508,14 @@ function AiGatewayKeyForm({ provider, busy, compact = false, onSignedIn }: {
   );
 }
 
-function SettingToggleRow({ title, help, helpMore, value, disabled, onToggle }: SettingToggleRowProps) {
+function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
         <p className="global-settings-resp-title">
           {title}
           <SettingsHelp title={title}>
-            {helpMore === undefined ? help : <><p>{help}</p><p>{helpMore}</p></>}
+            {help}
           </SettingsHelp>
         </p>
       </div>
@@ -2929,7 +2899,6 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
             <SettingsHelp title={t("terminal.settings.terminalFont")} id="terminal-font-help">
               {t("terminal.settings.terminalFontHelp")}
             </SettingsHelp>
-            <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
           </p>
         </div>
       </div>
@@ -3037,10 +3006,8 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
             {t("terminal.settings.terminalRenderer")}
-            {/* 카드 각주(즉시 적용·브라우저 저장)는 두 행 모두의 사실이라 각 행 팁이 나눠 진다. */}
             <SettingsHelp title={t("terminal.settings.terminalRenderer")}>
               <p>{t("terminal.settings.terminalRendererHelp")}</p>
-              <p>{t("terminal.settings.terminalDrawingFoot")}</p>
             </SettingsHelp>
           </p>
         </div>
@@ -3068,7 +3035,6 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
             {t("terminal.settings.inactiveFlush")}
             <SettingsHelp title={t("terminal.settings.inactiveFlush")}>
               <p>{t("terminal.settings.inactiveFlushHelp")}</p>
-              <p>{t("terminal.settings.terminalDrawingFoot")}</p>
             </SettingsHelp>
           </p>
         </div>

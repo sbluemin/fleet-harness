@@ -3,7 +3,7 @@ import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } fr
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
-import { ExperimentalBadge, SettingsScope as SettingsScopeChip, SettingsSlider, SettingsToggle, type SettingsScopeKind } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
@@ -298,19 +298,6 @@ function formatPluginLabel(pluginId: string, t: T): string {
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 
-/**
- * 저장 범위는 줄마다 한 칩으로만 말한다. 예전에는 카드마다 "즉시 적용되고 서버에 저장된다"를
- * 조금씩 다른 문장으로 되풀이했고, General 카드의 각주는 그 카드에 든 두 줄 모두에 대해
- * 틀린 말이었다(언어는 즉시, 포트는 콘솔 재시작). 점만 신호 토큰을 쓴다.
- */
-export function SettingsScope({ kind }: { readonly kind: SettingsScopeKind }) {
-  const t = useT();
-  const label = kind === "live"
-    ? t("settings.scope.live")
-    : kind === "restart" ? t("settings.scope.restart") : t("settings.scope.sessions");
-  return <SettingsScopeChip kind={kind} label={label} />;
-}
-
 export function ThemeCard({
   state,
   saving,
@@ -380,7 +367,6 @@ export function ThemeCard({
               <p className="global-settings-resp-title">
                 {t("settings.theme.label")}
                 <SettingsHelp title={t("settings.theme.label")}>{t("settings.theme.help")}</SettingsHelp>
-                <SettingsScope kind="live" />
               </p>
             </div>
             {/* 라이트와 다크가 같은 카드 문법을 쓴다. 모드 버튼 뒤에 다크 셋을 감추면 라이트를
@@ -415,12 +401,10 @@ export function ThemeCard({
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title">
                 {t("settings.theme.liquidGlass")}
-                {/* 도움말은 문단을 쌓지 않고 문장을 갈아 끼운다 — 기본 문안은 "끄면 원래대로"라고
-                    말하므로, 끌 수 없는 라이트 자리에 그대로 두면 거짓이 된다. */}
+                {/* 라이트 테마에서는 비활성 이유를 안내한다. */}
                 <SettingsHelp title={t("settings.theme.liquidGlass")}>
                   {t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")}
                 </SettingsHelp>
-                <SettingsScope kind="live" />
               </p>
             </div>
             <SettingsToggle
@@ -436,7 +420,6 @@ export function ThemeCard({
               <p className="global-settings-resp-title">
                 {t("settings.theme.panelFade")}
                 <SettingsHelp title={t("settings.theme.panelFade")}>{t("settings.theme.panelFadeHelp")}</SettingsHelp>
-                <SettingsScope kind="live" />
               </p>
             </div>
             {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
@@ -527,7 +510,6 @@ export function TypographyCard({
           <p className="global-settings-resp-title">
             {t("settings.typography.label")}
             <SettingsHelp title={t("settings.typography.label")}>{t("settings.typography.help")}</SettingsHelp>
-            <SettingsScope kind="live" />
           </p>
         </div>
         <button
@@ -606,7 +588,6 @@ export function LanguageCard({
           <p className="global-settings-resp-title">
             {t("settings.language.label")}
             <SettingsHelp title={t("settings.language.label")}>{t("settings.language.help")}</SettingsHelp>
-            <SettingsScope kind="live" />
           </p>
         </div>
         <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
@@ -847,8 +828,7 @@ function RemoteHostsCard() {
         <p className="remote-card-title">
           {t("settings.remote.hosts.title")}
           <SettingsHelp title={t("settings.remote.hosts.title")}>
-            <p>{t("settings.remote.hosts.help")}</p>
-            <p>{t("settings.remote.hosts.pinned")}</p>
+            {t("settings.remote.hosts.help")}
           </SettingsHelp>
         </p>
         <button ref={addRef} type="button" className="remote-create" onClick={() => setAddOpen(true)}>
@@ -1581,7 +1561,6 @@ function ConsolePortSettings({
         <p className="global-settings-resp-title">
           {t("settings.port.label")}
           <SettingsHelp title={t("settings.port.label")}>{t("settings.port.help")}</SettingsHelp>
-          <SettingsScope kind="restart" />
         </p>
       </div>
       <div className="console-port-control">

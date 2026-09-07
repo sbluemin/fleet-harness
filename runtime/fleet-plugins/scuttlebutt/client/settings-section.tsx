@@ -5,7 +5,6 @@ import {
   SettingsCard,
   SettingsHelpTip,
   SettingsRow,
-  SettingsScope,
   SettingsSlider,
   SettingsToggle,
   defineSettingsSection,
@@ -33,11 +32,6 @@ import {
 } from "./settings-store.js";
 
 const AIDES = ["tori", "bori", "dori"] as const;
-
-/** 이 카드의 설정은 전부 즉시 적용이다 — 범위는 카드가 아니라 줄마다 한 칩으로 말한다(코어 문법). */
-function LiveScope({ t }: { readonly t: ReturnType<typeof getT> }) {
-  return <SettingsScope kind="live" label={t("settings.scope.live")} />;
-}
 
 export const scuttlebuttSettingsSection = defineSettingsSection({
   id: "scuttlebutt",
@@ -112,7 +106,6 @@ function ScuttlebuttSettingsSection() {
             {t("settings.section.rosterHint")}
           </SettingsHelpTip>
         }
-        scope={<LiveScope t={t} />}
       >
         {/* 복수 선택 — 스위치 세 개 대신 누른 만큼 켜지는 세그먼트 한 줄. 코어의 선택 문법(.segmented)을
             그대로 입되 미끄러지는 썸 없이 각 옵션이 자기 face를 세운다. aria-pressed가 상태이고 색은 위치 채널이다. */}
@@ -140,7 +133,6 @@ function ScuttlebuttSettingsSection() {
               {t("settings.section.sizeHint")}
             </SettingsHelpTip>
           }
-          scope={<LiveScope t={t} />}
         >
           <div className="scuttlebutt-settings-sizes">
             {onDuty.map((aide) => {
@@ -181,7 +173,6 @@ function ScuttlebuttSettingsSection() {
             {t("settings.section.departureHint")}
           </SettingsHelpTip>
         }
-        scope={<LiveScope t={t} />}
       >
         <SettingsToggle
           ariaLabel={t("settings.section.departureToggle")}
@@ -214,7 +205,6 @@ function ModelRow({ t, saving, model, effort, onSave }: {
           {t("settings.section.modelHint")}
         </SettingsHelpTip>
       }
-      scope={<LiveScope t={t} />}
     >
       <ModelPicker
         value={model}
@@ -257,7 +247,6 @@ function ConsoleReadRow({ t, saving }: { readonly t: ReturnType<typeof getT>; re
           {t("settings.section.consoleReadHint")}
         </SettingsHelpTip>
       }
-      scope={<LiveScope t={t} />}
     >
       <SettingsToggle
         ariaLabel={t("settings.section.consoleReadToggle")}

@@ -584,39 +584,6 @@
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
 }
 
-/* 저장 범위는 줄마다 이 칩 하나로만 말한다. 예전에는 같은 사실이 카드마다 다른 문장으로
-   일곱 번 되풀이됐고, 그중 하나는 자기 카드의 두 줄 모두에 대해 틀렸다. 점만 신호 토큰을
-   쓴다 — 즉시는 positive, 재시작은 warn, 새 세션은 aurora. */
-.settings-scope {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--ink-deep) 42%, transparent);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-regular);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.settings-scope i {
-  width: 5px;
-  height: 5px;
-  flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--text-tertiary);
-}
-
-.settings-scope.is-live i { background: var(--positive); }
-.settings-scope.is-restart i { background: var(--warn); }
-.settings-scope.is-sessions i { background: var(--aurora); }
-
 /* 설정 설명의 단일 공개 문법 — 제목 옆 '?'가 hover 미리보기·클릭 고정 말풍선을 연다.
    글리프는 공유 컨트롤 문법을 소비한다(hover=control-hover, 열림=control-open/tint,
    포커스=control-focus-ring). 이 버튼은 상태가 아니라 위치이므로 신호 토큰을 쓰지 않고,
