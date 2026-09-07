@@ -329,6 +329,23 @@ export function useModelPickerOptions(load: () => Promise<readonly ExperimentMod
   return options;
 }
 
+/** 팝업의 최소 폭 — 트리거가 좁아도 Gateway 모델 이름이 한 줄에 서야 한다. */
+const MODEL_PICKER_POPUP_MIN_WIDTH_PX = 260;
+const MODEL_PICKER_VIEWPORT_MARGIN_PX = 8;
+
+/**
+ * useSelect는 트리거 폭으로 팝업을 놓는다. 여기서 최소 폭을 넓힌 뒤에는 뷰포트 안으로 다시
+ * 잠가야 한다 — CSS min-width로만 넓히면 오른쪽 끝에 선 좁은 트리거의 팝업이 화면 밖으로 나간다.
+ */
+function widenModelPickerPopup(style: React.CSSProperties): React.CSSProperties {
+  if (typeof style.left !== "number" || typeof style.width !== "number") return style;
+  const margin = MODEL_PICKER_VIEWPORT_MARGIN_PX;
+  const viewportWidth = Math.max(0, window.innerWidth);
+  const width = Math.min(Math.max(style.width, MODEL_PICKER_POPUP_MIN_WIDTH_PX), Math.max(0, viewportWidth - 2 * margin));
+  const left = Math.min(Math.max(style.left, margin), Math.max(margin, viewportWidth - width - margin));
+  return { ...style, left, width };
+}
+
 function formatModelContextWindow(contextWindow: number | null | undefined): string | null {
   if (contextWindow === null || contextWindow === undefined || contextWindow <= 0) return null;
   return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
@@ -394,7 +411,7 @@ export function ModelPicker({
         </button>
         {select.isOpen
           ? createPortal(
-              <ul {...select.listboxProps} {...nameProps} className={`${select.listboxProps.className} fc-model-picker__popup`}>
+              <ul {...select.listboxProps} {...nameProps} className={`${select.listboxProps.className} fc-model-picker__popup`} style={widenModelPickerPopup(select.listboxProps.style)}>
                 {groups.map((group) => (
                   <React.Fragment key={group.provider ?? "etc"}>
                     {/* 밴드는 옵션이 아니다 — listbox의 activedescendant 순서는 옵션만 센다. */}

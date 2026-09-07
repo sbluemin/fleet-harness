@@ -13852,7 +13852,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   font-weight: var(--weight-regular);
   letter-spacing: 0.04em;
 }
-.fc-model-picker__popup { min-width: min(260px, calc(100vw - 16px)); }
 /* 밴드는 quick-launch-pop-band와 같은 자간·여백 — 두 메뉴가 같은 목록으로 읽혀야 한다. */
 .fc-model-picker__band {
   display: flex;
