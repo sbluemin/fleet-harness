@@ -1342,8 +1342,9 @@ function RepoLeafRow({ repo, depth, selectedRel, onRepository, nameMatch }: { re
     {repo.branch && <span className="repository-ref-sub">{repo.branch}</span>}
   </button>;
 }
+/** 브랜치 그래프 — 커밋 노드와 갈라진 가지. 레일 규격(18×18, stroke 1.2, 윤곽선)을 이웃 글리프와 공유한다. */
 function RepositoryIcon() {
-  return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="7" width="10" height="1.5" rx="0.5" fill="currentColor" /><rect x="2" y="10" width="8" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" /><rect x="2" y="13" width="12" height="1.5" rx="0.5" fill="currentColor" /></svg>;
+  return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="5.5" cy="4" r="1.7" stroke="currentColor" strokeWidth="1.2" /><circle cx="5.5" cy="14" r="1.7" stroke="currentColor" strokeWidth="1.2" /><circle cx="12.5" cy="6" r="1.7" stroke="currentColor" strokeWidth="1.2" /><path d="M5.5 5.7v6.6M12.5 7.7a3.3 3.3 0 01-3.3 3.3H5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 /**
