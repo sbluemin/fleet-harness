@@ -211,8 +211,6 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
 export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
   /** 데스크톱 페인이 테마 카드에 덧세우는 행(우측 사이드바 불투명도) — 레일 없는 모바일은 넘기지 않는다. */
   readonly themeCardExtras?: ReactNode;
-  /** 데스크톱 페인이 연결 카드를 요약(관리는 확대 표면)으로 바꿔 넘긴다 — 없으면 전체 카드를 그린다. */
-  readonly connectivity?: ReactNode;
 }) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
@@ -250,12 +248,8 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
         <>
           <ExperimentsSection state={state} saving={saving} />
           {renderEmbeddedPluginSections(pluginSections, t)}
-          {options?.connectivity ?? (
-            <>
-              <ConsolePortCard state={state} saving={saving} />
-              {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
-            </>
-          )}
+          <ConsolePortCard state={state} saving={saving} />
+          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
         </>
       );
   }
