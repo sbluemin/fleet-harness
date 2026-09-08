@@ -214,13 +214,18 @@ function forOpenCodeGoResponsesBackend(
 
   const wireTools: OpenCodeResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
+    // Runs on every tool, strict or not: an OpenAI Responses backend compiles `pattern` before
+    // it reads `strict`, so an unreadable one fails the request either way.
+    const parameters = re2SafeParameters(wireTool.parameters);
     // A schema outside strict mode's subset is rejected with a 400 that fails the whole
     // request, not just that tool, so an incompatible tool keeps its original schema and
     // forfeits the guarantee rather than taking every other tool down with it.
-    if (!strictCompatible(wireTool.parameters)) return wireTool;
+    if (!strictCompatible(parameters)) {
+      return parameters === wireTool.parameters ? wireTool : { ...wireTool, parameters };
+    }
     return {
       ...wireTool,
-      parameters: strictParameters(wireTool.parameters),
+      parameters: strictParameters(parameters),
       strict: true,
     };
   });
@@ -441,6 +446,57 @@ function usage(value: unknown): CanonicalUsage {
     ...(reasoningOutputTokens === undefined ? {} : { reasoning_output_tokens: reasoningOutputTokens }),
     ...(totalTokens === undefined ? {} : { total_tokens: totalTokens })
   };
+}
+
+/**
+ * `pattern` values an OpenAI Responses backend cannot compile.
+ *
+ * Such a backend runs every function tool's `pattern` through RE2, which has neither lookaround
+ * nor Unicode property escapes, and refuses the request as a whole — `param: "tools"`, not the
+ * one tool. Claude Code's `Artifact` tool carries five of them, which is what took every Codex
+ * turn down at its first message. `pattern` only advises the model about a value's shape and
+ * nothing downstream enforces it, so dropping the ones RE2 cannot read costs nothing observable
+ * and is safe on a backend that would have accepted them.
+ *
+ * Measured against ChatGPT's Codex backend, not this one:
+ * `packages/core-ai-gateway/src/upstream/codex/responses/adapter.ts` holds the measurements and
+ * the same rule for the same wire contract; a change here belongs there too.
+ */
+const RE2_HOSTILE_PATTERN = /\(\?[=!<]|\\[pP]\{/u;
+
+function re2SafeParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = re2SafeSchema(schema);
+  return isRecord(converted) ? converted : schema;
+}
+
+/**
+ * Drops the `pattern` constraints RE2 rejects and keeps every one it accepts.
+ *
+ * Walks the value generically rather than following JSON Schema keywords: the offending
+ * patterns sit wherever the tool author put them, and a keyword walk would have to be widened
+ * for each new nesting shape. Only a **string** under a `pattern` key is dropped, so a property
+ * that happens to be named `pattern` keeps its subschema. Unchanged nodes are returned by
+ * identity so a tool with no hostile pattern reaches the wire as the object it already was.
+ */
+function re2SafeSchema(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const next = value.map(re2SafeSchema);
+    return next.some((entry, index) => entry !== value[index]) ? next : value;
+  }
+  if (!isRecord(value)) return value;
+
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "pattern" && typeof entry === "string" && RE2_HOSTILE_PATTERN.test(entry)) {
+      changed = true;
+      continue;
+    }
+    const converted = re2SafeSchema(entry);
+    if (converted !== entry) changed = true;
+    next[key] = converted;
+  }
+  return changed ? next : value;
 }
 
 /**

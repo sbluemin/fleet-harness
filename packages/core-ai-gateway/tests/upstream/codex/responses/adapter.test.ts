@@ -115,6 +115,47 @@ describe("codex responses adapter", () => {
     expect(body).not.toHaveProperty("include");
   });
 
+  it("drops only the tool patterns the backend's regex engine rejects", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "Artifact",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            // Lookaround and Unicode property escapes: RE2 reads neither, and the backend
+            // refuses the whole request rather than the one tool.
+            field: { type: "string", pattern: "^(?!__.*__$)[^\\p{Cc}\\p{Cf}]{1,200}$" },
+            asset_id: { type: "string", pattern: "^[0-9a-f]{32}$" },
+            writes: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: { doc_id: { type: "string", pattern: "^(?!\\.\\.?$)[A-Za-z0-9_-]{1,200}$" } },
+                required: ["doc_id"],
+              },
+            },
+          },
+          required: ["field", "asset_id", "writes"],
+        },
+      }],
+      tool_choice: "auto",
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ parameters: { properties: Record<string, Record<string, unknown>> } }>;
+    };
+    const properties = body.tools[0]!.parameters.properties;
+    expect(properties.field).not.toHaveProperty("pattern");
+    expect(properties.asset_id).toHaveProperty("pattern", "^[0-9a-f]{32}$");
+    expect(
+      (properties.writes!.items as { properties: Record<string, Record<string, unknown>> }).properties.doc_id,
+    ).not.toHaveProperty("pattern");
+  });
+
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
     const encoder = new TextEncoder();
     const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
