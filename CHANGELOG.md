@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.87.1] - 2026-09-08
+
+### fleet-cli
+
+#### Fixed
+- Claude Code sessions on Codex (GPT) gateway models answer again. A tool whose JSON Schema carried a regular expression the Responses backend cannot compile, such as the lookahead and Unicode property patterns in Claude Code's Artifact tool, failed the entire request with a 400 before any reply arrived.
+
+### fleet-console
+
+#### Fixed
+- Chat in an Operation running on a Codex (GPT) gateway model works again. A tool whose JSON Schema carried a regular expression the Responses backend cannot compile, such as the lookahead and Unicode property patterns in Claude Code's Artifact tool, failed the entire request with a 400, so the first message you sent never produced an answer.
+
 ## [1.87.0] - 2026-09-08
 
 ### fleet-console
