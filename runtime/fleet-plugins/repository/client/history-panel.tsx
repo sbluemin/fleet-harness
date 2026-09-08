@@ -17,7 +17,7 @@ import { formatCommitTime, refBadges, shortRefName, splitCommitSubject, type Ref
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { SplitSeam } from "./split-seam.js";
 import { StashInspector } from "./stash-inspector.js";
-import { WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, dragWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
+import { WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, detentForWorkspaceDockHeight, dragWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
 import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
@@ -393,8 +393,21 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
 /** 커밋 머리 — 본문은 여섯 줄까지 보이고 그 너머는 "더 보기"로 펼친다. 머리가 내용 높이라 파일 목록을 밀어내지 않게. */
 function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale, t }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void; readonly locale: ConsoleLocale | undefined; readonly t: T }) {
   const [expanded, setExpanded] = useState(false);
-  const longBody = Boolean(meta.body && meta.body.split("\n").length > 6);
-  return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre className={`history-inspector-message${longBody && !expanded ? " is-clamped" : ""}`}>{meta.body}</pre>}{longBody && <button type="button" className="history-inspector-more" onClick={() => setExpanded((value) => !value)}>{t(expanded ? "repository.dock.showLess" : "repository.dock.showMore")}</button>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} remoteDescription={badge.hasRemote ? t("repository.history.remoteTracked") : undefined} />)}</div>}</div>;
+  const [overflowing, setOverflowing] = useState(false);
+  const bodyRef = useRef<HTMLPreElement>(null);
+  // 여섯 줄은 시각적 줄이다 — 줄바꿈 문자를 세면 한 문단짜리 긴 본문이 감겨도 접히지 않는다. 접힌 상태로 그린 뒤 실제 넘침을 잰다.
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body) { setOverflowing(false); return; }
+    const measure = () => setOverflowing(body.scrollHeight > body.clientHeight + 1 || body.classList.contains("is-expanded"));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [meta.body, expanded]);
+  const longBody = overflowing;
+  return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre ref={bodyRef} className={`history-inspector-message${expanded ? " is-expanded" : " is-clamped"}`}>{meta.body}</pre>}{longBody && <button type="button" className="history-inspector-more" onClick={() => setExpanded((value) => !value)}>{t(expanded ? "repository.dock.showLess" : "repository.dock.showMore")}</button>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} remoteDescription={badge.hasRemote ? t("repository.history.remoteTracked") : undefined} />)}</div>}</div>;
 }
 function CommitFiles({ files, truncated, selectedPath, additions, deletions, viewMode, onViewMode, onSelect, t }: { readonly files: readonly DiffFileEntry[]; readonly truncated?: boolean; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void; readonly t: T }) { return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} onSelect={onSelect} t={t} />)}</div>{truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}</section>; }
 
@@ -758,6 +771,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       const wanted = dockDetent === "half" ? detents.half : dockDetent === "full" ? detents.full : dockHeightRef.current;
       const next = normalizeWorkspaceDockHeight(wanted, height);
       if (next !== dockHeightRef.current) { dockHeightRef.current = next; setDockHeight(next); }
+      // 저장값에서 되살아난 높이가 정착점과 같으면 그 정착점으로 읽는다 — 재마운트 뒤 토글·창 추종이 어긋나지 않게.
+      if (dockDetent === "free") { const restored = detentForWorkspaceDockHeight(next, height); if (restored !== "free") setDockDetent(restored); }
     };
     normalize();
     const observer = new ResizeObserver(normalize);

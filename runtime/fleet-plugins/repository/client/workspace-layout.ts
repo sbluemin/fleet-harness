@@ -135,15 +135,24 @@ export interface WorkspaceDockDetents {
   readonly full: number;
 }
 
-/** 독의 정착점 — 절반은 작업면의 40%(최소 240), 전체는 목록에 툴바+3행만 남긴 높이. */
+/** 독이 차지할 수 있는 최대 높이 — 목록에 툴바+3행을 남긴 나머지. 최소보다 작을 수 있고, 그때는 정규화가 독을 줄인다. */
+export function workspaceDockMaxHeight(containerHeight: number): number {
+  return Math.round(containerHeight - WORKSPACE_LIST_KEEP_HEIGHT - WORKSPACE_SEAM_WIDTH);
+}
+
+/** 독의 정착점 — 절반은 작업면의 40%(최소 240), 전체는 최대 높이. 짧은 컨테이너에서도 정착점은 최소 아래로 내려가지 않는다. */
 export function workspaceDockDetents(containerHeight: number): WorkspaceDockDetents {
-  const full = Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.round(containerHeight - WORKSPACE_LIST_KEEP_HEIGHT - WORKSPACE_SEAM_WIDTH));
+  const full = Math.max(WORKSPACE_DOCK_MIN_HEIGHT, workspaceDockMaxHeight(containerHeight));
   const half = Math.min(full, Math.max(240, Math.round(containerHeight * 0.4)));
   return { half, full };
 }
 
-export function workspaceDockMaxHeight(containerHeight: number): number {
-  return workspaceDockDetents(containerHeight).full;
+/** 저장·정규화된 높이가 어느 정착점에 앉아 있는지 — 재마운트 뒤에도 머리줄 토글과 창 추종이 정착점을 잃지 않게. */
+export function detentForWorkspaceDockHeight(height: number, containerHeight: number): WorkspaceDockDetent {
+  const { half, full } = workspaceDockDetents(containerHeight);
+  if (height === full) return "full";
+  if (height === half) return "half";
+  return "free";
 }
 
 export function normalizeWorkspaceDockHeight(storedHeight: number, containerHeight: number): number {
@@ -162,8 +171,8 @@ export interface WorkspaceDockDragResult {
 }
 
 export function dragWorkspaceDockHeight(startHeight: number, pointerDeltaY: number, containerHeight: number): WorkspaceDockDragResult | null {
+  if (workspaceDockMaxHeight(containerHeight) < WORKSPACE_DOCK_MIN_HEIGHT) return null;
   const { half, full } = workspaceDockDetents(containerHeight);
-  if (full < WORKSPACE_DOCK_MIN_HEIGHT) return null;
   const raw = startHeight - pointerDeltaY;
   if (raw < WORKSPACE_DOCK_MIN_HEIGHT - WORKSPACE_DOCK_COLLAPSE_PULL) return { height: WORKSPACE_DOCK_MIN_HEIGHT - 4, detent: "collapse", limit: "min" };
   if (raw < WORKSPACE_DOCK_MIN_HEIGHT) return { height: WORKSPACE_DOCK_MIN_HEIGHT - Math.min(4, (WORKSPACE_DOCK_MIN_HEIGHT - raw) * 0.15), detent: "free", limit: "min" };

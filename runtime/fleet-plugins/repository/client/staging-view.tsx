@@ -295,6 +295,16 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
   }, []);
+  // 키보드 한 걸음 — 다른 세로 이음매와 같은 클램프로 목록 폭을 조절한다.
+  const stepListPane = useCallback((delta: number) => {
+    const container = rootRef.current;
+    if (!container) return;
+    const next = clampListPaneWidth({ startWidth: listPaneWidthRef.current, dx: delta, containerWidth: container.getBoundingClientRect().width, listPaneMinWidth: LIST_PANE_MIN_WIDTH, hunkPaneMinWidth: HUNK_PANE_MIN_WIDTH, dividerWidth: DIFF_DIVIDER_WIDTH });
+    if (next === null) return;
+    listPaneWidthRef.current = next;
+    setListPaneWidth(next);
+    try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(next)); } catch { /* ignore */ }
+  }, []);
 
   const staged = status.kind === "ok" ? status.staged : [];
   const unstaged = status.kind === "ok" ? status.unstaged : [];
@@ -391,7 +401,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           />
         </>}
       </div>
-      {hunkSelection && <SplitSeam orientation="vertical" className="repository-staging-divider" label={t("repository.history.resizeFileList")} value={listPaneWidth} dragging={isDragging} readout={isDragging ? `${Math.round(listPaneWidth)}px` : null} onPointerDown={handleDividerDown} />}
+      {hunkSelection && <SplitSeam orientation="vertical" className="repository-staging-divider" label={t("repository.history.resizeFileList")} value={listPaneWidth} min={LIST_PANE_MIN_WIDTH} dragging={isDragging} readout={isDragging ? `${Math.round(listPaneWidth)}px` : null} onPointerDown={handleDividerDown} onStep={stepListPane} />}
       {hunkSelection && <div className="repository-hunk-pane">
         {/* 이 머리는 파일명/닫기 클래스를 쓰지 않아 긴 경로가 줄어들지 않고 ✕를 머리 밖으로 밀어냈다
             — 실측에서 ✕는 폭 11px로 오른쪽 경계 142px 바깥에 서 있었다(누를 수 없다). */}
