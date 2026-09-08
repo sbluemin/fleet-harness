@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 
 /**
  * 분할 이음매 — Repository의 모든 분할선이 쓰는 한 부품.
@@ -33,6 +33,25 @@ export interface SplitSeamProps {
   readonly onToggle?: () => void;
 }
 
+/**
+ * 이음매가 사는 컨테이너의 한 축 크기 — ARIA 최대치를 실제 값으로 말하기 위해 잰다.
+ * 포커스 가능한 separator가 aria-valuemax 없이 px 값을 내면 암묵 최대 100과 모순된다.
+ */
+export function useSeamContainerSize(ref: RefObject<HTMLElement | null>, axis: "width" | "height", active = true): number | undefined {
+  const [size, setSize] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const element = active ? ref.current : null;
+    if (!element) { setSize(undefined); return; }
+    const measure = () => setSize(element.getBoundingClientRect()[axis]);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [active, axis, ref]);
+  return size;
+}
+
 export const SEAM_KEY_STEP = 16;
 export const SEAM_KEY_STEP_LARGE = 64;
 
@@ -61,9 +80,9 @@ export function SplitSeam({ orientation, label, value, min, max, dragging = fals
     role="separator"
     aria-orientation={orientation}
     aria-label={label}
-    aria-valuenow={value === undefined ? undefined : Math.round(value)}
-    aria-valuemin={min === undefined ? undefined : Math.round(min)}
-    aria-valuemax={max === undefined ? undefined : Math.round(max)}
+    aria-valuenow={value === undefined || max === undefined ? undefined : Math.round(value)}
+    aria-valuemin={min === undefined || max === undefined ? undefined : Math.round(min)}
+    aria-valuemax={max === undefined ? undefined : Math.round(Math.max(max, min ?? 0))}
     tabIndex={interactive ? 0 : undefined}
     onPointerDown={onPointerDown}
     onKeyDown={interactive ? handleKeyDown : undefined}

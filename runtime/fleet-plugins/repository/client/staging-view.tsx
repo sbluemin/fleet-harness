@@ -10,7 +10,7 @@ import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMo
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
-import { SplitSeam } from "./split-seam.js";
+import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -111,6 +111,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const listPaneWidthRef = useRef(listPaneWidth);
   const [isDragging, setIsDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const stagingWidth = useSeamContainerSize(rootRef, "width", selection !== null);
   const requestSeqRef = useRef(0);
 
   // 울타리를 읽지 못한 상태는 "울타리 없음"이 아니다 — 읽기 실패는 닫힌 쪽으로 넘어진다.
@@ -401,7 +402,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           />
         </>}
       </div>
-      {hunkSelection && <SplitSeam orientation="vertical" className="repository-staging-divider" label={t("repository.history.resizeFileList")} value={listPaneWidth} min={LIST_PANE_MIN_WIDTH} dragging={isDragging} readout={isDragging ? `${Math.round(listPaneWidth)}px` : null} onPointerDown={handleDividerDown} onStep={stepListPane} />}
+      {hunkSelection && <SplitSeam orientation="vertical" className="repository-staging-divider" label={t("repository.history.resizeFileList")} value={listPaneWidth} min={LIST_PANE_MIN_WIDTH} max={stagingWidth === undefined ? undefined : stagingWidth - HUNK_PANE_MIN_WIDTH - DIFF_DIVIDER_WIDTH} dragging={isDragging} readout={isDragging ? `${Math.round(listPaneWidth)}px` : null} onPointerDown={handleDividerDown} onStep={stepListPane} />}
       {hunkSelection && <div className="repository-hunk-pane">
         {/* 이 머리는 파일명/닫기 클래스를 쓰지 않아 긴 경로가 줄어들지 않고 ✕를 머리 밖으로 밀어냈다
             — 실측에서 ✕는 폭 11px로 오른쪽 경계 142px 바깥에 서 있었다(누를 수 없다). */}

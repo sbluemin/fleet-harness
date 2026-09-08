@@ -4,8 +4,8 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { RepositoryMessageKey } from "./i18n/index.js";
 import { installPointerDragLifecycle } from "./rail-layout.js";
-import { SplitSeam } from "./split-seam.js";
-import { WORKSPACE_DOCK_FILES_MIN_WIDTH, clampWorkspaceDockFilesWidth, readWorkspaceDockFilesWidth, saveWorkspaceDockFilesWidth } from "./workspace-layout.js";
+import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
+import { WORKSPACE_DOCK_FILES_MIN_WIDTH, clampWorkspaceDockFilesWidth, readWorkspaceDockFilesWidth, saveWorkspaceDockFilesWidth, workspaceDockFilesMaxWidth } from "./workspace-layout.js";
 
 interface WorkspaceDockProps {
   readonly t: Translate<RepositoryMessageKey>;
@@ -26,6 +26,7 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
   const [filesWidth, setFilesWidth] = useState(readWorkspaceDockFilesWidth);
   const [dragging, setDragging] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
+  const dockWidth = useSeamContainerSize(dockRef, "width");
   const filesWidthRef = useRef(filesWidth);
   const dragDisposeRef = useRef<(() => void) | null>(null);
 
@@ -82,7 +83,7 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
   return <div ref={dockRef} className={`repository-ws-dock${className ? ` ${className}` : ""}`} style={{ "--ws-dock-files-width": `${filesWidth}px` } as CSSProperties}>
     {overlay}
     {files}
-    <SplitSeam orientation="vertical" className="repository-ws-dock-divider" label={t("repository.history.resizeFileList")} value={filesWidth} min={WORKSPACE_DOCK_FILES_MIN_WIDTH} dragging={dragging} readout={dragging ? `${Math.round(filesWidth)}px` : null} onPointerDown={startDrag} onStep={stepWidth} />
+    <SplitSeam orientation="vertical" className="repository-ws-dock-divider" label={t("repository.history.resizeFileList")} value={filesWidth} min={WORKSPACE_DOCK_FILES_MIN_WIDTH} max={dockWidth === undefined ? undefined : workspaceDockFilesMaxWidth(dockWidth)} dragging={dragging} readout={dragging ? `${Math.round(filesWidth)}px` : null} onPointerDown={startDrag} onStep={stepWidth} />
     {main}
   </div>;
 }

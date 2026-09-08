@@ -13,7 +13,7 @@ export const WORKSPACE_DOCK_SNAP_RADIUS = 24;
 /** 최소보다 이만큼 더 끌어내리면 "접겠다"는 뜻으로 읽는다. */
 export const WORKSPACE_DOCK_COLLAPSE_PULL = 40;
 export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
-const WORKSPACE_TREE_MIN_WIDTH = 148;
+export const WORKSPACE_TREE_MIN_WIDTH = 148;
 /** 모든 분할 이음매의 트랙 폭. 선은 1px이고 잡는 영역은 CSS가 양쪽으로 넓힌다. */
 export const WORKSPACE_SEAM_WIDTH = 1;
 const WORKSPACE_TREE_DIVIDER_WIDTH = WORKSPACE_SEAM_WIDTH;
@@ -82,6 +82,10 @@ export function saveWorkspaceTreeWidth(width: number, storage?: StorageLike): vo
   catch { /* best-effort preference */ }
 }
 
+export function workspaceTreeMaxWidth(containerWidth: number): number {
+  return containerWidth - WORKSPACE_MAIN_MIN_WIDTH - WORKSPACE_TREE_DIVIDER_WIDTH;
+}
+
 export function clampWorkspaceTreeWidth(startWidth: number, pointerDeltaX: number, containerWidth: number): number | null {
   const maximum = containerWidth - WORKSPACE_MAIN_MIN_WIDTH - WORKSPACE_TREE_DIVIDER_WIDTH;
   if (maximum < WORKSPACE_TREE_MIN_WIDTH) return null;
@@ -99,6 +103,10 @@ export function readWorkspaceDockFilesWidth(storage?: StorageLike): number {
 export function saveWorkspaceDockFilesWidth(width: number, storage?: StorageLike): void {
   try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_DOCK_FILES_WIDTH, String(width)); }
   catch { /* best-effort preference */ }
+}
+
+export function workspaceDockFilesMaxWidth(containerWidth: number): number {
+  return containerWidth - WORKSPACE_DOCK_MAIN_MIN_WIDTH - WORKSPACE_DOCK_DIVIDER_WIDTH;
 }
 
 export function clampWorkspaceDockFilesWidth(startWidth: number, pointerDeltaX: number, containerWidth: number): number | null {
