@@ -10,6 +10,7 @@ import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMo
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
+import { SplitSeam } from "./split-seam.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -390,7 +391,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           />
         </>}
       </div>
-      {hunkSelection && <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" />}
+      {hunkSelection && <SplitSeam orientation="vertical" className="repository-staging-divider" label={t("repository.history.resizeFileList")} value={listPaneWidth} dragging={isDragging} readout={isDragging ? `${Math.round(listPaneWidth)}px` : null} onPointerDown={handleDividerDown} />}
       {hunkSelection && <div className="repository-hunk-pane">
         {/* 이 머리는 파일명/닫기 클래스를 쓰지 않아 긴 경로가 줄어들지 않고 ✕를 머리 밖으로 밀어냈다
             — 실측에서 ✕는 폭 11px로 오른쪽 경계 142px 바깥에 서 있었다(누를 수 없다). */}

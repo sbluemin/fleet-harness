@@ -18,6 +18,7 @@ import { HistoryPanel } from "./history-panel.js";
 import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
 import { StagingView, guardMessageOf } from "./staging-view.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
+import { SplitSeam } from "./split-seam.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
@@ -290,7 +291,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (!container) return;
     const containerWidth = container.getBoundingClientRect().width;
     const startX = event.clientX;
-    const startWidth = treeWidthRef.current;
+    // 저장 폭이 현재 컨테이너 최대치를 넘으면 CSS가 화면에서만 줄여 놓는다 — 그 숨은 초과분을
+    // 기점으로 삼으면 첫 이동이 먹지 않으므로 실제 그려진 폭으로 기점을 맞춘다(독 파일 열과 같은 규칙).
+    const startWidth = clampWorkspaceTreeWidth(treeWidthRef.current, 0, containerWidth);
+    if (startWidth === null) return;
+    treeWidthRef.current = startWidth;
+    setTreeWidth(startWidth);
     setIsTreeDragging(true);
     const onMove = (move: PointerEvent) => {
       const next = clampWorkspaceTreeWidth(startWidth, move.clientX - startX, containerWidth);
@@ -307,6 +313,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+  }, []);
+  const stepTreeWidth = useCallback((delta: number) => {
+    const container = layoutRef.current;
+    if (!container) return;
+    const next = clampWorkspaceTreeWidth(treeWidthRef.current, delta, container.getBoundingClientRect().width);
+    if (next === null) return;
+    treeWidthRef.current = next;
+    setTreeWidth(next);
+    saveWorkspaceTreeWidth(next);
   }, []);
   const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
   repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
@@ -809,7 +824,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} refs={refs} refsError={refsError} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
-        <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
+        <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           <div className="repository-source-tabs" role="tablist" aria-label={t("repository.source.aria")} onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

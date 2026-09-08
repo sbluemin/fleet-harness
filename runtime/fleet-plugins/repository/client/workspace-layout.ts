@@ -3,10 +3,20 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryMessageKey } from "./i18n/index.js";
 
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
-const WORKSPACE_DOCK_MIN_HEIGHT = 160;
+export const WORKSPACE_DOCK_MIN_HEIGHT = 160;
+/** 접힌 독 — 머리줄 한 줄. 보던 커밋의 정체성만 남긴다. */
+export const WORKSPACE_DOCK_COLLAPSED_HEIGHT = 32;
+/** 전체 정착점에서 목록에 남기는 높이 — 툴바 + 그래프 3행. 선택 행 주변 문맥이 사라지지 않게. */
+export const WORKSPACE_LIST_KEEP_HEIGHT = 128;
+/** 정착점 자석 반경 — 이 안에서 손을 놓으면 정착점으로 안착한다. */
+export const WORKSPACE_DOCK_SNAP_RADIUS = 24;
+/** 최소보다 이만큼 더 끌어내리면 "접겠다"는 뜻으로 읽는다. */
+export const WORKSPACE_DOCK_COLLAPSE_PULL = 40;
 export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
 const WORKSPACE_TREE_MIN_WIDTH = 148;
-const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
+/** 모든 분할 이음매의 트랙 폭. 선은 1px이고 잡는 영역은 CSS가 양쪽으로 넓힌다. */
+export const WORKSPACE_SEAM_WIDTH = 1;
+const WORKSPACE_TREE_DIVIDER_WIDTH = WORKSPACE_SEAM_WIDTH;
 // 트리를 줄여도 중앙(History/Changes) 영역이 유의미하게 남도록 하는 최소 보장 폭.
 const WORKSPACE_MAIN_MIN_WIDTH = 180;
 
@@ -15,13 +25,15 @@ const WORKSPACE_MAIN_MIN_WIDTH = 180;
 // main 열 0 붕괴(PR#516에서 고친 선존 결함)를 되살린다.
 export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 250;
 export const WORKSPACE_DOCK_FILES_MIN_WIDTH = 150;
-export const WORKSPACE_DOCK_DIVIDER_WIDTH = 4;
+export const WORKSPACE_DOCK_DIVIDER_WIDTH = WORKSPACE_SEAM_WIDTH;
 // diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
-// 독 메타 헤더는 고정 버튼들 때문에 오른쪽 210px를 비워 두므로, 그보다 넉넉해야 제목이 남는다.
 export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 340;
 // 두 최소폭과 디바이더가 모두 들어가는 최소 독 폭. 이보다 좁으면 좌우 분할 자체가 성립하지
 // 않으므로(디바이더가 보이는데 끌어도 움직이지 않는 구간이 생긴다) CSS가 세로 스택으로 넘긴다.
 export const WORKSPACE_DOCK_SPLIT_MIN_WIDTH = WORKSPACE_DOCK_FILES_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH + WORKSPACE_DOCK_MAIN_MIN_WIDTH;
+
+export type WorkspaceDockTab = "details" | "changes" | "tree";
+export type WorkspaceDockDetent = "half" | "full" | "free";
 
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
 export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";
@@ -95,33 +107,86 @@ export function clampWorkspaceDockFilesWidth(startWidth: number, pointerDeltaX: 
   return Math.max(WORKSPACE_DOCK_FILES_MIN_WIDTH, Math.min(maximum, startWidth + pointerDeltaX));
 }
 
-export function readWorkspaceDockHeight(storage?: StorageLike): number {
-  try {
-    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_DOCK_HEIGHT) ?? "");
-    if (Number.isFinite(value) && value >= WORKSPACE_DOCK_MIN_HEIGHT) return value;
-  } catch { /* best-effort preference */ }
-  return WORKSPACE_DOCK_DEFAULT_HEIGHT;
+/**
+ * 독 높이는 탭마다 기억한다 — 세부 정보(짧은 메타)와 변경(diff)은 필요한 높이가 다르다.
+ * 옛 단일 키(dockHeight)는 모든 탭의 초기값으로 읽어 이관한다.
+ */
+export function readWorkspaceDockHeight(tab?: WorkspaceDockTab, storage?: StorageLike): number {
+  const store = storage ?? globalThis.localStorage;
+  const read = (key: string): number | null => {
+    try {
+      const value = Number.parseFloat(store.getItem(key) ?? "");
+      return Number.isFinite(value) && value >= WORKSPACE_DOCK_MIN_HEIGHT ? value : null;
+    } catch { return null; }
+  };
+  return (tab ? read(`${PREFS_WORKSPACE_DOCK_HEIGHT}.${tab}`) : null) ?? read(PREFS_WORKSPACE_DOCK_HEIGHT) ?? WORKSPACE_DOCK_DEFAULT_HEIGHT;
 }
 
-export function saveWorkspaceDockHeight(height: number, storage?: StorageLike): void {
-  try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_DOCK_HEIGHT, String(height)); }
-  catch { /* best-effort preference */ }
+export function saveWorkspaceDockHeight(height: number, tab?: WorkspaceDockTab, storage?: StorageLike): void {
+  try {
+    const store = storage ?? globalThis.localStorage;
+    store.setItem(PREFS_WORKSPACE_DOCK_HEIGHT, String(height));
+    if (tab) store.setItem(`${PREFS_WORKSPACE_DOCK_HEIGHT}.${tab}`, String(height));
+  } catch { /* best-effort preference */ }
+}
+
+export interface WorkspaceDockDetents {
+  readonly half: number;
+  readonly full: number;
+}
+
+/** 독의 정착점 — 절반은 작업면의 40%(최소 240), 전체는 목록에 툴바+3행만 남긴 높이. */
+export function workspaceDockDetents(containerHeight: number): WorkspaceDockDetents {
+  const full = Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.round(containerHeight - WORKSPACE_LIST_KEEP_HEIGHT - WORKSPACE_SEAM_WIDTH));
+  const half = Math.min(full, Math.max(240, Math.round(containerHeight * 0.4)));
+  return { half, full };
+}
+
+export function workspaceDockMaxHeight(containerHeight: number): number {
+  return workspaceDockDetents(containerHeight).full;
 }
 
 export function normalizeWorkspaceDockHeight(storedHeight: number, containerHeight: number): number {
-  const maximum = containerHeight - 180 - 4;
+  const maximum = workspaceDockMaxHeight(containerHeight);
   if (maximum <= WORKSPACE_DOCK_MIN_HEIGHT) return Math.max(0, maximum);
   return Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.min(maximum, storedHeight));
 }
 
-export function clampWorkspaceDockHeight(startHeight: number, pointerDeltaY: number, containerHeight: number): number | null {
-  const maximum = containerHeight - 180 - 4;
-  if (maximum < WORKSPACE_DOCK_MIN_HEIGHT) return null;
-  return Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.min(maximum, startHeight - pointerDeltaY));
+export interface WorkspaceDockDragResult {
+  /** 화면에 그릴 높이. 한계 밖에서는 최대 4px의 고무줄 저항만 허용한다. */
+  readonly height: number;
+  /** 손을 놓았을 때 도착할 정착점 — 자석 반경 안이면 해당 정착점, 아니면 free. */
+  readonly detent: WorkspaceDockDetent | "collapse";
+  /** 한계에 닿아 있는지 — 읽기 값이 이유를 말한다. */
+  readonly limit: "min" | "max" | null;
+}
+
+export function dragWorkspaceDockHeight(startHeight: number, pointerDeltaY: number, containerHeight: number): WorkspaceDockDragResult | null {
+  const { half, full } = workspaceDockDetents(containerHeight);
+  if (full < WORKSPACE_DOCK_MIN_HEIGHT) return null;
+  const raw = startHeight - pointerDeltaY;
+  if (raw < WORKSPACE_DOCK_MIN_HEIGHT - WORKSPACE_DOCK_COLLAPSE_PULL) return { height: WORKSPACE_DOCK_MIN_HEIGHT - 4, detent: "collapse", limit: "min" };
+  if (raw < WORKSPACE_DOCK_MIN_HEIGHT) return { height: WORKSPACE_DOCK_MIN_HEIGHT - Math.min(4, (WORKSPACE_DOCK_MIN_HEIGHT - raw) * 0.15), detent: "free", limit: "min" };
+  if (raw > full) return { height: full + Math.min(4, (raw - full) * 0.15), detent: "full", limit: "max" };
+  if (Math.abs(raw - full) <= WORKSPACE_DOCK_SNAP_RADIUS) return { height: raw, detent: "full", limit: null };
+  if (Math.abs(raw - half) <= WORKSPACE_DOCK_SNAP_RADIUS) return { height: raw, detent: "half", limit: null };
+  return { height: raw, detent: "free", limit: null };
+}
+
+/** 손을 놓은 뒤의 최종 높이 — 정착점이면 그 값, 아니면 한계 안으로 자른 자유 높이. */
+export function settleWorkspaceDockHeight(result: WorkspaceDockDragResult, containerHeight: number): number {
+  const { half, full } = workspaceDockDetents(containerHeight);
+  if (result.detent === "full") return full;
+  if (result.detent === "half") return half;
+  return Math.max(WORKSPACE_DOCK_MIN_HEIGHT, Math.min(full, result.height));
 }
 
 export function buildWorkspaceDockTemplate(dockHeight: number): string {
-  return `minmax(180px, 1fr) 4px ${dockHeight}px`;
+  return `minmax(${WORKSPACE_LIST_KEEP_HEIGHT}px, 1fr) ${WORKSPACE_SEAM_WIDTH}px ${dockHeight}px`;
+}
+
+export function buildWorkspaceDockCollapsedTemplate(): string {
+  return `minmax(0, 1fr) ${WORKSPACE_DOCK_COLLAPSED_HEIGHT}px`;
 }
 
 export function buildWorkspaceTreeSections(

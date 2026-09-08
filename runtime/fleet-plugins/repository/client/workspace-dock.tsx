@@ -4,7 +4,8 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { RepositoryMessageKey } from "./i18n/index.js";
 import { installPointerDragLifecycle } from "./rail-layout.js";
-import { clampWorkspaceDockFilesWidth, readWorkspaceDockFilesWidth, saveWorkspaceDockFilesWidth } from "./workspace-layout.js";
+import { SplitSeam } from "./split-seam.js";
+import { WORKSPACE_DOCK_FILES_MIN_WIDTH, clampWorkspaceDockFilesWidth, readWorkspaceDockFilesWidth, saveWorkspaceDockFilesWidth } from "./workspace-layout.js";
 
 interface WorkspaceDockProps {
   readonly t: Translate<RepositoryMessageKey>;
@@ -23,6 +24,7 @@ interface WorkspaceDockProps {
  */
 export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceDockProps) {
   const [filesWidth, setFilesWidth] = useState(readWorkspaceDockFilesWidth);
+  const [dragging, setDragging] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
   const filesWidthRef = useRef(filesWidth);
   const dragDisposeRef = useRef<(() => void) | null>(null);
@@ -49,6 +51,7 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
     setFilesWidth(start);
     const startX = event.clientX;
     dragDisposeRef.current?.();
+    setDragging(true);
     dragDisposeRef.current = installPointerDragLifecycle({
       documentTarget: document,
       windowTarget: window,
@@ -60,15 +63,26 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
       },
       onFinish: () => {
         saveWorkspaceDockFilesWidth(filesWidthRef.current);
+        setDragging(false);
         dragDisposeRef.current = null;
       },
     });
+  }, []);
+  // 키보드 한 걸음 — 이음매가 포커스를 받으면 ←→로 파일 열 폭을 조절한다.
+  const stepWidth = useCallback((delta: number) => {
+    const dock = dockRef.current;
+    if (!dock) return;
+    const next = clampWorkspaceDockFilesWidth(filesWidthRef.current, delta, dock.getBoundingClientRect().width);
+    if (next === null) return;
+    filesWidthRef.current = next;
+    setFilesWidth(next);
+    saveWorkspaceDockFilesWidth(next);
   }, []);
 
   return <div ref={dockRef} className={`repository-ws-dock${className ? ` ${className}` : ""}`} style={{ "--ws-dock-files-width": `${filesWidth}px` } as CSSProperties}>
     {overlay}
     {files}
-    <div className="history-divider repository-ws-dock-divider" role="separator" aria-orientation="vertical" aria-label={t("repository.history.resizeFileList")} onPointerDown={startDrag} />
+    <SplitSeam orientation="vertical" className="repository-ws-dock-divider" label={t("repository.history.resizeFileList")} value={filesWidth} min={WORKSPACE_DOCK_FILES_MIN_WIDTH} dragging={dragging} readout={dragging ? `${Math.round(filesWidth)}px` : null} onPointerDown={startDrag} onStep={stepWidth} />
     {main}
   </div>;
 }
