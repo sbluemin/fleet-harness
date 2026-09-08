@@ -55,21 +55,66 @@
   min-width: 0;
 }
 
-/* ── hunk↔tree 디바이더 ── */
-.repository-divider {
-  width: 4px;
-  cursor: col-resize;
+/* ── 분할 이음매 — Repository의 모든 분할선이 쓰는 한 부품 ──
+   선은 1px, 손잡이(pill)가 끌 수 있음을 말하고, 잡는 영역은 ::before가 양쪽 5px씩 넓힌다.
+   휴지 rim · 호버/포커스 brass · 드래그 2px brass + 읽기 값. 4px 채움 띠는 은퇴했다. */
+.repository-seam {
+  position: relative;
+  z-index: 1;
   background: var(--surface-rim);
-  transition: background var(--duration-fast);
+  touch-action: none;
+  outline: none;
+  transition: background var(--duration-fast) var(--ease-glide);
 }
-
-.repository-divider:hover {
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
+.repository-seam--vertical { width: 1px; height: 100%; cursor: col-resize; }
+.repository-seam--horizontal { width: auto; height: 1px; cursor: row-resize; }
+.repository-seam::before { content: ""; position: absolute; inset: 0; }
+.repository-seam--vertical::before { left: -5px; right: -5px; }
+.repository-seam--horizontal::before { top: -5px; bottom: -5px; }
+.repository-seam-pill {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--ink-fog) 55%, transparent);
+  transition: background var(--duration-fast) var(--ease-glide), width var(--duration-fast) var(--ease-glide), height var(--duration-fast) var(--ease-glide);
+  pointer-events: none;
 }
-
-.repository-divider:active {
-  background: color-mix(in oklch, var(--brass) 80%, transparent);
+.repository-seam--horizontal > .repository-seam-pill { left: 50%; top: -1px; width: 36px; height: 3px; transform: translateX(-50%); }
+.repository-seam--vertical > .repository-seam-pill { top: 50%; left: -1px; width: 3px; height: 36px; transform: translateY(-50%); }
+.repository-seam:hover,
+.repository-seam:focus-visible,
+.repository-seam.is-dragging { background: var(--brass); }
+.repository-seam:hover > .repository-seam-pill,
+.repository-seam:focus-visible > .repository-seam-pill,
+.repository-seam.is-dragging > .repository-seam-pill { background: var(--brass); }
+.repository-seam--horizontal:hover > .repository-seam-pill,
+.repository-seam--horizontal:focus-visible > .repository-seam-pill { width: 44px; }
+.repository-seam--vertical:hover > .repository-seam-pill,
+.repository-seam--vertical:focus-visible > .repository-seam-pill { height: 44px; }
+.repository-seam--horizontal.is-dragging { box-shadow: 0 1px 0 var(--brass); }
+.repository-seam--horizontal.is-dragging > .repository-seam-pill { width: 52px; }
+.repository-seam--vertical.is-dragging { box-shadow: 1px 0 0 var(--brass); }
+.repository-seam--vertical.is-dragging > .repository-seam-pill { height: 52px; }
+.repository-seam:focus-visible > .repository-seam-pill { outline: 1px solid var(--brass); outline-offset: 2px; }
+.repository-seam-readout {
+  position: absolute;
+  z-index: 2;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+  pointer-events: none;
 }
+.repository-seam--horizontal > .repository-seam-readout { right: 12px; top: -30px; }
+.repository-seam--vertical > .repository-seam-readout { left: 10px; top: 8px; }
+.repository-seam-readout em { font-style: normal; color: var(--brass); margin-left: 6px; }
+.repository-seam-readout.is-limit { color: var(--coral-ink); }
+@media (prefers-reduced-motion: reduce) { .repository-seam, .repository-seam-pill { transition-duration: .01ms; } }
 
 /* ── 플러그인 툴바 (List/Tree 토글) ── */
 /* 밴드는 코어 surface 토큰을 소비해 테마 재질이 플러그인 내부까지 관통하게 한다. */
@@ -749,21 +794,6 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.history-divider {
-  width: 4px;
-  cursor: col-resize;
-  background: var(--surface-rim);
-  transition: background var(--duration-fast);
-}
-
-.history-divider:hover {
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
-}
-
-.history-divider:active {
-  background: color-mix(in oklch, var(--brass) 80%, transparent);
-}
-
 .history-toolbar {
   display: flex;
   align-items: center;
@@ -1153,8 +1183,7 @@
 .history-root { grid-template-rows: minmax(0, 1fr); }
 .history-list-pane { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--surface-rim); }
 .history-inspector-shelf { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: transparent; }
-.history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
-.history-divider { touch-action: none; }
+.history-root > .repository-seam { grid-row: 2; grid-column: 1; }
 .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto minmax(0, auto) 7ch auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
    유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
@@ -1177,9 +1206,13 @@
 .history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--text-primary); }
 .history-segmented span { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .history-segmented .history-inspector-close { flex: 0 0 auto; width: 24px; min-width: 24px; height: 24px; padding: 0; border-color: transparent; background: none; }
-.history-details-tab { display: grid; min-height: 0; overflow: hidden; }
-.history-divider--horizontal { width: auto; height: 4px; cursor: row-resize; touch-action: none; }
-.history-inspector-head { min-height: 0; overflow: auto; padding: 14px 16px; border-bottom: 1px solid var(--surface-rim); }
+/* 세부 정보: 머리는 내용 높이, 파일 목록이 나머지를 쓴다 — 머리 높이 디바이더는 은퇴했다. 긴 본문은 접힌다. */
+/* 머리 트랙은 fit-content(60%) — 내용 높이만큼 서되 독의 60%를 넘지 않고, 그 안에서 스크롤한다. 요소 max-height 퍼센트는 auto 트랙과 순환해 쓰지 않는다. */
+.history-details-tab { display: grid; grid-template-rows: fit-content(60%) minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.history-inspector-head { min-height: 0; overflow: auto; padding: 12px 16px; border-bottom: 1px solid var(--surface-rim); }
+.history-inspector-message.is-clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
+.history-inspector-more { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); cursor: pointer; }
+.history-inspector-more:hover { color: var(--text-primary); }
 .history-inspector-subject { color: var(--text-secondary); font-size: var(--t-base); font-weight: var(--weight-medium); line-height: 1.35; }
 .history-inspector-message { margin: 6px 0 0; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); line-height: 1.5; white-space: pre-wrap; }
 .history-author { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text-secondary); font-size: var(--t-sm); }
@@ -1197,7 +1230,7 @@
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: .02em; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; align-items: center; gap: 2px; margin-left: auto; }.history-file-counter { margin-right: 6px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
    숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
@@ -1305,7 +1338,7 @@
 .repository-ws-layout {
   display: grid;
   /* 트리는 설정폭을 따르되 좁은 패널에서는 45cqw로 클램프되어 중앙(History)에 폭을 양보한다. */
-  grid-template-columns: min(var(--ws-tree-width, 222px), 45cqw) 4px minmax(0, 1fr);
+  grid-template-columns: min(var(--ws-tree-width, 222px), 45cqw) 1px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   flex: 1;
@@ -1313,8 +1346,6 @@
 
 .repository-ws-tree-divider {
   height: 100%;
-  cursor: col-resize;
-  touch-action: none;
 }
 
 .repository-ws-tree {
@@ -1640,7 +1671,7 @@
   background: transparent;
 }
 
-.repository-ws-history > .history-divider {
+.repository-ws-history > .repository-seam {
   grid-row: 2;
 }
 
@@ -1655,7 +1686,7 @@
   /* 사용자가 끈 파일 열 폭은 CSS 변수로만 들어온다 — 인라인 grid-template-columns는 아래 세로
      스택 컨테이너 쿼리를 이겨 main 열 0 붕괴를 되살린다. min()이 diff 열 최소폭(JS 클램프의
      WORKSPACE_DOCK_MAIN_MIN_WIDTH + 디바이더)을 저장값보다 우선 보장한다. */
-  grid-template-columns: minmax(0, min(var(--ws-dock-files-width, 250px), calc(100% - 344px))) 4px minmax(0, 1fr);
+  grid-template-columns: minmax(0, min(var(--ws-dock-files-width, 250px), calc(100% - 341px))) 1px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
@@ -1770,7 +1801,7 @@
    더 좁은데도 좌우로 나누면 디바이더가 보이는데 클램프는 no-op인 구간이 생긴다.
    범위 문법을 쓰는 이유는 소수점 폭에서도 경계가 정확히 맞아떨어지게 하기 위함이다. */
 .history-inspector-shelf { container-type: inline-size; }
-@container (width < 494px) {
+@container (width < 491px) {
   .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
   /* 세로 스택에서는 열 디바이더가 트랙 수를 어긋내므로 흐름에서 제거하고, 이음매는 테두리가 잇는다. */
   .repository-ws-dock > .repository-ws-dock-divider { display: none; }
@@ -1944,18 +1975,18 @@
 /* 잠금 울타리는 경고보다 한 단 단호하다 — 쓰기 동사가 실제로 비활성인 상태의 유일한 설명이다. */
 .repository-staging-guard.is-locked { color: var(--coral-ink); background: color-mix(in oklab, var(--coral) 9%, transparent); border-bottom-color: color-mix(in oklab, var(--coral) 30%, transparent); }
 .repository-staging-root { flex: 1; min-height: 0; }
-/* 목록 220 + 디바이더 4 + diff 140 = 364px. 그 아래에서 좌우로 나누면 목록이 82px까지 눌려
+/* 목록 220 + 이음매 1 + diff 140 = 361px. 그 아래에서 좌우로 나누면 목록이 82px까지 눌려
    파일명 요소 폭이 0px가 된다(실측). 두 열이 함께 설 수 없는 폭에서는 위아래로 세운다. */
 .repository-staging-root.has-hunk {
-  grid-template-columns: minmax(0, min(var(--staging-list-width, 248px), calc(100% - 144px))) 4px minmax(0, 1fr);
+  grid-template-columns: minmax(0, min(var(--staging-list-width, 248px), calc(100% - 141px))) 1px minmax(0, 1fr);
 }
-@container (width < 364px) {
+@container (width < 361px) {
   .repository-staging-root.has-hunk {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 40%) minmax(0, 1fr);
   }
   /* 세로 스택에서 열 디바이더는 트랙 수를 어긋내므로 흐름에서 뺀다 — 이음매는 테두리가 잇는다. */
-  .repository-staging-root.has-hunk > .repository-divider { display: none; }
+  .repository-staging-root.has-hunk > .repository-seam { display: none; }
   .repository-staging-root.has-hunk > .repository-hunk-pane { border-left: 0; border-top: 1px solid var(--surface-rim); }
 }
 .repository-staging-lists { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
@@ -2160,36 +2191,41 @@
 
 /* ─── 동선 정비(P1+P2): 보던 커밋 칩 · 스태시 카드 · 스테이징 트리/라벨 ───────── */
 
-/* 변경 뷰에서 커밋/비교/스태시 상세는 한 줄 칩으로 접힌다(M1) — 독은 화면을 따라오지 않는다. */
+/* 변경 뷰에서 커밋/비교/스태시 상세는 한 줄 스트립으로 접힌다 — 독은 화면을 따라오지 않는다.
+   스트립은 접힌 독 머리줄과 같은 32px·같은 손잡이라 "같은 독이 접혀 있다"로 읽힌다. */
 .repository-ws-history > .repository-ws-peek {
   grid-row: 2;
   grid-column: 1;
 }
 .repository-ws-peek {
+  position: relative;
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  padding: 4px 8px;
+  height: 32px;
+  padding: 0 6px 0 0;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 4%, transparent);
 }
 .repository-ws-peek-main {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 3px 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  background: var(--control-rest);
+  padding: 0 10px;
+  border: 0;
+  background: none;
   color: var(--text-secondary);
   font-size: var(--t-sm);
   cursor: pointer;
   text-align: left;
 }
-.repository-ws-peek-main:hover { border-color: var(--hairline-strong); color: var(--text-primary); }
+.repository-ws-peek-main > .repository-seam-pill { left: 50%; top: -1px; width: 36px; height: 3px; transform: translateX(-50%); }
+.repository-ws-peek-main:hover { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 8%, transparent); }
+.repository-ws-peek-main:hover > .repository-seam-pill { background: var(--brass); }
 .repository-ws-peek-kind {
   flex: none;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -2202,24 +2238,149 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 .repository-ws-peek-return {
   flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
-.repository-ws-peek-main:hover .repository-ws-peek-return { color: var(--text-secondary); }
+.repository-ws-peek-return b { font-family: var(--font-mono, ui-monospace, monospace); font-weight: var(--weight-medium); color: var(--text-secondary); }
+.repository-ws-peek-main:hover .repository-ws-peek-return b { color: var(--text-primary); }
 .repository-ws-peek-close {
   flex: none;
-  padding: 0 8px;
-  border: 1px solid var(--surface-rim);
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: var(--control-rest);
+  background: none;
   color: var(--text-tertiary);
   cursor: pointer;
 }
-.repository-ws-peek-close:hover { color: var(--text-primary); border-color: var(--hairline); }
+.repository-ws-peek-close:hover { color: var(--text-primary); background: var(--control-rest-hover); }
+
+/* ─── 독 머리줄(DockHeader) — 탭 · 정체성 · 부모/자식 · 액션이 36px 한 줄에 선다 ─── */
+.repository-dock-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 0;
+  padding: 0 6px 0 8px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-fog) 4%, transparent);
+  overflow: hidden;
+}
+.repository-dock-head.is-collapsed { height: 32px; border-bottom: 0; }
+.repository-dock-tabs { display: flex; gap: 2px; flex: none; align-self: stretch; }
+.repository-dock-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide);
+}
+.repository-dock-tabs button:hover:not([aria-selected="true"]) { color: var(--text-primary); }
+.repository-dock-tabs button[aria-selected="true"] { border-bottom-color: var(--brass); color: var(--text-primary); font-weight: var(--weight-medium); }
+.repository-dock-tabs button span { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.repository-dock-tabs button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.repository-dock-identity {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0 10px;
+  border-left: 1px solid var(--surface-rim);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+.repository-dock-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); }
+.repository-dock-sha { flex: none; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+.repository-dock-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-dock-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.repository-dock-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--surface-rim); }
+.repository-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+.repository-dock-btn:hover:not(:disabled) { background: var(--control-rest-hover); border-color: var(--hairline); color: var(--text-primary); }
+.repository-dock-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.repository-dock-btn:disabled { opacity: .35; cursor: default; }
+.repository-dock-btn.is-icon { width: 24px; padding: 0; justify-content: center; }
+.repository-dock-btn kbd { font-family: var(--font-mono); font-size: var(--t-2xs); padding: 0 4px; border: 1px solid var(--hairline-strong); border-radius: 4px; color: var(--text-tertiary); }
+/* 접힌 독 — 정체성 + 펼치기. 손잡이는 이음매가 없어도 같은 자리에 산다. */
+.repository-dock-strip {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 2px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.repository-dock-strip > .repository-dock-identity { margin-left: 0; padding-left: 0; border-left: 0; }
+.repository-dock-strip-hint { flex: none; font-size: var(--t-xs); color: var(--text-tertiary); }
+.repository-dock-strip:hover { color: var(--text-primary); }
+.repository-dock-strip:hover .repository-dock-strip-hint { color: var(--text-secondary); }
+.history-inspector.is-collapsed { grid-template-rows: auto; }
+.repository-ws-history.is-dock-collapsed > .history-inspector-shelf { border-top: 1px solid var(--surface-rim); }
+/* 비교 무장 띠 — 독은 남고, 머리줄이 다음 조작을 말한다. */
+.repository-dock-arm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  min-width: 0;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent);
+  background: color-mix(in oklch, var(--aurora) 9%, transparent);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+}
+.repository-dock-arm-base { flex: none; padding: 2px 7px; border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent); border-radius: var(--radius-xs); color: var(--aurora); font-family: var(--font-mono); font-size: var(--t-xs); }
+.repository-dock-arm-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.repository-dock-arm > .repository-dock-btn { margin-left: auto; }
+/* 무장 중 행 호버 — 클릭 한 번이 비교를 완성함을 ⇆ 단서로 미리 말한다. */
+.history-list.is-arming .history-commit-row:hover .history-row-compare { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); }
+/* 부모/자식 버튼 호버 미리보기 — 도착 행에 외곽선. 목록이 선택보다 먼저 목적지를 보여 준다. */
+.history-commit-row.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent), inset 2px 0 0 var(--brass); }
+.history-commit-row.is-selected.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent), inset 2px 0 0 var(--brass); }
+/* 독이 열릴 때 선택 행이 한 번 맥동한다 — "이 행이다". */
+.history-commit-row.is-arrived { animation: history-row-arrive 700ms var(--ease-glide); }
+@keyframes history-row-arrive { from { background: color-mix(in oklch, var(--brass) 26%, transparent); } to { background: color-mix(in oklch, var(--ink-fog) 12%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .history-commit-row.is-arrived { animation: none; } }
+@container (width < 700px) { .repository-dock-subject { display: none; } }
+@container (width < 560px) { .repository-dock-nav { display: none; } }
 
 /* 스태시 카드(M3·M4) — 인스펙터 결을 물려받되, 머리는 세그먼트 대신 제목+이름 칩이다. */
 .repository-stash-inspector-head {

@@ -26,7 +26,7 @@ interface PointerDragLifecycleInput {
 export const HUNK_PANE_MIN_WIDTH = 140;
 export const HISTORY_LOG_PANE_MIN_HEIGHT = 120;
 export const HISTORY_DETAIL_PANE_MIN_HEIGHT = 160;
-export const DIFF_DIVIDER_WIDTH = 4;
+export const DIFF_DIVIDER_WIDTH = 1;
 
 const NO_OP_SENTINEL = null;
 
@@ -61,12 +61,8 @@ export function clampSplitPaneSize(startSize: number, delta: number, containerSi
   return Math.max(firstPaneMinSize, Math.min(maxSize, startSize + delta));
 }
 
-export function buildInspectorDetailsGridTemplate(headerHeight: number): string {
-  return `minmax(120px, min(${headerHeight}px, calc(100% - 124px))) ${DIFF_DIVIDER_WIDTH}px minmax(120px, 1fr)`;
-}
-
 export function buildInspectorChangesGridTemplate(fileListWidth: number): string {
-  return `minmax(120px, min(${fileListWidth}px, calc(100% - 144px))) ${DIFF_DIVIDER_WIDTH}px minmax(140px, 1fr)`;
+  return `minmax(120px, min(${fileListWidth}px, calc(100% - ${140 + DIFF_DIVIDER_WIDTH}px))) ${DIFF_DIVIDER_WIDTH}px minmax(140px, 1fr)`;
 }
 
 export function installPointerDragLifecycle({ documentTarget, windowTarget, onMove, onFinish }: PointerDragLifecycleInput): () => void {
