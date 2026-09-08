@@ -75,14 +75,19 @@ export function SplitSeam({ orientation, label, value, min, max, dragging = fals
     if (event.key === "Enter" && onToggle) { event.preventDefault(); onToggle(); }
   }, [onJump, onStep, onToggle, orientation]);
   const interactive = Boolean(onStep || onJump || onToggle);
+  // ARIA 값은 실제 범위 안에서만 말한다 — 저장값이 줄어든 컨테이너보다 크면 화면은 최대치로 그려지므로 그 값을,
+  // 최대가 최소보다 작은(짧은 컨테이너) 경우는 범위 자체가 성립하지 않으므로 세 값을 모두 비운다.
+  const rangeMin = min ?? 0;
+  const rangeValid = max !== undefined && max >= rangeMin;
+  const ariaNow = rangeValid && value !== undefined ? Math.round(Math.max(rangeMin, Math.min(max, value))) : undefined;
   return <div
     className={`repository-seam repository-seam--${orientation}${dragging ? " is-dragging" : ""}${className ? ` ${className}` : ""}`}
     role="separator"
     aria-orientation={orientation}
     aria-label={label}
-    aria-valuenow={value === undefined || max === undefined ? undefined : Math.round(value)}
-    aria-valuemin={min === undefined || max === undefined ? undefined : Math.round(min)}
-    aria-valuemax={max === undefined ? undefined : Math.round(Math.max(max, min ?? 0))}
+    aria-valuenow={ariaNow}
+    aria-valuemin={rangeValid && min !== undefined ? Math.round(min) : undefined}
+    aria-valuemax={rangeValid ? Math.round(max) : undefined}
     tabIndex={interactive ? 0 : undefined}
     onPointerDown={onPointerDown}
     onKeyDown={interactive ? handleKeyDown : undefined}

@@ -202,8 +202,9 @@ export function buildWorkspaceDockTemplate(dockHeight: number): string {
   return `minmax(${WORKSPACE_LIST_KEEP_HEIGHT}px, 1fr) ${WORKSPACE_SEAM_WIDTH}px ${dockHeight}px`;
 }
 
+/** 접힌 독 — 이음매 행은 0으로 비우고 셸프(grid-row 3)가 스트립 높이만큼만 선다. 행을 둘만 두면 셸프가 암묵 3행으로 밀려 빈 트랙이 남는다. */
 export function buildWorkspaceDockCollapsedTemplate(): string {
-  return `minmax(0, 1fr) ${WORKSPACE_DOCK_COLLAPSED_HEIGHT}px`;
+  return `minmax(0, 1fr) 0px ${WORKSPACE_DOCK_COLLAPSED_HEIGHT + 1}px`;
 }
 
 export function buildWorkspaceTreeSections(
