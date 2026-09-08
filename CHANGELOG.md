@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.87.0] - 2026-09-08
+
+### fleet-console
+
+#### Changed
+- Rebuild the Repository commit dock. Every Repository split line (dock height, file list, source tree, staging hunk pane) is now one 1px seam with a grab pill: hover and drag ink it brass, a readout shows the size while dragging, and the seam is focusable with arrow keys, Home/End, and Enter. The dock rests on three detents (collapsed strip, half, full) with magnetic snapping, a double-click on the seam toggles half and full, pulling below the minimum collapses it, and each tab remembers its own height. Opening the dock keeps the selected row in view and pulses it once. A 36px dock header holds underline tabs, the commit identity (lane dot, SHA, subject), parent and child buttons that outline their destination row on hover, a compare button, and collapse, expand, and close actions; the Details tab drops its inner header divider in favor of a content-sized header with "Show more" for long bodies, and the Changes tab shows a "n / N" file counter with J/K keys. "Compare" no longer closes the dock: the header turns into an arming band naming the base, and one click on any row completes the comparison (Esc cancels). Returning from the Changes view restores the tab and height you left.
+
 ## [1.86.0] - 2026-09-07
 
 ### fleet-cli
