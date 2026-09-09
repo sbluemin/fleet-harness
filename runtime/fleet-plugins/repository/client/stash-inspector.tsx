@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "./icons.js";
 
 import type { RepositoryContext } from "./repository-context.js";
 
@@ -100,7 +101,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     <div className="history-segmented repository-stash-inspector-head">
       <span className="repository-stash-inspector-title">{t("repository.stash.cardTitle")}</span>
       <span className="repository-stash-inspector-name">{stash.name}</span>
-      <button type="button" className="history-detail-close history-inspector-close" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button>
+      <button type="button" className="history-detail-close history-inspector-close" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}><Icon name="close" /></button>
     </div>
     <div className="repository-stash-inspector-body">
       <div className="repository-stash-inspector-subject" title={stash.subject}>{stash.subject}</div>

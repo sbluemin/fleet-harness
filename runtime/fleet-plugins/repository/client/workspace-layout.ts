@@ -50,12 +50,13 @@ export interface WorkspaceTreeCounts {
   readonly changes: number;
   readonly worktrees: number;
   readonly branches: number;
+  readonly remotes: number;
   readonly tags: number;
   readonly stashes: number;
 }
 
 export type WorkspaceTreeSection = {
-  readonly id: "context" | "working" | "worktrees" | "branches" | "tags" | "stashes";
+  readonly id: "context" | "working" | "worktrees" | "branches" | "remotes" | "tags" | "stashes";
   readonly label: string;
   readonly count: number;
 };
@@ -65,6 +66,7 @@ const SECTION_LABEL_KEY: Record<WorkspaceTreeSection["id"], RepositoryMessageKey
   working: "repository.section.working",
   worktrees: "repository.section.worktrees",
   branches: "repository.section.branches",
+  remotes: "repository.section.remotes",
   tags: "repository.section.tags",
   stashes: "repository.section.stashes",
 };
@@ -216,6 +218,7 @@ export function buildWorkspaceTreeSections(
     { id: "working", label: t(SECTION_LABEL_KEY.working), count: counts.changes },
     { id: "worktrees", label: t(SECTION_LABEL_KEY.worktrees), count: counts.worktrees },
     { id: "branches", label: t(SECTION_LABEL_KEY.branches), count: counts.branches },
+    { id: "remotes", label: t(SECTION_LABEL_KEY.remotes), count: counts.remotes },
     { id: "tags", label: t(SECTION_LABEL_KEY.tags), count: counts.tags },
     { id: "stashes", label: t(SECTION_LABEL_KEY.stashes), count: counts.stashes },
   ];

@@ -125,6 +125,12 @@ export interface TreeEntry {
   readonly kind: "tree" | "blob";
 }
 
+export interface BlobResult {
+  readonly content: string;
+  readonly truncated?: boolean;
+  readonly binary?: boolean;
+}
+
 export interface TreeResult {
   readonly entries: readonly TreeEntry[];
   readonly truncated?: boolean;

@@ -16,6 +16,7 @@ import { handleRepositoryDiscard, handleRepositoryStage, handleRepositoryUnstage
 import { handleRepositoryStash } from "./server/stash.js";
 import { handleRepositoryStatus } from "./server/status.js";
 import { handleRepositoryTree } from "./server/tree.js";
+import { handleRepositoryBlob } from "./server/blob.js";
 import { handleRepositoryWorkstate } from "./server/workstate.js";
 import { handleRepositoryWorktrees } from "./server/worktrees.js";
 
@@ -71,6 +72,10 @@ export default definePlugin({
       await handleRepositoryTree(req, res, ctx);
       return true;
     }, { method: "POST", path: "", summary: "List one folder of a commit tree.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "blob", async ({ req, res }) => {
+      await handleRepositoryBlob(req, res, ctx);
+      return true;
+    }, { method: "POST", path: "", summary: "Read one file at a commit.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "workstate", async ({ req, res }) => {
       await handleRepositoryWorkstate(req, res, ctx);
       return true;

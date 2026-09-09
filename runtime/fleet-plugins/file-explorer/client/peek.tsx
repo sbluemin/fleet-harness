@@ -4,7 +4,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileReadResult } from "../server/types.js";
 import { knownMtime } from "./entry-stats.js";
-import { FileIcon } from "./file-icon.js";
+import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { formatByteSize, formatRelativeTime } from "./format.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";

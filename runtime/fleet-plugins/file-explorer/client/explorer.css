@@ -1,27 +1,5 @@
 /* File Explorer rail panel styles — rail-viewer.css 표면 준수 */
 
-/* ── 파일타입 아이콘 팔레트 ──
-   Identity roles are owned by the console Instrument theme. */
-:root {
-  --fexp-ic-ts: var(--identity-file-code);
-  --fexp-ic-js: var(--identity-file-code);
-  --fexp-ic-json: var(--identity-file-data);
-  --fexp-ic-css: var(--identity-file-code);
-  --fexp-ic-html: var(--identity-file-markup);
-  --fexp-ic-md: var(--identity-file-markup);
-  --fexp-ic-py: var(--identity-file-code);
-  --fexp-ic-go: var(--identity-file-code);
-  --fexp-ic-rust: var(--identity-file-markup);
-  --fexp-ic-shell: var(--identity-file-data);
-  --fexp-ic-config: var(--identity-file-config);
-  --fexp-ic-image: var(--identity-file-markup);
-  --fexp-ic-data: var(--identity-file-data);
-  --fexp-ic-archive: var(--identity-file-config);
-  --fexp-ic-binary: var(--ink-fog);
-  --fexp-ic-ruby: var(--identity-file-error);
-  --fexp-ic-folder: var(--identity-small-tag);
-  --fexp-ic-default: var(--ink-fog);
-}
 
 /* ── 루트 레이아웃 — 트리 열 하나.
    2단은 이제 표면이 만든다: 문서는 자기 페인으로 서고, 폭·분할선·캡션은 호스트 소유다. */
@@ -498,7 +476,7 @@
 
 /* 파일 아이콘 SVG는 자체 인라인 color(타입색)로 currentColor를 채운다.
    디렉터리 chevron(텍스트)만 span color를 상속하므로 선택 시 brass 전환은 chevron에만 적용된다. */
-.fexp-file-svg {
+.file-icon-svg {
   display: block;
 }
 
