@@ -84,7 +84,7 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
   });
 
-  it("resumes the first chat transcript synchronized while disposal is in flight", async () => {
+  it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
     const harness = await createHarness({ holdChatTurn: true });
     vi.stubEnv("CLAUDE_CONFIG_DIR", harness.fleetDataDir);
     const sessionId = await harness.createSession();
@@ -97,7 +97,8 @@ describe("agent chat mode routes", () => {
     const spy = vi.spyOn(fs, "readdir").mockImplementation(async (...args: Parameters<typeof fs.readdir>) => {
       if (args[0] === path.join(harness.fleetDataDir, "projects")) {
         locating = true;
-        await gate;
+        if (lookup === "missed" && harness.closeChat.mock.calls.length === 0) return [];
+        if (lookup === "pending") await gate;
       }
       return readDirectory(...args);
     });
