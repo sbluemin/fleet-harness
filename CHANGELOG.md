@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-09-09
+
+### fleet-console
+
+#### Changed
+- Switching between chat and CLI views now interrupts the current response instead of waiting for it to finish.
+- Repository panel refit: the top context band is gone; the repository/worktree switcher now leads the sidebar tree, and Fetch/Pull/Push/Stash share one work bar with the History/Changes segmented tabs and the history filter, collapsing from labels to icons to a More menu as the panel narrows.
+- Repository tree now lists Worktrees, Branches, Remotes (grouped by remote with a host mark), Tags, and Stashes as sibling sections; the current branch shows a check mark, and branches with an upstream show ahead/behind counts.
+- Repository controls use one glyph set and three control tiers (verb chips, quiet icon buttons, segmented tabs); unicode arrow/cross glyphs, the underline tabs, and the always-on bottom status bar are replaced (results now appear as a transient toast).
+- Changed-file lists in the Changes view and the commit inspector are single-line rows with the directory dimmed and the file name kept visible when the path is cut.
+- The commit inspector's File Tree tab uses the File Explorer grammar (folder/file icons, guides, change badges) and opens the selected file: a diff for files changed in that commit, otherwise the file content at that commit.
+
+#### Fixed
+- Quick Launch `@` and `/` decks and the Theater/model popovers now blur the screen behind them like the chat view's command menu, instead of letting terminal text show through sharply.
+- Repository picker rows no longer inherit the context bar's branch styling, so repository names and branch labels keep their intended sizes.
+
 ## [1.87.1] - 2026-09-08
 
 ### fleet-cli
