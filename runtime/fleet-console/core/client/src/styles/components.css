@@ -14097,15 +14097,11 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   max-width: 100%;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
-      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 유리는 루트가 아니라 자식 없는 .quick-launch-glass가 진다 — 루트 backdrop-filter는 backdrop root가
+     되어 안쪽 앵커 팝업(멘션 덱·명령 덱·theater/model 팝오버)의 blur가 카드 밖 화면을 샘플링하지
+     못하게 만든다(팝오버 뒤 코드가 선명하게 비치던 원인). ::before/::after는 ultracode 구슬·링이
+     쓰므로 전용 요소를 둔다(.operations-side-bar::before와 같은 계약). */
+  background: none;
   box-shadow: var(--shadow-floating);
   /* 고정 시 언포커스가 물러나는 깊이. 접힘과 한 동작으로 걸린다. */
   --quick-launch-idle-opacity: 0.55;
@@ -14117,6 +14113,25 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .quick-launch-card:focus-visible {
   outline: none;
+}
+
+/* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조).
+   z:-1이라 카드가 스택 컨텍스트가 아닐 때는 오버레이 스크림 위·카드 내용 아래에, 고정(transform)으로
+   스택 컨텍스트가 되면 카드 최하층에 깔린다 — 어느 쪽이든 테두리·글자 아래다. */
+.quick-launch-glass {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  pointer-events: none;
 }
 
 /* ── `ultracode` 무장 외곽 ───────────────────────────────────────────

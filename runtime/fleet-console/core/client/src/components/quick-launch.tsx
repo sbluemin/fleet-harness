@@ -1533,6 +1533,8 @@ export function QuickLaunch() {
         onDrop={handleDrop}
         style={{ maxWidth: CARD_WIDTH_FALLBACK }}
       >
+        {/* 유리 재질 층 — 카드 루트에 두면 안쪽 팝오버의 blur가 죽는다(components.css 주석 참조). */}
+        <span className="quick-launch-glass" aria-hidden="true" />
         {/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤이다. 초안 자취를 싣고, 누르면 펼쳐진다.
             접힌 동안 아래 컨트롤은 inert라 Tab이 닿지 않으므로 이 버튼이 되돌아오는 통로다. */}
         {pinned ? (
