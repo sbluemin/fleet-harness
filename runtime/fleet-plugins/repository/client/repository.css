@@ -2232,7 +2232,7 @@
     border-radius: 7px;
     background: var(--brass);
     color: var(--ink-deep);
-    font-size: 9.5px;
+    font-size: var(--t-2xs);
     font-weight: var(--weight-bold);
   }
 }
@@ -2549,7 +2549,7 @@
 .repository-ftree-row.is-modified .repository-ftree-name { color: color-mix(in oklch, var(--warn-ink) 78%, var(--text-secondary)); }
 .repository-ftree-row.is-added .repository-ftree-name { color: color-mix(in oklch, var(--positive-ink) 78%, var(--text-secondary)); }
 .repository-ftree-row.is-deleted .repository-ftree-name { color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary)); text-decoration: line-through; }
-.repository-ftree-row .repository-status-glyph { flex: none; width: 15px; height: 15px; font-size: 9.5px; }
+.repository-ftree-row .repository-status-glyph { flex: none; width: 15px; height: 15px; font-size: var(--t-2xs); }
 .repository-ftree-count { flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink-fog) 22%, transparent); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); display: inline-flex; align-items: center; justify-content: center; }
 .repository-ftree-note { height: 28px; display: flex; align-items: center; color: var(--text-tertiary); font-size: var(--t-sm); }
 .repository-ftree-note.is-error { color: var(--coral-ink); }

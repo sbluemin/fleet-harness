@@ -2126,7 +2126,10 @@ describe("Instrument core design contract", () => {
       ".group-context-menu-card",
       ".theater-menu",
       ".operation-search-card",
-      ".quick-launch-card",
+      // Quick Launch는 유리를 루트가 아니라 자식 없는 .quick-launch-glass가 진다 — 루트
+      // backdrop-filter가 backdrop root가 되면 안쪽 앵커 팝업의 blur가 카드 밖을 샘플링하지
+      // 못한다. 채널 계약은 그 전용 요소에서 그대로 지켜져야 한다.
+      ".quick-launch-glass",
       ".feature-tour-card",
       ".glass-welcome-card",
     ];
