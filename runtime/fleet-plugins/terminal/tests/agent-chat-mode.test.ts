@@ -1,5 +1,5 @@
 import http from "node:http";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, promises as fs, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -82,6 +82,39 @@ describe("agent chat mode routes", () => {
     await harness.postTicket(sessionId);
 
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
+  });
+
+  it("resumes the first chat transcript synchronized while disposal is in flight", async () => {
+    const harness = await createHarness({ holdChatTurn: true });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", harness.fleetDataDir);
+    const sessionId = await harness.createSession();
+    harness.attachLaunchProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+    let release!: () => void;
+    let locating = false;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const readDirectory = fs.readdir.bind(fs);
+    const spy = vi.spyOn(fs, "readdir").mockImplementation(async (...args: Parameters<typeof fs.readdir>) => {
+      if (args[0] === path.join(harness.fleetDataDir, "projects")) {
+        locating = true;
+        await gate;
+      }
+      return readDirectory(...args);
+    });
+    try {
+      await harness.post(sessionId, "message", { text: "first streaming turn" });
+      await vi.waitFor(() => expect(locating).toBe(true));
+      const resume = harness.post(sessionId, "resume");
+      await vi.waitFor(() => expect(harness.closeChat).toHaveBeenCalled());
+      release();
+      await resume;
+      expect(harness.responses.at(-1)?.status).toBe(200);
+      expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({ resumeSessionId: "sid-live" }));
+    } finally {
+      release();
+      spy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it.each(["exit", "resume"])("%s interrupts streaming chat and cancels queued turns before relaunching the cli", async (action) => {
@@ -331,6 +364,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   }
 
   return {
+    fleetDataDir,
     attach,
     terminate,
     openSession,

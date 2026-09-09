@@ -835,9 +835,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     //
     // chat 여부로는 판단할 수 없다: 캡션의 복귀 버튼은 chat 마커를 먼저 걷고 이 라우트를 부르므로
     // 이 시점의 payload에는 이미 없다. 그래서 Chat 진입의 resolveChatSeed와 같은 source 판정을 쓴다.
-    const startsFresh = fresh
-      || !providerSession
-      || providerSession.source === "launch";
     // chat 모드 Operation의 resume은 터미널 복귀다 — 응답 완주를 기다리지 않고
     // chat 세션을 접고 모드 마커를 걷은 뒤 재기동해 같은 세션의 이중 필자를 막는다.
     let resumeNode = node;
@@ -852,8 +849,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
       if (releasedOnResume) observability.notifySessionUpdated(releasedOnResume);
       resumeNode = ctx.host.operations.get(sessionId) ?? node;
-      if (!startsFresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
+      resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
     }
+    // 첫 턴의 좌표가 dispose 중 확정될 수 있다 — 명시적 새 시작 외에는 최신 좌표로 판정한다.
+    const startsFresh = fresh
+      || !resumeProviderSession
+      || resumeProviderSession.source === "launch";
     const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
     if (!result.ok) {
       ctx.host.http.writeJson(res, result.status, { error: result.error });
