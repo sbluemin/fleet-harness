@@ -1,11 +1,11 @@
 import type http from "node:http";
+import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { REF_RE } from "./commit.js";
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
-import { isSafeTreeDirPath } from "./tree.js";
 import type { BlobResult } from "./types.js";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -14,6 +14,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** 트리 탭의 파일 미리보기 상한 — 이보다 큰 blob은 앞부분만 보내고 truncated로 표시한다. */
 const BLOB_MAX_BYTES = 1_000_000;
+
+/**
+ * 파일 경로 검증 — 저장소 내부 상대 경로만 허용한다(NUL·절대 경로·상위 탈출 거부).
+ * 인자는 검증된 해시 뒤에 `<sha>:<path>` 한 덩어리로 붙으므로 `-`·`:`로 시작하는 정당한 파일명은 막지 않는다.
+ */
+export function isSafeBlobPath(filePath: string): boolean {
+  if (!filePath || filePath.endsWith("/") || filePath.includes("\0")) return false;
+  if (path.posix.isAbsolute(filePath) || path.isAbsolute(filePath)) return false;
+  const normalized = path.posix.normalize(filePath);
+  return normalized !== ".." && !normalized.startsWith("../");
+}
 
 /** NUL이 섞인 앞 8KB는 바이너리로 본다 — git의 판정과 같은 휴리스틱. */
 export function looksBinary(content: string): boolean {
@@ -30,7 +41,7 @@ export async function handleRepositoryBlob(req: http.IncomingMessage, res: http.
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly filePath?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string" || typeof body.ref !== "string" || typeof body.filePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   if (!REF_RE.test(body.ref)) { ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return; }
-  if (!body.filePath || body.filePath.endsWith("/") || !isSafeTreeDirPath(body.filePath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
+  if (!isSafeBlobPath(body.filePath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   let gitCwd: string;
