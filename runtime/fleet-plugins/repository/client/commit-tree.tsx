@@ -160,6 +160,9 @@ function CommitTreeFolderBody({ t, dirPath, depth, folders, expanded, commitFile
 
 // ─── 파일 내용 보기 ──────────────────────────────────────────────────────────
 
+/** 렌더 상한 — 1MB 안에 짧은 줄이 수십만 개 들어올 수 있어 바이트 상한만으로는 DOM이 폭주한다. */
+const BLOB_MAX_LINES = 5000;
+
 type BlobState =
   | { readonly kind: "loading" }
   | { readonly kind: "ok"; readonly lines: readonly string[]; readonly truncated: boolean }
@@ -190,7 +193,8 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
       const content = payload.content ?? "";
       const lines = content.split("\n");
       if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
-      setState({ kind: "ok", lines, truncated: payload.truncated === true });
+      const capped = lines.length > BLOB_MAX_LINES;
+      setState({ kind: "ok", lines: capped ? lines.slice(0, BLOB_MAX_LINES) : lines, truncated: payload.truncated === true || capped });
     }).catch(() => { if (!cancelled) setState({ kind: "error", code: "network" }); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, fullHash, path, repoRel]);
