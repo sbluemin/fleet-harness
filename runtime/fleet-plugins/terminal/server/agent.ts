@@ -838,15 +838,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const startsFresh = fresh
       || !providerSession
       || providerSession.source === "launch";
-    // chat 모드 Operation의 resume은 터미널 복귀다 — 진행 중 chat 턴이 있으면 같은 세션 위에
-    // 두 필자를 만들 수 없어 거절하고, 아니면 chat 세션을 접고 모드 마커를 걷은 뒤 재기동한다.
+    // chat 모드 Operation의 resume은 터미널 복귀다 — 응답 완주를 기다리지 않고
+    // chat 세션을 접고 모드 마커를 걷은 뒤 재기동해 같은 세션의 이중 필자를 막는다.
     let resumeNode = node;
     let resumeProviderSession = providerSession;
     if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
-      if (chatRegistry.isBusy(sessionId)) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_busy" });
-        return true;
-      }
+      // 진행 중 응답과 예약을 즉시 중단하고, 기존 필자가 닫힌 뒤에만 터미널로 넘긴다.
       await chatRegistry.dispose(sessionId);
       // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload로 다시 읽는다.
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
@@ -1117,10 +1114,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
         return true;
       }
-      if (chatRegistry.isBusy(sessionId)) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_busy" });
-        return true;
-      }
+      // 진행 중 응답과 예약을 즉시 중단하고, 기존 필자가 닫힌 뒤에만 터미널로 넘긴다.
       await chatRegistry.dispose(sessionId);
       // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload에서 마커만 걷는다.
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
@@ -1148,23 +1142,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
-    if (live) {
-      // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기·턴 종료 후에도 살아 있는 백그라운드
-      // 작업(backgroundPending) 중의 PTY를 접으면 그 작업을 잃는다(활동축 불변식과 같은 판정).
-      //
-      // 사유는 뭉뚱그리지 않는다. "지금은 안 됩니다"만 돌려주면 사용자가 무엇이 끝나기를
-      // 기다려야 하는지 알 수 없고, 기다림의 대상이 셋(턴·내 답·백그라운드 작업)이라 그 차이가
-      // 곧 다음 행동의 차이다. 우선순위는 활동축 해석과 같게 대기를 작업보다 앞세운다.
-      const busyReason = info?.attentionPending === true
-        ? "awaiting"
-        : (info?.turnState === "running" || info?.modelActivity === "working")
-          ? "turn"
-          : info?.backgroundPending === true ? "background" : null;
-      if (busyReason) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: busyReason });
-        return true;
-      }
-    }
+    // 전환 자체가 중단 요청이다 — 실행 중인 턴·입력 대기·백그라운드 작업도 PTY와 함께 접는다.
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
     const activated = observability.setTerminalSessionChatActive(sessionId, true);
     if (activated) observability.notifySessionUpdated(activated);

@@ -54,7 +54,7 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).toHaveBeenCalledWith(sessionId);
   });
 
-  it("rejects conversion while the terminal turn is running", async () => {
+  it("interrupts a running terminal turn when converting to chat", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
@@ -63,9 +63,13 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "turn" } });
-    expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
-    expect(harness.terminate).not.toHaveBeenCalled();
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
+    expect(harness.terminate).toHaveBeenCalledWith(sessionId);
+    expect((await harness.sessions()).find((session) => session.sessionId === sessionId)).toMatchObject({
+      chatActive: true,
+      turnState: "none",
+    });
   });
 
   it("refuses a terminal ticket for a chat mode operation", async () => {
@@ -80,14 +84,25 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
   });
 
-  it("resume on a chat mode operation clears the marker and relaunches the cli", async () => {
-    const harness = await createHarness();
+  it.each(["exit", "resume"])("%s interrupts streaming chat and cancels queued turns before relaunching the cli", async (action) => {
+    const harness = await createHarness({ holdChatTurn: true });
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
 
+    await harness.post(sessionId, "message", { text: "stream until interrupted" });
+    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted"]));
+    await harness.post(sessionId, "message", { text: "must not run after switching" });
+    expect((await harness.sessions()).find((session) => session.sessionId === sessionId)?.modelActivity).toBe("working");
+    if (action === "exit") {
+      await harness.del(sessionId, "chat");
+      expect(harness.responses.at(-1)?.status).toBe(200);
+      expect(harness.closeChat).toHaveBeenCalled();
+    }
     await harness.post(sessionId, "resume");
 
+    expect(harness.closeChat).toHaveBeenCalled();
+    expect(harness.sends).toEqual(["stream until interrupted"]);
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -97,7 +112,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void> } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
@@ -115,6 +130,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const sdkConfigDir = mkdtempSync(path.join(os.tmpdir(), "fleet-chat-sdk-"));
   temporaryDirectories.push(sdkConfigDir);
   const sends: string[] = [];
+  const closeChat = vi.fn();
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
   const openSession = vi.fn(async (_request: unknown) => {
     const queue: Record<string, unknown>[] = [];
@@ -127,7 +143,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         queue.push(
           { type: "system", subtype: "init", session_id: "sid-live" },
           { type: "assistant", message: { content: [{ type: "text", text: "continuing" }] } },
-          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          ...(!options.holdChatTurn ? [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] : []),
         );
         wake();
       },
@@ -135,7 +151,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       stopTask: async () => {},
       backgroundTasks: async () => true,
       getContextUsage: async () => null,
-      close: () => { closed = true; wake(); },
+      close: () => { closeChat(); closed = true; wake(); },
       [Symbol.asyncIterator]() {
         return {
           async next(): Promise<IteratorResult<Record<string, unknown>>> {
@@ -318,6 +334,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     attach,
     terminate,
     openSession,
+    closeChat,
     sends,
     responses,
     writes,

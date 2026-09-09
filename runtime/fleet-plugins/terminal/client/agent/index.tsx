@@ -514,11 +514,8 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     setTerminalHandoff(context.operationId, { pending: true, error: "none" });
     try {
       await openTerminalForOperation(context);
-    } catch (error) {
-      // 왜 안 되는지가 다음 행동을 가른다 — 진행 중인 턴은 기다리면 풀리고, 그 밖의 실패는 아니다.
-      setTerminalHandoff(context.operationId, {
-        error: error instanceof AgentApiError && error.message === "chat_busy" ? "busy" : "failed",
-      });
+    } catch {
+      setTerminalHandoff(context.operationId, { error: "failed" });
     } finally {
       setTerminalHandoff(context.operationId, { pending: false });
     }
@@ -767,21 +764,8 @@ function SessionWatchBubble({ context, review }: { readonly context: OperationRe
  * 전환이 막힌 사유 → 문구 키. 서버가 사유를 못 실어 보냈으면 뭉뚱그린 문구로 내려간다 —
  * 모르는 사유를 아는 척 이름 붙이는 것보다 낫다.
  */
-type ChatConvertBusyKey =
-  | "terminal.chat.convertBusy"
-  | "terminal.chat.convertBusyTurn"
-  | "terminal.chat.convertBusyAwaiting"
-  | "terminal.chat.convertBusyBackground"
-  | "terminal.chat.convertBusyStarting";
-
-function chatConvertBusyKey(reason: string | null): ChatConvertBusyKey {
-  switch (reason) {
-    case "turn": return "terminal.chat.convertBusyTurn";
-    case "awaiting": return "terminal.chat.convertBusyAwaiting";
-    case "background": return "terminal.chat.convertBusyBackground";
-    case "starting": return "terminal.chat.convertBusyStarting";
-    default: return "terminal.chat.convertBusy";
-  }
+function chatConvertBusyKey(reason: string | null): "terminal.chat.convertBusy" | "terminal.chat.convertBusyStarting" {
+  return reason === "starting" ? "terminal.chat.convertBusyStarting" : "terminal.chat.convertBusy";
 }
 
 /** Chat view 전환 확인 오버레이 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */

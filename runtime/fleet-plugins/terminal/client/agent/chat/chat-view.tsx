@@ -435,8 +435,8 @@ export function AgentChatView({
       {terminalError !== "none"
         ? (
           <div className="agent-chat-sys agent-chat-sys--error" role="alert">
-            <span aria-hidden="true">{terminalError === "busy" ? "⚠" : "✕"}</span>{" "}
-            {t(terminalError === "busy" ? "terminal.chat.openTerminalBusy" : "terminal.chat.openTerminalFailed")}
+            <span aria-hidden="true">✕</span>{" "}
+            {t("terminal.chat.openTerminalFailed")}
           </div>
         )
         : null}
