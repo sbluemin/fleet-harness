@@ -1019,7 +1019,11 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   const branchRows = buildRefSectionRows("branches", refs).filter(matches);
   const tagRows = buildRefSectionRows("tags", refs).filter(matches);
   const stashRows = buildRefSectionRows("stashes", refs).filter(matches);
-  const visibleRemoteGroups = remoteGroups.map((group) => ({ ...group, rows: group.rows.filter(matches) })).filter((group) => group.rows.length > 0);
+  // 원격 행은 "origin/main"처럼 그룹 이름을 붙인 이름으로도 맞춘다 — 검색어가 원격 이름·호스트면 그룹 전체가 남는다.
+  const visibleRemoteGroups = remoteGroups.map((group) => {
+    const groupHit = query !== "" && (fuzzyMatch(query, group.name) !== null || (group.host !== null && fuzzyMatch(query, group.host) !== null));
+    return { ...group, rows: groupHit ? group.rows : group.rows.filter((row) => matches(row) || fuzzyMatch(query, `${group.name}/${row.primary}`) !== null) };
+  }).filter((group) => group.rows.length > 0);
   const worktreeRows = worktrees.filter((worktree) => !query || fuzzyMatch(query, worktree.name) !== null || fuzzyMatch(query, worktree.branch) !== null);
   const section = (id: (typeof sections)[number]["id"], body: ReactNode) => <section className={`repository-ws-section${isCollapsed(id) ? " is-collapsed" : ""}`}>{sectionHeader(id)}{!isCollapsed(id) && body}</section>;
   return <aside ref={treeRef} className="repository-ws-tree">
