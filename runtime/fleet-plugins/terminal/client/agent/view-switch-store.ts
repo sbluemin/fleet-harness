@@ -14,8 +14,8 @@ export interface ViewSwitchState {
   readonly chatPromptOpen: boolean;
   /** 채팅 → 터미널 전환이 진행 중인가. */
   readonly terminalPending: boolean;
-  /** 그 전환이 왜 안 됐는가 — 진행 중인 턴은 기다리면 풀리고, 그 밖의 실패는 아니다. */
-  readonly terminalError: "none" | "busy" | "failed";
+  /** 터미널 복귀 실패 여부. 진행 중인 턴은 전환을 막지 않는다. */
+  readonly terminalError: "none" | "failed";
 }
 
 const IDLE: ViewSwitchState = { chatPromptOpen: false, terminalPending: false, terminalError: "none" };

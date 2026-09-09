@@ -944,6 +944,8 @@ class AgentChatSession {
     await this.turnFlight.catch(() => undefined);
     // 날고 있는 좌표 심기를 착지시킨다 — 끝난 세션이 뒤늦게 Operation을 고쳐 쓰지 않게.
     if (this.syncFlight) await this.syncFlight.catch(() => undefined);
+    // 첫 조회가 파일 생성보다 빨랐을 수 있다 — 더는 메시지가 오지 않으므로 종료 후 한 번 확정한다.
+    await this.syncProviderSession().catch(() => undefined);
     // 발급이 아직 날고 있으면 그것부터 착지시킨다 — 먼저 반납하면 뒤늦게 도착한 토큰이 주인
     // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
     if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
