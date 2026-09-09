@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Icon } from "./icons.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryContext } from "./repository-context.js";
@@ -6,7 +7,7 @@ import type { RepositoryContext } from "./repository-context.js";
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { readCommitDraft, writeCommitDraft } from "./repository-state.js";
-import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
+import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode, FilePathLabel } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
@@ -320,7 +321,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     {(guardMessage || stationedMessage) && <div className={`repository-staging-guard${guardMessage ? " is-locked" : ""}`} role="status">
       {guardMessage ?? stationedMessage}
     </div>}
-    {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}>✕</button></div>}
+    {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
         되살린다(독이 이미 같은 이유로 변수를 쓴다). */}
@@ -408,7 +409,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             — 실측에서 ✕는 폭 11px로 오른쪽 경계 142px 바깥에 서 있었다(누를 수 없다). */}
         <div className="repository-hunk-head">
           <span className="repository-hunk-filename" title={hunkSelection.entry.path}>{hunkSelection.entry.path}</span>
-          <button type="button" className="repository-hunk-close" aria-label={t("repository.hunk.close")} title={t("repository.hunk.close")} onClick={() => setSelection(null)}>✕</button>
+          <button type="button" className="repository-hunk-close" aria-label={t("repository.hunk.close")} title={t("repository.hunk.close")} onClick={() => setSelection(null)}><Icon name="close" /></button>
         </div>
         <HunkView key={`${hunkSelection.axis}:${hunkSelection.entry.path}`} ctx={ctx} repoRel={repoRel} file={hunkSelection.entry} mode={hunkModeOf(hunkSelection)} />
       </div>}
@@ -481,17 +482,10 @@ function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly actions: React.ReactNode;
 }) {
-  const trimmed = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
-  const lastSlash = trimmed.lastIndexOf("/");
-  const dir = lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : "";
-  const name = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed) + (entry.path.endsWith("/") ? "/" : "");
   return <div className={`repository-file-row repository-staging-row${isSelected ? " is-cur" : ""}`}>
     <button type="button" className="repository-staging-row-main" title={entry.path} onClick={() => onSelect(entry)}>
       <span className={`repository-status-glyph repository-status-${entry.status.toLowerCase()}`} aria-hidden="true">{entry.status}</span>
-      <span className="repository-file-name">
-        <span className="repository-file-fn">{name}</span>
-        {dir && <span className="repository-file-dir">{dir}</span>}
-      </span>
+      <FilePathLabel path={entry.path} />
       <span className="repository-nums">
         {entry.conflicted && <span className="repository-conflict-chip">{t("repository.staging.conflict")}</span>}
         {entry.additions > 0 && <span className="repository-additions">+{entry.additions}</span>}

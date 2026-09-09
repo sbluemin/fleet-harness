@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "./icons.js";
 
 import type { RepositoryContext } from "./repository-context.js";
 
@@ -92,7 +93,7 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
       {state.kind === "ok" && state.truncated && <div className="history-truncated">{t("repository.compare.capped")}</div>}
     </section>}
     main={<div className="repository-ws-dock-main">
-      <div className="repository-ws-dock-meta history-compare-meta"><span className="history-compare-pair">{pair.baseLabel} → {pair.headLabel}</span><button type="button" className="repository-compare-swap" title={t("repository.compare.swap")} aria-label={t("repository.compare.swap")} onClick={onSwap}>⇄</button><button type="button" className="history-detail-close repository-ws-dock-close" aria-label={t("repository.compare.closeCompare")} title={t("repository.compare.closeCompare")} onClick={onClose}>✕</button></div>
+      <div className="repository-ws-dock-meta history-compare-meta"><span className="history-compare-pair">{pair.baseLabel} → {pair.headLabel}</span><button type="button" className="repository-compare-swap" title={t("repository.compare.swap")} aria-label={t("repository.compare.swap")} onClick={onSwap}><Icon name="compare" size={13} /></button><button type="button" className="history-detail-close repository-ws-dock-close" aria-label={t("repository.compare.closeCompare")} title={t("repository.compare.closeCompare")} onClick={onClose}><Icon name="close" /></button></div>
       {selectedFile && compareSelection ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" compare={compareSelection} /></div> : <div className="history-inspector-empty">{empty}</div>}
     </div>}
   />;

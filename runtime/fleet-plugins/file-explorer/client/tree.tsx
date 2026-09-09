@@ -21,7 +21,7 @@ import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import type { FileSearchTarget } from "./search-navigation.js";
 
-import { FileIcon, FolderIcon } from "./file-icon.js";
+import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
 import { FilePeek } from "./peek.js";
 export interface PluginFilesClient {
   readonly listFolder: (relativePath?: string) => Promise<FolderListResult>;

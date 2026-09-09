@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+import { Icon } from "./icons.js";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryContext } from "./repository-context.js";
@@ -6,7 +9,7 @@ import type { RepositoryContext } from "./repository-context.js";
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogOrder, LogResult, WorktreeCheckout } from "../server/types.js";
 import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { CompareInspector } from "./compare-inspector.js";
-import { CommitTreeView } from "./commit-tree.js";
+import { CommitBlobView, CommitTreeView, type CommitTreeSelection } from "./commit-tree.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { GraphGutter, ROW_HEIGHT, laneColor } from "./graph.js";
 import { layoutGraph, type GraphLayout, type GraphNode } from "./graph.js";
@@ -251,7 +254,7 @@ export function CommitRow({ entry, checkouts, selected, picked = false, previewe
       <span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span>
       <span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span>
     </button>
-    {onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}>⇆</button>}
+    {onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}><Icon name="compare" size={12} /></button>}
   </div>;
 }
 
@@ -290,19 +293,19 @@ function DockHeader({ t, tab, onTab, fileCount, shortHash, subject, lane, parent
   readonly onNavigate: (target: DockNeighbor) => void; readonly onPinCompare?: () => void; readonly onClose: () => void;
   readonly onPreview: (fullHash: string | null) => void;
 }) {
-  const laneStyle = lane === null ? undefined : { background: laneColor(lane) } as CSSProperties;
+  const laneStyle = lane === null ? undefined : { color: laneColor(lane) } as CSSProperties;
   if (dock?.arming) {
     return <div className="repository-dock-arm" role="status">
-      <span className="repository-dock-arm-base">⇆ {t("repository.compare.armBase", { short: dock.arming.shortHash })}</span>
+      <span className="repository-dock-arm-base"><Icon name="compare" size={12} />{t("repository.compare.armBase", { short: dock.arming.shortHash })}</span>
       <span className="repository-dock-arm-hint">{t("repository.compare.armHint")}</span>
       <button type="button" className="repository-dock-btn" onClick={dock.onDisarm}>{t("repository.compare.armCancel")} <kbd>Esc</kbd></button>
     </div>;
   }
-  const identity = <span className="repository-dock-identity"><span className="repository-dock-dot" style={laneStyle} aria-hidden="true" /><span className="repository-dock-sha">{shortHash}</span><span className="repository-dock-subject" title={subject}>{subject}</span></span>;
+  const identity = <span className="repository-dock-identity"><Icon name="commit" size={14} className="repository-dock-mark" style={laneStyle} /><span className="repository-dock-sha">{shortHash}</span><span className="repository-dock-subject" title={subject}>{subject}</span></span>;
   if (dock?.collapsed) {
     return <div className="repository-dock-head is-collapsed">
-      <button type="button" className="repository-dock-strip" title={t("repository.dock.expand")} onClick={dock.onExpand}>{identity}<span className="repository-dock-strip-hint">{t("repository.dock.expand")} ⌃</span></button>
-      <button type="button" className="repository-dock-btn is-icon" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button>
+      <button type="button" className="repository-dock-strip" title={t("repository.dock.expand")} onClick={dock.onExpand}>{identity}<span className="repository-dock-strip-hint">{t("repository.dock.expand")}<Icon name="expand" size={12} /></span></button>
+      <button type="button" className="repository-dock-btn is-icon" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}><Icon name="close" /></button>
     </div>;
   }
   const navButton = (kind: "parent" | "child", target: DockNeighbor | null) => {
@@ -310,22 +313,22 @@ function DockHeader({ t, tab, onTab, fileCount, shortHash, subject, lane, parent
     const title = target ? t(kind === "parent" ? "repository.dock.parentTitle" : "repository.dock.childTitle", { short: target.shortHash }) : t(kind === "parent" ? "repository.dock.parentNone" : "repository.dock.childNone");
     return <button type="button" className="repository-dock-btn repository-dock-nav" disabled={!target} title={title} aria-label={title}
       onMouseEnter={() => onPreview(target?.fullHash ?? null)} onMouseLeave={() => onPreview(null)} onFocus={() => onPreview(target?.fullHash ?? null)} onBlur={() => onPreview(null)}
-      onClick={() => { if (target) { onPreview(null); onNavigate(target); } }}>{kind === "parent" ? <>‹ {label}</> : <>{label} ›</>}</button>;
+      onClick={() => { if (target) { onPreview(null); onNavigate(target); } }}>{kind === "parent" ? <><Icon name="parent" size={13} />{label}</> : <>{label}<Icon name="child" size={13} /></>}</button>;
   };
   return <div className="repository-dock-head">
-    <div className="repository-dock-tabs" role="tablist">
+    <div className="repository-dock-tabs repository-segmented" role="tablist">
       <button type="button" role="tab" aria-selected={tab === "details"} onClick={() => onTab("details")}>{t("repository.history.details")}</button>
-      <button type="button" role="tab" aria-selected={tab === "changes"} onClick={() => onTab("changes")}>{t("repository.source.changes")}{fileCount !== null && <span>{fileCount}</span>}</button>
+      <button type="button" role="tab" aria-selected={tab === "changes"} onClick={() => onTab("changes")}>{t("repository.source.changes")}{fileCount !== null && <span className="repository-source-count">{fileCount}</span>}</button>
       <button type="button" role="tab" aria-selected={tab === "tree"} onClick={() => onTab("tree")}>{t("repository.filetree.tab")}</button>
     </div>
     {identity}
     <div className="repository-dock-actions">
       {navButton("parent", parent)}{navButton("child", child)}
       <span className="repository-dock-sep" aria-hidden="true" />
-      {onPinCompare && <button type="button" className="repository-dock-btn" title={t("repository.compare.pinAction")} onClick={onPinCompare}>⇆ {t("repository.compare.pinShort")}</button>}
-      {dock && <button type="button" className="repository-dock-btn is-icon" title={t(dock.detent === "full" ? "repository.dock.toHalf" : "repository.dock.toFull")} aria-label={t(dock.detent === "full" ? "repository.dock.toHalf" : "repository.dock.toFull")} onClick={dock.onToggleFull}>{dock.detent === "full" ? "⌄" : "⌃"}</button>}
-      {dock && <button type="button" className="repository-dock-btn is-icon" title={t("repository.dock.collapse")} aria-label={t("repository.dock.collapse")} onClick={dock.onCollapse}>⌄</button>}
-      <button type="button" className="repository-dock-btn is-icon" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button>
+      {onPinCompare && <button type="button" className="repository-dock-btn" title={t("repository.compare.pinAction")} onClick={onPinCompare}><Icon name="compare" size={13} />{t("repository.compare.pinShort")}</button>}
+      {dock && <button type="button" className="repository-dock-btn is-icon" title={t(dock.detent === "full" ? "repository.dock.toHalf" : "repository.dock.toFull")} aria-label={t(dock.detent === "full" ? "repository.dock.toHalf" : "repository.dock.toFull")} onClick={dock.onToggleFull}><Icon name={dock.detent === "full" ? "chevron" : "expand"} /></button>}
+      {dock && <button type="button" className="repository-dock-btn is-icon" title={t("repository.dock.collapse")} aria-label={t("repository.dock.collapse")} onClick={dock.onCollapse}><Icon name="chevron" /></button>}
+      <button type="button" className="repository-dock-btn is-icon" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}><Icon name="close" /></button>
     </div>
   </div>;
 }
@@ -333,11 +336,13 @@ function DockHeader({ t, tab, onTab, fileCount, shortHash, subject, lane, parent
 function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, dock, onSelectCommit, onPinCompare, onClose, onPreview }: { readonly ctx: RepositoryContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly tab: InspectorTab; readonly onTab: (tab: InspectorTab) => void; readonly lane: number | null; readonly dock: DockControls | null; readonly onSelectCommit: (target: CommitTarget) => void; readonly onPinCompare?: () => void; readonly onClose: () => void; readonly onPreview: (fullHash: string | null) => void }) {
   const t = getT(ctx.language);
   const [state, setState] = useState<InspectorState>({ kind: "loading" }); const [selectedPath, setSelectedPath] = useState<string | null>(null); const [copied, setCopied] = useState(false);
+  // 트리 탭의 선택은 변경 목록과 다른 축이다 — 바뀌지 않은 파일도 고를 수 있다.
+  const [treeSelection, setTreeSelection] = useState<CommitTreeSelection | null>(null);
   const [fileListWidth, setFileListWidth] = useState(() => readSize(PREFS_FILE_LIST_WIDTH, FILE_LIST_DEFAULT_WIDTH));
   const [fileDragging, setFileDragging] = useState(false);
   const [filesView, setFilesView] = useState<FilesViewMode>(readFilesViewMode);
   const changesRef = useRef<HTMLDivElement>(null); const disposeRef = useRef<(() => void) | null>(null); const fileListWidthRef = useRef(fileListWidth);
-  const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes");
+  const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes" || tab === "tree");
   const commit = useMemo(() => ({ fullHash: target.fullHash, theaterId: ctx.theaterId ?? "", repoRel }), [target.fullHash, ctx.theaterId, repoRel]);
   useEffect(() => { let cancelled = false; setState({ kind: "loading" }); ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; }).then((result) => { if (!cancelled) { setState({ kind: "ok", result }); setSelectedPath(result.files[0]?.path ?? null); } }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, repoRel, target.fullHash]);
   useEffect(() => () => disposeRef.current?.(), []);
@@ -371,10 +376,20 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
         window.setTimeout(() => setCopied(false), 1200);
       }).catch(() => undefined);
     };
-    if (tab === "tree") return <div className="history-tree-tab"><div className="repository-filetree-hint">{t("repository.filetree.hint")}</div><div className="repository-filetree-scroll"><CommitTreeView ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} commitFiles={files} onOpenFile={(file) => chooseFile(file, true)} /></div></div>;
+    if (tab === "tree") {
+      const treeSeam = <SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />;
+      const chosen = treeSelection && treeSelection.changed ? files.find((file) => file.path === treeSelection.changed!.path) ?? null : null;
+      return <div className="history-changes-tab history-tree-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}>
+        <div className="repository-ftree-scroll"><CommitTreeView ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} commitFiles={files} selectedPath={treeSelection?.path ?? null} onSelect={setTreeSelection} /></div>
+        {treeSeam}
+        {treeSelection
+          ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={treeSelection.path}>{treeSelection.path}</span>{chosen && <div><span className="history-file-counter">{t("repository.filetree.changedHere")}</span></div>}</div>{chosen ? <HunkView ctx={ctx} repoRel={repoRel} file={chosen} mode="unified" commit={commit} /> : <CommitBlobView ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} path={treeSelection.path} />}</div>
+          : <div className="history-inspector-empty">{t("repository.filetree.pickHint")}</div>}
+      </div></div>;
+    }
     // 세부 정보: 머리는 내용 높이다 — 고정 높이와 그 안의 디바이더가 있으면 독을 키워도 머리는 잘린 채 남고 파일 목록만 늘었다.
     if (tab === "details") return <div className="history-details-tab"><CommitHeader key={target.fullHash} meta={meta} entry={entry} fullHash={target.fullHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} /><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} t={t} /></div>;
-    return <div className="history-changes-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, false)} t={t} /><SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />{selectedFile ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><span className="history-file-counter" aria-live="polite">{t("repository.dock.fileCounter", { index: selectedIndex + 1, count: files.length })}</span><button type="button" aria-label={t("repository.history.previousFile")} title={`${t("repository.history.previousFile")} (K)`} disabled={selectedIndex <= 0} onClick={() => stepFile(-1)}>‹</button><button type="button" aria-label={t("repository.history.nextFile")} title={`${t("repository.history.nextFile")} (J)`} disabled={selectedIndex >= files.length - 1} onClick={() => stepFile(1)}>›</button></div></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={commit} /></div> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}</div></div>;
+    return <div className="history-changes-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, false)} t={t} /><SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />{selectedFile ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><span className="history-file-counter" aria-live="polite">{t("repository.dock.fileCounter", { index: selectedIndex + 1, count: files.length })}</span><button type="button" aria-label={t("repository.history.previousFile")} title={`${t("repository.history.previousFile")} (K)`} disabled={selectedIndex <= 0} onClick={() => stepFile(-1)}><Icon name="parent" size={13} /></button><button type="button" aria-label={t("repository.history.nextFile")} title={`${t("repository.history.nextFile")} (J)`} disabled={selectedIndex >= files.length - 1} onClick={() => stepFile(1)}><Icon name="child" size={13} /></button></div></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={commit} /></div> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}</div></div>;
   })();
   const shortHash = target.entry?.shortHash ?? target.fullHash.slice(0, 9);
   const subject = state.kind === "ok" ? state.result.meta.subject : target.entry?.subject ?? "";
@@ -423,6 +438,8 @@ interface HistoryPanelProps {
   readonly workspace?: boolean;
   readonly workspaceMain?: ReactNode;
   readonly workspaceMainVisible?: boolean;
+  /** 작업 줄의 도구 호스트 — 주어지면 기록 툴바(필터·카운트·정렬·새로고침)를 그 안으로 포털한다. */
+  readonly toolbarHost?: HTMLElement | null;
   readonly compareRequest?: { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string; readonly seq: number } | null;
   readonly inspectRequest?: { readonly fullHash: string; readonly seq: number } | null;
   readonly stashRequest?: { readonly name: string; readonly sha: string; readonly subject: string; readonly seq: number } | null;
@@ -433,11 +450,11 @@ interface HistoryPanelProps {
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={onStashAction} onReturnToHistory={onReturnToHistory} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, toolbarHost = null, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={toolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={onStashAction} onReturnToHistory={onReturnToHistory} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "compareRequest" | "inspectRequest" | "stashRequest" | "onStashAction" | "onReturnToHistory" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, toolbarHost, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "toolbarHost" | "compareRequest" | "inspectRequest" | "stashRequest" | "onStashAction" | "onReturnToHistory" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const [order, setOrder] = useState<LogOrder>(readHistoryOrder);
   // 정렬 축이 바뀌면 커밋 순서와 그래프 레이아웃이 통째로 달라지므로 캐시 슬롯도 분리한다.
@@ -980,7 +997,10 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   };
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}${stripCollapsed ? " is-dock-collapsed" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={handleRootKeyDown} onTransitionEnd={(event) => { if (event.propertyName !== "grid-template-rows" || !target) return; rowRefs.current.get(target.fullHash)?.scrollIntoView({ block: "nearest" }); }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
-      <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}>⇆ {t("repository.compare.pinnedChip", { short: pin.shortHash })} ✕</button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}>⎇ {shortRefName(refFilter)} ✕</button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><OrderIcon order={order} />{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</button><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}<span className="repository-sr-only" role="status">{announce}</span></div>
+      {(() => {
+        const toolbar = <div className="history-toolbar"><div className="history-filter"><Icon name="search" size={13} className="repository-discovery-glyph" /><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="repository-quiet-button history-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setFilterText("")}><Icon name="close" size={12} /></button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}><Icon name="compare" size={12} />{t("repository.compare.pinnedChip", { short: pin.shortHash })}<Icon name="close" size={11} /></button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}><Icon name="branch" size={12} />{shortRefName(refFilter)}<Icon name="close" size={11} /></button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="repository-quiet-button history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><Icon name={order === "topo" ? "branch" : "clock"} size={13} /><span className="history-order-label">{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</span></button><button type="button" className="repository-quiet-button history-refresh" aria-label={t("repository.history.refresh")} title={t("repository.history.refresh")} onClick={refreshHistory}><Icon name="refresh" /></button></>}<span className="repository-sr-only" role="status">{announce}</span></div>;
+        return toolbarHost ? createPortal(toolbar, toolbarHost) : toolbar;
+      })()}
       <div ref={listRef} className={`history-list${pin ? " is-arming" : ""}`} onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} previewed={previewHash === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
@@ -992,7 +1012,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
         <span className="repository-ws-peek-label">{peekBodyLabel}</span>
         <span className="repository-ws-peek-return" aria-hidden="true"><b>{t("repository.dock.peekReturnTo")}</b>{target && <> · {peekTabLabel}</>}</span>
       </button>
-      <button type="button" className="repository-ws-peek-close" aria-label={t("repository.dock.peekClose")} title={t("repository.dock.peekClose")} onClick={closeDetail}>✕</button>
+      <button type="button" className="repository-ws-peek-close" aria-label={t("repository.dock.peekClose")} title={t("repository.dock.peekClose")} onClick={closeDetail}><Icon name="close" /></button>
     </div>}
     {detailOpen && !peekStrip && <>
       {stripCollapsed
@@ -1006,9 +1026,3 @@ function readLogPaneHeight(): number { return readSize(PREFS_LOG_PANE_HEIGHT, LO
 function readSize(key: string, fallback: number, minimum = 0): number { try { const value = Number.parseFloat(localStorage.getItem(key) ?? ""); if (Number.isFinite(value) && value >= minimum) return value; } catch { /* ignore */ } return fallback; }
 function initials(name: string): string { return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?"; }
 function HistoryIcon() { return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3v12M10 7v8M14 11v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><path d="M5 7c1.8 0 2.4 0 5 0M10 11c1.4 0 2.2 0 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>; }
-/** topo는 갈라졌다 합류하는 갈래를, date는 시계를 그린다 — 라벨과 같은 축을 도형으로 한 번 더 말한다. */
-function OrderIcon({ order }: { readonly order: LogOrder }) {
-  return order === "topo"
-    ? <svg className="history-order-icon" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.4 1.6v8.8M3.4 4.2h3.4a1.8 1.8 0 011.8 1.8v4.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
-    : <svg className="history-order-icon" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.4" stroke="currentColor" strokeWidth="1.2" /><path d="M6 3.4V6l1.9 1.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
-}

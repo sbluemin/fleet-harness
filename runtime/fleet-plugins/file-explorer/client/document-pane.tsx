@@ -16,7 +16,7 @@ import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
-import { FileIcon } from "./file-icon.js";
+import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";

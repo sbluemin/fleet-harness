@@ -1,8 +1,7 @@
 import type { ReactElement } from "react";
 
-// 파일 확장자/이름을 다채로운 컬러 아이콘으로 매핑하는 모듈.
-// 각 아이콘은 단색(currentColor) SVG이며, 색은 explorer.css의 --fexp-ic-* 토큰에서 온다.
-// 아이콘 팔레트는 Instrument semantic token을 사용한다.
+// 파일 확장자/이름을 컬러 아이콘으로 매핑하는 공용 모듈 — File Explorer와 Repository가 같은 그림을 쓴다.
+// 각 아이콘은 단색(currentColor) SVG이며, 색은 Console 테마의 identity 토큰(--identity-file-*)에서 직접 온다.
 
 type ShapeKey =
   | "angle"
@@ -34,26 +33,26 @@ interface FolderIconProps {
   readonly open: boolean;
 }
 
-// ── 색 토큰(축약) ── explorer.css의 --fexp-ic-<tone> 변수명과 1:1 대응
+// ── 색 토큰 ── 값은 CSS 색 표현(테마 identity 토큰). Instrument 테마가 역할별 색을 소유한다.
 const TONE = {
-  ts: "ts",
-  js: "js",
-  json: "json",
-  css: "css",
-  html: "html",
-  md: "md",
-  py: "py",
-  go: "go",
-  rust: "rust",
-  shell: "shell",
-  config: "config",
-  image: "image",
-  data: "data",
-  archive: "archive",
-  binary: "binary",
-  ruby: "ruby",
-  folder: "folder",
-  default: "default",
+  ts: "var(--identity-file-code)",
+  js: "var(--identity-file-code)",
+  json: "var(--identity-file-data)",
+  css: "var(--identity-file-code)",
+  html: "var(--identity-file-markup)",
+  md: "var(--identity-file-markup)",
+  py: "var(--identity-file-code)",
+  go: "var(--identity-file-code)",
+  rust: "var(--identity-file-markup)",
+  shell: "var(--identity-file-data)",
+  config: "var(--identity-file-config)",
+  image: "var(--identity-file-markup)",
+  data: "var(--identity-file-data)",
+  archive: "var(--identity-file-config)",
+  binary: "var(--ink-fog)",
+  ruby: "var(--identity-file-error)",
+  folder: "var(--identity-small-tag)",
+  default: "var(--ink-fog)",
 } as const;
 
 // ── 특수 폴더 → 색 토큰 ── 보편적으로 인지되는 폴더만 강조, 나머지는 차분한 기본 폴더색
@@ -357,12 +356,12 @@ export function FileIcon({ name }: FileIconProps): ReactElement {
   const spec = resolveIconSpec(name);
   return (
     <svg
-      className="fexp-file-svg"
+      className="file-icon-svg"
       width="15"
       height="15"
       viewBox="0 0 16 16"
       aria-hidden="true"
-      style={{ color: `var(--fexp-ic-${spec.tone})` }}
+      style={{ color: spec.tone }}
     >
       {SHAPES[spec.shape]}
     </svg>
@@ -373,12 +372,12 @@ export function FolderIcon({ name, open }: FolderIconProps): ReactElement {
   const tone = SPECIAL_FOLDERS[name.toLowerCase()] ?? TONE.folder;
   return (
     <svg
-      className="fexp-file-svg"
+      className="file-icon-svg"
       width="15"
       height="15"
       viewBox="0 0 16 16"
       aria-hidden="true"
-      style={{ color: `var(--fexp-ic-${tone})` }}
+      style={{ color: tone }}
     >
       {open ? SHAPES.folderOpen : SHAPES.folderClosed}
     </svg>

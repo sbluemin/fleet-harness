@@ -198,15 +198,29 @@ export function FilesViewToggle({ mode, onMode, t }: { readonly mode: FilesViewM
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
-export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
-  const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
+/**
+ * 목록 보기의 한 줄 경로 — 디렉터리는 흐리게, 파일명은 진하게, 넘치면 앞쪽을 줄인다(파일명은 항상 남는다).
+ * 바깥 rtl은 말줄임을 왼쪽에 두기 위한 것이고, 안쪽 isolate가 실제 글자 순서를 LTR로 지킨다.
+ */
+export function splitDiffPath(path: string): { readonly dir: string; readonly name: string } {
   // 미추적 디렉터리는 trailing slash 경로로 오므로, 이름은 마지막 비어있지 않은 세그먼트로 취한다
-  const trimmed = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
+  const trimmed = path.endsWith("/") ? path.slice(0, -1) : path;
   const lastSlash = trimmed.lastIndexOf("/");
   const dir = lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : "";
-  const name = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed) + (entry.path.endsWith("/") ? "/" : "");
+  const name = (lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed) + (path.endsWith("/") ? "/" : "");
+  return { dir, name };
+}
+export function FilePathLabel({ path }: { readonly path: string }) {
+  const { dir, name } = splitDiffPath(path);
+  return (
+    <span className="repository-file-name">
+      <span className="repository-file-path"><bdi className="repository-file-path-text">{dir && <span className="repository-file-dir">{dir}</span>}<span className="repository-file-fn">{name}</span></bdi></span>
+    </span>
+  );
+}
+export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
+  const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const statusKey = STATUS_KEY[entry.status];
-
   return (
     <button
       type="button"
@@ -220,10 +234,7 @@ export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
       >
         {entry.status}
       </span>
-      <span className="repository-file-name">
-        <span className="repository-file-fn">{name}</span>
-        {dir && <span className="repository-file-dir">{dir}</span>}
-      </span>
+      <FilePathLabel path={entry.path} />
       <span className="repository-nums">
         {entry.additions > 0 && <span className="repository-additions">+{entry.additions}</span>}
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}

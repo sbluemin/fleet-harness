@@ -110,6 +110,12 @@
       "import": "./i18n/translate.ts",
       "default": "./i18n/translate.ts"
     },
+    "./components/file-icon": {
+      "types": "./components/file-icon.tsx",
+      "browser": "./components/file-icon.tsx",
+      "import": "./components/file-icon.tsx",
+      "default": "./components/file-icon.tsx"
+    },
     "./components/failure-notice": {
       "types": "./components/failure-notice.tsx",
       "browser": "./components/failure-notice.tsx",
