@@ -27,7 +27,8 @@ interface CompareInspectorProps {
 
 type CompareInspectorState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[]; readonly mergeBase?: string; readonly truncated?: boolean }
+  // ok 상태는 자기 쌍을 함께 든다 — 목록을 다음 답이 올 때까지 남기므로 파일 diff 조회는 새 쌍이 아니라 그 목록의 쌍을 향해야 한다.
+  | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[]; readonly pair: { readonly base: string; readonly head: string }; readonly mergeBase?: string; readonly truncated?: boolean }
   | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
   | { readonly kind: "error"; readonly message: string };
 
@@ -66,7 +67,7 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
       }
       const result = await response.json() as CompareResult;
       if (seq !== requestSeqRef.current) return;
-      setState({ kind: "ok", files: result.files, ...(result.mergeBase ? { mergeBase: result.mergeBase } : {}), ...(result.truncated ? { truncated: true } : {}) });
+      setState({ kind: "ok", files: result.files, pair: { base: pair.base, head: pair.head }, ...(result.mergeBase ? { mergeBase: result.mergeBase } : {}), ...(result.truncated ? { truncated: true } : {}) });
       setSelectedPath(result.files[0]?.path ?? null);
     }).catch((error: unknown) => {
       if (seq === requestSeqRef.current) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
@@ -79,7 +80,8 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
   const selectedFile = state.kind === "ok" ? state.files.find((file) => file.path === selectedPath) ?? state.files[0] ?? null : null;
   const additions = state.kind === "ok" ? state.files.reduce((sum, file) => sum + file.additions, 0) : 0;
   const deletions = state.kind === "ok" ? state.files.reduce((sum, file) => sum + file.deletions, 0) : 0;
-  const compareSelection = useMemo(() => ctx.theaterId ? { base: pair.base, head: pair.head, theaterId: ctx.theaterId, repoRel } : null, [ctx.theaterId, pair.base, pair.head, repoRel]);
+  const loadedPair = state.kind === "ok" ? state.pair : pair;
+  const compareSelection = useMemo(() => ctx.theaterId ? { base: loadedPair.base, head: loadedPair.head, theaterId: ctx.theaterId, repoRel } : null, [ctx.theaterId, loadedPair.base, loadedPair.head, repoRel]);
   const empty = state.kind === "loading"
     ? t("repository.compare.comparing")
     : state.kind === "notice"

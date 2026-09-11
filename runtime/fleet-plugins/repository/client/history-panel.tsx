@@ -46,7 +46,8 @@ export function chooseComparePair(
   const newer = anchorIsOlder ? target : anchor;
   return { base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash };
 }
-type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
+// ok 상태는 자기 커밋 해시를 함께 든다 — 본문을 다음 답이 올 때까지 남기므로, 자식 조회(diff·트리·blob)는 대상이 아니라 "실제로 그린" 커밋을 향해야 한다.
+type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult; readonly fullHash: string } | { readonly kind: "error"; readonly message: string };
 type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
 
 function readHistoryCacheRestore(historyCacheKey: string, pendingSearchTargetHash: string | null): HistoryCacheRestore | null {
@@ -345,7 +346,9 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
   const [filesView, setFilesView] = useState<FilesViewMode>(readFilesViewMode);
   const changesRef = useRef<HTMLDivElement>(null); const disposeRef = useRef<(() => void) | null>(null); const fileListWidthRef = useRef(fileListWidth);
   const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes" || tab === "tree");
-  const commit = useMemo(() => ({ fullHash: target.fullHash, theaterId: ctx.theaterId ?? "", repoRel }), [target.fullHash, ctx.theaterId, repoRel]);
+  // 남겨 둔 본문이 옛 커밋의 것이면 파일 diff·트리·blob도 옛 커밋을 향한다 — 새 해시로 옛 경로를 조회하면 빈 diff가 잠깐 그려진다.
+  const loadedHash = state.kind === "ok" ? state.fullHash : target.fullHash;
+  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", repoRel }), [loadedHash, ctx.theaterId, repoRel]);
   useEffect(() => {
     let cancelled = false;
     // 커밋 사이를 옮길 때 본문을 "불러오는 중"으로 갈아 끼우지 않는다 — 독이 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면.
@@ -354,7 +357,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
     setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */
     ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) })
       .then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; })
-      .then((result) => { if (!cancelled) { setState({ kind: "ok", result }); setSelectedPath(result.files[0]?.path ?? null); } })
+      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath(result.files[0]?.path ?? null); } })
       .catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); })
       .finally(() => { if (!cancelled) setPending(false); });
     return () => { cancelled = true; };
@@ -396,15 +399,15 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
       const treeSeam = <SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />;
       const chosen = treeSelection && treeSelection.changed ? files.find((file) => file.path === treeSelection.changed!.path) ?? null : null;
       return <div className="history-changes-tab history-tree-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}>
-        <div className="repository-ftree-scroll">{/* 폴더 캐시는 커밋에 묶인다 — 키로 리마운트해야 펼쳐 둔 하위 폴더가 옛 커밋의 항목을 계속 그리지 않는다 */}<CommitTreeView key={target.fullHash} ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} commitFiles={files} selectedPath={treeSelection?.path ?? null} onSelect={setTreeSelection} /></div>
+        <div className="repository-ftree-scroll">{/* 폴더 캐시는 커밋에 묶인다 — 키로 리마운트해야 펼쳐 둔 하위 폴더가 옛 커밋의 항목을 계속 그리지 않는다 */}<CommitTreeView key={loadedHash} ctx={ctx} repoRel={repoRel} fullHash={loadedHash} commitFiles={files} selectedPath={treeSelection?.path ?? null} onSelect={setTreeSelection} /></div>
         {treeSeam}
         {treeSelection
-          ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={treeSelection.path}>{treeSelection.path}</span>{chosen && <div><span className="history-file-counter">{t("repository.filetree.changedHere")}</span></div>}</div>{chosen ? <HunkView ctx={ctx} repoRel={repoRel} file={chosen} mode="unified" commit={commit} /> : <CommitBlobView ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} path={treeSelection.path} />}</div>
+          ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={treeSelection.path}>{treeSelection.path}</span>{chosen && <div><span className="history-file-counter">{t("repository.filetree.changedHere")}</span></div>}</div>{chosen ? <HunkView ctx={ctx} repoRel={repoRel} file={chosen} mode="unified" commit={commit} /> : <CommitBlobView ctx={ctx} repoRel={repoRel} fullHash={loadedHash} path={treeSelection.path} />}</div>
           : <div className="history-inspector-empty">{t("repository.filetree.pickHint")}</div>}
       </div></div>;
     }
     // 세부 정보: 머리는 내용 높이다 — 고정 높이와 그 안의 디바이더가 있으면 독을 키워도 머리는 잘린 채 남고 파일 목록만 늘었다.
-    if (tab === "details") return <div className="history-details-tab"><CommitHeader key={target.fullHash} meta={meta} entry={entry} fullHash={target.fullHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} /><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} t={t} /></div>;
+    if (tab === "details") return <div className="history-details-tab"><CommitHeader key={loadedHash} meta={meta} entry={entry} fullHash={loadedHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} /><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} t={t} /></div>;
     return <div className="history-changes-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, false)} t={t} /><SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />{selectedFile ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><span className="history-file-counter" aria-live="polite">{t("repository.dock.fileCounter", { index: selectedIndex + 1, count: files.length })}</span><button type="button" aria-label={t("repository.history.previousFile")} title={`${t("repository.history.previousFile")} (K)`} disabled={selectedIndex <= 0} onClick={() => stepFile(-1)}><Icon name="parent" size={13} /></button><button type="button" aria-label={t("repository.history.nextFile")} title={`${t("repository.history.nextFile")} (J)`} disabled={selectedIndex >= files.length - 1} onClick={() => stepFile(1)}><Icon name="child" size={13} /></button></div></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={commit} /></div> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}</div></div>;
   })();
   const shortHash = target.entry?.shortHash ?? target.fullHash.slice(0, 9);
