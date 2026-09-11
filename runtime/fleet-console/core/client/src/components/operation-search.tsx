@@ -504,11 +504,15 @@ export function OperationSearch({
     if (entry.activity === "ended") {
       actions.push({ id: "resume", label: t("chrome.operationSearch.actionResume"), glyph: "operation-resume", run: () => runAction({ kind: "resume-operation", operationId: entry.operationId }, false) });
     }
-    actions.push(
-      { id: "rename", label: t("chrome.operationSearch.actionRename"), glyph: "operation-rename", run: () => runAction({ kind: "rename-operation", operationId: entry.operationId }, false) },
-      { id: "minimize", label: t("chrome.operationSearch.actionMinimize"), glyph: "operation-minimize", run: () => runAction({ kind: "minimize-operation", operationId: entry.operationId }, false) },
-      { id: "close", label: t("chrome.operationSearch.actionClose"), glyph: "operation-close", danger: true, run: () => runAction({ kind: "close-operation", operationId: entry.operationId }, false) },
-    );
+    // 이름 변경·최소화는 사이드바가 소비하는 요청이다. 모바일 셸에는 사이드바가 없어 요청이 아무 데도
+    // 닿지 않고 나중에 데스크톱 사이드바가 서면 뒤늦게 재생되므로, 그 표면에서는 띠에 올리지 않는다.
+    if (getViewModeSnapshot().effective !== "mobile") {
+      actions.push(
+        { id: "rename", label: t("chrome.operationSearch.actionRename"), glyph: "operation-rename", run: () => runAction({ kind: "rename-operation", operationId: entry.operationId }, false) },
+        { id: "minimize", label: t("chrome.operationSearch.actionMinimize"), glyph: "operation-minimize", run: () => runAction({ kind: "minimize-operation", operationId: entry.operationId }, false) },
+      );
+    }
+    actions.push({ id: "close", label: t("chrome.operationSearch.actionClose"), glyph: "operation-close", danger: true, run: () => runAction({ kind: "close-operation", operationId: entry.operationId }, false) });
     return actions;
   };
 
@@ -536,11 +540,12 @@ export function OperationSearch({
   };
 
   const handleInputChange = (value: string) => {
-    // 접두 문법은 스위치를 모르는 손을 위한 것이다 — 빈 입력의 `>`는 명령 모드로 옮기고 접두는 지운다.
-    const prefixMode = text === "" && value.length === 1 ? paletteModeForPrefix(value) : null;
+    // 접두 문법은 스위치를 모르는 손을 위한 것이다 — 빈 입력에 `>`로 시작하는 값이 들어오면(타자든
+    // `>sidebar` 붙여넣기든) 명령 모드로 옮기고 접두 뒤를 질의로 남긴다.
+    const prefixMode = text === "" && mode === "operations" ? paletteModeForPrefix(value[0] ?? "") : null;
     if (prefixMode) {
       setMode(prefixMode);
-      setText("");
+      setText(value.slice(1));
       return;
     }
     setText(value);
@@ -710,7 +715,7 @@ export function OperationSearch({
           {!hasResults ? (
             <p className="operation-search-empty">
               {emptyMessage}
-              {mode === "operations" ? <span className="operation-search-empty-hint">{t("chrome.operationSearch.noMatchingOperationsHint")}</span> : null}
+              {mode === "operations" ? <span className="operation-search-empty-hint">{t("chrome.operationSearch.noMatchingOperationsHint", { mod: modKey })}</span> : null}
             </p>
           ) : mode !== "operations" ? (
             <>
@@ -748,7 +753,7 @@ export function OperationSearch({
                             {command.subject && section.id === "current-operation" ? <small>{command.subject}</small> : null}
                           </span>
                           {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
-                          {command.undoable ? <span className="operation-search-undoable">{t("chrome.operationSearch.undoable")}</span> : null}
+                          {command.undoable ? <span className="operation-search-undoable">{t("chrome.operationSearch.undoable", { mod: modKey })}</span> : null}
                           {command.shortcut ? <span className="operation-search-shortcut">{command.shortcut.map((key) => <kbd key={key}>{key === "Mod" ? modKey : key}</kbd>)}</span> : null}
                         </button>
                       );
@@ -838,7 +843,7 @@ export function OperationSearch({
           <span><kbd>↵</kbd>{t(mode === "operations" ? "chrome.operationSearch.legendOpen" : "chrome.operationSearch.legendRun")}</span>
           {mode === "operations" ? <span><kbd>→</kbd>{t("chrome.operationSearch.legendActions")}</span> : null}
           <span><kbd>esc</kbd>{t("chrome.operationSearch.legendClose")}</span>
-          <span className="operation-search-legend-switch">{t(mode === "operations" ? "chrome.operationSearch.legendToCommands" : "chrome.operationSearch.legendToOperations")}</span>
+          <span className="operation-search-legend-switch">{t(mode === "operations" ? "chrome.operationSearch.legendToCommands" : "chrome.operationSearch.legendToOperations", { mod: modKey })}</span>
         </div>
       </section>
     </div>
