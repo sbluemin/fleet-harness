@@ -52,6 +52,9 @@ const PROBE_TIMEOUT_MS = 15_000;
 // 같은 바이너리를 다시 묻기 전 유지 시간. Claude Code 업데이트는 심볼릭링크 뒤에서 바뀌어
 // 경로만으로는 알 수 없으므로, 설정 화면이 이 주기마다 새 로스터를 보게 한다.
 const DEFAULT_TTL_MS = 5 * 60_000;
+// 실패한 탐침을 다시 띄우기 전 유지 시간. 승인 없는 GET이 캐시 미스마다 프로세스를 세우지
+// 않도록 실패도 짧게 붙들어 둔다 — 설치를 고친 사용자는 "다시 읽기"(승인 POST)로 즉시 재시도한다.
+const FAILURE_TTL_MS = 30_000;
 
 /** 탐침 환경에서 걷어내는 키 — 자격증명과 "이미 Claude 안에 있다"는 표식. */
 const STRIPPED_ENV_KEYS = [
@@ -76,7 +79,10 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
       cache = null;
       return { available: false, agents: [], version: null, error: "cli_not_found" };
     }
-    if (cache && cache.bin === resolved.bin && now() - cache.at < ttlMs) return cache.snapshot;
+    if (cache && cache.bin === resolved.bin) {
+      const age = now() - cache.at;
+      if (age < (cache.snapshot.available ? ttlMs : FAILURE_TTL_MS)) return cache.snapshot;
+    }
     let snapshot: ClaudeBuiltInAgentsSnapshot;
     try {
       const payload = await runProbe(resolved, deps.env ?? process.env);
@@ -84,8 +90,7 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
     } catch {
       snapshot = { available: false, agents: [], version: null, error: "probe_failed" };
     }
-    // 실패는 캐시하지 않는다 — 다음 열람이 다시 묻는다.
-    cache = snapshot.available ? { bin: resolved.bin, at: now(), snapshot } : null;
+    cache = { bin: resolved.bin, at: now(), snapshot };
     return snapshot;
   };
 
