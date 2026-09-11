@@ -10,6 +10,7 @@ export * from "./workspace-dir/workspace-dir.js";
 export {
   createGlobalOptionsService,
   createGlobalOptionsStore,
+  sanitizeClaudeCodeDisabledAgents,
   sanitizeGlobalOptionsData,
 } from "./data-dir/settings/store.js";
 export type {

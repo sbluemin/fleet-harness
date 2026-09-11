@@ -49,6 +49,11 @@ export interface InjectAgentCliProfileOptions {
    * 터미널에서 묻는다. argv 표면에만 실린다(SDK 표면은 `session.ts` 참조).
    */
   readonly claudeCodeSkipPermissions?: boolean;
+  /**
+   * 이 세션에서 끌 Claude Code 내장 서브에이전트 이름들. 생략·빈 목록이면 전부 남는다.
+   * argv와 SDK 두 표면에 같은 규칙으로 실린다(`session.ts`).
+   */
+  readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
   readonly origin?: ClaudeSessionOrigin;
   /**
@@ -141,6 +146,7 @@ export async function injectAgentCliProfile(
         ? { kind: "external" }
         : options.origin ?? { kind: "new" },
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
+      ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
@@ -169,6 +175,7 @@ export async function injectAgentCliProfile(
       ...(options.claudeCodeSkipPermissions !== undefined
         ? { claudeCodeSkipPermissions: options.claudeCodeSkipPermissions }
         : {}),
+      ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(

@@ -54,6 +54,27 @@ describe("terminal settings routes", () => {
     expect(harness.currentData()).toEqual({ version: 1, claudeCodeSkipPermissions: true });
   });
 
+  it("PUT /plugins/terminal/settings stores the built-in subagent opt-out and clears it on an empty list", async () => {
+    const harness = createRouteHarness({
+      body: { claudeCodeDisabledAgents: ["Explore", " Plan ", "", "Agent(x)", "Explore"] },
+      data: { version: 1 },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    // 저장소와 같은 정화기 — 공백은 다듬고, 빈 이름·규칙 구분자·중복은 버린다.
+    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: ["Explore", "Plan"] });
+    expect(harness.currentData()).toEqual({ version: 1, claudeCodeDisabledAgents: ["Explore", "Plan"] });
+
+    const cleared = createRouteHarness({
+      body: { claudeCodeDisabledAgents: [] },
+      data: { version: 1, claudeCodeDisabledAgents: ["Explore"] },
+    });
+    await cleared.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(cleared.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: [] });
+    // 빈 목록은 키를 지운다 — "전부 켜짐"은 저장된 값이 아니라 키의 부재다.
+    expect(cleared.currentData()).toEqual({ version: 1 });
+  });
+
   it("PUT /plugins/terminal/settings rejects payloads with unknown extra keys", async () => {
     const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: true, consolePortMode: "static" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });

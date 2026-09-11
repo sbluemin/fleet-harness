@@ -1,3 +1,4 @@
+import { buildClaudeAgentDenyRules } from "../claude-agent-rules.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
@@ -9,7 +10,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
       pluginRoot,
     ]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildSettingsArgs(context.skillOverrides),
+    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents),
     ...buildSearchToolArgs(),
     ...buildPermissionArgs(context.claudeCodeSkipPermissions),
   ];
@@ -69,12 +70,25 @@ function buildSearchToolArgs(): string[] {
 /**
  * `--settings`는 인라인 JSON을 받아 flag 소스로 병합한다. 사용자·프로젝트 설정을
  * 대체하지 않으므로 여기서는 Fleet이 강제하는 키만 싣는다.
+ *
+ * 내장 서브에이전트 옵트아웃은 `permissions.deny`의 `Agent(<name>)` 규칙이다. 실측(2.1.268):
+ * 규칙에 걸린 이름은 Agent 도구의 선택지에서 빠지고, 그래도 부르면 자식이
+ * `Agent type '<name>' has been denied by permission rule 'Agent(<name>)'`로 거절한다.
+ * `--dangerously-skip-permissions` 런치에서도 deny 규칙은 살아 있다. `system/init`의
+ * `agents` 목록은 이 규칙을 반영하지 않으므로 그 목록으로 적용 여부를 판정하지 말 것.
  */
 function buildSettingsArgs(
   skillOverrides: AgentCliInjectionContext["skillOverrides"],
+  disabledAgents: AgentCliInjectionContext["claudeCodeDisabledAgents"],
 ): string[] {
-  if (skillOverrides === undefined || Object.keys(skillOverrides).length === 0) return [];
-  return ["--settings", JSON.stringify({ skillOverrides })];
+  const settings: Record<string, unknown> = {};
+  if (skillOverrides !== undefined && Object.keys(skillOverrides).length > 0) {
+    settings.skillOverrides = skillOverrides;
+  }
+  const deny = buildClaudeAgentDenyRules(disabledAgents);
+  if (deny.length > 0) settings.permissions = { deny };
+  if (Object.keys(settings).length === 0) return [];
+  return ["--settings", JSON.stringify(settings)];
 }
 
 /**

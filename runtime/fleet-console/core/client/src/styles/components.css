@@ -754,6 +754,13 @@
   gap: var(--space-3);
 }
 
+/* 설정 행의 선택기는 ModelPicker와 같은 34px 한 높이로 선다 — 스위치(26px)·칩과 같은 무게이고,
+   fc-select 기본 42px는 본문 폼의 높이라 행마다 간격이 달라진다. 글자와 패딩은 그대로 둔다. */
+.global-settings-row .fc-select__trigger,
+.fc-settings-row .fc-select__trigger {
+  min-height: 34px;
+}
+
 /* 설정 행의 선택기 값은 한 줄로 말줄임한다 — 폭은 fc-select 기본과 ModelPicker가 각자 진다. */
 .global-settings-row .fc-select__value,
 .fc-settings-row .fc-select__value {

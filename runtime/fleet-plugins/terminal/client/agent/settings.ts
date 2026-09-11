@@ -59,6 +59,8 @@ export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   readonly claudeCodeSkipPermissions: boolean;
+  /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
+  readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -71,6 +73,7 @@ export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly claudeCodeSkipPermissions: boolean }
+  | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -127,6 +130,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
     || typeof payload.claudeCodeSkipPermissions !== "boolean"
+    || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
@@ -139,6 +143,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
     claudeCodeSkipPermissions: payload.claudeCodeSkipPermissions,
+    claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
@@ -146,6 +151,10 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
   };
+}
+
+function isStringList(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {
@@ -178,7 +187,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -252,6 +261,9 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "claudeCodeSystemPrompt") {
     return { claudeCodeSystemPrompt: state.claudeCodeSystemPrompt };
+  }
+  if (field === "claudeCodeDisabledAgents") {
+    return { claudeCodeDisabledAgents: state.claudeCodeDisabledAgents };
   }
   if (field === "claudeCodeSkipPermissions") {
     return { claudeCodeSkipPermissions: state.claudeCodeSkipPermissions };

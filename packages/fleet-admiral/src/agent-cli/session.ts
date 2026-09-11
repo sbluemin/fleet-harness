@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ClaudeGatewaySystemPrompt } from "@dotobokuri/core-agent/claude";
 
+import { buildClaudeAgentDenyRules } from "./claude-agent-rules.js";
 import { createAgentCliPlugin } from "./plugin/index.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
 import type { ClaudeSessionCoordinate, CreateAgentCliPluginOptions } from "./types.js";
@@ -42,6 +43,8 @@ export interface ClaudeSessionSdkRequest {
   readonly forkSession?: boolean;
   readonly permissionMode: "bypassPermissions";
   readonly systemPrompt?: ClaudeGatewaySystemPrompt;
+  /** 옵트아웃한 내장 서브에이전트의 `Agent(<name>)` 규칙. 비어 있으면 키를 싣지 않는다. */
+  readonly disallowedTools?: readonly string[];
 }
 
 export interface ClaudeSessionSdkProjection {
@@ -56,6 +59,8 @@ export interface ClaudeSessionHandle {
   readonly pluginRoots: readonly string[];
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
   readonly claudeCodeSystemPrompt: "on" | "off";
+  /** 이 세션에서 끈 내장 서브에이전트 이름들. 생략은 전부 남는다는 뜻이다. */
+  readonly claudeCodeDisabledAgents?: readonly string[];
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
 }
@@ -70,6 +75,12 @@ export interface PrepareClaudeSessionOptions
    * 켤 때만 `{ mode: "preset" }`을 싣는다. 그 사상을 호스트가 각자 하면 한쪽만 따라온다.
    */
   readonly claudeCodeSystemPrompt?: "on" | "off";
+  /**
+   * 이 세션에서 끌 Claude Code 내장 서브에이전트 이름들. 생략·빈 목록이면 전부 남는다.
+   * 두 표면이 같은 규칙을 받는다 — CLI는 `--settings`의 `permissions.deny`, SDK는
+   * `disallowedTools`로, 철자는 `claude-agent-rules.ts`가 소유한다.
+   */
+  readonly claudeCodeDisabledAgents?: readonly string[];
 }
 
 /**
@@ -85,6 +96,8 @@ export async function prepareClaudeSession(
 ): Promise<ClaudeSessionHandle> {
   const coordinate = resolveSessionCoordinate(options.origin);
   const claudeCodeSystemPrompt = options.claudeCodeSystemPrompt ?? "on";
+  const claudeCodeDisabledAgents = [...new Set(options.claudeCodeDisabledAgents ?? [])];
+  const agentDenyRules = buildClaudeAgentDenyRules(claudeCodeDisabledAgents);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
   const plugin = await createAgentCliPlugin(options);
   return {
@@ -94,6 +107,7 @@ export async function prepareClaudeSession(
     pluginRoots: plugin.pluginRoots,
     ...(skillOverrides ? { skillOverrides } : {}),
     claudeCodeSystemPrompt,
+    ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
     sdk: {
       options: {
         plugins: plugin.pluginRoots.map((root) => ({ path: root })),
@@ -111,6 +125,8 @@ export async function prepareClaudeSession(
         // 실제로는 전부 통과하므로, 그 게이트가 실제로 설 때까지 이 값은 bypass로 남는다.
         permissionMode: "bypassPermissions",
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
+        // 옵트아웃한 내장 서브에이전트는 SDK 표면에서도 같은 규칙으로 빠진다.
+        ...(agentDenyRules.length > 0 ? { disallowedTools: agentDenyRules } : {}),
       },
     },
   };

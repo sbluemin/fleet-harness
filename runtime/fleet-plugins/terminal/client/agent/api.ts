@@ -5,7 +5,7 @@ import {
   type AgentChatCatalog,
   type AgentChatJobDetail,
 } from "./chat/chat-events.js";
-import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
+import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, ClaudeBuiltInAgentsState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -49,6 +49,24 @@ export async function fetchAgentCliState(signal?: AbortSignal): Promise<AgentCli
   const payload = await response.json() as AgentCliState;
   if (!Array.isArray(payload.clis)) throw new AgentApiError(response.status, "Invalid Agent CLI state response");
   return payload;
+}
+
+export async function fetchClaudeBuiltInAgents(signal?: AbortSignal, options?: { readonly refresh?: boolean }): Promise<ClaudeBuiltInAgentsState> {
+  // 강제 갱신은 서버가 Claude를 다시 띄우는 쓰기성 동작이라 origin 승인이 붙는 POST로 간다.
+  const response = options?.refresh
+    ? await fetch("/plugins/terminal/agent/agent-cli/claude-agents/refresh", { method: "POST", signal })
+    : await fetch("/plugins/terminal/agent/agent-cli/claude-agents", { signal });
+  await assertOk(response);
+  const payload = await response.json() as Partial<ClaudeBuiltInAgentsState>;
+  if (typeof payload.available !== "boolean" || !Array.isArray(payload.agents)) {
+    throw new AgentApiError(response.status, "Invalid Claude Code agents response");
+  }
+  return {
+    available: payload.available,
+    agents: payload.agents.filter((entry): entry is string => typeof entry === "string"),
+    version: typeof payload.version === "string" ? payload.version : null,
+    error: payload.error === "cli_not_found" || payload.error === "probe_failed" ? payload.error : null,
+  };
 }
 
 export async function fetchAgentCliDiagnostics(signal?: AbortSignal): Promise<AgentCliDiagnostics> {

@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { ClaudeCodeSystemPromptMode, GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
+import { sanitizeClaudeCodeDisabledAgents, type ClaudeCodeSystemPromptMode, type GlobalOptionsData, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
@@ -31,6 +31,7 @@ interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
   readonly claudeCodeSystemPrompt?: unknown;
   readonly claudeCodeSkipPermissions?: unknown;
+  readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -42,6 +43,7 @@ type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly claudeCodeSkipPermissions: boolean }
+  | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -54,6 +56,8 @@ export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   readonly claudeCodeSkipPermissions: boolean;
+  /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
+  readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -143,7 +147,13 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         ));
         return true;
       }
-      const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
+      const updated = deps.globalOptionsService.update((current) => {
+        if ("claudeCodeDisabledAgents" in update && update.claudeCodeDisabledAgents === undefined) {
+          const { claudeCodeDisabledAgents: _cleared, ...rest } = current;
+          return rest;
+        }
+        return { ...current, ...update };
+      });
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         updated, deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
       ));
@@ -170,6 +180,7 @@ function toTerminalSettingsState(
       : data.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
     claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(data),
+    claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(data),
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -197,6 +208,11 @@ export function resolveClaudeCodeSkipPermissions(data: GlobalOptionsData): boole
   return data.claudeCodeSkipPermissions === true;
 }
 
+/** 키가 없으면 빈 목록 — 규칙 없는 런치가 이미 하는 일이다. */
+export function resolveClaudeCodeDisabledAgents(data: GlobalOptionsData): readonly string[] {
+  return data.claudeCodeDisabledAgents ?? [];
+}
+
 export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
   return data.agentIdleDormantMinutes === undefined
     ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
@@ -218,6 +234,12 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     return typeof body.claudeCodeSkipPermissions === "boolean"
       ? { claudeCodeSkipPermissions: body.claudeCodeSkipPermissions }
       : null;
+  }
+  if (keys[0] === "claudeCodeDisabledAgents") {
+    // 저장소와 같은 정화기를 거친다. 빈 목록은 키를 지워 "전부 켜짐"으로 돌아간다.
+    if (!Array.isArray(body.claudeCodeDisabledAgents)) return null;
+    if (!body.claudeCodeDisabledAgents.every((entry) => typeof entry === "string")) return null;
+    return { claudeCodeDisabledAgents: sanitizeClaudeCodeDisabledAgents(body.claudeCodeDisabledAgents) };
   }
   if (keys[0] === "claudeCodeSystemPrompt") {
     return body.claudeCodeSystemPrompt === "on" || body.claudeCodeSystemPrompt === "off"
