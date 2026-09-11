@@ -70,7 +70,9 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
   const now = deps.now ?? Date.now;
   const ttlMs = deps.ttlMs ?? DEFAULT_TTL_MS;
   const runProbe = deps.runProbe ?? spawnInitProbe;
-  let cache: { readonly bin: string; readonly at: number; readonly snapshot: ClaudeBuiltInAgentsSnapshot } | null = null;
+  // 캐시 키는 실행 명령 전체다 — Windows의 npm `.cmd` shim은 `bin`이 전부 cmd.exe이고 실제
+  // Claude 경로는 `prefixArgs`에 있어서, bin만 보면 경로를 바꾼 뒤에도 옛 설치의 로스터가 남는다.
+  let cache: { readonly key: string; readonly at: number; readonly snapshot: ClaudeBuiltInAgentsSnapshot } | null = null;
   let inflight: Promise<ClaudeBuiltInAgentsSnapshot> | null = null;
 
   const probe = async (): Promise<ClaudeBuiltInAgentsSnapshot> => {
@@ -79,7 +81,8 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
       cache = null;
       return { available: false, agents: [], version: null, error: "cli_not_found" };
     }
-    if (cache && cache.bin === resolved.bin) {
+    const key = JSON.stringify([resolved.bin, ...resolved.prefixArgs]);
+    if (cache && cache.key === key) {
       const age = now() - cache.at;
       if (age < (cache.snapshot.available ? ttlMs : FAILURE_TTL_MS)) return cache.snapshot;
     }
@@ -90,7 +93,7 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
     } catch {
       snapshot = { available: false, agents: [], version: null, error: "probe_failed" };
     }
-    cache = { bin: resolved.bin, at: now(), snapshot };
+    cache = { key, at: now(), snapshot };
     return snapshot;
   };
 
