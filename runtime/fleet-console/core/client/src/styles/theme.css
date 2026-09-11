@@ -385,7 +385,7 @@
   --weight-medium: 600;
   --weight-bold: 700;
 
-  --chrome-band-height: 44px;
+  --chrome-band-height: 36px;
 
   /* 전면 오버레이 층 사다리 — 값이 아니라 순서가 계약이다: 공지·모달(overlay) < 라이트박스 <
      모드 커튼 < 온보딩 투어 < teardown(사라지는 콘솔보다 급한 화면은 없다). 번들이 달라도

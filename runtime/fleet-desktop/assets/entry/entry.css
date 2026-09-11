@@ -19,7 +19,7 @@
   --coral: oklch(68% 0.13 25);
   --hairline: oklch(29% 0.018 245);
   --radius-xs: 6px;
-  --chrome-band-height: 44px;
+  --chrome-band-height: 36px;
   --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, serif;
   --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
