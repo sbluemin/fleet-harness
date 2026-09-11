@@ -219,6 +219,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [worktreesError, setWorktreesError] = useState(false);
   const [worktreesRetry, setWorktreesRetry] = useState(0);
   const [worktreesForRepoRel, setWorktreesForRepoRel] = useState<string | null>(null);
+  // 조회 진행 여부는 별도로 든다 — worktreesForRepoRel은 실패 시 null로 남아(복원 효과의 게이트) 회전 판정에 쓸 수 없다.
+  const [worktreesPending, setWorktreesPending] = useState(false);
   // 마지막으로 성공한 워크트리 조회의 체크아웃 — 같은 체크아웃의 재조회는 목록을 비우지 않는다.
   const loadedWorktreesRepoRelRef = useRef<string | null>(null);
   const [repoRel, setRepoRel] = useState(() => ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : "");
@@ -461,6 +463,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (loadedWorktreesRepoRelRef.current !== requestedRepoRel) setWorktrees([]);
     setWorktreesError(false);
     setWorktreesForRepoRel(null);
+    setWorktreesPending(true);
     ctx.api.fetch("repository", "worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
       .then((response) => response.json() as Promise<WorktreesResult>)
       .then((value) => {
@@ -479,7 +482,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
           return;
         }
         setWorktreesError(true);
-      });
+      })
+      .finally(() => { if (!cancelled) setWorktreesPending(false); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, transitionRepository, worktreesRetry]);
   useEffect(() => {
@@ -882,7 +886,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{syncNoticeMessage ?? ""}</span>
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={picker} worktrees={linkedWorktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesForRepoRel !== repoRel} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={picker} worktrees={linkedWorktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           {/* 작업 줄 하나가 소스 세그먼트 · 기록 도구(포털) · 원격 동사를 함께 진다. 컨테이너 폭에 따라

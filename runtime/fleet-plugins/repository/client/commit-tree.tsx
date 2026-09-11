@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
@@ -178,6 +178,9 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
   const t = getT(ctx.language);
   const [state, setState] = useState<BlobState>({ kind: "loading" });
   const [pending, setPending] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 새 내용이 오면 맨 위에서 읽기 시작한다 — 표를 제자리에서 갈아 끼우므로 옛 파일의 스크롤이 남는다(HunkView와 같은 결).
+  useLayoutEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [state]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     let cancelled = false;
@@ -206,7 +209,7 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
   if (state.kind === "binary") return <div className="repository-hunk-loading">{t("repository.filetree.binary")}</div>;
   if (state.kind === "error") return <div className="repository-hunk-error">{t(state.code === "file_not_found" ? "repository.filetree.fileMissing" : "repository.filetree.contentError")}</div>;
   return <div className={`repository-hunk-wrap${pending ? " is-stale" : ""}`} aria-busy={pending || undefined}>
-    <div className="repository-hunk-scroll">
+    <div ref={scrollRef} className="repository-hunk-scroll">
       <table className="repository-hunk-table repository-blob-table">
         <tbody>
           {state.lines.map((line, index) => <tr key={index}>

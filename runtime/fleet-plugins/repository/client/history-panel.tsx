@@ -715,6 +715,11 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       // 새 목록이 올 때까지 옛 목록이 남고, 필터·선택·비교·스태시·독 접힘·스크롤만 초기값으로 돌아간다.
       revealKeyRef.current = null;
       pendingRevealRef.current = null;
+      // 부모는 재착지에서 one-shot 요청을 null로 되돌려 다음 요청이 seq 1부터 다시 오른다 — 리마운트가 없으니
+      // 처리 순번도 함께 0으로 돌려야 다음 비교·검사·스태시 클릭이 "이미 처리한 요청"으로 버려지지 않는다.
+      handledCompareRequestSeqRef.current = 0;
+      handledInspectRequestSeqRef.current = 0;
+      handledStashRequestSeqRef.current = 0;
       setFilterText("");
       setTarget(null);
       setPin(null);
@@ -745,6 +750,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
       setLoadingMore(false);
       setLoadMoreError(null);
+      // 진행 중이던 조회는 이 슬롯 전환으로 취소돼 자기 finally를 실행하지 못한다 — 캐시가 즉시 채운 뒤 회전이 남지 않게 여기서 끝낸다.
+      setReloading(false);
       return;
     }
     loadedCacheKeyRef.current = null;
