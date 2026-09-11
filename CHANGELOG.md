@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.89.0] - 2026-09-11
+
+### fleet-cli
+
+#### Added
+- The `fleet` launcher honors the built-in subagent opt-out chosen in Console Settings.
+
+### fleet-console
+
+#### Added
+- Settings > Harness > Claude Code lists the built-in subagents reported by the installed Claude Code and lets you turn individual ones off for new sessions; the list is read from the CLI itself, so an update that adds or removes a subagent is reflected without a Fleet change.
+- The search palette now has an Operations / Commands switch beside the search field (the `>` prefix still reaches Commands); Operation rows open an inline action strip with the right arrow (open, resume, rename, minimize, close), and a legend at the bottom shows the palette's own keys.
+- The Commands empty screen is a grouped home (recent, current Operation, Theater, view, panels, Console) with a glyph per row and section, keyboard shortcut hints on rows, and the destructive close command shown in coral with an undo marker.
+
+#### Changed
+- `Cmd/Ctrl+K` now closes an open palette and returns Commands to Operations, and `Cmd/Ctrl+P` switches an open palette to Commands instead of doing nothing.
+- Commands match in both languages (`>sidebar` finds the sidebar toggle in a Korean UI), Operation search uses the same fuzzy rule as commands, and results list the active Theater first with recently focused Operations on top.
+
+#### Fixed
+- Repository panel no longer flickers on refresh, sync, staging, branch selection, or commit navigation: the branch tree, history list, changed-file count, and inspector keep the current content on screen until the new data arrives, and only the refresh glyph spins while a reload is in flight.
+
 ## [1.88.0] - 2026-09-09
 
 ### fleet-console
