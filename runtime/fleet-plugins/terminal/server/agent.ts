@@ -115,6 +115,7 @@ export async function registerAgentRoutes(
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/claude-agents", summary: "Read the installed Claude Code's built-in subagent roster.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "POST", path: "/agent-cli/claude-agents/refresh", summary: "Re-read the installed Claude Code's built-in subagent roster.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "PUT", path: "/agent-cli/path", summary: "Save an Agent CLI executable path.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Terminal Plugin", gate: "loopback", transport: "sse" },
@@ -312,8 +313,15 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     if (path === "/agent-cli/claude-agents") {
       if (req.method !== "GET") return methodNotAllowed(res);
-      const refresh = new URL(req.url ?? "/", "http://localhost").searchParams.get("refresh") === "1";
-      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read({ refresh }));
+      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read());
+      return true;
+    }
+    if (path === "/agent-cli/claude-agents/refresh") {
+      // 강제 갱신은 캐시를 버리고 Claude를 다시 띄우므로, 읽기와 달리 origin 승인을 요구한다 —
+      // 응답을 못 읽는 교차 출처 GET만으로 프로세스를 계속 띄우게 두지 않는다.
+      if (req.method !== "POST") return methodNotAllowed(res);
+      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read({ refresh: true }));
       return true;
     }
     if (path === "/agent-cli/diagnostics") {

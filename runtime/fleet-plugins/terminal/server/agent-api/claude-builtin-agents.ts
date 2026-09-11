@@ -11,7 +11,7 @@
 // cwd에서는 배열이 곧 내장 로스터다. 자격증명도 싣지 않으므로(apiKeySource: none) 죽이기 전에
 // 모델 호출이 새어 나가지 않는다 — init은 첫 API 호출보다 먼저, 약 1초 안에 도착한다.
 
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -99,7 +99,10 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
   };
 }
 
-/** 첫 줄만 읽고 자식을 죽인다. init이 아니거나 상한 안에 오지 않으면 throw. */
+// 죽인 뒤 종료를 기다리는 상한. 트리 종료가 끝나야 임시 홈을 지울 수 있다.
+const PROBE_EXIT_WAIT_MS = 3_000;
+
+/** 첫 줄만 읽고 자식 트리를 죽인 뒤 종료를 기다린다. init이 아니거나 상한 안에 오지 않으면 throw. */
 async function spawnInitProbe(resolved: ResolvedBinary, baseEnv: NodeJS.ProcessEnv): Promise<ClaudeInitPayload> {
   const scratch = await mkdtemp(path.join(os.tmpdir(), "fleet-claude-agents-"));
   const configDir = path.join(scratch, "config");
@@ -107,39 +110,68 @@ async function spawnInitProbe(resolved: ResolvedBinary, baseEnv: NodeJS.ProcessE
   try {
     await Promise.all([mkdir(configDir), mkdir(cwd)]);
     const env = buildProbeEnv(baseEnv, configDir);
-    const spawnOptions: SpawnOptions = withHidden({ cwd, env, stdio: ["ignore", "pipe", "ignore"] });
-    return await new Promise<ClaudeInitPayload>((resolve, reject) => {
-      const child: ChildProcess = spawn(
-        resolved.bin,
-        [...resolved.prefixArgs, "-p", "ping", "--output-format", "stream-json", "--verbose", "--max-turns", "1"],
-        spawnOptions,
-      );
-      const stdout = child.stdout;
-      if (!stdout) {
-        child.kill();
-        reject(new Error("claude probe has no stdout"));
-        return;
-      }
-      let settled = false;
-      const finish = (outcome: { readonly payload: ClaudeInitPayload } | { readonly error: Error }) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        child.kill();
-        if ("payload" in outcome) resolve(outcome.payload);
-        else reject(outcome.error);
-      };
-      const timer = setTimeout(() => finish({ error: new Error("claude init timed out") }), PROBE_TIMEOUT_MS);
-      child.once("error", (error: Error) => finish({ error }));
-      child.once("exit", (code: number | null) => finish({ error: new Error(`claude exited before init (code ${code ?? "null"})`) }));
-      const lines = readline.createInterface({ input: stdout });
-      lines.on("line", (line) => {
-        const payload = parseInitLine(line);
-        if (payload) finish({ payload });
-      });
+    // POSIX에서는 자식을 자기 프로세스 그룹의 리더로 세워 그룹째 죽일 수 있게 한다. Windows의
+    // npm `.cmd` shim은 cmd.exe 뒤에 실제 Claude가 서므로 `child.kill()`은 래퍼만 끊는다 —
+    // 그쪽은 `taskkill /T`로 트리를 끊는다(ledger CLI와 같은 패턴).
+    const spawnOptions: SpawnOptions = withHidden({
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+      detached: process.platform !== "win32",
     });
+    const child: ChildProcess = spawn(
+      resolved.bin,
+      [...resolved.prefixArgs, "-p", "ping", "--output-format", "stream-json", "--verbose", "--max-turns", "1"],
+      spawnOptions,
+    );
+    const exited = new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+      child.once("error", () => resolve());
+    });
+    try {
+      return await new Promise<ClaudeInitPayload>((resolve, reject) => {
+        const stdout = child.stdout;
+        if (!stdout) {
+          reject(new Error("claude probe has no stdout"));
+          return;
+        }
+        let settled = false;
+        const finish = (outcome: { readonly payload: ClaudeInitPayload } | { readonly error: Error }) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if ("payload" in outcome) resolve(outcome.payload);
+          else reject(outcome.error);
+        };
+        const timer = setTimeout(() => finish({ error: new Error("claude init timed out") }), PROBE_TIMEOUT_MS);
+        child.once("error", (error: Error) => finish({ error }));
+        child.once("exit", (code: number | null) => finish({ error: new Error(`claude exited before init (code ${code ?? "null"})`) }));
+        const lines = readline.createInterface({ input: stdout });
+        lines.on("line", (line) => {
+          const payload = parseInitLine(line);
+          if (payload) finish({ payload });
+        });
+      });
+    } finally {
+      terminateProbeTree(child);
+      await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, PROBE_EXIT_WAIT_MS))]);
+    }
   } finally {
     await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/** 자식 트리 전체를 끊는다 — 래퍼 뒤의 실제 Claude까지. 이미 끝났으면 아무것도 하지 않는다. */
+function terminateProbeTree(child: ChildProcess): void {
+  if (!child.pid || child.exitCode !== null) return;
+  if (process.platform === "win32") {
+    execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], withHidden({ shell: false }), () => {});
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
   }
 }
 

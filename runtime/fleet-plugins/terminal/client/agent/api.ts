@@ -52,8 +52,10 @@ export async function fetchAgentCliState(signal?: AbortSignal): Promise<AgentCli
 }
 
 export async function fetchClaudeBuiltInAgents(signal?: AbortSignal, options?: { readonly refresh?: boolean }): Promise<ClaudeBuiltInAgentsState> {
-  const query = options?.refresh ? "?refresh=1" : "";
-  const response = await fetch(`/plugins/terminal/agent/agent-cli/claude-agents${query}`, { signal });
+  // 강제 갱신은 서버가 Claude를 다시 띄우는 쓰기성 동작이라 origin 승인이 붙는 POST로 간다.
+  const response = options?.refresh
+    ? await fetch("/plugins/terminal/agent/agent-cli/claude-agents/refresh", { method: "POST", signal })
+    : await fetch("/plugins/terminal/agent/agent-cli/claude-agents", { signal });
   await assertOk(response);
   const payload = await response.json() as Partial<ClaudeBuiltInAgentsState>;
   if (typeof payload.available !== "boolean" || !Array.isArray(payload.agents)) {
