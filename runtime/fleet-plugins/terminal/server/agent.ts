@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -19,7 +19,6 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
-import { readConsoleQuotaSnapshot } from "./agent-api/gateway-loadout.js";
 import { findGatewayModel, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
@@ -143,35 +142,15 @@ export async function registerAgentRoutes(
   return api.launchKinds;
 }
 
-// 로스터는 호출 시점에 해석한다. 노출 선별은 세션이 도는 동안에도 사용자가 바꿀 수 있고,
-// 등록 시점에 고정하면 호스트가 이미 꺼진 모델을 오류 없이 계속 배치하게 된다.
-function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[] {
-  const readAiGatewaySettings = deps.readAiGatewaySettings;
-  if (!readAiGatewaySettings) return [];
-  const aiGateway = deps.aiGateway;
-  return [buildGatewayModelsToolSpec({
-    readSelection: () => {
-      const selection = resolveAiGatewaySelection(readAiGatewaySettings());
-      return {
-        // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
-        models: selection.delegationModels,
-        effortExposure: selection.effortExposure,
-        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
-      };
-    },
-    ...(aiGateway
-      ? { readQuota: () => readConsoleQuotaSnapshot(aiGateway.origin()) }
-      : {}),
-  })];
-}
-
 async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
+  const consoleUse = ctx.host.consoleUse.connect({ tools: ["console_theaters", "console_operations", "gateway_models"] });
+  ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
     wikiToolSpecs,
-    extraAgentTools: buildGatewayLoadoutTools(deps),
+    additionalMcpSessions: [consoleUse],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,

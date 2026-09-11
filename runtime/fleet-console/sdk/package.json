@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./mcp": {
+      "types": "./mcp/types.ts",
+      "import": "./mcp/types.ts",
+      "default": "./mcp/types.ts"
+    },
     "./operations": {
       "types": "./operations/types.ts",
       "import": "./operations/types.ts",

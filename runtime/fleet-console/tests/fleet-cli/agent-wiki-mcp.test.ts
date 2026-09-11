@@ -51,12 +51,13 @@ describe("fleet-cli gateway MCP composition", () => {
       includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     });
 
-    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet"]);
-    expect(tokens.map((token) => token.name)).toEqual(["fleet"]);
+    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-core", "fleet-console-use"]);
+    expect(tokens.map((token) => token.name)).toEqual(["fleet-core", "fleet-console-use"]);
     const fleetServer = endpoint.servers[0]!;
     const fleetToken = tokens[0]!;
     const toolNames = await listMcpTools(fleetServer.url, fleetToken.token);
-    const expected = [...EXPECTED_WIKI_TOOL_IDS, "gateway_models"].sort();
+    const expected = [...EXPECTED_WIKI_TOOL_IDS].sort();
+    expect(await listMcpTools(endpoint.servers[1]!.url, tokens[1]!.token)).toEqual(new Set(["gateway_models"]));
 
     expect([...toolNames].sort()).toEqual(expected);
     expect(toolNames.has("carrier_dispatch")).toBe(false);

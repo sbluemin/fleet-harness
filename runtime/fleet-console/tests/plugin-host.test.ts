@@ -15,6 +15,7 @@ import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugi
 
 const tempDirs: string[] = [];
 const noopHostCapabilities: FleetPluginHostCapabilities = {
+  consoleUse: { connect: () => { throw new Error("not implemented"); } },
   operations: {
     list: () => [],
     get: () => null,

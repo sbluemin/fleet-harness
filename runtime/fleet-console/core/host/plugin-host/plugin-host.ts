@@ -539,6 +539,8 @@ interface PluginRegistrationTransaction {
 
 function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities): PluginRegistrationTransaction {
   const rollbackActions: Array<() => void | Promise<void>> = [];
+  const consoleMcpConnections = new Set<ReturnType<FleetPluginHostCapabilities["consoleUse"]["connect"]>>();
+  let consoleMcpCleanupRegistered = false;
 
   function track(disposer: () => void): () => void {
     let active = true;
@@ -579,6 +581,27 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
   return {
     host: {
       ...host,
+      consoleUse: {
+        connect: (options) => {
+          if (!consoleMcpCleanupRegistered) {
+            trackCleanup(async () => {
+              const results = await Promise.allSettled([...consoleMcpConnections].map((connection) => connection.dispose()));
+              consoleMcpConnections.clear();
+              const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+              if (errors.length) throw new AggregateError(errors.map((result) => result.reason), "Plugin Console MCP cleanup failed");
+            });
+            consoleMcpCleanupRegistered = true;
+          }
+          const connection = host.consoleUse.connect(options);
+          consoleMcpConnections.add(connection);
+          return {
+            ...connection,
+            dispose: async () => {
+              try { await connection.dispose(); } finally { consoleMcpConnections.delete(connection); }
+            },
+          };
+        },
+      },
       operations: {
         ...host.operations,
         registerOperationType: (type) => track(host.operations.registerOperationType(type)),

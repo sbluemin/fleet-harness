@@ -255,6 +255,9 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.21.0
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@fleet-console/access-protocol':
         specifier: workspace:*

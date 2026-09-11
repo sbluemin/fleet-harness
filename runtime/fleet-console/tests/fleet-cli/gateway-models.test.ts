@@ -1,40 +1,55 @@
-import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-	buildGatewayModelsToolSpec,
-	createFleetGatewayAgentRuntimeLifecycle,
 	type GatewayLoadout,
 	type GatewayQuotaSnapshot,
 	isHostSessionToolAllowed,
-	type FleetGatewayAgentRuntimeLifecycle,
-} from "../src/index.js";
+} from "@dotobokuri/fleet-admiral";
+import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
+import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
 
-const WIKI_TOOL_IDS = [
-	"wiki_briefing",
-	"wiki_drydock",
-	"wiki_ingest",
-	"wiki_orient",
-	"wiki_patch_edit",
-	"wiki_patch_queue",
-	"wiki_compile_source",
-	"wiki_query",
-	"wiki_read",
-	"wiki_resolve",
-	"wiki_schema_list",
-	"wiki_schema_read",
-	"wiki_schema_create",
-] as const;
-
-let lifecycle: FleetGatewayAgentRuntimeLifecycle | undefined;
+let lifecycle: ConsoleUseMcpConnection | undefined;
 
 afterEach(async () => {
-	await lifecycle?.cleanup();
+	await lifecycle?.dispose();
 	lifecycle = undefined;
 });
 
-describe("createFleetGatewayAgentRuntimeLifecycle", () => {
+describe("fleet-console-use gateway roster", () => {
+  it("scopes Console reads per connection and revokes access without exposing server paths", async () => {
+    let enabled = true;
+    const host = createConsoleUseMcpHost({
+      theaters: () => [{ id: "theater-a", name: "Project A" }],
+      operations: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: "terminal", payload: { secret: "/private/transcript" }, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }],
+      gateway: { readSelection: () => ({ models: [] }) },
+    });
+    const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: "first", theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
+    const b = host.connect({ tools: ["console_theaters", "console_operations"] });
+    try {
+      const endpointA = (await a.getEndpoint()).servers[0]!;
+      const endpointB = (await b.getEndpoint()).servers[0]!;
+      const tokenA = a.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
+      const tokenB = b.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
+      async function call(url: string, token: string, name: string) {
+        return (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: {} } }) })).json();
+      }
+      const first = await call(endpointA.url, tokenA.token, "console_operations");
+      expect(JSON.parse(first.result.content[0].text)).toMatchObject({ snapshotAt: "first", operations: [{ activity: "running" }] });
+      expect(JSON.stringify(first)).not.toContain("/private/transcript");
+      const second = await call(endpointB.url, tokenB.token, "console_operations");
+      expect(JSON.parse(second.result.content[0].text)).toMatchObject({ snapshotAt: null, operations: [{ activity: "unknown" }] });
+      expect((await call(endpointA.url, tokenA.token, "console_theaters")).error).toBeDefined();
+      expect((await call(endpointB.url, tokenA.token, "console_operations")).error).toBeDefined();
+      enabled = false;
+      expect((await call(endpointA.url, tokenA.token, "console_operations")).result.isError).toBe(true);
+      a.releaseSessionToken("same-label");
+      expect((await call(endpointA.url, tokenA.token, "console_operations")).error).toBeDefined();
+      expect((await call(endpointB.url, tokenB.token, "console_theaters")).result).toBeDefined();
+      await a.dispose();
+      await expect(a.getEndpoint()).rejects.toThrow("disposed");
+    } finally { await host.dispose(); }
+  });
 	it("snapshots only gateway host agent tools and starts a reachable-shaped endpoint", async () => {
 		let models = ["cursor--grok-4.5", "codex--gpt-5.6-sol", "antigravity--gemini-3.8-flash"]
 			.map((id) => {
@@ -48,26 +63,24 @@ describe("createFleetGatewayAgentRuntimeLifecycle", () => {
 			codex: { status: "signed_out" },
 			cursor: { status: "ok", windows: [{ id: "cycle", scope: "auto", usedPercent: 100 }] },
 		};
-		lifecycle = await createFleetGatewayAgentRuntimeLifecycle({
-			wikiToolSpecs: WIKI_TOOL_IDS.map(makeToolSpec),
-			extraAgentTools: [buildGatewayModelsToolSpec({
-				readSelection: () => ({ models, providerPriority: ["codex", "xai", "cursor", "antigravity"] }),
-				readQuota: () => {
-					if (!quota) throw new Error("quota unavailable");
-					return quota;
-				},
-			})],
-		});
+		const host = createConsoleUseMcpHost({ gateway: {
+            readSelection: () => ({ models, providerPriority: ["codex", "xai", "cursor", "antigravity"] }),
+            readQuota: () => {
+                if (!quota) throw new Error("quota unavailable");
+                return quota;
+            },
+        } });
+        lifecycle = host.connect({ tools: ["gateway_models"] });
 
-		const [serverToken] = lifecycle.dedicatedMcpSession.issueSessionToken({
+		const [serverToken] = lifecycle.issueSessionToken({
 			label: "gateway-host",
 			cwd: process.cwd(),
 			includeTool: (toolId) => isHostSessionToolAllowed(toolId),
 		});
-		expect(serverToken?.name).toBe("fleet");
-		const endpoint = await lifecycle.dedicatedMcpSession.getEndpoint();
+		expect(serverToken?.name).toBe("fleet-console-use");
+		const endpoint = await lifecycle.getEndpoint();
 		expect(endpoint.servers).toHaveLength(1);
-		expect(endpoint.servers[0]).toMatchObject({ name: "fleet" });
+		expect(endpoint.servers[0]).toMatchObject({ name: "fleet-console-use" });
 		expect(new URL(endpoint.servers[0]!.url).protocol).toBe("http:");
 
 		const response = await fetch(endpoint.servers[0]!.url, {
@@ -82,7 +95,7 @@ describe("createFleetGatewayAgentRuntimeLifecycle", () => {
 			readonly result: { readonly tools: readonly { readonly name: string }[] };
 		};
 		const toolIds = payload.result.tools.map((tool) => tool.name).sort();
-		expect(toolIds).toEqual([...WIKI_TOOL_IDS, "gateway_models"].sort());
+		expect(toolIds).toEqual(["gateway_models"]);
 		expect(toolIds).not.toContain("carrier_dispatch");
 		expect(toolIds).not.toContain("carrier_jobs");
 
@@ -135,20 +148,3 @@ describe("createFleetGatewayAgentRuntimeLifecycle", () => {
 		expect(empty).not.toHaveProperty("quotaConsumptionPriority");
 	});
 });
-
-function makeToolSpec(id: string): AgentToolSpec {
-	return {
-		id,
-		tag: id,
-		title: id,
-		description: id,
-		promptSnippet: id,
-		whenToUse: [],
-		whenNotToUse: [],
-		usageGuidelines: [],
-		parameters: {},
-		async execute() {
-			return "ok";
-		},
-	};
-}

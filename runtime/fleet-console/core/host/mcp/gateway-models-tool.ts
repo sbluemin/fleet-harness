@@ -9,12 +9,12 @@
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import type { GatewayModel, GatewayProvider } from "@dotobokuri/core-ai-gateway";
 
-import type { GatewayEffortExposure } from "../agent-cli/gateway-agents.js";
 import {
   buildGatewayLoadout,
+  type GatewayEffortExposure,
   type GatewayLoadout,
   type GatewayQuotaSnapshot,
-} from "./model-loadout.js";
+} from "@dotobokuri/fleet-admiral";
 
 export const GATEWAY_MODELS_TOOL_ID = "gateway_models";
 

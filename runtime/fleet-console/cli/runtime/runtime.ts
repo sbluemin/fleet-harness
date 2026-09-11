@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
@@ -12,7 +13,6 @@ import {
   type AuthService,
 } from "@dotobokuri/core-ai-gateway";
 import {
-  buildGatewayModelsToolSpec,
   createFleetGatewayAgentRuntimeLifecycle,
   parseGatewayQuotaSnapshot,
   type FleetGatewayAgentRuntimeLifecycle,
@@ -60,7 +60,7 @@ export async function createFleetCliRuntime(
       operation,
     ),
   });
-  const gatewayModelsSpec = buildGatewayModelsToolSpec({
+  const consoleUse = createConsoleUseMcpHost({ gateway: {
     readSelection: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return {
@@ -77,13 +77,13 @@ export async function createFleetCliRuntime(
         return undefined;
       }
     },
-  });
+  } });
 
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
     const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
       wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
-      extraAgentTools: [gatewayModelsSpec],
+      additionalMcpSessions: [consoleUse.connect({ tools: ["gateway_models"] })],
     });
     let cleaned = false;
     return {
@@ -96,11 +96,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        await agentRuntime.cleanup();
+        try { await agentRuntime.cleanup(); } finally { await consoleUse.dispose(); }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
+    await consoleUse.dispose();
     throw error;
   }
 }

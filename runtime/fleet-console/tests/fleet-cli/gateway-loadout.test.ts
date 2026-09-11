@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { readConsoleQuotaSnapshot } from "../server/agent-api/gateway-loadout.js";
+import { readConsoleQuotaSnapshot } from "../../core/host/mcp/gateway-loadout.js";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(payload), {

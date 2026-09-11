@@ -122,6 +122,14 @@ async function createHarness(body: Record<string, unknown>) {
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
     registerWsHandler: () => {},
     host: {
+      consoleUse: { connect: () => ({
+        embeddedServer: {},
+        getEndpoint: async () => ({ servers: [] }),
+        issueSessionToken: () => [],
+        releaseSessionToken: () => {},
+        cleanup: () => {},
+        dispose: async () => {},
+      }) },
       operations: {
         list: () => operations,
         get: (id: string) => operations.find((operation) => operation.id === id) ?? null,

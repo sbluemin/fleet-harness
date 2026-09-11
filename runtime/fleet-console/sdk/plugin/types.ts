@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { ConsoleUseMcpHost } from "../mcp/types.js";
 import type { ReactNode } from "react";
 
 import type { PaneDescriptor } from "../pane/types.js";
@@ -607,6 +608,7 @@ export interface FleetPluginServerContext {
 }
 
 export interface FleetPluginHostCapabilities {
+  readonly consoleUse: ConsoleUseMcpHost;
   readonly operations: FleetPluginOperationsHost;
   readonly events: FleetPluginEventsHost;
   readonly paths: FleetPluginPathsHost;

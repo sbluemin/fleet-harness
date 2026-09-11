@@ -8,6 +8,9 @@ import type { Duplex } from "node:stream";
 
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { createConsoleUseMcpHost } from "./mcp/console-use.js";
+import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
@@ -544,7 +547,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
+  const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
+  const consoleUse = createConsoleUseMcpHost({
+    theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
+    operations: () => operations.list(),
+    gateway: {
+      readSelection: () => {
+        const selection = resolveAiGatewaySelection(gatewaySettings.read());
+        return { models: selection.delegationModels, effortExposure: selection.effortExposure, providerPriority: selection.providerPriority };
+      },
+      readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
+    },
+  });
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
+    consoleUse,
     operations: {
       list: () => operations.list(),
       get: (id) => operations.get(id),
@@ -2126,6 +2142,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
+    await consoleUse.dispose();
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

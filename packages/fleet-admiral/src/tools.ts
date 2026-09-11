@@ -1,4 +1,4 @@
-export const FLEET_MCP_SERVER_NAME = "fleet";
+export const FLEET_MCP_SERVER_NAME = "fleet-core";
 
 /** Gateway host sessions receive every registered Fleet tool. */
 export function isHostSessionToolAllowed(_toolId: string): boolean {
