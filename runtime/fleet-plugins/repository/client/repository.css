@@ -2123,7 +2123,16 @@
 .repository-sync-icon:not(.is-settled) .repository-sync-glyph-idle,
 .repository-sync-icon.is-settled .repository-sync-glyph-settled { opacity: 1; transform: none; }
 .repository-sync-button.is-syncing .repository-sync-icon,
-.repository-verb-more.is-syncing .repository-icon { animation: repository-sync-spin 800ms linear infinite; }
+.repository-verb-more.is-syncing .repository-icon,
+.repository-reload-state.is-syncing .repository-icon,
+.history-refresh.is-syncing .repository-icon { animation: repository-sync-spin 800ms linear infinite; }
+
+/* ── 재조회 중의 옛 내용 ──
+   목록·diff·본문은 새 답이 올 때까지 제자리에 남고 흐려지기만 한다 — 비웠다 다시 채우면 매 갱신마다 깜빡인다.
+   흐림은 잠깐 늦춰 짧은 왕복(대부분의 로컬 git 조회)에서는 아무 변화도 보이지 않게 하고, 새 답이 오면 즉시 또렷해진다. */
+.history-inspector-body { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; transition: opacity var(--duration-fast) var(--ease-glide); }
+.repository-hunk-wrap, .history-files-scroll { transition: opacity var(--duration-fast) var(--ease-glide); }
+.history-inspector-body.is-stale, .repository-hunk-wrap.is-stale, .history-files-scroll.is-stale { opacity: .45; pointer-events: none; transition-delay: 160ms; }
 .repository-verb-count {
   font-family: var(--font-mono);
   font-style: normal;
@@ -2173,7 +2182,10 @@
   .repository-sync-hint { transition-duration: 1ms; }
   .repository-sync-glyph { transition-duration: 1ms; }
   .repository-sync-button.is-syncing .repository-sync-icon,
-  .repository-verb-more.is-syncing .repository-icon { animation: none; }
+  .repository-verb-more.is-syncing .repository-icon,
+  .repository-reload-state.is-syncing .repository-icon,
+  .history-refresh.is-syncing .repository-icon { animation: none; }
+  .repository-ws-context, .history-inspector-body, .repository-hunk-wrap, .history-files-scroll { transition-duration: .01ms; }
 }
 /* 더 보기 — 가장 좁은 단에서만 선다. 동사 네 개가 라벨 있는 메뉴로 접힌다. */
 .repository-verb-overflow { display: none; position: relative; }
@@ -2253,7 +2265,9 @@
 
 /* ── 트리 · 컨텍스트 행(저장소 선택기) ── */
 .repository-ws-context { position: relative; flex: none; border-bottom: 1px solid var(--surface-rim); }
-.repository-ws-context.is-disabled { opacity: .7; }
+/* 흐림은 잠깐 늦춘다 — 스테이지 한 번처럼 수백 ms 안에 끝나는 잠금은 화면에 나타나지 않는다. 풀릴 때는 즉시 돌아온다. */
+.repository-ws-context { transition: opacity var(--duration-fast) var(--ease-glide); }
+.repository-ws-context.is-disabled { opacity: .7; transition-delay: 160ms; }
 .repository-context-picker { position: static; }
 .repository-context-trigger {
   display: flex;

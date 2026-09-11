@@ -40,14 +40,17 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
 }) {
   const t = getT(ctx.language);
   const [state, setState] = useState<StashShowState>({ kind: "loading" });
+  const [pending, setPending] = useState(true);
   const [busy, setBusy] = useState(false);
   const [dropArmed, setDropArmed] = useState(false);
   const dropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!ctx.theaterId) { setState({ kind: "error", message: "no_theater" }); return; }
+    if (!ctx.theaterId) { setState({ kind: "error", message: "no_theater" }); setPending(false); return; }
     let cancelled = false;
-    setState({ kind: "loading" });
+    // 다른 스태시로 옮길 때 목록을 "불러오는 중"으로 갈아 끼우지 않는다 — 새 답이 올 때까지 옛 목록을 흐리게 남긴다.
+    setState((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setPending(true);
     // 오류 코드(stash_moved 등)를 읽어야 하는 경로는 raw fetch — api.fetch는 비2xx payload를 버린다.
     fetch("/plugins/repository/stash", {
       method: "POST",
@@ -65,6 +68,8 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     }).catch((error: unknown) => {
       if (cancelled) return;
       setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
+    }).finally(() => {
+      if (!cancelled) setPending(false);
     });
     return () => { cancelled = true; };
   }, [ctx.theaterId, repoRel, stash.name, stash.sha]);
@@ -107,9 +112,9 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
       <div className="repository-stash-inspector-subject" title={stash.subject}>{stash.subject}</div>
       <div className="history-files-title">
         <span className="history-files-label">{t("repository.stash.cardFiles")}</span>
-        {state.kind === "ok" && <span className="history-files-stats">{state.files.length}</span>}
+        {state.kind === "ok" && !pending && <span className="history-files-stats">{state.files.length}</span>}
       </div>
-      <div className="history-files-scroll">
+      <div className={`history-files-scroll${pending && state.kind === "ok" ? " is-stale" : ""}`} aria-busy={pending || undefined}>
         {state.kind === "loading" && <div className="history-inspector-empty">{t("repository.common.loading")}</div>}
         {state.kind === "error" && <div className="history-inspector-empty history-inspector-error">{state.message === "stash_moved" ? t("repository.stash.moved") : `${t("repository.stash.showFailed")} ${readErrorSentence(t, state.message)}`}</div>}
         {state.kind === "ok" && state.files.length === 0 && <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
