@@ -8,7 +8,7 @@ import type { BrowserWindow, Display, Rectangle } from "electron";
  * 쓴다 — 그래서 창이 배율이 다른 모니터에 놓일 때마다 오버레이를 다시 적용하는 것으로
  * 스테일 배치를 치유한다.
  *
- * 높이는 페이지 줌을 따라간다: Command Band(CSS 44px)는 줌에 비례해 커지고 작아지지만
+ * 높이는 페이지 줌을 따라간다: Command Band(CSS 36px)는 줌에 비례해 커지고 작아지지만
  * 네이티브 오버레이 DIP 높이는 줌과 무관하므로, `round(height × 줌)`을 적용해야 어느
  * 줌에서든 스트립이 밴드의 실제 크기와 정합한다. 줌 1에서는 원값 그대로다.
  */

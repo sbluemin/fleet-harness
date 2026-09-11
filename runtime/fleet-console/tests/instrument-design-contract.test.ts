@@ -2182,7 +2182,7 @@ describe("Instrument core design contract", () => {
     expect(app).not.toContain("GlobalNavigation");
     expect(layout).not.toContain("--console-gnb-height");
     expect(layout).not.toContain("is-focus-mode");
-    expect(theme).toContain("--chrome-band-height: 44px;");
+    expect(theme).toContain("--chrome-band-height: 36px;");
     expect(commandBand).toContain("<BrandHome />");
     expect(commandBand).toContain("<CommandBandSystemCluster />");
     expect(commandBand).toContain('className="command-band-button command-band-search"');

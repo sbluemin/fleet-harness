@@ -19,7 +19,7 @@
   --coral: oklch(68% 0.13 25);
   --hairline: oklch(29% 0.018 245);
   --radius-xs: 6px;
-  --chrome-band-height: 44px;
+  --chrome-band-height: 36px;
   --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, serif;
   --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -30,7 +30,7 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { display: grid; grid-template-rows: 44px 1fr auto; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); }
+body { display: grid; grid-template-rows: var(--chrome-band-height) 1fr auto; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); }
 .chrome-band { height: var(--chrome-band-height); display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--hairline); background: var(--ink-deep); -webkit-app-region: drag; }
 .brand { display: flex; align-items: baseline; gap: 8px; margin-left: 88px; }
 .brand strong { color: var(--ink-pearl); font-family: var(--font-display); font-size: 17px; font-weight: 600; }

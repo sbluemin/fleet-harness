@@ -24,7 +24,7 @@ export interface WindowPolicy {
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
-export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 43 } as const;
+export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 35 } as const;
 
 export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, options: SecureWindowOptions): BrowserWindow {
   const windowOptions: BrowserWindowConstructorOptions = {
@@ -35,8 +35,8 @@ export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, opti
     minWidth: 900,
     minHeight: 560,
     ...(options.platform !== "darwin" ? { autoHideMenuBar: false } : {}),
-    // Windows 오버레이 43px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 44px를 채운다. macOS 88px 인셋과 함께 변경 시 양쪽을 동기화한다.
-    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 } } : {}),
+    // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 88px 인셋과 함께 변경 시 양쪽을 동기화한다.
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 10 } } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   };
