@@ -10280,19 +10280,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-shadow: var(--brass-halo);
 }
 
-.operation-search-field kbd {
-  flex: none;
-  padding: 3px 7px 4px;
-  border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .operation-search-results {
   display: grid;
   gap: var(--space-2);

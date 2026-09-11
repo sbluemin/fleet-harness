@@ -705,7 +705,6 @@ export function OperationSearch({
               </button>
             ))}
           </div>
-          <kbd>esc</kbd>
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
           {!hasResults ? (
