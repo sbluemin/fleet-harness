@@ -1,6 +1,5 @@
 import {
 	createExecutorSessionManager,
-	type AgentToolSpec,
 	type ExecutorSessionManager,
 	type McpToolRegistry,
 } from "@dotobokuri/core-agent";
@@ -10,7 +9,6 @@ import { createFleetAgentRuntimeMcpServices } from "./mcp-services.js";
 type AdditionalMcpSession = Pick<ExecutorSessionManager, "getEndpoint" | "issueSessionToken" | "releaseSessionToken" | "cleanup">;
 
 export interface FleetGatewayAgentRuntimeLifecycleDeps {
-	readonly wikiToolSpecs?: readonly AgentToolSpec[];
 	/** 추가 연결은 호스트가 소유하며 이 런타임은 발급한 세션 토큰만 회수한다. */
 	readonly additionalMcpSessions?: readonly AdditionalMcpSession[];
 }
@@ -35,7 +33,7 @@ export async function createFleetGatewayAgentRuntimeLifecycle(
 			},
 		}],
 	});
-	const sessions = [coreSession, ...(deps.additionalMcpSessions ?? [])];
+	const sessions = deps.additionalMcpSessions ?? [];
 	const dedicatedMcpSession: ExecutorSessionManager = {
 		async getEndpoint() {
 			const endpoints = await Promise.all(sessions.map((session) => session.getEndpoint()));
@@ -56,14 +54,6 @@ export async function createFleetGatewayAgentRuntimeLifecycle(
 		cleanup: () => { for (const session of sessions) session.cleanup(); },
 	};
 
-	for (const spec of deps.wikiToolSpecs ?? []) mcpRuntime.mcpRegistry.registerAgentTool(spec);
-	try {
-		await mcpRuntime.mcpServer.start();
-	} catch (error) {
-		dedicatedMcpSession.cleanup();
-		await mcpRuntime.mcpServer.stop();
-		throw error;
-	}
 	return {
 		dedicatedMcpSession,
 		mcpRegistry: mcpRuntime.mcpRegistry,

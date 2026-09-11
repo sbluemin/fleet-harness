@@ -12,7 +12,7 @@ import {
 } from "../prompts.js";
 import { listWiki, readRawSourceEntry, readWikiEntry } from "../store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry, WikiEntryStatus } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 export interface WikiResolveInput {
   query: string;

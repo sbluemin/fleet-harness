@@ -1,3 +1,5 @@
+import { createCodexMcpTools } from "@fleet-plugins/codex/mcp";
+import { createPluginAdmiralMcpHost } from "../../core/host/mcp/plugin-mcp.js";
 import path from "node:path";
 import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
 
@@ -24,7 +26,7 @@ import {
   withDirectoryLock,
   type InfraServices,
 } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;
@@ -79,11 +81,12 @@ export async function createFleetCliRuntime(
     },
   } });
 
+  const pluginMcp = createPluginAdmiralMcpHost();
+  pluginMcp.register("codex", createCodexMcpTools(wikiWorkspaceResolver));
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
     const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
-      wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
-      additionalMcpSessions: [consoleUse.connect({ tools: ["gateway_models"] })],
+      additionalMcpSessions: [consoleUse.connect({ tools: ["gateway_models"] }), pluginMcp.connect()],
     });
     let cleaned = false;
     return {
@@ -96,12 +99,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        try { await agentRuntime.cleanup(); } finally { await consoleUse.dispose(); }
+        try { await agentRuntime.cleanup(); } finally { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
-    await consoleUse.dispose();
+    await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]);
     throw error;
   }
 }

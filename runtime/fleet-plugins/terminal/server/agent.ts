@@ -6,7 +6,6 @@ import process from "node:process";
 import { buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationGeometry, OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -143,14 +142,12 @@ export async function registerAgentRoutes(
 }
 
 async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
-  const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const consoleUse = ctx.host.consoleUse.connect({ tools: ["console_theaters", "console_operations", "gateway_models"] });
   ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    wikiToolSpecs,
-    additionalMcpSessions: [consoleUse],
+    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect()],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
@@ -1886,16 +1883,6 @@ function isOperationRestoredEvent(value: unknown): value is { readonly operation
   return typeof event.operationId === "string" && typeof event.pluginId === "string" && typeof event.type === "string";
 }
 
-export function createTerminalWikiToolSpecs(fleetDataDir: string) {
-  const resolver = createWikiWorkspaceResolver({
-    ensureWorkspace: (cwd) => ensureWorkspaceDirectory(fleetDataDir, cwd),
-    withMigrationLock: (workspace, operation) => withDirectoryLock(
-      { lockDir: path.join(workspace.path, "knowledge.migration.lock") },
-      operation,
-    ),
-  });
-  return getWikiToolSpecs(resolver);
-}
 
 function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, runtimeSession: AgentTerminalSessionInfo, capturedSession?: CapturedAgentSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };

@@ -12,7 +12,7 @@ import {
 import { assertSafeEntryId, computeContentHash, pathExists, readWikiEntry } from "../store.js";
 import { resolveWikiContext, type WikiContextPack, type WikiResolvePayload } from "./resolve.js";
 import type { Patch, WikiEntry, WikiRawSourceRef } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface QueryCitationInput {
   entry_id: string;

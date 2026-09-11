@@ -2,10 +2,10 @@ import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "../src/index.js";
+import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
-import { createCoworkMcpRuntime } from "../src/cowork/index.js";
-import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnectOptions, type CoworkConnector } from "../src/cowork/index.js";
+import { createCoworkMcpRuntime } from "../server/codex/cowork/index.js";
+import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnectOptions, type CoworkConnector } from "../server/codex/cowork/index.js";
 
 const SCOPED_TOOL_IDS = [
   "wiki_draft_read",

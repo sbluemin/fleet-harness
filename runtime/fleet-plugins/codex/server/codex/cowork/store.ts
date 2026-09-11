@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { WikiDraftPort, WikiDraftSnapshot, WikiDraftWriteRequest } from "../tools/draft.js";
+import type { WikiDraftPort, WikiDraftSnapshot, WikiDraftWriteRequest } from "./draft-tools.js";
 
 
 /** Browser-safe Cowork session state. Provider and filesystem identities are server-only. */

@@ -1,23 +1,16 @@
+import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import {
   type AgentToolCtx,
   type AgentToolSpec,
 } from "@dotobokuri/core-agent";
 
-import { buildBriefingToolConfig } from "./tools/briefing.js";
-import { buildCompileSourceToolConfig } from "./tools/compile-source.js";
-import { buildDryDockToolConfig } from "./tools/briefing.js";
-import { buildIngestToolConfig } from "./tools/ingest.js";
-import { buildOrientToolConfig } from "./tools/orient.js";
-import { buildPatchEditToolConfig } from "./tools/patch-edit.js";
-import { buildPatchQueueToolConfig } from "./tools/patch-queue.js";
-import { buildQueryToolConfig } from "./tools/query.js";
-import { buildReadToolConfig } from "./tools/read.js";
-import { buildResolveToolConfig } from "./tools/resolve.js";
-import { buildSchemaCreateToolConfig } from "./tools/schema.js";
-import { buildSchemaListToolConfig } from "./tools/schema.js";
-import { buildSchemaReadToolConfig } from "./tools/schema.js";
-import type { MemoryPaths } from "./types.js";
-import type { WikiWorkspaceResolver } from "./workspace-resolver.js";
+import {
+  buildBriefingToolConfig, buildDryDockToolConfig, buildCompileSourceToolConfig,
+  buildIngestToolConfig, buildOrientToolConfig, buildPatchEditToolConfig, buildPatchQueueToolConfig,
+  buildQueryToolConfig, buildReadToolConfig, buildResolveToolConfig,
+  buildSchemaCreateToolConfig, buildSchemaListToolConfig, buildSchemaReadToolConfig,
+  type MemoryPaths, type WikiWorkspaceResolver,
+} from "@dotobokuri/fleet-wiki";
 
 export interface WikiToolExecutionContext {
   readonly cwd: string;
@@ -44,9 +37,7 @@ interface WikiAgentToolConfig {
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
-// fleet-wiki가 @dotobokuri/core-agent registry에 노출하는 13종 wiki tool ID 카탈로그 상수.
-// 실제 등록은 fleet-cli runtime.ts가 getWikiToolSpecs() 순회로 직접 수행하며,
-// 이 상수는 테스트(wiki-patch-edit.test.ts)가 도구 ID 명세를 고정하는 용도로만 쓰인다.
+// Codex가 Admiral에 제공하는 전역 Wiki 도구 목록.
 export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_briefing",
   "wiki_drydock",
@@ -252,4 +243,11 @@ function buildWikiToolSpec(
       return { content, isError: false };
     },
   };
+}
+
+export function createCodexMcpTools(resolver?: WikiWorkspaceResolver): PluginMcpTool[] {
+  return getWikiToolSpecs(resolver).map((spec) => ({
+    name: spec.id, description: spec.description,
+    inputSchema: spec.parameters as Record<string, unknown>, execute: spec.execute,
+  }));
 }

@@ -10,6 +10,7 @@ import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDir
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import { createConsoleUseMcpHost } from "./mcp/console-use.js";
+import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
 import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
@@ -559,8 +560,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
     },
   });
+  const pluginMcp = createPluginAdmiralMcpHost();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     consoleUse,
+    admiralMcp: {
+      connect: () => pluginMcp.connect(),
+      register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
+    },
     operations: {
       list: () => operations.list(),
       get: (id) => operations.get(id),
@@ -704,6 +710,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     routes: routeRegistry,
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
+    registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
   });
   const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
@@ -2142,7 +2149,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
-    await consoleUse.dispose();
+    await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]);
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

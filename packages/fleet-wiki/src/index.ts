@@ -1,4 +1,3 @@
-export { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "./agent-specs.js";
 export { createWikiWorkspaceResolver } from "./workspace-resolver.js";
 export type {
   WikiWorkspace,
@@ -21,7 +20,6 @@ export * from "./search.js";
 export * from "./store.js";
 export * from "./types.js";
 export * from "./tools/briefing.js";
-export * from "./tools/draft.js";
 export * from "./tools/ingest.js";
 export * from "./tools/orient.js";
 export * from "./tools/patch-edit.js";

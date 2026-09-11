@@ -33,7 +33,7 @@ Wiki entry writes normally use the patch queue; the Cowork exception moves the a
 - `src/claims.ts` — Claim provenance sidecar at `wiki/.claims/{id}.json` with `ClaimSet`/`Claim`/`ClaimSourceRef` types. Exports `readClaims()`, `writeClaims()`, `listClaims()`. Optional — `wiki_resolve` falls back to summary if absent.
 - `src/search.ts` — Optional enhanced ranker for `wiki_briefing`. Inline BM25-style scoring with alias/type/status/freshness/graph boost, no new dependency. Default ranker remains the deterministic substring scorer in `briefing.ts`.
 - `src/drydock.ts` — Lint rules including canonical/legacy link checks, frontmatter validation, duplicate frontmatter detection with optional auto-cleanup, schema health, conflict surfacing, and Wave 13 semantic issues (orphan/stale/deprecated/superseded/duplicate alias/contradiction marker/claim orphan/claim malformed).
-- `src/tools/draft.ts` — Private Cowork draft-tool factory; closure-scoped to one session and intentionally absent from the global registry.
+- `runtime/fleet-plugins/codex/server/codex/cowork/draft-tools.ts` — Private Cowork draft-tool factory; closure-scoped to one session and intentionally absent from the global registry.
 - `src/prompts.ts` — Tool prompt snippets, guidelines, and TypeBox schemas. References `schema/wiki-schema.md` for workspace conventions.
 - `src/paths.ts` — Memory path resolution, `ensureMemoryRoot()` bootstraps schema files via `ensureWorkspaceSchema()`.
 

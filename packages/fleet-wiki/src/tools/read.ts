@@ -20,7 +20,7 @@ import type {
   WikiReadRelatedResult,
   WikiReadWarning,
 } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface WikiReadInput {
   ids: string[];

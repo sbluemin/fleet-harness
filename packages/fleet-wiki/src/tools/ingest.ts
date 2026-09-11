@@ -24,7 +24,7 @@ import type {
   WikiEntry,
   WikiIngestMode,
 } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface WikiIngestParams {
   id: string;

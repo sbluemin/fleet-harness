@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@dotobokuri/core-agent/claude";
 import { z } from "zod";
-import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@dotobokuri/fleet-wiki";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 
@@ -80,9 +80,12 @@ export async function createConsoleReadTools(ctx: FleetPluginServerContext, snap
     withMigrationLock: <T,>(workspace: { readonly path: string }, operation: () => T): T =>
       ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
   });
-  const wikiSpecs = getWikiToolSpecs(resolver);
-  const briefing = wikiSpecs.find((spec) => spec.id === "wiki_briefing");
-  const read = wikiSpecs.find((spec) => spec.id === "wiki_read");
+  const wrap = (config: ReturnType<typeof buildBriefingToolConfig> | ReturnType<typeof buildReadToolConfig>) => ({
+    execute: async (args: Record<string, unknown>, context: { cwd: string; signal?: AbortSignal }) =>
+      config.execute("", args, context.signal, undefined, { cwd: context.cwd, paths: await resolver.resolve(context.cwd) }),
+  });
+  const briefing = wrap(buildBriefingToolConfig());
+  const read = wrap(buildReadToolConfig());
 
   const resolveTheaterCwd = (theaterId: unknown): string | null => {
     if (typeof theaterId !== "string") return null;

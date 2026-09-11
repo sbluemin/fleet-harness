@@ -167,6 +167,10 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
     registerWsHandler: () => {},
     host: {
+      admiralMcp: { register: () => () => {}, connect: () => ({
+        getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [],
+        releaseSessionToken: () => {}, cleanup: () => {},
+      }) },
       consoleUse: { connect: () => ({
         embeddedServer: {},
         getEndpoint: async () => ({ servers: [] }),

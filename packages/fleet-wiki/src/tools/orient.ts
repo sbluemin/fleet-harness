@@ -13,7 +13,7 @@ import {
 } from "../prompts.js";
 import { ensureWorkspaceSchema, readWorkspaceSchemaSummary } from "../schema.js";
 import { pathExists } from "../store.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface OrientInput {
   includeSchema: boolean;

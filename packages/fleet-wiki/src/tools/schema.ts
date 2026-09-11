@@ -9,7 +9,7 @@ import {
   buildWikiSchemaReadSchema,
 } from "../prompts.js";
 import { createSchemaTemplate, readSchemaCatalog, readSchemaDocument } from "../schema.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 export function buildSchemaListToolConfig() {
   return {

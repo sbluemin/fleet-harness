@@ -1,10 +1,10 @@
 import { createExecutorSessionManager, createServedMcpEndpoint, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
-import { approvePatch, enqueuePatch } from "../patch.js";
-import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../store.js";
-import { createWikiDraftToolSpecs } from "../tools/draft.js";
-import { getWikiToolSpecs } from "../agent-specs.js";
-import type { MemoryPaths, Patch, WikiEntry } from "../types.js";
-import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
+import { approvePatch, enqueuePatch } from "@dotobokuri/fleet-wiki";
+import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "@dotobokuri/fleet-wiki";
+import { createWikiDraftToolSpecs } from "./draft-tools.js";
+import { getWikiToolSpecs } from "../../wiki-mcp.js";
+import type { MemoryPaths, Patch, WikiEntry } from "@dotobokuri/fleet-wiki";
+import type { WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { join } from "node:path";
 import { COWORK_SYSTEM_PROMPT } from "./store.js";
 import type { CoworkStore } from "./store.js";

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
+import { createPluginAdmiralMcpHost } from "../core/host/mcp/plugin-mcp.js";
 import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "../core/host/plugin-host/plugin-host.js";
 import { RouteRegistry } from "../core/host/route-registry/registry.js";
@@ -15,7 +16,11 @@ import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugi
 
 const tempDirs: string[] = [];
 const noopHostCapabilities: FleetPluginHostCapabilities = {
-  consoleUse: { connect: () => { throw new Error("not implemented"); } },
+  admiralMcp: { register: () => () => {}, connect: () => ({
+        getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [],
+        releaseSessionToken: () => {}, cleanup: () => {},
+      }) },
+      consoleUse: { connect: () => { throw new Error("not implemented"); } },
   operations: {
     list: () => [],
     get: () => null,
@@ -73,6 +78,48 @@ afterEach(() => {
 
 describe("plugin host", () => {
 
+  it("binds plugin MCP names and isolates sessions through registration and teardown", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+    const mcp = createPluginAdmiralMcpHost();
+    const first = mcp.connect();
+    const second = mcp.connect();
+    const cleanups: Array<() => void | Promise<void>> = [];
+    const host = createFleetPluginHost({
+      cwd: dir, homeDir: "/missing", routes: new RouteRegistry(), upgrades: new UpgradeRegistry(),
+      registerAdmiralMcp: (id, tools) => mcp.register(id, tools),
+      host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
+      importModule: async () => ({ register: (ctx) => {
+        ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: {} },
+          execute: async (_args, context) => ({ content: [{ type: "text", text: context.cwd }], isError: false }),
+        }]);
+      } }),
+    });
+    try {
+      await host.boot();
+      const endpoint = await first.getEndpoint();
+      expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-demo"]);
+      const one = first.issueSessionToken({ label: "same", cwd: "/first" })[0]!;
+      const two = second.issueSessionToken({ label: "same", cwd: "/second" })[0]!;
+      const call = async (token: string) => {
+        const response = await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "project", arguments: {} } }),
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first" }] } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second" }] } });
+      first.cleanup();
+      expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second" }] } });
+      for (const cleanup of cleanups) await cleanup();
+      expect((await second.getEndpoint()).servers).toEqual([]);
+    } finally {
+      first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose();
+    }
+  });
+
   it("rejects manifest entries that escape the plugin root", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-traversal-"));
     tempDirs.push(dir);
@@ -93,6 +140,7 @@ describe("plugin host", () => {
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
     const routes = new RouteRegistry();
     const host = createFleetPluginHost({
+      registerAdmiralMcp: () => () => {},
       cwd: dir,
       homeDir: path.join(dir, "home"),
       routes,
@@ -125,6 +173,7 @@ describe("plugin host", () => {
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "ok"), "ok", { apiVersion: 1 }, false);
 
     const host = createFleetPluginHost({
+      registerAdmiralMcp: () => () => {},
       cwd: dir,
       homeDir: path.join(dir, "home"),
       routes: new RouteRegistry(),
@@ -145,6 +194,7 @@ describe("plugin host", () => {
     const upgrades = new UpgradeRegistry();
 
     const hijackHost = createFleetPluginHost({
+      registerAdmiralMcp: () => () => {},
       cwd: dir,
       homeDir: "/missing",
       routes,
@@ -158,6 +208,7 @@ describe("plugin host", () => {
     await expect(hijackHost.boot()).rejects.toThrow("plugin_route_outside_scope");
 
     const overlapHost = createFleetPluginHost({
+      registerAdmiralMcp: () => () => {},
       cwd: dir,
       homeDir: "/missing",
       routes,

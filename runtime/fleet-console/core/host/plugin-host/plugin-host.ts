@@ -367,6 +367,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly host: FleetPluginHostCapabilities;
+  readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0]) => () => void;
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
   readonly bundleCacheDir?: string;
   readonly isProcessAlive?: (pid: number) => boolean;
@@ -497,7 +498,13 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const mod = await importModule(plugin.routesEntry!);
     const register = resolveRegister(mod);
     if (!register) return;
-    const registrationTransaction = createPluginRegistrationTransaction(deps.host);
+    const registrationTransaction = createPluginRegistrationTransaction({
+      ...deps.host,
+      admiralMcp: {
+        connect: () => deps.host.admiralMcp.connect(),
+        register: (tools) => deps.registerAdmiralMcp(plugin.manifest.id, tools),
+      },
+    });
     try {
       await register({
         pluginId: plugin.manifest.id,
@@ -581,6 +588,18 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
   return {
     host: {
       ...host,
+      admiralMcp: {
+        register: (tools) => {
+          const unregister = track(host.admiralMcp.register(tools));
+          trackCleanup(unregister);
+          return unregister;
+        },
+        connect: () => {
+          const connection = host.admiralMcp.connect();
+          trackCleanup(() => connection.cleanup());
+          return connection;
+        },
+      },
       consoleUse: {
         connect: (options) => {
           if (!consoleMcpCleanupRegistered) {

@@ -6,8 +6,8 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { handleApiRequest } from "./routes.js";
-import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
-import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
+import { CoworkService, CoworkStore } from "./cowork/index.js";
+import type { CoworkConnector } from "./cowork/index.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
