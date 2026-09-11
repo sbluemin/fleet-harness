@@ -12,7 +12,7 @@ import {
 } from "../prompts.js";
 import { assertSafeEntryId, computeContentHash, readJsonFile, readPatchFile } from "../store.js";
 import type { Patch, PatchMeta, WikiEntry } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface BodyReplaceInput {
   find: string;

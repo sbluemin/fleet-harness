@@ -1,4 +1,8 @@
+import { createMcpHttpTransport } from "../../core/host/mcp/http-transport.js";
+import { createCodexMcpTools } from "@fleet-plugins/codex/mcp";
+import { createPluginAdmiralMcpHost } from "../../core/host/mcp/plugin-mcp.js";
 import path from "node:path";
+import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
@@ -12,7 +16,6 @@ import {
   type AuthService,
 } from "@dotobokuri/core-ai-gateway";
 import {
-  buildGatewayModelsToolSpec,
   createFleetGatewayAgentRuntimeLifecycle,
   parseGatewayQuotaSnapshot,
   type FleetGatewayAgentRuntimeLifecycle,
@@ -24,7 +27,7 @@ import {
   withDirectoryLock,
   type InfraServices,
 } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;
@@ -60,7 +63,8 @@ export async function createFleetCliRuntime(
       operation,
     ),
   });
-  const gatewayModelsSpec = buildGatewayModelsToolSpec({
+  const mcpHttp = createMcpHttpTransport();
+  const consoleUse = createConsoleUseMcpHost({ transport: mcpHttp.transport, gateway: {
     readSelection: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return {
@@ -77,13 +81,14 @@ export async function createFleetCliRuntime(
         return undefined;
       }
     },
-  });
+  } });
 
+  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
+  pluginMcp.register("codex", createCodexMcpTools(wikiWorkspaceResolver));
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
     const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
-      wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
-      extraAgentTools: [gatewayModelsSpec],
+      additionalMcpSessions: [consoleUse.connect({ tools: ["gateway_models"] }), pluginMcp.connect()],
     });
     let cleaned = false;
     return {
@@ -96,11 +101,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        await agentRuntime.cleanup();
+        try { await agentRuntime.cleanup(); } finally { try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); } }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
+    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     throw error;
   }
 }

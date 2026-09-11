@@ -9,7 +9,10 @@
   "private": true,
   "author": "sbluemin",
   "type": "module",
-  "files": ["dist", "CLAUDE.md"],
+  "files": [
+    "dist",
+    "CLAUDE.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -23,15 +26,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./cowork": {
-      "types": "./dist/cowork.d.ts",
-      "import": "./dist/cowork.js",
-      "require": "./dist/cowork.cjs"
     }
   },
   "dependencies": {
-    "@dotobokuri/core-agent": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

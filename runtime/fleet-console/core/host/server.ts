@@ -1,3 +1,4 @@
+import { createMcpHttpTransport } from "./mcp/http-transport.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -8,6 +9,10 @@ import type { Duplex } from "node:stream";
 
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { createConsoleUseMcpHost } from "./mcp/console-use.js";
+import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
+import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
@@ -544,7 +549,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
+  const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
+  const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
+  const consoleUse = createConsoleUseMcpHost({
+    transport: mcpHttp.transport,
+    theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
+    operations: () => operations.list(),
+    gateway: {
+      readSelection: () => {
+        const selection = resolveAiGatewaySelection(gatewaySettings.read());
+        return { models: selection.delegationModels, effortExposure: selection.effortExposure, providerPriority: selection.providerPriority };
+      },
+      readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
+    },
+  });
+  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
+    consoleUse,
+    mcpTransport: mcpHttp.transport,
+    admiralMcp: {
+      connect: () => pluginMcp.connect(),
+      register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
+    },
     operations: {
       list: () => operations.list(),
       get: (id) => operations.get(id),
@@ -688,6 +714,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     routes: routeRegistry,
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
+    registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
   });
   const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
@@ -928,6 +955,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    if (pathname.startsWith("/mcp/")) {
+      if (listener?.audience !== "local") { writeJson(res, 404, { error: "not_found" }); return; }
+      mcpHttp.handle(req, res);
       return;
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
@@ -2126,6 +2158,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
+    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

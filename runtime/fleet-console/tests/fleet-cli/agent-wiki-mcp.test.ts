@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { isHostSessionToolAllowed } from "@dotobokuri/fleet-admiral";
-import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import { createFleetCliRuntime, type FleetCliRuntime } from "../../cli/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -51,21 +50,19 @@ describe("fleet-cli gateway MCP composition", () => {
       includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     });
 
-    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet"]);
-    expect(tokens.map((token) => token.name)).toEqual(["fleet"]);
-    const fleetServer = endpoint.servers[0]!;
-    const fleetToken = tokens[0]!;
+    expect(new Set(endpoint.servers.map((server) => new URL(server.url).origin)).size).toBe(1);
+    expect(new Set(endpoint.servers.map((server) => new URL(server.url).pathname)).size).toBe(endpoint.servers.length);
+    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-console-use", "fleet-codex"]);
+    expect(tokens.map((token) => token.name)).toEqual(["fleet-console-use", "fleet-codex"]);
+    const fleetServer = endpoint.servers[1]!;
+    const fleetToken = tokens[1]!;
     const toolNames = await listMcpTools(fleetServer.url, fleetToken.token);
-    const expected = [...EXPECTED_WIKI_TOOL_IDS, "gateway_models"].sort();
+    const expected = [...EXPECTED_WIKI_TOOL_IDS].sort();
+    expect(await listMcpTools(endpoint.servers[0]!.url, tokens[0]!.token)).toEqual(new Set(["gateway_models"]));
 
     expect([...toolNames].sort()).toEqual(expected);
     expect(toolNames.has("carrier_dispatch")).toBe(false);
     expect(toolNames.has("carrier_jobs")).toBe(false);
-    expect(
-      runtime.mcpRegistry.getAllAgentTools()
-        .filter((spec) => EXPECTED_WIKI_TOOL_IDS.includes(spec.id as typeof EXPECTED_WIKI_TOOL_IDS[number]))
-        .map((spec) => ({ id: spec.id, parameters: spec.parameters })),
-    ).toEqual(getWikiToolSpecs().map((spec) => ({ id: spec.id, parameters: spec.parameters })));
   });
 });
 

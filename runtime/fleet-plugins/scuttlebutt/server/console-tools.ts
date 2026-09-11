@@ -2,8 +2,9 @@ import path from "node:path";
 
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@dotobokuri/core-agent/claude";
 import { z } from "zod";
-import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@dotobokuri/fleet-wiki";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 
 /**
  * 실험 "부관의 Console 읽기" — 부관 세션에 붙는 읽기 전용 도구.
@@ -17,12 +18,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 export const CONSOLE_MCP_SERVER = "console";
 const MIGRATION_LOCK = "knowledge.migration.lock";
 
-export interface ConsoleSnapshot {
-  /** 브라우저가 스냅샷을 뜬 시각(ISO). 서버가 받은 시각으로 채운다. */
-  readonly takenAt?: string;
-  readonly theaters: readonly { readonly id: string; readonly label: string }[];
-  readonly operations: readonly { readonly id: string; readonly theaterId: string; readonly type: string; readonly title: string; readonly activity: string }[];
-}
+export type ConsoleSnapshot = ConsoleUseSnapshot;
 
 const ACTIVITIES = new Set(["idle", "running", "awaiting", "background", "ended"]);
 
@@ -42,7 +38,8 @@ export function isConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
 }
 
 export interface ConsoleReadTools {
-  readonly server: ClaudeGatewayMcpServer;
+  readonly servers: Readonly<Record<string, ClaudeGatewayMcpServer>>;
+  dispose(): Promise<void>;
   readonly allowedTools: readonly string[];
   /** 시스템 프롬프트에 덧붙는 한 단락 — 도구가 있다는 사실과 그 한계. */
   readonly promptAddendum: string;
@@ -50,7 +47,7 @@ export interface ConsoleReadTools {
 
 const PROMPT_ADDENDUM = `# Console access (experimental, read-only)
 
-You can now read the Console you serve on, through the "console" tools:
+You can read the Console through "fleet-console-use" and the Theater Wiki through the plugin's "console" tools:
 - console_theaters lists registered projects (Theaters) by id and name.
 - console_operations lists Operations with their title, Theater, kind, and current activity
   (running, awaiting = waiting for the Admiral's input, background, idle, ended).
@@ -74,7 +71,7 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] };
 }
 
-export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: () => ConsoleSnapshot | null): ConsoleReadTools {
+export async function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: () => ConsoleSnapshot | null): Promise<ConsoleReadTools> {
   const resolver = createWikiWorkspaceResolver({
     ensureWorkspace: (cwd: string) => {
       const workspace = ctx.host.paths.ensureWorkspaceDirectory(cwd);
@@ -83,16 +80,12 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
     withMigrationLock: <T,>(workspace: { readonly path: string }, operation: () => T): T =>
       ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
   });
-  const wikiSpecs = getWikiToolSpecs(resolver);
-  const briefing = wikiSpecs.find((spec) => spec.id === "wiki_briefing");
-  const read = wikiSpecs.find((spec) => spec.id === "wiki_read");
-
-  const theaterLabel = (theaterId: string): string => {
-    const known = snapshot()?.theaters.find((theater) => theater.id === theaterId);
-    if (known) return known.label;
-    const root = ctx.host.paths.resolveTheaterPath(theaterId);
-    return root ? path.basename(root) : theaterId;
-  };
+  const wrap = (config: ReturnType<typeof buildBriefingToolConfig> | ReturnType<typeof buildReadToolConfig>) => ({
+    execute: async (args: Record<string, unknown>, context: { cwd: string; signal?: AbortSignal }) =>
+      config.execute("", args, context.signal, undefined, { cwd: context.cwd, paths: await resolver.resolve(context.cwd) }),
+  });
+  const briefing = wrap(buildBriefingToolConfig());
+  const read = wrap(buildReadToolConfig());
 
   const resolveTheaterCwd = (theaterId: unknown): string | null => {
     if (typeof theaterId !== "string") return null;
@@ -105,35 +98,8 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
   const gated = <Args, Extra>(run: (args: Args, extra: Extra) => Promise<ReturnType<typeof text>>) =>
     async (args: Args, extra: Extra) => (enabled() ? run(args, extra) : text({ error: "console_read_disabled", hint: "The user turned Console reading off. Do not answer from earlier Console results." }));
 
-  const names = ["console_theaters", "console_operations", ...(briefing ? ["console_wiki_search"] : []), ...(read ? ["console_wiki_read"] : [])];
+  const names = [...(briefing ? ["console_wiki_search"] : []), ...(read ? ["console_wiki_read"] : [])];
   const tools = [
-    // 입력 스키마는 zod raw shape다 — 게이트웨이 SDK의 in-process 도구가 그 모양만 받는다(분석가 도구와 같은 계약).
-    defineTool("console_theaters", "List the projects (Theaters) registered in this Console: id and name.", {}, gated(async () => {
-      const fromSnapshot = snapshot()?.theaters ?? [];
-      const ids = new Set(fromSnapshot.map((theater) => theater.id));
-      for (const operation of ctx.host.operations.list()) ids.add(operation.theaterId);
-      return text([...ids].map((id) => ({ id, name: theaterLabel(id) })));
-    })),
-    defineTool("console_operations", "List Operations in this Console with title, Theater, kind, and activity. Optionally filter by activity.", {
-      activity: z.enum(["idle", "running", "awaiting", "background", "ended"]).optional().describe("Only Operations in this activity state."),
-    }, gated(async (args: { readonly activity?: string }) => {
-      const current = snapshot();
-      const byId = new Map((current?.operations ?? []).map((operation) => [operation.id, operation]));
-      const rows = ctx.host.operations.list().map((operation) => {
-        const live = byId.get(operation.id);
-        return {
-          id: operation.id,
-          title: operation.title,
-          theaterId: operation.theaterId,
-          theater: theaterLabel(operation.theaterId),
-          kind: operation.type,
-          activity: live?.activity ?? "unknown",
-          createdAt: new Date(operation.ts.createdAt).toISOString(),
-        };
-      });
-      // 활동은 메시지에 실려 온 스냅샷의 것이다 — "지금"이 아니라 "물었을 때"의 시각을 함께 준다.
-      return text({ snapshotAt: current?.takenAt ?? null, operations: args.activity ? rows.filter((row) => row.activity === args.activity) : rows });
-    })),
     ...(briefing ? [defineTool("console_wiki_search", "Search a Theater's Fleet Wiki entries. Returns a ranked list of matching entries (id, title, excerpt).", {
       theaterId: z.string(),
       query: z.string(),
@@ -155,9 +121,21 @@ export function createConsoleReadTools(ctx: FleetPluginServerContext, snapshot: 
     }))] : []),
   ];
 
-  return {
-    server: createEmbeddedMcpServer({ name: CONSOLE_MCP_SERVER, tools }),
-    allowedTools: names.map((name) => `mcp__${CONSOLE_MCP_SERVER}__${name}`),
-    promptAddendum: PROMPT_ADDENDUM,
-  };
+  const consoleTools = ["console_theaters", "console_operations"] as const;
+  const connection = ctx.host.consoleUse.connect({ tools: consoleTools, snapshot, enabled });
+  try {
+    const servers: Record<string, ClaudeGatewayMcpServer> = {
+      [CONSOLE_MCP_SERVER]: createEmbeddedMcpServer({ name: CONSOLE_MCP_SERVER, tools }),
+      [FLEET_CONSOLE_USE_MCP_SERVER]: connection.embeddedServer as ClaudeGatewayMcpServer,
+    };
+    return {
+      servers,
+      allowedTools: [...names.map((name) => `mcp__${CONSOLE_MCP_SERVER}__${name}`), ...consoleTools.map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`)],
+      promptAddendum: PROMPT_ADDENDUM,
+      dispose: () => connection.dispose(),
+    };
+  } catch (error) {
+    await connection.dispose();
+    throw error;
+  }
 }

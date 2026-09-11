@@ -102,6 +102,7 @@ export {
 } from "./tools/snapshot.js";
 export {
   createServedMcpEndpoint,
+  type McpHttpTransport,
 } from "./mcp/served/jsonrpc.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,

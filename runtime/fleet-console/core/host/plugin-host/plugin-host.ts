@@ -367,6 +367,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly host: FleetPluginHostCapabilities;
+  readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0]) => () => void;
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
   readonly bundleCacheDir?: string;
   readonly isProcessAlive?: (pid: number) => boolean;
@@ -497,7 +498,13 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const mod = await importModule(plugin.routesEntry!);
     const register = resolveRegister(mod);
     if (!register) return;
-    const registrationTransaction = createPluginRegistrationTransaction(deps.host);
+    const registrationTransaction = createPluginRegistrationTransaction({
+      ...deps.host,
+      admiralMcp: {
+        connect: () => deps.host.admiralMcp.connect(),
+        register: (tools) => deps.registerAdmiralMcp(plugin.manifest.id, tools),
+      },
+    });
     try {
       await register({
         pluginId: plugin.manifest.id,
@@ -539,6 +546,8 @@ interface PluginRegistrationTransaction {
 
 function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities): PluginRegistrationTransaction {
   const rollbackActions: Array<() => void | Promise<void>> = [];
+  const consoleMcpConnections = new Set<ReturnType<FleetPluginHostCapabilities["consoleUse"]["connect"]>>();
+  let consoleMcpCleanupRegistered = false;
 
   function track(disposer: () => void): () => void {
     let active = true;
@@ -579,6 +588,47 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
   return {
     host: {
       ...host,
+      ...(host.mcpTransport ? { mcpTransport: {
+        mount: (handler: Parameters<NonNullable<FleetPluginHostCapabilities["mcpTransport"]>["mount"]>[0]) => {
+          const binding = host.mcpTransport!.mount(handler);
+          const dispose = track(binding.dispose);
+          trackCleanup(dispose);
+          return { ...binding, dispose };
+        },
+      } } : {}),
+      admiralMcp: {
+        register: (tools) => {
+          const unregister = track(host.admiralMcp.register(tools));
+          trackCleanup(unregister);
+          return unregister;
+        },
+        connect: () => {
+          const connection = host.admiralMcp.connect();
+          trackCleanup(() => connection.cleanup());
+          return connection;
+        },
+      },
+      consoleUse: {
+        connect: (options) => {
+          if (!consoleMcpCleanupRegistered) {
+            trackCleanup(async () => {
+              const results = await Promise.allSettled([...consoleMcpConnections].map((connection) => connection.dispose()));
+              consoleMcpConnections.clear();
+              const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+              if (errors.length) throw new AggregateError(errors.map((result) => result.reason), "Plugin Console MCP cleanup failed");
+            });
+            consoleMcpCleanupRegistered = true;
+          }
+          const connection = host.consoleUse.connect(options);
+          consoleMcpConnections.add(connection);
+          return {
+            ...connection,
+            dispose: async () => {
+              try { await connection.dispose(); } finally { consoleMcpConnections.delete(connection); }
+            },
+          };
+        },
+      },
       operations: {
         ...host.operations,
         registerOperationType: (type) => track(host.operations.registerOperationType(type)),

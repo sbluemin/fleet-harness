@@ -2,15 +2,21 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import os from "node:os";
 import path from "node:path";
 
-import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra";
-import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
+import { ensureWorkspaceDirectory, withDirectoryLock } from "@dotobokuri/core-infra";
+import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "../server/wiki-mcp.js";
 import { describe, expect, it } from "vitest";
 
-import { createTerminalWikiToolSpecs } from "../server/agent.js";
+function createCodexWikiToolSpecs(fleetDataDir: string) {
+  return getWikiToolSpecs(createWikiWorkspaceResolver({
+    ensureWorkspace: (cwd) => ensureWorkspaceDirectory(fleetDataDir, cwd),
+    withMigrationLock: (workspace, operation) => withDirectoryLock({ lockDir: path.join(workspace.path, "knowledge.migration.lock") }, operation),
+  }));
+}
 
 const BODY = "A durable Terminal Wiki entry. ".repeat(12);
 
-describe("Terminal agent Wiki storage composition", () => {
+describe("Codex Wiki storage composition", () => {
   it("registers the unchanged catalog while a representative write resolves the Theater-root durable store", async () => {
     await withFixture(async ({ fleetDataDir, theaterRoot }) => {
       const sourceFile = path.join(theaterRoot, ".fleet", "knowledge", "legacy.md");
@@ -18,7 +24,7 @@ describe("Terminal agent Wiki storage composition", () => {
       await mkdir(path.dirname(sourceFile), { recursive: true });
       await writeFile(sourceFile, legacy);
 
-      const specs = createTerminalWikiToolSpecs(fleetDataDir);
+      const specs = createCodexWikiToolSpecs(fleetDataDir);
       const bareSpecs = getWikiToolSpecs();
       expect(specs.map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
       expect(specs.map((spec) => spec.parameters)).toEqual(bareSpecs.map((spec) => spec.parameters));
@@ -37,7 +43,7 @@ describe("Terminal agent Wiki storage composition", () => {
 
   it("keeps an empty store available until a tool actually resolves it", async () => {
     await withFixture(async ({ fleetDataDir }) => {
-      expect(createTerminalWikiToolSpecs(fleetDataDir).map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
+      expect(createCodexWikiToolSpecs(fleetDataDir).map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
       await expect(stat(fleetDataDir)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
@@ -52,7 +58,7 @@ describe("Terminal agent Wiki storage composition", () => {
       await mkdir(path.dirname(blockingFile), { recursive: true });
       await writeFile(blockingFile, "destination wins\n");
 
-      await invoke(createTerminalWikiToolSpecs(fleetDataDir), "wiki_orient", {}, theaterRoot);
+      await invoke(createCodexWikiToolSpecs(fleetDataDir), "wiki_orient", {}, theaterRoot);
 
       expect(await readFile(blockingFile, "utf8")).toBe("destination wins\n");
       await expect(readFile(path.join(workspace.path, "knowledge", "legacy.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
@@ -60,7 +66,7 @@ describe("Terminal agent Wiki storage composition", () => {
   });
 });
 
-async function invoke(specs: ReturnType<typeof createTerminalWikiToolSpecs>, id: string, args: Record<string, unknown>, cwd: string): Promise<void> {
+async function invoke(specs: ReturnType<typeof createCodexWikiToolSpecs>, id: string, args: Record<string, unknown>, cwd: string): Promise<void> {
   const spec = specs.find((candidate) => candidate.id === id);
   if (!spec) throw new Error(`Missing ${id}`);
   const result = await spec.execute(args, { cwd });

@@ -36,7 +36,7 @@ export default defineConfig([
     // native(node-pty)·동적 require(ws)·font-list의 플랫폼 helper는 정적 분석 대상이 아니라 external로 남으며,
     // publish 스크립트가 published dependencies로 유지한다.
     // @fleet-console source-only 워크스페이스 패키지는 npm publish 시 번들 흡수한다.
-    noExternal: [/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//, /^@fleet-console\/(sdk|markdown|font-picker|desktop-protocol|access-protocol)(\/|$)/, "@clack/prompts", /^@clack\//],
+    noExternal: [/^@fleet-plugins\//,/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//, /^@fleet-console\/(sdk|markdown|font-picker|desktop-protocol|access-protocol)(\/|$)/, "@clack/prompts", /^@clack\//, /^zod(\/|$)/],
     // esbuild는 plugin-host가 외부 플러그인의 .ts/.tsx 엔트리를 번들할 때 동적 import한다 —
     // 게시 설치본도 그 경로에 도달하므로 published dependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.

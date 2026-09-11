@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClaudeGatewayMessage, ClaudeGatewayRun, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
-import type { CoworkAgentClient, CoworkConnectOptions } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkAgentClient, CoworkConnectOptions } from "../server/codex/cowork/index.js";
 
 import { createCoworkGatewayConnector } from "../server/codex/cowork/gateway-adapter.js";
 

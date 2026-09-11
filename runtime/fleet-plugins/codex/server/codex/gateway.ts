@@ -1,3 +1,4 @@
+import type { PluginMcpTransport } from "@fleet-console/sdk/mcp";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
@@ -6,8 +7,8 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { handleApiRequest } from "./routes.js";
-import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
-import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
+import { CoworkService, CoworkStore } from "./cowork/index.js";
+import type { CoworkConnector } from "./cowork/index.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
@@ -18,6 +19,7 @@ import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "./contracts.js";
 
 interface CodexGatewayDeps {
+  readonly mcpTransport?: PluginMcpTransport;
   /**
    * 등록된 워크스페이스가 하나도 없을 때 쓸 기본 프로젝트. 플러그인에는 그런 것이
    * 없으므로 생략한다 — 프로세스의 cwd를 기본값으로 삼으면 콘솔 패키지 자신이
@@ -204,7 +206,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
-    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
+    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver, deps.mcpTransport);
     coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,

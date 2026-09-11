@@ -9,7 +9,7 @@ import {
   type ClaudeGatewaySdk,
   type ClaudeGatewayServedMcpServer,
 } from "@dotobokuri/core-agent/claude";
-import type { CoworkAgentClient, CoworkConnectOptions, CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkAgentClient, CoworkConnectOptions, CoworkConnector } from "./index.js";
 
 /** 게이트웨이 강도 사다리. 여기 없는 값은 싣지 않는다 — 사용자가 고르지 않은 강도로 도는 것보다 낫다. */
 const GATEWAY_EFFORTS = new Set<ClaudeGatewayEffort>(["low", "medium", "high", "xhigh", "max"]);

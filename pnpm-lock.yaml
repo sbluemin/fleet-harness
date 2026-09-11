@@ -155,9 +155,6 @@ importers:
 
   packages/fleet-wiki:
     dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../core-agent
       typebox:
         specifier: ^1.1.24
         version: 1.1.34
@@ -210,6 +207,9 @@ importers:
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:sdk
+      '@fleet-plugins/codex':
+        specifier: workspace:*
+        version: link:../fleet-plugins/codex
       '@vscode/ripgrep':
         specifier: 1.18.0
         version: 1.18.0
@@ -255,6 +255,9 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.21.0
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@fleet-console/access-protocol':
         specifier: workspace:*
@@ -502,6 +505,9 @@ importers:
       react-dom:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
+      typebox:
+        specifier: ^1.1.24
+        version: 1.1.34
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

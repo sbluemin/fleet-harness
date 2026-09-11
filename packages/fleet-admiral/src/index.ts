@@ -48,12 +48,6 @@ export {
 
 // AI Gateway 모델 로드아웃 — 호스트가 Phase에 모델/강도를 배치할 때 참조하는 로스터
 export {
-  GATEWAY_MODELS_TOOL_ID,
-  buildGatewayModelsToolSpec,
-  type GatewayModelsSelection,
-  type GatewayModelsToolDeps,
-} from "./ai-gateway/gateway-models-tool.js";
-export {
   buildGatewayLoadout,
   type GatewayLoadout,
   type GatewayLoadoutModel,

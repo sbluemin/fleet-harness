@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoworkStore } from "../src/cowork/index.js";
+import { CoworkStore } from "../server/codex/cowork/index.js";
 
 describe("CoworkStore", () => {
 

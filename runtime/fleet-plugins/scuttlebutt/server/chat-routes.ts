@@ -123,6 +123,7 @@ async function handleStart(
   const chatId = id();
   const workspace = `${ctx.host.paths.pluginDataDir("scuttlebutt")}/workspace/${body.admiral}/${chatId}`;
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
+  let consoleRead: Awaited<ReturnType<typeof createConsoleReadTools>> | undefined;
   try {
     // pluginDataDir 은 경로만 만들어 준다 — 없는 디렉터리에서 CLI를 띄우면 기동 자체가 실패한다.
     await ensureDir(workspace);
@@ -133,8 +134,8 @@ async function handleStart(
     if (!origin) throw new Error("Console origin is not available yet");
     // 실험: 세션이 시작되는 순간의 설정으로 정한다 — 대화 도중 켜고 끄면 다음 세션부터 따른다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
-    const consoleRead = experiments.aideConsoleRead
-      ? createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null)
+    consoleRead = experiments.aideConsoleRead
+      ? await createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null)
       : undefined;
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,
@@ -146,7 +147,9 @@ async function handleStart(
       onEvent,
       ...(consoleRead ? { consoleRead } : {}),
     }));
+    if (result !== "started") await consoleRead?.dispose();
   } catch (error) {
+    await consoleRead?.dispose();
     // 시작 실패는 서버 로그에만 남긴다 — 브라우저에는 코드 한 줄이면 충분하고, 원문에는 경로가 섞일 수 있다.
     console.error("[scuttlebutt] chat session failed to start:", error instanceof Error ? error.message : error);
     ctx.host.http.writeJson(res, 503, { error: "session_unavailable" });

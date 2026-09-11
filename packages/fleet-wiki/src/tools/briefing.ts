@@ -7,7 +7,7 @@ import {
   WIKI_BRIEFING_PROMPT_SNIPPET,
   buildWikiBriefingSchema,
 } from "../prompts.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 export function buildBriefingToolConfig() {
   return {

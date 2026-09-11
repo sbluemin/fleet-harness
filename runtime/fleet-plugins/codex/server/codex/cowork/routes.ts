@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
-import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "./index.js";
 import { encodeSseData } from "../contracts.js";
 import { withSecurityHeaders } from "../contracts.js";
 import type { CoworkModelRow } from "../contracts.js";

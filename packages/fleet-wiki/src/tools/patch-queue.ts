@@ -7,7 +7,7 @@ import {
   WIKI_PATCH_QUEUE_PROMPT_SNIPPET,
   buildWikiPatchQueueSchema,
 } from "../prompts.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 export function buildPatchQueueToolConfig() {
   return {

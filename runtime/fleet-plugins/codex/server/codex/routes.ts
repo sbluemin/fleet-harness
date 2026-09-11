@@ -22,7 +22,7 @@ import {
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
 import type { BriefingHit, MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
-import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
+import type { CoworkService } from "./cowork/index.js";
 
 import type {
   CodexHealthResponse,

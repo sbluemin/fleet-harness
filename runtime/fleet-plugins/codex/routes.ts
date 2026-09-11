@@ -6,6 +6,8 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
+import { createCodexMcpTools } from "./server/wiki-mcp.js";
+
 import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./server/codex/contracts.js";
 import { createCodexGateway } from "./server/codex/gateway.js";
 import { createCodexKnowledgeWatcher } from "./server/codex/knowledge-watcher.js";
@@ -40,6 +42,8 @@ export default definePlugin({
         ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
     });
 
+    ctx.host.admiralMcp.register(createCodexMcpTools(wikiWorkspaceResolver));
+
     /**
      * 진행 중인 등록의 꼬리. 이벤트 처리는 비동기라 요청이 그것을 앞지를 수 있으므로,
      * 게이트웨이가 답하기 전에 이 꼬리를 한 번 기다린다.
@@ -53,6 +57,7 @@ export default definePlugin({
     // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
     const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.fleetDataDir });
     const gateway = createCodexGateway({
+      mcpTransport: ctx.host.mcpTransport,
       host: "127.0.0.1",
       version: "1",
       readAiGatewaySettings: aiGatewaySettings.read,

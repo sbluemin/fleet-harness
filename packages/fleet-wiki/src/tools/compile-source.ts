@@ -17,7 +17,7 @@ import {
 import { assertNoUnsafeSecret } from "../store.js";
 import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
 import type { Patch, RawSourceEntry, WikiEntry } from "../types.js";
-import type { WikiToolExecutionContext } from "../agent-specs.js";
+import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface WikiCompileSourceInput {
   source?: string;

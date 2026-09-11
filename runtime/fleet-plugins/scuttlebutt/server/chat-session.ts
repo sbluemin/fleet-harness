@@ -205,7 +205,8 @@ export interface ChatSessionOptions {
    * 웹 검색 옆에 선다. 없으면 오늘과 완전히 같은 부관이다.
    */
   readonly consoleRead?: {
-    readonly server: ClaudeGatewayMcpServer;
+    readonly servers: Readonly<Record<string, ClaudeGatewayMcpServer>>;
+    dispose(): Promise<void>;
     readonly allowedTools: readonly string[];
     readonly promptAddendum: string;
   };
@@ -254,7 +255,7 @@ export class ChatSession implements ChatSessionLike {
         cwd: this.options.cwd,
         tools: [...PET_TOOLS],
         allowedTools: [...PET_TOOLS, ...(consoleRead?.allowedTools ?? [])],
-        ...(consoleRead ? { mcpServers: { console: consoleRead.server } } : {}),
+        ...(consoleRead ? { mcpServers: consoleRead.servers } : {}),
         permissionMode: "dontAsk",
         // 텍스트를 흘려 보내려면 부분 메시지가 필요하다. SSE `chunk` 계약이 그것으로 만들어진다.
         includePartialMessages: true,
@@ -293,8 +294,8 @@ export class ChatSession implements ChatSessionLike {
     });
   }
 
-  dispose(): Promise<void> {
-    return this.loop.dispose();
+  async dispose(): Promise<void> {
+    try { await this.loop.dispose(); } finally { await this.options.consoleRead?.dispose(); }
   }
 }
 

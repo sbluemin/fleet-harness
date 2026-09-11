@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "../src/agent-specs.js";
 import { parseLog } from "../src/log.js";
 import { approvePatch, enqueuePatch, listQueue, parsePatch, rewriteQueuedPatch, showQueue } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
