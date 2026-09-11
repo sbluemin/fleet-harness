@@ -57,6 +57,7 @@ export default definePlugin({
     // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
     const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.fleetDataDir });
     const gateway = createCodexGateway({
+      mcpTransport: ctx.host.mcpTransport,
       host: "127.0.0.1",
       version: "1",
       readAiGatewaySettings: aiGatewaySettings.read,

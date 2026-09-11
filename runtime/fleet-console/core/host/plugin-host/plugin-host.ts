@@ -588,6 +588,14 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
   return {
     host: {
       ...host,
+      ...(host.mcpTransport ? { mcpTransport: {
+        mount: (handler: Parameters<NonNullable<FleetPluginHostCapabilities["mcpTransport"]>["mount"]>[0]) => {
+          const binding = host.mcpTransport!.mount(handler);
+          const dispose = track(binding.dispose);
+          trackCleanup(dispose);
+          return { ...binding, dispose };
+        },
+      } } : {}),
       admiralMcp: {
         register: (tools) => {
           const unregister = track(host.admiralMcp.register(tools));

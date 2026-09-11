@@ -1,3 +1,4 @@
+import { createMcpHttpTransport } from "./mcp/http-transport.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -549,7 +550,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     broadcastUpdateAvailable();
   }) ?? null;
   const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
+  const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleUse = createConsoleUseMcpHost({
+    transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
     gateway: {
@@ -560,9 +563,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
     },
   });
-  const pluginMcp = createPluginAdmiralMcpHost();
+  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     consoleUse,
+    mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
@@ -951,6 +955,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    if (pathname.startsWith("/mcp/")) {
+      if (listener?.audience !== "local") { writeJson(res, 404, { error: "not_found" }); return; }
+      mcpHttp.handle(req, res);
       return;
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
@@ -2149,7 +2158,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
-    await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]);
+    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

@@ -50,6 +50,8 @@ describe("fleet-cli gateway MCP composition", () => {
       includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     });
 
+    expect(new Set(endpoint.servers.map((server) => new URL(server.url).origin)).size).toBe(1);
+    expect(new Set(endpoint.servers.map((server) => new URL(server.url).pathname)).size).toBe(endpoint.servers.length);
     expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-console-use", "fleet-codex"]);
     expect(tokens.map((token) => token.name)).toEqual(["fleet-console-use", "fleet-codex"]);
     const fleetServer = endpoint.servers[1]!;

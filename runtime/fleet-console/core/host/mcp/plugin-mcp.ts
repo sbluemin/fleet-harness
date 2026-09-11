@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { createExecutorSessionManager, createMcpToolRegistry, createMcpToolSnapshotStore, createServedMcpEndpoint } from "@dotobokuri/core-agent";
+import { createExecutorSessionManager, createMcpToolRegistry, createMcpToolSnapshotStore, createServedMcpEndpoint, type McpHttpTransport } from "@dotobokuri/core-agent";
 import type { AdmiralMcpSession, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
-export function createPluginAdmiralMcpHost() {
+export function createPluginAdmiralMcpHost(transport?: McpHttpTransport) {
   type Registration = { manager: ReturnType<typeof createExecutorSessionManager>; stop(): Promise<void> };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
@@ -33,7 +33,7 @@ export function createPluginAdmiralMcpHost() {
           },
         });
       }
-      const server = createServedMcpEndpoint({ serverInfo: { name }, toolSnapshotStore: snapshotStore });
+      const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server } }] });
       const registration: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); } };
       registrations.set(name, registration);

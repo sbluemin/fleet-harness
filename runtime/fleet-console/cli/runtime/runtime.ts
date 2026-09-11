@@ -1,3 +1,4 @@
+import { createMcpHttpTransport } from "../../core/host/mcp/http-transport.js";
 import { createCodexMcpTools } from "@fleet-plugins/codex/mcp";
 import { createPluginAdmiralMcpHost } from "../../core/host/mcp/plugin-mcp.js";
 import path from "node:path";
@@ -62,7 +63,8 @@ export async function createFleetCliRuntime(
       operation,
     ),
   });
-  const consoleUse = createConsoleUseMcpHost({ gateway: {
+  const mcpHttp = createMcpHttpTransport();
+  const consoleUse = createConsoleUseMcpHost({ transport: mcpHttp.transport, gateway: {
     readSelection: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return {
@@ -81,7 +83,7 @@ export async function createFleetCliRuntime(
     },
   } });
 
-  const pluginMcp = createPluginAdmiralMcpHost();
+  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   pluginMcp.register("codex", createCodexMcpTools(wikiWorkspaceResolver));
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
@@ -99,12 +101,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        try { await agentRuntime.cleanup(); } finally { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); }
+        try { await agentRuntime.cleanup(); } finally { try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); } }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
-    await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]);
+    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     throw error;
   }
 }

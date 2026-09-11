@@ -15,6 +15,6 @@ The `./claude` subpath owns vendor-neutral Claude gateway transport and executio
 
 - Do not hard-code Fleet identities, reserved IDs, package names, lifecycle policy, or browser exposure rules; callers own them.
 - Public isolation uses a generic scope identity; Fleet-specific scope mapping happens in the caller. Host-session tool narrowing is expressed as a caller-supplied tool-id predicate, never as a built-in tool allowlist.
-- Each MCP session owns its own port and bearer token and is disposed with the session; MCP sessions do not retain child processes.
+- Each MCP session owns its bearer token, tool scope, and pending calls. A host may share its HTTP listener through an explicit transport; session disposal must not close that shared listener or affect another session. MCP sessions do not retain child processes.
 - Whoever hands a child both internal MCP sessions and external MCP servers must call `assertInternalMcpTokensNotShared` before spawning. An internal bearer token reaching an external server is a credential leak that no other gate catches.
 - `McpServerConfig.toolTimeoutSeconds` is seconds. Providers that take milliseconds must convert at their own boundary.

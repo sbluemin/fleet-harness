@@ -1,3 +1,9 @@
+import type http from "node:http";
+
+export interface PluginMcpTransport {
+  mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): { url(): Promise<string>; dispose(): void };
+}
+
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
 export type ConsoleUseToolId = "console_theaters" | "console_operations" | "gateway_models";

@@ -1,3 +1,5 @@
+import http from "node:http";
+import { createMcpHttpTransport } from "../core/host/mcp/http-transport.js";
 import fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import os from "node:os";
@@ -82,7 +84,12 @@ describe("plugin host", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
     tempDirs.push(dir);
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
-    const mcp = createPluginAdmiralMcpHost();
+    let origin = "";
+    const transport = createMcpHttpTransport(() => origin);
+    const listener = http.createServer((req, res) => { if (!transport.handle(req, res)) { res.writeHead(404); res.end(); } });
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    origin = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
+    const mcp = createPluginAdmiralMcpHost(transport.transport);
     const first = mcp.connect();
     const second = mcp.connect();
     const cleanups: Array<() => void | Promise<void>> = [];
@@ -100,6 +107,9 @@ describe("plugin host", () => {
       await host.boot();
       const endpoint = await first.getEndpoint();
       expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-demo"]);
+      expect(new URL(endpoint.servers[0]!.url).origin).toBe(origin);
+      expect((await fetch(endpoint.servers[0]!.url, { method: "POST" })).status).toBe(401);
+      expect((await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { Origin: origin, Authorization: "Bearer fake" } })).status).toBe(404);
       const one = first.issueSessionToken({ label: "same", cwd: "/first" })[0]!;
       const two = second.issueSessionToken({ label: "same", cwd: "/second" })[0]!;
       const call = async (token: string) => {
@@ -116,7 +126,8 @@ describe("plugin host", () => {
       for (const cleanup of cleanups) await cleanup();
       expect((await second.getEndpoint()).servers).toEqual([]);
     } finally {
-      first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose();
+      first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose(); await transport.dispose();
+      await new Promise<void>((resolve) => { listener.close(() => resolve()); listener.closeAllConnections(); });
     }
   });
 

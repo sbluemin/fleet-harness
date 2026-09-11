@@ -94,6 +94,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const session = cookie.split(";")[0]!;
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "POST", "/mcp/private", "{}", session)).resolves.toMatchObject({ status: 404 });
   });
 
   it("refuses a loopback grant presented to the remote listener", async () => {

@@ -16,8 +16,13 @@ export interface ServedMcpEndpointInfo {
 export interface CreateServedMcpEndpointDeps {
   readonly serverInfo?: ServedMcpEndpointInfo;
   readonly toolSnapshotStore?: McpToolSnapshotStore;
+  readonly transport?: McpHttpTransport;
   readonly host?: string;
   readonly port?: number;
+}
+
+export interface McpHttpTransport {
+  mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): { url(): Promise<string>; dispose(): void };
 }
 
 export type ToolCallArrivedCallback = (
@@ -77,6 +82,7 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
   const callQueues = new Map<string, PendingToolCall[]>();
   const resultQueues = new Map<string, PendingToolResult[]>();
   const arrivalCallbacks = new Map<string, ToolCallArrivedCallback>();
+  let hosted: ReturnType<McpHttpTransport["mount"]> | null = null;
   let activeServer: http.Server | null = null;
   let activeServerUrl: string | null = null;
   let activeOpaquePath: string | null = null;
@@ -294,6 +300,10 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       if (activeServer && activeServerUrl) return activeServerUrl;
       if (activeStartPromise) return activeStartPromise;
 
+      if (deps.transport) {
+        hosted ??= deps.transport.mount((req, res) => handleAuthorizedRequest(req, res, processJsonRpc));
+        return hosted.url();
+      }
       activeOpaquePath = `/${crypto.randomUUID()}`;
       activeStartPromise = new Promise<string>((resolve, reject) => {
         const srv = http.createServer(handleRequest);
@@ -326,6 +336,7 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       return activeStartPromise;
     },
     async stop() {
+      if (hosted) { hosted.dispose(); hosted = null; clearAllMcpState(); return; }
       if (activeStopPromise) return activeStopPromise;
       activeStopPromise = stopMcpServerOnce();
       try {

@@ -6,12 +6,14 @@ import {
   createMcpToolSnapshotStore,
   createServedMcpEndpoint,
   type AgentToolSpec,
+  type McpHttpTransport,
 } from "@dotobokuri/core-agent";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 import { buildGatewayModelsToolSpec, type GatewayModelsToolDeps } from "./gateway-models-tool.js";
 
 export interface ConsoleUseDeps {
+  readonly transport?: McpHttpTransport;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
   readonly gateway: GatewayModelsToolDeps;
@@ -83,7 +85,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
           return spec.execute(parsed.data, { ...ctx, signal: ctx.signal ? AbortSignal.any([ctx.signal, controller.signal]) : controller.signal });
         },
       });
-      const server = createServedMcpEndpoint({ serverInfo: { name: FLEET_CONSOLE_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
+      const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_CONSOLE_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_CONSOLE_USE_MCP_SERVER, runtime: { registry, snapshotStore, server } }] });
       let closing: Promise<void> | undefined;
       const embeddedServer = createEmbeddedMcpServer({

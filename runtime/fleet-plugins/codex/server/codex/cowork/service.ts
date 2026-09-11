@@ -1,3 +1,4 @@
+import type { PluginMcpTransport } from "@fleet-console/sdk/mcp";
 import { createExecutorSessionManager, createServedMcpEndpoint, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
 import { approvePatch, enqueuePatch } from "@dotobokuri/fleet-wiki";
 import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "@dotobokuri/fleet-wiki";
@@ -11,10 +12,10 @@ import type { CoworkStore } from "./store.js";
 import type { CoworkAnnotationDto, CoworkSessionDto, CoworkSessionRecord, CoworkStoredEvent } from "./store.js";
 
 /** The per-session registry is deliberately not shared with global Wiki tools. */
-export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, sessionId: string, resolver?: WikiWorkspaceResolver) {
+export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, sessionId: string, resolver?: WikiWorkspaceResolver, transport?: PluginMcpTransport) {
   const registry = createMcpToolRegistry();
   const snapshots = createMcpToolSnapshotStore();
-  const server = createServedMcpEndpoint({ toolSnapshotStore: snapshots });
+  const server = createServedMcpEndpoint({ toolSnapshotStore: snapshots, transport });
   const manager = createExecutorSessionManager({ runtimes: [{ name: "cowork", runtime: { registry, snapshotStore: snapshots, server } }] });
   const draftTools = createWikiDraftToolSpecs({ draft: store.draftPort(workspaceId, sessionId) });
   const allowedToolIds = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
@@ -64,7 +65,7 @@ export class CoworkService {
   private readonly live = new Map<string, LiveResources>();
   private readonly listeners = new Map<string, Set<(event: CoworkStoredEvent) => void>>();
   private readonly streamBuffers = new Map<string, string>();
-  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector, private readonly resolver?: WikiWorkspaceResolver) {}
+  constructor(readonly store: CoworkStore, private readonly paths: MemoryPaths, private readonly cwd: string, private readonly connector: CoworkConnector, private readonly resolver?: WikiWorkspaceResolver, private readonly transport?: PluginMcpTransport) {}
 
   async create(workspaceId: string, entryId: string, identity?: { cli?: string; model?: string; effort?: string }): Promise<CoworkSessionRecord> {
     const entry = await readWikiEntry(entryId, this.paths);
@@ -91,8 +92,10 @@ export class CoworkService {
     const history = (await this.store.transcript(workspaceId, id)).slice(-HISTORY_TURNS).map(turn => ({ role: turn.role, text: clipText(turn.text, 2000) }));
     session = await this.changed(await this.store.update(workspaceId, id, s => ({ ...s, state: "running", annotations: [] })));
     await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
+    let setupCleanup: (() => void) | undefined;
     try {
-      const runtime = createCoworkMcpRuntime(this.store, workspaceId, id, this.resolver);
+      const runtime = createCoworkMcpRuntime(this.store, workspaceId, id, this.resolver, this.transport);
+      setupCleanup = () => { runtime.manager.cleanup(); void runtime.server.stop().catch((error) => console.error("[cowork] MCP cleanup failed", error)); };
       const mcp = await runtime.manager.createExecutorMcpSession({ serverName: "cowork", specs: runtime.specs, cwd: this.cwd });
       // Provider cwd is the session's own directory — minimizes what a backend CLI can read on its own.
       // 원샷 실행: provider 세션을 resume하지 않고 매 프롬프트마다 새로 연결한다.
@@ -100,7 +103,8 @@ export class CoworkService {
       const providerCwd = await this.store.sessionDir(workspaceId, id);
       const client = await this.connector.connect({ cwd: providerCwd, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], allowedToolIds: [...runtime.allowedToolIds] });
       this.releaseLive(id);
-      this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
+      this.live.set(id, { workspaceId, client, annotations, cleanup: setupCleanup });
+      setupCleanup = undefined;
       client.on("toolCall", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false); });
       client.on("toolCallUpdate", (title, status, _sid, data) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}${data ? ` · ${JSON.stringify(data).slice(0, 220)}` : ""}`, false).then(() => this.emit(workspaceId, id, "session")); });
       client.on("messageChunk", (text) => { this.streamBuffers.set(id, (this.streamBuffers.get(id) ?? "") + text); void this.emit(workspaceId, id, "transcript", text, false); });
@@ -119,6 +123,7 @@ export class CoworkService {
       });
       return session;
     } catch (error) {
+      setupCleanup?.();
       console.error(`[cowork] prompt setup failed (session ${id}):`, error instanceof Error ? error.message : error);
       this.releaseLive(id);
       await this.flushAssistantTurn(workspaceId, id);
