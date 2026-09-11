@@ -44,7 +44,6 @@ import {
   type ScoredPaletteCommand,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
-import { forgetTheaterCompletely } from "../theater.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
@@ -497,10 +496,6 @@ export function OperationSearch({
         openWhatsNew();
         break;
       }
-      case "forget-theater": {
-        void forgetTheaterCompletely(action.theaterId).then(onDeferredDeletion);
-        break;
-      }
     }
     closeOperationSearch();
   };
@@ -551,10 +546,10 @@ export function OperationSearch({
 
   const handleInputChange = (value: string) => {
     // 접두 문법은 탭을 모르는 손을 위한 것이다 — 빈 입력의 첫 글자가 접두면 그 탭으로 옮기고 접두는 지운다.
-    const prefixMode = text === "" ? paletteModeForPrefix(value[0] ?? "") : null;
-    if (prefixMode && mode === "operations") {
+    const prefixMode = text === "" && value.length === 1 ? paletteModeForPrefix(value) : null;
+    if (prefixMode) {
       setMode(prefixMode);
-      setText(value.slice(1));
+      setText("");
       return;
     }
     setText(value);

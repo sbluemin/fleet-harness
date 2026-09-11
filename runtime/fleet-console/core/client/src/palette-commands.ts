@@ -64,8 +64,7 @@ export type PaletteCommandAction =
   | { readonly kind: "assign-operation-group"; readonly operationId: string }
   | { readonly kind: "set-operation-accent"; readonly operationId: string }
   | { readonly kind: "minimize-operation"; readonly operationId: string }
-  | { readonly kind: "whats-new" }
-  | { readonly kind: "forget-theater"; readonly theaterId: string };
+  | { readonly kind: "whats-new" };
 
 export interface PaletteCommandEntry {
   readonly commandId: string;
@@ -207,9 +206,6 @@ export function buildPaletteCommands(
   push({ commandId: "open-keyboard-shortcuts", label: t("palette.openKeyboardShortcuts"), aliasLabel: alias("palette.openKeyboardShortcuts"), action: { kind: "open-keyboard-shortcuts" }, group: "console", glyph: "console-shortcuts" });
   if (current.releaseNotes.length > 0) {
     push({ commandId: "whats-new", label: t("palette.whatsNew"), aliasLabel: alias("palette.whatsNew"), action: { kind: "whats-new" }, group: "console", glyph: "console-whats-new" });
-  }
-  for (const theater of current.theaters) {
-    push({ commandId: `forget-theater:${theater.id}`, label: t("palette.forgetTheater", { label: theater.label }), aliasLabel: alias("palette.forgetTheater", { label: theater.label }), action: { kind: "forget-theater", theaterId: theater.id }, group: "theater", glyph: "theater-monogram", monogramSource: theater.label, danger: true, undoable: true });
   }
   return commands;
 }
