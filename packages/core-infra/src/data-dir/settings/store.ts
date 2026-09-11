@@ -22,6 +22,13 @@ export interface GlobalOptionsData {
    * has no permission gate of its own to honour the choice with.
    */
   readonly claudeCodeSkipPermissions?: boolean;
+  /**
+   * Claude Code built-in subagents the user opted out of, by agent name (`Explore`, `Plan`,
+   * ...). Key absent or empty means every built-in stays available, which is what a launch
+   * without any rule already does. Fleet reads the live roster from the installed CLI, so
+   * this list is an opt-out overlay, not a catalog: a name that no longer exists is inert.
+   */
+  readonly claudeCodeDisabledAgents?: readonly string[];
 }
 
 export interface GlobalOptionsValidationResult {
@@ -124,22 +131,26 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
   const claudeCodeSkipPermissions = sanitizeClaudeCodeSkipPermissions(value.claudeCodeSkipPermissions);
+  const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
     ...(claudeCodeSkipPermissions !== undefined ? { claudeCodeSkipPermissions } : {}),
+    ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
   };
   const allowedKeys = new Set([
     "version",
     "agentIdleDormantMinutes",
     "claudeCodeSystemPrompt",
     "claudeCodeSkipPermissions",
+    "claudeCodeDisabledAgents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
     ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined) ||
-    ("claudeCodeSkipPermissions" in value && claudeCodeSkipPermissions === undefined);
+    ("claudeCodeSkipPermissions" in value && claudeCodeSkipPermissions === undefined) ||
+    ("claudeCodeDisabledAgents" in value && !sameStringList(value.claudeCodeDisabledAgents, claudeCodeDisabledAgents));
 
   return { data, changed };
 }
@@ -160,6 +171,29 @@ function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptM
  */
 function sanitizeClaudeCodeSkipPermissions(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+/**
+ * Only well-formed agent names survive: a non-empty string without whitespace or the
+ * `Agent(...)` rule delimiters, since each entry becomes one `Agent(<name>)` deny rule.
+ * Duplicates collapse and an empty result drops the key back to "all enabled".
+ */
+export function sanitizeClaudeCodeDisabledAgents(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const name = entry.trim();
+    if (name.length === 0 || name.length > 128 || !/^[^\s()]+$/.test(name)) continue;
+    names.add(name);
+  }
+  return names.size > 0 ? [...names] : undefined;
+}
+
+function sameStringList(raw: unknown, sanitized: readonly string[] | undefined): boolean {
+  if (!Array.isArray(raw)) return false;
+  if (sanitized === undefined) return raw.length === 0;
+  return raw.length === sanitized.length && raw.every((entry, index) => entry === sanitized[index]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

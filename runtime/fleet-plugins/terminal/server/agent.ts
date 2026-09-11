@@ -14,6 +14,7 @@ import { readSocketRole, readTicketChannel } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-api/agent-cli-detect.js";
+import { createClaudeBuiltInAgentProbe } from "./agent-api/claude-builtin-agents.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
@@ -36,7 +37,7 @@ import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./agent-api/types.js";
-import { resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
+import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
@@ -113,6 +114,7 @@ export async function registerAgentRoutes(
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "GET", path: "/agent-cli/claude-agents", summary: "Read the installed Claude Code's built-in subagent roster.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "PUT", path: "/agent-cli/path", summary: "Save an Agent CLI executable path.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Terminal Plugin", gate: "loopback", transport: "sse" },
@@ -180,6 +182,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   // 설치돼 있는지에 따라 갈린다.
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
+  // 설정 화면의 내장 서브에이전트 목록. 런치가 쓰는 것과 같은 바이너리 해석을 따른다.
+  const claudeBuiltInAgents = createClaudeBuiltInAgentProbe({
+    resolveBinary: async () => resolveAgentCliBinary({
+      cliCommand: CLAUDE_HARNESS_ID,
+      env: process.env,
+      userPaths: await readAgentCliPaths(),
+    }).resolved,
+  });
   const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.fleetDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
@@ -298,6 +308,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (path === "/agent-cli/state") {
       if (req.method !== "GET") return methodNotAllowed(res);
       ctx.host.http.writeJson(res, 200, { clis: await detector.detect() });
+      return true;
+    }
+    if (path === "/agent-cli/claude-agents") {
+      if (req.method !== "GET") return methodNotAllowed(res);
+      const refresh = new URL(req.url ?? "/", "http://localhost").searchParams.get("refresh") === "1";
+      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read({ refresh }));
       return true;
     }
     if (path === "/agent-cli/diagnostics") {
@@ -1436,7 +1452,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
     // admiral이 정한다 — CLI는 끌 때만 플래그를 싣고 SDK는 켤 때만 preset을 싣는, 서로 뒤집힌
     // 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
-    const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(deps.globalOptionsService.load());
+    const chatGlobalOptions = deps.globalOptionsService.load();
+    const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(chatGlobalOptions);
+    const chatClaudeCodeDisabledAgents = resolveClaudeCodeDisabledAgents(chatGlobalOptions);
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -1481,6 +1499,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           cwd,
           dataDir: ctx.host.paths.fleetDataDir,
           claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
+          claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           origin: sessionOrigin.kind === "resume"
             ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
             : { kind: "new", preferredSessionId: node.id },

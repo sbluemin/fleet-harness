@@ -140,6 +140,7 @@ export {
   buildDisabledSkillOverrides,
   type ClaudeSkillOverride,
 } from "./agent-cli/gateway-skills.js";
+export { buildClaudeAgentDenyRules } from "./agent-cli/claude-agent-rules.js";
 
 // Fleet 에이전트 in-process MCP 런타임 라이프사이클
 export {

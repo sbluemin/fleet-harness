@@ -1430,6 +1430,41 @@
   font-size: var(--t-2xs);
 }
 
+/* 내장 서브에이전트 — Claude Code 카드 안의 하위 목록. 머리 행은 카드 행 문법을 그대로 쓰고,
+   항목은 그 아래 한 단 들여 선다. 이름은 Claude Code가 보고한 철자 그대로라 mono로 둔다. */
+.claude-agents {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+
+.claude-agents-head {
+  align-items: center;
+}
+
+.claude-agent-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 0 var(--space-4);
+  list-style: none;
+}
+
+.claude-agent-row {
+  align-items: center;
+}
+
+.claude-agent-row + .claude-agent-row {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.claude-agent-row .global-settings-resp-title {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
 /* 고대비(forced-colors) — 워시·잉크 워시가 걷히는 환경에서는 켜짐을 시스템 선택색으로 말한다. */
 @media (forced-colors: active) {
   .ai-gateway-host-only.is-on,

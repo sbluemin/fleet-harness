@@ -106,6 +106,12 @@ export interface AgentCliInjectionContext {
    * 그 이유는 `session.ts`의 `permissionMode` 옆에 적혀 있다.
    */
   readonly claudeCodeSkipPermissions?: boolean;
+  /**
+   * Claude Code 내장 서브에이전트 중 이 세션에서 끌 이름들. 각 이름이 `Agent(<name>)` deny
+   * 규칙 하나가 되어 `--settings`의 `permissions.deny`로 실린다. 생략·빈 목록은 규칙을 싣지
+   * 않는다 — 플래그 없는 런치가 이미 하는 일이다.
+   */
+  readonly claudeCodeDisabledAgents?: readonly string[];
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

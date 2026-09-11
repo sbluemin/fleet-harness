@@ -29,7 +29,7 @@ import {
   type GlobalOptionsService,
 } from "@dotobokuri/core-infra";
 
-import { resolveClaudeCodeSkipPermissions, resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
+import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSkipPermissions, resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
@@ -136,6 +136,7 @@ export async function prepareChatClaudeSession(
     readonly cwd: string;
     readonly origin: ClaudeSessionOrigin;
     readonly claudeCodeSystemPrompt?: "on" | "off";
+    readonly claudeCodeDisabledAgents?: readonly string[];
   },
 ): Promise<ClaudeSessionHandle> {
   const hookEntry = buildConsoleHookEntry(deps);
@@ -149,6 +150,7 @@ export async function prepareChatClaudeSession(
     dataDir,
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
+    ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
     captureSessionHookExec: buildConsoleCaptureHookCommand(hookEntry, CHAT_PLUGIN_CLI_ID, createSessionCaptureHookExec),
     turnStartHookExec: buildConsoleTurnHookCommand(hookEntry, "start"),
     turnEndHookExec: buildConsoleTurnHookCommand(hookEntry, "end"),
@@ -331,6 +333,7 @@ async function createAgentCliLaunchSpec(options: {
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.globalOptionsService.load()),
       claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.globalOptionsService.load()),
+      claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(options.infraServices.globalOptionsService.load()),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

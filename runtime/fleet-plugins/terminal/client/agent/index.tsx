@@ -38,7 +38,7 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import "./analysis.css";
 import "./agent-cli.css";
 
-import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView, READING_WIDTH_LABEL_KEY } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
@@ -47,7 +47,7 @@ import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPrompt
 import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings, CompactCeiling } from "./settings.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, getAgentState, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
-import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
+import type { AgentCliDiagnosticsEntry, AgentCliStatus, ClaudeBuiltInAgentsState, SessionInfo } from "./types.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -145,11 +145,12 @@ export const harnessSettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.harnessClaudeCode"),
       getT(locale)("terminal.settings.skipPermissionsTitle"),
       getT(locale)("terminal.settings.claudeSystemPromptTitle"),
+      getT(locale)("terminal.settings.builtInAgentsTitle"),
       getT(locale)("terminal.settings.idleAgent"),
       getT(locale)("terminal.settings.agentCliAvailable"),
     ].join(" "),
-    "harness permission permissions approval prompt bypass dangerously skip system prompt claude code dormant idle session timeout cli path executable",
-    "하네스 권한 승인 프롬프트 바이패스 건너뛰기 시스템 프롬프트 휴면 유휴 세션 시간 실행 파일 경로",
+    "harness permission permissions approval prompt bypass dangerously skip system prompt claude code dormant idle session timeout cli path executable subagent subagents agent explore plan general-purpose",
+    "하네스 권한 승인 프롬프트 바이패스 건너뛰기 시스템 프롬프트 휴면 유휴 세션 시간 실행 파일 경로 서브에이전트 에이전트",
   ],
   render: () => <HarnessSection />,
 });
@@ -964,11 +965,123 @@ function ClaudeCodeHarnessCard() {
               )}
             />
           </div>
+          <ClaudeBuiltInAgentsRows
+            disabled={state.claudeCodeDisabledAgents}
+            saving={saving}
+            onChange={(next) => void setSystemPromptSettingsField("claudeCodeDisabledAgents", next)}
+          />
         </>
       ) : (
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
     </section>
+  );
+}
+
+/**
+ * 내장 서브에이전트 옵트아웃 행들. 목록은 설치된 Claude Code가 보고한 것이라 여기에 이름을
+ * 적지 않는다 — 업데이트로 늘거나 준 항목이 그대로 따라온다. 저장되는 것은 끈 이름뿐이므로
+ * 로스터에서 사라진 이름은 조용히 남았다가, 사용자가 다른 항목을 만질 때 함께 정리된다.
+ */
+function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
+  readonly disabled: readonly string[];
+  readonly saving: boolean;
+  readonly onChange: (next: readonly string[]) => void;
+}) {
+  const t = getT(useTerminalLocale());
+  const [roster, setRoster] = React.useState<ClaudeBuiltInAgentsState | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reading, setReading] = React.useState(false);
+
+  const read = React.useCallback(async (signal?: AbortSignal, refresh = false) => {
+    setReading(true);
+    try {
+      const next = await fetchClaudeBuiltInAgents(signal, { refresh });
+      if (signal?.aborted) return;
+      setRoster(next);
+      setLoadError(null);
+    } catch (error) {
+      if (signal?.aborted) return;
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!signal?.aborted) setReading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void read(controller.signal);
+    return () => controller.abort();
+  }, [read]);
+
+  const disabledSet = new Set(disabled);
+  const toggle = (name: string, enabled: boolean) => {
+    // 로스터에 있는 이름만 남긴다 — 사라진 옵트아웃은 여기서 함께 걷힌다.
+    const known = new Set(roster?.agents ?? []);
+    const next = disabled.filter((entry) => known.has(entry) && entry !== name);
+    if (!enabled) next.push(name);
+    onChange(next);
+  };
+
+  let body: React.ReactNode;
+  if (loadError) {
+    body = <p className="global-settings-error" role="alert">{loadError}</p>;
+  } else if (!roster) {
+    body = <p className="global-settings-help">{t("terminal.settings.builtInAgentsLoading")}</p>;
+  } else if (!roster.available) {
+    body = (
+      <p className="global-settings-help">
+        {t(roster.error === "cli_not_found" ? "terminal.settings.builtInAgentsNotFound" : "terminal.settings.builtInAgentsFailed")}
+      </p>
+    );
+  } else if (roster.agents.length === 0) {
+    body = <p className="global-settings-help">{t("terminal.settings.builtInAgentsEmpty")}</p>;
+  } else {
+    body = (
+      <ul className="claude-agent-list" aria-label={t("terminal.settings.builtInAgentsTitle")}>
+        {roster.agents.map((name) => {
+          const labelId = `claude-agent-${name}-label`;
+          return (
+            <li key={name} className="global-settings-row claude-agent-row" role="group" aria-labelledby={labelId}>
+              <div className="global-settings-row-text">
+                <p className="global-settings-resp-title"><span id={labelId} className="claude-agent-name">{name}</span></p>
+              </div>
+              <SettingsToggle
+                checked={!disabledSet.has(name)}
+                disabled={saving}
+                ariaLabel={name}
+                onChange={(enabled) => toggle(name, enabled)}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="claude-agents" role="group" aria-labelledby="claude-code-built-in-agents-label">
+      <div className="global-settings-row claude-agents-head">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            <span id="claude-code-built-in-agents-label">{t("terminal.settings.builtInAgentsTitle")}</span>
+            <SettingsHelp title={t("terminal.settings.builtInAgentsTitle")}>{t("terminal.settings.builtInAgentsHelp")}</SettingsHelp>
+          </p>
+          {roster?.version ? (
+            <p className="global-settings-help claude-agents-version">{t("terminal.settings.builtInAgentsVersion", { version: roster.version })}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="agent-cli-path-button"
+          disabled={reading}
+          onClick={() => { void read(undefined, true); }}
+        >
+          {t("terminal.settings.builtInAgentsRefresh")}
+        </button>
+      </div>
+      {body}
+    </div>
   );
 }
 
