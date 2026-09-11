@@ -38,18 +38,15 @@ function readSessionModel(payload: Record<string, unknown>): string | null {
 }
 
 /**
- * 팔레트의 네 모드. 탭이 곧 모드이고, 입력 첫 글자의 접두(`>` `#` `@`)도 같은 모드로 간다 —
- * 탭을 모르는 손도, 접두를 모르는 눈도 같은 곳에 닿는다.
+ * 팔레트의 두 모드. 검색창 오른쪽 스위치가 곧 모드이고, 빈 입력의 `>`도 명령 모드로 간다 —
+ * 스위치를 모르는 손도, 접두를 모르는 눈도 같은 곳에 닿는다.
  */
-export type PaletteMode = "operations" | "commands" | "theaters" | "panels";
-export const PALETTE_MODES: readonly PaletteMode[] = ["operations", "commands", "theaters", "panels"];
-export const PALETTE_MODE_PREFIX: Readonly<Record<Exclude<PaletteMode, "operations">, string>> = { commands: ">", theaters: "#", panels: "@" };
+export type PaletteMode = "operations" | "commands";
+export const PALETTE_MODES: readonly PaletteMode[] = ["operations", "commands"];
+export const COMMAND_MODE_PREFIX = ">";
 
-export function paletteModeForPrefix(character: string): Exclude<PaletteMode, "operations"> | null {
-  if (character === ">") return "commands";
-  if (character === "#") return "theaters";
-  if (character === "@") return "panels";
-  return null;
+export function paletteModeForPrefix(character: string): "commands" | null {
+  return character === COMMAND_MODE_PREFIX ? "commands" : null;
 }
 
 /** seed 문자열(전역 단축키가 넘기는 접두)을 모드와 남은 텍스트로 가른다. */

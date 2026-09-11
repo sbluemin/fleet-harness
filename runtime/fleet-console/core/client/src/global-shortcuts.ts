@@ -21,7 +21,7 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly openOperationSearch: (seed?: string) => void;
   readonly closeOperationSearch: () => void;
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
-  readonly getOperationSearchMode: () => "operations" | "commands" | "theaters" | "panels" | null;
+  readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
   readonly toggleRailChrome: () => void;
   readonly canUndoLastClose?: () => boolean;

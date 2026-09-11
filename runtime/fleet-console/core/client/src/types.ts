@@ -541,7 +541,7 @@ export interface ConsoleState {
    */
   readonly operationSearchSeedNonce: number;
   /** 팔레트가 지금 서 있는 모드. 전역 단축키가 ⌘K를 「닫기」로 볼지 「검색으로 복귀」로 볼지 가른다. */
-  readonly operationSearchMode: "operations" | "commands" | "theaters" | "panels" | null;
+  readonly operationSearchMode: "operations" | "commands" | null;
   readonly quickLaunchOpen: boolean;
   // 컴포저를 화면 하단에 도킹해 두는 옵트인 상태. 고정 중에는 컴포저가 상주하므로 quickLaunchOpen과
   // 무관하게 떠 있고, 모달 계약(스크림·포커스 트랩·스크롤 잠금)을 내려놓는다 — 공존이 목적이다.

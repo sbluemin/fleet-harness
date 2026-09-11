@@ -10521,21 +10521,24 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: color-mix(in oklch, var(--text-tertiary) 80%, transparent);
 }
 
-/* ===== 팔레트 탭 — 네 모드가 창 위에 선다. 탭이 접두 문법(> # @)을 설명하고, ⌘K·⌘P가 앞의 둘을 오간다. ===== */
-.operation-search-tabs {
-  display: flex;
-  gap: var(--space-1);
-  margin: 0 0 var(--space-2);
-  padding: 0 var(--space-1);
+/* ===== 팔레트 모드 스위치 — 검색창 오른쪽의 두 칸(Operation ⌘K · 명령 ⌘P). 빈 입력의 `>`도 같은 곳으로 간다. ===== */
+.operation-search-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-glass) 60%, transparent);
 }
 
-.operation-search-tab {
+.operation-search-switch-option {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 4px 10px;
+  padding: 3px 9px;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: calc(var(--radius-xs) - 2px);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -10543,30 +10546,37 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
   transition:
     background var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
 }
 
-.operation-search-tab:hover {
+.operation-search-switch-option:hover {
   color: var(--text-secondary);
 }
 
-.operation-search-tab.is-active {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+.operation-search-switch-option.is-active {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
   color: var(--brass-bright);
 }
 
-.operation-search-tab kbd {
-  padding: 0 4px 1px;
+.operation-search-switch-option kbd {
+  padding: 0 3px;
   border: 0;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-glass) 60%, transparent);
+  background: transparent;
   color: inherit;
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
-  opacity: 0.75;
+  opacity: 0.7;
+}
+
+@media (max-width: 720px) {
+  .operation-search-switch-option kbd {
+    display: none;
+  }
 }
 
 /* 구역 머리글 글리프 — 스크롤 중 위치를 알린다. 잉크는 머리글과 같다. */

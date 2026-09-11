@@ -17,7 +17,6 @@ import {
   filterOperationSearchEntries,
   groupOperationSearchEntries,
   orderOperationSearchEntries,
-  PALETTE_MODE_PREFIX,
   PALETTE_MODES,
   paletteModeForPrefix,
   parsePaletteSeed,
@@ -124,24 +123,16 @@ export function OperationSearch({
     [state, railPanels, t, undoAvailable],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
-  // 모드가 보는 명령의 부분집합. Theater 탭은 전환·추가, 패널 탭은 패널 열기·설정이다.
-  const modeCommands = useMemo(() => {
-    if (mode === "commands") return commands;
-    if (mode === "theaters") return commands.filter((command) => command.action.kind === "switch-theater" || command.action.kind === "new-theater");
-    if (mode === "panels") return commands.filter((command) => command.action.kind === "open-rail-panel" || command.action.kind === "open-settings");
-    return [];
-  }, [commands, mode]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
-    if (mode === "operations") return [];
+    if (mode !== "commands") return [];
     if (searchTokens(text).length === 0) {
-      if (mode !== "commands") return [{ id: "matches", commands: modeCommands.map((command) => ({ command, score: 0, exactTokens: 0, matchedIndices: [] })) }];
-      return groupPaletteCommands(modeCommands, recentCommandIds).map((section) => ({
+      return groupPaletteCommands(commands, recentCommandIds).map((section) => ({
         id: section.id,
         commands: section.commands.map((command) => ({ command, score: 0, exactTokens: 0, matchedIndices: [] })),
       }));
     }
-    return [{ id: "matches", commands: matchPaletteCommands(modeCommands, text) }];
-  }, [mode, modeCommands, recentCommandIds, text]);
+    return [{ id: "matches", commands: matchPaletteCommands(commands, text) }];
+  }, [mode, commands, recentCommandIds, text]);
   // 같은 명령이 최근 구역과 자기 구역에 함께 설 수 있다 — 선택·스크롤 키는 구역까지 담아 둘을 가른다.
   const commandRows = useMemo(
     () => commandSections.flatMap((section) => section.commands.map((scored) => ({ scored, key: commandResultKey(scored.command.commandId) + (section.id === "recent" ? ":recent" : "") }))),
@@ -169,12 +160,12 @@ export function OperationSearch({
   const selectedOperation = mode === "operations" ? filteredEntries[clampedSelectedIndex] ?? null : null;
   const modKey = isApplePlatform() ? "⌘" : "Ctrl";
 
-  // 패널 내용 검색은 Operation·패널 탭에서만 — 명령 탭은 명령만 보여 주는 편이 손에 맞는다.
+  // 패널 내용 검색은 Operation 모드에서만 — 명령 모드는 명령만 보여 주는 편이 손에 맞는다.
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
     const theaterId = state.activeTheaterId;
-    if (!state.operationSearchOpen || text.trim() === "" || !theaterId || (mode !== "operations" && mode !== "panels")) return;
+    if (!state.operationSearchOpen || text.trim() === "" || !theaterId || mode !== "operations") return;
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
@@ -545,7 +536,7 @@ export function OperationSearch({
   };
 
   const handleInputChange = (value: string) => {
-    // 접두 문법은 탭을 모르는 손을 위한 것이다 — 빈 입력의 첫 글자가 접두면 그 탭으로 옮기고 접두는 지운다.
+    // 접두 문법은 스위치를 모르는 손을 위한 것이다 — 빈 입력의 `>`는 명령 모드로 옮기고 접두는 지운다.
     const prefixMode = text === "" && value.length === 1 ? paletteModeForPrefix(value) : null;
     if (prefixMode) {
       setMode(prefixMode);
@@ -600,16 +591,8 @@ export function OperationSearch({
     if (event.key === "Tab") trapFocus(event, cardRef.current);
   };
 
-  const placeholder = t(
-    mode === "commands" ? "chrome.operationSearch.placeholderCommands"
-      : mode === "theaters" ? "chrome.operationSearch.placeholderTheaters"
-        : mode === "panels" ? "chrome.operationSearch.placeholderPanels"
-          : "chrome.operationSearch.placeholderOperations",
-  );
-  const emptyMessage = mode === "commands" ? t("chrome.operationSearch.noMatchingCommands")
-    : mode === "theaters" ? t("chrome.operationSearch.noMatchingTheaters")
-      : mode === "panels" ? t("chrome.operationSearch.noMatchingPanels")
-        : t("chrome.operationSearch.noMatching");
+  const placeholder = t(mode === "commands" ? "chrome.operationSearch.placeholderCommands" : "chrome.operationSearch.placeholderOperations");
+  const emptyMessage = t(mode === "commands" ? "chrome.operationSearch.noMatchingCommands" : "chrome.operationSearch.noMatching");
   const sectionTitle = (id: "recent" | PaletteCommandGroup | "matches"): string => {
     switch (id) {
       case "recent": return t("chrome.operationSearch.sectionRecent");
@@ -621,7 +604,7 @@ export function OperationSearch({
       case "view": return t("chrome.operationSearch.sectionView");
       case "panel": return t("chrome.operationSearch.sectionPanel");
       case "console": return t("chrome.operationSearch.sectionConsole");
-      case "matches": return t(mode === "theaters" ? "chrome.operationSearch.sectionTheater" : mode === "panels" ? "chrome.operationSearch.sectionPanel" : "chrome.operationSearch.commands");
+      case "matches": return t("chrome.operationSearch.commands");
     }
   };
 
@@ -687,22 +670,6 @@ export function OperationSearch({
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
-        <div className="operation-search-tabs" role="tablist">
-          {PALETTE_MODES.map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              role="tab"
-              className={`operation-search-tab${candidate === mode ? " is-active" : ""}`}
-              aria-selected={candidate === mode}
-              tabIndex={-1}
-              onClick={() => switchMode(candidate)}
-            >
-              {t(candidate === "operations" ? "chrome.operationSearch.tabOperations" : candidate === "commands" ? "chrome.operationSearch.tabCommands" : candidate === "theaters" ? "chrome.operationSearch.tabTheaters" : "chrome.operationSearch.tabPanels")}
-              <kbd>{candidate === "operations" ? `${modKey}K` : candidate === "commands" ? `${modKey}P` : PALETTE_MODE_PREFIX[candidate]}</kbd>
-            </button>
-          ))}
-        </div>
         <div className="operation-search-field">
           <SearchIcon />
           <input
@@ -720,6 +687,24 @@ export function OperationSearch({
             aria-autocomplete="list"
             spellCheck={false}
           />
+          {/* 모드 스위치 — 검색창 오른쪽의 두 칸. ⌘K/⌘P가 같은 두 칸을 오간다. */}
+          <div className="operation-search-switch" role="tablist" aria-label={t("chrome.operationSearch.switchAria")}>
+            {PALETTE_MODES.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                role="tab"
+                className={`operation-search-switch-option${candidate === mode ? " is-active" : ""}`}
+                aria-selected={candidate === mode}
+                tabIndex={-1}
+                title={candidate === "operations" ? `${modKey}K` : `${modKey}P`}
+                onClick={() => switchMode(candidate)}
+              >
+                {t(candidate === "operations" ? "chrome.operationSearch.tabOperations" : "chrome.operationSearch.tabCommands")}
+                <kbd>{candidate === "operations" ? `${modKey}K` : `${modKey}P`}</kbd>
+              </button>
+            ))}
+          </div>
           <kbd>esc</kbd>
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
