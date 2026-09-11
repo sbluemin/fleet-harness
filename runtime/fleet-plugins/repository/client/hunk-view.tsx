@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { RepositoryContext } from "./repository-context.js";
 
@@ -50,14 +50,21 @@ function escapeHtml(s: string): string {
 export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkViewProps) {
   const t = getT(ctx.language);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  // 다른 파일로 옮기는 동안 — 이미 그린 diff는 새 답이 올 때까지 남기고 흐리게만 한다. 매번 "불러오는 중"으로
+  // 갈아 끼우면 J/K로 파일을 넘길 때마다 표가 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면을 쓴다.
+  const [pending, setPending] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!ctx.theaterId) {
       setState({ kind: "error", message: "no_theater" });
+      setPending(false);
       return;
     }
     let cancelled = false;
-    setState({ kind: "loading" });
+    setState((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setPending(true);
+    const settle = () => { if (!cancelled) setPending(false); };
 
     if (compare) {
       ctx.api.fetch("repository", "compare-file", {
@@ -70,7 +77,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
         if (!cancelled) setState({ kind: "ok", result });
       }).catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
-      });
+      }).finally(settle);
     } else if (commit) {
       ctx.api.fetch("repository", "commit-file", {
         method: "POST",
@@ -82,7 +89,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
         if (!cancelled) setState({ kind: "ok", result });
       }).catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
-      });
+      }).finally(settle);
     } else {
       ctx.api.fetch("repository", "file", {
         method: "POST",
@@ -94,11 +101,14 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
         if (!cancelled) setState({ kind: "ok", result });
       }).catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
-      });
+      }).finally(settle);
     }
 
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, file.oldPath, file.path, mode, commit, compare, repoRel]);
+
+  // 새 diff가 오면 맨 위에서 읽기 시작한다 — 표를 제자리에서 갈아 끼우므로 옛 파일의 스크롤이 남는다.
+  useLayoutEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [state]);
 
   if (state.kind === "loading") {
     return <div className="repository-hunk-loading">{t("repository.common.loading")}</div>;
@@ -113,9 +123,9 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
   const lines = parsed.filter((l) => l.kind !== "file-label");
 
   return (
-    <div className="repository-hunk-wrap">
+    <div className={`repository-hunk-wrap${pending ? " is-stale" : ""}`} aria-busy={pending || undefined}>
       {result.truncated && <div className="repository-truncated-badge">{t("repository.hunk.diffTruncated")}</div>}
-      <div className="repository-hunk-scroll">
+      <div ref={scrollRef} className="repository-hunk-scroll">
         <table className="repository-hunk-table" cellSpacing={0} cellPadding={0}>
           <tbody>
             {lines.map((line, i) => (

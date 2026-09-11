@@ -46,7 +46,8 @@ export function chooseComparePair(
   const newer = anchorIsOlder ? target : anchor;
   return { base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash };
 }
-type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
+// ok 상태는 자기 커밋 해시를 함께 든다 — 본문을 다음 답이 올 때까지 남기므로, 자식 조회(diff·트리·blob)는 대상이 아니라 "실제로 그린" 커밋을 향해야 한다.
+type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult; readonly fullHash: string } | { readonly kind: "error"; readonly message: string };
 type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
 
 function readHistoryCacheRestore(historyCacheKey: string, pendingSearchTargetHash: string | null): HistoryCacheRestore | null {
@@ -336,6 +337,8 @@ function DockHeader({ t, tab, onTab, fileCount, shortHash, subject, lane, parent
 function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, dock, onSelectCommit, onPinCompare, onClose, onPreview }: { readonly ctx: RepositoryContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly tab: InspectorTab; readonly onTab: (tab: InspectorTab) => void; readonly lane: number | null; readonly dock: DockControls | null; readonly onSelectCommit: (target: CommitTarget) => void; readonly onPinCompare?: () => void; readonly onClose: () => void; readonly onPreview: (fullHash: string | null) => void }) {
   const t = getT(ctx.language);
   const [state, setState] = useState<InspectorState>({ kind: "loading" }); const [selectedPath, setSelectedPath] = useState<string | null>(null); const [copied, setCopied] = useState(false);
+  // 다른 커밋으로 옮기는 동안 — 이미 그린 본문은 새 답이 올 때까지 남기고 흐리게만 한다(짧은 왕복은 흐림도 보이지 않는다).
+  const [pending, setPending] = useState(true);
   // 트리 탭의 선택은 변경 목록과 다른 축이다 — 바뀌지 않은 파일도 고를 수 있다.
   const [treeSelection, setTreeSelection] = useState<CommitTreeSelection | null>(null);
   const [fileListWidth, setFileListWidth] = useState(() => readSize(PREFS_FILE_LIST_WIDTH, FILE_LIST_DEFAULT_WIDTH));
@@ -343,18 +346,34 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
   const [filesView, setFilesView] = useState<FilesViewMode>(readFilesViewMode);
   const changesRef = useRef<HTMLDivElement>(null); const disposeRef = useRef<(() => void) | null>(null); const fileListWidthRef = useRef(fileListWidth);
   const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes" || tab === "tree");
-  const commit = useMemo(() => ({ fullHash: target.fullHash, theaterId: ctx.theaterId ?? "", repoRel }), [target.fullHash, ctx.theaterId, repoRel]);
-  useEffect(() => { let cancelled = false; setState({ kind: "loading" }); setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */ ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; }).then((result) => { if (!cancelled) { setState({ kind: "ok", result }); setSelectedPath(result.files[0]?.path ?? null); } }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, repoRel, target.fullHash]);
+  // 남겨 둔 본문이 옛 커밋의 것이면 파일 diff·트리·blob도 옛 커밋을 향한다 — 새 해시로 옛 경로를 조회하면 빈 diff가 잠깐 그려진다.
+  const loadedHash = state.kind === "ok" ? state.fullHash : target.fullHash;
+  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", repoRel }), [loadedHash, ctx.theaterId, repoRel]);
+  useEffect(() => {
+    let cancelled = false;
+    // 커밋 사이를 옮길 때 본문을 "불러오는 중"으로 갈아 끼우지 않는다 — 독이 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면.
+    setState((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setPending(true);
+    setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */
+    ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) })
+      .then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; })
+      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath(result.files[0]?.path ?? null); } })
+      .catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); })
+      .finally(() => { if (!cancelled) setPending(false); });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, repoRel, target.fullHash]);
   useEffect(() => () => disposeRef.current?.(), []);
   const applyFileListWidth = useCallback((next: number) => { fileListWidthRef.current = next; setFileListWidth(next); }, []);
   const startDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => { event.preventDefault(); const container = changesRef.current; if (!container) return; const start = fileListWidthRef.current; const startPointer = event.clientX; const size = container.getBoundingClientRect().width; disposeRef.current?.(); setFileDragging(true); disposeRef.current = installPointerDragLifecycle({ documentTarget: document, windowTarget: window, onMove: (moveEvent) => { const next = clampSplitPaneSize(start, (moveEvent as PointerEvent).clientX - startPointer, size, 120, 120); if (next !== null) applyFileListWidth(next); }, onFinish: () => { try { localStorage.setItem(PREFS_FILE_LIST_WIDTH, String(fileListWidthRef.current)); } catch { /* ignore */ } setFileDragging(false); disposeRef.current = null; } }); }, [applyFileListWidth]);
   const stepFileList = useCallback((delta: number) => { const container = changesRef.current; if (!container) return; const next = clampSplitPaneSize(fileListWidthRef.current, delta, container.getBoundingClientRect().width, 120, 120); if (next === null) return; applyFileListWidth(next); try { localStorage.setItem(PREFS_FILE_LIST_WIDTH, String(next)); } catch { /* ignore */ } }, [applyFileListWidth]);
+  // 옛 커밋의 본문이 남아 있는 동안은 새 커밋의 것으로 읽히지 않게 흐린다 — 파일 수도 새 답이 오기 전엔 세지 않는다.
+  const stale = pending && state.kind === "ok";
   const files = state.kind === "ok" ? state.result.files : null;
   const selectedFile = files ? files.find((file) => file.path === selectedPath) ?? files[0] ?? null : null;
   const selectedIndex = files && selectedFile ? files.indexOf(selectedFile) : -1;
   const stepFile = useCallback((delta: number) => { if (!files || selectedIndex < 0) return; const next = files[selectedIndex + delta]; if (next) setSelectedPath(next.path); }, [files, selectedIndex]);
   // 부모는 로드 전엔 목록 항목의 parents로, 로드 뒤엔 커밋 메타로 안다 — 버튼이 로딩을 기다리지 않게.
-  const parent: DockNeighbor | null = state.kind === "ok" ? (state.result.meta.parents[0] ? { fullHash: state.result.meta.parents[0].full, shortHash: state.result.meta.parents[0].short } : null) : (target.entry?.parents[0] ? { fullHash: target.entry.parents[0], shortHash: neighborShort(target.entry.parents[0]) } : null);
+  const parent: DockNeighbor | null = state.kind === "ok" && !stale ? (state.result.meta.parents[0] ? { fullHash: state.result.meta.parents[0].full, shortHash: state.result.meta.parents[0].short } : null) : (target.entry?.parents[0] ? { fullHash: target.entry.parents[0], shortHash: neighborShort(target.entry.parents[0]) } : null);
   const content = state.kind === "loading" ? <div className="history-inspector-empty">{t("repository.history.loadingCommit")}</div> : state.kind === "error" ? <div className="history-inspector-empty history-inspector-error">{readErrorSentence(t, state.message)}</div> : (() => {
     const { meta, files } = state.result;
     const additions = files.reduce((sum, file) => sum + file.additions, 0);
@@ -380,19 +399,19 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
       const treeSeam = <SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />;
       const chosen = treeSelection && treeSelection.changed ? files.find((file) => file.path === treeSelection.changed!.path) ?? null : null;
       return <div className="history-changes-tab history-tree-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}>
-        <div className="repository-ftree-scroll">{/* 폴더 캐시는 커밋에 묶인다 — 키로 리마운트해야 펼쳐 둔 하위 폴더가 옛 커밋의 항목을 계속 그리지 않는다 */}<CommitTreeView key={target.fullHash} ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} commitFiles={files} selectedPath={treeSelection?.path ?? null} onSelect={setTreeSelection} /></div>
+        <div className="repository-ftree-scroll">{/* 폴더 캐시는 커밋에 묶인다 — 키로 리마운트해야 펼쳐 둔 하위 폴더가 옛 커밋의 항목을 계속 그리지 않는다 */}<CommitTreeView key={loadedHash} ctx={ctx} repoRel={repoRel} fullHash={loadedHash} commitFiles={files} selectedPath={treeSelection?.path ?? null} onSelect={setTreeSelection} /></div>
         {treeSeam}
         {treeSelection
-          ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={treeSelection.path}>{treeSelection.path}</span>{chosen && <div><span className="history-file-counter">{t("repository.filetree.changedHere")}</span></div>}</div>{chosen ? <HunkView ctx={ctx} repoRel={repoRel} file={chosen} mode="unified" commit={commit} /> : <CommitBlobView ctx={ctx} repoRel={repoRel} fullHash={target.fullHash} path={treeSelection.path} />}</div>
+          ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={treeSelection.path}>{treeSelection.path}</span>{chosen && <div><span className="history-file-counter">{t("repository.filetree.changedHere")}</span></div>}</div>{chosen ? <HunkView ctx={ctx} repoRel={repoRel} file={chosen} mode="unified" commit={commit} /> : <CommitBlobView ctx={ctx} repoRel={repoRel} fullHash={loadedHash} path={treeSelection.path} />}</div>
           : <div className="history-inspector-empty">{t("repository.filetree.pickHint")}</div>}
       </div></div>;
     }
     // 세부 정보: 머리는 내용 높이다 — 고정 높이와 그 안의 디바이더가 있으면 독을 키워도 머리는 잘린 채 남고 파일 목록만 늘었다.
-    if (tab === "details") return <div className="history-details-tab"><CommitHeader key={target.fullHash} meta={meta} entry={entry} fullHash={target.fullHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} /><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} t={t} /></div>;
+    if (tab === "details") return <div className="history-details-tab"><CommitHeader key={loadedHash} meta={meta} entry={entry} fullHash={loadedHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} /><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, true)} t={t} /></div>;
     return <div className="history-changes-tab"><div ref={changesRef} className="history-changes-columns" style={{ gridTemplateColumns: buildInspectorChangesGridTemplate(fileListWidth) }}><CommitFiles files={files} truncated={state.result.truncated} selectedPath={selectedPath} additions={additions} deletions={deletions} viewMode={filesView} onViewMode={chooseFilesView} onSelect={(file) => chooseFile(file, false)} t={t} /><SplitSeam orientation="vertical" label={t("repository.history.resizeFileList")} value={fileListWidth} min={120} max={changesWidth === undefined ? undefined : changesWidth - 120 - DIFF_DIVIDER_WIDTH} dragging={fileDragging} readout={fileDragging ? `${Math.round(fileListWidth)}px` : null} onPointerDown={startDrag} onStep={stepFileList} />{selectedFile ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><span className="history-file-counter" aria-live="polite">{t("repository.dock.fileCounter", { index: selectedIndex + 1, count: files.length })}</span><button type="button" aria-label={t("repository.history.previousFile")} title={`${t("repository.history.previousFile")} (K)`} disabled={selectedIndex <= 0} onClick={() => stepFile(-1)}><Icon name="parent" size={13} /></button><button type="button" aria-label={t("repository.history.nextFile")} title={`${t("repository.history.nextFile")} (J)`} disabled={selectedIndex >= files.length - 1} onClick={() => stepFile(1)}><Icon name="child" size={13} /></button></div></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={commit} /></div> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}</div></div>;
   })();
   const shortHash = target.entry?.shortHash ?? target.fullHash.slice(0, 9);
-  const subject = state.kind === "ok" ? state.result.meta.subject : target.entry?.subject ?? "";
+  const subject = state.kind === "ok" && !stale ? state.result.meta.subject : target.entry?.subject ?? "";
   // 키보드 — Esc는 소유자가 겹을 벗기고, J/K는 변경 탭의 파일 이동, 1·2·3은 탭이다. 입력 요소 안에서는 건드리지 않는다.
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const inField = (event.target as HTMLElement).closest("input, textarea, [contenteditable]");
@@ -401,8 +420,8 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
     if (event.key === "1" || event.key === "2" || event.key === "3") { event.preventDefault(); onTab((["details", "changes", "tree"] as const)[Number(event.key) - 1]!); }
   };
   return <div className={`history-inspector${workspace ? " repository-ws-inspector" : ""}${dock?.collapsed ? " is-collapsed" : ""}`} onKeyDown={handleKeyDown}>
-    <DockHeader t={t} tab={tab} onTab={onTab} fileCount={files ? files.length : null} shortHash={shortHash} subject={subject} lane={lane} parent={parent} child={dock?.child ?? null} dock={dock} onNavigate={(next) => onSelectCommit({ fullHash: next.fullHash })} onPinCompare={workspace ? onPinCompare : undefined} onClose={onClose} onPreview={onPreview} />
-    {!dock?.collapsed && content}
+    <DockHeader t={t} tab={tab} onTab={onTab} fileCount={files && !stale ? files.length : null} shortHash={shortHash} subject={subject} lane={lane} parent={parent} child={dock?.child ?? null} dock={dock} onNavigate={(next) => onSelectCommit({ fullHash: next.fullHash })} onPinCompare={workspace ? onPinCompare : undefined} onClose={onClose} onPreview={onPreview} />
+    {!dock?.collapsed && <div className={`history-inspector-body${stale ? " is-stale" : ""}`} aria-busy={pending || undefined}>{content}</div>}
   </div>;
 }
 
@@ -432,6 +451,8 @@ interface HistoryPanelProps {
   readonly repoRel: string;
   readonly cacheScope?: string;
   readonly externalRefreshToken?: number;
+  /** 같은 체크아웃 재착지 순번 — 오르면 필터·선택·비교·스크롤을 전환 착지와 같은 초기 상태로 되돌리고 목록을 새로 읽는다. */
+  readonly landingSeq?: number;
   readonly active?: boolean;
   readonly refFilter?: string | null;
   readonly wipFiles: readonly DiffFileEntry[];
@@ -450,11 +471,11 @@ interface HistoryPanelProps {
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, toolbarHost = null, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={toolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={onStashAction} onReturnToHistory={onReturnToHistory} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, landingSeq = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, toolbarHost = null, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} landingSeq={landingSeq} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={toolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={onStashAction} onReturnToHistory={onReturnToHistory} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, toolbarHost, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "toolbarHost" | "compareRequest" | "inspectRequest" | "stashRequest" | "onStashAction" | "onReturnToHistory" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, landingSeq, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, toolbarHost, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "landingSeq" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "toolbarHost" | "compareRequest" | "inspectRequest" | "stashRequest" | "onStashAction" | "onReturnToHistory" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const [order, setOrder] = useState<LogOrder>(readHistoryOrder);
   // 정렬 축이 바뀌면 커밋 순서와 그래프 레이아웃이 통째로 달라지므로 캐시 슬롯도 분리한다.
@@ -470,6 +491,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const [announce, setAnnounce] = useState("");
   const [filterText, setFilterText] = useState(initialRestore?.filterText ?? "");
   const [refreshToken, setRefreshToken] = useState(0);
+  // 재조회 중 — 목록은 새 답이 올 때까지 그대로 두고 새로고침 글리프만 돈다.
+  const [reloading, setReloading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [commitViewport, setCommitViewport] = useState({ scrollTop: initialRestore?.scrollTop ?? 0, height: 0 });
@@ -491,6 +514,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const loadingMoreRef = useRef(false);
   const loadedCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
   const loadedExternalRefreshTokenRef = useRef(externalRefreshToken);
+  const loadedLandingSeqRef = useRef(landingSeq);
+  // 마지막으로 목록을 채운 캐시 슬롯 — 같은 슬롯의 재조회는 스크롤을 지키고, 다른 슬롯(ref·정렬 전환)은 맨 위로 간다.
+  const lastFilledCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
   const loadedCommitsRef = useRef<readonly LogCommitEntry[] | null>(initialRestore?.state.commits ?? null);
   const stateCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
   const restoredScrollTopRef = useRef<number | null>(initialRestore?.scrollTop ?? null);
@@ -679,17 +705,39 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     if (!everActive) return;
     const externalRefreshRequested = loadedExternalRefreshTokenRef.current !== externalRefreshToken;
     loadedExternalRefreshTokenRef.current = externalRefreshToken;
-    const preservedExternalScrollTop = externalRefreshRequested
-      ? listRef.current?.scrollTop ?? scrollTopRef.current
-      : null;
+    const landingRequested = loadedLandingSeqRef.current !== landingSeq;
+    loadedLandingSeqRef.current = landingSeq;
     if (
       !externalRefreshRequested
+      && !landingRequested
       && loadedCacheKeyRef.current === historyCacheKey
       && (!pendingSearchTargetHash || loadedCommitsRef.current?.some((commit) => commit.fullHash === pendingSearchTargetHash))
     ) return;
-    const restored = externalRefreshRequested ? null : readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
+    if (landingRequested) {
+      // 같은 체크아웃 재착지 — 전환 착지와 같은 초기 상태로 되돌린다. 리마운트 대신 제자리에서 걷어야
+      // 새 목록이 올 때까지 옛 목록이 남고, 필터·선택·비교·스태시·독 접힘·스크롤만 초기값으로 돌아간다.
+      revealKeyRef.current = null;
+      pendingRevealRef.current = null;
+      // 부모는 재착지에서 one-shot 요청을 null로 되돌려 다음 요청이 seq 1부터 다시 오른다 — 리마운트가 없으니
+      // 처리 순번도 함께 0으로 돌려야 다음 비교·검사·스태시 클릭이 "이미 처리한 요청"으로 버려지지 않는다.
+      handledCompareRequestSeqRef.current = 0;
+      handledInspectRequestSeqRef.current = 0;
+      handledStashRequestSeqRef.current = 0;
+      setFilterText("");
+      setTarget(null);
+      setPin(null);
+      setComparePair(null);
+      setStashTarget(null);
+      setDockCollapsed(false);
+    }
+    // 같은 슬롯을 다시 읽는 새로고침(외부·툴바)은 목록을 비우지 않으므로 스크롤이 저절로 남는다 — 되살릴 값을
+    // 따로 들지 않는다(들고 있으면 다음 스크롤 이벤트에서 옛 자리로 되돌려 튄다). 다른 슬롯(ref·정렬 전환)이나
+    // 재착지는 새 목록이 오는 순간 맨 위로 간다.
+    const sameSlot = lastFilledCacheKeyRef.current === historyCacheKey && !landingRequested;
+    const restored = externalRefreshRequested || landingRequested ? null : readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
     if (restored) {
       loadedCacheKeyRef.current = historyCacheKey;
+      lastFilledCacheKeyRef.current = historyCacheKey;
       loadedCommitsRef.current = restored.state.commits;
       stateCacheKeyRef.current = historyCacheKey;
       restoredScrollTopRef.current = restored.scrollTop;
@@ -705,6 +753,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
       setLoadingMore(false);
       setLoadMoreError(null);
+      // 진행 중이던 조회는 이 슬롯 전환으로 취소돼 자기 finally를 실행하지 못한다 — 캐시가 즉시 채운 뒤 회전이 남지 않게 여기서 끝낸다.
+      setReloading(false);
       return;
     }
     loadedCacheKeyRef.current = null;
@@ -712,13 +762,18 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     stateCacheKeyRef.current = null;
     if (!ctx.theaterId) {
       loadedCacheKeyRef.current = historyCacheKey;
+      lastFilledCacheKeyRef.current = historyCacheKey;
       loadedCommitsRef.current = [];
       stateCacheKeyRef.current = historyCacheKey;
       setState({ kind: "ok", commits: [], checkouts: [], hasMore: false, truncated: false });
+      setReloading(false);
       return;
     }
     let cancelled = false;
-    setState({ kind: "loading" });
+    // 이미 그린 목록은 새 답이 올 때까지 남긴다 — 매 조회마다 "불러오는 중"으로 갈아 끼우면 새로고침·동기화·
+    // 커밋·브랜치 선택마다 목록이 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면을 쓴다.
+    setState((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setReloading(true);
     loadingMoreRef.current = false;
     setLoadingMore(false);
     setLoadMoreError(null);
@@ -728,19 +783,22 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     }).then((data) => {
       if (!cancelled) {
         loadedCacheKeyRef.current = historyCacheKey;
+        lastFilledCacheKeyRef.current = historyCacheKey;
         loadedCommitsRef.current = data.commits;
         stateCacheKeyRef.current = historyCacheKey;
-        if (preservedExternalScrollTop !== null) {
-          restoredScrollTopRef.current = preservedExternalScrollTop;
-          scrollTopRef.current = preservedExternalScrollTop;
+        if (!sameSlot) {
+          restoredScrollTopRef.current = 0;
+          scrollTopRef.current = 0;
         }
         setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, hasMore: data.hasMore, truncated: data.truncated ?? false });
       }
     }).catch((error: unknown) => {
       if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
+    }).finally(() => {
+      if (!cancelled) setReloading(false);
     });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, everActive, externalRefreshToken, historyCacheKey, order, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
+  }, [ctx.api, ctx.theaterId, everActive, externalRefreshToken, historyCacheKey, landingSeq, order, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
   useEffect(() => {
     if (state.kind !== "ok" || stateCacheKeyRef.current !== historyCacheKey) return;
     const list = listRef.current;
@@ -777,6 +835,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     observer.observe(list);
     return () => observer.disconnect();
   }, [showWip, updateCommitViewport, visible.length, workspaceMainVisible]);
+  // 목록이 제자리에서 갈아 끼워지면 행 수가 같아도 되살릴 스크롤(다른 슬롯 → 0)을 같은 프레임에 적용해야 한다.
+  useLayoutEffect(() => { updateCommitViewport(); }, [state, updateCommitViewport]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
     // 스태시 카드도 같은 독 그리드를 쓴다 — 대상에서 빠지면 축소된 창에서 저장된 높이가 컨테이너를 넘는다.
@@ -891,7 +951,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     });
   }, [workspace]);
   const loadMore = useCallback(() => {
-    if (state.kind !== "ok" || !state.hasMore || loadingMoreRef.current || !ctx.theaterId) return;
+    // 슬롯 전환 중 남겨 둔 옛 목록의 길이를 새 슬롯의 skip으로 쓰면 첫 페이지 뒤에 구멍이 난다 — 새 첫 페이지가 올 때까지 페이지네이션을 막는다.
+    if (state.kind !== "ok" || !state.hasMore || loadingMoreRef.current || reloading || !ctx.theaterId) return;
     const requestGeneration = generation;
     loadingMoreRef.current = true;
     setLoadingMore(true);
@@ -922,7 +983,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       loadingMoreRef.current = false;
       setLoadingMore(false);
     });
-  }, [ctx.api, ctx.theaterId, generation, historyCacheKey, order, refFilter, repoRel, state]);
+  }, [ctx.api, ctx.theaterId, generation, historyCacheKey, order, refFilter, reloading, repoRel, state]);
   const toggleOrder = useCallback(() => {
     setOrder((current) => {
       const next: LogOrder = current === "topo" ? "date" : "topo";
@@ -998,10 +1059,10 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}${stripCollapsed ? " is-dock-collapsed" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={handleRootKeyDown} onTransitionEnd={(event) => { if (event.propertyName !== "grid-template-rows" || !target) return; rowRefs.current.get(target.fullHash)?.scrollIntoView({ block: "nearest" }); }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       {(() => {
-        const toolbar = <div className="history-toolbar"><div className="history-filter"><Icon name="search" size={13} className="repository-discovery-glyph" /><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="repository-quiet-button history-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setFilterText("")}><Icon name="close" size={12} /></button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}><Icon name="compare" size={12} />{t("repository.compare.pinnedChip", { short: pin.shortHash })}<Icon name="close" size={11} /></button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}><Icon name="branch" size={12} />{shortRefName(refFilter)}<Icon name="close" size={11} /></button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="repository-quiet-button history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><Icon name={order === "topo" ? "branch" : "clock"} size={13} /><span className="history-order-label">{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</span></button><button type="button" className="repository-quiet-button history-refresh" aria-label={t("repository.history.refresh")} title={t("repository.history.refresh")} onClick={refreshHistory}><Icon name="refresh" /></button></>}<span className="repository-sr-only" role="status">{announce}</span></div>;
+        const toolbar = <div className="history-toolbar"><div className="history-filter"><Icon name="search" size={13} className="repository-discovery-glyph" /><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="repository-quiet-button history-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setFilterText("")}><Icon name="close" size={12} /></button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}><Icon name="compare" size={12} />{t("repository.compare.pinnedChip", { short: pin.shortHash })}<Icon name="close" size={11} /></button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}><Icon name="branch" size={12} />{shortRefName(refFilter)}<Icon name="close" size={11} /></button>}{/* 정렬·새로고침은 조회 상태와 무관하게 자리를 지킨다 — 조회 중 사라지면 작업 줄이 매 갱신마다 줄었다 늘어난다. */}{state.kind === "ok" && <span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}<button type="button" className="repository-quiet-button history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><Icon name={order === "topo" ? "branch" : "clock"} size={13} /><span className="history-order-label">{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</span></button><button type="button" className={`repository-quiet-button history-refresh${reloading ? " is-syncing" : ""}`} aria-label={t("repository.history.refresh")} title={t("repository.history.refresh")} aria-busy={reloading || undefined} onClick={refreshHistory}><Icon name="refresh" /></button><span className="repository-sr-only" role="status">{announce}</span></div>;
         return toolbarHost ? createPortal(toolbar, toolbarHost) : toolbar;
       })()}
-      <div ref={listRef} className={`history-list${pin ? " is-arming" : ""}`} onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} previewed={previewHash === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
+      <div ref={listRef} className={`history-list${pin ? " is-arming" : ""}`} aria-busy={reloading || undefined} onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} previewed={previewHash === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" disabled={reloading} onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {peekStrip && <div className="repository-ws-peek">

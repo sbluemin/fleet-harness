@@ -219,6 +219,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [worktreesError, setWorktreesError] = useState(false);
   const [worktreesRetry, setWorktreesRetry] = useState(0);
   const [worktreesForRepoRel, setWorktreesForRepoRel] = useState<string | null>(null);
+  // 조회 진행 여부는 별도로 든다 — worktreesForRepoRel은 실패 시 null로 남아(복원 효과의 게이트) 회전 판정에 쓸 수 없다.
+  const [worktreesPending, setWorktreesPending] = useState(false);
+  // 마지막으로 성공한 워크트리 조회의 체크아웃 — 같은 체크아웃의 재조회는 목록을 비우지 않는다.
+  const loadedWorktreesRepoRelRef = useRef<string | null>(null);
   const [repoRel, setRepoRel] = useState(() => ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : "");
   const [initialRepoViewState] = useState(() => ctx.theaterId ? readRepoViewState(ctx.theaterId, repoRel) : null);
   const repoRelRef = useRef(repoRel);
@@ -231,8 +235,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [refFilter, setRefFilter] = useState<string | null>(initialRepoViewState?.refFilter ?? null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
+  const [refsPending, setRefsPending] = useState(false);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
+  const [changedFilesPending, setChangedFilesPending] = useState(false);
   // 로컬 상태 새로 읽기가 오를 때마다 함께 오른다 — 스테이징 뷰는 자기 상태를 따로 읽으므로
   // 이 토큰이 없으면 트리 수치만 갱신되고 목록·파괴적 동사는 낡은 채로 남는다.
   const [stateReloadToken, setStateReloadToken] = useState(0);
@@ -294,9 +300,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const restoredChangesScrollTopRef = useRef<number | null>(initialRepoViewState?.scrollTop ?? null);
   const changesScrollTopRef = useRef(initialRepoViewState?.scrollTop ?? 0);
   const changesCacheFrameRef = useRef<number | null>(null);
-  // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 —
-  // epoch를 key에 섞어 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 재설정한다.
-  const [historyLandingEpoch, setHistoryLandingEpoch] = useState(0);
+  // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 — 착지 순번을
+  // 건네 패널이 제자리에서 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 되돌린다. 리마운트로
+  // 풀면 목록이 비었다 다시 차며 깜빡이고, 새 목록이 올 때까지 옛 목록을 그대로 두는 재조회 문법과 어긋난다.
+  const [historyLandingSeq, setHistoryLandingSeq] = useState(0);
   const searchTarget = useRepositorySearchTarget();
   const setSource = useCallback((next: Source) => {
     setSourceState(next);
@@ -451,13 +458,17 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (!ctx.theaterId) return;
     let cancelled = false;
     const requestedRepoRel = repoRel;
-    setWorktrees([]);
+    // 새 목록이 올 때까지 옛 목록을 그대로 둔다 — 재조회마다 비우면 워크트리 섹션이 사라졌다 돌아오며
+    // 트리가 깜빡이고 스크롤이 튄다. 다른 체크아웃으로 옮긴 경우에만 이전 저장소의 목록을 걷는다.
+    if (loadedWorktreesRepoRelRef.current !== requestedRepoRel) setWorktrees([]);
     setWorktreesError(false);
     setWorktreesForRepoRel(null);
+    setWorktreesPending(true);
     ctx.api.fetch("repository", "worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
       .then((response) => response.json() as Promise<WorktreesResult>)
       .then((value) => {
         if (!cancelled) {
+          loadedWorktreesRepoRelRef.current = requestedRepoRel;
           setWorktrees(value.worktrees);
           setWorktreesForRepoRel(requestedRepoRel);
         }
@@ -471,7 +482,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
           return;
         }
         setWorktreesError(true);
-      });
+      })
+      .finally(() => { if (!cancelled) setWorktreesPending(false); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, transitionRepository, worktreesRetry]);
   useEffect(() => {
@@ -479,14 +491,30 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     const restoredRepoRel = readRepositoryRel(ctx.theaterId, repos, worktrees);
     if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false);
   }, [ctx.theaterId, repoRel, repos, reposLoaded, transitionRepository, worktrees, worktreesForRepoRel]);
-  useEffect(() => { if (!ctx.theaterId) return; let cancelled = false; setRefs({ branches: [], remotes: [], tags: [], stashes: [] }); setRefsError(false); ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) }).then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject()).then((value) => { if (!cancelled) setRefs(value); }).catch(() => { if (!cancelled) setRefsError(true); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, repoRel, refsRetry]);
+  // refs는 재조회 시작에 비우지 않는다 — 비우면 브랜치·원격·태그·스태시 섹션이 "없음"으로 떨어졌다 다시 차며
+  // 트리 전체가 깜빡이고 스크롤이 맨 위로 튄다. 체크아웃 전환은 transitionRepository가 명시적으로 비운다.
+  useEffect(() => {
+    if (!ctx.theaterId) return;
+    let cancelled = false;
+    setRefsError(false);
+    setRefsPending(true);
+    ctx.api.fetch("repository", "refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+      .then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject())
+      .then((value) => { if (!cancelled) setRefs(value); })
+      .catch(() => { if (!cancelled) setRefsError(true); })
+      .finally(() => { if (!cancelled) setRefsPending(false); });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, repoRel, refsRetry]);
   useEffect(() => {
     if (!ctx.theaterId) {
       setChangedFiles({ kind: "error", message: "no_theater" });
       return;
     }
     let cancelled = false;
-    setChangedFiles({ kind: "loading" });
+    // 이미 읽은 목록은 새 답이 올 때까지 남긴다 — 스테이지 한 번마다 Changes 카운트가 "—"로, History의
+    // WIP 행이 사라졌다 돌아오면 목록 전체가 한 줄씩 밀리며 깜빡인다. 체크아웃 전환은 transitionRepository가 비운다.
+    setChangedFiles((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setChangedFilesPending(true);
     // api.fetch(assertSafeResponse)는 non-2xx에서 payload를 버리고 throw하므로,
     // no_git_repo/git_unavailable 안내 매핑을 위해 원래의 raw fetch 경로를 유지한다
     fetch("/plugins/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) }).then(async (response) => {
@@ -502,6 +530,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       if (!cancelled) setChangedFiles({ kind: "ok", files: data.files, ...(data.truncated ? { truncated: true } : {}) });
     }).catch((error: unknown) => {
       if (!cancelled) setChangedFiles({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
+    }).finally(() => {
+      if (!cancelled) setChangedFilesPending(false);
     });
     return () => { cancelled = true; };
   }, [changedFilesRetry, ctx.theaterId, repoRel]);
@@ -775,8 +805,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
-    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널을
-    // epoch 리마운트해 전환 착지와 동일한 초기 상태로 만든다(스코프된 로그·WIP 숨김 잔존 방지).
+    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널에 착지
+    // 순번을 올려 전환 착지와 동일한 초기 상태로 되돌린다(스코프된 로그·WIP 숨김 잔존 방지).
     if (!decision.transition) {
       dropHistoryCacheForRepository(`${ctx.theaterId ?? ""}:${next.relPath}`);
       if (ctx.theaterId) {
@@ -784,11 +814,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         setHydratedRepoViewCacheKey("");
       }
       setRefFilter(null);
-      // epoch 리마운트는 handled-seq ref를 초기화하므로, 잔존 one-shot 요청을 함께 비워야 착지가 재생 없이 깨끗하다.
+      // 잔존 one-shot 요청을 함께 비워야 착지가 옛 비교·검사·스태시 카드를 다시 세우지 않는다.
       setCompareRequest(null);
       setInspectRequest(null);
       setStashRequest(null);
-      setHistoryLandingEpoch((value) => value + 1);
+      setHistoryLandingSeq((value) => value + 1);
       setSource(decision.landing);
       return;
     }
@@ -856,7 +886,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{syncNoticeMessage ?? ""}</span>
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={picker} worktrees={linkedWorktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={picker} worktrees={linkedWorktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           {/* 작업 줄 하나가 소스 세그먼트 · 기록 도구(포털) · 원격 동사를 함께 진다. 컨테이너 폭에 따라
@@ -907,7 +937,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
             </span>
           </div>
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} landingSeq={historyLandingSeq} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
           </div>
         </div>
       </div>
@@ -933,6 +963,8 @@ interface WorkspaceTreeProps {
   readonly contextDisabled: boolean;
   readonly refs: Refs;
   readonly refsError: boolean;
+  /** 로컬 상태를 다시 읽는 중 — 목록은 그대로 두고 새로고침 글리프만 돈다. */
+  readonly reloading?: boolean;
   readonly source: Source;
   readonly refFilter: string | null;
   readonly onRetryRefs: () => void;
@@ -955,7 +987,7 @@ function AheadBehind({ t, row }: { readonly t: T; readonly row: RepositoryRefRow
   </span>;
 }
 
-export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, onRepository, contextDisabled, refs, refsError, source, refFilter, onReloadState, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, onRepository, contextDisabled, refs, refsError, reloading = false, source, refFilter, onReloadState, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -1032,7 +1064,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
       <Icon name="search" size={13} className="repository-discovery-glyph" />
       <input className="repository-filter-input" aria-label={t("repository.refs.search")} placeholder={t("repository.refs.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
       {query && <button type="button" className="repository-quiet-button repository-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}
-      <button type="button" className="repository-quiet-button repository-reload-state" aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} onClick={onReloadState}><Icon name="refresh" /></button>
+      <button type="button" className={`repository-quiet-button repository-reload-state${reloading ? " is-syncing" : ""}`} aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} aria-busy={reloading || undefined} onClick={onReloadState}><Icon name="refresh" /></button>
     </div>
     <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${refRowCount}:${remoteRowCount}:${collapsedSections.size}`}>
       {(worktrees.length > 0 || worktreesError) && section("worktrees", worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktreeRows.length ? worktreeRows.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row is-worktree${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} disabled={contextDisabled} onClick={() => onRepository(worktree)}>

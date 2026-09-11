@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
@@ -177,10 +177,16 @@ function escapeHtml(value: string): string {
 export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx: RepositoryContext; readonly repoRel: string; readonly fullHash: string; readonly path: string }) {
   const t = getT(ctx.language);
   const [state, setState] = useState<BlobState>({ kind: "loading" });
+  const [pending, setPending] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 새 내용이 오면 맨 위에서 읽기 시작한다 — 표를 제자리에서 갈아 끼우므로 옛 파일의 스크롤이 남는다(HunkView와 같은 결).
+  useLayoutEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [state]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     let cancelled = false;
-    setState({ kind: "loading" });
+    // 다른 파일로 옮기는 동안 옛 내용을 흐리게 남긴다 — 매번 "불러오는 중"으로 갈아 끼우면 표가 비었다 다시 차며 깜빡인다.
+    setState((current) => current.kind === "ok" ? current : { kind: "loading" });
+    setPending(true);
     ctx.api.fetch("repository", "blob", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -195,14 +201,15 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
       if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
       const capped = lines.length > BLOB_MAX_LINES;
       setState({ kind: "ok", lines: capped ? lines.slice(0, BLOB_MAX_LINES) : lines, truncated: payload.truncated === true || capped });
-    }).catch(() => { if (!cancelled) setState({ kind: "error", code: "network" }); });
+    }).catch(() => { if (!cancelled) setState({ kind: "error", code: "network" }); })
+      .finally(() => { if (!cancelled) setPending(false); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, fullHash, path, repoRel]);
   if (state.kind === "loading") return <div className="repository-hunk-loading">{t("repository.common.loading")}</div>;
   if (state.kind === "binary") return <div className="repository-hunk-loading">{t("repository.filetree.binary")}</div>;
   if (state.kind === "error") return <div className="repository-hunk-error">{t(state.code === "file_not_found" ? "repository.filetree.fileMissing" : "repository.filetree.contentError")}</div>;
-  return <div className="repository-hunk-wrap">
-    <div className="repository-hunk-scroll">
+  return <div className={`repository-hunk-wrap${pending ? " is-stale" : ""}`} aria-busy={pending || undefined}>
+    <div ref={scrollRef} className="repository-hunk-scroll">
       <table className="repository-hunk-table repository-blob-table">
         <tbody>
           {state.lines.map((line, index) => <tr key={index}>

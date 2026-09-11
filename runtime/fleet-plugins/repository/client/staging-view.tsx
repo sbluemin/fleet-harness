@@ -411,7 +411,8 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           <span className="repository-hunk-filename" title={hunkSelection.entry.path}>{hunkSelection.entry.path}</span>
           <button type="button" className="repository-hunk-close" aria-label={t("repository.hunk.close")} title={t("repository.hunk.close")} onClick={() => setSelection(null)}><Icon name="close" /></button>
         </div>
-        <HunkView key={`${hunkSelection.axis}:${hunkSelection.entry.path}`} ctx={ctx} repoRel={repoRel} file={hunkSelection.entry} mode={hunkModeOf(hunkSelection)} />
+        {/* 키로 리마운트하지 않는다 — HunkView가 파일 전환 동안 옛 diff를 남기고 새 답에서 스크롤을 맨 위로 되돌린다. */}
+        <HunkView ctx={ctx} repoRel={repoRel} file={hunkSelection.entry} mode={hunkModeOf(hunkSelection)} />
       </div>}
     </div>}
     {showComposer && <div className="repository-commit-box">
