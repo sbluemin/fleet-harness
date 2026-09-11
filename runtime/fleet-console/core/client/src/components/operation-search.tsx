@@ -660,7 +660,9 @@ export function OperationSearch({
     );
   });
 
-  const hasResults = resultCount > 0;
+  // info 행만 돌아온 패널 결과(상한 표식 등)는 선택 대상은 아니어도 보여야 한다 — 감추면 「검색이
+  // 끝까지 가지 못했다」는 표식이 「일치 없음」으로 둔갑한다.
+  const hasResults = resultCount > 0 || railSearchGroups.length > 0;
 
   return (
     <div className="operation-search-overlay" onMouseDown={(event) => {
