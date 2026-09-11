@@ -2458,8 +2458,11 @@
 .repository-ws-tree-row.is-current .repository-ws-tree-row-main > .repository-icon { color: var(--brass-ink); }
 .repository-ws-tree-row.is-current .repository-ws-tree-row-main > span,
 .repository-ws-tree-row.is-current > span { font-weight: var(--weight-bold); }
-/* 기록 필터로 활성 = 인셋. 현재와 활성은 다른 축이라 문법도 다르다. */
-.repository-ws-tree-row.is-active { background: color-mix(in oklch, var(--brass) 7%, transparent); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--brass); }
+/* 기록 필터로 활성 = 왼쪽 띠. 현재와 활성은 다른 축이라 문법도 다르다.
+   띠는 인셋 그림자가 아니라 사각 가상 요소로 그린다 — 둥근 행 위의 인셋은 모서리를 따라 휘어 괄호 모양이 되고,
+   기록 목록의 선택 행(직선 띠)과 어긋난다. */
+.repository-ws-tree-row.is-active { background: color-mix(in oklch, var(--brass) 7%, transparent); color: var(--text-primary); }
+.repository-ws-tree-row.is-active::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--brass); pointer-events: none; }
 .repository-ws-tree-row:disabled { cursor: default; color: var(--text-tertiary); }
 .repository-ws-tree-row.is-remote { padding-left: 44px; }
 .repository-ws-tree-row.is-remote > .repository-ws-tree-row-main > .repository-icon { opacity: .6; }
