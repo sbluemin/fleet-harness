@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.89.0] - 2026-09-11
+
+### fleet-cli
+
+#### Added
+- `fleet` 런처가 Console Settings에서 고른 내장 서브에이전트 옵트아웃을 따릅니다.
+
+### fleet-console
+
+#### Added
+- Settings > 하네스 > Claude Code에서 설치된 Claude Code가 보고하는 내장 서브에이전트를 보여 주고 새 세션에서 개별로 끌 수 있습니다. 목록은 CLI 자체에서 읽으므로 업데이트로 서브에이전트가 추가·제거되면 Fleet 변경 없이 반영됩니다.
+- 검색 팔레트의 검색창 옆에 Operation / 명령 스위치가 생겼고(`>` 접두로도 명령에 닿습니다), Operation 행에서 오른쪽 화살표로 동작 띠(열기·재개·이름 변경·최소화·닫기)를 열 수 있으며, 창 바닥 범례가 팔레트의 키를 보여 줍니다.
+- 명령의 빈 화면이 구역 홈(최근 실행·현재 Operation·Theater·화면·패널·Console)이 됐고, 행과 구역마다 글리프, 행 오른쪽에 단축키 힌트, 파괴 명령(닫기)은 coral 잉크와 되돌리기 표식으로 섭니다.
+
+#### Changed
+- 열린 팔레트에서 `Cmd/Ctrl+K`는 창을 닫거나 명령에서 Operation으로 되돌리고, `Cmd/Ctrl+P`는 아무 일도 하지 않던 것에서 명령으로 전환합니다.
+- 명령이 한·영 양쪽으로 맞고(`>sidebar`로 사이드바 전환), Operation 검색이 명령과 같은 퍼지 규칙을 쓰며, 결과는 활성 Theater가 먼저 서고 그 안은 최근 포커스 순입니다.
+
+#### Fixed
+- Repository 패널이 새로고침·동기화·스테이징·브랜치 선택·커밋 이동 때 깜빡이지 않습니다. 브랜치 트리, 기록 목록, 변경 파일 수, 검사기는 새 데이터가 올 때까지 현재 내용을 그대로 유지하고, 다시 읽는 동안에는 새로고침 글리프만 돕니다.
+
 ## [1.88.0] - 2026-09-09
 
 ### fleet-console
