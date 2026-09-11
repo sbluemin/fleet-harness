@@ -36,7 +36,7 @@ import { syncSettingsSearchPlugins } from "./settings/settings-pane.js";
 import { Operations } from "./pages/operations.js";
 import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { observeSideBarCollapseMotion } from "./sidebar/side-bar-motion.js";
@@ -148,6 +148,7 @@ export function App() {
         ];
         return {
           id: binding.entry.id,
+          icon: binding.entry.icon,
           title: binding.entry.title,
           ...(binding.entry.surfaceId === undefined ? {} : { surfaceId: binding.entry.surfaceId }),
           ...(providers.length === 0
@@ -360,8 +361,9 @@ export function App() {
         }
         setSideBarCollapsed(collapsed);
       },
-      openOperationSearch: () => openOperationSearch(">"),
-      toggleOperationSearch,
+      openOperationSearch,
+      closeOperationSearch,
+      getOperationSearchMode: () => getState().operationSearchMode,
       toggleQuickLaunch,
       toggleRailChrome: () => {
         const outcome = resolvePanelShortcut();

@@ -535,6 +535,13 @@ export interface ConsoleState {
   readonly operationsViewActive: boolean;
   readonly operationSearchOpen: boolean;
   readonly operationSearchSeed: string | null;
+  /**
+   * seed가 같은 값으로 다시 와도(⌘P 두 번) 팔레트가 알아채도록 여는 요청마다 오르는 번호.
+   * 팔레트는 이 번호가 바뀔 때만 seed를 입력에 반영한다.
+   */
+  readonly operationSearchSeedNonce: number;
+  /** 팔레트가 지금 서 있는 모드. 전역 단축키가 ⌘K를 「닫기」로 볼지 「검색으로 복귀」로 볼지 가른다. */
+  readonly operationSearchMode: "operations" | "commands" | null;
   readonly quickLaunchOpen: boolean;
   // 컴포저를 화면 하단에 도킹해 두는 옵트인 상태. 고정 중에는 컴포저가 상주하므로 quickLaunchOpen과
   // 무관하게 떠 있고, 모달 계약(스크림·포커스 트랩·스크롤 잠금)을 내려놓는다 — 공존이 목적이다.

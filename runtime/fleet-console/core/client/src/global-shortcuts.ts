@@ -18,8 +18,10 @@ export function resolvePanelShortcutOutcome(surfaces: {
 export interface ConsoleGlobalShortcutDependencies {
   readonly getSideBarCollapsed: () => boolean;
   readonly setSideBarCollapsed: (collapsed: boolean) => void;
-  readonly openOperationSearch: () => void;
-  readonly toggleOperationSearch: () => void;
+  readonly openOperationSearch: (seed?: string) => void;
+  readonly closeOperationSearch: () => void;
+  /** 열려 있으면 그 모드, 닫혀 있으면 null. */
+  readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
   readonly toggleRailChrome: () => void;
   readonly canUndoLastClose?: () => boolean;
@@ -35,11 +37,12 @@ function isQuickLaunchToggleShortcut(event: KeyboardEvent): boolean {
   return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && isSpaceKey(event);
 }
 
-// 가운데 Quick Launch는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이 열기만 하고
-// 닫히지 않는다. 다른 차단 다이얼로그가 떠 있을 때만 막는다.
-function isForeignBlockingDialogOpen(documentFor: Document): boolean {
+// 가운데 Quick Launch와 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
+// 열기만 하고 닫히지 않는다(⌘K가 팔레트를 못 닫던 실측). 자기 표면이 아닌 다른 차단
+// 다이얼로그가 떠 있을 때만 막는다.
+function isForeignBlockingDialogOpen(documentFor: Document, ownSelector: string): boolean {
   return [...documentFor.querySelectorAll('[aria-modal="true"]:not([hidden])')]
-    .some((element) => element.closest(".quick-launch-overlay") === null);
+    .some((element) => element.closest(ownSelector) === null);
 }
 
 // This listener is intentionally installed on window: it owns Console-wide
@@ -54,10 +57,32 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // Shift·Alt·Meta는 거른다 — Ctrl+Shift+Space와 IME/Spotlight 코드를 삼키지 않는다.
     // 토글은 자기 모달 가드보다 먼저 본다 — 가운데 컴포저가 aria-modal이라 닫힘이 막히면 안 된다.
     if (isQuickLaunchToggleShortcut(event)) {
-      if (isForeignBlockingDialogOpen(windowFor.document)) return;
+      if (isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleQuickLaunch();
+      return;
+    }
+    // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
+    // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+      // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
+      // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
+      if (windowFor.document.body.dataset.codexReading === "true") return;
+      if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const mode = dependencies.getOperationSearchMode();
+      if (mode === null) dependencies.openOperationSearch();
+      else if (mode === "operations") dependencies.closeOperationSearch();
+      else dependencies.openOperationSearch("");
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
+      if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (dependencies.getOperationSearchMode() !== "commands") dependencies.openOperationSearch(">");
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
@@ -67,21 +92,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.undoLastClose?.();
-      return;
-    }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
-      // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
-      if (windowFor.document.body.dataset.codexReading === "true") return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.toggleOperationSearch();
-      return;
-    }
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.openOperationSearch();
       return;
     }
     // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
