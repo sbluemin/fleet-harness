@@ -394,6 +394,9 @@ export function setActiveOperation(
     : options?.acknowledged === false
       ? false
       : acknowledgeIdleArrival(operationId);
+  // 캔버스·사이드바·모바일 셸의 보통 포커스는 여기로 온다 — 팔레트의 「최근」 순서가 그 손길에도 반응하려면
+  // 교차 Theater 전용 경로(focusOperation)만이 아니라 이 공용 활성화에서도 기록해야 한다.
+  if (operationId !== null) noteOperationFocused(operationId);
   if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged) return;
   setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged });
 }
