@@ -8,6 +8,10 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { launchProviderFromModelId, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { resolveOperationActivity } from "./operation-activity.js";
+import { fuzzyMatchPaletteLabel, searchTokens } from "./palette-match.js";
+
+export { searchTokens } from "./palette-match.js";
+import { recentOperationRank } from "./palette-recent.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
 import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
@@ -31,6 +35,28 @@ function readSessionModel(payload: Record<string, unknown>): string | null {
   if (!payload.session || typeof payload.session !== "object" || Array.isArray(payload.session)) return null;
   const model = (payload.session as Record<string, unknown>).model;
   return typeof model === "string" ? model : null;
+}
+
+/**
+ * 팔레트의 네 모드. 탭이 곧 모드이고, 입력 첫 글자의 접두(`>` `#` `@`)도 같은 모드로 간다 —
+ * 탭을 모르는 손도, 접두를 모르는 눈도 같은 곳에 닿는다.
+ */
+export type PaletteMode = "operations" | "commands" | "theaters" | "panels";
+export const PALETTE_MODES: readonly PaletteMode[] = ["operations", "commands", "theaters", "panels"];
+export const PALETTE_MODE_PREFIX: Readonly<Record<Exclude<PaletteMode, "operations">, string>> = { commands: ">", theaters: "#", panels: "@" };
+
+export function paletteModeForPrefix(character: string): Exclude<PaletteMode, "operations"> | null {
+  if (character === ">") return "commands";
+  if (character === "#") return "theaters";
+  if (character === "@") return "panels";
+  return null;
+}
+
+/** seed 문자열(전역 단축키가 넘기는 접두)을 모드와 남은 텍스트로 가른다. */
+export function parsePaletteSeed(seed: string | null): { readonly mode: PaletteMode; readonly text: string } {
+  if (!seed) return { mode: "operations", text: "" };
+  const mode = paletteModeForPrefix(seed[0] ?? "");
+  return mode ? { mode, text: seed.slice(1) } : { mode: "operations", text: seed };
 }
 
 export interface OperationSearchGroup {
@@ -132,13 +158,43 @@ export function buildOperationSearchEntries(current: ConsoleState): readonly Ope
   return entries;
 }
 
+/**
+ * 검색 모드도 명령 모드와 같은 퍼지 규칙을 쓴다 — 한 창 안에서 손버릇이 갈리면 안 된다.
+ * 빈 질의는 전부 돌려주고, 질의가 있으면 점수 순(정확 토큰 우선)으로 정렬한다.
+ */
 export function filterOperationSearchEntries(entries: readonly OperationSearchEntry[], query: string): readonly OperationSearchEntry[] {
   const tokens = searchTokens(query);
   if (tokens.length === 0) return entries;
-  return entries.filter((entry) => {
-    const haystack = operationSearchText(entry);
-    return tokens.every((token) => haystack.includes(token));
-  });
+  return entries
+    .flatMap((entry, originalIndex) => {
+      const match = fuzzyMatchPaletteLabel(operationSearchText(entry), query);
+      return match ? [{ entry, match, originalIndex }] : [];
+    })
+    .sort((left, right) =>
+      right.match.exactTokens - left.match.exactTokens
+      || right.match.score - left.match.score
+      || left.originalIndex - right.originalIndex)
+    .map(({ entry }) => entry);
+}
+
+/**
+ * 활성 Theater 묶음이 먼저 서고, 그 안은 최근 포커스 순이다. 질의가 있을 때는 점수 순서를
+ * 지키되 묶음 순서만 활성 우선으로 둔다 — 점수가 같은 행끼리는 최근 순이 이미 원래 순서다.
+ */
+export function orderOperationSearchEntries(
+  entries: readonly OperationSearchEntry[],
+  activeTheaterId: string | null,
+  hasQuery: boolean,
+): readonly OperationSearchEntry[] {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const activeDelta = Number(right.entry.theaterId === activeTheaterId) - Number(left.entry.theaterId === activeTheaterId);
+      if (activeDelta !== 0) return activeDelta;
+      if (hasQuery) return left.index - right.index;
+      return recentOperationRank(left.entry.operationId) - recentOperationRank(right.entry.operationId) || left.index - right.index;
+    })
+    .map(({ entry }) => entry);
 }
 
 export function groupOperationSearchEntries(entries: readonly OperationSearchEntry[]): readonly OperationSearchGroup[] {
@@ -158,9 +214,6 @@ export function groupOperationSearchEntries(entries: readonly OperationSearchEnt
   return groups;
 }
 
-export function searchTokens(query: string): readonly string[] {
-  return query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-}
 
 function toOperationSearchEntry(
   operation: OperationNode,
@@ -180,5 +233,5 @@ function toOperationSearchEntry(
 }
 
 function operationSearchText(entry: OperationSearchEntry): string {
-  return [entry.operationName, entry.theaterLabel, entry.pluginId].join(" ").toLocaleLowerCase();
+  return [entry.operationName, entry.theaterLabel, entry.pluginId].join(" ");
 }

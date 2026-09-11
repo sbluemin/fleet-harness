@@ -4358,7 +4358,7 @@
 .canvas-shortcuts-or {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: var(--t-2xs);
 }
 
 .canvas-shortcuts-keyset {
@@ -10513,6 +10513,260 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font-family: var(--font-mono);
   font-size: var(--t-sm);
   letter-spacing: 0.04em;
+}
+
+.operation-search-empty-hint {
+  display: block;
+  margin-top: var(--space-1);
+  color: color-mix(in oklch, var(--text-tertiary) 80%, transparent);
+}
+
+/* ===== 팔레트 탭 — 네 모드가 창 위에 선다. 탭이 접두 문법(> # @)을 설명하고, ⌘K·⌘P가 앞의 둘을 오간다. ===== */
+.operation-search-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.operation-search-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.operation-search-tab:hover {
+  color: var(--text-secondary);
+}
+
+.operation-search-tab.is-active {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-bright);
+}
+
+.operation-search-tab kbd {
+  padding: 0 4px 1px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-glass) 60%, transparent);
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+/* 구역 머리글 글리프 — 스크롤 중 위치를 알린다. 잉크는 머리글과 같다. */
+.operation-search-section-glyph {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-right: calc(var(--space-3) * -1 + var(--space-2));
+  opacity: 0.85;
+}
+
+.operation-search-section-glyph svg {
+  width: 13px;
+  height: 13px;
+}
+
+.operation-search-section-note {
+  flex: none;
+  color: var(--brass-bright);
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+}
+
+/* 행 글리프 — 16px 상자에 선 글리프·모노그램·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
+   선택 행만 brass(위치), 파괴 행만 coral(위험)이다. */
+.operation-search-command-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.operation-search-command-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.operation-search-monogram {
+  width: 18px;
+  height: 18px;
+  border: 1px solid color-mix(in oklch, var(--text-tertiary) 55%, transparent);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.operation-search-result.is-active .operation-search-monogram {
+  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
+}
+
+.operation-search-rail-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 파괴 행 — Theater 메뉴의 잊기 항목(.theater-menu-forget)과 같은 문법: coral 잉크와 옅은 coral 호버 채움. */
+.operation-search-result.is-danger,
+.operation-search-result.is-danger strong,
+.operation-search-result.is-danger .operation-search-command-glyph,
+.operation-search-result.is-danger .operation-search-monogram {
+  color: var(--coral-ink);
+}
+
+.operation-search-result.is-danger .operation-search-monogram {
+  border-color: color-mix(in oklch, var(--coral) 60%, transparent);
+}
+
+.operation-search-result.is-danger:hover,
+.operation-search-result.is-danger.is-active {
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+}
+
+.operation-search-result.is-danger.is-active::before {
+  background: var(--coral);
+}
+
+.operation-search-undoable {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+}
+
+.operation-search-shortcut {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.operation-search-shortcut kbd,
+.operation-search-legend kbd {
+  padding: 1px 5px 2px;
+  border: 1px solid color-mix(in oklch, var(--surface-rim-strong) 80%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+/* Operation 행 동작 띠 — 행 아래에 펼쳐지며 →로 열고 ←로 닫는다. 동작 정의는 명령 팔레트와 같다. */
+.operation-search-row {
+  display: grid;
+}
+
+.operation-search-row-arrow {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.operation-search-result.is-active .operation-search-row-arrow,
+.operation-search-row.has-actions .operation-search-row-arrow {
+  opacity: 0.8;
+}
+
+.operation-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 2px var(--space-4) var(--space-3) calc(var(--space-4) + 16px + var(--space-3));
+}
+
+.operation-search-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-veil) 45%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.operation-search-action.is-active {
+  border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-bright);
+}
+
+.operation-search-action.is-danger {
+  color: var(--coral-ink);
+}
+
+.operation-search-action.is-danger.is-active {
+  border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+}
+
+.operation-search-action-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+.operation-search-action-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 바닥 범례 — 창 안에서 창의 키를 말한다. 오른쪽 끝은 다른 문(⌘K/⌘P)이다. */
+.operation-search-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3) 0;
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+}
+
+.operation-search-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.operation-search-legend-switch {
+  margin-left: auto;
+  color: var(--brass-bright);
 }
 
 .directory-browser-overlay {

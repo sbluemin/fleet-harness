@@ -5,6 +5,7 @@ import { buildOperationSearchEntries } from "./operation-search.js";
 import { readQuickLaunchSelection, writeQuickLaunchPinned } from "./quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
 import { acknowledgeIdleArrival } from "./operation-marks.js";
+import { noteOperationFocused } from "./palette-recent.js";
 import { closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
@@ -89,6 +90,8 @@ let state: ConsoleState = {
   operationsViewActive: false,
   operationSearchOpen: false,
   operationSearchSeed: null,
+  operationSearchSeedNonce: 0,
+  operationSearchMode: null,
   quickLaunchOpen: false,
   quickLaunchPinned: readQuickLaunchSelection().pinned,
   quickLaunchFocusToggle: 0,
@@ -485,6 +488,7 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
 export function focusOperation(operationId: string): void {
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
+  noteOperationFocused(operationId);
   const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
   if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
@@ -654,19 +658,21 @@ export function compareOperationCreatedAt(left: OperationNode, right: OperationN
 }
 
 export function openOperationSearch(seed?: string): void {
-  setState({ operationSearchOpen: true, operationSearchSeed: seed ?? null });
+  setState({ operationSearchOpen: true, operationSearchSeed: seed ?? null, operationSearchSeedNonce: state.operationSearchSeedNonce + 1 });
 }
 
 export function closeOperationSearch(): void {
-  setState({ operationSearchOpen: false, operationSearchSeed: null });
+  setState({ operationSearchOpen: false, operationSearchSeed: null, operationSearchMode: null });
 }
 
 export function toggleOperationSearch(): void {
-  const operationSearchOpen = !state.operationSearchOpen;
-  setState({
-    operationSearchOpen,
-    ...(operationSearchOpen ? {} : { operationSearchSeed: null }),
-  });
+  if (state.operationSearchOpen) closeOperationSearch();
+  else openOperationSearch();
+}
+
+export function setOperationSearchMode(mode: ConsoleState["operationSearchMode"]): void {
+  if (state.operationSearchMode === mode) return;
+  setState({ operationSearchMode: mode });
 }
 
 export function openQuickLaunch(): void {

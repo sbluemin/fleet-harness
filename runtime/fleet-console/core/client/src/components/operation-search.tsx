@@ -16,21 +16,32 @@ import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
   filterOperationSearchEntries,
   groupOperationSearchEntries,
+  orderOperationSearchEntries,
+  PALETTE_MODE_PREFIX,
+  PALETTE_MODES,
+  paletteModeForPrefix,
+  parsePaletteSeed,
   RAIL_SEARCH_DEBOUNCE_MS,
   searchRailPanels,
-  type PaletteSearchPanel,
   searchTokens,
+  type OperationSearchEntry,
+  type PaletteMode,
+  type PaletteSearchPanel,
   type RailSearchGroup,
 } from "../operation-search.js";
+import { noteCommandRun, readRecentCommandIds } from "../palette-recent.js";
+import { PaletteActionGlyph, PaletteCommandGlyph, PaletteSectionGlyph } from "./palette-glyphs.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import {
   buildPaletteCommands,
-  commandModeQuery,
-  isCommandModeInput,
+  groupPaletteCommands,
   matchPaletteCommands,
+  type PaletteCommandAction,
   type PaletteCommandEntry,
+  type PaletteCommandGroup,
+  type ScoredPaletteCommand,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
 import { forgetTheaterCompletely } from "../theater.js";
@@ -52,6 +63,7 @@ import {
   requestSideBarAddTheater,
   setActiveTheater,
   setActiveTheme,
+  setOperationSearchMode,
 } from "../store.js";
 import { useT } from "../i18n/index.js";
 import type { ConsoleState } from "../types.js";
@@ -70,7 +82,6 @@ interface OperationSearchProps {
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
-const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
 export function OperationSearch({
   state,
@@ -84,74 +95,91 @@ export function OperationSearch({
   const railBindings = useRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
-  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<PaletteMode>("operations");
+  const [text, setText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [railSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
+  // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
+  const [actionsFor, setActionsFor] = useState<string | null>(null);
+  const [actionIndex, setActionIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const operationSearchWasOpenRef = useRef(false);
+  const appliedSeedNonceRef = useRef(0);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
   const searchGenerationRef = useRef(0);
-  const commandMode = isCommandModeInput(query);
+  const commandMode = mode === "commands";
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Operation이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const entries = useMemo(() => operationSearchEntries(state), [state]);
-  const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
+  const filteredEntries = useMemo(
+    () => mode === "operations"
+      ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), state.activeTheaterId, searchTokens(text).length > 0)
+      : [],
+    [entries, mode, state.activeTheaterId, text],
+  );
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
-  const activeTheaterHasWiki = state.theaters.find((candidate) => candidate.id === state.activeTheaterId)?.hasWiki === true;
   const commands = useMemo(
     () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
     [state, railPanels, t, undoAvailable],
   );
-  const matchedCommands = useMemo(
-    () => (commandMode ? matchPaletteCommands(commands, commandModeQuery(query)) : []),
-    [commandMode, commands, query],
+  const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
+  // 모드가 보는 명령의 부분집합. Theater 탭은 전환·추가, 패널 탭은 패널 열기·설정이다.
+  const modeCommands = useMemo(() => {
+    if (mode === "commands") return commands;
+    if (mode === "theaters") return commands.filter((command) => command.action.kind === "switch-theater" || command.action.kind === "new-theater");
+    if (mode === "panels") return commands.filter((command) => command.action.kind === "open-rail-panel" || command.action.kind === "open-settings");
+    return [];
+  }, [commands, mode]);
+  const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
+    if (mode === "operations") return [];
+    if (searchTokens(text).length === 0) {
+      if (mode !== "commands") return [{ id: "matches", commands: modeCommands.map((command) => ({ command, score: 0, exactTokens: 0, matchedIndices: [] })) }];
+      return groupPaletteCommands(modeCommands, recentCommandIds).map((section) => ({
+        id: section.id,
+        commands: section.commands.map((command) => ({ command, score: 0, exactTokens: 0, matchedIndices: [] })),
+      }));
+    }
+    return [{ id: "matches", commands: matchPaletteCommands(modeCommands, text) }];
+  }, [mode, modeCommands, recentCommandIds, text]);
+  // 같은 명령이 최근 구역과 자기 구역에 함께 설 수 있다 — 선택·스크롤 키는 구역까지 담아 둘을 가른다.
+  const commandRows = useMemo(
+    () => commandSections.flatMap((section) => section.commands.map((scored) => ({ scored, key: commandResultKey(scored.command.commandId) + (section.id === "recent" ? ":recent" : "") }))),
+    [commandSections],
   );
-  const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
+  const matchedCommands = useMemo(() => commandRows.map((row) => row.scored), [commandRows]);
+  const tokens = useMemo(() => searchTokens(text), [text]);
   const railSearchEntries = useMemo(
     // info 행(상한 표식 등)은 표시만 하고 키보드 이동·활성화 대상에서는 뺀다.
     () => railSearchGroups.flatMap((group) => group.results.filter((result) => result.kind !== "info").map((result) => ({ group, result }))),
     [railSearchGroups],
   );
-  const primaryResultCount = commandMode
-    ? matchedCommands.length + railSearchEntries.length
-    : filteredEntries.length + railSearchEntries.length;
-  const resultCount = primaryResultCount;
+  const primaryCount = mode === "operations" ? filteredEntries.length : matchedCommands.length;
+  const resultCount = primaryCount + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
-  const selectedResultKey = commandMode
-    ? matchedCommands[clampedSelectedIndex]
-      ? commandResultKey(matchedCommands[clampedSelectedIndex]!.command.commandId)
-      : railSearchEntries[clampedSelectedIndex - matchedCommands.length]
-        ? railResultKey(
-          railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.group.panelId,
-          railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.result.id,
-        )
-        : undefined
-    : filteredEntries[clampedSelectedIndex]
-      ? operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId)
-      : railSearchEntries[clampedSelectedIndex - filteredEntries.length]
-        ? railResultKey(
-          railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.group.panelId,
-          railSearchEntries[clampedSelectedIndex - filteredEntries.length]!.result.id,
-        )
-        : undefined;
-  const activeOptionId = selectedResultKey === undefined
-    ? undefined
-    : resultOptionId(selectedResultKey);
+  const selectedResultKey = (() => {
+    if (clampedSelectedIndex < primaryCount) {
+      if (mode === "operations") return operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId);
+      return commandRows[clampedSelectedIndex]!.key;
+    }
+    const rail = railSearchEntries[clampedSelectedIndex - primaryCount];
+    return rail ? railResultKey(rail.group.panelId, rail.result.id) : undefined;
+  })();
+  const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
+  const selectedOperation = mode === "operations" ? filteredEntries[clampedSelectedIndex] ?? null : null;
+  const modKey = isApplePlatform() ? "⌘" : "Ctrl";
 
-
+  // 패널 내용 검색은 Operation·패널 탭에서만 — 명령 탭은 명령만 보여 주는 편이 손에 맞는다.
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
     const theaterId = state.activeTheaterId;
-    const effectiveQuery = commandMode ? commandModeQuery(query) : query;
-    if (!state.operationSearchOpen || effectiveQuery.trim() === "" || !theaterId) return;
+    if (!state.operationSearchOpen || text.trim() === "" || !theaterId || (mode !== "operations" && mode !== "panels")) return;
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchRailPanels(railPanels, effectiveQuery, theaterId, abort.signal).then((nextGroups) => {
+      void searchRailPanels(railPanels, text, theaterId, abort.signal).then((nextGroups) => {
         // provider가 abort를 무시해도 이전 세대 결과는 현재 팔레트에 반영하지 않는다.
         if (abort.signal.aborted || generation !== searchGenerationRef.current) return;
         setRailSearchGroups(nextGroups);
@@ -161,7 +189,7 @@ export function OperationSearch({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [commandMode, query, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
+  }, [mode, text, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -175,20 +203,34 @@ export function OperationSearch({
     };
   }, [state.operationSearchOpen]);
 
-  useEffect(() => {
-    const opening = state.operationSearchOpen && !operationSearchWasOpenRef.current;
-    operationSearchWasOpenRef.current = state.operationSearchOpen;
-    if (opening) setQuery(state.operationSearchSeed ?? "");
-  }, [state.operationSearchOpen, state.operationSearchSeed]);
-
+  // seed는 번호가 바뀔 때마다 반영한다 — 열린 창에서 ⌘P를 눌러도 명령 탭으로 옮겨 가야 한다.
   useEffect(() => {
     if (!state.operationSearchOpen) {
-      setQuery("");
+      appliedSeedNonceRef.current = 0;
+      setMode("operations");
+      setText("");
       setSelectedIndex(0);
+      setActionsFor(null);
       return;
     }
+    if (appliedSeedNonceRef.current === state.operationSearchSeedNonce) return;
+    appliedSeedNonceRef.current = state.operationSearchSeedNonce;
+    const seed = parsePaletteSeed(state.operationSearchSeed);
+    setMode(seed.mode);
+    setText(seed.text);
     setSelectedIndex(0);
-  }, [state.operationSearchOpen, query]);
+    setActionsFor(null);
+    inputRef.current?.focus();
+  }, [state.operationSearchOpen, state.operationSearchSeed, state.operationSearchSeedNonce]);
+
+  useEffect(() => {
+    setOperationSearchMode(state.operationSearchOpen ? mode : null);
+  }, [mode, state.operationSearchOpen]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+    setActionsFor(null);
+  }, [mode, text]);
 
   useEffect(() => {
     if (!state.operationSearchOpen || selectedResultKey === undefined) return;
@@ -251,8 +293,7 @@ export function OperationSearch({
     closeOperationSearch();
   };
 
-  const runCommand = (command: PaletteCommandEntry) => {
-    const action = command.action;
+  const runAction = (action: PaletteCommandAction, current: boolean) => {
     switch (action.kind) {
       case "undo-close": {
         previousFocusRef.current = null;
@@ -260,7 +301,7 @@ export function OperationSearch({
         break;
       }
       case "switch-theater": {
-        if (command.current) break;
+        if (current) break;
         // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
         // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 Formation/companion이 부활하지 않는다.
@@ -403,7 +444,7 @@ export function OperationSearch({
         break;
       }
       case "switch-theme": {
-        if (command.current) break;
+        if (current) break;
         const previousTheme = state.activeTheme;
         setActiveTheme(action.theme);
         void setGlobalSettingsField("theme", action.theme).then((saved) => {
@@ -464,50 +505,179 @@ export function OperationSearch({
     closeOperationSearch();
   };
 
+  const runCommand = (command: PaletteCommandEntry) => {
+    noteCommandRun(command.commandId);
+    runAction(command.action, command.current);
+  };
+
+  // Operation 행의 동작 띠. 정의는 명령 팔레트의 액션과 같다 — 같은 일이 두 자리에 서도 한 경로로 간다.
+  const rowActions = (entry: OperationSearchEntry): readonly RowAction[] => {
+    const actions: RowAction[] = [
+      { id: "open", label: t("chrome.operationSearch.actionOpen"), glyph: "operation-open", run: () => selectEntry(entry.operationId) },
+    ];
+    if (entry.activity === "ended") {
+      actions.push({ id: "resume", label: t("chrome.operationSearch.actionResume"), glyph: "operation-resume", run: () => runAction({ kind: "resume-operation", operationId: entry.operationId }, false) });
+    }
+    actions.push(
+      { id: "rename", label: t("chrome.operationSearch.actionRename"), glyph: "operation-rename", run: () => runAction({ kind: "rename-operation", operationId: entry.operationId }, false) },
+      { id: "minimize", label: t("chrome.operationSearch.actionMinimize"), glyph: "operation-minimize", run: () => runAction({ kind: "minimize-operation", operationId: entry.operationId }, false) },
+      { id: "close", label: t("chrome.operationSearch.actionClose"), glyph: "operation-close", danger: true, run: () => runAction({ kind: "close-operation", operationId: entry.operationId }, false) },
+    );
+    return actions;
+  };
+
+  const activateSelected = () => {
+    if (clampedSelectedIndex < primaryCount) {
+      if (mode === "operations") {
+        const selected = filteredEntries[clampedSelectedIndex];
+        if (!selected) return;
+        if (actionsFor === selected.operationId) rowActions(selected)[actionIndex]?.run();
+        else selectEntry(selected.operationId);
+        return;
+      }
+      const selected = matchedCommands[clampedSelectedIndex];
+      if (selected) runCommand(selected.command);
+      return;
+    }
+    const panelEntry = railSearchEntries[clampedSelectedIndex - primaryCount];
+    if (panelEntry) void selectRailResult(panelEntry.group.panelId, panelEntry.result);
+  };
+
+  const switchMode = (next: PaletteMode) => {
+    setMode(next);
+    setText("");
+    inputRef.current?.focus();
+  };
+
+  const handleInputChange = (value: string) => {
+    // 접두 문법은 탭을 모르는 손을 위한 것이다 — 빈 입력의 첫 글자가 접두면 그 탭으로 옮기고 접두는 지운다.
+    const prefixMode = text === "" ? paletteModeForPrefix(value[0] ?? "") : null;
+    if (prefixMode && mode === "operations") {
+      setMode(prefixMode);
+      setText(value.slice(1));
+      return;
+    }
+    setText(value);
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      closeOperationSearch();
+      if (actionsFor !== null) setActionsFor(null);
+      else closeOperationSearch();
+      return;
+    }
+    if (event.key === "Backspace" && text === "" && mode !== "operations") {
+      event.preventDefault();
+      switchMode("operations");
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      setActionsFor(null);
       setSelectedIndex((current) => clampIndex(current + (event.key === "ArrowDown" ? 1 : -1), resultCount));
       return;
     }
+    if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && selectedOperation) {
+      const input = inputRef.current;
+      // 캐럿이 글 가운데면 화살표는 글 편집이다 — 띠는 캐럿이 끝(→)·처음(←)에 있을 때만 받는다.
+      const caretAtEdge = !input || (event.key === "ArrowRight" ? input.selectionEnd === input.value.length : input.selectionStart === 0);
+      if (!caretAtEdge && actionsFor === null) return;
+      event.preventDefault();
+      const actions = rowActions(selectedOperation);
+      if (event.key === "ArrowRight") {
+        if (actionsFor === selectedOperation.operationId) setActionIndex((current) => Math.min(current + 1, actions.length - 1));
+        else {
+          setActionsFor(selectedOperation.operationId);
+          setActionIndex(0);
+        }
+      } else if (actionsFor === selectedOperation.operationId) {
+        if (actionIndex > 0) setActionIndex((current) => current - 1);
+        else setActionsFor(null);
+      }
+      return;
+    }
     if (event.key === "Enter") {
-      if (commandMode) {
-        const selected = matchedCommands[clampedSelectedIndex];
-        if (selected) {
-          event.preventDefault();
-          runCommand(selected.command);
-          return;
-        }
-        const panelEntry = railSearchEntries[clampedSelectedIndex - matchedCommands.length];
-        if (panelEntry) {
-          event.preventDefault();
-          void selectRailResult(panelEntry.group.panelId, panelEntry.result);
-          return;
-        }
-        return;
-      }
-      const selected = filteredEntries[clampedSelectedIndex];
-      if (selected) {
-        event.preventDefault();
-        selectEntry(selected.operationId);
-        return;
-      }
-      const panelEntry = railSearchEntries[clampedSelectedIndex - filteredEntries.length];
-      if (panelEntry) {
-        event.preventDefault();
-        void selectRailResult(panelEntry.group.panelId, panelEntry.result);
-        return;
-      }
+      event.preventDefault();
+      activateSelected();
       return;
     }
     if (event.key === "Tab") trapFocus(event, cardRef.current);
   };
 
+  const placeholder = t(
+    mode === "commands" ? "chrome.operationSearch.placeholderCommands"
+      : mode === "theaters" ? "chrome.operationSearch.placeholderTheaters"
+        : mode === "panels" ? "chrome.operationSearch.placeholderPanels"
+          : "chrome.operationSearch.placeholderOperations",
+  );
+  const emptyMessage = mode === "commands" ? t("chrome.operationSearch.noMatchingCommands")
+    : mode === "theaters" ? t("chrome.operationSearch.noMatchingTheaters")
+      : mode === "panels" ? t("chrome.operationSearch.noMatchingPanels")
+        : t("chrome.operationSearch.noMatching");
+  const sectionTitle = (id: "recent" | PaletteCommandGroup | "matches"): string => {
+    switch (id) {
+      case "recent": return t("chrome.operationSearch.sectionRecent");
+      case "current-operation": {
+        const active = state.operations.find((operation) => operation.id === state.activeOperationId);
+        return active ? `${t("chrome.operationSearch.sectionCurrentOperation")} · ${active.title}` : t("chrome.operationSearch.sectionCurrentOperation");
+      }
+      case "theater": return t("chrome.operationSearch.sectionTheater");
+      case "view": return t("chrome.operationSearch.sectionView");
+      case "panel": return t("chrome.operationSearch.sectionPanel");
+      case "console": return t("chrome.operationSearch.sectionConsole");
+      case "matches": return t(mode === "theaters" ? "chrome.operationSearch.sectionTheater" : mode === "panels" ? "chrome.operationSearch.sectionPanel" : "chrome.operationSearch.commands");
+    }
+  };
+
+  const renderRailGroups = (offset: number) => railSearchGroups.map((group) => {
+    const headingId = railGroupHeadingId(group.panelId);
+    return (
+      <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
+        <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
+        {group.results.map((result) => {
+          const index = offset + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+          const active = index === clampedSelectedIndex;
+          const resultKey = railResultKey(group.panelId, result.id);
+          if (result.kind === "info") {
+            // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
+            return (
+              <div key={result.id} className="operation-search-result operation-search-panel-info">
+                <span className="operation-search-result-text">
+                  <strong>{highlightText(result.title, tokens)}</strong>
+                  {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <button
+              id={resultOptionId(resultKey)}
+              key={result.id}
+              ref={(node) => {
+                if (node) resultRefs.current.set(resultKey, node);
+                else resultRefs.current.delete(resultKey);
+              }}
+              type="button"
+              className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
+              role="option"
+              aria-selected={active}
+              onMouseEnter={() => setSelectedIndex(index)}
+              onClick={() => { void selectRailResult(group.panelId, result); }}
+            >
+              <span className="operation-search-result-text">
+                <strong>{highlightText(result.title, tokens)}</strong>
+                {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+              </span>
+              <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
+            </button>
+          );
+        })}
+      </section>
+    );
+  });
+
+  const hasResults = resultCount > 0;
 
   return (
     <div className="operation-search-overlay" onMouseDown={(event) => {
@@ -522,15 +692,31 @@ export function OperationSearch({
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
+        <div className="operation-search-tabs" role="tablist">
+          {PALETTE_MODES.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              role="tab"
+              className={`operation-search-tab${candidate === mode ? " is-active" : ""}`}
+              aria-selected={candidate === mode}
+              tabIndex={-1}
+              onClick={() => switchMode(candidate)}
+            >
+              {t(candidate === "operations" ? "chrome.operationSearch.tabOperations" : candidate === "commands" ? "chrome.operationSearch.tabCommands" : candidate === "theaters" ? "chrome.operationSearch.tabTheaters" : "chrome.operationSearch.tabPanels")}
+              <kbd>{candidate === "operations" ? `${modKey}K` : candidate === "commands" ? `${modKey}P` : PALETTE_MODE_PREFIX[candidate]}</kbd>
+            </button>
+          ))}
+        </div>
         <div className="operation-search-field">
           <SearchIcon />
           <input
             ref={inputRef}
             id="operation-search-input"
             type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("chrome.operationSearch.placeholder")}
+            value={text}
+            onChange={(event) => handleInputChange(event.target.value)}
+            placeholder={placeholder}
             autoComplete="off"
             role="combobox"
             aria-expanded={true}
@@ -542,191 +728,158 @@ export function OperationSearch({
           <kbd>esc</kbd>
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
-          {commandMode ? (
-            matchedCommands.length > 0 || railSearchGroups.length > 0 ? <>
-              {matchedCommands.length > 0 ? (
-                <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
-                  <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
-                  {matchedCommands.map((scored, index) => {
-                    const { command } = scored;
-                    const active = index === clampedSelectedIndex;
-                    const resultKey = commandResultKey(command.commandId);
-                    return (
-                      <button
-                        id={commandOptionId(command.commandId)}
-                        key={command.commandId}
-                        ref={(node) => {
-                          if (node) resultRefs.current.set(resultKey, node);
-                          else resultRefs.current.delete(resultKey);
-                        }}
-                        type="button"
-                        className={`operation-search-result ${active ? "is-active" : ""}`}
-                        role="option"
-                        aria-selected={active}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                        onClick={() => runCommand(command)}
-                      >
-                        <span className="operation-search-command-glyph" aria-hidden="true">›</span>
-                        <span className="operation-search-result-text">
-                          <strong>{highlightIndices(command.label, scored.matchedIndices)}</strong>
-                        </span>
-                        {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
-                      </button>
-                    );
-                  })}
-                </section>
-              ) : null}
-              {railSearchGroups.map((group) => {
-                const headingId = railGroupHeadingId(group.panelId);
+          {!hasResults ? (
+            <p className="operation-search-empty">
+              {emptyMessage}
+              {mode === "operations" ? <span className="operation-search-empty-hint">{t("chrome.operationSearch.noMatchingOperationsHint")}</span> : null}
+            </p>
+          ) : mode !== "operations" ? (
+            <>
+              {commandSections.map((section) => {
+                const headingId = commandSectionHeadingId(section.id);
                 return (
-                  <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
-                    <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
-                    {group.results.map((result) => {
-                      const index = matchedCommands.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+                  <section className="operation-search-section" key={section.id} role="group" aria-labelledby={headingId}>
+                    <h2 id={headingId} className="operation-search-section-heading">
+                      {section.id !== "matches" ? <PaletteSectionGlyph section={section.id} /> : null}
+                      {sectionTitle(section.id)}
+                    </h2>
+                    {section.commands.map((scored) => {
+                      const { command } = scored;
+                      const index = matchedCommands.indexOf(scored);
                       const active = index === clampedSelectedIndex;
-                      const resultKey = railResultKey(group.panelId, result.id);
-                      if (result.kind === "info") {
-                        // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
-                        return (
-                          <div
-                            key={result.id}
-                            className="operation-search-result operation-search-panel-info"
-                          >
-                            <span className="operation-search-result-text">
-                              <strong>{highlightText(result.title, tokens)}</strong>
-                              {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
-                            </span>
-                          </div>
-                        );
-                      }
+                      const resultKey = commandRows[index]!.key;
                       return (
                         <button
                           id={resultOptionId(resultKey)}
-                          key={result.id}
+                          key={resultKey}
                           ref={(node) => {
                             if (node) resultRefs.current.set(resultKey, node);
                             else resultRefs.current.delete(resultKey);
                           }}
                           type="button"
-                          className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
+                          className={`operation-search-result${active ? " is-active" : ""}${command.danger ? " is-danger" : ""}`}
                           role="option"
                           aria-selected={active}
                           onMouseEnter={() => setSelectedIndex(index)}
-                          onClick={() => { void selectRailResult(group.panelId, result); }}
+                          onClick={() => runCommand(command)}
                         >
+                          <PaletteCommandGlyph command={command} />
                           <span className="operation-search-result-text">
-                            <strong>{highlightText(result.title, tokens)}</strong>
-                            {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                            <strong>{highlightIndices(command.label, scored.matchedIndices)}</strong>
+                            {command.subject && section.id === "current-operation" ? <small>{command.subject}</small> : null}
                           </span>
-                          <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
+                          {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
+                          {command.undoable ? <span className="operation-search-undoable">{t("chrome.operationSearch.undoable")}</span> : null}
+                          {command.shortcut ? <span className="operation-search-shortcut">{command.shortcut.map((key) => <kbd key={key}>{key === "Mod" ? modKey : key}</kbd>)}</span> : null}
                         </button>
                       );
                     })}
                   </section>
                 );
               })}
-            </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatchingCommands")}</p>
+              {renderRailGroups(matchedCommands.length)}
+            </>
           ) : (
-            groups.length > 0 || railSearchGroups.length > 0 ? <>
+            <>
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId);
+                const activeGroup = group.theaterId === state.activeTheaterId;
                 return (
                   <section className="operation-search-section" key={group.theaterId ?? UNASSIGNED_GROUP_KEY} role="group" aria-labelledby={headingId}>
-                    <h2 id={headingId} className="operation-search-section-heading">{highlightText(group.theaterLabel, tokens)}</h2>
+                    <h2 id={headingId} className="operation-search-section-heading">
+                      {highlightText(group.theaterLabel, tokens)}
+                      {activeGroup ? <span className="operation-search-section-note">{t("chrome.operationSearch.current")}</span> : null}
+                    </h2>
                     {group.entries.map((entry) => {
                       const index = filteredEntries.indexOf(entry);
                       const active = index === clampedSelectedIndex;
                       const resultKey = operationResultKey(entry.operationId);
+                      const stripOpen = actionsFor === entry.operationId;
+                      const actions = stripOpen ? rowActions(entry) : [];
                       return (
-                        <button
-                          id={resultOptionId(resultKey)}
-                          key={entry.operationId}
-                          ref={(node) => {
-                            if (node) resultRefs.current.set(resultKey, node);
-                            else resultRefs.current.delete(resultKey);
-                          }}
-                          type="button"
-                          className={`operation-search-result ${active ? "is-active" : ""}`}
-                          role="option"
-                          aria-selected={active}
-                          onMouseEnter={() => setSelectedIndex(index)}
-                          onClick={() => selectEntry(entry.operationId)}
-                        >
-                          {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다(Shell만 종류 글리프).
-                              마크가 항상 서므로 무공급자 행도 제목 열이 어긋나지 않고, 공급자는
-                              메타 캡션 텍스트로 강등 보존된다. */}
-                          <span className="operation-search-op-mark">
-                            <OperationNameMark
-                              operation={entry}
-                              status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
-                            />
-                          </span>
-                          <span className="operation-search-result-text">
-                            <strong>{highlightText(entry.operationName, tokens)}</strong>
-                            <small>{operationMeta(entry)}</small>
-                          </span>
-                          <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
-                        </button>
-                      );
-                    })}
-                  </section>
-                );
-              })}
-              {railSearchGroups.map((group) => {
-                const headingId = railGroupHeadingId(group.panelId);
-                return (
-                  <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
-                    <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
-                    {group.results.map((result) => {
-                      const index = filteredEntries.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
-                      const active = index === clampedSelectedIndex;
-                      const resultKey = railResultKey(group.panelId, result.id);
-                      if (result.kind === "info") {
-                        // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
-                        return (
-                          <div
-                            key={result.id}
-                            className="operation-search-result operation-search-panel-info"
+                        <div key={entry.operationId} className={`operation-search-row${stripOpen ? " has-actions" : ""}`}>
+                          <button
+                            id={resultOptionId(resultKey)}
+                            ref={(node) => {
+                              if (node) resultRefs.current.set(resultKey, node);
+                              else resultRefs.current.delete(resultKey);
+                            }}
+                            type="button"
+                            className={`operation-search-result ${active ? "is-active" : ""}`}
+                            role="option"
+                            aria-selected={active}
+                            onMouseEnter={() => setSelectedIndex(index)}
+                            onClick={() => selectEntry(entry.operationId)}
                           >
-                            <span className="operation-search-result-text">
-                              <strong>{highlightText(result.title, tokens)}</strong>
-                              {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                            {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다(Shell만 종류 글리프).
+                                마크가 항상 서므로 무공급자 행도 제목 열이 어긋나지 않고, 공급자는
+                                메타 캡션 텍스트로 강등 보존된다. */}
+                            <span className="operation-search-op-mark">
+                              <OperationNameMark
+                                operation={entry}
+                                status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+                              />
                             </span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <button
-                          id={resultOptionId(resultKey)}
-                          key={result.id}
-                          ref={(node) => {
-                            if (node) resultRefs.current.set(resultKey, node);
-                            else resultRefs.current.delete(resultKey);
-                          }}
-                          type="button"
-                          className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
-                          role="option"
-                          aria-selected={active}
-                          onMouseEnter={() => setSelectedIndex(index)}
-                          onClick={() => { void selectRailResult(group.panelId, result); }}
-                        >
-                          <span className="operation-search-result-text">
-                            <strong>{highlightText(result.title, tokens)}</strong>
-                            {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
-                          </span>
-                          <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
-                        </button>
+                            <span className="operation-search-result-text">
+                              <strong>{highlightText(entry.operationName, tokens)}</strong>
+                              <small>{operationMeta(entry)}</small>
+                            </span>
+                            <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
+                            <span className="operation-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
+                          </button>
+                          {stripOpen ? (
+                            <div className="operation-search-actions" role="group" aria-label={t("chrome.operationSearch.actionsAria", { title: entry.operationName })}>
+                              {actions.map((action, i) => (
+                                <button
+                                  key={action.id}
+                                  type="button"
+                                  tabIndex={-1}
+                                  className={`operation-search-action${i === actionIndex ? " is-active" : ""}${action.danger ? " is-danger" : ""}`}
+                                  onMouseEnter={() => setActionIndex(i)}
+                                  onClick={action.run}
+                                >
+                                  <PaletteActionGlyph glyph={action.glyph} />
+                                  {action.label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </section>
                 );
               })}
-            </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatching")}</p>
+              {renderRailGroups(filteredEntries.length)}
+            </>
           )}
+        </div>
+        <div className="operation-search-legend">
+          <span><kbd>↑</kbd><kbd>↓</kbd>{t("chrome.operationSearch.legendMove")}</span>
+          <span><kbd>↵</kbd>{t(mode === "operations" ? "chrome.operationSearch.legendOpen" : "chrome.operationSearch.legendRun")}</span>
+          {mode === "operations" ? <span><kbd>→</kbd>{t("chrome.operationSearch.legendActions")}</span> : null}
+          <span><kbd>esc</kbd>{t("chrome.operationSearch.legendClose")}</span>
+          <span className="operation-search-legend-switch">{t(mode === "operations" ? "chrome.operationSearch.legendToCommands" : "chrome.operationSearch.legendToOperations")}</span>
         </div>
       </section>
     </div>
   );
+}
+
+interface RowAction {
+  readonly id: string;
+  readonly label: string;
+  readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-minimize" | "operation-close";
+  readonly danger?: boolean;
+  readonly run: () => void;
+}
+
+function isApplePlatform(): boolean {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+}
+
+function commandSectionHeadingId(id: string): string {
+  return `operation-search-heading-commands-${domIdPart(id)}`;
 }
 
 function paletteActionToSideBarAction(
