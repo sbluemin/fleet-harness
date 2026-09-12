@@ -72,6 +72,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly anchor: DOMRect;
     readonly returnFocus?: HTMLElement | null;
     readonly align?: GroupContextMenuAlign;
+    readonly fromSidebar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
 
@@ -80,6 +81,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
   // Cruise는 인셋을 알고 Tactical은 모르는 감사 실패 양식이 재발한다.
   const zenMode = useZenMode();
+  useEffect(() => {
+    if (!zenMode || !operationMenu?.fromSidebar) return;
+    setOperationMenu(null);
+    bodyRef.current?.focus({ preventScroll: true });
+    // 진입 전에 사이드바가 연 메뉴만 회수한다. 작업면의 공용 메뉴와 이후 요청은 보존한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zenMode]);
   const sideBar = useSideBarState();
   const queueRailPinned = useQueueRailPinned();
   const mapNarrow = useSideBarMapNarrow();
@@ -769,7 +777,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onPick={pickTriageOperation}
           onClose={handleClose}
           onRename={handleRename}
-          onOpenOperationMenu={openOperationMenu}
+          onOpenOperationMenu={(operationId, anchor, returnFocus) => setOperationMenu({ operationId, anchor, returnFocus, fromSidebar: true })}
         />
       ) : (
       <OperationsSideBar
