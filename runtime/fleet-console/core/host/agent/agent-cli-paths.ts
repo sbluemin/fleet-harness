@@ -44,12 +44,13 @@ export function createAgentCliPathStore(dataDir: string, legacyDataDir: string) 
   });
   if (!fs.existsSync(filePath)) {
     const legacyFile = path.join(legacyDataDir, "agent-cli-paths.json");
+    let legacy: AgentCliPathsData | undefined;
     try {
-      const legacy = normalizeAgentCliPaths(JSON.parse(fs.readFileSync(legacyFile, "utf8")));
-      store.update(() => fs.existsSync(filePath) ? undefined : legacy);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      legacy = normalizeAgentCliPaths(JSON.parse(fs.readFileSync(legacyFile, "utf8")));
+    } catch {
+      // 선택 설정의 손상으로 Console 기동을 막지 않는다. 원본과 목적지를 그대로 두어 복구 후 재시도한다.
     }
+    if (legacy) store.update(() => fs.existsSync(filePath) ? undefined : legacy);
   }
   return {
     read: async (): Promise<AgentCliPathsData> => store.load(),
