@@ -26,10 +26,7 @@ import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { focusOperation, getState, openQuickLaunch, openQuickLaunchWithDraft, subscribe as subscribeStore } from "./store.js";
 
-import { useZenMode } from "./zen-mode.js";
-
 export function FloatingWidgetLayer() {
-  const zenMode = useZenMode();
   const { floatingWidgets } = usePluginRegistry();
   const language = useConsoleLocale();
   const navigate = useNavigate();
@@ -75,7 +72,7 @@ export function FloatingWidgetLayer() {
   if (floatingWidgets.length === 0) return null;
 
   return (
-    <div className="floating-widget-layer" hidden={zenMode} inert={zenMode}>
+    <div className="floating-widget-layer">
       {floatingWidgets.map((descriptor) => (
         <div key={descriptor.id} className="floating-widget">
           <PluginErrorBoundary>
