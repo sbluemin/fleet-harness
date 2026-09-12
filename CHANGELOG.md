@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.91.0] - 2026-09-12
+
+### fleet-console
+
+#### Added
+- Experimental "Show Operation location": sidebar Operation chips show the git branch, plus the working folder when the agent sits below the Theater root or outside it. Opt in under Settings > Experiments; Console reads git and follows the agent's working directory only while it is on.
+
 ## [1.90.0] - 2026-09-12
 
 ### fleet-cli
