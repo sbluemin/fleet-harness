@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",

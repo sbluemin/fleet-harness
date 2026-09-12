@@ -334,7 +334,7 @@ export interface OperationsRouterDeps {
   readonly broadcastOperationChanged?: (node: OperationNode) => void;
   // 요청도 함께 넘긴다 — 구독자가 어느 리스너에서 왔는지에 따라 받을 이벤트가 갈린다.
   readonly subscribeOperationSse?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
-  readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
+  readonly getPluginSensitiveFields?: (pluginId: string | null) => readonly string[];
   readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
 }
 
@@ -342,7 +342,7 @@ export type OperationsRouter = (ctx: { readonly req: http.IncomingMessage; reado
 
 type OperationRenameEvent = {
   readonly operationId: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly type: string;
   readonly title: string;
   readonly previousTitle: string;
@@ -429,7 +429,7 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     return;
   }
   const body = await deps.readJsonBody<CreateOperationBody>(req);
-  if (!body || typeof body.theaterId !== "string" || typeof body.type !== "string" || typeof body.pluginId !== "string" || typeof body.title !== "string") {
+  if (!body || typeof body.theaterId !== "string" || typeof body.type !== "string" || (body.pluginId !== null && typeof body.pluginId !== "string") || typeof body.title !== "string") {
     deps.writeJson(res, 400, { error: "invalid_operation" });
     return;
   }

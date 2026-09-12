@@ -40,7 +40,7 @@ const canvasMocks = vi.hoisted(() => ({
   onRefreshCatalog: null as null | (() => void),
 }));
 const registryMocks = vi.hoisted(() => ({
-  plugins: [] as Array<Record<string, unknown>>,
+  providers: [] as Array<Record<string, unknown>>,
   operationKinds: [] as OperationKindDescriptor[],
 }));
 const bodyPoolMocks = vi.hoisted(() => ({
@@ -115,7 +115,7 @@ vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: 
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.
 vi.mock("../core/client/src/settings/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ plugins: registryMocks.plugins, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] , expandedSurfaces: [], persistentComponents: []}) }));
+vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] , expandedSurfaces: [], persistentComponents: []}) }));
 // 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
 vi.mock("../core/client/src/rail/rail-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/rail/rail-store.js")>()),
@@ -190,7 +190,7 @@ beforeEach(() => {
   canvasMocks.onLaunchKind = null;
   canvasMocks.onRefreshCatalog = null;
   vi.mocked(fetchOperationCatalog).mockReset().mockResolvedValue([]);
-  registryMocks.plugins = [];
+  registryMocks.providers = [];
   registryMocks.operationKinds = [];
   bodyPoolMocks.renderedOperationIds = [];
   bodyPoolMocks.order = [];
@@ -226,7 +226,7 @@ describe("Operations boot minimization", () => {
 
   it("resumes a dormant Operation in the active Theater without switching, reloading, or setting focus state", async () => {
     const resumeOperation = vi.fn();
-    registryMocks.plugins = [{ id: "terminal", resumeOperation }];
+    registryMocks.providers = [{ id: "terminal", resumeOperation }];
     await bootApp([
       operation("home", BOOT_FRESH_CREATED_AT(), "theater-a"),
       { ...operation("dormant", 1, "theater-a"), payload: { resumeAvailable: true } },

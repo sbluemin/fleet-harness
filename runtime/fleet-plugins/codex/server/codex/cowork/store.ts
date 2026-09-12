@@ -1,7 +1,4 @@
 import crypto from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { WikiDraftPort, WikiDraftSnapshot, WikiDraftWriteRequest } from "./draft-tools.js";
 
 
@@ -49,7 +46,6 @@ export class CoworkStore {
   private readonly sessions = new Map<string, CoworkSessionRecord>();
   private readonly transcripts = new Map<string, CoworkTranscriptTurn[]>();
   private readonly eventLogs = new Map<string, CoworkStoredEvent[]>();
-  private readonly scratchDirs = new Map<string, string>();
   private readonly writers = new Map<string, string>();
 
   private key(workspaceId: string, sessionId: string) { return `${workspaceId}:${sessionId}`; }
@@ -109,20 +105,9 @@ export class CoworkStore {
     return stored;
   }
 
-  /** provider CLI의 cwd — 빈 임시 디렉터리로 CLI가 스스로 읽을 수 있는 범위를 최소화한다. */
-  async sessionDir(workspaceId: string, sessionId: string): Promise<string> {
-    const key = this.key(workspaceId, sessionId);
-    let dir = this.scratchDirs.get(key);
-    if (!dir) { dir = await mkdtemp(join(tmpdir(), "fleet-cowork-")); this.scratchDirs.set(key, dir); }
-    return dir;
-  }
-
   release(record: CoworkSessionRecord) {
     this.writers.delete(`${record.workspaceId}:${record.entryId}`);
-    const key = this.key(record.workspaceId, record.id);
-    const dir = this.scratchDirs.get(key);
-    this.scratchDirs.delete(key);
-    if (dir) void rm(dir, { recursive: true, force: true }).catch(() => undefined);
+
   }
 }
 

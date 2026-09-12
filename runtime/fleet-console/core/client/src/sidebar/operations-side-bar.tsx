@@ -59,8 +59,8 @@ interface OperationsSideBarProps {
   readonly canLaunch: boolean;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
+  readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;

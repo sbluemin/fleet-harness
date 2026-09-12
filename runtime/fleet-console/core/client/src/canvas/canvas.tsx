@@ -5,7 +5,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, ClientExecutionProvider, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
 import { claimTheaterBootMinimization } from "../boot-minimization-session.js";
@@ -47,9 +47,9 @@ interface OperationsCanvasProps {
   readonly arenaInsets: CanvasArenaInsets;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string, variant?: Readonly<Record<string, string>>) => void;
-  readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
+  readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string, variant?: Readonly<Record<string, string>>) => void;
+  readonly onLaunchAtGeometry: (pluginId: string | null, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
   readonly onRefreshCatalog?: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -370,7 +370,7 @@ export function OperationsCanvas({
   }, [arenaInsets.left, arenaInsets.top]);
 
   const handleContextMenuLaunchKind = (
-    pluginId: string,
+    pluginId: string | null,
     kind: OperationLaunchKind,
     variant?: Readonly<Record<string, string>>,
   ) => {
@@ -1444,7 +1444,7 @@ function isGlanceAltKey(event: KeyboardEvent): boolean {
   return event.code === "AltLeft" || event.code === "AltRight";
 }
 
-function resolveDefaultLaunchTarget(catalog: readonly OperationCatalogPlugin[]): { readonly pluginId: string; readonly kind: OperationLaunchKind } | null {
+function resolveDefaultLaunchTarget(catalog: readonly OperationCatalogPlugin[]): { readonly pluginId: string | null; readonly kind: OperationLaunchKind } | null {
   const availableKinds = catalog.flatMap((plugin) =>
     plugin.kinds.filter((kind) => kind.disabled !== true).map((kind) => ({ pluginId: plugin.id, kind })),
   );

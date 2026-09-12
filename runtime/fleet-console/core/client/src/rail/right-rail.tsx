@@ -33,7 +33,7 @@ import { RailSurface } from "../pane/rail-surface.js";
 interface RightRailProps {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
-  readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
 }
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */

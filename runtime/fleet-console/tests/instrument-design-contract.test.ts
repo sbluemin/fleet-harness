@@ -47,13 +47,13 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
-const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
-const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
-const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
-const TERMINAL_SURFACE_PATH = new URL("../../fleet-plugins/terminal/client/shared/terminal-surface.tsx", import.meta.url);
-const TERMINAL_CHAT_VIEW_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat-view.tsx", import.meta.url);
-const TERMINAL_CHAT_COMPOSER_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/composer.tsx", import.meta.url);
-const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat.css", import.meta.url);
+const TERMINAL_AGENT_PATH = new URL("../core/client/src/agent/index.tsx", import.meta.url);
+const TERMINAL_ANALYSIS_CSS_PATH = new URL("../core/client/src/agent/analysis.css", import.meta.url);
+const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../core/client/src/agent/agent-cli.css", import.meta.url);
+const TERMINAL_SURFACE_PATH = new URL("../core/client/src/terminal/shared/terminal-surface.tsx", import.meta.url);
+const TERMINAL_CHAT_VIEW_PATH = new URL("../core/client/src/agent/chat/chat-view.tsx", import.meta.url);
+const TERMINAL_CHAT_COMPOSER_PATH = new URL("../core/client/src/agent/chat/composer.tsx", import.meta.url);
+const TERMINAL_CHAT_CSS_PATH = new URL("../core/client/src/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
 const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
@@ -2653,7 +2653,7 @@ describe("Instrument core design contract", () => {
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
     // 필드(라이트 종이·게이트 닫힘)에서도 글리프를 투명 위에 그려 GPU가 감마 미보정 sRGB로
     // 재합성하게 만들고, 획 잉크가 18.2% 사라진다(dpr=2 실측). 상수로 되돌리면 그 회귀가 재발한다.
-    const options = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8");
+    const options = fs.readFileSync(fileURLToPath(new URL("../core/client/src/terminal/shared/terminal-options.ts", import.meta.url)), "utf8");
     expect(options).not.toMatch(/^\s*allowTransparency:/m);
     expect(surface).toContain("allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
     expect(surface).toContain("terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
@@ -2903,7 +2903,7 @@ describe("Instrument core design contract", () => {
     expect(chat).toMatch(/\.agent-chat-stream\.is-streaming \{[\s\S]*?-webkit-mask-image: linear-gradient\(to bottom, #000 calc\(100% - 1\.6em\), rgb\(0 0 0 \/ 42%\)\);/);
     const chatCaretSeal = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-stream\.is-streaming > pre:last-child > code::after \{\s*animation: none;\s*\}[\s\S]*?\.agent-chat-stream\.is-streaming \{\s*-webkit-mask-image: none;\s*mask-image: none;\s*\}/)?.[0] ?? "";
     expect(chatCaretSeal).not.toBe("");
-    const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
+    const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../core/client/src/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
     expect(streamedMarkdown).toContain('const streamingClass = streaming ? `${className ?? ""} is-streaming`.trim() : className;');
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
     // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
@@ -2958,7 +2958,7 @@ describe("Instrument core design contract", () => {
       expect(chatTallyGlyphBlock, signal).not.toContain(signal);
     }
     expect(chat).toMatch(/\.agent-chat-tally\.is-live \.agent-chat-tally-glyph \{\s*color: var\(--text-secondary\);\s*\}/);
-    const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
+    const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../core/client/src/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
     expect(agentGlyphs).toContain('stroke="currentColor"');
     expect(agentGlyphs).not.toMatch(/var\(--(aurora|positive|warn|coral|brass|id-)/);
     for (const family of ["delegate", "run", "workflow", "think", "artifact"]) {
@@ -2969,7 +2969,7 @@ describe("Instrument core design contract", () => {
     expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>');
     // 분석가 시길도 같은 알파벳을 쓴다 — 같은 뜻을 두 면이 다른 기호로 부르지 않는다.
     for (const panel of ["analysis-chat-panel.tsx", "analysis-artifacts-panel.tsx"]) {
-      const source0 = fs.readFileSync(fileURLToPath(new URL(`../../fleet-plugins/terminal/client/agent/${panel}`, import.meta.url)), "utf8");
+      const source0 = fs.readFileSync(fileURLToPath(new URL(`../core/client/src/agent/${panel}`, import.meta.url)), "utf8");
       expect(source0, panel).not.toContain('aria-hidden="true">◆</span>');
       expect(source0, panel).toContain("<AgentGlyph name=");
     }

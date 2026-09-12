@@ -13,7 +13,7 @@ export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
  */
 export interface QuickLaunchRequest {
   readonly theaterId: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly kind: OperationLaunchKind;
   readonly variant: Readonly<Record<string, string>>;
   /**
@@ -152,7 +152,7 @@ export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;

@@ -6,6 +6,7 @@
 
 | Directory | Responsibility |
 |---|---|
+| `agent/` | Host-owned, plugin-scoped Agent execution and tool contracts |
 | `operations/`, `launch/`, `plugin/` | Operation and plugin lifecycle contracts |
 | `settings/`, `notifications/` | Configuration and notification capabilities |
 | `routing/`, `rail/` | Route and host-panel integration contracts |
@@ -20,3 +21,5 @@
 - Preferences are browser-local and volatile; settings are server-durable. Neither channel is a credential or raw-path store.
 - Pure HTTP capabilities stay SDK-owned; Console supplies only implementations that require host client state.
 - Consumers import the domain/runtime subpath they need. Do not add broad client or server facade exports.
+
+- Plugins consume Agent execution through `ctx.host.agent`; vendor and lower-layer runtime constructors are Console implementation details. Agent events are server-internal, not browser DTOs. See `../../../docs/console-agent-sdk.md` for usage.

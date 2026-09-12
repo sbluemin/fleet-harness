@@ -73,7 +73,7 @@ async function ensureTheater(dirPath) {
 async function readChat(sessionId, onEvent, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(`${base}/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-stream`, {
+  const res = await fetch(`${base}/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stream`, {
     headers: { Origin: base, Accept: "text/event-stream" },
     signal: controller.signal,
   });
@@ -133,7 +133,7 @@ if (args.has("answer")) {
       answers: (ask.questions ?? []).map((question) => question.options[pick - 1]?.label ?? question.options[0].label),
     };
   }
-  const result = await api("POST", `/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-answer`, body);
+  const result = await api("POST", `/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-answer`, body);
   console.log(JSON.stringify({ mode: "answer", sessionId, form: ask.form, sent: body, result }, null, 1));
   process.exit(0);
 }
@@ -149,7 +149,7 @@ if (typeof prompt !== "string") {
   process.exit(0);
 }
 
-const session = await api("POST", "/plugins/terminal/agent/sessions", {
+const session = await api("POST", "/api/v1/agent/sessions", {
   theaterId,
   cliId: "claude-gateway",
   viewMode: "chat",

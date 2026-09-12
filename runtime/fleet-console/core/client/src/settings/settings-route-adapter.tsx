@@ -30,14 +30,14 @@ export function SettingsRouteAdapter() {
     const requested = new URLSearchParams(location.search).get("section");
     const available = new Set<string>([
       ...buildCoreSettingsSections(t, null).map((section) => section.id),
-      ...collectPluginSettingsSections(registry.plugins, locale, t).map((section) => section.id),
+      ...collectPluginSettingsSections(registry.providers, locale, t).map((section) => section.id),
     ]);
     const section = resolveSettingsSectionId(requested, available) ?? "appearance";
     openRailPanel(SETTINGS_RAIL_ENTRY_ID);
     openPane({ paneId: SETTINGS_PANE_ID, params: { section } });
     setRailChromeExpanded(true);
     navigate("/operations", { replace: true });
-  }, [location.search, navigate, registry.plugins, locale, t]);
+  }, [location.search, navigate, registry.providers, locale, t]);
 
   return null;
 }

@@ -2,7 +2,9 @@
 
 ### 5. Hand it over
 
-Report in this shape — a wall of setup detail is not a handoff:
+After verifying the seeded state, PID, and URL, open that token-free Console URL once in the user's default browser unless they explicitly requested URL-only delivery. Use the platform opener (`open <url>` on macOS, `xdg-open <url>` on Linux, or `Start-Process <url>` in Windows PowerShell), preserving tool permission gates. Do not launch an automation browser or use `agent-browser` for this action. If no graphical desktop is available or opening fails, keep the Console running and report the concrete error alongside the clickable URL. A successful opener command confirms dispatch, not that the user saw the page.
+
+Report in this shape — a wall of setup detail is not a handoff. Include the browser-open outcome and always retain the clickable URL:
 
 ```
 <url>

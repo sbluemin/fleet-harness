@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
-import { createCoworkMcpRuntime } from "../server/codex/cowork/index.js";
+import { createCoworkTools } from "../server/codex/cowork/index.js";
 import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnectOptions, type CoworkConnector } from "../server/codex/cowork/index.js";
 
 const SCOPED_TOOL_IDS = [
@@ -20,10 +20,8 @@ const SCOPED_TOOL_IDS = [
 describe("Cowork MCP runtime", () => {
   it("exposes only the seven scoped MCP tools", async () => {
     const store = new CoworkStore(); const session = await store.create("workspace", "entry", "draft");
-    const runtime = createCoworkMcpRuntime(store, "workspace", session.id);
-    expect([...runtime.allowedToolIds]).toEqual([...SCOPED_TOOL_IDS]);
-    expect(runtime.specs.map(spec => spec.id).sort()).toEqual([...SCOPED_TOOL_IDS].sort());
-    expect(runtime).not.toHaveProperty("connection");
+    const runtime = createCoworkTools(store, "workspace", session.id, "/workspace");
+    expect(runtime.flatMap(group => group.tools.map(tool => tool.name)).sort()).toEqual([...SCOPED_TOOL_IDS].sort());
   });
 
   it("preserves draft and session when the Wiki base has gone stale", async () => {

@@ -15,7 +15,8 @@ export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
@@ -26,7 +27,8 @@ export interface OperationCreateInput {
   readonly id?: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationGeometry | null;
@@ -93,7 +95,7 @@ export interface OperationLaunchKind {
 }
 
 export interface OperationCatalogPlugin {
-  readonly id: string;
+  readonly id: string | null;
   readonly title: string;
   readonly kinds: readonly OperationLaunchKind[];
 }

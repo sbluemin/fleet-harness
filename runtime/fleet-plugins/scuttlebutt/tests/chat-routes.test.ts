@@ -56,8 +56,6 @@ describe("session controls", () => {
         return new FakeSession();
       },
       id: () => "chat-a",
-      ensureDir: async () => undefined,
-      removeDir: async () => undefined,
     });
     await harness.handler()({
       req: request("POST", { "content-type": "application/json" }) as never,
@@ -66,10 +64,10 @@ describe("session controls", () => {
     });
     expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
     expect(created[0]).toMatchObject({ admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
-    expect((created[0] as { cwd: string }).cwd).toContain("/workspace/tori/chat-a");
+    expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
 
     const unsafe = createHarness(true, { admiral: "tori", model: "sonnet --dangerously-skip" });
-    registerChatRoutes(unsafe.ctx, { createSession: () => new FakeSession(), ensureDir: async () => undefined });
+    registerChatRoutes(unsafe.ctx, { createSession: () => new FakeSession() });
     await unsafe.handler()({
       req: request("POST", { "content-type": "application/json" }) as never,
       res: response() as never,
@@ -101,14 +99,12 @@ describe("session controls", () => {
   });
 });
 
-describe("AI gateway binding", () => {
-  it("refuses to start before the Console has an origin instead of guessing a port", async () => {
+describe("Agent SDK availability", () => {
+  it("reports an unavailable Console Agent without exposing host details", async () => {
     // 포트를 추측해 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
     const harness = createHarness(true, { admiral: "tori" }, null);
     registerChatRoutes(harness.ctx, {
-      createSession: () => new FakeSession(),
       id: () => "browser-chat-id",
-      ensureDir: async () => undefined,
     });
     await harness.handler()({
       req: request("POST", { "content-type": "application/json" }) as never,
@@ -137,6 +133,7 @@ function createHarness(authorized: boolean, body: unknown = {}, origin: string |
     },
     registerWsHandler: vi.fn(),
     host: {
+      agent: { createSession: async () => { throw new Error("agent_gateway_unavailable"); } },
       security: { isTerminalAuthorized: () => authorized },
       http: { writeJson, readJsonBody: async () => body },
       paths: { pluginDataDir: () => "/private/fleet/plugins/scuttlebutt" },

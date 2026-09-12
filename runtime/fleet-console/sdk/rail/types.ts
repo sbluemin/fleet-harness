@@ -20,7 +20,7 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
-  readonly launchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly launchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   /** rail 동작이 Operation 대신 확대 표면을 열 때 쓴다. */
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly language?: ConsoleLocale;

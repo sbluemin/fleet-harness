@@ -1,3 +1,4 @@
+import type { AgentHost } from "../agent/types.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -133,8 +134,8 @@ export interface MentionTargetDescriptor {
   readonly renderMark?: () => ReactNode;
 }
 
-export interface FleetClientPlugin {
-  readonly id: string;
+export interface ClientExecutionProvider {
+  readonly id: string | null;
   readonly operationKinds?: readonly OperationKindDescriptor[];
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
@@ -229,6 +230,10 @@ export interface FleetClientPlugin {
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
 }
 
+export interface FleetClientPlugin extends ClientExecutionProvider {
+  readonly id: string;
+}
+
 export interface PluginInstallContext {
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
@@ -297,8 +302,8 @@ export interface ClientRailCapability {
 }
 
 export interface ClientApiCapability {
-  fetch(pluginId: string, path: string, init?: RequestInit): Promise<Response>;
-  subscribe(pluginId: string, path: string, onMessage: (event: MessageEvent<string>) => void): () => void;
+  fetch(pluginId: string | null, path: string, init?: RequestInit): Promise<Response>;
+  subscribe(pluginId: string | null, path: string, onMessage: (event: MessageEvent<string>) => void): () => void;
   resync(): void;
 }
 
@@ -347,7 +352,7 @@ export interface ClientComposerCapability {
 }
 
 export interface ClientOperationsCapability {
-  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
+  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
 }
@@ -422,8 +427,8 @@ export interface ClientPreferencesCapability {
 }
 
 export interface ClientSettingsCapability {
-  read(pluginId: string): Promise<Record<string, unknown> | null>;
-  write(pluginId: string, value: Record<string, unknown>): Promise<void>;
+  read(pluginId: string | null): Promise<Record<string, unknown> | null>;
+  write(pluginId: string | null, value: Record<string, unknown>): Promise<void>;
 }
 
 export interface UseOperationsResult {
@@ -432,7 +437,7 @@ export interface UseOperationsResult {
 }
 
 export interface OperationKindDescriptor {
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly type: string;
   readonly title: LocalizedText;
   readonly subtitle?: (operation: OperationNode) => string | undefined;
@@ -496,7 +501,7 @@ export interface CompanionPanelDescriptor {
 export interface OperationContext {
   readonly operationId: string;
   readonly theaterId: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly type: string;
 }
 
@@ -608,6 +613,7 @@ export interface FleetPluginServerContext {
 }
 
 export interface FleetPluginHostCapabilities {
+  readonly agent: AgentHost;
   readonly consoleUse: ConsoleUseMcpHost;
   readonly aiGatewayMcp: import("../mcp/types.js").AiGatewayMcpHost;
   readonly admiralMcp: PluginAdmiralMcpHost;

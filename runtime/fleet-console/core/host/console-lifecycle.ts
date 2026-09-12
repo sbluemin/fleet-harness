@@ -686,7 +686,7 @@ async function postAgentHook(pathname: string, body: Record<string, unknown>, en
     const timer = setTimeout(() => controller.abort(), 1500);
     if (typeof timer.unref === "function") timer.unref();
     try {
-      await fetch(`${lock.endpoint}plugins/terminal/agent${pathname}`, {
+      await fetch(`${lock.endpoint}api/v1/agent${pathname}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${lock.token}`,

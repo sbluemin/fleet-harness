@@ -285,7 +285,7 @@ export async function createOperation(input: {
   readonly id?: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationNode["geometry"];
@@ -323,7 +323,7 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.type !== "string"
-    || typeof payload.pluginId !== "string"
+    || (payload.pluginId !== null && typeof payload.pluginId !== "string")
     || typeof payload.title !== "string"
     || !payload.payload
     || typeof payload.payload !== "object"

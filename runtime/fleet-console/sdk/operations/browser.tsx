@@ -39,7 +39,7 @@ export function assertOperationNode(value: unknown): OperationNode {
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.type !== "string"
-    || typeof payload.pluginId !== "string"
+    || (payload.pluginId !== null && typeof payload.pluginId !== "string")
     || typeof payload.title !== "string"
     || !payload.payload
     || typeof payload.payload !== "object"
@@ -60,7 +60,7 @@ export function OperationBody({ children, className }: OperationBodyProps): Reac
 }
 
 function readCatalogPlugin(value: unknown): OperationCatalogPlugin | null {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string" || !Array.isArray(value.kinds)) return null;
+  if (!isRecord(value) || (value.id !== null && typeof value.id !== "string") || typeof value.title !== "string" || !Array.isArray(value.kinds)) return null;
   const kinds = value.kinds.map(readLaunchKind).filter((kind): kind is OperationLaunchKind => kind !== null);
   if (kinds.length === 0) return null;
   return { id: value.id, title: value.title, kinds };

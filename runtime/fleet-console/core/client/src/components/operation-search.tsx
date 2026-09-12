@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
 import { openExpandedSurface } from "../expanded-surface/store.js";
 import { EXPANDED_PANE_SURFACE_ID } from "../pane/expanded-pane-surface.js";
@@ -71,7 +71,7 @@ interface OperationSearchProps {
   readonly state: ConsoleState;
   readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
-  readonly plugins: readonly FleetClientPlugin[];
+  readonly plugins: readonly ClientExecutionProvider[];
   // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
   readonly onDeferredDeletion?: (deletion: DeferredDeletionReceipt | null) => void;
   readonly canUndoLastClose?: () => boolean;
@@ -903,7 +903,7 @@ function ensurePaletteCanvasTheater(state: ConsoleState): void {
 
 // 메타의 둘째 단어는 실행 공급자다 — 예전의 상수 "operation"은 전 행이 반복하는 죽은 단어였고,
 // 공급자 글리프가 마크 슬롯을 떠나면서 정체성은 이 조용한 텍스트가 이어받는다.
-function operationMeta(entry: { readonly pluginId: string; readonly launchProvider: LaunchProviderGlyphId | null }): string {
+function operationMeta(entry: { readonly pluginId: string | null; readonly launchProvider: LaunchProviderGlyphId | null }): string {
   return [entry.pluginId, entry.launchProvider ? launchProviderCaption(entry.launchProvider) : null].filter(Boolean).join(" · ");
 }
 

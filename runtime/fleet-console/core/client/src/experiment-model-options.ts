@@ -1,13 +1,13 @@
 import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS } from "@fleet-console/sdk/settings/browser";
 
-import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 /**
  * 레지스트리는 React 컨텍스트라 훅 밖에서 읽을 수 없다. app 셸이 레지스트리를 실을 때 이 스냅샷을
  * 함께 갱신한다(설정 검색의 syncSettingsSearchPlugins와 같은 관례). 호스트 번들 안의 모듈 상태다.
  */
-let pluginsSnapshot: readonly Pick<FleetClientPlugin, "experimentModelOptions">[] = [];
+let pluginsSnapshot: readonly Pick<ClientExecutionProvider, "experimentModelOptions">[] = [];
 
 export function syncExperimentModelOptionPlugins(plugins: typeof pluginsSnapshot): void {
   pluginsSnapshot = plugins;

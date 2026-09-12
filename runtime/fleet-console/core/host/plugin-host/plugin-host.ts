@@ -1,3 +1,4 @@
+import type { AgentHost } from "@fleet-console/sdk/agent";
 import type {
   DiscoveredFleetPlugin as SdkDiscoveredFleetPlugin,
 } from "@fleet-console/sdk/plugin";
@@ -368,6 +369,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly upgrades: UpgradeRegistry;
   readonly host: FleetPluginHostCapabilities;
   readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0]) => () => void;
+  readonly createAgentHost?: (pluginId: string) => AgentHost & { dispose(): Promise<void> };
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
   readonly bundleCacheDir?: string;
   readonly isProcessAlive?: (pid: number) => boolean;
@@ -498,13 +500,16 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const mod = await importModule(plugin.routesEntry!);
     const register = resolveRegister(mod);
     if (!register) return;
+    const agent = deps.createAgentHost?.(plugin.manifest.id);
     const registrationTransaction = createPluginRegistrationTransaction({
       ...deps.host,
+      ...(agent ? { agent } : {}),
       admiralMcp: {
         connect: () => deps.host.admiralMcp.connect(),
         register: (tools) => deps.registerAdmiralMcp(plugin.manifest.id, tools),
       },
     });
+    if (agent) registrationTransaction.host.lifecycle.registerCleanup(() => agent.dispose());
     try {
       await register({
         pluginId: plugin.manifest.id,

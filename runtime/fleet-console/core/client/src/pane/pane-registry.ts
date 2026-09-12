@@ -30,7 +30,7 @@ import { settingsPanes, settingsRailEntry } from "../settings/settings-pane.js";
  */
 export interface HostPaneContext extends PaneContext {
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
-  readonly legacyLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   /**
    * 옛 `railPanels`가 자기 폭을 요구하던 창구.
    *

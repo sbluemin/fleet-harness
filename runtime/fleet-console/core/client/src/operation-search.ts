@@ -22,7 +22,7 @@ export interface OperationSearchEntry {
   /** Shell 판별용 Operation 종류 — 팔레트의 이름 왼쪽 마크가 사이드바와 같은 분기를 탄다. */
   readonly type: string;
   readonly operationName: string;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly activity: OperationActivityVisual;
   /**
    * 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이다. Operation 목록 표면에서는

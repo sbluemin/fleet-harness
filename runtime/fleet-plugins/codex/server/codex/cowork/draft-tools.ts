@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 
-import type { AgentToolSpec } from "@dotobokuri/core-agent";
+import type { WikiToolSpec } from "../../wiki-mcp.js";
 
 /** A session-owned draft supplied by the Cowork host, never resolved from tool input. */
 export interface WikiDraftSnapshot {
@@ -42,7 +42,7 @@ const DRAFT_TOOL_GUIDELINES = [
  * Builds private Cowork draft tools around one explicit session port. These specs
  * are intentionally absent from the Fleet Wiki global agent-tool registry.
  */
-export function createWikiDraftToolSpecs(deps: CreateWikiDraftToolSpecsDependencies): AgentToolSpec[] {
+export function createWikiDraftToolSpecs(deps: CreateWikiDraftToolSpecsDependencies): WikiToolSpec[] {
   return [
     createReadSpec(deps.draft),
     createEditSpec(deps.draft),
@@ -50,7 +50,7 @@ export function createWikiDraftToolSpecs(deps: CreateWikiDraftToolSpecsDependenc
   ];
 }
 
-function createReadSpec(draft: WikiDraftPort): AgentToolSpec {
+function createReadSpec(draft: WikiDraftPort): WikiToolSpec {
   return {
     id: "wiki_draft_read",
     tag: "wiki_draft_read",
@@ -68,7 +68,7 @@ function createReadSpec(draft: WikiDraftPort): AgentToolSpec {
   };
 }
 
-function createEditSpec(draft: WikiDraftPort): AgentToolSpec {
+function createEditSpec(draft: WikiDraftPort): WikiToolSpec {
   return {
     id: "wiki_draft_edit",
     tag: "wiki_draft_edit",
@@ -99,7 +99,7 @@ function createEditSpec(draft: WikiDraftPort): AgentToolSpec {
   };
 }
 
-function createWriteSpec(draft: WikiDraftPort): AgentToolSpec {
+function createWriteSpec(draft: WikiDraftPort): WikiToolSpec {
   return {
     id: "wiki_draft_write",
     tag: "wiki_draft_write",

@@ -136,7 +136,7 @@ export function App() {
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
   const railBindings = useRailEntries();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
-  useEffect(() => { syncSettingsSearchPlugins(registry.plugins); syncExperimentModelOptionPlugins(registry.plugins); }, [registry.plugins]);
+  useEffect(() => { syncSettingsSearchPlugins(registry.providers); syncExperimentModelOptionPlugins(registry.providers); }, [registry.providers]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.
@@ -205,11 +205,11 @@ export function App() {
     const capabilities = createHostCapabilities(() => {
       void fetchOperations().then(hydrateOperations).catch(() => {});
     });
-    const cleanups = registry.plugins.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
+    const cleanups = registry.providers.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [registry.plugins]);
+  }, [registry.providers]);
 
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
@@ -443,7 +443,7 @@ export function App() {
         <OperationSearch
           state={state}
           railPanels={paletteRailPanels}
-          plugins={registry.plugins}
+          plugins={registry.providers}
           onDeferredDeletion={enqueueDeletion}
           canUndoLastClose={canUndoLastClose}
           onUndoLastClose={undoLastClose}

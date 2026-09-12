@@ -1,7 +1,7 @@
 // Operation lifecycle actions issued from chrome: close a card for good, or resume
 // a dormant one in place.
 
-import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "./types.js";
 import { type DeferredDeletionReceipt, deleteOperation, fetchOperations } from "./api.js";
 import { minimizeOperation } from "./canvas/canvas-store.js";
@@ -27,7 +27,7 @@ export function minimizeOperationCompletely(operationId: string): void {
 // 호스트가 삭제를 유예하므로 receipt를 그대로 돌려주고, 호출자가 undo 토스트에 쓴다.
 export async function closeOperationCompletely(
   operationId: string,
-  plugin: FleetClientPlugin | null,
+  plugin: ClientExecutionProvider | null,
 ): Promise<DeferredDeletionReceipt | null> {
   try {
     if (plugin?.closeOperation) await plugin.closeOperation(operationId);
@@ -52,7 +52,7 @@ export async function closeOperationCompletely(
 export function resumeOperationInPlace(
   operationId: string,
   operations: readonly OperationNode[],
-  plugins: readonly FleetClientPlugin[],
+  plugins: readonly ClientExecutionProvider[],
   focusFallback: (operationId: string) => void,
 ): void {
   if (getState().operationRuntimeHydration === "pending") return;

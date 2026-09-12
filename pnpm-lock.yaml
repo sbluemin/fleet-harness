@@ -195,6 +195,9 @@ importers:
       '@dotobokuri/fleet-admiral':
         specifier: workspace:*
         version: link:../../packages/fleet-admiral
+      '@dotobokuri/fleet-analyst':
+        specifier: workspace:*
+        version: link:../../packages/fleet-analyst
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
@@ -481,9 +484,6 @@ importers:
 
   runtime/fleet-plugins/codex:
     dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../../../packages/core-agent
       '@dotobokuri/core-ai-gateway':
         specifier: workspace:*
         version: link:../../../packages/core-ai-gateway
@@ -660,12 +660,6 @@ importers:
 
   runtime/fleet-plugins/scuttlebutt:
     dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../../../packages/core-agent
-      '@dotobokuri/core-ai-gateway':
-        specifier: workspace:*
-        version: link:../../../packages/core-ai-gateway
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../../packages/fleet-wiki
@@ -728,85 +722,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.17)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.5
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
-  runtime/fleet-plugins/terminal:
-    dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../../../packages/core-agent
-      '@dotobokuri/core-ai-gateway':
-        specifier: workspace:*
-        version: link:../../../packages/core-ai-gateway
-      '@dotobokuri/core-infra':
-        specifier: workspace:*
-        version: link:../../../packages/core-infra
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../../../packages/core-process
-      '@dotobokuri/fleet-admiral':
-        specifier: workspace:*
-        version: link:../../../packages/fleet-admiral
-      '@dotobokuri/fleet-analyst':
-        specifier: workspace:*
-        version: link:../../../packages/fleet-analyst
-      '@dotobokuri/fleet-wiki':
-        specifier: workspace:*
-        version: link:../../../packages/fleet-wiki
-      '@fleet-console/font-picker':
-        specifier: workspace:*
-        version: link:../../fleet-console/font-picker
-      '@fleet-console/markdown':
-        specifier: workspace:*
-        version: link:../../fleet-console/markdown
-      '@fleet-console/sdk':
-        specifier: workspace:*
-        version: link:../../fleet-console/sdk
-      '@fontsource/nanum-gothic-coding':
-        specifier: ^5.3.0
-        version: 5.3.0
-      '@xterm/addon-fit':
-        specifier: 0.12.0-beta.299
-        version: 0.12.0-beta.299(@xterm/xterm@6.1.0-beta.302)
-      '@xterm/addon-unicode11':
-        specifier: 0.10.0-beta.299
-        version: 0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)
-      '@xterm/addon-webgl':
-        specifier: 0.20.0-beta.298
-        version: 0.20.0-beta.298(@xterm/xterm@6.1.0-beta.302)
-      '@xterm/xterm':
-        specifier: 6.1.0-beta.302
-        version: 6.1.0-beta.302
-      node-pty:
-        specifier: ^1.0.0
-        version: 1.1.0
-      pretendard:
-        specifier: ^1.3.9
-        version: 1.3.9
-      react:
-        specifier: ^19.2.3
-        version: 19.2.7
-      ws:
-        specifier: ^8.18.0
-        version: 8.21.0
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      '@types/react':
-        specifier: ^19.2.7
-        version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.2.3(@types/react@19.2.17)
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.7(react@19.2.7)
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
