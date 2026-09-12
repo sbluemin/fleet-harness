@@ -727,7 +727,7 @@ code.hljs {
   margin-left: auto;
   padding: var(--space-tight);
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 30%, var(--surface-rim));
   background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in oklch, var(--brass) 16%, transparent);
 }
@@ -745,7 +745,7 @@ code.hljs {
 }
 
 .diagram-lightbox__zoom-button {
-  border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 10%, transparent);
   cursor: pointer;
   transition:
@@ -776,7 +776,7 @@ code.hljs {
   min-height: 44px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-xs);
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-bright);
   font-family: var(--font-mono);

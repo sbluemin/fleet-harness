@@ -1268,7 +1268,7 @@
 
 .repository-context-menu-item:focus-visible {
   outline: none;
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
 }
 

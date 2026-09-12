@@ -2469,7 +2469,7 @@ button.chip:focus-visible {
 }
 
 .codex-nav-quick:hover {
-  background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
+  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
   color: var(--text-primary);
 }
 
@@ -2542,7 +2542,7 @@ button.chip:focus-visible {
 .codex-nav-health-chip:focus-visible,
 .codex-nav-health-chip[aria-expanded="true"] {
   color: var(--text-secondary);
-  background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
+  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
 }
 
 .codex-nav-health-chip:focus-visible {
@@ -2892,7 +2892,7 @@ button.chip:focus-visible {
   transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
 }
 .cowork-ghost { background: transparent; border: 1px solid var(--surface-rim); color: var(--text-secondary); padding: 3px 10px; }
-.cowork-ghost:hover { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
+.cowork-ghost:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
 .cowork-solid { background: var(--brass); color: var(--text-on-brass); }
 .cowork-solid:hover { background: var(--brass-bright); }
 .cowork-solid--danger { background: color-mix(in oklch, var(--coral) 80%, var(--ink-deep)); color: var(--text-primary); }
@@ -2916,7 +2916,7 @@ button.chip:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-veil) 96%, var(--brass));
   color: var(--text-primary);
@@ -3209,7 +3209,7 @@ button.chip:focus-visible {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 40%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel));
 }
@@ -3276,7 +3276,7 @@ button.chip:focus-visible {
   transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 .cowork-chip span { color: var(--brass); }
-.cowork-chip:hover { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
+.cowork-chip:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
 .cowork-chip.is-active { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
 
 /* 모델 칩 — Quick Launch·Analyst와 같은 알약: 공급자 글리프 + 라벨 + ▾. */
@@ -3297,7 +3297,7 @@ button.chip:focus-visible {
   cursor: pointer;
   transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
-.cowork-model-chip:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
+.cowork-model-chip:hover:not(:disabled) { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
 .cowork-model-chip[aria-expanded="true"] { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
 .cowork-model-chip:disabled { cursor: default; }
 .cowork-model-chip.is-claude { --launch-provider-tone: var(--provider-claude); }
