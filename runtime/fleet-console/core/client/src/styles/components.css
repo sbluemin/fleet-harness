@@ -6156,6 +6156,77 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
+/* 이름과 "지금 어디" 줄을 세로로 묶는 자리. 줄이 없으면 이름 한 줄 칩과 같은 기하다 —
+   비콘·닫기 버튼은 flex 정렬로 두 줄의 세로 중앙에 머물고 이름만 첫 줄로 오른다. */
+.side-bar-chip-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.side-bar-chip-text > .side-bar-chip-name,
+.side-bar-chip-text > .side-bar-chip-rename-input {
+  flex: none;
+  width: 100%;
+  line-height: 1.3;
+}
+
+/* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 브랜치는 늘, 폴더는 Theater 루트를 벗어났을 때만.
+   글자색은 3티어이고 편차가 있을 때만 2티어로 한 단계 오른다. 상태(aurora/warn/coral/positive)·
+   brass·--id-* 채널은 쓰지 않는다: 이 줄은 위치 사실이지 상태도 정체성도 아니다. */
+.side-bar-chip-context {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.side-bar-chip-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-bar-chip-context-branch {
+  flex: 0 1 auto;
+}
+
+.side-bar-chip-context-branch::before {
+  content: "⎇ ";
+  opacity: 0.8;
+}
+
+.side-bar-chip-context-sep {
+  flex: none;
+  opacity: 0.6;
+}
+
+.side-bar-chip-context-folder {
+  flex: 1 1 auto;
+}
+
+.side-bar-chip-context-folder.is-outside::before {
+  content: "↗ ";
+  opacity: 0.8;
+}
+
+.side-bar-chip-context--deviates {
+  color: var(--text-secondary);
+}
+
+.side-bar-chip--minimized .side-bar-chip-context {
+  color: var(--ink-muted);
+}
+
 .side-bar-chip-rename-input {
   flex: 1;
   min-width: 0;

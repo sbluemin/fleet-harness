@@ -418,6 +418,8 @@ interface GlobalSettingsRouteDeps {
    * 전환이 끝나기 전에 응답하면 저장 직후의 상태 조회가 항상 "꺼짐"을 읽는다.
    */
   readonly onRemoteAccessChanged?: (change: RemoteAccessSettingsChange) => void | Promise<void>;
+  /** 실험 설정이 저장된 직후 — 상주 작업이 옵트인 전환을 요청 없이도 따라가게 한다. */
+  readonly onExperimentsChanged?: (next: ConsoleExperimentSettings) => void;
 }
 
 interface GlobalSettingsRouteContext {
@@ -583,6 +585,7 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
+  if (body.experiments !== undefined) deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
   /**
    * 응답은 조정이 끝난 뒤의 저장값으로 짓는다. Auto 대체 포트를 고르는 경로는 이 콜백 안에서
@@ -663,7 +666,7 @@ export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsDa
  */
 function isExperimentSettingsInput(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  for (const key of ["promptRefine", "sessionWatch", "aideConsoleRead"]) {
+  for (const key of ["promptRefine", "sessionWatch", "aideConsoleRead", "operationContext"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
   for (const key of ["promptRefineModel", "sessionWatchModel"]) {

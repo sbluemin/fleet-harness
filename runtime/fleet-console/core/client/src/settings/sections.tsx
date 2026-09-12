@@ -195,6 +195,8 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
         t("settings.experiments.promptRefine.title"),
         t("settings.experiments.sessionWatch.title"),
         t("settings.experiments.aideConsoleRead.title"),
+        t("settings.experiments.sidebarCard"),
+        t("settings.experiments.operationContext.title"),
         t("settings.core.experiments.keywords"),
       ],
     },

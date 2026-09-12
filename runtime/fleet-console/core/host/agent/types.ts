@@ -60,10 +60,23 @@ export interface AgentDurableOperation {
   readonly session?: CapturedAgentSession;
 }
 
+/**
+ * Operation이 지금 서 있는 자리 — 브라우저 DTO용 투영이다. 절대 경로는 여기 오지 않는다:
+ * `folder`는 Theater 루트 기준 상대 경로(루트면 null)이고, Theater 밖이면 basename 하나만 남기고
+ * `outside`로 표식한다. `branch`는 git이 아니거나 읽지 못하면 null이다.
+ */
+export interface AgentSessionWorkspace {
+  readonly folder: string | null;
+  readonly outside: boolean;
+  readonly branch: string | null;
+}
+
 export interface AgentTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
+  /** 실험 기능(Operation 위치 표시)이 켜진 동안만 실린다. */
+  readonly workspace?: AgentSessionWorkspace;
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
   readonly cliId?: string;

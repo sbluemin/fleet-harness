@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sessionActivity } from "../../core/client/src/agent/connection.js";
 import { createConsoleObservabilityStore } from "../../core/host/agent/observability-store.js";
+import { projectWorkspace } from "../../core/host/agent/workspace-context.js";
 
 const tempDirs: string[] = [];
 
@@ -43,6 +44,26 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("transcript");
     expect(serialized).not.toContain("providerSession");
     expect(serialized).not.toContain("token");
+  });
+
+  it("projects the Operation location as Theater-relative folder and branch, never an absolute path", () => {
+    const root = path.join(os.tmpdir(), "fleet-theater-root");
+    expect(projectWorkspace({ cwd: root, theaterRoot: root, branch: "canary" })).toEqual({ folder: null, outside: false, branch: "canary" });
+    expect(projectWorkspace({ cwd: path.join(root, "runtime", "fleet-console"), theaterRoot: root, branch: "canary" }))
+      .toEqual({ folder: "runtime/fleet-console", outside: false, branch: "canary" });
+    // Theater 밖은 basename 하나만 남는다 — 사용자의 다른 디렉터리 구조가 브라우저로 새지 않는다.
+    const outside = projectWorkspace({ cwd: path.join(os.tmpdir(), "elsewhere", "secret-project"), theaterRoot: root, branch: null });
+    expect(outside).toEqual({ folder: "secret-project", outside: true, branch: null });
+    expect(JSON.stringify(outside)).not.toContain(os.tmpdir());
+
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: path.join(root, "runtime"), cliId: "claude", createdAt: 1_000 });
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("workspace");
+    const withWorkspace = store.setTerminalSessionWorkspace("session-a", { folder: "runtime", outside: false, branch: "canary" });
+    expect(withWorkspace).toMatchObject({ workspace: { folder: "runtime", branch: "canary" } });
+    expect(JSON.stringify(withWorkspace)).not.toContain(root);
+    // 옵트인을 끄면 축이 DTO에서 사라진다 — 꺼진 Console은 위치를 말하지 않는다.
+    expect(store.setTerminalSessionWorkspace("session-a", null)).not.toHaveProperty("workspace");
   });
 });
 

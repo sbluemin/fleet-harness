@@ -5,7 +5,7 @@ import {
   type AgentChatCatalog,
   type AgentChatJobDetail,
 } from "./chat/chat-events.js";
-import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, ClaudeBuiltInAgentsState, SessionInfo } from "./types.js";
+import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, ClaudeBuiltInAgentsState, OperationWorkspace, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -354,6 +354,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
   ) {
     throw new AgentApiError(status, "Invalid agent session response");
   }
+  const workspace = readWorkspace(payload.workspace);
   return {
     sessionId: payload.sessionId,
     terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : payload.sessionId,
@@ -367,6 +368,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     // 이 함수는 화이트리스트 재구성이다 — 여기 없는 필드는 서버가 실어 보내도 소실된다.
     // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
     chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
+    ...(workspace ? { workspace } : {}),
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
@@ -422,6 +424,14 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     geometry: payload.geometry ?? null,
     ts: payload.ts,
   };
+}
+
+function readWorkspace(value: unknown): OperationWorkspace | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as { readonly folder?: unknown; readonly outside?: unknown; readonly branch?: unknown };
+  const folder = typeof record.folder === "string" && record.folder.length > 0 ? record.folder : null;
+  const branch = typeof record.branch === "string" && record.branch.length > 0 ? record.branch : null;
+  return { folder, outside: record.outside === true, branch };
 }
 
 function hasForbiddenBrowserPayloadKey(value: unknown): boolean {

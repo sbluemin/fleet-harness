@@ -1,6 +1,8 @@
 import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
+import { useAgentState } from "../agent/store.js";
+import type { OperationWorkspace } from "../agent/types.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
 import { useT } from "../i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
@@ -103,7 +105,12 @@ export function OperationsSideBarChip({
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
-  const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext;
+  // "지금 어디" 축 — 실험 기능이 켜진 동안 서버가 세션 DTO에 실어 보내는 투영이다. 칩은 이름 아래
+  // 한 줄로 그리되, 브랜치도 폴더 편차도 없으면 줄 자체를 내지 않아 오늘의 한 줄 칩과 같다.
+  const workspace = useAgentState().sessions[operation.id]?.workspace ?? null;
+  const context = workspace && (workspace.branch || workspace.folder) ? workspace : null;
+  const workspaceContext = context ? describeWorkspace(t, context) : "";
+  const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const chipAriaLabel = resumeOnActivate
@@ -119,6 +126,7 @@ export function OperationsSideBarChip({
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
+    context ? "side-bar-chip--with-context" : "",
   ].filter(Boolean).join(" ");
   const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
@@ -238,21 +246,24 @@ export function OperationsSideBarChip({
       <span className="side-bar-chip-beacon-button">
         <OperationNameMark operation={operation} status={markVisual} className="side-bar-chip-status" />
       </span>
-      {rename.renaming ? (
-        <input
-          className="side-bar-chip-rename-input"
-          ref={rename.inputRef}
-          value={rename.draftTitle}
-          aria-label={t("sidebar.chip.renameAria", { title })}
-          onChange={(e) => rename.setDraftTitle(e.target.value)}
-          onKeyDown={rename.handleKeyDown}
-          onBlur={rename.handleBlur}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
-      )}
+      <span className="side-bar-chip-text">
+        {rename.renaming ? (
+          <input
+            className="side-bar-chip-rename-input"
+            ref={rename.inputRef}
+            value={rename.draftTitle}
+            aria-label={t("sidebar.chip.renameAria", { title })}
+            onChange={(e) => rename.setDraftTitle(e.target.value)}
+            onKeyDown={rename.handleKeyDown}
+            onBlur={rename.handleBlur}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
+        )}
+        {context ? <WorkspaceContextLine workspace={context} /> : null}
+      </span>
       {theaterName ? (
         <span className="side-bar-chip-theater-pill" title={theaterName} aria-hidden="true">
           {theaterName}
@@ -311,6 +322,35 @@ export function OperationsSideBarChip({
 
 function displayTitle(operation: OperationNode): string {
   return operation.title;
+}
+
+/* 브랜치는 늘, 폴더는 Theater 루트를 벗어났을 때만 — 두 줄이 곧 "이 칩은 다른 자리에 있다"는 신호다.
+   글자색 위계만 쓰고 상태·brass·정체성 채널은 건드리지 않는다. 폴더는 마지막 마디만 보이고 전체는 툴팁이 든다. */
+function WorkspaceContextLine({ workspace }: { readonly workspace: OperationWorkspace }) {
+  const t = useT();
+  const folder = workspace.folder;
+  const folderLabel = folder === null ? null : folder.includes("/") ? `…/${folder.slice(folder.lastIndexOf("/") + 1)}` : folder;
+  return (
+    <span className={`side-bar-chip-context${folder !== null ? " side-bar-chip-context--deviates" : ""}`} aria-hidden="true">
+      {workspace.branch ? (
+        <span className="side-bar-chip-context-branch" title={t("sidebar.chip.branchTitle", { branch: workspace.branch })}>{workspace.branch}</span>
+      ) : null}
+      {workspace.branch && folderLabel ? <span className="side-bar-chip-context-sep">·</span> : null}
+      {folderLabel ? (
+        <span
+          className={`side-bar-chip-context-folder${workspace.outside ? " is-outside" : ""}`}
+          title={workspace.outside ? t("sidebar.chip.outsideTitle", { folder: folderLabel }) : t("sidebar.chip.folderTitle", { folder: folder ?? "" })}
+        >
+          {folderLabel}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function describeWorkspace(t: ReturnType<typeof useT>, workspace: OperationWorkspace): string {
+  return (workspace.branch ? t("sidebar.chip.onBranch", { branch: workspace.branch }) : "")
+    + (workspace.folder ? (workspace.outside ? t("sidebar.chip.outsideFolder", { folder: workspace.folder }) : t("sidebar.chip.inFolder", { folder: workspace.folder })) : "");
 }
 
 function SideBarCloseIcon() {
