@@ -1,6 +1,7 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useZenMode } from "../zen-mode.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -377,6 +378,15 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const zenMode = useZenMode();
+  // body 포털은 숨긴 사이드바의 inert 밖에 있다. 진입 때만 걷어 이후 명시적 메뉴 요청은 보존한다.
+  useLayoutEffect(() => {
+    if (!zenMode) return;
+    setNewMenu(null);
+    setActiveContextMenu(null);
+    if (newMenu || activeContextMenu) document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zenMode]);
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
   // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
   useEffect(() => {
