@@ -17,6 +17,7 @@ import type {
   AgentSessionAttentionEvent,
   AgentSessionStatus,
   AgentSessionUpdatedEvent,
+  AgentSessionWorkspace,
   AgentTerminalSessionInfo,
   AgentTurnState,
 } from "./types.js";
@@ -74,6 +75,8 @@ interface PendingTerminalSessionState {
   registrationId?: string;
   cliRunId?: string;
   session?: CapturedAgentSession;
+  /** 현재 작업 폴더·브랜치 투영. 추적기가 옵트인 동안만 채우고, 끄면 지운다. */
+  workspace?: AgentSessionWorkspace;
 }
 
 type DormantOperationInput = AgentDurableOperation;
@@ -269,6 +272,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       clearTerminalSessionBackgroundPending(session);
     }
     return toTerminalSessionInfo(session);
+  }
+
+  function setTerminalSessionWorkspace(sessionId: string, workspace: AgentSessionWorkspace | null): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    if (workspace) session.workspace = workspace;
+    else delete session.workspace;
+    return toTerminalSessionInfo(session);
+  }
+
+  function getTerminalSessionWorkspace(sessionId: string): AgentSessionWorkspace | null {
+    return terminalSessionsById.get(sessionId)?.workspace ?? null;
   }
 
   function setTerminalSessionTurnState(sessionId: string, turnState: AgentTurnState): AgentTerminalSessionInfo | null {
@@ -552,6 +567,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
+    setTerminalSessionWorkspace,
+    getTerminalSessionWorkspace,
     setTerminalSessionBackgroundPending,
     getTerminalSessionSettledAgentIds,
     setTerminalSessionModelActivity,
@@ -585,6 +602,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
     ...(state.chatActive === true ? { chatActive: true } : {}),
+    ...(state.workspace ? { workspace: state.workspace } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

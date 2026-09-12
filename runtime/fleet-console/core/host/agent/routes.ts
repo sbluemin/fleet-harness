@@ -34,6 +34,7 @@ import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSe
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./analysis-types.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
+import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
@@ -154,6 +155,17 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
   });
+  // "지금 어디" 축 — 옵트인 실험이다. 설정 변경은 호스트 구독으로 즉시 따라가고, 세션 생성·재개·
+  // 턴 경계가 cwd를 알리며, 휴면·삭제가 감시를 거둔다.
+  const workspaceContext = createWorkspaceContextTracker({
+    resolveTheaterPath: (theaterId) => ctx.host.paths.resolveTheaterPath(theaterId),
+    onChange: (sessionId, workspace) => {
+      const updated = observability.setTerminalSessionWorkspace(sessionId, workspace);
+      if (updated) observability.notifySessionUpdated(updated);
+    },
+  });
+  workspaceContext.setEnabled(ctx.host.experiments?.read().operationContext === true);
+  const unsubscribeExperiments = ctx.host.experiments?.subscribe?.((settings) => workspaceContext.setEnabled(settings.operationContext === true)) ?? (() => undefined);
   // __fleetTerminalLaunch/__fleetTerminalStartShell와 같은 자리의 테스트 훅이다. 플러그인 번들은
   // 호스트와 별개 모듈 인스턴스라 호스트가 만든 detector가 여기로 오지 않으므로, 설치 여부를
   // 고정하려면 이 훅을 거쳐야 한다. 이것이 없으면 세션 생성 테스트가 실행 기계에 Claude Code가
@@ -656,6 +668,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       // 빈 채팅 패널을 남기지 않는다 — 첫 턴을 걸지 못한 Operation은 존재하지 않는 편이 낫다.
       ctx.host.operations.delete(sessionId);
+      workspaceContext.forget(sessionId);
       observability.removeTerminalSession(sessionId);
       ctx.host.http.writeJson(res, status, { error });
     };
@@ -705,6 +718,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const sessionId = crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
+    workspaceContext.observe(sessionId, theaterId, cwd);
     // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
     // 경로라 deriveOperationLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
     // 서버에 있으므로 같은 휴리스틱으로 첫 작명을 여기서 적용한다. payload·브라우저 DTO에는
@@ -918,6 +932,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
+      workspaceContext.observe(sessionId, node.theaterId, cwd);
       // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
       // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
@@ -1537,6 +1552,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     oscActivityTrackers.get(sessionId)?.reset();
+    // hook stdin의 cwd는 에이전트가 세션 중 옮겨 간 자리다 — 실행 cwd와 다르면 "지금 어디" 축이 따라간다.
+    // 절대 경로는 여기서 추적기로만 들어가고 DTO에는 투영만 실린다.
+    const hookCwd = readHookCwd(body?.input);
+    if (hookCwd) {
+      const theaterId = observability.getTerminalSessionInfo(sessionId)?.theaterId;
+      if (theaterId) workspaceContext.observe(sessionId, theaterId, hookCwd);
+    }
     // 턴 종료 payload가 실어 온 살아 있는 백그라운드 작업 보고를 같은 전이 안에서 반영한 뒤 한 번만 알린다.
     // 두 번 알리면 그 사이의 프레임에서 세션이 백그라운드 작업을 잊은 채 유휴로 읽힌다.
     const report = turnState === "ended" ? readBackgroundHookReport(body?.input, observability.getTerminalSessionSettledAgentIds(sessionId)) : undefined;
@@ -1683,6 +1705,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const providerSession = readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
       observability.updateTerminalSessionProviderSession(operationId, providerSession);
+      workspaceContext.forget(operationId);
       const dormant = observability.transitionTerminalSessionToDormant(operationId, providerSession);
       if (dormant) {
         // 전이 전 발급된 미소비 ticket이 WS consume으로 PTY를 되살리지 못하도록 폐기한다.
@@ -1709,6 +1732,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         observability.notifySessionUpdated(parked);
       }
     } else {
+      workspaceContext.forget(operationId);
       observability.removeTerminalSession(operationId);
       // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
       // 이 경로도 회수해야 플러그인 종료까지 파일이 눌러앉지 않는다(removeSession과 같은 계약).
@@ -1723,6 +1747,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     void chatRegistry.dispose(sessionId).catch(() => undefined);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
+    workspaceContext.forget(sessionId);
     observability.removeTerminalSession(sessionId);
     // 첨부 파일의 수명은 Operation을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
     launchAttachments.releaseSession(sessionId);
@@ -1739,6 +1764,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
+    unsubscribeExperiments();
+    workspaceContext.dispose();
     launchAttachments.cleanup();
     await runtime.cleanup();
   }
@@ -1927,6 +1954,19 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<ConsoleRuntimeCo
     res.writeHead(400, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "invalid_agent_cli" }));
     return false;
+  }
+}
+
+/** hook stdin(JSON 문자열)의 `cwd` — 절대 경로일 때만 믿는다. 파싱 실패는 무의견이다. */
+function readHookCwd(input: unknown): string | null {
+  if (typeof input !== "string" || input.length === 0) return null;
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const cwd = (parsed as { readonly cwd?: unknown }).cwd;
+    return typeof cwd === "string" && path.isAbsolute(cwd) ? cwd : null;
+  } catch {
+    return null;
   }
 }
 

@@ -18,6 +18,7 @@ import { createConsoleUseMcpHost } from "./mcp/console-use.js";
 import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
 import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
+import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "./access-control-contract.js";
@@ -477,6 +478,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
+  const experimentListeners = new Set<(settings: ConsoleExperimentSettings) => void>();
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
@@ -689,6 +691,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     experiments: {
       read: () => readExperimentSettings(consoleSettingsStore),
+      subscribe: (listener) => {
+        experimentListeners.add(listener);
+        return () => {
+          experimentListeners.delete(listener);
+        };
+      },
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
@@ -777,6 +785,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
+    onExperimentsChanged: (next) => {
+      for (const listener of experimentListeners) listener(next);
+    },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
   const desktopThemeRouter = createDesktopThemeRouter({
