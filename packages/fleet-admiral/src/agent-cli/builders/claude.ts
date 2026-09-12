@@ -5,7 +5,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildSessionArgs(context.sessionCoordinate),
-    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
+    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt, context.gatewayHostPromptFile),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -118,10 +118,12 @@ function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinat
  * Claude Code 기본 프롬프트의 선택과 Fleet 라우팅 진입점을 분리한다.
  * 기본 프롬프트를 꺼도 짧은 호스트 라우팅 지침은 유지하며 상세 정책은 MCP에서 읽는다.
  */
-function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined): string[] {
+function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined, promptFile?: string): string[] {
   return [
     ...(claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : []),
-    "--append-system-prompt", FLEET_GATEWAY_HOST_PROMPT,
+    ...(promptFile
+      ? ["--append-system-prompt-file", promptFile]
+      : ["--append-system-prompt", FLEET_GATEWAY_HOST_PROMPT]),
   ];
 }
 
