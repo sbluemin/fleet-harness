@@ -851,13 +851,9 @@ export function OperationsCanvas({
   // 판 위의 커서는 월드와 무관하고, 활성 Theater는 지도 배율(0.02)이라 커서 투영이 수만 단위
   // 밖에 떨어진다. 화면 중앙은 그 Theater를 올렸을 때 보이는 자리라 새 패널이 시야 안에 선다.
   const openFleetMapTheaterLaunchMenu = (theaterId: string, cursor: CanvasPoint) => {
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (!canvasRect) return;
-    const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
-    const displayLocal = { x: Math.max(local.x, arenaInsets.left + 12), y: local.y };
     const theaterViewport = getTheaterCanvasSnapshot(theaterId).viewport;
     setContextMenu({
-      anchor: displayLocal,
+      anchor: cursor,
       canvasPoint: screenToCanvas({ x: arena.x + arena.width / 2, y: arena.y + arena.height / 2 }, {
         x: theaterViewport.x + arena.x,
         y: theaterViewport.y + arena.y,
