@@ -59,16 +59,17 @@ async function collect(events: AsyncIterable<CanonicalResponseEvent>): Promise<C
 describe("chat completions request translation", () => {
   it("threads instructions, tool calls, and tool replies through chat roles", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
-    await adapter(fetchMock).stream(request({
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      model: "deepseek-v4.1-flash",
       instructions: "Be terse.",
       input: [
         { type: "message", role: "developer", content: "House rules." },
         { type: "message", role: "user", content: "run both tools" },
-        { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{\"x\":1}" },
+        { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{\"x\":1}", reasoning_content: "Run both tools." },
         { type: "function_call", call_id: "call-b", name: "ToolB", arguments: "{}" },
         { type: "function_call_output", call_id: "call-a", output: "alpha", is_error: true, tool_references: ["ToolB"] },
         { type: "function_call_output", call_id: "call-b", output: "beta" },
-        { type: "message", role: "assistant", content: "done" },
+        { type: "message", role: "assistant", content: "done", reasoning_content: "Both tools finished." },
       ],
       tools: [{
         type: "function",
@@ -91,6 +92,7 @@ describe("chat completions request translation", () => {
       {
         role: "assistant",
         content: null,
+        reasoning_content: "Run both tools.",
         // 연속 function_call은 하나의 assistant 메시지로 합쳐져 tool 응답 인접성을 지킨다.
         tool_calls: [
           { id: "call-a", type: "function", function: { name: "ToolA", arguments: "{\"x\":1}" } },
@@ -99,7 +101,7 @@ describe("chat completions request translation", () => {
       },
       { role: "tool", tool_call_id: "call-a", content: "alpha" },
       { role: "tool", tool_call_id: "call-b", content: "beta" },
-      { role: "assistant", content: "done" },
+      { role: "assistant", content: "done", reasoning_content: "Both tools finished." },
     ]);
     expect(body.tools).toEqual([{
       type: "function",
