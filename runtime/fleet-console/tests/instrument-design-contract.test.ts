@@ -4524,12 +4524,12 @@ describe("War Room deck panel grammar", () => {
   });
 
   it("keeps the fleet map under the canvas launch menu and marks its nameplates on the brass channel", () => {
-    // 판이 메뉴를 덮으면 메뉴는 보이는데 눌리지 않는다 — 판(20)은 캔버스 실행 메뉴(30) 아래,
-    // 월드(무 z-index)와 미니맵(14) 위에 선다.
+    // 판(20)은 Console 전역 실행 메뉴 아래, 월드(무 z-index)와 미니맵(14) 위에 선다.
     const plate = components.match(/\.canvas-fleet-map \{[^}]*\}/)?.[0] ?? "";
     expect(plate).toContain("z-index: 20;");
     const launch = components.match(/\.operation-launch-control--canvas \{[^}]*\}/)?.[0] ?? "";
-    expect(launch).toContain("z-index: 30;");
+    expect(launch).toContain("position: fixed;");
+    expect(launch).toContain("z-index: var(--z-overlay);");
     // 표석의 hover/focus는 위치 채널(brass)만 쓴다 — 신호 토큰이 끼면 상태로 읽힌다.
     const nameplate = components.match(/\.canvas-fleet-map-zone-pick:hover,\n\.canvas-fleet-map-zone-pick:focus-visible \{[^}]*\}/)?.[0] ?? "";
     expect(nameplate).toContain("var(--brass)");

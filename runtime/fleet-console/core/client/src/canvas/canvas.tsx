@@ -416,27 +416,20 @@ export function OperationsCanvas({
     const rect = canvasRef.current?.getBoundingClientRect();
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
-    // 표시 앵커는 아레나 안으로 끌어들인다 — 사이드바 왼쪽 12px 거터의 우클릭은 캔버스에
-    // 닿지만, 그 자리에서 열면 메뉴가 더 높은 층의 부유 카드 밑에 그려져 보이지 않는 채
-    // 포커스만 쥔다(Codex 리뷰 확정). 발사 월드 좌표는 원 커서 기준을 유지한다.
-    const displayAnchor = { x: Math.max(anchor.x, arenaInsets.left + 12), y: anchor.y };
-    // 월드 환산은 아레나 원점을 더한 screenViewport로 — 저장 좌표는 아레나-상대다.
-    setContextMenu({ anchor: displayAnchor, canvasPoint: screenToCanvas(anchor, screenViewport) });
+    // 표시는 Console 뷰포트, 실행 위치는 캔버스 월드 좌표다 — 부유 크롬은 메뉴의 경계가 아니다.
+    setContextMenu({
+      anchor: { x: event.clientX, y: event.clientY },
+      canvasPoint: screenToCanvas(anchor, screenViewport),
+    });
     onRefreshCatalog?.();
   };
 
   const openTriageTheaterLaunchMenu = (theaterId: string, cursor: CanvasPoint) => {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
-    // 앵커와 클램프 경계는 같은 좌표계여야 한다 — 메뉴는 캔버스 크기로 클램프되므로 앵커도 캔버스-local이다.
-    // position: fixed도 뷰포트에 걸리지 않는다: .operations-canvas의 contain: paint가 고정 위치의
-    // 컨테이닝 블록이 되어 캔버스에 재앵커한다(실측). 뷰포트 좌표를 그대로 넘기면 메뉴가 커서에서
-    // 캔버스 왼쪽 여백만큼 밀리고, 오른쪽 끝에서는 캔버스 폭으로 클램프돼 커서와 크게 어긋난다.
     const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
-    // 표시 앵커의 아레나 좌측 클램프는 Cruise 경로와 같은 이유다 — 발사 좌표는 원 커서 기준.
-    const displayLocal = { x: Math.max(local.x, arenaInsets.left + 12), y: local.y };
     setContextMenu({
-      anchor: displayLocal,
+      anchor: cursor,
       // 실행 좌표는 그 Theater의 world 좌표여야 한다 — canvasPointToGeometry는 받은 점을 world로
       // 취급한다. War Room은 전 Theater를 한 판에 얹으므로 화면-local을 그대로 넘기면 그 Theater를
       // 다시 열었을 때 패널이 보이는 자리 밖에 놓인다. 로드된 Theater가 아닐 수 있으니 저장된
@@ -858,13 +851,9 @@ export function OperationsCanvas({
   // 판 위의 커서는 월드와 무관하고, 활성 Theater는 지도 배율(0.02)이라 커서 투영이 수만 단위
   // 밖에 떨어진다. 화면 중앙은 그 Theater를 올렸을 때 보이는 자리라 새 패널이 시야 안에 선다.
   const openFleetMapTheaterLaunchMenu = (theaterId: string, cursor: CanvasPoint) => {
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (!canvasRect) return;
-    const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
-    const displayLocal = { x: Math.max(local.x, arenaInsets.left + 12), y: local.y };
     const theaterViewport = getTheaterCanvasSnapshot(theaterId).viewport;
     setContextMenu({
-      anchor: displayLocal,
+      anchor: cursor,
       canvasPoint: screenToCanvas({ x: arena.x + arena.width / 2, y: arena.y + arena.height / 2 }, {
         x: theaterViewport.x + arena.x,
         y: theaterViewport.y + arena.y,
@@ -1306,13 +1295,11 @@ export function OperationsCanvas({
         />
       ) : null}
       {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={screenViewport} /> : null}
-      {contextMenu ? (
+      {contextMenu ? createPortal(
         <CanvasContextMenu
           key={`${contextMenu.anchor.x}:${contextMenu.anchor.y}`}
           anchor={contextMenu.anchor}
-          // 우/하단 클램프 경계에서 부유 크롬 점유 폭을 빼 메뉴가 카드 밑으로 파고들지 않게 한다.
-          // 좌측은 커서가 크롬 위에서는 캔버스에 닿지 않으므로 별도 하한이 필요 없다.
-          viewportBounds={viewportBoundsFor(canvasRef.current, arenaInsets)}
+          viewportBounds={{ width: window.innerWidth, height: window.innerHeight }}
           placement="cursor"
           catalog={catalog}
           // 실행 가부는 모드가 아니라 Theater가 정한다 — 사이드바와 좌하단 런처는 어느 모드에서도
@@ -1322,8 +1309,8 @@ export function OperationsCanvas({
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
-          fixed={triageActive}
-        />
+        />,
+        document.body,
       ) : null}
       <CanvasMinimap
         operations={visibleOperations}
@@ -1348,15 +1335,6 @@ export function OperationsCanvas({
       />
     </main>
   );
-}
-
-function viewportBoundsFor(element: HTMLElement | null, arenaInsets?: CanvasArenaInsets): { readonly width: number; readonly height: number } | undefined {
-  if (!element) return undefined;
-  const rect = element.getBoundingClientRect();
-  return {
-    width: rect.width - (arenaInsets?.right ?? 0),
-    height: rect.height - (arenaInsets?.bottom ?? 0),
-  };
 }
 
 function rectToGeometry(rect: CanvasRect): OperationGeometry {
