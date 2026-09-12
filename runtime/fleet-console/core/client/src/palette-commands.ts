@@ -38,7 +38,7 @@ export type PaletteGlyphId =
   | "theater-monogram" | "theater-add" | "operation-new"
   | "operation-open" | "operation-resume" | "operation-close" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
   | "view-minimize-all" | "view-fit" | "view-war-room" | "view-tactical" | "view-station-keeping" | "view-status-axis"
-  | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-undo";
+  | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
 export type PaletteCommandAction =
   | { readonly kind: "undo-close" }
@@ -64,7 +64,8 @@ export type PaletteCommandAction =
   | { readonly kind: "assign-operation-group"; readonly operationId: string }
   | { readonly kind: "set-operation-accent"; readonly operationId: string }
   | { readonly kind: "minimize-operation"; readonly operationId: string }
-  | { readonly kind: "whats-new" };
+  | { readonly kind: "whats-new" }
+  | { readonly kind: "open-commissioning" };
 
 export interface PaletteCommandEntry {
   readonly commandId: string;
@@ -204,6 +205,8 @@ export function buildPaletteCommands(
   }
   push({ commandId: "open-settings", label: t("palette.openSettings"), aliasLabel: alias("palette.openSettings"), action: { kind: "open-settings" }, group: "console", glyph: "console-settings" });
   push({ commandId: "open-keyboard-shortcuts", label: t("palette.openKeyboardShortcuts"), aliasLabel: alias("palette.openKeyboardShortcuts"), action: { kind: "open-keyboard-shortcuts" }, group: "console", glyph: "console-shortcuts" });
+  // 취역 가이드는 첫 부팅에 한 번 뜨고 닫히면 사라진다 — 팔레트가 그 뒤의 유일한 재진입로다.
+  push({ commandId: "open-commissioning", label: t("palette.openCommissioning"), aliasLabel: alias("palette.openCommissioning"), action: { kind: "open-commissioning" }, group: "console", glyph: "console-commissioning" });
   if (current.releaseNotes.length > 0) {
     push({ commandId: "whats-new", label: t("palette.whatsNew"), aliasLabel: alias("palette.whatsNew"), action: { kind: "whats-new" }, group: "console", glyph: "console-whats-new" });
   }

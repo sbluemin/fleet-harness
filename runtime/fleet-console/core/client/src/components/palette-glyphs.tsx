@@ -38,6 +38,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-monogram" | 
   "console-theme": <Glyph><circle cx="8" cy="8" r="5.5" /><path d="M8 2.5v11A5.5 5.5 0 0 0 8 2.5z" fill="currentColor" stroke="none" /></Glyph>,
   "console-settings": <Glyph><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></Glyph>,
   "console-shortcuts": <Glyph><rect x="1.5" y="4" width="13" height="8" rx="1.5" /><path d="M4 7h.5M6.5 7h.5M9 7h.5M11.5 7h.5M5 9.5h6" /></Glyph>,
+  "console-commissioning": <Glyph><path d="M3 3.5h10v9H3z" /><path d="M5.5 6.5h5M5.5 9.5h3" /></Glyph>,
   "console-whats-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
   "console-undo": <Glyph><path d="M6 4.5L3 7.5l3 3" /><path d="M3 7.5h6.5a3 3 0 0 1 0 6H8" /></Glyph>,
 };

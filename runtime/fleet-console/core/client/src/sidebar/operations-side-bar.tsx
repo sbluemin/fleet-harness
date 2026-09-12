@@ -17,7 +17,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, sortOperationsByOrder } from "../store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -1229,12 +1229,37 @@ export function OperationsSideBar({
             </li>
           );
         })}
-        <li>
-          <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
-            <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
-            <span className="side-bar-ghost-theater-label">{t("sidebar.theater.newTheater")}</span>
-          </button>
-        </li>
+        {theaters.length === 0 ? (
+          // Theater가 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
+          // 첫 행동(폴더 선택)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
+          // 되돌아가는 길도 여기 둔다.
+          <li className="side-bar-starter" data-testid="side-bar-starter">
+            <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
+            <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
+            <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
+            <button
+              type="button"
+              className={addingTheater ? "side-bar-starter-primary" : "side-bar-starter-primary is-live"}
+              onClick={openTheaterBrowser}
+              disabled={addingTheater}
+            >
+              {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.starter.chooseFolder")}
+            </button>
+            <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
+              {t("sidebar.starter.reopenGuide")}
+            </button>
+            <p className="side-bar-starter-hints">
+              <kbd>⌘K</kbd> {t("sidebar.starter.hintSearch")} <span aria-hidden="true">·</span> <kbd>Alt+F</kbd> {t("sidebar.starter.hintFormation")} <span aria-hidden="true">·</span> <kbd>Alt+T</kbd> {t("sidebar.starter.hintTriage")}
+            </p>
+          </li>
+        ) : (
+          <li>
+            <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
+              <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
+              <span className="side-bar-ghost-theater-label">{t("sidebar.theater.newTheater")}</span>
+            </button>
+          </li>
+        )}
       </ol>
       </div>
 

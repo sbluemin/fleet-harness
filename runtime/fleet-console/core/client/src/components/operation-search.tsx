@@ -55,6 +55,7 @@ import {
   closeOperationSearch,
   focusOperation,
   openKeyboardShortcuts,
+  openOnboarding,
   openWhatsNew,
   operationSearchEntries,
   requestOperationLaunchMenu,
@@ -485,6 +486,12 @@ export function OperationSearch({
       }
       case "whats-new": {
         openWhatsNew();
+        break;
+      }
+      case "open-commissioning": {
+        // 오버레이는 포커스를 자기 첫 컨트롤로 옮기고 닫힐 때 여기서 복원한다 — 팔레트 복원과 겹치지 않게 비운다.
+        previousFocusRef.current = null;
+        openOnboarding();
         break;
       }
     }
