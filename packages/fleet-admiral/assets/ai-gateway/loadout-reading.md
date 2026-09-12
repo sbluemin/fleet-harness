@@ -5,8 +5,8 @@ The models resource returns facts as JSON and stops there: nothing in the payloa
 ## The payload's frame
 
 - **Models sit under the allowance they spend.** `providers` is keyed by provider id, and the window to read against a model is one in the same entry — never a join across entries.
-- **`providers`에는 노출 모델이 있는 공급자만 남고 `signed_out` 공급자는 제외된다.** 호스트 전용 모델이나 상속 실행의 quota를 보여 주려고 빈 공급자를 추가하지 않는다. 공급자 누락은 quota 소진이나 여유의 증거가 아니다.
-- **`revision`은 의도적인 설정 변경에만 바뀐다** — 노출, catalog, benchmark 갱신, 소비 순위. quota나 로그인 상태 변화로는 바뀌지 않는다. 같은 revision에서도 반환 공급자는 달라질 수 있으므로 다음 위임 전에 다시 읽는다.
+- **`providers` includes only providers with exposed models and excludes `signed_out` providers.** Do not add empty providers to show quota for host-only models or inherited execution. An omitted provider is evidence of neither exhaustion nor headroom.
+- **`revision` changes only for deliberate configuration changes** — exposure, catalog, benchmark updates, and spend priority. Quota and sign-in changes do not change it. Returned providers can differ at the same revision, so refresh the roster for the next dispatch batch.
 - **Absence is never safety.** A derived field is omitted when the reading could not support it, and `status: "unsupported"` means the allowance could not be read at all — not that it is healthy, and not that it is exhausted either.
 
 ## Reading an allowance
@@ -21,18 +21,18 @@ The models resource returns facts as JSON and stops there: nothing in the payloa
 
 Three constraint fields answer three different questions, and none implies another.
 
-- **`benchmark`는 같은 조건의 완전한 자료로 계산한 상대 지표다.** `sources`의 모든 출처와 필수 지표를 갖춘 `cohortSize`개 모델만 `method`에 따라 정규화한다. `sourceScores`는 출처별 상대점수, `score`는 동일 가중 평균이다. 서로 다른 원점수를 직접 평균하거나 다른 cohort·버전의 점수와 비교하지 않는다. 0과 100은 비교 집합의 상대 위치이지 실패율·정확도가 아니다.
-- **`effort`가 실제 선택과 같을 때만 해당 benchmark를 적용한다.** 다른 effort의 점수나 무표기 설정을 대신 쓰지 않는다. 현재 노출에 측정된 effort가 없다면 근거도 전달되지 않는다. 출처들이 같은 모델에 동일 effort를 측정했다는 뜻이지, 서로 다른 모델의 max/high가 같은 계산 예산이라는 뜻은 아니다.
-- **`capabilityClass`는 공급자의 라인업 주장이다** (`flagship` / `standard` / `light`). 비교 가능한 benchmark가 없는 선택의 사전 근거이며 정량 점수로 변환하지 않는다. 미측정 모델을 상대점수 0으로 취급하거나 측정된 모델보다 자동 열등하다고 판정하지 않는다. 실제 모델이 바뀌는 라우팅 별칭에는 고정 모델 근거가 없다.
-- **`routingTieBandPoints` 이내는 한 묶음이다.** 같은 normalized cohort·effort 프로필 사이에서 적용한 뒤 allowance로 선택한다. 이 밴드는 Fleet 정책이지 통계적 유의수준이 아니다. 하네스별 raw tokens/task·steps/task를 합친 효율 숫자를 만들지 않으며, 벤치 비용을 현재 구독의 가격·한도로 대체하지 않는다.
-- **`caveat`와 `observedAt`을 함께 읽는다.** 정규화는 과제·하네스 차이를 없애는 인과적 보정이 아니고, 공개 사이트 관측이 실제 Fleet serving 성능이나 공급자 호출 성공을 입증하지도 않는다. 데이터가 부족해 benchmark가 없으면 다른 source의 부분 점수로 빈칸을 채우지 않는다.
+- **`benchmark` is a relative index computed from complete, comparable evidence.** Only the `cohortSize` models with every source and required metric in `sources` are normalized using `method`. `sourceScores` are source-relative scores; `score` is their equally weighted mean. Do not average incompatible raw scores or compare different cohorts or versions. Zero and 100 indicate relative positions, not failure rates or accuracy.
+- **Apply a benchmark only at its measured `effort`.** Do not substitute another effort or an unspecified setting. Evidence is omitted when the measured effort is not exposed. Sources measuring the same model at the same effort does not mean max/high imply equal compute budgets across models.
+- **`capabilityClass` is a provider lineup claim** (`flagship` / `standard` / `light`). Use it as a prior when comparable benchmarks are absent, not as a numeric score. Do not treat unmeasured models as zero or automatically inferior. Routing aliases whose underlying model changes have no fixed-model evidence.
+- **Scores within `routingTieBandPoints` belong to one band.** Apply this within the same normalized cohort and effort profile, then choose using allowance. This is Fleet policy, not statistical significance. Do not combine harness-specific raw tokens/task or steps/task into an efficiency score or equate benchmark costs with current subscription prices or limits.
+- **Read `caveat` together with `observedAt`.** Normalization does not causally correct task or harness differences. Public observations do not establish actual Fleet serving performance or provider call success. Do not fill missing benchmarks with partial scores from another source.
 
 ## Reading lineage and spend
 
 - **`homolineage` marks a Claude-family model**, derived from the model id alone. It decides independence — shared blind spots with a Claude-based subject — and never cost.
 - **The provider entry a model sits under decides cost** — whose subscription the run bills to — and never independence. The two come apart: a Claude-lineage identity billed elsewhere is a legitimate way to move spend and a useless way to buy an independent verdict.
-- **`quotaConsumptionPriority`는 일반적인 모델 선호도가 아니라 사용자가 정한 quota 우선 소비 순서다.** `source: "user_settings"`는 잔여량으로 자동 계산한 순위가 아님을 뜻한다. `providers`의 `rank`는 1부터 시작하고 `rankMeaning: "1_consumes_first"`대로 작은 숫자의 quota부터 소비한다. 배열 위치로 방향을 추측하지 않는다. 현재 로드아웃에서 제외된 공급자는 순위에서도 빠지고 남은 순위는 1부터 다시 매겨진다. 해당 공급자가 없으면 필드 자체가 생략된다.
-- **소비 순위는 품질 평가를 대체하지 않는다.** `withinQualityBand: true`이므로 같은 품질 밴드 안에서만 적용한다. `overridesQuotaPressure: true`는 `critical`까지 포함한 quota 압력 예측보다 사용자 소비 순서가 우선한다는 뜻이다. `fallback: "observed_failure_after_retry"`대로 재시도 후에도 빈 결과 등 실제 실패가 관측될 때 다음 순위로 이동한다. 미지정 공급자에는 기존 allowance 판단을 적용한다.
+- **`quotaConsumptionPriority` is the user-defined allowance consumption order, not a general model preference.** `source: "user_settings"` means it was not calculated from remaining quota. Provider `rank` starts at 1; `rankMeaning: "1_consumes_first"` means smaller ranks spend first. Do not infer direction from array order. Providers absent from the loadout are removed and remaining ranks renumbered from 1. The field is omitted when no ranked provider remains.
+- **Spend priority does not replace quality assessment.** `withinQualityBand: true` applies it only within a quality band. `overridesQuotaPressure: true` gives the user order priority over pressure predictions, including `critical`. With `fallback: "observed_failure_after_retry"`, move to the next rank only after an observed failure, including an empty result, persists after retry. Use ordinary allowance reasoning for unranked providers.
 
 ## Names
 
