@@ -2333,7 +2333,8 @@
     visibility: visible;
   }
 
-  .agent-chat-tally-glyph > .agent-glyph[data-glyph="think"] {
+  /* 라이브 규칙과 같은 선택자로 못을 박는다 — 짧은 선택자는 특정성에서 져서 회전이 멎지 않는다. */
+  .agent-chat-tally.is-live .agent-chat-tally-glyph > .agent-glyph[data-glyph="think"] {
     animation: none;
   }
 
