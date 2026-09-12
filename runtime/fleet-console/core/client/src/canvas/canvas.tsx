@@ -117,6 +117,10 @@ export function OperationsCanvas({
   onDismissOperationMenu,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
+  // 캡션·companion의 API 의존 effect가 메뉴·기하 변경마다 재시작되지 않게 수명을 Canvas에 묶는다.
+  const capabilities = useMemo(() => createHostCapabilities(() => {
+    void fetchOperations(null).then(hydrateOperations).catch(() => {});
+  }), []);
   const t = useT();
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
@@ -1086,6 +1090,7 @@ export function OperationsCanvas({
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot && !deckSlot
             && screenViewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
           return renderPluginOperation(operation, {
+            capabilities,
             active: activePluginOperationId === operation.id,
             unseen: idleArrivalIds.has(operation.id),
             keyboardFocusRequestId: state.keyboardFocusRequest?.operationId === operation.id
@@ -1457,6 +1462,7 @@ function operationAccentFromNode(operation: OperationNode): string | null {
 }
 
 function renderPluginOperation(operation: OperationNode, options: {
+  readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly active: boolean;
   readonly unseen: boolean;
   readonly keyboardFocusRequestId: number;
@@ -1501,9 +1507,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   const descriptor = options.operationKindRegistry.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   const geometry = options.geometry;
   if (!descriptor?.render) return null;
-  const capabilities = createHostCapabilities(() => {
-    void fetchOperations(null).then(hydrateOperations).catch(() => {});
-  });
+  const capabilities = options.capabilities;
   const onRequestCompanions = (open: boolean) => {
     if (open) {
       setActiveOperation(operation.id);
