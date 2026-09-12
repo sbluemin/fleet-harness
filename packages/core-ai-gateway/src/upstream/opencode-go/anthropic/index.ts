@@ -1,3 +1,4 @@
+import { opencodeSessionHeaders } from "../session.js";
 import { eagerAnthropicRequestBody } from "../../../downstream/wire/anthropic-messages/passthrough.js";
 import type { AnthropicMessagesRequest } from "../../../downstream/wire/anthropic-messages/protocol.js";
 
@@ -29,6 +30,7 @@ export function opencodeRequestBody(
 export function opencodeAnthropicHeaders(
   requestHeaders: Readonly<Record<string, unknown>>,
   apiKey: string,
+  userId?: unknown,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -36,6 +38,7 @@ export function opencodeAnthropicHeaders(
       ? requestHeaders["anthropic-version"]
       : "2023-06-01",
     "x-api-key": apiKey,
+    ...opencodeSessionHeaders(userId),
   };
   for (const name of ["anthropic-beta", "user-agent"]) {
     const value = requestHeaders[name];

@@ -23,6 +23,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../../transport/upstream-sse.js";
+import { opencodeSessionHeaders } from "../session.js";
 import { logRawWireEvent, wireLog, type RawWireEventPayload } from "../../../transport/wire-log.js";
 
 /** OpenCode Go 구독이 노출하는 Chat Completions 네임스페이스 엔드포인트. */
@@ -154,6 +155,7 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
           authorization: `Bearer ${options.apiKey}`,
           "content-type": "application/json",
           ...this.extraHeaders,
+          ...sessionHeaderPolicy.get(this)?.(request.metadata?.user_id),
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -190,6 +192,8 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
     };
   }
 }
+
+const sessionHeaderPolicy = new WeakMap<OpenAIChatCompletionsAdapter, typeof opencodeSessionHeaders>();
 
 const imageInputPolicy = new WeakMap<
   OpenAIChatCompletionsAdapter,
@@ -254,6 +258,7 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
       ...(options.headers ? { headers: options.headers } : {}),
     });
+    sessionHeaderPolicy.set(this, opencodeSessionHeaders);
     // DeepSeek V4 텍스트 모델은 image_url을 거부하지만 Vision Exp는 이미지 입력을 받는다.
     // 기존 차단을 유지하되 공식 Go 카탈로그의 Vision 모델만 예외로 둔다.
     imageInputPolicy.set(this, (model) =>

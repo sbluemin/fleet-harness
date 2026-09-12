@@ -190,6 +190,49 @@ describe("Astra asynchronous tools", () => {
   });
 });
 
+describe("OpenCode conversation routing", () => {
+  it("sends a stable, isolated session through each provider wire", async () => {
+    const sessions: string[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const session = new Headers(init?.headers).get("x-opencode-session");
+      expect(session).toBeTruthy();
+      expect(session).not.toContain("private-user");
+      sessions.push(session!);
+      const endpoint = String(url);
+      if (endpoint.endsWith("/messages")) {
+        return new Response('data: {"type":"message_stop"}\n\n', {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(endpoint.endsWith("/responses")
+        ? 'data: {"type":"response.completed","response":{"id":"r","model":"grok-4.6","usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
+        : 'data: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
+    });
+    const router = createAiGatewayRouter({ fetch: fetchMock, readOpencodeApiKey: async () => "test-key" });
+    try {
+      for (const model of ["minimax-m3", "grok-4.6", "deepseek-v4.1-flash"]) {
+        for (const userId of ["private-user-session-a", "private-user-session-a", "private-user-session-b", null, null]) {
+          const res = response();
+          await router.handle(ctx({
+            res, token: ANTHROPIC_CRED, model: `claude-gateway--opencode--${model}`,
+            metadata: userId === null ? null : { user_id: userId },
+          }));
+          expect(res.status).toBe(200);
+        }
+      }
+      expect(sessions).toHaveLength(15);
+      for (let index = 0; index < sessions.length; index += 5) {
+        expect(sessions[index]).toBe(sessions[0]);
+        expect(sessions[index + 1]).toBe(sessions[index]);
+        expect(sessions[index + 2]).not.toBe(sessions[index]);
+        expect(sessions[index + 3]).not.toBe(sessions[index + 4]);
+      }
+    } finally {
+      router.dispose();
+    }
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).

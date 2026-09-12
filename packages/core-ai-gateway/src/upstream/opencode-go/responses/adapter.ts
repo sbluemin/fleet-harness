@@ -23,6 +23,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../../transport/upstream-sse.js";
+import { opencodeSessionHeaders } from "../session.js";
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 
 /** OpenCode Go 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
@@ -137,7 +138,8 @@ export class OpencodeGoResponsesAdapter implements AiGatewayAdapter {
           accept: "text/event-stream",
           authorization: `Bearer ${options.apiKey}`,
           "content-type": "application/json",
-          ...this.extraHeaders
+          ...this.extraHeaders,
+          ...opencodeSessionHeaders(request.metadata?.user_id),
         },
         body: JSON.stringify(payload),
         signal: controller.signal
