@@ -12,8 +12,9 @@ import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";
-import { clampPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
+import { clampPrimaryWidth, maxPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
 import { resolvePaneDefaultWidth } from "../rail/pane-width.js";
+import { requestRailPanelSoloWidth, useRailPanelWidthReset } from "../rail/rail-store.js";
 import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
@@ -162,15 +163,33 @@ export const RailSurface = memo(function RailSurface({
     ),
   }), [primary?.minWidth, standing, surfaceWidth]);
 
-  // 순서가 곧 근거의 순서다: 사용자가 끈 폭 → 갈라지기 직전의 폭 → 서술자의 기본값.
-  // 실측 전에는 soloWidth가 0이므로 `??`로 이으면 0이 기본값을 이겨 열이 최소폭으로 접힌다.
-  const primaryWidth = clampPrimaryWidth(
-    paneWidths[primary?.id ?? ""]
-      ?? (soloWidthRef.current > 0 ? soloWidthRef.current : undefined)
-      ?? (primary === null ? undefined : resolvePaneDefaultWidth(primary))
-      ?? MIN_PANE_PX,
-    limits,
-  );
+  // 첫 분할의 기준은 이 표면이 기억한다. detail을 확대하면 solo 실측이 전체 카드 폭으로
+  // 바뀌므로, 복귀 때 그 값을 다시 채택하면 목록이 넓어지고 문서는 좁아진다. 화면 제약으로
+  // 잘린 실측이 아니라 원하는 폭을 남겨, 좁은 창을 거쳐 돌아와도 원래 분할로 복원한다.
+  const splitWidthRef = useRef<number | undefined>(undefined);
+  const splitMaxWidthRef = useRef<number | null>(null);
+  const widthReset = useRailPanelWidthReset();
+  const previousWidthResetRef = useRef(widthReset);
+  if (previousWidthResetRef.current !== widthReset) {
+    previousWidthResetRef.current = widthReset;
+    splitWidthRef.current = resolvePaneDefaultWidth(primary) - 2;
+    soloWidthRef.current = 0;
+  }
+  if (standing.length > 0 && surfaceWidth > 0) splitMaxWidthRef.current = maxPrimaryWidth(limits);
+  const desiredPrimaryWidth = paneWidths[primary?.id ?? ""]
+    ?? splitWidthRef.current
+    ?? (soloWidthRef.current > 0 ? soloWidthRef.current : undefined)
+    ?? (primary === undefined ? undefined : resolvePaneDefaultWidth(primary))
+    ?? MIN_PANE_PX;
+  if (standing.length > 0) splitWidthRef.current = desiredPrimaryWidth;
+  const primaryWidth = clampPrimaryWidth(desiredPrimaryWidth, limits);
+  const soloWidth = standing.length === 0 && splitWidthRef.current !== undefined
+    ? Math.min(Math.max(primary?.minWidth ?? MIN_PANE_PX, desiredPrimaryWidth), splitMaxWidthRef.current ?? Infinity)
+    : null;
+  const soloMaxWidth = soloWidth === null ? null : splitMaxWidthRef.current;
+  useLayoutEffect(() => {
+    requestRailPanelSoloWidth(entryId, soloWidth, soloMaxWidth);
+  }, [entryId, soloWidth, soloMaxWidth]);
 
   // detail이 서면 표면 전체가 그만큼 넓어져야 한다 — 그러지 않으면 새 열은 primary를 잘라
   // 먹는다. 예전에 플러그인이 `requestExtraWidth`로 하던 일이며, 이제 표면이 자기가 세운
