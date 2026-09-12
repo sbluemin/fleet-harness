@@ -2,7 +2,7 @@ import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-consol
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
 import type { RouteRegistry, UpgradeRegistry } from "./route-registry/registry.js";
 
-type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
+type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "aiGatewayMcp" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
   readonly admiralMcp: Pick<FleetPluginHostCapabilities["admiralMcp"], "connect">;
   readonly operations: Pick<FleetPluginHostCapabilities["operations"], "list" | "get" | "create" | "patch" | "delete">;
   readonly paths: Omit<FleetPluginHostCapabilities["paths"], "pluginDataDir">;

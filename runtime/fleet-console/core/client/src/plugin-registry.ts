@@ -58,7 +58,7 @@ export const PluginRegistryProvider = PluginRegistryContext.Provider;
 
 export async function loadPluginRegistry(): Promise<PluginRegistry> {
   const plugins = [...builtInPlugins];
-  const pluginIds = new Set(plugins.map((plugin) => plugin.id));
+  const pluginIds = new Set(["terminal", ...plugins.map((plugin) => plugin.id)]);
   const { entries, skipped } = await loadPluginRuntimeManifest();
   const failures: PluginLoadFailure[] = [...skipped];
   for (const entry of entries) {

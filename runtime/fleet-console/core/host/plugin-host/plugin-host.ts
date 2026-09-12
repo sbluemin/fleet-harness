@@ -89,6 +89,10 @@ function discoverPluginRoot(root: string, builtInDistRoot: string | null, extern
     if (!fs.existsSync(manifestPath)) continue;
     const manifest = readManifest(manifestPath);
     if (!manifest) continue;
+    if (external && manifest.id === "terminal") {
+      console.warn("[fleet-console] Plugin terminal skipped: reserved Console compatibility id");
+      continue;
+    }
     const clientEntry = resolveOptionalManifestEntry(pluginRoot, manifest.client, "client");
     if (clientEntry === false) continue;
     const routesEntry = resolveRoutesEntry(pluginRoot, manifest, builtInDistRoot);
