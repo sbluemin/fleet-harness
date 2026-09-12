@@ -1015,6 +1015,8 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
   }, [read]);
 
   const disabledSet = new Set(disabled);
+  // 현재 로스터에서 빠진 제외 항목도 사용자가 다시 허용할 수 있어야 한다.
+  const agentNames = [...new Set([...(roster?.agents ?? []), ...disabled])];
   const toggle = (name: string, enabled: boolean) => {
     // 실행 조건이나 CLI 버전 때문에 로스터에서 빠진 Agent의 제외 설정도 유지한다.
     const next = disabled.filter((entry) => entry !== name);
@@ -1033,12 +1035,12 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
         {t(roster.error === "cli_not_found" ? "terminal.settings.builtInAgentsNotFound" : "terminal.settings.builtInAgentsFailed")}
       </p>
     );
-  } else if (roster.agents.length === 0) {
+  } else if (agentNames.length === 0) {
     body = <p className="global-settings-help">{t("terminal.settings.builtInAgentsEmpty")}</p>;
   } else {
     body = (
       <ul className="claude-agent-list" aria-label={t("terminal.settings.builtInAgentsTitle")}>
-        {roster.agents.map((name) => {
+        {agentNames.map((name) => {
           const labelId = `claude-agent-${name}-label`;
           return (
             <li key={name} className="global-settings-row claude-agent-row" role="group" aria-labelledby={labelId}>
