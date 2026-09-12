@@ -11,13 +11,13 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { OperationStatusIcon } from "../components/operation-status-icon.js";
-import { focusEdgeDockWhenPanelContainsActiveElement } from "../shortcuts.js";
+import { focusEdgeDockWhenPanelContainsActiveElement, searchShortcutLabel } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, sortOperationsByOrder } from "../store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -351,7 +351,10 @@ export function OperationsSideBar({
   const { width, collapsed } = sideBar;
   const statusAxis = useSideBarStatusAxis();
   const mapNarrow = useSideBarMapNarrow();
-  const narrow = sideBar.narrow;
+  // 좁힌 레일은 Theater 타일이 있어야 뜻이 있다. Theater가 없으면 저장된 narrow 선호가 남아 있어도
+  // 펼친 폭으로 선다 — 레일 상태에서는 시작 블록이 hover 전까지 숨고, 스트립의 넓히기 토글도
+  // Theater가 없을 때는 서지 않아 키보드 사용자가 폴더 선택에 닿을 길이 없다.
+  const narrow = sideBar.narrow && theaters.length > 0;
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
@@ -1229,12 +1232,38 @@ export function OperationsSideBar({
             </li>
           );
         })}
-        <li>
-          <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
-            <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
-            <span className="side-bar-ghost-theater-label">{t("sidebar.theater.newTheater")}</span>
-          </button>
-        </li>
+        {theaters.length === 0 ? (
+          // Theater가 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
+          // 첫 행동(폴더 선택)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
+          // 되돌아가는 길도 여기 둔다.
+          <li className="side-bar-starter" data-testid="side-bar-starter">
+            <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
+            <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
+            <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
+            <button
+              type="button"
+              className="side-bar-starter-primary"
+              onClick={openTheaterBrowser}
+              disabled={addingTheater}
+            >
+              {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.starter.chooseFolder")}
+            </button>
+            <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
+              {t("sidebar.starter.reopenGuide")}
+            </button>
+            {/* Tactical·War Room 단축키는 Theater가 없으면 아무 일도 하지 않으므로 여기서는 말하지 않는다. */}
+            <p className="side-bar-starter-hints">
+              <kbd>{searchShortcutLabel()}</kbd> {t("sidebar.starter.hintSearch")}
+            </p>
+          </li>
+        ) : (
+          <li>
+            <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
+              <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
+              <span className="side-bar-ghost-theater-label">{t("sidebar.theater.newTheater")}</span>
+            </button>
+          </li>
+        )}
       </ol>
       </div>
 

@@ -217,6 +217,20 @@ export function takeKeyboardShortcutsReturnFocus(): HTMLElement | null {
   return taken;
 }
 
+// 취역 가이드도 같은 사정이다 — 팔레트가 닫히며 열면 오버레이의 passive effect가 보는 activeElement는
+// 이미 body라, 닫힐 때 원래 컨트롤로 돌아갈 수 없다. 여는 쪽이 opener를 이 채널로 넘긴다.
+let commissioningTarget: HTMLElement | null = null;
+
+export function stashCommissioningReturnFocus(element: HTMLElement | null): void {
+  commissioningTarget = element;
+}
+
+export function takeCommissioningReturnFocus(): HTMLElement | null {
+  const taken = commissioningTarget;
+  commissioningTarget = null;
+  return taken;
+}
+
 // 패널이 접히는 순간 포커스가 그 안에 있으면, 접힘 뒤에도 남는 안정 좌표(그 패널의 엣지 독
 // 트리거)로 넘긴다 — 옛 좌표는 밴드 토글이었고, 토글이 패널 소유로 이관되며 독이 승계했다.
 export function focusEdgeDockWhenPanelContainsActiveElement(panel: HTMLElement | null, dockSelector: string): void {
@@ -231,6 +245,12 @@ function resolveModLabel(): string {
   const userAgentDataPlatform = (navigator as Navigator & { readonly userAgentData?: { readonly platform?: string } }).userAgentData?.platform;
   const platform = userAgentDataPlatform ?? navigator.platform;
   return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+}
+
+// ⌘K / Ctrl+K — 검색 팔레트 단축키 표기. 첫 실행 시작 블록처럼 팔레트 밖에서 그 단축키를 말하는 자리가 쓴다.
+export function searchShortcutLabel(): string {
+  const modLabel = resolveModLabel();
+  return `${modLabel}${modLabel === "⌘" ? "" : "+"}K`;
 }
 
 export function sideBarShortcutLabel(): string {

@@ -307,6 +307,7 @@ export const pagesEn = {
   "palette.openSettings": "Open Settings",
   "palette.openKeyboardShortcuts": "Open keyboard shortcuts",
   "palette.whatsNew": "What's new",
+  "palette.openCommissioning": "Show setup guide",
 
   // shortcuts
   "shortcuts.group.console": "Console",
@@ -718,6 +719,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.openSettings": "설정 열기",
   "palette.openKeyboardShortcuts": "키보드 단축키 열기",
   "palette.whatsNew": "새로운 기능",
+  "palette.openCommissioning": "설정 가이드 보기",
 
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "Theater 전체에서 Operation 검색",

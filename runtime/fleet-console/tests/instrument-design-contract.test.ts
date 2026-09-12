@@ -1996,7 +1996,9 @@ describe("Instrument core design contract", () => {
     expect(headerHover).not.toContain("border-color");
     // focus-visible은 자기 brass 테두리를 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
     // 지우면 안 된다.
-    expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color: color-mix\(in oklch, var\(--brass\) 55%/);
+    // brass×rim 혼합은 oklab이다 — oklch는 hue를 보간해 Carbon(rim hue 248)에서 보라, Maritime에서
+    // 청록으로 새는 테두리를 만든다(실측). --control-open-rim과 같은 공간이다.
+    expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color: color-mix\(in oklab, var\(--brass\) 55%/);
 
     // 활성 헤더는 배경 채널을 호버에게 완전히 넘긴다.
     expect(activeHeader).toContain("background: transparent;");

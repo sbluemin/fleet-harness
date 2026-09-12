@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { addTheater, issueTheaterFolderGrant } from "../api.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
+import { takeCommissioningReturnFocus } from "../shortcuts.js";
 import { useT } from "../i18n/index.js";
 import { beginAddTheater, closeOnboarding, completeAddTheater, failAddTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -32,7 +33,9 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
 
   useEffect(() => {
     if (!state.onboardingOpen) return;
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 body다.
+    returnFocusRef.current = takeCommissioningReturnFocus()
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     primaryActionRef.current?.focus();
     return () => {
       const target = returnFocusRef.current;
@@ -57,7 +60,10 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [browserOpen, state.onboardingOpen]);
 
-  if (globalSettings.loadStatus !== "ready" || !state.onboardingOpen) return null;
+  // pending 동안만 숨긴다 — 첫 부팅의 자동 열림은 설정이 결정되기 전에 번쩍이면 안 된다. 설정 조회가
+  // 실패한 뒤에도 사용자가 팔레트·시작 블록에서 명시적으로 열면 가이드는 서야 한다. 그렇지 않으면
+  // onboardingOpen만 켜진 채 아무것도 보이지 않고, 다음 시도는 이미 열린 것으로 보아 무시된다.
+  if (globalSettings.loadStatus === "pending" || !state.onboardingOpen) return null;
 
   const handleChooseFolder = () => {
     setBrowserOpen(true);

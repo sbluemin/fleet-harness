@@ -492,7 +492,7 @@
 }
 
 .ledger-backend-head:hover {
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
   background: var(--brass-glow);
 }
 
@@ -624,7 +624,7 @@
 }
 
 .ledger-button:hover {
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));
   color: var(--text-primary);
 }
 

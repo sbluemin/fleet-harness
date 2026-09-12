@@ -52,11 +52,26 @@ export function OperationsCanvasEmptyState({
     setOpenAllArmed(false);
   }, [standbySetKey]);
 
+  // Theater가 없는 지도는 안내 문장 대신 청사진을 보인다 — 등록 뒤 이 자리가 어떻게 채워지는지를
+  // 실루엣으로 말하고, 첫 행동(폴더 선택)은 사이드바의 시작 블록이 맡는다. 실루엣은 장식이라
+  // 포인터·접근성 트리 모두에서 빠진다.
   if (!activeTheaterId) {
     return (
-      <div className="operations-canvas-empty" data-canvas-blocker>
-        <span className="operations-canvas-empty-mark" aria-hidden="true" />
-        <p>{t("canvas.empty.noTheater")}</p>
+      <div className="operations-canvas-blueprint" aria-hidden="true">
+        <span className="operations-canvas-blueprint-caption operations-canvas-blueprint-caption--lead">{t("canvas.empty.blueprintLead")}</span>
+        <span className="operations-canvas-blueprint-card" style={{ left: "6%", top: "18%", width: "30%" }}>
+          <span className="operations-canvas-blueprint-title">{t("canvas.empty.blueprintCard1")}</span>
+          <i /><i style={{ width: "70%" }} /><i style={{ width: "45%" }} />
+        </span>
+        <span className="operations-canvas-blueprint-card" style={{ left: "44%", top: "30%", width: "28%" }}>
+          <span className="operations-canvas-blueprint-title">{t("canvas.empty.blueprintCard2")}</span>
+          <i /><i style={{ width: "55%" }} />
+        </span>
+        <span className="operations-canvas-blueprint-card" style={{ left: "18%", top: "60%", width: "34%" }}>
+          <span className="operations-canvas-blueprint-title">{t("canvas.empty.blueprintCard3")}</span>
+          <i /><i style={{ width: "80%" }} /><i style={{ width: "30%" }} />
+        </span>
+        <span className="operations-canvas-blueprint-caption operations-canvas-blueprint-caption--guide">{t("canvas.empty.blueprintGuide")}</span>
       </div>
     );
   }

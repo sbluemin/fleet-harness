@@ -1,6 +1,10 @@
 export const canvasEn = {
   // ── canvas ──────────────────────────────────────────────────────────────
-  "canvas.empty.noTheater": "Add a Theater from the sidebar to start operations.",
+  "canvas.empty.blueprintLead": "Once a Theater is registered, the map fills in like this",
+  "canvas.empty.blueprintCard1": "claude · your-project",
+  "canvas.empty.blueprintCard2": "codex · api-service",
+  "canvas.empty.blueprintCard3": "shell · notes",
+  "canvas.empty.blueprintGuide": "After registration: Shift-drag creates a Shell, right-click opens actions, drag pans and scroll zooms.",
   "canvas.empty.standingBy_one": "{count} operation standing by",
   "canvas.empty.standingBy_other": "{count} operations standing by",
   "canvas.empty.openOperation": "Open operation {title}",
@@ -152,6 +156,13 @@ export const canvasEn = {
   "sidebar.theater.actions": "Theater actions",
   "sidebar.theater.actionsMenuAria": "{theater} actions",
   "sidebar.theater.newTheater": "New Theater",
+  "sidebar.starter.eyebrow": "Commissioning · first Theater",
+  "sidebar.starter.title": "Start with one project folder",
+  "sidebar.starter.body": "A Theater is a project folder. Once registered it lists here, and you open Operations on the map.",
+  "sidebar.starter.chooseFolder": "Choose a folder…",
+  "sidebar.starter.addingTheater": "Adding Theater…",
+  "sidebar.starter.reopenGuide": "Show the setup guide again",
+  "sidebar.starter.hintSearch": "Search",
   "sidebar.theater.newGroup": "New group…",
   "sidebar.theater.forget": "Forget Theater",
   "sidebar.theater.newGroupNameAria": "New group name",
@@ -205,7 +216,11 @@ export const canvasEn = {
 } as const;
 
 export const canvasKo: Record<keyof typeof canvasEn, string> = {
-  "canvas.empty.noTheater": "사이드바에서 Theater를 추가해 Operation을 시작하세요.",
+  "canvas.empty.blueprintLead": "Theater를 등록하면 지도는 이렇게 채워집니다",
+  "canvas.empty.blueprintCard1": "claude · your-project",
+  "canvas.empty.blueprintCard2": "codex · api-service",
+  "canvas.empty.blueprintCard3": "shell · notes",
+  "canvas.empty.blueprintGuide": "등록 뒤에는 Shift-드래그로 Shell을 만들고, 우클릭으로 동작을 열고, 드래그로 이동·스크롤로 확대합니다.",
   // standby(꺼둠)는 War Room의 대기(awaiting)와 다른 상태다 — 같은 "대기"로 쓰면 빈 캔버스 "대기 6"과
   // War Room "대기 0"이 같은 세션에서 모순된다.
   "canvas.empty.standingBy_one": "꺼둔 Operation {count}개",
@@ -358,6 +373,13 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.theater.actions": "Theater 동작",
   "sidebar.theater.actionsMenuAria": "{theater} 동작",
   "sidebar.theater.newTheater": "새 Theater",
+  "sidebar.starter.eyebrow": "취역 · 첫 Theater",
+  "sidebar.starter.title": "프로젝트 폴더 하나로 시작합니다",
+  "sidebar.starter.body": "Theater는 프로젝트 폴더입니다. 등록하면 여기에 목록이 생기고, 지도에서 Operation을 엽니다.",
+  "sidebar.starter.chooseFolder": "폴더 선택…",
+  "sidebar.starter.addingTheater": "Theater 추가 중…",
+  "sidebar.starter.reopenGuide": "설정 가이드 다시 보기",
+  "sidebar.starter.hintSearch": "검색",
   "sidebar.theater.newGroup": "새 그룹…",
   "sidebar.theater.forget": "Theater 잊기",
   "sidebar.theater.newGroupNameAria": "새 그룹 이름",

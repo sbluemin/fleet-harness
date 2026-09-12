@@ -42,7 +42,7 @@ import {
   type PaletteCommandGroup,
   type ScoredPaletteCommand,
 } from "../palette-commands.js";
-import { stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
+import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
@@ -55,6 +55,7 @@ import {
   closeOperationSearch,
   focusOperation,
   openKeyboardShortcuts,
+  openOnboarding,
   openWhatsNew,
   operationSearchEntries,
   requestOperationLaunchMenu,
@@ -485,6 +486,14 @@ export function OperationSearch({
       }
       case "whats-new": {
         openWhatsNew();
+        break;
+      }
+      case "open-commissioning": {
+        // 팔레트가 닫히면서 오버레이가 열리므로 오버레이가 보는 activeElement는 제거 중인 팔레트 내부다.
+        // 팔레트를 연 시점의 요소를 채널로 넘겨 가이드가 닫힐 때 그 요소로 복원되게 한다.
+        stashCommissioningReturnFocus(previousFocusRef.current);
+        previousFocusRef.current = null;
+        openOnboarding();
         break;
       }
     }

@@ -108,7 +108,7 @@
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -425,7 +425,7 @@
   gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: 신호 wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
@@ -558,7 +558,7 @@
   justify-self: start;
   margin-top: var(--space-1);
   padding: 2px var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--brass);
@@ -589,7 +589,7 @@
   gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
