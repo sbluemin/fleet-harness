@@ -971,7 +971,7 @@ describe("Instrument core design contract", () => {
     // 손잡이는 저장값이 아니라 화면에 실린 재질을 말한다.
     expect(settings).toMatch(/const liquidGlass = \(state\?\.liquidGlass \?\? true\) && !lightTheme;/);
     // 그리고 끌 수 없다.
-    expect(settings).toMatch(/disabled=\{saving \|\| state === null \|\| lightTheme\}/);
+    expect(settings).toMatch(/disabled=\{saving\.has\("liquidGlass"\) \|\| state === null \|\| lightTheme\}/);
 
     // 도움말은 갈아 끼운다 — 기본 문안("끄면 원래대로")은 끌 수 없는 자리에서 거짓이 된다.
     expect(settings).toContain('t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")');
