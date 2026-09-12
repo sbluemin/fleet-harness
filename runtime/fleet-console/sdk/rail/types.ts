@@ -40,6 +40,8 @@ export interface RailSearchResult {
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
+  /** 행 앞에 설 글리프. 생략하면 팔레트는 이 결과를 낸 레일 엔트리의 아이콘을 쓴다. */
+  readonly icon?: ReactNode;
   readonly activate: () => void | Promise<void>;
   /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠지고 읽기 전용으로 렌더된다. */
   readonly kind?: "info";

@@ -56,15 +56,18 @@ export function PaletteSectionGlyph({ section }: { readonly section: "recent" | 
   return <span className="operation-search-section-glyph" aria-hidden="true">{SECTION_GLYPHS[section]}</span>;
 }
 
+/** 패널 검색 결과(파일·Codex 문서) 행의 선행 글리프 — 그 패널을 여는 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
+export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => ReactNode) | undefined }) {
+  const node = typeof icon === "function" ? icon() : icon;
+  return <span className="operation-search-command-glyph operation-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;
+}
+
 /** 명령 행의 선행 글리프. Theater는 사이드바 모노그램, 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteCommandGlyph({ command }: { readonly command: PaletteCommandEntry }) {
   if (command.glyph === "theater-monogram") {
     return <span className="operation-search-command-glyph operation-search-monogram" aria-hidden="true">{theaterInitials(command.monogramSource ?? command.label)}</span>;
   }
-  if (command.glyph === "rail-entry") {
-    const icon = typeof command.railIcon === "function" ? command.railIcon() : command.railIcon;
-    return <span className="operation-search-command-glyph operation-search-rail-icon" aria-hidden="true">{icon ?? LINE_GLYPHS["console-rail"]}</span>;
-  }
+  if (command.glyph === "rail-entry") return <PaletteRailIcon icon={command.railIcon} />;
   return <span className="operation-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;
 }
 
