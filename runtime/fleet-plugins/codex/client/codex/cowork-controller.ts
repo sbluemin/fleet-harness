@@ -650,6 +650,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         const turn = currentTurn();
         if (turn) patchTurn(turn.id, { state: "error", endedAt: Date.now(), error: cause instanceof Error ? cause.message : null });
         annotations = annotations.map(card => card.status === "sent" ? { ...card, status: "pending" } : card);
+        // 세션 생성(ensureSession)은 mutate를 거치지 않아 여기 도착해도 알림이 없다. 턴의 스파인
+        // 노드가 물러난 뒤에는 이 알림 카드가 실패를 말하는 유일한 자리다 — mutate가 이미 같은
+        // 원인으로 세운 알림은 같은 값으로 덮이므로 두 번 서지 않는다.
+        notice = noticeFrom(cause);
       }
     } finally {
       if (!attempt.cancelled && promptAttempt === attempt) {
