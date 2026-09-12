@@ -52,6 +52,7 @@ export function buildShortcutGroups(
         { combos: bound("console.quick-launch"), description: t("shortcuts.console.quickLaunch") },
         { combos: bound("console.toggle-sidebar"), description: t("shortcuts.console.toggleSidebar") },
         { combos: bound("console.toggle-rail"), description: t("shortcuts.console.toggleRail") },
+        { combos: bound("console.toggle-zen"), description: t("zen.toggle") },
       ],
     },
     {

@@ -357,6 +357,97 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);
 }
 
+/* Zen의 밴드 높이를 Map에 돌려준다. 대체 바나 상단 placeholder는 남기지 않는다. */
+.command-band:not(.is-fullscreen),
+.command-band.is-fullscreen.is-docked {
+  transition: margin-top var(--duration-base) var(--ease-glide), opacity var(--duration-base) var(--ease-glide), transform var(--duration-base) var(--ease-glide);
+}
+.console-shell.is-zen .command-band {
+  margin-top: calc(-1 * var(--chrome-band-height));
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.console-shell.is-zen .command-band.is-fullscreen:not(.is-docked) { margin-top: 0; }
+.zen-sidebar-chrome { display: contents; }
+.zen-sidebar-chrome[hidden],
+.right-rail-icons[hidden],
+.console-shell.is-zen .command-band-edge-reveal,
+.console-shell.is-zen .canvas-minimap,
+.console-shell.is-zen .canvas-minimap-fab,
+.console-shell.is-zen .canvas-shortcuts,
+.floating-widget-layer[hidden] { display: none; }
+.console-shell.is-zen .right-rail { width: var(--right-rail-panel-width, 0px); }
+.console-shell.is-zen .right-rail::before { display: none; }
+.zen-mode-attention {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: var(--z-rail, 10);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+  font: var(--t-xs) var(--font-body);
+  cursor: pointer;
+}
+.zen-mode-exit[hidden] { display: none; }
+.zen-mode-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* 종료는 부유 배지가 아니라 상단 경계에 붙은 손잡이다. Map 공간은 예약하지 않는다. */
+.zen-mode-exit {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-rail, 10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.zen-mode-exit-grip {
+  position: absolute;
+  top: 0;
+  left: var(--space-3);
+  right: var(--space-3);
+  height: 1px;
+  background: var(--surface-rim-strong);
+}
+.zen-mode-exit svg { width: 12px; height: 12px; }
+.zen-mode-exit:hover,
+.zen-mode-exit:focus-visible { background: var(--control-hover-fill); color: var(--brass-ink); }
+.zen-mode-exit:hover .zen-mode-exit-grip,
+.zen-mode-exit:focus-visible .zen-mode-exit-grip { background: var(--brass); }
+.zen-mode-exit:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.zen-mode-attention { right: auto; left: var(--space-4); color: var(--aurora-ink); }
+.zen-mode-attention:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+body:has([aria-modal="true"]:not([hidden])) .zen-mode-exit,
+body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .console-shell .command-band,
+  .zen-mode-exit { transition: none; }
+}
+
 /* 중앙 트랙이 모드 컨트롤을 좌우 대칭으로 품지 못하는 폭에서는 감추는 대신 좌측 플로우로
    되돌린다 — 모드 스위치는 캔버스 모드의 유일한 조작면이라 접을 수 없다. 판정은 JS 실측
    (밴드 폭 − 여백 하한×2 < 컨트롤 자연 폭)이고, 이 클래스는 그 결과만 받아 입는다. */

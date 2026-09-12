@@ -30,6 +30,7 @@ import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
+import { setZenMode, useZenMode } from "../zen-mode.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -55,6 +56,7 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
 }
 
 export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
+  const zenMode = useZenMode();
   const t = useT();
   const railShortcut = useRailShortcutLabel();
   const theaterFallback = t("rail.theater.fallback");
@@ -76,6 +78,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
+  useLayoutEffect(() => {
+    if (activePanelId === SETTINGS_RAIL_ENTRY_ID) setZenMode(false);
+  }, [activePanelId]);
   const railChromeExpanded = useRailChromeExpanded();
   const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
@@ -186,8 +191,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
     : 0;
   useLayoutEffect(() => {
-    reportRailOccupiedPx(railChromeExpanded ? RAIL_ICON_STRIP_WIDTH + slotWidth : 0);
-  }, [railChromeExpanded, slotWidth]);
+    reportRailOccupiedPx(railChromeExpanded ? (zenMode ? 0 : RAIL_ICON_STRIP_WIDTH) + slotWidth : 0);
+  }, [railChromeExpanded, slotWidth, zenMode]);
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -337,7 +342,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           />
         )}
       </div>
-      <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
+      <nav className="right-rail-icons" hidden={zenMode} inert={zenMode} aria-label={t("rail.chrome.toolsAria")}>
         {/* 창 동사(접기·열어 두기)는 도구 위, 열 최상단에 선다 — 카드 자신을 다루는 일은
             카드 안의 어떤 도구보다 먼저다(Periscope: 밴드 토글 퇴역, 접기는 패널 소유).
             픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서 접기는

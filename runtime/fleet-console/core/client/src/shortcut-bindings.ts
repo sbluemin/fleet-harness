@@ -28,6 +28,7 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.quick-launch", group: "console", descriptionKey: "shortcuts.console.quickLaunch", defaults: ["Mod+KeyJ", "Ctrl+Space"] },
   { id: "console.toggle-sidebar", group: "console", descriptionKey: "shortcuts.console.toggleSidebar", defaults: ["Mod+KeyB"] },
   { id: "console.toggle-rail", group: "console", descriptionKey: "shortcuts.console.toggleRail", defaults: ["Mod+Alt+KeyB"] },
+  { id: "console.toggle-zen", group: "console", descriptionKey: "zen.toggle", defaults: ["Mod+Alt+KeyZ"] },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.operations.undoClose", defaults: ["Mod+KeyZ"] },
   { id: "operations.sort-by-status", group: "operations", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
   { id: "operations.toggle-formation", group: "operations", descriptionKey: "shortcuts.map.toggleFormation", defaults: ["Alt+KeyF"] },

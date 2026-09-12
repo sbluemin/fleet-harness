@@ -37,6 +37,7 @@ import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { useViewMode } from "../view-mode-store.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { useZenMode } from "../zen-mode.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -78,6 +79,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 전면 캔버스 위 부유 크롬(사이드바·레일 카드)의 점유 폭. 크롬 구성의 소유자인 이 페이지가
   // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
   // Cruise는 인셋을 알고 Tactical은 모르는 감사 실패 양식이 재발한다.
+  const zenMode = useZenMode();
   const sideBar = useSideBarState();
   const queueRailPinned = useQueueRailPinned();
   const mapNarrow = useSideBarMapNarrow();
@@ -88,7 +90,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);
   }, [triageActive, queueRailPinned, mapNarrow]);
   const railOccupiedPx = useRailOccupiedPx();
-  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar);
+  const sideBarOccupiedPx = zenMode ? 0 : sideBarOccupiedWidth(sideBar);
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
     left: sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     top: 0,
@@ -751,6 +753,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           </button>
         </p>
       ) : null}
+      <div className="zen-sidebar-chrome" inert={zenMode} hidden={zenMode}>
       {triageActive ? (
         <TriageSideBar
           theaters={state.theaters}
@@ -802,7 +805,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onForgetTheater={handleForgetTheater}
       />
       )}
-      <div className="operations-center-stage" ref={bodyRef}>
+      </div>
+      <div className="operations-center-stage" ref={bodyRef} tabIndex={-1}>
         <OperationsCanvas
           state={state}
           arenaInsets={arenaInsets}
@@ -824,8 +828,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
           같은 접힘 상태를 쓰므로 독도 모드와 무관하게 이 페이지가 한 번만 세운다. */}
-      <SideBarEdgeDock />
-      <RailEdgeDock />
+      {zenMode ? null : <><SideBarEdgeDock /><RailEdgeDock /></>}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

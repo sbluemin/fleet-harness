@@ -49,6 +49,8 @@ import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "./experiment-model-options.js";
+import { setZenMode, toggleZenMode, useZenMode } from "./zen-mode.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -114,6 +116,30 @@ export function App() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
+  const zenMode = useZenMode();
+  const zenActive = zenMode && operationsViewVisible && !mobileLayout;
+  const zenAwaitingCount = state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
+  const zenContextRef = useRef(state.activeTheaterId);
+  const workFocusRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!operationsViewVisible || mobileLayout || zenContextRef.current !== state.activeTheaterId) setZenMode(false);
+    zenContextRef.current = state.activeTheaterId;
+  }, [operationsViewVisible, mobileLayout, state.activeTheaterId]);
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest(".operations-center-stage, .right-rail-panel-slot, .expanded-surface")) workFocusRef.current = target;
+    };
+    document.addEventListener("focusin", remember);
+    return () => document.removeEventListener("focusin", remember);
+  }, []);
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement) || !focused.closest("[inert], .zen-mode-exit[hidden]")) return;
+    const target = workFocusRef.current;
+    if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+    else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+  }, [zenActive]);
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -354,6 +380,7 @@ export function App() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
+        setZenMode(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
         if (outcome === "reveal") {
@@ -367,7 +394,11 @@ export function App() {
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,
       toggleQuickLaunch,
+      toggleZenMode: () => {
+        if (resolvePanelShortcut() === "apply") toggleZenMode();
+      },
       toggleRailChrome: () => {
+        setZenMode(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
         if (outcome === "reveal") {
@@ -384,7 +415,21 @@ export function App() {
 
   return (
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className="console-shell">
+      <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
+        <button type="button" className="zen-mode-exit" hidden={!zenActive} onClick={() => {
+          setZenMode(false);
+          requestAnimationFrame(() => {
+            const target = workFocusRef.current;
+            if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+            else document.querySelector<HTMLElement>(".operations-center-stage .xterm-helper-textarea, .operations-center-stage")?.focus({ preventScroll: true });
+          });
+        }} aria-label={t("zen.exit")}>
+          <span className="zen-mode-exit-grip" aria-hidden="true" />
+          <span>{t("zen.exitCompact")}</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7 3 3 3-3" /></svg>
+        </button>
+        {zenActive && zenAwaitingCount > 0 ? <button type="button" className="zen-mode-attention" onClick={() => openOperationSearch()}>{t("zen.awaiting", { count: zenAwaitingCount })}</button> : null}
+        <span className="zen-mode-announcement" role="status" aria-live="polite">{zenActive ? t("zen.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
