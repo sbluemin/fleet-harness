@@ -10856,6 +10856,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   flex: 0 1 auto;
 }
 
+/* 위치 줄의 문장형(브랜치 …, 폴더 …)은 보조기기에만 — 활동 마크의 이름과 함께 option의 접근성 이름에 남는다. */
+.operation-search-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .operation-search-result strong {
   display: block;
   min-width: 0;
