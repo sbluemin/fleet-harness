@@ -12,6 +12,8 @@ interface RailStore {
   readonly panelExtraWidth: number;
   /** detail이 떠난 동안 유지할 primary 열 폭. 카드의 분할 폭 기억과는 별개다. */
   readonly panelSoloWidth: number | null;
+  readonly panelSoloMaxWidth: number | null;
+  readonly panelWidthReset: number;
   readonly overlayAlpha: RailOverlayAlpha;
   /** 레일 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
   readonly railOccupiedPx: number;
@@ -37,6 +39,8 @@ let store: RailStore = {
   railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
   panelSoloWidth: null,
+  panelSoloMaxWidth: null,
+  panelWidthReset: 0,
   overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
   railPeeking: false,
@@ -105,11 +109,24 @@ export function requestRailPanelExtraWidth(panelId: string, px: number | null): 
   setStore({ ...store, panelExtraWidth: clamped });
 }
 
-export function requestRailPanelSoloWidth(panelId: string, px: number | null): void {
+export function requestRailPanelSoloWidth(panelId: string, px: number | null, maxWidth: number | null): void {
   if (store.activePanelId !== panelId) return;
   const next = px !== null && Number.isFinite(px) ? Math.max(0, Math.round(px)) : null;
-  if (next === store.panelSoloWidth) return;
-  setStore({ ...store, panelSoloWidth: next });
+  if (next === store.panelSoloWidth && maxWidth === store.panelSoloMaxWidth) return;
+  setStore({ ...store, panelSoloWidth: next, panelSoloMaxWidth: maxWidth });
+}
+
+export function resetRailPanelWidth(panelId: string): void {
+  if (store.activePanelId !== panelId) return;
+  setStore({ ...store, panelWidthReset: store.panelWidthReset + 1 });
+}
+
+export function useRailPanelWidthReset(): number {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelWidthReset;
+}
+
+export function useRailPanelSoloMaxWidth(): number | null {
+  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelSoloMaxWidth;
 }
 
 export function useRailPanelSoloWidth(): number | null {
@@ -150,13 +167,13 @@ export function useRailPeeking(): boolean {
 function activateRailPanel(id: string): void {
   if (store.activePanelId === id) return;
   // 교체는 이전 패널의 확장 폭 요구도 함께 내린다 — 화면에 없는 요구가 아레나를 점유하면 안 된다.
-  setStore({ ...store, activePanelId: id, panelExtraWidth: 0, panelSoloWidth: null });
+  setStore({ ...store, activePanelId: id, panelExtraWidth: 0, panelSoloWidth: null, panelSoloMaxWidth: null });
   saveStoredActivePanelId(id);
 }
 
 function deactivateRailPanel(): void {
   if (store.activePanelId === null) return;
-  setStore({ ...store, activePanelId: null, panelExtraWidth: 0, panelSoloWidth: null });
+  setStore({ ...store, activePanelId: null, panelExtraWidth: 0, panelSoloWidth: null, panelSoloMaxWidth: null });
   saveStoredActivePanelId(null);
 }
 

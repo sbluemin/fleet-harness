@@ -17,7 +17,7 @@ import { getState, subscribe } from "../store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPeeking } from "./rail-store.js";
+import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth, useRailPeeking } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -29,7 +29,7 @@ import {
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
-import { setPaneWidth } from "../pane/pane-width-store.js";
+import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -72,6 +72,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const activePanelId = useRailActivePanelId();
   const requestedExtraWidth = useRailPanelExtraWidth();
   const soloWidth = useRailPanelSoloWidth();
+  const soloMaxWidth = useRailPanelSoloMaxWidth();
+  const soloMaxWidthRef = useRef(soloMaxWidth);
+  soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
   const railChromeExpanded = useRailChromeExpanded();
   const railPeeking = useRailPeeking();
@@ -118,6 +121,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
   const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);
+  const maxResizeWidth = soloMaxWidth === null ? maxPanelWidth : Math.min(maxPanelWidth, soloMaxWidth + RAIL_CARD_BORDER_WIDTH);
 
   // 폭은 카드가 아니라 도구가 기억한다. 조절한 도구만 자기 값을 갖고, 손대지 않은 도구는
   // 계속 자기 선언값으로 열린다 — 그래야 페인이 기본값을 고쳤을 때 그 개선이 사용자에게 닿는다.
@@ -198,7 +202,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
 
     const onMove = (ev: PointerEvent) => {
       const dx = startX - ev.clientX;
-      const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.min(
+        Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current),
+        soloMaxWidthRef.current === null ? Infinity : soloMaxWidthRef.current + RAIL_CARD_BORDER_WIDTH,
+      ));
       const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Math.round(startWidth + dx)));
       cardWidthRef.current = next;
       setCardWidthState(next);
@@ -219,7 +226,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const handleResizeKeyDown = useCallback((event: React.KeyboardEvent) => {
     let next: number;
     const step = event.shiftKey ? 64 : 16;
-    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current));
+    const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.min(
+      Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current),
+      soloMaxWidthRef.current === null ? Infinity : soloMaxWidthRef.current + RAIL_CARD_BORDER_WIDTH,
+    ));
 
     switch (event.key) {
       case "ArrowLeft":
@@ -254,7 +264,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     const panelId = activePaneIdRef.current;
     if (panelId === null) return;
     const soloPane = soloPaneRef.current;
-    if (soloPane !== null) setPaneWidth(soloPane.id, Math.max(MIN_PANEL_WIDTH, resolvePaneDefaultWidth(soloPane)) - RAIL_CARD_BORDER_WIDTH);
+    if (soloPane !== null) {
+      clearPaneWidth(soloPane.id);
+      resetRailPanelWidth(panelId);
+    }
     else setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
   }, []);
 
@@ -304,7 +317,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
             aria-label={t("rail.chrome.resizeCard")}
             aria-valuenow={Math.round(cardWidth)}
             aria-valuemin={MIN_PANEL_WIDTH}
-            aria-valuemax={maxPanelWidth}
+            aria-valuemax={maxResizeWidth}
           />
         )}
         {activeBinding !== null && (

@@ -12,9 +12,9 @@ import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";
-import { clampPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
+import { clampPrimaryWidth, maxPrimaryWidth, MIN_PANE_PX, type PaneSplitLimits } from "./pane-geometry.js";
 import { resolvePaneDefaultWidth } from "../rail/pane-width.js";
-import { requestRailPanelSoloWidth } from "../rail/rail-store.js";
+import { requestRailPanelSoloWidth, useRailPanelWidthReset } from "../rail/rail-store.js";
 import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
 import { closePane, focusPane, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
@@ -167,6 +167,15 @@ export const RailSurface = memo(function RailSurface({
   // 바뀌므로, 복귀 때 그 값을 다시 채택하면 목록이 넓어지고 문서는 좁아진다. 화면 제약으로
   // 잘린 실측이 아니라 원하는 폭을 남겨, 좁은 창을 거쳐 돌아와도 원래 분할로 복원한다.
   const splitWidthRef = useRef<number | undefined>(undefined);
+  const splitMaxWidthRef = useRef<number | null>(null);
+  const widthReset = useRailPanelWidthReset();
+  const previousWidthResetRef = useRef(widthReset);
+  if (previousWidthResetRef.current !== widthReset) {
+    previousWidthResetRef.current = widthReset;
+    splitWidthRef.current = resolvePaneDefaultWidth(primary) - 2;
+    soloWidthRef.current = 0;
+  }
+  if (standing.length > 0 && surfaceWidth > 0) splitMaxWidthRef.current = maxPrimaryWidth(limits);
   const desiredPrimaryWidth = paneWidths[primary?.id ?? ""]
     ?? splitWidthRef.current
     ?? (soloWidthRef.current > 0 ? soloWidthRef.current : undefined)
@@ -177,9 +186,10 @@ export const RailSurface = memo(function RailSurface({
   const soloWidth = standing.length === 0 && splitWidthRef.current !== undefined
     ? desiredPrimaryWidth
     : null;
+  const soloMaxWidth = soloWidth === null ? null : splitMaxWidthRef.current;
   useLayoutEffect(() => {
-    requestRailPanelSoloWidth(entryId, soloWidth);
-  }, [entryId, soloWidth]);
+    requestRailPanelSoloWidth(entryId, soloWidth, soloMaxWidth);
+  }, [entryId, soloWidth, soloMaxWidth]);
 
   // detail이 서면 표면 전체가 그만큼 넓어져야 한다 — 그러지 않으면 새 열은 primary를 잘라
   // 먹는다. 예전에 플러그인이 `requestExtraWidth`로 하던 일이며, 이제 표면이 자기가 세운
