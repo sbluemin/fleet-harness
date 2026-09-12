@@ -344,7 +344,8 @@ function forChatCompletionsBackend(
   //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
   // DeepSeek V4 assistant/tool-turn reasoning 재생은 레거시 generic 어댑터의 HEAD
   // 공개 동작으로 유지한다. OpenCode 전용 정책은 instance-bound gate로만 적용한다.
-  const replayReasoning = request.model.startsWith("deepseek-v4-");
+  const replayReasoning = request.model.startsWith("deepseek-v4-")
+    || request.model === "deepseek-v4.1-flash";
   let pendingToolCalls: ChatWireToolCall[] = [];
   let pendingAssistantText: string | undefined;
   let pendingAssistantReasoning: string | undefined;
