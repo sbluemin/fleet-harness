@@ -62,7 +62,7 @@ export async function proxyToOpencode(
   signal: AbortSignal,
 ): Promise<void> {
   // 헤더·본문 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
-  const headers = opencodeAnthropicHeaders(requestHeaders, apiKey);
+  const headers = opencodeAnthropicHeaders(requestHeaders, apiKey, body.metadata?.user_id);
   // 클라이언트 요청 model은 provider wire id로 재작성되기 전 원본을 에코용으로 남긴다.
   const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
