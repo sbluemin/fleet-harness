@@ -247,6 +247,12 @@ function resolveModLabel(): string {
   return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
 }
 
+// ⌘K / Ctrl+K — 검색 팔레트 단축키 표기. 첫 실행 시작 블록처럼 팔레트 밖에서 그 단축키를 말하는 자리가 쓴다.
+export function searchShortcutLabel(): string {
+  const modLabel = resolveModLabel();
+  return `${modLabel}${modLabel === "⌘" ? "" : "+"}K`;
+}
+
 export function sideBarShortcutLabel(): string {
   const modLabel = resolveModLabel();
   return `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
