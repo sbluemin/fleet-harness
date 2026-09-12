@@ -1,6 +1,6 @@
 import { isBlockingDialogOpen } from "./shortcuts.js";
 import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
-import { isShortcutRecording, matchesShortcutCommand } from "./shortcut-bindings.js";
+import { CORE_SHORTCUT_COMMANDS, isShortcutRecording, matchesShortcutCommand } from "./shortcut-bindings.js";
 
 export type PanelShortcutOutcome = "suppress" | "reveal" | "apply";
 
@@ -26,6 +26,7 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly toggleQuickLaunch: () => void;
   readonly toggleRailChrome: () => void;
   readonly toggleZenMode?: () => void;
+  readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
 }
@@ -86,6 +87,15 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleZenMode();
+      return;
+    }
+    const surfaceCommand = CORE_SHORTCUT_COMMANDS.find((command) => command.railEntryId !== undefined && matches(command.id));
+    if (surfaceCommand?.railEntryId !== undefined) {
+      // 길게 눌러도 한 번만 토글한다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
+      if (event.repeat || dependencies.toggleRailSurface(surfaceCommand.railEntryId)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
       return;
     }
     if (matches("console.undo-close") && dependencies.canUndoLastClose?.()) {
