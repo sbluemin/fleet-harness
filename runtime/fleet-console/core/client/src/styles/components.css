@@ -10702,6 +10702,21 @@ body[data-side-bar-animating="true"] .canvas-operation {
   gap: 2px;
 }
 
+/* 패널 결과(파일·Codex 문서)는 제목과 부제를 한 줄에 둔다 — 제목이 먼저 자리를 갖고, 부제는 남은 폭에서 잘린다. */
+.operation-search-result-text-inline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.operation-search-result-text-inline strong {
+  flex: 0 1 auto;
+}
+
+.operation-search-result-text-inline small {
+  flex: 1 1 0;
+}
+
 .operation-search-result strong {
   display: block;
   min-width: 0;

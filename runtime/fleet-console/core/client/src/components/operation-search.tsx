@@ -658,9 +658,9 @@ export function OperationSearch({
             // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
             return (
               <div key={result.id} className="operation-search-result operation-search-panel-info">
-                <span className="operation-search-result-text">
+                <span className="operation-search-result-text operation-search-result-text-inline">
                   <strong>{highlightText(result.title, tokens)}</strong>
-                  {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                  {panelSubtitle(result) ? <small>{highlightText(panelSubtitle(result)!, tokens)}</small> : null}
                 </span>
               </div>
             );
@@ -680,9 +680,11 @@ export function OperationSearch({
               onMouseEnter={() => setSelectedIndex(index)}
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
-              <span className="operation-search-result-text">
+              {/* 패널 결과도 한 줄이다 — 부제(경로·태그)는 제목 오른쪽에 조용한 메타로 서고,
+                  제목과 같은 부제(파일명 = 상대 경로)는 반복하지 않는다. */}
+              <span className="operation-search-result-text operation-search-result-text-inline">
                 <strong>{highlightText(result.title, tokens)}</strong>
-                {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                {panelSubtitle(result) ? <small>{highlightText(panelSubtitle(result)!, tokens)}</small> : null}
               </span>
               <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
             </button>
@@ -915,6 +917,11 @@ function ensurePaletteCanvasTheater(state: ConsoleState): void {
   if (state.activeTheaterId && getLoadedTheaterId() !== state.activeTheaterId) {
     loadForTheater(state.activeTheaterId);
   }
+}
+
+function panelSubtitle(result: { readonly title: string; readonly subtitle?: string | null }): string | null {
+  const subtitle = result.subtitle?.trim();
+  return subtitle && subtitle !== result.title.trim() ? subtitle : null;
 }
 
 function operationGroupHeadingId(theaterId: string | null): string {
