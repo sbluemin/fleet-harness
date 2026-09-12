@@ -6173,6 +6173,67 @@ body[data-side-bar-animating="true"] .canvas-operation {
   line-height: 1.3;
 }
 
+/* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 사이드바 칩과 ⌘K 팔레트가 공유한다. 브랜치는 늘,
+   폴더는 Theater 루트를 벗어났을 때만. 글자색은 3티어이고 편차가 있을 때만 2티어로 한 단계 오른다.
+   상태(aurora/warn/coral/positive)·brass·--id-* 채널은 쓰지 않는다: 이 줄은 위치 사실이지 상태도 정체성도 아니다. */
+.operation-context {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.operation-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.operation-context-branch {
+  flex: 0 1 auto;
+}
+
+.operation-context-branch::before {
+  content: "⎇ ";
+  opacity: 0.8;
+}
+
+.operation-context-sep {
+  flex: none;
+  opacity: 0.6;
+}
+
+.operation-context-folder {
+  flex: 1 1 auto;
+}
+
+.operation-context-folder.is-outside::before {
+  content: "↗ ";
+  opacity: 0.8;
+}
+
+.operation-context--deviates {
+  color: var(--text-secondary);
+}
+
+/* 사이드바 칩의 "지금 어디" 줄 — 공통 .operation-context 문법을 쓰고, 최소화된 칩에서만 잉크가 한 단계 내려간다. */
+.side-bar-chip--minimized .side-bar-chip-context {
+  color: var(--ink-muted);
+}
+
+.side-bar-chip-rename-input {
+  flex: none;
+  width: 100%;
+  line-height: 1.3;
+}
+
 /* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 브랜치는 늘, 폴더는 Theater 루트를 벗어났을 때만.
    글자색은 3티어이고 편차가 있을 때만 2티어로 한 단계 오른다. 상태(aurora/warn/coral/positive)·
    brass·--id-* 채널은 쓰지 않는다: 이 줄은 위치 사실이지 상태도 정체성도 아니다. */
@@ -10780,6 +10841,29 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .operation-search-result-text-inline small {
   flex: 1 1 0;
+}
+
+/* ⌘K Operation 행의 "지금 어디" — 한 줄을 유지하려고 이름 옆에 같은 줄로 붙인다. 이름이 먼저 자리를
+   갖고 위치 줄은 남은 폭에서 잘린다. 사이드바와 같은 .operation-context 문법·잉크 위계를 쓰고,
+   활성 행에서도 brass를 받지 않는다. */
+.operation-search-result-text-inline .operation-context {
+  flex: 1 1 0;
+  letter-spacing: 0;
+  transform: translateY(-0.5px);
+}
+
+.operation-search-result-text-inline .operation-context-folder {
+  flex: 0 1 auto;
+}
+
+/* 위치 줄의 문장형(브랜치 …, 폴더 …)은 보조기기에만 — 활동 마크의 이름과 함께 option의 접근성 이름에 남는다. */
+.operation-search-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .operation-search-result strong {

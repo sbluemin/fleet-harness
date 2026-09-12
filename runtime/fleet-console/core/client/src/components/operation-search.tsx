@@ -10,6 +10,8 @@ import { openPane } from "../pane/pane-store.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { OperationNameMark } from "./operation-name-mark.js";
+import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "./operation-workspace-context.js";
+import { useAgentState } from "../agent/store.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
@@ -93,6 +95,7 @@ export function OperationSearch({
 }: OperationSearchProps) {
   const t = useT();
   const zenMode = useZenMode();
+  const sessions = useAgentState().sessions;
   const railBindings = useRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
@@ -817,6 +820,7 @@ export function OperationSearch({
                       const resultKey = operationResultKey(entry.operationId);
                       const stripOpen = actionsFor === entry.operationId;
                       const actions = stripOpen ? rowActions(entry) : [];
+                      const workspace = visibleWorkspace(sessions[entry.operationId]?.workspace);
                       return (
                         <div key={entry.operationId} className={`operation-search-row${stripOpen ? " has-actions" : ""}`}>
                           <button
@@ -841,8 +845,13 @@ export function OperationSearch({
                                 status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
                               />
                             </span>
-                            <span className="operation-search-result-text">
+                            {/* "지금 어디"는 사이드바 칩과 같은 투영(실험 기능이 켜진 동안만 온다)이다. 팔레트는
+                                한 줄 행을 지키려고 이름 옆 같은 줄에 붙이고, 접근성 이름에는 숨은 문장으로 덧붙인다 — aria-label로
+                                덮으면 활동 마크(실행 중·대기 등)의 이름까지 지워지므로 자손 텍스트로 남긴다. */}
+                            <span className={`operation-search-result-text${workspace ? " operation-search-result-text-inline" : ""}`}>
                               <strong>{highlightText(entry.operationName, tokens)}</strong>
+                              {workspace ? <OperationWorkspaceContext workspace={workspace} /> : null}
+                              {workspace ? <span className="operation-search-sr-only">{describeWorkspace(t, workspace)}</span> : null}
                             </span>
                             <span className="operation-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
                           </button>
