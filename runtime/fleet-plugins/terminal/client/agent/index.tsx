@@ -881,7 +881,16 @@ function SettingsHelp({ title, id, children }: {
   );
 }
 
+function useLoadSystemPromptSettings() {
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+}
+
 function HarnessSection() {
+  useLoadSystemPromptSettings();
   // 카드를 Fragment로 직접 반환한다 — 간격은 호스트의 .global-settings-detail이 진다.
   return (
     <>
@@ -901,13 +910,7 @@ function ClaudeCodeHarnessCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
-  }, []);
+  const saving = settings.savingFields;
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
@@ -939,7 +942,7 @@ function ClaudeCodeHarnessCard() {
             {/* 행 제목이 뜻을 말하므로 스위치 옆에 "켬/끔" 글자를 따로 세우지 않는다 — Settings의 다른 스위치와 같다. */}
             <SettingsToggle
               checked={state.claudeCodeSkipPermissions}
-              disabled={saving}
+              disabled={saving.has("claudeCodeSkipPermissions")}
               ariaLabel={t("terminal.settings.skipPermissionsTitle")}
               onChange={(next) => void setSystemPromptSettingsField("claudeCodeSkipPermissions", next)}
             />
@@ -954,7 +957,7 @@ function ClaudeCodeHarnessCard() {
             <Select
               aria-labelledby="claude-code-system-prompt-label"
               value={state.claudeCodeSystemPrompt}
-              disabled={saving}
+              disabled={saving.has("claudeCodeSystemPrompt")}
               options={[
                 { value: "on", label: t("terminal.settings.claudeSystemPromptOn") },
                 { value: "off", label: t("terminal.settings.claudeSystemPromptOff") },
@@ -967,7 +970,7 @@ function ClaudeCodeHarnessCard() {
           </div>
           <ClaudeBuiltInAgentsRows
             disabled={state.claudeCodeDisabledAgents}
-            saving={saving}
+            saving={saving.has("claudeCodeDisabledAgents")}
             onChange={(next) => void setSystemPromptSettingsField("claudeCodeDisabledAgents", next)}
           />
         </>
@@ -1129,13 +1132,7 @@ function AgentSessionsSettingsCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
-  }, []);
+  const saving = settings.savingFields;
 
   const selectValue = state?.agentIdleDormantMinutes === null
     ? "off"
@@ -1180,7 +1177,7 @@ function AgentSessionsSettingsCard() {
           <Select
             aria-labelledby="idle-agent-sessions-label"
             value={selectValue}
-            disabled={saving}
+            disabled={saving.has("agentIdleDormantMinutes")}
             options={idleOptions}
             onChange={(raw) => {
               const next = raw === "off" ? null : Number(raw);
@@ -1196,6 +1193,7 @@ function AgentSessionsSettingsCard() {
 }
 
 function AgentCliSection() {
+  useLoadSystemPromptSettings();
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
@@ -1353,18 +1351,12 @@ function AiGatewayCompactTimingCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
+  const saving = settings.savingFields.has("compactCeiling");
   const [previewId, setPreviewId] = React.useState<string>("");
   const [dragPercent, setDragPercent] = React.useState<number | null>(null);
   const trackRef = React.useRef<HTMLDivElement | null>(null);
   const draggingRef = React.useRef(false);
   const dragPercentRef = React.useRef<number | null>(null);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
-  }, []);
 
   if (!state) {
     return (
@@ -1466,7 +1458,6 @@ function AiGatewayCompactTimingCard() {
             options={previewModels.map((model) => ({ id: model.id, label: model.name, provider: model.provider, contextWindow: model.contextWindow }))}
             aria-labelledby="compact-timing-preview-label"
             onChange={(id) => setPreviewId(id)}
-            disabled={saving}
           />
         </div>
       ) : null}
@@ -1559,7 +1550,7 @@ function AiGatewayDiagnosticsCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
+  const saving = settings.savingFields;
 
   if (!state) {
     return (
@@ -1577,7 +1568,7 @@ function AiGatewayDiagnosticsCard() {
         title={t("terminal.settings.aiGatewayDiagnostics")}
         help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
         value={state.cursorDiagnosticsEnabled}
-        disabled={saving}
+        disabled={saving.has("cursorDiagnosticsEnabled")}
         onToggle={() => void setSystemPromptSettingsField(
           "cursorDiagnosticsEnabled",
           !state.cursorDiagnosticsEnabled,
@@ -1587,7 +1578,7 @@ function AiGatewayDiagnosticsCard() {
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
         value={state.wireLogEnabled}
-        disabled={saving}
+        disabled={saving.has("wireLogEnabled")}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
       />
     </section>
@@ -1667,7 +1658,7 @@ function AiGatewayModelsCard() {
   const settings = useSystemPromptSettingsStore();
   const auth = useModelAuthStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
+  const saving = settings.savingFields.has("aiGateway");
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const addButtonRef = React.useRef<HTMLButtonElement | null>(null);
   // 닫힐 때 포커스는 연 버튼으로 돌아온다 — 팔레트 안에 있던 포커스가 문서 바닥으로 떨어지면
@@ -1679,7 +1670,6 @@ function AiGatewayModelsCard() {
 
   React.useEffect(() => {
     const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
     void loadModelAuth(controller.signal);
     return () => controller.abort();
   }, []);
@@ -1863,7 +1853,7 @@ function AiGatewayModelsCard() {
                     <span className="ai-gateway-provider-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId])}</span>
                     <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayModelCount", { count: group.entries.length })}</span>
                     <span className="ai-gateway-group-controls">
-                      {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={saving} /> : null}
+                      {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={settings.savingFields.has("xaiEndpoint")} /> : null}
                       {/* 순위 셀렉트는 라벨과 함께 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
                       <span className="ai-gateway-priority-wrap">
                         <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayPriority")}</span>

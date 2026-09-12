@@ -14,7 +14,7 @@ import { SettingsHelp } from "../components/settings-help.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { PairDeviceDialog } from "../components/pair-device-dialog.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
-import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../global-settings-store.js";
+import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "../global-settings-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../i18n/index.js";
 import { isDesktopShell } from "../desktop-shell.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
@@ -211,7 +211,7 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
   return <>{render()}</>;
 }
 
-export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
+export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: ReadonlySet<GlobalSettingsField>, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
   /** 데스크톱 페인이 테마 카드에 덧세우는 행(우측 사이드바 불투명도) — 레일 없는 모바일은 넘기지 않는다. */
   readonly themeCardExtras?: ReactNode;
 }) {
@@ -227,22 +227,22 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
     case "appearance":
       return (
         <>
-          {state === null ? null : <LanguageCard state={state} saving={saving} />}
+          {state === null ? null : <LanguageCard state={state} saving={saving.has("language")} />}
           <ThemeCard state={state} saving={saving} extras={options?.themeCardExtras} />
-          <TypographyCard state={state} saving={saving} />
+          <TypographyCard state={state} saving={saving.has("uiFont")} />
         </>
       );
     // 언어는 겉모습에 품겨 있다 — 주소로 직접 들어온 옛 링크만 이 가지를 탄다.
     case "language":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
-      return <LanguageCard state={state} saving={saving} />;
+      return <LanguageCard state={state} saving={saving.has("language")} />;
     case "connectivity":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return (
         <>
-          <ConsolePortCard state={state} saving={saving} />
+          <ConsolePortCard state={state} saving={saving.has("consolePortMode") || saving.has("consoleStaticPort")} />
           {/* 목록에서 뺀 것과 별개로 경로도 막는다 — 주소로 직접 들어오는 길이 남으면 숨긴 것이 아니다. */}
-          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
+          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving.has("remoteAccess")} />}
         </>
       );
     case "advanced":
@@ -251,10 +251,10 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return (
         <>
-          <ExperimentsSection state={state} saving={saving} />
+          <ExperimentsSection state={state} saving={saving.has("experiments")} />
           {renderEmbeddedPluginSections(pluginSections, t)}
-          <ConsolePortCard state={state} saving={saving} />
-          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
+          <ConsolePortCard state={state} saving={saving.has("consolePortMode") || saving.has("consoleStaticPort")} />
+          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving.has("remoteAccess")} />}
         </>
       );
   }
@@ -304,7 +304,7 @@ export function ThemeCard({
   extras,
 }: {
   readonly state: GlobalSettingsState | null;
-  readonly saving: boolean;
+  readonly saving: ReadonlySet<GlobalSettingsField>;
   /** 비포커스 패널 흐리기 아래에 서는 추가 행 — 데스크톱 전용 크롬 재질 취향(좌·우 사이드바)이 들어온다. */
   readonly extras?: ReactNode;
 }) {
@@ -312,7 +312,7 @@ export function ThemeCard({
   const themes = buildThemeOptions(t);
   const activeTheme = state?.theme ?? "instrument";
   const selectTheme = (theme: ThemeId) => {
-    if (getGlobalSettingsStoreState().savingField !== null) return;
+    if (isSavingGlobalSettingsField("theme")) return;
     const previousTheme = activeTheme;
     setActiveTheme(theme);
     void setGlobalSettingsField("theme", theme).then((saved) => {
@@ -380,7 +380,7 @@ export function ThemeCard({
                     type="button"
                     aria-pressed={isActive}
                     className={`theme-card ${isActive ? "is-active" : ""}`}
-                    disabled={saving}
+                    disabled={saving.has("theme") || state === null}
                     onClick={() => selectTheme(theme.id)}
                   >
                     <span className="theme-card-swatch" aria-hidden="true">
@@ -409,7 +409,7 @@ export function ThemeCard({
             </div>
             <SettingsToggle
               checked={liquidGlass}
-              disabled={saving || state === null || lightTheme}
+              disabled={saving.has("liquidGlass") || state === null || lightTheme}
               ariaLabel={t("settings.theme.liquidGlass")}
               onChange={toggleLiquidGlass}
             />
@@ -431,7 +431,7 @@ export function ThemeCard({
               min={UNFOCUSED_PANEL_FADE_MIN}
               max={UNFOCUSED_PANEL_FADE_MAX}
               step={5}
-              disabled={saving || state === null}
+              disabled={saving.has("unfocusedPanelFade") || state === null}
               label={t("settings.theme.panelFade")}
               formatValue={(value) => `${value}%`}
               decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.panelFade") })}
@@ -487,7 +487,7 @@ export function TypographyCard({
   }, [t]);
 
   const saveUiFont = (uiFont: UiFontSettings) => {
-    if (getGlobalSettingsStoreState().savingField !== null) return;
+    if (isSavingGlobalSettingsField("uiFont")) return;
     const previousUiFont = activeUiFont;
     setActiveUiFont(uiFont);
     void setGlobalSettingsField("uiFont", uiFont).then((saved) => {

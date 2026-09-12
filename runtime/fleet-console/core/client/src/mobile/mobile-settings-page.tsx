@@ -50,7 +50,7 @@ interface MobileSettingsLocationState {
 export function MobileSettingsPage() {
   const settings = useGlobalSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
+  const saving = settings.savingFields.size > 0;
   const registry = usePluginRegistry();
   const locale = useConsoleLocale();
   const t = useT();
@@ -105,7 +105,7 @@ export function MobileSettingsPage() {
         <div className="mobile-settings-scroll">
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-            {renderSettingsSection(active.id, state, saving, pluginSections, t)}
+            {renderSettingsSection(active.id, state, settings.savingFields, pluginSections, t)}
           </div>
         </div>
       </section>

@@ -179,7 +179,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   const registry = usePluginRegistry();
   const settings = useGlobalSettingsStore();
   const state = settings.state;
-  const saving = settings.savingField !== null;
+  const saving = settings.savingFields;
   const [query, setQuery] = useState("");
 
   useEffect(() => {
