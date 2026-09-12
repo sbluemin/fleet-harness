@@ -10,6 +10,8 @@ import { openPane } from "../pane/pane-store.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { OperationNameMark } from "./operation-name-mark.js";
+import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "./operation-workspace-context.js";
+import { useAgentState } from "../agent/store.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
@@ -93,6 +95,7 @@ export function OperationSearch({
 }: OperationSearchProps) {
   const t = useT();
   const zenMode = useZenMode();
+  const sessions = useAgentState().sessions;
   const railBindings = useRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
@@ -817,6 +820,7 @@ export function OperationSearch({
                       const resultKey = operationResultKey(entry.operationId);
                       const stripOpen = actionsFor === entry.operationId;
                       const actions = stripOpen ? rowActions(entry) : [];
+                      const workspace = visibleWorkspace(sessions[entry.operationId]?.workspace);
                       return (
                         <div key={entry.operationId} className={`operation-search-row${stripOpen ? " has-actions" : ""}`}>
                           <button
@@ -829,6 +833,7 @@ export function OperationSearch({
                             className={`operation-search-result ${active ? "is-active" : ""}`}
                             role="option"
                             aria-selected={active}
+                            aria-label={workspace ? `${entry.operationName}${describeWorkspace(t, workspace)}` : undefined}
                             onMouseEnter={() => setSelectedIndex(index)}
                             onClick={() => selectEntry(entry.operationId)}
                           >
@@ -841,8 +846,11 @@ export function OperationSearch({
                                 status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
                               />
                             </span>
-                            <span className="operation-search-result-text">
+                            {/* "지금 어디"는 사이드바 칩과 같은 투영(실험 기능이 켜진 동안만 온다)이다. 팔레트는
+                                한 줄 행을 지키려고 이름 옆 같은 줄에 붙이고, 접근성 이름(aria-label)에는 문장으로 싣는다. */}
+                            <span className={`operation-search-result-text${workspace ? " operation-search-result-text-inline" : ""}`}>
                               <strong>{highlightText(entry.operationName, tokens)}</strong>
+                              {workspace ? <OperationWorkspaceContext workspace={workspace} /> : null}
                             </span>
                             <span className="operation-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
                           </button>
