@@ -793,8 +793,9 @@ class AgentChatSession {
         this.pushQueue();
         const before = this.seq;
         return this.dispatch(text).then(() => {
-          const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === "turn-end")?.event;
-          onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : "unknown");
+          const endingKind = readChatCommandLaneName(text) === null ? "turn-end" : "command-end";
+          const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === endingKind)?.event;
+          onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : end?.kind === "command-end" ? end.ok ? "succeeded" : "failed" : "unknown");
         });
       })
       .catch(() => undefined)

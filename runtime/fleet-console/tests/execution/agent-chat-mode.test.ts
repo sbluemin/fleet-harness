@@ -109,6 +109,8 @@ describe("agent chat mode routes", () => {
     expect(launched.operationId).not.toBe(sessionId);
     expect(harness.operation(launched.operationId!)?.payload.chatBorn).toBe(true);
     expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]);
+    const command = harness.consoleControl.request(sessionId, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
   });
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();
