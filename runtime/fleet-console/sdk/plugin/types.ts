@@ -39,31 +39,6 @@ export interface PromptRefinement {
   readonly notes: readonly string[];
 }
 
-/** 실험 기능 "런치 컨텍스트 팩"의 후보 한 줄. `text`가 프롬프트 뒤에 붙는 본문이다. */
-export interface LaunchContextCandidate {
-  readonly id: string;
-  readonly kind: string;
-  readonly title: string;
-  readonly detail?: string;
-  readonly text: string;
-}
-
-export interface LaunchContextInput {
-  readonly prompt: string;
-  readonly theaterId: string;
-  readonly language: ConsoleLocale;
-  readonly signal?: AbortSignal;
-}
-
-/**
- * 런치 직전 후보를 내놓는 공급자. 코어는 Wiki도 git도 모르므로 그것을 아는 플러그인이 등록한다.
- * 모델을 부르지 않는 조회여야 한다 — 이 표면의 비용 약속은 "검색만"이다.
- */
-export interface LaunchContextProvider {
-  readonly id: string;
-  readonly collect: (input: LaunchContextInput) => Promise<readonly LaunchContextCandidate[]>;
-}
-
 export interface LaunchContext {
   readonly theaterId: string;
   readonly kind: OperationLaunchKind;
@@ -221,8 +196,6 @@ export interface ClientExecutionProvider {
   readonly refinePrompt?: (input: PromptRefineInput) => Promise<PromptRefinement | null>;
   /** 후속 메시지 편집을 명시적으로 지원하는 Operation 타입. 생략하면 런치만 지원한다. */
   readonly promptRefineOperationTypes?: readonly string[];
-  /** 실험 기능 "런치 컨텍스트 팩"의 공급자들. */
-  readonly launchContextProviders?: readonly LaunchContextProvider[];
   /**
    * 모델 좌석 선택지에 보태는 모델들. 코어는 Claude 별칭만 알고, Gateway에서 켠 모델은 그것을
    * 아는 플러그인이 내놓는다.

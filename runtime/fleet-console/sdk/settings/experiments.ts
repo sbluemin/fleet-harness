@@ -5,13 +5,13 @@
  * 설정 한 곳이다. 같은 정제기를 서버·브라우저·플러그인이 나눠 쓰지 않으면 세 곳이 각자 다른
  * 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
  *
- * 모델은 기능마다 고른다. AI를 쓰는 기능은 자기 모델 필드를 갖고, 쓰지 않는 기능(컨텍스트 팩)이나
- * 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 — 부관단 카드가 모델을 갖는다)은 없다.
+ * 모델은 기능마다 고른다. 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 —
+ * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
  */
 
-export type ExperimentFeatureId = "promptRefine" | "launchContextPack" | "sessionWatch" | "aideConsoleRead";
+export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "aideConsoleRead";
 
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "launchContextPack", "sessionWatch", "aideConsoleRead"];
+export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "aideConsoleRead"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
@@ -22,8 +22,6 @@ export interface ConsoleExperimentSettings {
   /** Quick Launch가 사용자의 요청을 명확한 작업 지시문으로 고쳐 쓴 초안을 내놓는다(메타 프롬프팅). */
   readonly promptRefine: boolean;
   readonly promptRefineModel: string;
-  /** Quick Launch가 런치 직전 Wiki·커밋 후보를 보여 준다 — 모델 없음. */
-  readonly launchContextPack: boolean;
   /** Operation마다 켜는 세션 분석가 관찰. */
   readonly sessionWatch: boolean;
   readonly sessionWatchModel: string;
@@ -43,7 +41,6 @@ export const DEFAULT_EXPERIMENT_MODELS: Readonly<Record<ExperimentModelFeatureId
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   promptRefine: false,
   promptRefineModel: DEFAULT_EXPERIMENT_MODELS.promptRefine,
-  launchContextPack: false,
   sessionWatch: false,
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   aideConsoleRead: false,
@@ -94,7 +91,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
   return {
     promptRefine: record.promptRefine === true,
     promptRefineModel: model("promptRefine"),
-    launchContextPack: record.launchContextPack === true,
     sessionWatch: record.sessionWatch === true,
     sessionWatchModel: model("sessionWatch"),
     aideConsoleRead: record.aideConsoleRead === true,
