@@ -31,7 +31,8 @@ import {
 
 import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSkipPermissions, resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import type { WorkspaceHookBinding } from "./workspace-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
@@ -60,6 +61,7 @@ export interface TerminalLaunchResolverDeps {
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
@@ -154,6 +156,7 @@ export async function prepareChatClaudeSession(
     captureSessionHookExec: buildConsoleCaptureHookCommand(hookEntry, CHAT_PLUGIN_CLI_ID, createSessionCaptureHookExec),
     turnStartHookExec: buildConsoleTurnHookCommand(hookEntry, "start"),
     turnEndHookExec: buildConsoleTurnHookCommand(hookEntry, "end"),
+    workspaceHookExec: buildConsoleWorkspaceHookCommand(hookEntry),
     backgroundReportHookExec: buildConsoleBackgroundHookCommand(hookEntry),
     inputWaitingHookExec: buildConsoleAttentionHookCommand(hookEntry),
     autoNameHookExec: buildConsoleAutoNameHookCommand(hookEntry),
@@ -223,6 +226,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       createSessionCaptureHookExec,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
+      bindWorkspaceHook: deps.bindWorkspaceHook,
       resolveProfile,
       cliId: context?.cliId,
       model: context?.model,
@@ -271,6 +275,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
   readonly sessionId: string;
@@ -326,6 +331,7 @@ async function createAgentCliLaunchSpec(options: {
       ),
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
+      workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),
       backgroundReportHookExec: buildConsoleBackgroundHookCommand(options.hookEntry),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
@@ -369,6 +375,11 @@ async function createAgentCliLaunchSpec(options: {
         selection: gatewaySelection,
         compactHookToken: options.aiGateway.compactHookToken,
       });
+    }
+    const workspaceHook = options.bindWorkspaceHook?.(options.sessionId, injectedProfile.session.sessionId);
+    if (workspaceHook) {
+      cleanupStack.push(() => workspaceHook.dispose());
+      launchProfile = { ...launchProfile, env: { ...launchProfile.env, ...workspaceHook.env } };
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
     return toLaunchSpec(launchProfile, createOnceCleanup(async () => {

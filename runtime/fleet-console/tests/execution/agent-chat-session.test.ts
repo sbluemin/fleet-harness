@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../core/host/agent/chat-session.js";
+import { createWorkspaceHookRegistry } from "../../core/host/agent/workspace-hooks.js";
 import { initialAgentChatLogState, reduceAgentChatLog } from "../../core/client/src/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../core/host/agent/chat-events.js";
 
@@ -300,15 +301,27 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       const { factory } = createFakeSdkFactory([
         { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
       ]);
+      const locations: string[] = [];
+      const workspaceHooks = createWorkspaceHookRegistry((_id, cwd) => locations.push(cwd));
       const registry = new AgentChatRegistry(factory);
-      const session = await registry.ensure("op-env", () => freshSeedFor(home));
+      const session = await registry.ensure("op-env", () => ({
+        ...freshSeedFor(home),
+        bindWorkspaceHook: (id) => workspaceHooks.bind("op-env", id, () => true),
+      }));
       session.send("go");
       await drainTurn(registry, "op-env");
 
       expect(factory).toHaveBeenCalledWith(expect.objectContaining({
         env: expect.not.objectContaining({ FLEET_CONSOLE_SESSION_ID: expect.anything() }),
       }));
+      const env = (vi.mocked(factory as (options: { env: NodeJS.ProcessEnv }) => unknown).mock.calls[0]![0]).env;
+      expect(env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBe("op-env");
+      const cwd = path.resolve("chat-moved");
+      const input = JSON.stringify({ hook_event_name: "CwdChanged", session_id: fakeClaudeSession().sessionId, new_cwd: cwd });
+      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 1)).toBe(true);
+      expect(locations).toEqual([cwd]);
       await registry.disposeAll();
+      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false);
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;

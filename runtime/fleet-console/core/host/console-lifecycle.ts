@@ -88,6 +88,7 @@ export type ConsoleHookCommand =
   | { readonly command: "capture-session"; readonly provider: "claude" }
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
+  | { readonly command: "workspace" }
   | { readonly command: "background-report" }
   | { readonly command: "background-spawn" }
   | { readonly command: "background-stop" }
@@ -124,7 +125,7 @@ interface ConsoleDaemonChildObservation {
 // background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
 // hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
 // 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -159,6 +160,7 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   }
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
+  if (commandName === "workspace" && rest.length === 0) return { command: "workspace" };
   if (commandName === "background-report" && rest.length === 0) return { command: "background-report" };
   if (commandName === "background-spawn" && rest.length === 0) return { command: "background-spawn" };
   if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
@@ -596,6 +598,16 @@ export async function main(): Promise<void> {
   }
   if (process.argv[2] === "hook") {
     const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
+    if (hookCommand.command === "workspace") {
+      const sessionId = process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID;
+      const runId = process.env.FLEET_CONSOLE_WORKSPACE_RUN_ID;
+      if (!sessionId || !runId) return;
+      const observedAt = performance.timeOrigin;
+      await postAgentHook(`/sessions/${encodeURIComponent(sessionId)}/workspace`, {
+        runId, observedAt, input: await readStdinBestEffort(),
+      }, process.env);
+      return;
+    }
     if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
       // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(hook continuation과 block 출력 금지).
       // 턴 종료(Stop) payload에는 그 시점에 살아 있는 백그라운드 작업 목록도 실려 있다. 같은 POST로 넘겨

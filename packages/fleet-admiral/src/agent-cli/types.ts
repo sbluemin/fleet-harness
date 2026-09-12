@@ -89,6 +89,7 @@ export interface AgentCliInjectionContext {
    * `off`로 넣는다. 프로세스 단위 필터라 서브에이전트 목록에도 함께 적용된다.
    */
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
+  readonly workspaceHookExec?: FleetHookExec;
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
@@ -135,6 +136,7 @@ export interface CreateAgentCliPluginOptions {
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
+  readonly workspaceHookExec?: FleetHookExec;
   // 서브에이전트 종료(SubagentStop) 시점에 살아 있는 백그라운드 작업 목록을 호스트로 보고하는 hook.
   // 턴 종료(Stop) 시점의 같은 보고는 turnEndHookExec이 함께 실어 나른다.
   readonly backgroundReportHookExec?: FleetHookExec;

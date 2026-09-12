@@ -11,7 +11,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
       pluginRoot,
     ]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents),
+    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.workspaceHookExec),
     ...buildSearchToolArgs(),
     ...buildPermissionArgs(context.claudeCodeSkipPermissions),
   ];
@@ -81,6 +81,7 @@ function buildSearchToolArgs(): string[] {
 function buildSettingsArgs(
   skillOverrides: AgentCliInjectionContext["skillOverrides"],
   disabledAgents: AgentCliInjectionContext["claudeCodeDisabledAgents"],
+  workspaceHook: AgentCliInjectionContext["workspaceHookExec"],
 ): string[] {
   const settings: Record<string, unknown> = {};
   if (skillOverrides !== undefined && Object.keys(skillOverrides).length > 0) {
@@ -88,6 +89,17 @@ function buildSettingsArgs(
   }
   const deny = buildClaudeAgentDenyRules(disabledAgents);
   if (deny.length > 0) settings.permissions = { deny };
+  if (workspaceHook) {
+    // plugin CwdChanged는 2.1.212에서 누락된다. flag settings는 PTY와 SDK 양쪽에서 발화한다.
+    const hook = { type: "command", command: workspaceHook.command, args: [...workspaceHook.args] };
+    settings.hooks = {
+      CwdChanged: [{ hooks: [hook] }],
+      SessionStart: [{ hooks: [hook] }],
+      UserPromptSubmit: [{ hooks: [hook] }],
+      Stop: [{ hooks: [hook] }],
+      PostToolUse: [{ matcher: "EnterWorktree|ExitWorktree", hooks: [hook] }],
+    };
+  }
   if (Object.keys(settings).length === 0) return [];
   return ["--settings", JSON.stringify(settings)];
 }

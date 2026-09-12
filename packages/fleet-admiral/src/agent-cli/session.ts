@@ -34,6 +34,7 @@ export interface ClaudeSessionSdkOptions {
   readonly plugins: readonly { readonly path: string }[];
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
+  readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
 }
 
@@ -116,6 +117,7 @@ export async function prepareClaudeSession(
         // 리포의 `CLAUDE.md`와 사용자 설정을 표면에 따라 잃지 않는다.
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
+        ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
         ...(skillOverrides ? { skillOverrides } : {}),
       },
       request: {

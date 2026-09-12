@@ -35,6 +35,7 @@ export interface InjectAgentCliProfileOptions {
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
+  readonly workspaceHookExec?: FleetHookExec;
   // 입력 대기 신호 hook. Claude plugin에 와이어링된다.
   readonly inputWaitingHookExec?: FleetHookExec;
   // 살아 있는 백그라운드 작업 보고(SubagentStop) hook. 턴 종료 시점의 같은 보고는 turnEndHookExec이 함께 실어 나른다.
@@ -159,6 +160,7 @@ export async function injectAgentCliProfile(
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
+      workspaceHookExec: options.workspaceHookExec,
       inputWaitingHookExec: options.inputWaitingHookExec,
       backgroundReportHookExec: options.backgroundReportHookExec,
       autoNameHookExec: options.autoNameHookExec,
@@ -181,6 +183,7 @@ export async function injectAgentCliProfile(
       pluginRoots: session.pluginRoots,
       ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
       sessionCoordinate: session.coordinate,
+      ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(options.claudeCodeSkipPermissions !== undefined
         ? { claudeCodeSkipPermissions: options.claudeCodeSkipPermissions }

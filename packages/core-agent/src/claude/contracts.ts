@@ -196,6 +196,8 @@ export interface ClaudeGatewaySdkOptions {
    * 설정 파일 모양으로 들어오는 통로가 다시 생긴다.
    */
   readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  /** 호출자가 제공한 cwd 관찰 명령. plugin hook이 아닌 flag settings에 등록한다. */
+  readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   /**
    * 세션 설정 `ultracode`. CLI의 `--effort ultracode`가 켜는 것과 같은 자리 — `xhigh` 강도와
    * standing dynamic-workflow orchestration. `Options.effort` 단이 아니라 settings 플래그다.
