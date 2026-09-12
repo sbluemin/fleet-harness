@@ -294,7 +294,7 @@ const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
  * 창보다 큰 경우(큰 JSON 레코드 하나를 찍는 명령)에 개행이 창의 맨 끝에만 있거나 아예 없어서,
  * 그대로 잘라내면 화면이 **빈 꼬리**를 보인다. 잘린 줄 하나가 빈 화면보다 정직하다.
  */
-const TRANSCRIPT_CWD_READ_BYTES = 64 * 1024;
+const TRANSCRIPT_CWD_READ_WINDOWS: readonly number[] = [64 * 1024, 1024 * 1024, 8 * 1024 * 1024];
 
 /** 꼬리 창의 마지막 완전한 레코드가 말하는 절대 cwd. 잘린 첫 줄과 cwd 없는 레코드는 건너뛴다. */
 export function latestTranscriptCwd(text: string): string | null {
@@ -2003,9 +2003,15 @@ class AgentChatSession {
     if (!sessionId || this.disposed) return;
     const transcriptPath = await this.locateTranscript(sessionId);
     if (!transcriptPath) return;
-    const window = await readFileTail(transcriptPath, TRANSCRIPT_CWD_READ_BYTES);
-    if (window === null) return;
-    const cwd = latestTranscriptCwd(window.text);
+    // 마지막 레코드가 창보다 클 수 있다(큰 도구 결과). 창 경계에서 잘린 줄은 파싱되지 않으므로
+    // 완전한 레코드를 찾을 때까지 창을 넓히되, 파일 전체를 읽었으면 거기서 멈춘다.
+    let cwd: string | null = null;
+    for (const windowBytes of TRANSCRIPT_CWD_READ_WINDOWS) {
+      const window = await readFileTail(transcriptPath, windowBytes);
+      if (window === null) return;
+      cwd = latestTranscriptCwd(window.text);
+      if (cwd !== null || !window.headCut) break;
+    }
     if (cwd === null || cwd === this.reportedCwd || this.disposed) return;
     this.reportedCwd = cwd;
     this.seed.onCwdChanged?.(cwd);
