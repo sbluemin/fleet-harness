@@ -14,6 +14,7 @@ import {
   chordsEquivalent,
   companionDefaultChord,
   companionShortcutCommandId,
+  getShortcutOverrides,
   judgeRecordedChord,
   setShortcutRecording,
   useShortcutOverrides,
@@ -128,7 +129,7 @@ export function ShortcutsCard({ state, saving }: {
       if (chord === null) return;
       const verdict = judgeRecordedChord(chord);
       if (verdict.kind === "reject") {
-        setNote(row.commandId, { kind: "reject", text: t(verdict.reason === "blocked" ? "settings.shortcuts.rejectBlocked" : "settings.shortcuts.rejectNoModifier", { chord: chordLabel(chord) }) });
+        setNote(row.commandId, { kind: "reject", text: t(verdict.reason === "blocked" ? "settings.shortcuts.rejectBlocked" : verdict.reason === "reserved" ? "settings.shortcuts.rejectReserved" : "settings.shortcuts.rejectNoModifier", { chord: chordLabel(chord) }) });
         return;
       }
       // 같은 명령의 다른 자리(Quick Launch의 대안 조합)와 겹치면 두 문이 하나가 된다 — 거부.
@@ -140,14 +141,21 @@ export function ShortcutsCard({ state, saving }: {
       stopRecording();
       if (other) {
         // 충돌은 막되 길을 남긴다 — 두 명령의 조합을 서로 바꾸면 어느 쪽도 조합을 잃지 않는다.
-        const previousChord = chordsOf(row)[slot.index] ?? chord;
-        const otherIndex = chordsOf(other).findIndex((current) => chordsEquivalent(current, chord));
         setNote(row.commandId, {
           kind: "conflict",
           text: t("settings.shortcuts.conflict", { chord: chordLabel(chord), other: other.title }),
+          // 안내를 띄워 둔 채 다른 조합을 바꾸거나 설정이 다시 실릴 수 있다 — 클릭 시점의 등록부로
+          // 다시 계산해야 그 사이의 변경이 통째로 덮이지 않는다. 그새 충돌이 풀렸으면 그냥 배정한다.
           swap: () => {
-            const next = assign(other, otherIndex, previousChord, assign(row, slot.index, chord));
-            persist(next);
+            const live = getShortcutOverrides();
+            const previousChord = chordsOf(row, live)[slot.index] ?? chord;
+            const otherIndex = chordsOf(other, live).findIndex((current) => chordsEquivalent(current, chord));
+            if (otherIndex < 0) {
+              persist(assign(row, slot.index, chord, live));
+              setNote(row.commandId, { kind: "saved", text: t("settings.shortcuts.saved", { chord: chordLabel(chord) }) });
+              return;
+            }
+            persist(assign(other, otherIndex, previousChord, assign(row, slot.index, chord, live)));
             setNote(row.commandId, { kind: "saved", text: t("settings.shortcuts.swapped", { chord: chordLabel(chord), other: other.title, otherChord: chordLabel(previousChord) }) });
           },
         });

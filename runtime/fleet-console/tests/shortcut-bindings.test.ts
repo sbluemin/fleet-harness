@@ -46,5 +46,9 @@ describe("shortcut bindings", () => {
     expect(judgeRecordedChord("Mod+KeyW", true)).toEqual({ kind: "reject", reason: "blocked" });
     expect(judgeRecordedChord("Shift+Digit1", true)).toMatchObject({ kind: "ok" });
     expect(judgeRecordedChord("Ctrl+Space", true)).toMatchObject({ kind: "ok", warning: "ime" });
+    // Alt+화살표는 재배정 밖의 고정 문법이고, 플러그인이 선언할 수 있는 어떤 물리 코드든 기본값으로 산다.
+    expect(judgeRecordedChord("Alt+ArrowRight", true)).toEqual({ kind: "reject", reason: "reserved" });
+    expect(matchesChord(key({ altKey: true, code: "Numpad1", key: "1" }), "Alt+Numpad1", true)).toBe(true);
+    expect(chordFromKeyboardEvent(key({ ctrlKey: true, code: "Tab", key: "Tab" }), false)).toBeNull();
   });
 });

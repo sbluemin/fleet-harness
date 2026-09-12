@@ -9,10 +9,15 @@
 
 export type ShortcutBindings = Readonly<Record<string, readonly string[]>>;
 
-/** 수식키는 최소 하나 — 수식키 없는 문자는 타자를 삼키므로 저장 문법에서부터 막는다. */
-export const SHORTCUT_CHORD_PATTERN = /^(?=(?:Mod|Ctrl|Alt|Shift)\+)(?:Mod\+)?(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:Key[A-Z]|Digit[0-9]|F(?:[1-9]|1[0-2])|Space|Arrow(?:Up|Down|Left|Right)|Minus|Equal|BracketLeft|BracketRight|Semicolon|Quote|Comma|Period|Slash|Backslash|Backquote)$/u;
+/**
+ * 수식키는 최소 하나 — 수식키 없는 문자는 타자를 삼키므로 저장 문법에서부터 막는다.
+ * 키 코드는 `KeyboardEvent.code`의 전 범위를 받는다(플러그인이 SDK로 선언하는 companion 코드도
+ * 같은 공간이다). 수식키 자체(ShiftLeft 등)와 Escape·Tab만 키 자리에 올 수 없다.
+ */
+export const SHORTCUT_CHORD_PATTERN = /^(?=(?:Mod|Ctrl|Alt|Shift)\+)(?:Mod\+)?(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|Escape$|Tab$)[A-Za-z0-9]{1,32}$/u;
 
-const SHORTCUT_COMMAND_ID_PATTERN = /^[a-z][a-z0-9.-]{0,63}(?::[A-Za-z0-9_.-]{1,64}){0,2}$/u;
+/** 명령 id는 등록부의 불투명한 키다 — 플러그인 id·companion id가 그대로 들어오므로 길이와 제어 문자만 본다. */
+const SHORTCUT_COMMAND_ID_PATTERN = /^[^\p{Cc}]{1,256}$/u;
 
 /** 한 명령이 가질 수 있는 조합 수 — Quick Launch처럼 대안 조합이 하나 더 있는 경우까지. */
 export const SHORTCUT_CHORDS_PER_COMMAND_MAX = 2;

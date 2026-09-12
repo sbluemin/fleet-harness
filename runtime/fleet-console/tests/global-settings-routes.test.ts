@@ -86,7 +86,8 @@ describe("global settings routes", () => {
   });
 
   it("stores only well-formed shortcut bindings and rejects a malformed chord outright", async () => {
-    const shortcuts = { "console.toggle-sidebar": ["Mod+Shift+KeyB"], "console.quick-launch": ["Mod+KeyJ", "Alt+Space"] };
+    // companion 명령 id는 플러그인 id와 패널 id를 그대로 품는다 — 콜론·공백이 있어도 저장돼야 한다.
+    const shortcuts = { "console.toggle-sidebar": ["Mod+Shift+KeyB"], "console.quick-launch": ["Mod+KeyJ", "Alt+Space"], "companion:my plugin:analyst:chat": ["Alt+Numpad1"] };
     const harness = createRouterHarness({ authorized: true, body: { shortcuts } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.currentGeneral()?.shortcuts).toEqual(shortcuts);
@@ -94,7 +95,7 @@ describe("global settings routes", () => {
 
     // 물리 코드가 아닌 글자, 수식키 없는 조합, 중복 조합은 저장 전에 400이다 — 조용히 걸러 저장하면
     // 화면이 「저장됨」을 그리고 다른 창은 다른 조합을 발화한다.
-    for (const malformed of [{ "console.toggle-sidebar": ["Mod+b"] }, { "console.toggle-sidebar": ["KeyB"] }, { "console.quick-launch": ["Mod+KeyJ", "Mod+KeyJ"] }, { "console.toggle-sidebar": "Mod+KeyB" }]) {
+    for (const malformed of [{ "console.toggle-sidebar": ["Mod+b c"] }, { "console.toggle-sidebar": ["KeyB"] }, { "console.toggle-sidebar": ["Mod+ShiftLeft"] }, { "console.quick-launch": ["Mod+KeyJ", "Mod+KeyJ"] }, { "console.toggle-sidebar": "Mod+KeyB" }]) {
       const invalid = createRouterHarness({ authorized: true, body: { shortcuts: malformed } });
       await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
       expect(invalid.writes[0]).toEqual({ status: 400, body: { error: "invalid_shortcuts" } });
