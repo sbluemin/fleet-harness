@@ -1,3 +1,4 @@
+import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
@@ -358,21 +359,21 @@ export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
 }
 
 export function hydrateOperations(operations: readonly OperationNode[]): void {
-  setState({ operations, operationsHydrated: true });
+  setState({ operations: operations.map(normalizeOperationOwner), operationsHydrated: true });
 }
 
 // 초기 요청 응답이 늦는 동안 launch 수화가 먼저 도착할 수 있다. 그 패널을 초기 응답이 덮어쓰지 않게 합친다.
 export function hydrateInitialOperations(operations: readonly OperationNode[]): void {
   const initialIds = new Set(operations.map((operation) => operation.id));
   const launchedBeforeInitialHydration = state.operations.filter((operation) => !initialIds.has(operation.id));
-  setState({ operations: [...operations, ...launchedBeforeInitialHydration], operationsHydrated: true });
+  setState({ operations: [...operations.map(normalizeOperationOwner), ...launchedBeforeInitialHydration], operationsHydrated: true });
 }
 
 export function applyOperationUpdate(operation: OperationNode): void {
   const index = state.operations.findIndex((op) => op.id === operation.id);
   if (index === -1) return;
   const operations = [...state.operations];
-  operations[index] = operation;
+  operations[index] = normalizeOperationOwner(operation);
   setState({ operations });
 }
 

@@ -729,7 +729,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
-    const result: OperationCatalogPlugin[] = [{ id: null, title: "Agent", kinds: await coreLaunchKinds() }];
+    const result: OperationCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
     for (const plugin of pluginHost.plugins) {
       const providers = pluginLaunchCatalogProviders.get(plugin.manifest.id);
       if (!providers) continue;

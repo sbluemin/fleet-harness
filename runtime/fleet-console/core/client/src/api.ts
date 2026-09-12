@@ -340,7 +340,7 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     id: payload.id,
     theaterId: payload.theaterId,
     type: payload.type,
-    pluginId: payload.pluginId,
+    pluginId: payload.pluginId === "terminal" && payload.type === "agent" ? null : payload.pluginId,
     title: payload.title,
     payload: payload.payload,
     geometry: payload.geometry ?? null,

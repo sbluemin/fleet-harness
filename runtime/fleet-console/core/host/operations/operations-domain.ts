@@ -99,6 +99,8 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
   if (isResumableSession(node.payload?.session)) payload.resumeAvailable = true;
   return {
     ...node,
+    // 구 버전의 열린 탭도 읽을 수 있는 wire 신원. 영속 상태의 core 소유권은 바꾸지 않는다.
+    pluginId: node.pluginId === null && node.type === "agent" ? "terminal" : node.pluginId,
     payload,
   };
 }

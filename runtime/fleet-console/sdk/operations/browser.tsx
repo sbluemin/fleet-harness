@@ -1,3 +1,5 @@
+export { normalizeOperationOwner } from "./types.js";
+import { normalizeOperationOwner } from "./types.js";
 import * as React from "react";
 
 import { readLaunchVariantGroups } from "./launch-variants.js";
@@ -48,7 +50,7 @@ export function assertOperationNode(value: unknown): OperationNode {
   ) {
     throw new ApiError(500, "Invalid operation response");
   }
-  return payload as OperationNode;
+  return normalizeOperationOwner(payload as OperationNode);
 }
 
 export function hasForbiddenBrowserPayloadKey(value: unknown): boolean {
@@ -63,7 +65,7 @@ function readCatalogPlugin(value: unknown): OperationCatalogPlugin | null {
   if (!isRecord(value) || (value.id !== null && typeof value.id !== "string") || typeof value.title !== "string" || !Array.isArray(value.kinds)) return null;
   const kinds = value.kinds.map(readLaunchKind).filter((kind): kind is OperationLaunchKind => kind !== null);
   if (kinds.length === 0) return null;
-  return { id: value.id, title: value.title, kinds };
+  return { id: value.id === "terminal" ? null : value.id, title: value.title, kinds };
 }
 
 function readLaunchKind(value: unknown): OperationLaunchKind | null {

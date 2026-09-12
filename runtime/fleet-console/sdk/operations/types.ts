@@ -101,3 +101,8 @@ export interface OperationCatalogPlugin {
 }
 
 export type OperationLaunchCatalogProvider = () => readonly OperationLaunchKind[] | Promise<readonly OperationLaunchKind[]>;
+
+/** 구 버전 wire 신원을 내부 core 소유권으로 해석한다. 저장·실행에는 가상 플러그인을 만들지 않는다. */
+export function normalizeOperationOwner<T extends { readonly pluginId: string | null; readonly type: string }>(operation: T): T {
+  return operation.pluginId === "terminal" && operation.type === "agent" ? { ...operation, pluginId: null } : operation;
+}
