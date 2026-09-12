@@ -375,8 +375,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .console-shell.is-zen .command-band-edge-reveal,
 .console-shell.is-zen .canvas-minimap,
 .console-shell.is-zen .canvas-minimap-fab,
-.console-shell.is-zen .canvas-shortcuts,
-.floating-widget-layer[hidden] { display: none; }
+.console-shell.is-zen .canvas-shortcuts { display: none; }
 .console-shell.is-zen .right-rail { width: var(--right-rail-panel-width, 0px); }
 .console-shell.is-zen .right-rail::before { display: none; }
 .zen-mode-attention {

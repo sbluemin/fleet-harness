@@ -26,10 +26,7 @@ import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { focusOperation, getState, openQuickLaunch, openQuickLaunchWithDraft, subscribe as subscribeStore } from "./store.js";
 
-import { useZenMode } from "./zen-mode.js";
-
 export function FloatingWidgetLayer() {
-  const zenMode = useZenMode();
   const { floatingWidgets } = usePluginRegistry();
   const language = useConsoleLocale();
   const navigate = useNavigate();
@@ -75,7 +72,7 @@ export function FloatingWidgetLayer() {
   if (floatingWidgets.length === 0) return null;
 
   return (
-    <div className="floating-widget-layer" hidden={zenMode} inert={zenMode}>
+    <div className="floating-widget-layer">
       {floatingWidgets.map((descriptor) => (
         <div key={descriptor.id} className="floating-widget">
           <PluginErrorBoundary>
@@ -271,13 +268,15 @@ interface ManagedKeepOutCapability {
 
 /**
  * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), Quick Launch 카드와 그 덱, 모달
- * 대화상자의 본문이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
+ * 대화상자의 본문, Zen 종료·대기 알림 버튼이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
  * 곳이 없고, 그런 표면은 이미 위젯의 포인터 입력을 막는다(layout.css 계약).
  */
 const KEEP_OUT_SELECTOR = [
   ".rail-pane:not(.is-parked)",
   ".quick-launch-card",
   ".quick-launch-overlay [role=\"listbox\"]",
+  ".zen-mode-exit:not([hidden])",
+  ".zen-mode-attention",
   "[aria-modal=\"true\"]",
   "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.quick-launch-overlay):not(.floating-widget-layer *)",
 ].join(", ");
