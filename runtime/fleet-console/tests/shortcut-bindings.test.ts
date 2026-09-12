@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chordFromKeyboardEvent, judgeRecordedChord, matchesChord, setShortcutOverrides, resolveShortcutChords } from "../core/client/src/shortcut-bindings.js";
+import { chordFromKeyboardEvent, chordsEquivalent, judgeRecordedChord, matchesChord, setShortcutOverrides, resolveShortcutChords } from "../core/client/src/shortcut-bindings.js";
 
 function key(overrides: Partial<{ code: string; key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }>) {
   return { code: "KeyB", key: "b", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...overrides };
@@ -28,6 +28,13 @@ describe("shortcut bindings", () => {
     expect(matchesChord(key({ ctrlKey: true, altKey: true, key: "b" }), "Mod+Alt+KeyB", false)).toBe(true);
     // macOS는 ⌘⌥로 발화하며 ⌥B의 합성문자(∫)는 무시한다.
     expect(matchesChord(key({ metaKey: true, altKey: true, key: "∫" }), "Mod+Alt+KeyB", true)).toBe(true);
+  });
+
+  it("treats Ctrl and Mod as one physical key off Apple platforms when detecting conflicts", () => {
+    // Windows에서 Ctrl+Space를 기록하면 `Mod+Space`가 되고, Quick Launch의 기본 `Ctrl+Space`와 같은 키다.
+    expect(chordsEquivalent("Mod+Space", "Ctrl+Space", false)).toBe(true);
+    expect(chordsEquivalent("Mod+Space", "Ctrl+Space", true)).toBe(false);
+    expect(chordsEquivalent("Mod+KeyK", "Mod+Shift+KeyK", false)).toBe(false);
   });
 
   it("records physical chords and refuses ones that would capture typing or close the window", () => {

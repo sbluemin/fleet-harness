@@ -11,10 +11,10 @@ import {
   chordFromKeyboardEvent,
   chordKeyLabels,
   chordLabel,
+  chordsEquivalent,
   companionDefaultChord,
   companionShortcutCommandId,
   judgeRecordedChord,
-  setShortcutOverrides,
   setShortcutRecording,
   useShortcutOverrides,
   withShortcutOverride,
@@ -92,12 +92,9 @@ export function ShortcutsCard({ state, saving }: {
   const isCustom = (row: ShortcutRow) => chordsOf(row).some((chord, index) => chord !== row.defaults[index]);
   const anyCustom = rows.some(isCustom);
 
+  // 등록부는 설정 스토어가 몬다 — 낙관 반영과 실패 되돌림이 한 곳(setSnapshot)에서 일어난다.
   const persist = (next: ShortcutBindings) => {
-    const previous = overrides;
-    setShortcutOverrides(next);
-    void setGlobalSettingsField("shortcuts", next).then((saved) => {
-      if (!saved) setShortcutOverrides(previous);
-    });
+    void setGlobalSettingsField("shortcuts", next);
   };
 
   const setNote = (commandId: string, note: RowNote | null) => {
@@ -135,16 +132,16 @@ export function ShortcutsCard({ state, saving }: {
         return;
       }
       // 같은 명령의 다른 자리(Quick Launch의 대안 조합)와 겹치면 두 문이 하나가 된다 — 거부.
-      if (chordsOf(row).some((current, at) => at !== slot.index && current === chord)) {
+      if (chordsOf(row).some((current, at) => at !== slot.index && chordsEquivalent(current, chord))) {
         setNote(row.commandId, { kind: "reject", text: t("settings.shortcuts.rejectSameCommand", { chord: chordLabel(chord) }) });
         return;
       }
-      const other = rows.find((candidate) => candidate.commandId !== row.commandId && chordsOf(candidate).includes(chord));
+      const other = rows.find((candidate) => candidate.commandId !== row.commandId && chordsOf(candidate).some((current) => chordsEquivalent(current, chord)));
       stopRecording();
       if (other) {
         // 충돌은 막되 길을 남긴다 — 두 명령의 조합을 서로 바꾸면 어느 쪽도 조합을 잃지 않는다.
         const previousChord = chordsOf(row)[slot.index] ?? chord;
-        const otherIndex = chordsOf(other).indexOf(chord);
+        const otherIndex = chordsOf(other).findIndex((current) => chordsEquivalent(current, chord));
         setNote(row.commandId, {
           kind: "conflict",
           text: t("settings.shortcuts.conflict", { chord: chordLabel(chord), other: other.title }),

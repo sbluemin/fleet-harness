@@ -195,6 +195,23 @@ export function matchesChord(event: ChordEventLike, chord: string, apple: boolea
   return true;
 }
 
+/**
+ * 두 조합이 같은 물리 동작인가. macOS 밖에서는 Ctrl이 곧 Mod라 `Ctrl+Space`와 `Mod+Space`가 한 키다 —
+ * 문자열이 달라도 겹침으로 봐야 나중에 배정한 명령이 앞선 분기에 가려지는 일이 없다.
+ */
+export function chordsEquivalent(a: string, b: string, apple: boolean = isApplePlatform()): boolean {
+  if (a === b) return true;
+  if (apple) return false;
+  const fold = (chord: string) => {
+    const parsed = parseChord(chord);
+    if (parsed === null) return chord;
+    const modifiers = new Set(parsed.modifiers);
+    if (modifiers.delete("Ctrl")) modifiers.add("Mod");
+    return serializeChord(modifiers, parsed.code);
+  };
+  return fold(a) === fold(b);
+}
+
 export function matchesShortcutCommand(event: ChordEventLike, commandId: string, apple: boolean = isApplePlatform()): boolean {
   return resolveShortcutChords(commandId).some((chord) => matchesChord(event, chord, apple));
 }
