@@ -47,6 +47,7 @@ import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
+import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -136,11 +137,12 @@ export interface AgentChatSessionSeed {
    */
   readonly onTurnEnded?: () => void;
   /**
-   * 자식이 턴 동안 옮겨 간 작업 디렉터리. hook이 닿지 않는 채팅 자식의 cwd는 트랜스크립트
-   * 레코드가 유일한 출처라, 턴이 닫힐 때 마지막 레코드의 `cwd`를 읽어 바뀌었을 때만 알린다.
+   * 턴이 닫힐 때 transcript의 마지막 cwd로 위치 보고를 보정한다. 실행별 hook 바인딩이
+   * 있으면 그 바인딩을 통해 보고하고, 없는 호출자는 이 콜백을 쓴다.
    * 절대 경로는 여기서 호스트 추적기로만 들어가고 브라우저로는 투영만 나간다.
    */
   readonly onCwdChanged?: (cwd: string) => void;
+  readonly bindWorkspaceHook?: (providerSessionId: string) => WorkspaceHookBinding;
   /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
@@ -355,6 +357,7 @@ class AgentChatSession {
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
   /** admiral이 확정한 이 세션의 좌표. 세션당 한 번 받아 두고 dispose에서 반납한다. */
   private claudeSession: ClaudeSessionHandle | null = null;
+  private workspaceHook: WorkspaceHookBinding | null = null;
   private claudeSessionFlight: Promise<ClaudeSessionHandle> | null = null;
   /**
    * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
@@ -963,6 +966,8 @@ class AgentChatSession {
     session?.close();
     const sdk = this.sdk;
     this.sdk = null;
+    this.workspaceHook?.dispose();
+    this.workspaceHook = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
     // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
@@ -1475,6 +1480,7 @@ class AgentChatSession {
             this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
             throw error instanceof Error ? error : new Error("Fleet plugin session unavailable");
           });
+        this.workspaceHook = this.seed.bindWorkspaceHook?.(claudeSession.sessionId) ?? null;
         try {
           const sdk = await this.createSdk({
             baseUrl: this.seed.baseUrl,
@@ -1489,6 +1495,7 @@ class AgentChatSession {
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
               ...chatChildEnv(process.env),
+              ...this.workspaceHook?.env,
               FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
               ...(this.seed.compactHookToken
                 ? { FLEET_COMPACT_HOOK_TOKEN: this.seed.compactHookToken }
@@ -1502,6 +1509,8 @@ class AgentChatSession {
           this.sdk = sdk;
           return sdk;
         } catch (error) {
+          this.workspaceHook?.dispose();
+          this.workspaceHook = null;
           // 트리는 그대로 둔다 — 이 세션의 것이고, 다음 시도가 같은 자리를 다시 쓴다.
           this.claudeSession = null;
           throw error;
@@ -2001,6 +2010,8 @@ class AgentChatSession {
   private async reportTranscriptCwd(): Promise<void> {
     const sessionId = this.latestSessionId;
     if (!sessionId || this.disposed) return;
+    const binding = this.workspaceHook;
+    const revision = binding?.revision ?? 0;
     const transcriptPath = await this.locateTranscript(sessionId);
     if (!transcriptPath) return;
     // 마지막 레코드가 창보다 클 수 있다(큰 도구 결과). 창 경계에서 잘린 줄은 파싱되지 않으므로
@@ -2012,9 +2023,10 @@ class AgentChatSession {
       cwd = latestTranscriptCwd(window.text);
       if (cwd !== null || !window.headCut) break;
     }
-    if (cwd === null || cwd === this.reportedCwd || this.disposed) return;
+    if (cwd === null || (!binding && cwd === this.reportedCwd) || this.disposed) return;
     this.reportedCwd = cwd;
-    this.seed.onCwdChanged?.(cwd);
+    if (binding) binding.observe(cwd, revision);
+    else this.seed.onCwdChanged?.(cwd);
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */
@@ -2047,7 +2059,14 @@ class AgentChatSession {
    * 화면은 오지 않을 결말을 기다리고, 그 조용한 거짓말이 이 원장이 고치려던 바로 그것이다.
    */
   private retireSession(session: ClaudeGatewaySession): void {
-    if (this.session === session) this.session = null;
+    if (this.session === session) {
+      this.session = null;
+      this.workspaceHook?.dispose();
+      this.workspaceHook = null;
+      const sdk = this.sdk;
+      this.sdk = null;
+      if (sdk) void sdk.dispose().catch(() => undefined);
+    }
     this.readerDone = null;
     // 스트림이 끝났다고 슬롯이 돌아오지는 않는다 — SDK 인스턴스는 `close()`를 받아야 자리를
     // 비운다. 부르지 않으면 다음 메시지의 openSession이 "이미 세션이 돈다"로 거절되고, 그때부터

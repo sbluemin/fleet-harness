@@ -21,6 +21,10 @@ export function buildConsoleTurnHookCommand(entry: ConsoleHookCommandEntry, phas
   return buildConsoleCliHookExec(entry, ["hook", phase === "start" ? "turn-start" : "turn-end"]);
 }
 
+export function buildConsoleWorkspaceHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
+  return buildConsoleCliHookExec(entry, ["hook", "workspace"]);
+}
+
 export function buildConsoleBackgroundHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
   return buildConsoleCliHookExec(entry, ["hook", "background-report"]);
 }

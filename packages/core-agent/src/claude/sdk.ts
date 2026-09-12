@@ -124,7 +124,7 @@ export async function createClaudeGatewaySdk(
       ? { plugins: options.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, skipMcpDiscovery: true })) }
       : {}),
     // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
-    // skillOverrides와 ultracode만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
+    // 명시한 키만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
     ...vendorFlagSettings(options),
     ...(request.effort === undefined ? {} : { effort: request.effort }),
     ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
@@ -373,6 +373,16 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
     settings.skillOverrides = { ...options.skillOverrides };
   }
   if (options.ultracode === true) settings.ultracode = true;
+  if (options.cwdHook) {
+    const hook = { type: "command", command: options.cwdHook.command, args: [...options.cwdHook.args] };
+    settings.hooks = {
+      CwdChanged: [{ hooks: [hook] }],
+      SessionStart: [{ hooks: [hook] }],
+      UserPromptSubmit: [{ hooks: [hook] }],
+      Stop: [{ hooks: [hook] }],
+      PostToolUse: [{ matcher: "EnterWorktree|ExitWorktree", hooks: [hook] }],
+    };
+  }
   return Object.keys(settings).length > 0 ? { settings } : {};
 }
 

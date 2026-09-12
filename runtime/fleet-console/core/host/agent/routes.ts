@@ -35,6 +35,7 @@ import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./analysis-types.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
+import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
@@ -129,6 +130,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -163,6 +165,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const updated = observability.setTerminalSessionWorkspace(sessionId, workspace);
       if (updated) observability.notifySessionUpdated(updated);
     },
+  });
+  const workspaceHooks = createWorkspaceHookRegistry((operationId, cwd) => {
+    const operation = ctx.host.operations.get(operationId);
+    if (operation) workspaceContext.observe(operationId, operation.theaterId, cwd);
   });
   workspaceContext.setEnabled(ctx.host.experiments?.read().operationContext === true);
   const unsubscribeExperiments = ctx.host.experiments?.subscribe?.((settings) => workspaceContext.setEnabled(settings.operationContext === true)) ?? (() => undefined);
@@ -218,6 +224,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
+    bindWorkspaceHook: (operationId, providerSessionId) => workspaceHooks.bind(operationId, providerSessionId, () => {
+      const session = observability.getTerminalSessionInfo(operationId);
+      return !!session && session.chatActive !== true && session.status !== "dormant";
+    }),
   });
   const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OPERATION_TYPE, (sessionId, title) => {
     // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
@@ -620,6 +630,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   async function handleSessionItem(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string, action: string): Promise<boolean> {
+    if (action === "workspace") return handleWorkspace(req, res, sessionId);
     if (action === "turn") return handleTurn(req, res, sessionId);
     if (action === "background") return handleBackground(req, res, sessionId);
     if (action === "attention") return handleAttention(req, res, sessionId);
@@ -1515,6 +1526,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         onTurnEnded: () => deps.onTurnEnded?.(node.id),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
+        bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,
+          () => observability.getTerminalSessionInfo(node.id)?.chatActive === true),
         reportActivity: (working) => {
           const updated = observability.setTerminalSessionChatWorking(node.id, working);
           // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
@@ -1539,6 +1552,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     };
   }
 
+  async function handleWorkspace(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
+    const body = await ctx.host.http.readJsonBody<{ runId?: unknown; input?: unknown; observedAt?: unknown }>(req);
+    const accepted = workspaceHooks.report(sessionId, body?.runId, body?.input, body?.observedAt);
+    ctx.host.http.writeJson(res, 200, { ok: true, accepted });
+    return true;
+  }
+
   async function handleTurn(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
@@ -1557,7 +1579,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // hook stdin의 cwd는 에이전트가 세션 중 옮겨 간 자리다 — 실행 cwd와 다르면 "지금 어디" 축이 따라간다.
     // 절대 경로는 여기서 추적기로만 들어가고 DTO에는 투영만 실린다.
     const hookCwd = readHookCwd(body?.input);
-    if (hookCwd) {
+    if (hookCwd && !workspaceHooks.has(sessionId)) {
       const theaterId = observability.getTerminalSessionInfo(sessionId)?.theaterId;
       if (theaterId) workspaceContext.observe(sessionId, theaterId, hookCwd);
     }
@@ -1774,6 +1796,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
     unsubscribeExperiments();
+    workspaceHooks.dispose();
     workspaceContext.dispose();
     launchAttachments.cleanup();
     await runtime.cleanup();

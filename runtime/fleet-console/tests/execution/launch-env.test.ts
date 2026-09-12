@@ -41,12 +41,16 @@ describe("chatChildEnv", () => {
     const env = chatChildEnv({
       PATH: "/usr/bin",
       FLEET_CONSOLE_SESSION_ID: "terminal-session-1",
+      FLEET_CONSOLE_WORKSPACE_SESSION_ID: "terminal-session-1",
+      FLEET_CONSOLE_WORKSPACE_RUN_ID: "old-run",
       FLEET_CONSOLE_DIR: "/Users/op/.fleet/console",
     });
     expect(env.PATH).toBe("/usr/bin");
     expect(env.FLEET_CONSOLE_DIR).toBe("/Users/op/.fleet/console");
     // 상속된 터미널 세션 id를 따라가면 이 자식의 훅이 남의 세션 축에 보고한다.
     expect(env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+    expect(env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBeUndefined();
+    expect(env.FLEET_CONSOLE_WORKSPACE_RUN_ID).toBeUndefined();
     // SDK 진입점의 기본값은 Artifact 비활성이고, 그러면 도구와 함께 artifact-* 스킬 셋이
     // 자식의 목록에서 사라져 컴포저 덱에도 서지 못한다.
     expect(env.CLAUDE_CODE_ARTIFACT).toBe("1");
