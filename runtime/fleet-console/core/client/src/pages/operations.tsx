@@ -4,7 +4,7 @@ import { useT } from "../i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
-import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
@@ -393,13 +393,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
-  const renderKindIcon = useCallback((pluginId: string, kind: OperationLaunchKind): ReactNode => {
-    const plugin = registry.plugins.find((p) => p.id === pluginId);
+  const renderKindIcon = useCallback((pluginId: string | null, kind: OperationLaunchKind): ReactNode => {
+    const plugin = registry.providers.find((p) => p.id === pluginId);
     return plugin?.renderLaunchIcon?.(kind) ?? null;
-  }, [registry.plugins]);
+  }, [registry.providers]);
 
   const handleCanvasLaunchKind = useCallback((
-    pluginId: string,
+    pluginId: string | null,
     kind: OperationLaunchKind,
     canvasPoint: CanvasPoint,
     theaterId?: string,
@@ -409,11 +409,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!launchTheaterId) return;
     // Station Keeping이 켜진 Theater의 생성 좌표는 전부 정착을 거친다 — 어느 진입 경로든 같은 규율.
     const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
-    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
-  }, [registry.plugins]);
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.providers, variant);
+  }, [registry.providers]);
 
   const handleSideBarLaunchKind = useCallback((
-    pluginId: string,
+    pluginId: string | null,
     kind: OperationLaunchKind,
     variant?: Readonly<Record<string, string>>,
   ) => {
@@ -421,10 +421,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!launchTheaterId) return;
     const canvasPoint = canvasCenterPoint(bodyRef.current);
     const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
-    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
-  }, [registry.plugins]);
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.providers, variant);
+  }, [registry.providers]);
 
-  const handleRailLaunchOperation = useCallback((pluginId: string, kind: OperationLaunchKind) => {
+  const handleRailLaunchOperation = useCallback((pluginId: string | null, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
   }, [handleSideBarLaunchKind]);
 
@@ -438,7 +438,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const geometry = resolveLaunchGeometry(request.theaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
     // 실행이 거절되면(모델 비활성·CLI 미가용·프롬프트 전달 불가) 초안을 잃지 않게 컴포저를 되연다.
     // 컴포저는 결과를 기다리지 않는 구조라, 사용자에게 되돌아오는 경로는 여기뿐이다.
-    void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant)
+    void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.providers, request.variant)
       .then(() => {
         // 발사가 확정된 첨부의 미리보기 object URL은 여기서만 회수할 수 있다 — 컴포저는 결과를
         // 기다리지 않고 닫혔고, 거절이었다면 이 URL이 칩 복원에 다시 쓰인다.
@@ -458,13 +458,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           request.attachments ?? null,
         );
       });
-  }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);
+  }, [registry.providers, state.activeTheaterId, state.pendingQuickLaunch]);
 
-  const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {
+  const handleLaunchAtGeometry = useCallback((pluginId: string | null, kind: OperationLaunchKind, geometry: OperationGeometry) => {
     const launchTheaterId = stateRef.current.activeTheaterId;
     if (!launchTheaterId) return;
-    void launchViaPlugin(pluginId, kind, resolveLaunchGeometry(launchTheaterId, geometry), launchTheaterId, registry.plugins);
-  }, [registry.plugins]);
+    void launchViaPlugin(pluginId, kind, resolveLaunchGeometry(launchTheaterId, geometry), launchTheaterId, registry.providers);
+  }, [registry.providers]);
 
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
@@ -500,7 +500,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleResume = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
-    const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.plugins, handleFocus);
+    const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.providers, handleFocus);
     if (operation.theaterId !== stateRef.current.activeTheaterId) {
       resumeBootProtectionRef.current = { theaterId: operation.theaterId, operationId };
       setActiveTheater(operation.theaterId);
@@ -508,7 +508,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       return;
     }
     resume();
-  }, [handleFocus, registry.plugins]);
+  }, [handleFocus, registry.providers]);
 
   const runMutation = useCallback((task: () => Promise<void>, rollback: () => Promise<void>) => {
     const attempt = () => {
@@ -681,14 +681,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (isTriageActive()) dismissTriageOperation(operationId);
     closingOperationIds.add(operationId);
     const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
-    const plugin = (pluginId ? registry.plugins.find((p) => p.id === pluginId) : null) ?? null;
+    const plugin = (pluginId !== undefined ? registry.providers.find((p) => p.id === pluginId) : null) ?? null;
     void closeOperationCompletely(operationId, plugin)
       .then((deletion) => {
         forgetTriageOperation(operationId);
         onDeferredDeletion(deletion);
       })
       .finally(() => closingOperationIds.delete(operationId));
-  }, [onDeferredDeletion, registry.plugins]);
+  }, [onDeferredDeletion, registry.providers]);
 
   const poolCapabilities = useMemo(() => createHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
@@ -753,7 +753,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           operationRuntime={state.operationRuntime}
           operationNotifications={state.operationNotifications}
           catalog={catalog}
-          plugins={registry.plugins}
+          plugins={registry.providers}
           renderKindIcon={renderKindIcon}
           canLaunch={canLaunch}
           onLaunchKind={handleSideBarLaunchKind}
@@ -984,22 +984,22 @@ function canvasPointToGeometry(point: CanvasPoint): Omit<OperationGeometry, "zIn
 }
 
 async function launchViaPlugin(
-  pluginId: string,
+  pluginId: string | null,
   kind: OperationLaunchKind,
   geometry: OperationGeometry,
   theaterId: string,
-  plugins: readonly FleetClientPlugin[],
+  plugins: readonly ClientExecutionProvider[],
   variant?: Readonly<Record<string, string>>,
 ): Promise<void> {
   await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant);
 }
 
 async function createLaunchedOperation(
-  pluginId: string,
+  pluginId: string | null,
   kind: OperationLaunchKind,
   geometry: OperationGeometry,
   theaterId: string,
-  plugins: readonly FleetClientPlugin[],
+  plugins: readonly ClientExecutionProvider[],
   variant?: Readonly<Record<string, string>>,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);

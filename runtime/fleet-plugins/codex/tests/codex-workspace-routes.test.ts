@@ -33,6 +33,7 @@ describe("Codex Theater-root workspace resolution", () => {
   function createGateway() {
     const wikiWorkspaceResolver: WikiWorkspaceResolver = { resolve };
     return createCodexGateway({
+      agent: { createSession: async () => { throw new Error("not used"); } },
       cwd: theaterRoot,
       host: "127.0.0.1",
       version: "0.0.0",

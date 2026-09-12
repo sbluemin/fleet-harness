@@ -64,7 +64,7 @@ export { GearGlyph, SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID };
  * 실을 때 이 스냅샷을 함께 갱신한다.
  * 호스트 번들 안의 모듈 상태라 호스트-플러그인 경계의 싱글턴 금지와는 무관하다.
  */
-let searchPluginsSnapshot: readonly { readonly id: string; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[] = [];
+let searchPluginsSnapshot: readonly { readonly id: string | null; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[] = [];
 
 export function syncSettingsSearchPlugins(plugins: typeof searchPluginsSnapshot): void {
   searchPluginsSnapshot = plugins;
@@ -187,7 +187,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   }, [ctx.signal]);
 
   const coreSections = buildCoreSettingsSections(t, state);
-  const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
+  const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
   const chips = useMemo(() => buildChips(coreSections, pluginSections), [coreSections, pluginSections]);
   const available = useMemo(() => new Set<string>(chips.map((chip) => chip.id)), [chips]);
   const activeId = resolveSettingsSectionId(hostSectionOf(ctx.params.section ?? null, coreSections, pluginSections), available) ?? "appearance";

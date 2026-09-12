@@ -1,13 +1,4 @@
-import {
-  createClaudeExecutionLoop,
-  createClaudeGatewaySdk,
-  type ClaudeExecutionEvent,
-  type ClaudeExecutionLoop,
-  type ClaudeExecutionUsage,
-  type ClaudeGatewayEffort,
-  type ClaudeGatewayMcpServer,
-  type ClaudeGatewaySdk,
-} from "@dotobokuri/core-agent/claude";
+import type { AgentHost, AgentSession, AgentEvent, AgentUsage, AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 /**
@@ -181,7 +172,7 @@ The Console is set to English. Answer in English unless the user clearly writes 
 language.`;
 }
 
-export type ChatUsage = ClaudeExecutionUsage;
+export type ChatUsage = AgentUsage;
 
 export type ChatEvent =
   | { readonly type: "chunk"; readonly text: string }
@@ -191,33 +182,23 @@ export type ChatEvent =
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
 export interface ChatSessionOptions {
-  readonly cwd: string;
   readonly admiral: AdmiralId;
   /** 사용자가 고른 모델·강도. 없으면 기본값. */
   readonly model?: string;
   readonly effort?: AideEffort;
   readonly locale?: ConsoleLocale;
   /** Console이 서빙 중인 AI gateway의 절대 URL. 호스트만 아는 값이라 주입받는다. */
-  readonly baseUrl: string;
+  readonly agent: AgentHost;
   readonly onEvent?: (event: ChatEvent) => void;
   /**
    * 실험 "부관의 Console 읽기". 켜져 있을 때만 실린다 — 모델은 부관의 기본 모델 그대로이고, 읽기 도구가
    * 웹 검색 옆에 선다. 없으면 오늘과 완전히 같은 부관이다.
    */
   readonly consoleRead?: {
-    readonly servers: Readonly<Record<string, ClaudeGatewayMcpServer>>;
-    dispose(): Promise<void>;
-    readonly allowedTools: readonly string[];
+    readonly custom: readonly AgentToolGroup[];
+    readonly consoleRead: NonNullable<AgentSessionOptions["tools"]>["consoleRead"];
     readonly promptAddendum: string;
   };
-  /**
-   * 테스트 seam. 세션이 조립한 생성 인자를 그대로 받는다 — 인자 없이 받으면 조립 자체가 검증
-   * 밖으로 나가고, 잘못된 baseUrl을 넘겨도 테스트가 통과한다.
-   */
-  readonly createSdk?: (options: {
-    readonly baseUrl: string;
-    readonly models: readonly string[];
-  }) => Promise<ClaudeGatewaySdk>;
 }
 
 export interface ChatSessionLike {
@@ -230,72 +211,47 @@ export interface ChatSessionLike {
 
 export class ChatSession implements ChatSessionLike {
   private readonly options: ChatSessionOptions;
-  private readonly loop: ClaudeExecutionLoop;
+  private session: AgentSession | null = null;
+  private startFlight: Promise<void> | null = null;
+  private disposed = false;
 
-  constructor(options: ChatSessionOptions) {
-    this.options = { ...options };
-    const redact = (value: string) => redactScratchPath(value, this.options.cwd);
-    const consoleRead = this.options.consoleRead;
-    const model = this.options.model ?? SCUTTLEBUTT_AGENT.model;
-    const effort: ClaudeGatewayEffort = this.options.effort ?? SCUTTLEBUTT_AGENT.effort;
-    const systemPrompt = [
-      ADMIRAL_SYSTEM_PROMPTS[this.options.admiral],
-      localeAddendum(this.options.locale),
-      ...(consoleRead ? [consoleRead.promptAddendum] : []),
-    ].join("\n\n");
-    this.loop = createClaudeExecutionLoop({
-      createSdk: () => {
-        const create = { baseUrl: this.options.baseUrl, models: [model] };
-        return this.options.createSdk?.(create) ?? createClaudeGatewaySdk(create);
-      },
-      buildTurn: () => ({
-        model,
-        effort,
-        systemPrompt: { mode: "replace", text: systemPrompt },
-        cwd: this.options.cwd,
-        tools: [...PET_TOOLS],
-        allowedTools: [...PET_TOOLS, ...(consoleRead?.allowedTools ?? [])],
-        ...(consoleRead ? { mcpServers: consoleRead.servers } : {}),
-        permissionMode: "dontAsk",
-        // 텍스트를 흘려 보내려면 부분 메시지가 필요하다. SSE `chunk` 계약이 그것으로 만들어진다.
-        includePartialMessages: true,
-      }),
-      continuation: { kind: "resume-child" },
-      settlement: { kind: "result" },
-      onEvent: (event) => {
-        for (const mapped of toChatEvents(event, redact)) this.options.onEvent?.(mapped);
-      },
-    });
-  }
+  constructor(options: ChatSessionOptions) { this.options = { ...options }; }
 
   start(): Promise<void> {
-    return this.loop.start();
+    if (this.disposed) return Promise.reject(new Error("Session disposed"));
+    return this.startFlight ??= this.open();
   }
 
-  /**
-   * 취소는 루프에 맡기고 클라이언트에는 `cancelled` 하나만 알린다 — 결과 이벤트가 없으니
-   * `complete`가 오지 않고, 그대로 두면 카드가 "생각 중"에 굳는다.
-   */
-  cancel(): void {
-    this.loop.cancel();
-    this.options.onEvent?.({ type: "cancelled" });
+  private async open(): Promise<void> {
+    const consoleRead = this.options.consoleRead;
+    const session = await this.options.agent.createSession({
+      model: this.options.model ?? SCUTTLEBUTT_AGENT.model,
+      effort: this.options.effort ?? SCUTTLEBUTT_AGENT.effort,
+      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleRead ? [consoleRead.promptAddendum] : [])].join("\n\n"),
+      continuation: "conversation",
+      settlement: "result",
+      tools: { builtins: PET_TOOLS, ...(consoleRead ? { custom: consoleRead.custom, consoleRead: consoleRead.consoleRead } : {}) },
+      onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
+    });
+    if (this.disposed) { await session.dispose(); return; }
+    this.session = session;
   }
+
+  cancel(): void { this.session?.cancel(); }
 
   send(text: string): Promise<void> {
-    return this.loop.run(text).catch((error: unknown) => {
-      if (!isLifecycleError(error)) {
-        const redact = (value: string) => redactScratchPath(value, this.options.cwd);
-        this.options.onEvent?.({
-          type: "error",
-          error: { code: "chat_error", message: redact(message(error)) },
-        });
-      }
+    if (!this.session || this.disposed) return Promise.reject(new Error(this.disposed ? "Session disposed" : "Session not started"));
+    return this.session.send(text).catch((error: unknown) => {
+      if (!isLifecycleError(error)) this.options.onEvent?.({ type: "error", error: { code: "chat_error", message: "The agent could not complete this request." } });
       throw error;
     });
   }
 
   async dispose(): Promise<void> {
-    try { await this.loop.dispose(); } finally { await this.options.consoleRead?.dispose(); }
+    this.disposed = true;
+    await this.startFlight?.catch(() => undefined);
+    await this.session?.dispose();
+    this.session = null;
   }
 }
 
@@ -307,9 +263,10 @@ export class ChatSession implements ChatSessionLike {
  * 실패한 결과는 상세가 없으면 "Chat turn failed"다. 세션 id는 실리지 않는다.
  */
 export function toChatEvents(
-  event: ClaudeExecutionEvent,
+  event: AgentEvent,
   redact: (value: string) => string,
 ): readonly ChatEvent[] {
+  if (event.kind === "cancelled") return [{ type: "cancelled" }];
   if (event.kind === "text") return [{ type: "chunk", text: redact(event.text) }];
   if (event.kind === "thinking") return [];
   if (event.kind === "tool-start") {

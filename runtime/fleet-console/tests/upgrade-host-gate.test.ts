@@ -16,7 +16,7 @@ describe("websocket upgrade host gate", () => {
     const listener = createUpgradeListener({ isHostAllowed: () => false, upgradeRegistry: { handle } });
     const socket = createSocketStub();
 
-    listener(createUpgradeRequest("/plugins/terminal/ws?ticket=stolen"), socket.duplex, Buffer.alloc(0));
+    listener(createUpgradeRequest("/api/v1/terminal/ws?ticket=stolen"), socket.duplex, Buffer.alloc(0));
 
     expect(socket.destroy).toHaveBeenCalledTimes(1);
     expect(handle).not.toHaveBeenCalled();
@@ -26,12 +26,12 @@ describe("websocket upgrade host gate", () => {
     const handle = vi.fn<UpgradeHandleMock>(() => true);
     const listener = createUpgradeListener({ isHostAllowed: () => true, upgradeRegistry: { handle } });
     const socket = createSocketStub();
-    const req = createUpgradeRequest("/plugins/terminal/ws?ticket=granted");
+    const req = createUpgradeRequest("/api/v1/terminal/ws?ticket=granted");
 
     listener(req, socket.duplex, Buffer.alloc(0));
 
     expect(handle).toHaveBeenCalledTimes(1);
-    expect(handle.mock.calls[0]![0]).toMatchObject({ pathname: "/plugins/terminal/ws" });
+    expect(handle.mock.calls[0]![0]).toMatchObject({ pathname: "/api/v1/terminal/ws" });
     expect(socket.destroy).not.toHaveBeenCalled();
   });
 

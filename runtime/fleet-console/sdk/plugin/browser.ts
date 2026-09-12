@@ -242,17 +242,18 @@ async function assertSafeResponse(response: Response): Promise<Response> {
   return response;
 }
 
-function resolvePluginPath(pluginId: string, path: string): string {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pluginId)) throw new ApiError(400, "Invalid plugin id");
+function resolvePluginPath(pluginId: string | null, path: string): string {
+  if (pluginId !== null && !/^[a-z0-9][a-z0-9._-]*$/i.test(pluginId)) throw new ApiError(400, "Invalid plugin id");
   const suffix = path.startsWith("/") ? path : `/${path}`;
   if (suffix.includes("..")) throw new ApiError(400, "Invalid plugin path");
-  return `/plugins/${pluginId}${suffix}`;
+  return pluginId === null ? `/api/v1${suffix}` : `/plugins/${pluginId}${suffix}`;
 }
 
 // 서버(core/host console-settings의 PLUGIN_ID_PATTERN)와 동일 패턴 — SDK는 core를 import할 수 없어 사본을 유지한다.
 const PLUGIN_SETTINGS_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
-function resolvePluginSettingsPath(pluginId: string): string {
+function resolvePluginSettingsPath(pluginId: string | null): string {
+  if (pluginId === null) return "/api/v1/settings/execution";
   if (!PLUGIN_SETTINGS_ID_PATTERN.test(pluginId)) throw new ApiError(400, "Invalid plugin id");
   return `/api/v1/settings/plugins/${encodeURIComponent(pluginId)}`;
 }

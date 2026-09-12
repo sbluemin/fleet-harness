@@ -21,7 +21,7 @@ Resolve values from the request and task context. Live turns spend real quota; c
 2. Boot from an absolute binary path with a fresh runtime directory in the session scratchpad. Confirm the PID command points inside `<worktree>` and read the lock's port without printing its token.
 3. Create a small throwaway Theater in the scratchpad that the agent may read and edit. Never use the user's checkout or the worktree as the scenario Theater.
 4. Use `scripts/seed-console.mjs` to prepare only the required state. Distinguish requested state from actual seed results; adjust the prompt/fixture when they differ. Do not report a failed setup as ready.
-5. Read [Handoff format](references/handoff.md), then deliver the URL, seeded Operations/states, interactions, recreation prompt, build branch/SHA, data path, model/quota use, and PID concisely. Explain first-run dialogs and Escape behavior.
+5. Read [Handoff format](references/handoff.md), follow its default-browser opening procedure, then deliver the URL, seeded Operations/states, interactions, recreation prompt, build branch/SHA, data path, model/quota use, and PID concisely. Explain first-run dialogs and Escape behavior.
 
 ## Boundaries and completion
 

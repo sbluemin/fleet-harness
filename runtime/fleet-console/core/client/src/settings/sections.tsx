@@ -89,7 +89,7 @@ export interface SettingsSectionNavItem {
 export interface PluginSettingsNavItem {
   readonly id: PluginSettingsSectionId;
   readonly group: SettingsSectionGroup;
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly pluginLabel: string;
   readonly sectionTitle: string;
   readonly entries: readonly string[];
@@ -275,13 +275,13 @@ export function renderEmbeddedPluginSections(pluginSections: readonly PluginSett
 }
 
 export function collectPluginSettingsSections(
-  plugins: readonly { readonly id: string; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[],
+  plugins: readonly { readonly id: string | null; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[],
   locale: ConsoleLocale,
   t: T,
 ): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
     (plugin.settingsSections ?? []).map((section) => ({
-      id: `${plugin.id}:${section.id}` as const,
+      id: `${plugin.id ?? "terminal"}:${section.id}` as const,
       // 플러그인 설정은 대부분 작업 도구의 동작이다. 다른 자리가 필요하면 섹션이 직접 말한다.
       group: section.group ?? "work" as const,
       pluginId: plugin.id,
@@ -293,8 +293,8 @@ export function collectPluginSettingsSections(
   );
 }
 
-function formatPluginLabel(pluginId: string, t: T): string {
-  if (pluginId === "terminal") return t("settings.plugin.terminal");
+function formatPluginLabel(pluginId: string | null, t: T): string {
+  if (pluginId === null || pluginId === "terminal") return t("settings.plugin.terminal");
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 

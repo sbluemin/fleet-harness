@@ -143,6 +143,7 @@ export function isValidRemoteBindHost(value: unknown): value is string {
 export interface ConsoleSettingsData {
   readonly version: 1;
   readonly general?: ConsoleGeneralSettings;
+  readonly execution?: Record<string, unknown>;
   readonly plugins?: Record<string, Record<string, unknown>>;
 }
 
@@ -190,7 +191,7 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     const legacy = readLegacyRemoteAccess(raw, paths.dir, readFile, randomInt);
     const remoteAccess = current.general?.remoteAccess ?? legacy ?? createDefaultRemoteAccess(randomInt);
     const next = { ...current, general: { ...current.general, remoteAccess } };
-    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw)) base.save(next);
+    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw) || (isRecord(raw) && isRecord(raw.plugins) && isRecord(raw.plugins.terminal))) base.save(next);
     return next;
   }
   return {
@@ -211,10 +212,13 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   if (value.version !== SETTINGS_VERSION) return emptyConsoleSettingsData();
   const general = readConsoleGeneralSettings(value.general);
   const plugins = readConsolePluginSettings(value.plugins);
+  const execution = isRecord(value.execution) ? value.execution : plugins?.terminal;
+  if (plugins) delete plugins.terminal;
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
     plugins: plugins ?? {},
+    ...(execution ? { execution } : {}),
   };
 }
 
@@ -711,8 +715,9 @@ export const PLUGIN_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
 export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (context: PluginSettingsRouteContext) => Promise<boolean> {
   return async function handlePluginSettingsRoute(context: PluginSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    if (!pathname.startsWith(PLUGIN_SETTINGS_PREFIX)) return false;
-    const rest = pathname.slice(PLUGIN_SETTINGS_PREFIX.length);
+    const execution = pathname === "/api/v1/settings/execution" || pathname === `${PLUGIN_SETTINGS_PREFIX}terminal`;
+    if (!execution && !pathname.startsWith(PLUGIN_SETTINGS_PREFIX)) return false;
+    const rest = execution ? "terminal" : pathname.slice(PLUGIN_SETTINGS_PREFIX.length);
     if (rest.includes("/")) return false;
     let pluginId: string;
     try {
@@ -727,7 +732,7 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
     }
     if (req.method === "GET") {
       const data = deps.consoleSettingsStore.load();
-      const value = data.plugins?.[pluginId] ?? null;
+      const value = (execution ? data.execution : data.plugins?.[pluginId]) ?? null;
       deps.writeJson(res, 200, { value });
       return true;
     }
@@ -752,9 +757,9 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
       const updated = deps.consoleSettingsStore.update((current) => ({
         ...current,
         version: 1,
-        plugins: { ...current.plugins, [pluginId]: body as Record<string, unknown> },
+        ...(execution ? { execution: body as Record<string, unknown> } : { plugins: { ...current.plugins, [pluginId]: body as Record<string, unknown> } }),
       }));
-      deps.writeJson(res, 200, { value: updated.plugins?.[pluginId] ?? null });
+      deps.writeJson(res, 200, { value: (execution ? updated.execution : updated.plugins?.[pluginId]) ?? null });
       return true;
     }
     deps.writeJson(res, 405, { error: "Method not allowed" });

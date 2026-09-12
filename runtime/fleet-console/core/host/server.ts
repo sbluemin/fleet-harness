@@ -1,3 +1,6 @@
+import { createPluginAgentHost } from "./agent/plugin-agent.js";
+import { startConsoleExecution, CORE_AGENT_SENSITIVE_FIELDS } from "./execution.js";
+import { createConsoleRuntimeContext } from "./runtime-context.js";
 import { createMcpHttpTransport } from "./mcp/http-transport.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -28,7 +31,7 @@ import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopSh
 import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
-import { backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
+import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -466,7 +469,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
   const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
-  const pluginOperationTypes = new Set<string>();
+  const pluginOperationTypes = new Set<string>(["agent"]);
+  const executionApiCatalog: ApiCatalogEntry[] = [];
+  let coreLaunchKinds: OperationLaunchCatalogProvider = () => [];
+  const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
@@ -567,6 +573,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
+    agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,
     aiGatewayMcp,
     mcpTransport: mcpHttp.transport,
@@ -718,10 +725,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
+    createAgentHost: (pluginId) => createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse }),
   });
   const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
-    const result: OperationCatalogPlugin[] = [];
+    const result: OperationCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
     for (const plugin of pluginHost.plugins) {
       const providers = pluginLaunchCatalogProviders.get(plugin.manifest.id);
       if (!providers) continue;
@@ -853,7 +861,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     persist: persistDurableState,
     deleteOperation: (operationId): DeferredDeletionReceipt | null => deletionCoordinator.deleteOperation(operationId),
     isPendingDeletion: (operationId) => deletionCoordinator.hasPendingOperation(operationId),
-    getPluginSensitiveFields: (pluginId) => [
+    getPluginSensitiveFields: (pluginId) => pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
       ...(pluginHost.sensitiveFieldsByPluginId.get(pluginId) ?? []),
       ...(pluginPayloadSanitizers.get(pluginId) ?? []),
     ],
@@ -1900,7 +1908,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { version, routes: buildApiCatalog(pluginHost.apiCatalog) });
+    writeJson(res, 200, { version, routes: buildApiCatalog([...executionApiCatalog, ...pluginHost.apiCatalog]) });
   }
 
   function handleEnvironmentDiagnostics(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -2093,7 +2101,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ...(theater.order !== undefined ? { order: theater.order } : {}),
       ...resolveTheaterFlags(theater.id),
       hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
-      activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === "terminal" && operation.type === "agent").length,
+      activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === null && operation.type === "agent").length,
     };
   }
 
@@ -2160,6 +2168,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       }
     }
+    for (const cleanup of [...executionCleanupCallbacks].reverse()) {
+      try { await cleanup(); } catch (error) { console.warn("[fleet-console] Execution cleanup failed:", error); }
+    }
+    executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
     try { await Promise.all([consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
@@ -2199,8 +2211,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     deletionCoordinator.load(state.deletionTombstones ?? []);
     // 지원하는 구버전을 실제로 복원한 경우에만 sanitizer의 단계형 이주를 현재 버전으로 확정한다.
     // 알 수 없는 버전이나 복원 실패를 빈 v4 상태로 덮으면 재시도할 원본 자체를 잃는다.
-    if (restored && (loadedVersion === 1 || loadedVersion === 2 || loadedVersion === 3)) {
+    if (restored && (loadedVersion === 1 || loadedVersion === 2 || loadedVersion === 3 || loadedVersion === 4)) {
       if (loadedVersion === 3) backupDurableStateV3(durablePaths.stateFile);
+      if (loadedVersion === 4) backupDurableStateV4(durablePaths.stateFile);
       persistDurableState();
     }
     // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
@@ -2236,7 +2249,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 새니타이즈 규칙을 공유해야 민감 필드 전용 patch가 조용히 남는다. ts는 모든 patch가 건드리는
   // 축이라 비교에서 뺀다 — 남기면 게이트가 항상 열려 게이트가 아니게 된다.
   function sanitizedOperationJson(node: OperationNode): string {
-    const sensitiveFields = [
+    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
       ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
@@ -2246,7 +2259,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function broadcastOperationChanged(node: OperationNode): void {
     if (operationSseSubscribers.size === 0) return;
-    const sensitiveFields = [
+    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
       ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
@@ -2424,6 +2437,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
         await rehydrateDurableState();
+        coreLaunchKinds = await startConsoleExecution(createConsoleRuntimeContext({
+          host: { ...pluginHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+          dataDir: durablePaths.dir,
+          legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
+          routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
+        }));
         await pluginHost.boot();
         // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
         // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.

@@ -53,11 +53,10 @@ export default definePlugin({
       registrations = registrations.then(() => work).catch(() => undefined);
     };
 
-    // Gateway 선별 파일은 Fleet 루트의 것이다 — 터미널 플러그인이 쓰는 파일을 읽기만 한다.
+    // Gateway 선별 파일은 Fleet 루트의 것이다 — Console이 구성한 공통 설정을 읽기만 한다.
     // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
     const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.fleetDataDir });
     const gateway = createCodexGateway({
-      mcpTransport: ctx.host.mcpTransport,
       host: "127.0.0.1",
       version: "1",
       readAiGatewaySettings: aiGatewaySettings.read,
@@ -66,6 +65,7 @@ export default definePlugin({
         hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),
       },
       getPort: () => readPort(ctx),
+      agent: ctx.host.agent,
       // 대조할 Origin은 요청을 받은 리스너의 것이다 — 콘솔의 루프백 주소로 고정하면
       // 원격 리스너로 들어온 정당한 쓰기가 자기 주소를 실었는데도 막힌다.
       allowedOriginsFor: (request) => {

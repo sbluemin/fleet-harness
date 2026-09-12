@@ -213,17 +213,17 @@ export function QuickLaunch() {
   // 성립하지 않고 발사는 터미널로 정규화된다(카탈로그가 늦게 오는 첫 프레임도 같은 계약).
   const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
   const chatStart = chatStartAvailable && startView === "chat";
-  const targetPlugin = target ? registry.plugins.find((plugin) => plugin.id === target.pluginId) ?? null : null;
+  const targetPlugin = target ? registry.providers.find((plugin) => plugin.id === target.pluginId) ?? null : null;
   const refinePlugin = mentionTarget === null ? targetPlugin
     : mentionTarget.kind === "operation"
-      ? registry.plugins.find((plugin) => plugin.id === mentionTarget.entry.pluginId
+      ? registry.providers.find((plugin) => plugin.id === mentionTarget.entry.pluginId
         && plugin.promptRefineOperationTypes?.includes(mentionTarget.entry.type)) ?? null
       : null;
   const refinePurpose = mentionTarget?.kind === "operation" ? "follow-up" : "launch";
   const refineTheaterId = mentionTarget?.kind === "operation" ? mentionTarget.entry.theaterId : theaterId;
   const refineTheaterLabel = theaters.find((theater) => theater.id === refineTheaterId)?.label ?? null;
   const refineEnabled = experiments?.promptRefine === true && typeof refinePlugin?.refinePrompt === "function";
-  const contextProviders = useMemo(() => registry.plugins.flatMap((plugin) => plugin.launchContextProviders ?? []), [registry.plugins]);
+  const contextProviders = useMemo(() => registry.providers.flatMap((plugin) => plugin.launchContextProviders ?? []), [registry.providers]);
   const contextEnabled = experiments?.launchContextPack === true && contextProviders.length > 0;
 
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
@@ -232,14 +232,14 @@ export function QuickLaunch() {
 
   // 멘션 가능 대상은 플러그인이 messageOperation과 함께 선언한 Operation 타입으로 한정된다.
   const messageableTypesByPlugin = useMemo(() => {
-    const map = new Map<string, ReadonlySet<string>>();
-    for (const plugin of registry.plugins) {
+    const map = new Map<string | null, ReadonlySet<string>>();
+    for (const plugin of registry.providers) {
       if (plugin.messageOperation && (plugin.messageableOperationTypes?.length ?? 0) > 0) {
         map.set(plugin.id, new Set(plugin.messageableOperationTypes));
       }
     }
     return map;
-  }, [registry.plugins]);
+  }, [registry.providers]);
   const messageableTypesByPluginRef = useRef(messageableTypesByPlugin);
   messageableTypesByPluginRef.current = messageableTypesByPlugin;
   const mentionFocusedRef = useRef(mentionFocused);
@@ -254,8 +254,8 @@ export function QuickLaunch() {
   // 플러그인 기여 행선지는 덱이 열릴 때마다 다시 읽는다 — 설정에서 켜고 끈 결과가 그대로 반영된다.
   // 로스터가 마운트 시점에 굳으면 "껐는데 아직 보인다"가 바로 나온다.
   const pluginMentionCategories = useMemo(
-    () => (mentionToken === null ? [] : buildPluginMentionCategories(registry.plugins, mentionToken.query)),
-    [mentionToken, registry.plugins],
+    () => (mentionToken === null ? [] : buildPluginMentionCategories(registry.providers, mentionToken.query)),
+    [mentionToken, registry.providers],
   );
   const pluginMentionRows = useMemo(
     () => pluginMentionCategories.flatMap((category) => category.rows),
@@ -981,8 +981,8 @@ export function QuickLaunch() {
   // 첨부 능력은 실행 대상 플러그인이 선언한다 — console-core는 어느 플러그인인지 모른 채
   // 능력의 존재로만 붙여넣기를 받는다(messageOperation과 같은 계약). 능력이 없으면 기존처럼 무반응.
   const attachmentPlugin = useMemo(
-    () => (target ? registry.plugins.find((plugin) => plugin.id === target.pluginId) : undefined),
-    [registry.plugins, target],
+    () => (target ? registry.providers.find((plugin) => plugin.id === target.pluginId) : undefined),
+    [registry.providers, target],
   );
   // 열림 전이 효과는 의존성에 플러그인을 올리지 않는다(열림에만 반응하는 계약) — 회수 호출은 ref로 읽는다.
   const attachmentPluginRef = useRef(attachmentPlugin);
@@ -1223,7 +1223,7 @@ export function QuickLaunch() {
     if (attachments.some((attachment) => attachment.uploading)) return;
     if (mentionTarget?.kind === "plugin") {
       const row = mentionTarget.row;
-      const plugin = registry.plugins.find((candidate) => candidate.id === row.pluginId);
+      const plugin = registry.providers.find((candidate) => candidate.id === row.pluginId);
       if (!plugin?.messageMentionTarget) return;
       // 비-Operation 행선지는 첨부를 받지 않는다 — 조용히 빼면 그 이미지를 본다고 믿은 채 답을 읽는다.
       if (attachments.length > 0) {
@@ -1247,7 +1247,7 @@ export function QuickLaunch() {
     }
     if (mentionTarget) {
       const entry = mentionTarget.entry;
-      const plugin = registry.plugins.find((candidate) => candidate.id === entry.pluginId);
+      const plugin = registry.providers.find((candidate) => candidate.id === entry.pluginId);
       if (!plugin?.messageOperation) return;
       // 칩은 실행 대상 플러그인의 스토어에 업로드됐다 — id는 그 스토어의 불투명 토큰이라 다른
       // 플러그인의 세션에는 실을 수 없다(오늘은 단일 플러그인이라 도달 불가한 가드).
@@ -1318,7 +1318,7 @@ export function QuickLaunch() {
       return;
     }
     launchOperation(text);
-  }, [attachments, commandDeckHasRows, contextEnabled, contextPack, contextPending, contextProviders, deckHasRows, launchOperation, locale, mentionTarget, prompt, registry.plugins, selectedRow, submitting, target, theaterId]);
+  }, [attachments, commandDeckHasRows, contextEnabled, contextPack, contextPending, contextProviders, deckHasRows, launchOperation, locale, mentionTarget, prompt, registry.providers, selectedRow, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -1507,7 +1507,7 @@ export function QuickLaunch() {
   const kindIcon = selectedProvider
     ? launchProviderGlyph(selectedProvider)
     : (target
-      ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
+      ? registry.providers.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
       : null);
   const modLabel = resolveModLabel();
 

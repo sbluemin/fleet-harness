@@ -1,8 +1,9 @@
+import { consoleExecution } from "./execution.js";
 import { createContext, useContext, useMemo } from "react";
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
-import type { OperationKindDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+import type { OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -18,6 +19,7 @@ export interface PluginLoadFailure {
 
 export interface PluginRegistry {
   readonly plugins: readonly FleetClientPlugin[];
+  readonly providers: readonly ClientExecutionProvider[];
   /** 이 부팅에서 빠진 플러그인. 비어 있으면 전부 올라왔다는 뜻이다. */
   readonly failures: readonly PluginLoadFailure[];
   readonly operationKinds: readonly OperationKindDescriptor[];
@@ -56,7 +58,7 @@ export const PluginRegistryProvider = PluginRegistryContext.Provider;
 
 export async function loadPluginRegistry(): Promise<PluginRegistry> {
   const plugins = [...builtInPlugins];
-  const pluginIds = new Set(plugins.map((plugin) => plugin.id));
+  const pluginIds = new Set(["terminal", ...plugins.map((plugin) => plugin.id)]);
   const { entries, skipped } = await loadPluginRuntimeManifest();
   const failures: PluginLoadFailure[] = [...skipped];
   for (const entry of entries) {
@@ -119,6 +121,7 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 }
 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
+  const providers: readonly ClientExecutionProvider[] = [consoleExecution, ...plugins];
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
@@ -127,7 +130,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   // 대신 계약이 "콘솔 전체에서 유일"을 요구하고, 어긴 기여는 아래 경고로 드러난다.
   const expandedSurfaceIds = new Set<string>();
   const expandedSurfaces: ExpandedSurfaceDescriptor[] = [];
-  for (const plugin of plugins) {
+  for (const plugin of providers) {
     for (const surface of plugin.expandedSurfaces ?? []) {
       if (expandedSurfaceIds.has(surface.id)) {
         console.warn(`Skipping expanded surface with duplicate id: ${surface.id}`);
@@ -137,7 +140,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       expandedSurfaces.push(surface);
     }
   }
-  for (const plugin of plugins) {
+  for (const plugin of providers) {
     for (const panel of plugin.railPanels ?? []) {
       if (railPanelIds.has(panel.id)) {
         console.warn(`Skipping rail panel with duplicate id: ${panel.id}`);
@@ -153,7 +156,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   const railEntries: RailEntryDescriptor[] = [];
   const paneIds = new Set<string>();
   const panes: PaneDescriptor[] = [];
-  for (const plugin of plugins) {
+  for (const plugin of providers) {
     for (const entry of plugin.railEntries ?? []) {
       if (railEntryIds.has(entry.id)) {
         console.warn(`Skipping rail entry with duplicate id: ${entry.id}`);
@@ -173,15 +176,16 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   }
   return {
     plugins,
+    providers,
     failures,
-    persistentComponents: plugins.flatMap((plugin) => plugin.persistentComponents ?? []),
-    operationKinds: plugins.flatMap((plugin) => plugin.operationKinds ?? []),
-    settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
-    notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),
+    persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
+    operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
+    settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
+    notificationKinds: providers.flatMap((plugin) => plugin.notificationKinds ?? []),
     railPanels,
-    railEntries,
+    railEntries: [...railEntries.filter((entry) => entry.id === "codex"), ...railEntries.filter((entry) => entry.id !== "codex")],
     panes,
-    floatingWidgets: plugins.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
+    floatingWidgets: providers.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),

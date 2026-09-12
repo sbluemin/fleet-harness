@@ -12,15 +12,15 @@ import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-contract.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/desktop-protocol";
 import { createConsoleLock } from "../core/host/lock.js";
-import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-api/auto-name.js";
-import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
+import { deriveOperationLabel } from "../core/host/agent/auto-name.js";
+import { createConsoleObservabilityStore } from "../core/host/agent/observability-store.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
-import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
+import type { AgentCliDetector } from "../core/host/agent/agent-cli-detect.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "../core/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
 import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
-import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
-import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
+import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../core/host/terminal/terminal-types.js";
+import { createPluginTerminalUpgradeHandler } from "../core/host/terminal/ws.js";
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
@@ -346,7 +346,7 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
-    const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}plugins/terminal/agent/sessions`);
+    const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/agent/sessions`);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly title?: unknown; readonly payload?: { readonly session?: unknown; readonly providerTitle?: unknown } }> };
     const serialized = JSON.stringify({ theaters, sessions });
 
@@ -512,7 +512,7 @@ async function createTerminalSession(fixture: ServerFixture, headers: Record<str
 }
 
 async function createAgentTerminalSession(fixture: ServerFixture, theaterId: string, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
-  const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
+  const created = await fetch(`${fixture.endpoint}api/v1/agent/sessions`, {
     method: "POST",
     headers,
     body: JSON.stringify({ theaterId, cliId: "claude" }),

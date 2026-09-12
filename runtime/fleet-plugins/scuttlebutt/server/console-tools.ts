@@ -1,6 +1,7 @@
 import path from "node:path";
 
-import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@dotobokuri/core-agent/claude";
+import type { AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@dotobokuri/fleet-wiki";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -38,9 +39,8 @@ export function isConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
 }
 
 export interface ConsoleReadTools {
-  readonly servers: Readonly<Record<string, ClaudeGatewayMcpServer>>;
-  dispose(): Promise<void>;
-  readonly allowedTools: readonly string[];
+  readonly custom: readonly AgentToolGroup[];
+  readonly consoleRead: NonNullable<AgentSessionOptions["tools"]>["consoleRead"];
   /** 시스템 프롬프트에 덧붙는 한 단락 — 도구가 있다는 사실과 그 한계. */
   readonly promptAddendum: string;
 }
@@ -98,7 +98,10 @@ export async function createConsoleReadTools(ctx: FleetPluginServerContext, snap
   const gated = <Args, Extra>(run: (args: Args, extra: Extra) => Promise<ReturnType<typeof text>>) =>
     async (args: Args, extra: Extra) => (enabled() ? run(args, extra) : text({ error: "console_read_disabled", hint: "The user turned Console reading off. Do not answer from earlier Console results." }));
 
-  const names = [...(briefing ? ["console_wiki_search"] : []), ...(read ? ["console_wiki_read"] : [])];
+  const defineTool = <T extends Record<string, unknown>>(name: string, description: string, shape: z.ZodRawShape, execute: (args: T, extra: unknown) => Promise<unknown>): PluginMcpTool => ({
+    name, description, inputSchema: z.toJSONSchema(z.object(shape)),
+    execute: (args, context) => execute(args as T, context),
+  });
   const tools = [
     ...(briefing ? [defineTool("console_wiki_search", "Search a Theater's Fleet Wiki entries. Returns a ranked list of matching entries (id, title, excerpt).", {
       theaterId: z.string(),
@@ -121,21 +124,9 @@ export async function createConsoleReadTools(ctx: FleetPluginServerContext, snap
     }))] : []),
   ];
 
-  const consoleTools = ["console_theaters", "console_operations"] as const;
-  const connection = ctx.host.consoleUse.connect({ tools: consoleTools, snapshot, enabled });
-  try {
-    const servers: Record<string, ClaudeGatewayMcpServer> = {
-      [CONSOLE_MCP_SERVER]: createEmbeddedMcpServer({ name: CONSOLE_MCP_SERVER, tools }),
-      [FLEET_CONSOLE_USE_MCP_SERVER]: connection.embeddedServer as ClaudeGatewayMcpServer,
-    };
-    return {
-      servers,
-      allowedTools: [...names.map((name) => `mcp__${CONSOLE_MCP_SERVER}__${name}`), ...consoleTools.map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`)],
-      promptAddendum: PROMPT_ADDENDUM,
-      dispose: () => connection.dispose(),
-    };
-  } catch (error) {
-    await connection.dispose();
-    throw error;
-  }
+  return {
+    custom: [{ name: CONSOLE_MCP_SERVER, tools }],
+    consoleRead: { tools: ["console_theaters", "console_operations"], snapshot, enabled },
+    promptAddendum: PROMPT_ADDENDUM,
+  };
 }

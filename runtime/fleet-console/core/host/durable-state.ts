@@ -37,7 +37,7 @@ export type DurableDeletionTombstone =
     });
 
 export interface DurableConsoleState {
-  readonly version: 4;
+  readonly version: 5;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
@@ -50,7 +50,7 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
@@ -115,6 +115,13 @@ export function backupDurableStateV3(stateFilePath: string): void {
   }
 }
 
+/** 이전 버전의 원본을 덮어쓰지 않는 백업. 승계 저장 실패 시에도 원본을 되찾을 수 있다. */
+export function backupDurableStateV4(stateFilePath: string): void {
+  if (!fs.existsSync(stateFilePath)) return;
+  try { fs.copyFileSync(stateFilePath, `${stateFilePath}.v4-backup`, fs.constants.COPYFILE_EXCL); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+}
+
 // 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
 // 변환 결과는 readOperations의 sanitizeOperationNode가 다시 검증하므로 여기서는 모양만 맞춘다.
 // 각 버전 단계를 순서대로 거쳐 단계별 기본값을 보존하고, 최종 sanitizer가 다시 검증한다.
@@ -123,6 +130,7 @@ function migrateToCurrentVersion(value: Record<string, unknown>): Record<string,
   if (current.version === 1) current = migrateV1ToV2(current);
   if (current.version === 2) current = migrateV2ToV3(current);
   if (current.version === 3) current = migrateV3ToV4(current);
+  if (current.version === 4) current = { ...current, version: STATE_VERSION };
   return current;
 }
 
@@ -148,7 +156,7 @@ function migrateV2ToV3(v2: Record<string, unknown>): Record<string, unknown> {
 
 function migrateV3ToV4(v3: Record<string, unknown>): Record<string, unknown> {
   return {
-    version: STATE_VERSION,
+    version: 4,
     theaters: v3.theaters ?? [],
     operations: migrateOperationListToV4(v3.operations),
     groups: v3.groups ?? [],
@@ -279,7 +287,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   const pluginId = remapTerminalPluginId(readNonEmptyString(value.pluginId));
   const title = readNonEmptyString(value.title);
   const ts = sanitizeOperationTimestamps(value.ts);
-  if (!id || !theaterId || !type || !pluginId || !title || !ts) return null;
+  if (!id || !theaterId || !type || (pluginId === null && value.pluginId !== null) || !title || !ts) return null;
   // Shell은 콘솔 전역 확대 표면으로 옮겨 갔고 더 이상 Operation이 아니다. 예전 상태 파일이
   // 실어 온 Shell 노드는 그릴 종류가 없으므로 복원하지 않고 흘려보낸다 — 남겨 두면 캔버스에
   // 렌더러 없는 패널로 서고, 사용자는 그것을 고장으로 읽는다.
@@ -294,7 +302,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     id,
     theaterId,
     type,
-    pluginId,
+    pluginId: pluginId === "terminal" && type === "agent" ? null : pluginId,
     title,
     payload: readRecord(value.payload),
     geometry: sanitizeOperationGeometry(value.geometry),

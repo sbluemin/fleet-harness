@@ -20,8 +20,8 @@ interface CanvasContextMenuProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
+  readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
   // true면 anchor를 뷰포트 기준 좌표로 보고 position: fixed로 띄운다 — 선별 처리처럼
   // 월드/스테이지 프레임이 anchor 좌표계를 침범하는 모드에서 쓴다.
@@ -412,7 +412,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 실행 종류가 일으키므로, 키에서 그 종류로 되돌아오는 길을 카탈로그 한 번 훑어 만들어 둔다.
   const variantRows = useMemo(() => {
     const index = new Map<string, {
-      readonly pluginId: string;
+      readonly pluginId: string | null;
       readonly kind: OperationLaunchKind;
       readonly row: OperationLaunchVariantRow;
     }>();
@@ -968,7 +968,7 @@ function clampedAnchorStyle(
 
 // 실행 종류 id는 플러그인 안에서만 고유하다. 활성 항목을 이 키로 잡아야 두 플러그인이 같은
 // id를 가질 때 한쪽 항목에 다른 쪽 설명이 붙지 않는다.
-function itemKey(pluginId: string, kindId: string): string {
+function itemKey(pluginId: string | null, kindId: string): string {
   return `${pluginId}:${kindId}`;
 }
 

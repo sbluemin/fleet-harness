@@ -156,6 +156,11 @@
       "browser": "./composer/index.ts",
       "import": "./composer/index.ts",
       "default": "./composer/index.ts"
+    },
+    "./agent": {
+      "types": "./agent/types.ts",
+      "import": "./agent/types.ts",
+      "default": "./agent/types.ts"
     }
   },
   "scripts": {

@@ -21,7 +21,7 @@ describe("plugin settings routes", () => {
 
   it("PUT returns 401 for unauthorized requests", async () => {
     const harness = createRouterHarness({ authorized: false, body: { k: 1 } });
-    const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/terminal" });
+    const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/sample" });
     expect(handled).toBe(true);
     expect(harness.writes[0]?.status).toBe(401);
     expect(harness.updateCalls).toBe(0);
@@ -30,18 +30,18 @@ describe("plugin settings routes", () => {
   it("PUT returns 413 when serialized body exceeds 32KB", async () => {
     const bigValue = { data: "x".repeat(33 * 1024) };
     const harness = createRouterHarness({ authorized: true, body: bigValue });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/terminal" });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/sample" });
     expect(harness.writes[0]?.status).toBe(413);
     expect(harness.writes[0]?.body).toEqual({ error: "payload_too_large" });
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT replaces entire plugin entry (previous keys are gone)", async () => {
-    const harness = createRouterHarness({ authorized: true, plugins: { terminal: { old: "value" } }, body: { newKey: 42 } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/terminal" });
+    const harness = createRouterHarness({ authorized: true, plugins: { sample: { old: "value" } }, body: { newKey: 42 } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/plugins/sample" });
     expect(harness.writes[0]).toEqual({ status: 200, body: { value: { newKey: 42 } } });
-    expect(harness.currentPlugins()?.terminal).toEqual({ newKey: 42 });
-    expect(harness.currentPlugins()?.terminal).not.toHaveProperty("old");
+    expect(harness.currentPlugins()?.sample).toEqual({ newKey: 42 });
+    expect(harness.currentPlugins()?.sample).not.toHaveProperty("old");
   });
 });
 

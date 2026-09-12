@@ -39,7 +39,7 @@ describe("Agent session durable migration", () => {
       deletionTombstones: [],
     });
 
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.operations[0]?.payload).toEqual({
       cwd: "/work",
       session: {

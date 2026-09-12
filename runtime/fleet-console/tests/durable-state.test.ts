@@ -20,8 +20,8 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 5, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 5, theaters: [], operations: [], groups: [], deletionTombstones: [] });
   });
 
   it("migrates v1 flat session records into v2 OperationNodes", () => {
@@ -50,7 +50,7 @@ describe("durable console state", () => {
       ],
     });
 
-    expect(migrated.version).toBe(4);
+    expect(migrated.version).toBe(5);
     expect(migrated.theaters).toHaveLength(1);
     expect(migrated.groups).toEqual([]);
     expect(migrated.operations).toEqual([
@@ -58,7 +58,7 @@ describe("durable console state", () => {
         id: "sess-1",
         theaterId: "t1",
         type: "agent",
-        pluginId: "terminal",
+        pluginId: null,
         title: "My Session",
         payload: { cwd: "/work/proj", labelSource: "user", session: { harness: "claude-code", id: "p-1", transcriptPath: "/t.jsonl", capturedAt: "2026-01-01T00:00:00.000Z" } },
         geometry: null,
@@ -68,7 +68,7 @@ describe("durable console state", () => {
         id: "sess-2",
         theaterId: "t1",
         type: "agent",
-        pluginId: "terminal",
+        pluginId: null,
         title: "sub",
         payload: { cwd: "/work/proj/sub", session: { harness: "claude-code" } },
         geometry: null,

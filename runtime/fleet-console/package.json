@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-console",
   "version": "1.89.0",
-  "description": "Fleet Console — sole owner of the fleet and fleet-console bins, Console web surface, and thin Claude Code launcher.",
+  "description": "Fleet Console \u2014 sole owner of the fleet and fleet-console bins, Console web surface, and thin Claude Code launcher.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
@@ -85,7 +85,8 @@
     "react-router-dom": "^7.17.0",
     "selfsigned": "^5.5.0",
     "ws": "^8.18.0",
-    "zod": "^4.4.1"
+    "zod": "^4.4.1",
+    "@dotobokuri/fleet-analyst": "workspace:*"
   },
   "devDependencies": {
     "@fleet-console/access-protocol": "workspace:*",

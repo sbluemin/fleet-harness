@@ -1,8 +1,17 @@
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
-import {
-  type AgentToolCtx,
-  type AgentToolSpec,
-} from "@dotobokuri/core-agent";
+/** Wiki 도구 저작 메타데이터. 실행 엔진이나 MCP 서버를 포함하지 않는다. */
+export interface WikiToolSpec {
+  readonly id: string;
+  readonly tag: string;
+  readonly title: string;
+  readonly description: string;
+  readonly promptSnippet: string;
+  readonly whenToUse: readonly string[];
+  readonly whenNotToUse: readonly string[];
+  readonly usageGuidelines: readonly string[];
+  readonly parameters: object;
+  readonly execute: PluginMcpTool["execute"];
+}
 
 import {
   buildBriefingToolConfig, buildDryDockToolConfig, buildCompileSourceToolConfig,
@@ -58,7 +67,7 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
 // Functions
 // ═══════════════════════════════════════
 
-export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): AgentToolSpec[] {
+export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): WikiToolSpec[] {
   return [
     buildWikiBriefingSpec(resolver), buildWikiDryDockSpec(resolver), buildWikiIngestSpec(resolver),
     buildWikiOrientSpec(resolver), buildWikiPatchEditSpec(resolver), buildWikiPatchQueueSpec(resolver),
@@ -67,28 +76,28 @@ export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): AgentToolSpe
   ];
 }
 
-function buildWikiSchemaListSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiSchemaListSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildSchemaListToolConfig(), {
     whenToUse: ["Discover the workspace Wiki schema and available templates"],
     whenNotToUse: ["Reading a schema document — use wiki_schema_read"],
   }, resolver);
 }
 
-function buildWikiSchemaReadSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiSchemaReadSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildSchemaReadToolConfig(), {
     whenToUse: ["Read the workspace Wiki schema or a named template"],
     whenNotToUse: ["Reading approved Wiki entries — use wiki_read"],
   }, resolver);
 }
 
-function buildWikiSchemaCreateSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiSchemaCreateSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildSchemaCreateToolConfig(), {
     whenToUse: ["Create a new custom Wiki schema template"],
     whenNotToUse: ["Updating, deleting, overwriting, or approving templates"],
   }, resolver);
 }
 
-function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildBriefingToolConfig(), {
     whenToUse: [
       "Discover wiki entries by topic, tag, or keyword before deciding which to read in full",
@@ -101,7 +110,7 @@ function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec 
   }, resolver);
 }
 
-function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildDryDockToolConfig(), {
     whenToUse: [
       "Audit wiki repository health: frontmatter, broken links, queue conflicts, and semantic issues",
@@ -113,7 +122,7 @@ function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   }, resolver);
 }
 
-function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildIngestToolConfig(), {
     whenToUse: [
       "Stage durable Fleet Wiki knowledge as an approval-gated pending patch with captured raw source",
@@ -126,7 +135,7 @@ function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   }, resolver);
 }
 
-function buildWikiOrientSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiOrientSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildOrientToolConfig(), {
     whenToUse: [
       "Start a wiki-aware task by checking schema, index, recent log, queue count, and drydock status",
@@ -139,7 +148,7 @@ function buildWikiOrientSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   }, resolver);
 }
 
-function buildWikiPatchEditSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiPatchEditSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildPatchEditToolConfig(), {
     whenToUse: [
       "A pending Fleet Wiki patch needs a small exact body or metadata correction before approval",
@@ -152,7 +161,7 @@ function buildWikiPatchEditSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec
   }, resolver);
 }
 
-function buildWikiPatchQueueSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiPatchQueueSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildPatchQueueToolConfig(), {
     whenToUse: [
       "Pending Fleet Wiki patches need human approval or rejection",
@@ -165,7 +174,7 @@ function buildWikiPatchQueueSpec(resolver?: WikiWorkspaceResolver): AgentToolSpe
   }, resolver);
 }
 
-function buildWikiCompileSourceSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiCompileSourceSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildCompileSourceToolConfig(), {
     whenToUse: [
       "A single source needs to be split into multiple proposed wiki page patches",
@@ -178,7 +187,7 @@ function buildWikiCompileSourceSpec(resolver?: WikiWorkspaceResolver): AgentTool
   }, resolver);
 }
 
-function buildWikiQuerySpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiQuerySpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildQueryToolConfig(), {
     whenToUse: [
       "Answer a wiki-grounded question with evidence context and citations",
@@ -191,7 +200,7 @@ function buildWikiQuerySpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   }, resolver);
 }
 
-function buildWikiReadSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiReadSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildReadToolConfig(), {
     whenToUse: [
       "Fetch full body, link graph, or raw source for one or more specific wiki entry IDs",
@@ -204,7 +213,7 @@ function buildWikiReadSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
   }, resolver);
 }
 
-function buildWikiResolveSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
+function buildWikiResolveSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildResolveToolConfig(), {
     whenToUse: [
       "Compact context pack needed combining briefing and read results for a query topic",
@@ -219,9 +228,9 @@ function buildWikiResolveSpec(resolver?: WikiWorkspaceResolver): AgentToolSpec {
 
 function buildWikiToolSpec(
   config: WikiAgentToolConfig,
-  usage: Pick<AgentToolSpec, "whenToUse" | "whenNotToUse">,
+  usage: Pick<WikiToolSpec, "whenToUse" | "whenNotToUse">,
   resolver?: WikiWorkspaceResolver,
-): AgentToolSpec {
+): WikiToolSpec {
   return {
     id: config.name,
     tag: config.name,
@@ -232,7 +241,7 @@ function buildWikiToolSpec(
     whenNotToUse: usage.whenNotToUse,
     usageGuidelines: config.promptGuidelines,
     parameters: config.parameters as Record<string, unknown>,
-    execute: async (args: unknown, ctx: AgentToolCtx) => {
+    execute: async (args: unknown, ctx: Parameters<PluginMcpTool["execute"]>[1]) => {
       const { content } = await config.execute(
         "",
         args as Record<string, unknown>,

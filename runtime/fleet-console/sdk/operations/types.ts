@@ -15,7 +15,8 @@ export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
@@ -26,7 +27,8 @@ export interface OperationCreateInput {
   readonly id?: string;
   readonly theaterId: string;
   readonly type: string;
-  readonly pluginId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly pluginId: string | null;
   readonly title: string;
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationGeometry | null;
@@ -93,9 +95,14 @@ export interface OperationLaunchKind {
 }
 
 export interface OperationCatalogPlugin {
-  readonly id: string;
+  readonly id: string | null;
   readonly title: string;
   readonly kinds: readonly OperationLaunchKind[];
 }
 
 export type OperationLaunchCatalogProvider = () => readonly OperationLaunchKind[] | Promise<readonly OperationLaunchKind[]>;
+
+/** 구 버전 wire 신원을 내부 core 소유권으로 해석한다. 저장·실행에는 가상 플러그인을 만들지 않는다. */
+export function normalizeOperationOwner<T extends { readonly pluginId: string | null; readonly type: string }>(operation: T): T {
+  return operation.pluginId === "terminal" && operation.type === "agent" ? { ...operation, pluginId: null } : operation;
+}

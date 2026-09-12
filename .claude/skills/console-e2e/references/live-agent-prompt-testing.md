@@ -36,7 +36,7 @@ consistently, and replace `<e2e-dir>` / `<scratch>` / `<worktree>` / `<port>` th
 ## Serve with the capture and model levers already set
 
 Both env vars are read by the **Console server process**, because the AI Gateway runs
-in-process there (`runtime/fleet-plugins/terminal/server/ai-gateway-routes.ts`), not in a
+in-process there (`runtime/fleet-console/core/host/ai-gateway/routes.ts`), not in a
 sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
@@ -55,7 +55,7 @@ env -u CLAUDE_CODE_CHILD_SESSION \
   `<plugin-data-dir>/ai-gateway/wire-log.jsonl` — the *plugin* data directory, a different
   root from the settings file above — and ignores the variable, off writes nothing at all,
   and only an *unset* toggle falls through to the path you named
-  (`applyWireLog` in `runtime/fleet-plugins/terminal/routes.ts`). A fresh
+  (`applyWireLog` in `runtime/fleet-console/core/host/execution.ts`). A fresh
   `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable works there — until
   someone touches the toggle. The file appears on the first gateway call, not at boot.
 - `FLEET_AI_GATEWAY_MODEL` — pins every request to one model whatever the client asked for

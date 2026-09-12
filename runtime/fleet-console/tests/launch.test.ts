@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
-import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
-import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
-import type { TerminalLaunchSpec } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
+import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../core/host/agent/launch.js";
+import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../core/host/terminal/pty.js";
+import type { TerminalLaunchSpec } from "../core/host/terminal/terminal-types.js";
 
 interface FakeRuntime {
   readonly carrierRuntime: {
@@ -38,7 +38,7 @@ const baseProfile = {
 
 const TEMP_DIRS: string[] = [];
 const DEFAULT_AI_GATEWAY = {
-  routePath: "/plugins/terminal/ai-gateway",
+  routePath: "/api/v1/ai-gateway",
   origin: () => "http://127.0.0.1:43210",
 };
 
@@ -158,7 +158,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       },
       agentRuntime: createFakeRuntime() as never,
       aiGateway: {
-        routePath: "/plugins/terminal/ai-gateway",
+        routePath: "/api/v1/ai-gateway",
         origin: () => "http://127.0.0.1:43210",
       },
       infraServices: createFakeInfraServices() as never,

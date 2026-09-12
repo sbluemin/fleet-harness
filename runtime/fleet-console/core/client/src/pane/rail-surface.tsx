@@ -43,7 +43,7 @@ export interface RailSurfaceProps {
   readonly theme?: ConsoleTheme;
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
-  readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
 }
 
 export const RailSurface = memo(function RailSurface({
@@ -276,7 +276,7 @@ interface PaneHostProps {
   readonly theme?: ConsoleTheme;
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
-  readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
   readonly width?: number;
 }

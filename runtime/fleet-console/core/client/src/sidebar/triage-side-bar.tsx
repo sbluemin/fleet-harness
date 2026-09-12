@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationRuntimeState, FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState, ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
@@ -56,11 +56,11 @@ interface TriageSideBarProps {
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
-  readonly plugins: readonly FleetClientPlugin[];
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
+  readonly plugins: readonly ClientExecutionProvider[];
+  readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
   readonly canLaunch: boolean;
   /** 소유자 없는 자리의 실행 대상 — 사이드바 빈 영역은 활성 Theater로 실행한다. */
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;

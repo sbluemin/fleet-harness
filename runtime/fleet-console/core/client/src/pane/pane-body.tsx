@@ -44,7 +44,7 @@ export interface PaneContextInput {
   readonly isOpen?: (paneId: string) => boolean;
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
-  readonly legacyLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
 }
 
 export function usePaneContext({

@@ -63,7 +63,7 @@ export function MobileSettingsPage() {
     return () => controller.abort();
   }, []);
 
-  const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
+  const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
   const groups = buildMobileSettingsGroups(state, pluginSections, t);
   const rows = groups.flatMap((group) => group.rows);
   const requested = new URLSearchParams(location.search).get("section");

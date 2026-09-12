@@ -18,6 +18,7 @@ import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugi
 
 const tempDirs: string[] = [];
 const noopHostCapabilities: FleetPluginHostCapabilities = {
+  agent: { createSession: async () => { throw new Error("not used"); } },
   admiralMcp: { register: () => () => {}, connect: () => ({
         getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [],
         releaseSessionToken: () => {}, cleanup: () => {},
@@ -151,7 +152,9 @@ describe("plugin host", () => {
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "terminal"), "terminal");
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
     const routes = new RouteRegistry();
+    const failedAgentCleanup = vi.fn(async () => undefined);
     const host = createFleetPluginHost({
+      createAgentHost: (id) => ({ createSession: noopHostCapabilities.agent.createSession, dispose: id === "bad" ? failedAgentCleanup : async () => undefined }),
       registerAdmiralMcp: () => () => {},
       cwd: dir,
       homeDir: path.join(dir, "home"),
@@ -173,6 +176,7 @@ describe("plugin host", () => {
 
     expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/terminal/ready" })).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin bad routes skipped: plugin_route_outside_scope"));
+    expect(failedAgentCleanup).toHaveBeenCalledOnce();
   });
 
   it("hard-skips external plugins with missing or mismatched apiVersion", () => {

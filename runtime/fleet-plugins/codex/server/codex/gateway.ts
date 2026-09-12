@@ -1,4 +1,4 @@
-import type { PluginMcpTransport } from "@fleet-console/sdk/mcp";
+import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
@@ -9,7 +9,7 @@ import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki"
 import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "./cowork/index.js";
 import type { CoworkConnector } from "./cowork/index.js";
-import { AI_GATEWAY_ROUTE_SEGMENT, resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
 import type { AllowedAccessSets } from "./contracts.js";
@@ -19,7 +19,6 @@ import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "./contracts.js";
 
 interface CodexGatewayDeps {
-  readonly mcpTransport?: PluginMcpTransport;
   /**
    * 등록된 워크스페이스가 하나도 없을 때 쓸 기본 프로젝트. 플러그인에는 그런 것이
    * 없으므로 생략한다 — 프로세스의 cwd를 기본값으로 삼으면 콘솔 패키지 자신이
@@ -29,6 +28,7 @@ interface CodexGatewayDeps {
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
+  readonly agent: AgentHost;
   /**
    * 요청이 도착한 리스너. Codex는 코어 Host 게이트보다 앞에서 분기하므로 자기 게이트가 유일한
    * 경계인데, 그 경계는 바인드 호스트가 아니라 리스너마다 다르다. 원격 리스너를 모르는 게이트는
@@ -112,13 +112,9 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
   const coworkServices = new Map<string, CoworkService>();
-  // provider 조립은 호스트 소유 — fleet-wiki cowork 엔진에는 커넥터만 주입한다.
-  // AI Gateway는 terminal 플러그인이 서빙하고, 그 basePath는 이 호스트가 안다.
+  // Console이 제공한 연결만 사용한다. 다른 플러그인의 마운트를 알지 않는다.
   const coworkConnector: CoworkConnector = createCoworkGatewayConnector({
-    baseUrl: () => {
-      const port = deps.getPort();
-      return port ? `http://127.0.0.1:${port}/plugins/terminal/${AI_GATEWAY_ROUTE_SEGMENT}` : null;
-    },
+    agent: deps.agent,
   });
 
   /**
@@ -206,7 +202,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
-    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver, deps.mcpTransport);
+    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
     coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,

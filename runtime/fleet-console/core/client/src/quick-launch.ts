@@ -51,7 +51,7 @@ export function quickLaunchAttachmentErrorMessageKey(code: string | null): strin
 }
 
 export interface VariantKindTarget {
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly kind: OperationLaunchKind;
 }
 
@@ -298,7 +298,7 @@ export function isMentionSelectable(activity: OperationActivityVisual): boolean 
  */
 export function buildQuickLaunchMentionGroups(
   state: ConsoleState,
-  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   query: string,
 ): readonly OperationSearchGroup[] {
   const mentionable = state.operations.filter((operation) => messageableTypesByPlugin.get(operation.pluginId)?.has(operation.type) === true);
@@ -312,7 +312,7 @@ export function buildQuickLaunchMentionGroups(
  * 그대로 들고 다니지 않는다 — `optionId`가 이름공간을 나눈 유일한 신원이고, DOM id도 이 값이다.
  */
 export interface QuickLaunchPluginMentionRow {
-  readonly pluginId: string;
+  readonly pluginId: string | null;
   readonly targetId: string;
   readonly optionId: string;
   readonly label: string;
@@ -332,7 +332,7 @@ export interface QuickLaunchMentionCategory {
 
 /** 덱이 읽는 플러그인의 최소 모양. 컴포넌트가 레지스트리 전체를 넘기지 않아도 단위 테스트가 돈다. */
 export interface QuickLaunchMentionSource {
-  readonly id: string;
+  readonly id: string | null;
   readonly mentionTargets?: () => readonly MentionTargetDescriptor[];
   readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
 }
@@ -375,7 +375,7 @@ export function buildPluginMentionCategories(
       const optionId = `${plugin.id}:${descriptor.id}`;
       if (seen.has(optionId)) continue;
       seen.add(optionId);
-      const haystack = [descriptor.label, descriptor.categoryLabel, plugin.id].join(" ").toLocaleLowerCase();
+      const haystack = [descriptor.label, descriptor.categoryLabel, plugin.id ?? ""].join(" ").toLocaleLowerCase();
       if (!tokens.every((token) => haystack.includes(token))) continue;
       const row: QuickLaunchPluginMentionRow = {
         pluginId: plugin.id,
@@ -422,7 +422,7 @@ export function buildPluginMentionCategories(
  */
 export function resolveFocusedMention(
   state: ConsoleState,
-  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   visibleOperationId: string | null = null,
 ): OperationSearchEntry | null {
   const operationId = state.activeOperationId;
@@ -444,7 +444,7 @@ export function resolveFocusedMention(
  */
 export function resolveMentionEntry(
   state: ConsoleState,
-  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   operationId: string,
 ): OperationSearchEntry | null {
   const entry = buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, "")
