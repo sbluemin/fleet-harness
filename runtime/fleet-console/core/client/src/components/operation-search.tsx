@@ -67,6 +67,7 @@ import {
 } from "../store.js";
 import { useT } from "../i18n/index.js";
 import type { ConsoleState } from "../types.js";
+import { setZenMode, toggleZenMode, useZenMode } from "../zen-mode.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
@@ -92,6 +93,7 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
+  const zenMode = useZenMode();
   const railBindings = useRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
@@ -122,7 +124,7 @@ export function OperationSearch({
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const commands = useMemo(
     () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
-    [state, railPanels, t, undoAvailable],
+    [state, railPanels, t, undoAvailable, zenMode],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -307,6 +309,7 @@ export function OperationSearch({
         break;
       }
       case "new-theater": {
+        setZenMode(false);
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내야
@@ -411,7 +414,20 @@ export function OperationSearch({
         setRailChromeExpanded(true);
         break;
       }
+      case "toggle-zen": {
+        if (getViewModeSnapshot().effective === "mobile") break;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        const target = previousFocusRef.current;
+        previousFocusRef.current = null;
+        toggleZenMode();
+        requestAnimationFrame(() => {
+          if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+          else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+        });
+        break;
+      }
       case "toggle-rail": {
+        setZenMode(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 구 복원 좌표(밴드 rail 토글)는 퇴역했다 — 복원을 억제하고 도착지가 받는다: 접히면
         // 엣지 독, 펼치면 레일의 접기 컨트롤. 두 좌표 모두 이 커밋의 재렌더 뒤에야 서므로
@@ -425,6 +441,7 @@ export function OperationSearch({
         break;
       }
       case "toggle-sidebar": {
+        setZenMode(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // toggle-rail과 같은 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
         previousFocusRef.current = null;
@@ -449,6 +466,7 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
+        setZenMode(false);
         // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
         // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
         if (getViewModeSnapshot().effective === "mobile") {
@@ -483,6 +501,7 @@ export function OperationSearch({
       case "assign-operation-group":
       case "set-operation-accent":
       case "minimize-operation": {
+        setZenMode(false);
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (getSideBarState().collapsed) setSideBarCollapsed(false);

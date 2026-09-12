@@ -2440,7 +2440,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("--command-band-carrier");
     expect(commandBand).toContain("useFullscreenCommandBand");
     // 엣지 스트립은 자동 은닉일 때만 존재한다 — 도킹 중에 남기면 스테이지 최상단을 가로챈다.
-    expect(commandBand).toContain("const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;");
+    expect(commandBand).toContain("const edgeRevealActive = !zenMode && fullscreen.isFullscreen && !fullscreen.isDocked;");
     expect(commandBand).toContain('className={`command-band-edge-reveal${edgeRevealActive ? " is-fullscreen" : ""}`}');
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.showCommandBand")}');
     expect(commandBand).toContain('aria-pressed={fullscreen.isDocked}');

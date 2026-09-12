@@ -1,6 +1,7 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useZenMode } from "../zen-mode.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationRuntimeState, ClientExecutionProvider } from "@fleet-console/sdk/plugin";
@@ -140,6 +141,13 @@ export function TriageSideBar({
     readonly anchor: { readonly x: number; readonly y: number };
     readonly viewportBounds: { readonly width: number; readonly height: number };
   } | null>(null);
+  const zenMode = useZenMode();
+  useLayoutEffect(() => {
+    if (!zenMode) return;
+    setLaunchMenu(null);
+    if (launchMenu) document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zenMode]);
   // 메뉴는 포털(document.body)이라 <aside>의 inert가 닿지 않는다 — 좌측 열을 접으면 그 열이 연
   // 메뉴도 함께 걷어야 한다. 아니면 사라진 사이드바의 메뉴가 화면에 남아 실행까지 받는다.
   useEffect(() => {

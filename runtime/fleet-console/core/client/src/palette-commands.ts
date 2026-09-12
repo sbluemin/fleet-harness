@@ -4,6 +4,7 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { getCommandBandDocked } from "./fullscreen-band-store.js";
+import { isZenMode } from "./zen-mode.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { getT, type CoreMessageKey } from "./i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
@@ -56,6 +57,7 @@ export type PaletteCommandAction =
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
+  | { readonly kind: "toggle-zen" }
   | { readonly kind: "toggle-command-band-dock" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
@@ -199,6 +201,8 @@ export function buildPaletteCommands(
   // 라벨은 저장된 선호를 따른다: 이 항목은 전환이므로 한 방향으로만 읽히면 이미 켜 둔 사용자가
   // 켜는 줄 알고 골랐다가 밴드를 끄게 된다. current는 false로 둔다 — 전환 항목은 배지 대상이 아니고,
   // true면 팔레트가 이미 적용된 선택으로 보아 실행을 건너뛴다.
+  const zenKey = isZenMode() ? "zen.exit" : "zen.enter";
+  push({ commandId: "toggle-zen", label: t(zenKey), aliasLabel: `${alias(zenKey)} 집중 크롬`, action: { kind: "toggle-zen" }, group: "view", glyph: "console-band", shortcut: "console.toggle-zen" });
   const bandKey = getCommandBandDocked() ? "palette.stopKeepingCommandBandVisible" : "palette.keepCommandBandVisible";
   push({ commandId: "toggle-command-band-dock", label: t(bandKey), aliasLabel: alias(bandKey), action: { kind: "toggle-command-band-dock" }, group: "console", glyph: "console-band" });
   for (const theme of buildPaletteThemes(t)) {

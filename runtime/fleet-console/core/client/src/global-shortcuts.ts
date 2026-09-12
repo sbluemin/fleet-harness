@@ -25,6 +25,7 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
   readonly toggleRailChrome: () => void;
+  readonly toggleZenMode?: () => void;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
 }
@@ -80,6 +81,13 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
+    if (matches("console.toggle-zen")) {
+      if (event.isComposing || event.repeat || !dependencies.toggleZenMode) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dependencies.toggleZenMode();
+      return;
+    }
     if (matches("console.undo-close") && dependencies.canUndoLastClose?.()) {
       const active = windowFor.document.activeElement;
       if (active instanceof HTMLElement && (active.matches("input, textarea, [contenteditable='true']") || active.closest(".xterm"))) return;

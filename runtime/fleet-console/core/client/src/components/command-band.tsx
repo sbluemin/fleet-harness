@@ -17,6 +17,7 @@ import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
+import { toggleZenMode, useZenMode } from "../zen-mode.js";
 
 interface CommandBandProps {
   readonly operationsViewVisible: boolean;
@@ -52,6 +53,7 @@ const TACTICAL_LAYOUTS: readonly {
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
+  const zenMode = useZenMode();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const viewMode = useViewMode();
@@ -130,7 +132,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const fullscreen = useFullscreenCommandBand(canAutoHide);
   // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
   // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
-  const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;
+  const edgeRevealActive = !zenMode && fullscreen.isFullscreen && !fullscreen.isDocked;
+  useEffect(() => {
+    if (zenMode) setEnvironmentOpen(false);
+  }, [zenMode]);
 
   // 도킹하면 엣지 스트립이 display:none으로 사라지는데 Chromium은 activeElement를 그 위에
   // 그대로 남긴다. 그 포커스가 남아 있으면 canAutoHide가 영원히 거짓이라, 나중에 도킹을 풀어도
@@ -263,7 +268,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     hideAfterInteractionLeaves();
   };
 
-  const commandBandHidden = fullscreen.isFullscreen && !fullscreen.isVisible;
+  const commandBandHidden = zenMode || (fullscreen.isFullscreen && !fullscreen.isVisible);
 
   return (
     <>
@@ -337,6 +342,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
           <SearchIcon />
         </button>
+        {operationsViewVisible ? <button
+          type="button"
+          className="command-band-button command-band-zen"
+          aria-label={t(zenMode ? "zen.exit" : "zen.enter")}
+          aria-pressed={zenMode}
+          title={t(zenMode ? "zen.exit" : "zen.enter")}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={toggleZenMode}
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" />
+            <path d="M7.5 10h5" />
+          </svg>
+        </button> : null}
         {operationsViewVisible && canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
