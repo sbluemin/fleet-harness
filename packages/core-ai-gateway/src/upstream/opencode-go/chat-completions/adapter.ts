@@ -143,7 +143,9 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
     const reasoningEffort = requestedEffort === undefined
       ? undefined
       : reasoningEffortPolicy.get(this)?.(request.model, requestedEffort);
-    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools, reasoningEffort);
+    const replayReasoning = request.model.startsWith("deepseek-v4-")
+      || (reasoningReplayPolicy.has(this) && request.model === "deepseek-v4.1-flash");
+    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools, reasoningEffort, replayReasoning);
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
 
@@ -194,6 +196,8 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
 }
 
 const sessionHeaderPolicy = new WeakMap<OpenAIChatCompletionsAdapter, typeof opencodeSessionHeaders>();
+// 기존 V4 범용 계약 외의 추론 재생은 OpenCode 인스턴스에만 적용한다.
+const reasoningReplayPolicy = new WeakSet<OpenAIChatCompletionsAdapter>();
 
 const imageInputPolicy = new WeakMap<
   OpenAIChatCompletionsAdapter,
@@ -259,6 +263,7 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
       ...(options.headers ? { headers: options.headers } : {}),
     });
     sessionHeaderPolicy.set(this, opencodeSessionHeaders);
+    reasoningReplayPolicy.add(this);
     // DeepSeek V4 텍스트 모델은 image_url을 거부하지만 Vision Exp는 이미지 입력을 받는다.
     // 기존 차단을 유지하되 공식 Go 카탈로그의 Vision 모델만 예외로 둔다.
     imageInputPolicy.set(this, (model) =>
@@ -328,7 +333,8 @@ function forChatCompletionsBackend(
   request: CanonicalResponseRequest,
   supportsImageInput: boolean,
   omitTools = false,
-  reasoningEffort?: ReasoningEffort,
+  reasoningEffort: ReasoningEffort | undefined,
+  replayReasoning: boolean,
 ): ChatWireRequest {
   const messages: ChatWireMessage[] = [];
   if (request.instructions !== undefined && request.instructions.length > 0) {
@@ -342,10 +348,6 @@ function forChatCompletionsBackend(
   //   assistant 메시지로 병합하고,
   // - 사이에 낀 user/developer 텍스트는 해당 호출의 결과 뒤로 미룬다(원문에서도 결과와
   //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
-  // DeepSeek V4 assistant/tool-turn reasoning 재생은 레거시 generic 어댑터의 HEAD
-  // 공개 동작으로 유지한다. OpenCode 전용 정책은 instance-bound gate로만 적용한다.
-  const replayReasoning = request.model.startsWith("deepseek-v4-")
-    || request.model === "deepseek-v4.1-flash";
   let pendingToolCalls: ChatWireToolCall[] = [];
   let pendingAssistantText: string | undefined;
   let pendingAssistantReasoning: string | undefined;
