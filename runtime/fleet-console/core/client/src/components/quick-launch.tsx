@@ -106,6 +106,7 @@ export function QuickLaunch() {
   const navigate = useNavigate();
   const location = useLocation();
   const registry = usePluginRegistry();
+  useShortcutOverrides();
   // Cmd+K·사이드바·커맨드 밴드와 같은 마크 축. 미확인 완료도 어느 Operation을 고르는
   // 표면인가에 따라 사라지지 않아야 하므로 멘션 덱이 같은 외부 원장을 구독한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
@@ -1504,7 +1505,6 @@ export function QuickLaunch() {
       ? registry.providers.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
       : null);
   // 접힌 띠의 힌트는 등록부의 현재 조합을 말한다 — 재배정이 바뀌면 함께 바뀐다.
-  useShortcutOverrides();
   const toggleChords = resolveShortcutChords("console.quick-launch");
 
   return (
