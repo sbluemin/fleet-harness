@@ -93,6 +93,10 @@ describe("fleet-console-use gateway roster", () => {
         expect(restarted.state().automations.find((a) => a.id === pending.id)?.status).toBe("paused");
         expect(restarted.request("op-a", "request-a", { kind: "send", operationId: "op-a", text: "Check build" }).id).toBe(receipt.id);
         await expect(restarted.readEvents(cursor)).rejects.toThrow("cursor_expired");
+        for (let i = restarted.state().automations.length; i < 100; i += 1) restarted.automation("op-a", { name: `Briefing ${i}`, theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 1000).toISOString(), maxRuns: 1 });
+        time += 2000;
+        expect(() => restarted.automation("op-a", { name: "Next briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 })).not.toThrow();
+        expect(restarted.state().automations.some((a) => a.id === pending.id)).toBe(true);
       } finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
   });

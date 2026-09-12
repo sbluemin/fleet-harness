@@ -198,6 +198,13 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!deps.theaters().some((t) => t.id === input.theaterId)) fail("unknown_theater");
     if (input.trigger.kind === "activity" && node(input.trigger.operationId)?.theaterId !== input.theaterId) fail("unknown_operation");
     if (input.action.kind !== "briefing") validTarget(input.action, input.theaterId);
+    if (state.automations.length >= 100) {
+      // 상한에서만 종료된 정책의 자리를 회수한다. 재개 가능한 paused 정책과 실행 중 영수증은 보존한다.
+      state.automations = state.automations.filter((policy) => {
+        const finished = Date.parse(policy.input.expiresAt) <= now() || policy.runs >= policy.input.maxRuns;
+        return !finished || state.actions.some((action) => action.policyId === policy.id && pendingStatuses.has(action.status));
+      });
+    }
     if (state.automations.length >= 100) fail("automation_capacity");
     const row: ConsoleAutomation = { id: randomUUID(), callerOperationId, input, status: "active", runs: 0, createdAt: stamp(), ...(input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + input.trigger.minutes * 60_000).toISOString() } : {}) };
     state.automations.push(row); persist(); publish({ kind: "automation", automationId: row.id }); return row;
