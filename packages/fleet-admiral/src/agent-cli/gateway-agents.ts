@@ -194,7 +194,7 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
 /**
  * Agent 목록에 실리는 한 줄. 이 세션은 Fleet 시스템 프롬프트를 싣지 않고, 정체성 선택에
  * 필요한 사실(이름·modelId·capabilityClass·benchmark·effortLadder·공급자 allowance)은
- * `gateway_models`가 호출 시점에 통째로 보고한다. 그 표를 여기에 한 번 더 적으면 정체성
+ * `fleet://ai-gateway/models`가 호출 시점에 통째로 보고한다. 그 표를 여기에 한 번 더 적으면 정체성
  * 스무 개마다 같은 문단이 복제되어 세션 창에 상주하는데, 읽는 쪽은 어차피 로스터를 부른
  * 뒤에 고른다 — 그래서 여기에는 사람이 목록에서 이 줄을 알아볼 만큼만 남긴다.
  *

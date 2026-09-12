@@ -1,12 +1,12 @@
 # Shape — establishing facts
 
-Reconnaissance whose product is evidence, not a summary. The run's value comes from covering angles a single reader would miss and from being explicit about what it failed to establish. The delegation skill owns whether to fan out at all; `references/seat-assignment.md` owns which identities fill the seats; `references/surfaces-and-flight.md` owns the surface and wiring.
+Reconnaissance whose product is evidence, not a summary. The run's value comes from covering angles a single reader would miss and from being explicit about what it failed to establish. The routing resource owns whether to fan out at all; `fleet://ai-gateway/guides/seat-assignment` owns which identities fill the seats; `fleet://ai-gateway/guides/surfaces-and-flight` owns the surface and wiring.
 
 ## When not to use
 
 - A fact one grep or one file read settles — fanning out costs more than the answer is worth.
-- Work that changes files — see `references/shape-implementation.md`.
-- Judging what exists against a standard — see `references/shape-review.md`.
+- Work that changes files — see `fleet://ai-gateway/guides/implementation`.
+- Judging what exists against a standard — see `fleet://ai-gateway/guides/review`.
 
 ## Skeleton
 

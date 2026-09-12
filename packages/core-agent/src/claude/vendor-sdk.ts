@@ -485,10 +485,18 @@ export function defineVendorTool<TInput extends Record<string, unknown>>(
 export function createVendorMcpServer(options: {
   readonly name: string;
   readonly version?: string;
+  readonly instructions?: string;
   readonly tools?: readonly unknown[];
+  readonly resources?: readonly import("../mcp/resources.js").McpResource[];
   readonly alwaysLoad?: boolean;
 }): ClaudeGatewayMcpServer {
   const server = vendorCreateSdkMcpServer(options as never);
+  for (const resource of options.resources ?? []) {
+    server.instance.registerResource(resource.name, resource.uri, {
+      description: resource.description,
+      mimeType: resource.mimeType,
+    }, async () => ({ contents: [{ uri: resource.uri, mimeType: resource.mimeType, text: await resource.read() }] }));
+  }
   return server as unknown as ClaudeGatewayMcpServer;
 }
 

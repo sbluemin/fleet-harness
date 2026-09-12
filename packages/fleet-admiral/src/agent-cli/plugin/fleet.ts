@@ -1,10 +1,10 @@
-import { EMBEDDED_AGENT_CLI_HOOK_ASSETS, EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
+import { EMBEDDED_AGENT_CLI_HOOK_ASSETS } from "../assets.generated.js";
 import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../gateway-agents.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
 
 export const assetBundle: AssetPluginBundle = {
-  description: "Fleet gateway identities, on-demand skills, and delegation policy hooks",
+  description: "Fleet gateway identities and lifecycle hooks",
   directoryName: "fleet-gateway",
   displayName: "Fleet",
   name: FLEET_PLUGIN_NAME,
@@ -31,9 +31,6 @@ export function buildAssetPluginFiles(
 ): readonly AssetPluginFile[] {
   const files: AssetPluginFile[] = [];
   files.push({ relativePath: ".claude-plugin/plugin.json", content: toJsonContent(claudeManifest(bundle, version)) });
-  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
-    files.push({ relativePath: `skills/${asset.relativePath}`, content: asset.content });
-  }
   const guardAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
   if (!guardAsset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${MODEL_GUARD_SCRIPT_NAME}`, content: guardAsset.content });
@@ -71,10 +68,7 @@ function compactEventHook(): FleetHookExec {
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unknown {
-  // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더한다.
-  // 위임·병렬 작업을 delegation 스킬로 보내는 라우팅은 스킬 description의 When-to-use
-  // 트리거가 소유한다 — 매 턴 remind 주입은 description이 추상적이던 시절의 보완이었고,
-  // 상주 문맥만 늘려 제거했다. 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
+  // 세션 캡처·턴 신호만 주입한다. 라우팅 지침은 Gateway MCP가 소유한다.
   const userPromptSubmitExecs = [
     options.captureSessionHookExec,
     options.turnStartHookExec,
@@ -90,17 +84,9 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  // 위임 디스패치 게이트는 두지 않는다. 옛 gate-delegation은 핀 철자만 볼 수 있었는데 그
-  // 유사 파서가 멀쩡한 스크립트를 반복해서 막았고, 살아 있는 Workflow 계약은 agentType 핀과
-  // 세션 모델 상속을 정식 지원해 "모든 스테이지 강제 핀" 독트린 자체가 낡았다. 정체성 선택은
-  // delegation 스킬의 의미 정책이, 철자와 로스터는 gateway_models가 소유한다.
   const preToolUse = inputWaitingExec
     ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
     : [];
-  // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
-  // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
-  // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
-  // 호스트가 스킬의 preflight 지시를 읽고 gateway_models로 직접 읽는다.
   const postToolUse = [{
     // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
     matcher: "Workflow",

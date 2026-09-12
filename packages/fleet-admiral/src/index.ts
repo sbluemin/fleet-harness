@@ -46,6 +46,8 @@ export {
   type AiGatewayLaunchEnvOptions,
 } from "./ai-gateway/launch-env.js";
 
+export { FLEET_AI_GATEWAY_INSTRUCTIONS, buildGatewayPolicyResources } from "./ai-gateway/mcp-resources.js";
+
 // AI Gateway 모델 로드아웃 — 호스트가 Phase에 모델/강도를 배치할 때 참조하는 로스터
 export {
   buildGatewayLoadout,

@@ -10,6 +10,7 @@ import type { Duplex } from "node:stream";
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { createAiGatewayMcpHost } from "./mcp/ai-gateway.js";
 import { createConsoleUseMcpHost } from "./mcp/console-use.js";
 import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
 import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
@@ -555,17 +556,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
-    gateway: {
+  });
+  const aiGatewayMcp = createAiGatewayMcpHost({
+    transport: mcpHttp.transport,
       readSelection: () => {
         const selection = resolveAiGatewaySelection(gatewaySettings.read());
         return { models: selection.delegationModels, effortExposure: selection.effortExposure, providerPriority: selection.providerPriority };
       },
       readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
-    },
   });
   const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     consoleUse,
+    aiGatewayMcp,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
@@ -2158,7 +2161,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     await pluginHost.cleanup();
-    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();

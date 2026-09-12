@@ -6,7 +6,13 @@ export interface PluginMcpTransport {
 
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
-export type ConsoleUseToolId = "console_theaters" | "console_operations" | "gateway_models";
+export const FLEET_AI_GATEWAY_MCP_SERVER = "fleet-ai-gateway";
+
+export interface AiGatewayMcpHost {
+  connect(): ConsoleUseMcpConnection;
+}
+
+export type ConsoleUseToolId = "console_theaters" | "console_operations";
 
 export interface ConsoleUseSnapshot {
   readonly takenAt?: string;
@@ -28,6 +34,7 @@ export interface AdmiralMcpSession {
     readonly cwd: string;
     readonly signal?: AbortSignal;
     readonly includeTool?: (toolId: string) => boolean;
+    readonly registeredAgentNames?: readonly string[];
   }): readonly { readonly name: string; readonly token: string }[];
   releaseSessionToken(label: string): void;
   cleanup(): void;

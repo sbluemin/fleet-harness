@@ -609,6 +609,7 @@ export interface FleetPluginServerContext {
 
 export interface FleetPluginHostCapabilities {
   readonly consoleUse: ConsoleUseMcpHost;
+  readonly aiGatewayMcp: import("../mcp/types.js").AiGatewayMcpHost;
   readonly admiralMcp: PluginAdmiralMcpHost;
   readonly mcpTransport?: PluginMcpTransport;
   readonly operations: FleetPluginOperationsHost;

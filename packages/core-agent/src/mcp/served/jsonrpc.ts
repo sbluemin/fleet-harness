@@ -15,6 +15,8 @@ export interface ServedMcpEndpointInfo {
 
 export interface CreateServedMcpEndpointDeps {
   readonly serverInfo?: ServedMcpEndpointInfo;
+  readonly instructions?: string;
+  readonly resources?: readonly import("../resources.js").McpResource[];
   readonly toolSnapshotStore?: McpToolSnapshotStore;
   readonly transport?: McpHttpTransport;
   readonly host?: string;
@@ -167,12 +169,16 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
     const { method, id, params } = req;
     const isNotification = id === undefined || id === null;
 
+    if (deps.resources && !snapshotStore.hasSession(token)) {
+      return isNotification ? null : makeError(id, -32001, "Unauthorized session");
+    }
     switch (method) {
       case "initialize":
         return makeResult(id, {
           protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: { tools: {} },
+          capabilities: { ...(snapshotStore.getToolsForSession(token).length || !deps.resources ? { tools: {} } : {}), ...(deps.resources ? { resources: {} } : {}) },
           serverInfo,
+          ...(deps.instructions ? { instructions: deps.instructions } : {}),
         });
 
       case "notifications/initialized":
@@ -189,6 +195,28 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
 
       case "tools/call":
         return processToolCall(id, params, token, options);
+
+      case "resources/list":
+        if (!deps.resources) return makeError(id, -32601, "Resources are not supported");
+        return makeResult(id, { resources: deps.resources.map(({ read: _read, ...resource }) => resource) });
+
+      case "resources/templates/list":
+        if (!deps.resources) return makeError(id, -32601, "Resources are not supported");
+        return makeResult(id, { resourceTemplates: [] });
+
+      case "resources/read": {
+        if (!deps.resources) return makeError(id, -32601, "Resources are not supported");
+        const uri = (params as { uri?: unknown } | undefined)?.uri;
+        if (typeof uri !== "string") return makeError(id, -32602, "Resource URI is required");
+        const resource = deps.resources.find((entry) => entry.uri === uri);
+        if (!resource) return makeError(id, -32002, "Resource not found");
+        const text = await resource.read({ sessionToken: token });
+        if (!snapshotStore.hasSession(token)) return makeError(id, -32001, "Session closed");
+        return makeResult(id, { contents: [{ uri, mimeType: resource.mimeType, text }] });
+      }
+
+      case "ping":
+        return makeResult(id, {});
 
       default:
         if (isNotification) return null;

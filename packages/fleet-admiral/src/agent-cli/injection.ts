@@ -15,7 +15,7 @@ import {
 } from "./prompt.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
+import { buildGatewayCustomAgents, FLEET_PLUGIN_NAME, type GatewayEffortExposure } from "./gateway-agents.js";
 import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
   AgentCliInjectionContext,
@@ -77,6 +77,7 @@ interface DedicatedMcpSession {
     readonly cwd: string;
     readonly signal?: AbortSignal;
     readonly includeTool?: (toolId: string) => boolean;
+    readonly registeredAgentNames?: readonly string[];
   }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
   releaseSessionToken(label: string): void;
 }
@@ -107,6 +108,7 @@ export async function injectAgentCliProfile(
     // 이 세션에 허용된 호스트 도구만 세션 MCP에 노출한다.
     includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     label: tokenLabel,
+    registeredAgentNames: Object.keys(buildGatewayCustomAgents(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)).map((name) => `${FLEET_PLUGIN_NAME}:${name}`),
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const tempCleanups: Array<() => void> = [];

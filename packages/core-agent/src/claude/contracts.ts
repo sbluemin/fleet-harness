@@ -80,8 +80,10 @@ export interface ClaudeGatewayToolExtras {
 }
 
 export interface ClaudeGatewayMcpServerOptions {
+  readonly resources?: readonly import("../mcp/resources.js").McpResource[];
   readonly name: string;
   readonly version?: string;
+  readonly instructions?: string;
   readonly tools?: readonly ClaudeGatewayTool[];
   readonly alwaysLoad?: boolean;
 }

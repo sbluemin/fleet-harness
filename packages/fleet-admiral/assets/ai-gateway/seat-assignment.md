@@ -1,6 +1,6 @@
 # Seat assignment — which identity, what effort, how wide
 
-The delegation skill decides whether a dispatch leaves the host and that its identity is chosen deliberately; this file owns the choice itself when the roster exposes more than one model. Read the payload semantics in `references/loadout-reading.md` first — the two files split reading from choosing.
+The routing resource decides whether a dispatch leaves the host and that its identity is chosen deliberately; this file owns the choice itself when the roster exposes more than one model. Read the payload semantics in `fleet://ai-gateway/guides/loadout-reading` first — the two files split reading from choosing.
 
 ## Two regimes
 
@@ -11,7 +11,7 @@ Every seat's role belongs to one of two regimes, and the regime decides what fil
 | **Judgment** | decompose, propose, judge, synthesize | the output is an opinion the run commits to, with no external answer key | the top quality band reachable — benchmark evidence first, the capability-class prior where unmeasured |
 | **Mechanical** | map, scan, extract, transform, implement, verify | the output is checkable — against the codebase, the sent literals, or a concrete failing scenario | allowance, by the distribution rules below |
 
-A judgment seat returns a committed opinion **as evidence** — a proposal, a scored verdict, a merged draft. No seat carries decision authority: the final choice, trade-off arbitration, and the user-facing synthesis stay on the host, as the delegation skill's own rules state, which is why deciding is not a delegable role at all.
+A judgment seat returns a committed opinion **as evidence** — a proposal, a scored verdict, a merged draft. No seat carries decision authority: the final choice, trade-off arbitration, and the user-facing synthesis stay on the host, as the routing resource's own rules state, which is why deciding is not a delegable role at all.
 
 `verify` is mechanical deliberately: refuting a concrete finding is closed work that measurement separated no models on, and a verifier seat buys quality with lineage mixing, not rank. Scoring an open artifact on axes is not verify — that is `judge`, and it is judgment.
 
@@ -26,7 +26,7 @@ The two defaults never trade. Mechanical fans are wide and absorb distribution; 
 5. **선택한 모델의 effort를 확인한다.** 대상의 `effortLadder`에 있는 값만 사용한다. normalized benchmark를 근거로 골랐다면 그 `benchmark.effort`를 요청해야 한다. 다른 effort의 성능 곡선은 주어지지 않았으므로 같은 점수라고 가정하거나 빈 rung을 보간하지 않는다. 비교 가능한 근거가 없을 때에는 작업 난도와 기존 capability prior로 판단하고, stage 입력이 `contextWindow`에 들어오는지 확인한다.
 6. **Diversify where disagreement is the product.** A verifier sharing its subject's lineage inherits the same blind spots — judge lineage against the subject, never against this session. Diversity sizes the quorum, not the bulk fan, and works within the band the regime sets.
 7. **Confirm each name resolves.** Names register at session start; the reading may carry names this session cannot reach.
-8. **Say what carried what.** When provenance matters, the user-facing synthesis names which identities ran which branches and why — the delegation skill's synthesis rules own the wording.
+8. **Say what carried what.** When provenance matters, the user-facing synthesis names which identities ran which branches and why — the routing resource's synthesis rules own the wording.
 
 ## Seats for the session's own model
 
@@ -35,7 +35,7 @@ An unnamed dispatch inherits the session's model and spends the session's own al
 - **Continuity** — the run needs the host's capability class or its conversational context.
 - **Cross-lineage verification seat** — a verify quorum wants the session's lineage represented against a subject of a different lineage. Cap it at one such seat per verify stage, and check that the lineage actually differs from the subject's rather than assuming it.
 - **Judgment floor** — no band-eligible identity is reachable on a readable, non-`critical` provider (a spend-priority listing overrides the forecast). One seat, with the rest of the fan shrunk or repeat-seated rather than filled from below the band; this buys capability, never convenience.
-- **Empty roster** — nothing is exposed; the delegation skill already treats this as keeping the work on the host or stating the handoff is blocked.
+- **Empty roster** — nothing is exposed; the routing resource already treats this as keeping the work on the host or stating the handoff is blocked.
 
 Bulk fan-out on the session's model is the pattern with no case: it concentrates spend on the allowance the host itself runs on and collects nothing the roster could not provide.
 

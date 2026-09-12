@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.dirname(scriptDir);
 const assetRoot = path.join(repoRoot, "packages", "fleet-admiral", "assets");
-const skillRoot = path.join(assetRoot, "skills");
 const hookRoot = path.join(assetRoot, "hooks");
 const outputPath = path.join(repoRoot, "packages", "fleet-admiral", "src", "agent-cli", "assets.generated.ts");
 const fleetHarnessPackage = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
@@ -22,10 +21,10 @@ function assetEntries(rootPath) {
   });
 }
 
-const skillEntries = assetEntries(skillRoot).join("\n");
 const hookEntries = assetEntries(hookRoot).join("\n");
+const gatewayEntries = assetEntries(path.join(assetRoot, "ai-gateway")).join("\n");
 
-const output = `// packages/fleet-admiral/assets (skills + hooks) asset tree에서 생성된 내장 자산이다.
+const output = `// packages/fleet-admiral/assets (ai-gateway + hooks) asset tree에서 생성된 내장 자산이다.
 // 재생성: node scripts/generate-fleet-admiral-assets.mjs
 
 export interface EmbeddedAgentCliAsset {
@@ -35,8 +34,8 @@ export interface EmbeddedAgentCliAsset {
 
 export const FLEET_HARNESS_VERSION = ${JSON.stringify(fleetHarnessPackage.version)};
 
-export const EMBEDDED_AGENT_CLI_SKILL_ASSETS: readonly EmbeddedAgentCliAsset[] = [
-${skillEntries}
+export const EMBEDDED_AI_GATEWAY_ASSETS: readonly EmbeddedAgentCliAsset[] = [
+${gatewayEntries}
 ];
 
 export const EMBEDDED_AGENT_CLI_HOOK_ASSETS: readonly EmbeddedAgentCliAsset[] = [

@@ -1,8 +1,3 @@
----
-name: professional-pushback
-description: Challenge a user instruction before executing it when it is technically wrong, materially harms the user's stated goal, or materially conflicts with another stated requirement. Do not use for style preferences, favored implementations, equivalent trade-offs, minor conventions, permission expansion, or delegation setup.
----
-
 # Professional Pushback
 
 Judge the instruction against the user's stated goals and concrete technical consequences, not generic best practice. Push back only when it is technically wrong, creates a specific material disadvantage to those goals, or materially conflicts with another stated requirement.
