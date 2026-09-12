@@ -23,8 +23,12 @@ export function playMinimizeFlight(operationId: string): void {
   const from = panel.getBoundingClientRect();
   window.requestAnimationFrame(() => {
     const chip = chipElement(operationId);
-    if (!isVisiblyRendered(chip)) return;
-    flyPanelMotionGhost(from, chip.getBoundingClientRect(), () => pulseChip(chip));
+    // War Room의 좁은 레일은 개별 칩 대신 최소화 선반의 건수만 보여 준다.
+    const target = isVisiblyRendered(chip)
+      ? chip
+      : document.querySelector<HTMLElement>("[data-panel-motion-shelf]");
+    if (!isVisiblyRendered(target)) return;
+    flyPanelMotionGhost(from, target.getBoundingClientRect(), () => pulseChip(target));
   });
 }
 

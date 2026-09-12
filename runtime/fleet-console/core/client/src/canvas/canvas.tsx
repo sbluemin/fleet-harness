@@ -1148,6 +1148,7 @@ export function OperationsCanvas({
             onMinimize: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
               clearIdleArrival(operation.id);
+              playMinimizeFlight(operation.id);
               if (triageActive) {
                 // War Room의 최소화는 deck에서 내리는 동작이다. 무대에 서 있던 패널이면 지목까지
                 // 거둬 무대를 함께 비운다 — 지목이 남으면 큐가 비어도 그 패널이 무대에 붙어 있다.
@@ -1155,7 +1156,6 @@ export function OperationsCanvas({
                 setTheaterOperationMinimized(operation.theaterId, operation.id, true);
                 return;
               }
-              playMinimizeFlight(operation.id);
               minimizeOperation(operation.id);
             },
             onMaximize: () => {

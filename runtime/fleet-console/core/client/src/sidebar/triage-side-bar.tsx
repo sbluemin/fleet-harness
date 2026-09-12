@@ -314,7 +314,7 @@ export function TriageSideBar({
           ) : null}
           {shelvedCount > 0 ? (
             <li className="side-bar-rail-section side-bar-rail-section--shelved">
-              <span className="side-bar-rail-section-mark" aria-label={`${minimizedSection.label} ${minimizedEntries.length}${dormantSection ? ` · ${dormantSection.label} ${dormantSection.entries.length}` : ""}`}>
+              <span className="side-bar-rail-section-mark" data-panel-motion-shelf aria-label={`${minimizedSection.label} ${minimizedEntries.length}${dormantSection ? ` · ${dormantSection.label} ${dormantSection.entries.length}` : ""}`}>
                 <span className="side-bar-rail-section-dot" aria-hidden="true" />
                 <span className="side-bar-rail-section-count">{shelvedCount}</span>
               </span>
