@@ -93,7 +93,7 @@ verbose log. An earlier design injected the roster from a `PostToolUse` MCP hook
 that way and recorded a prompt-scoped receipt the dispatch gate validated against; it
 never fired once, no receipt was ever written, and the gate refused every gateway pin
 while the pin contract itself never reached the host. The roster now reaches the host
-through its own attention — the skill description's triggers and the skill preflight.
+through the host routing entrypoint and explicit MCP resource reads.
 
 Two properties of the harness keep the identity roster necessary, both measured on
 Claude Code 2.1.235:
@@ -110,7 +110,7 @@ Claude Code 2.1.235:
 
 Identity descriptions are one label line (`xai/grok-4.6 @low`). Everything a choice needs
 — capability class, benchmark figures, effort ladder, provider allowance, the
-`agentTypes` name map — is reported by `gateway_models` at call time, so repeating it
+`agentTypes` name map — is reported by `fleet://ai-gateway/models` at read time, so repeating it
 once per identity would put the same table in the session window twenty times over.
 
 ## 3. Live State Access
@@ -118,8 +118,8 @@ once per identity would put the same table in the session window twenty times ov
 Runtime state is read through direct owners:
 
 - Workflow receipt and version stamp: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions and per-dispatch identity choice, with its case-routed deep doctrine under `delegation/references/`; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
-- Tool-facing facts: `gateway_models` in `runtime/fleet-console/core/host/mcp/gateway-models-tool.ts`, served by `fleet-console-use`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
+- On-demand policy assets: `packages/fleet-admiral/assets/ai-gateway/`, generated into `EMBEDDED_AI_GATEWAY_ASSETS` and served through `buildGatewayPolicyResources`. These resources own detailed routing doctrine; no Fleet skills are rendered.
+- Model facts: `runtime/fleet-console/core/host/mcp/gateway-models.ts`, served as `fleet://ai-gateway/models` by `fleet-ai-gateway`. The host reads the live roster directly, with no hook receipt.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 
@@ -140,7 +140,7 @@ composes the thin gateway process directly:
 
 - creates infrastructure services
 - opens the AI Gateway settings store and the in-process quota service
-- registers Fleet Wiki agent tools and the `gateway_models` tool
+- connects the host-owned Admiral MCP tools and the resource-only `fleet-ai-gateway` server
 - starts the in-process Fleet MCP runtime
   (`createFleetGatewayAgentRuntimeLifecycle`, fleet-admiral)
 - applies the stored gateway wire-log switch
