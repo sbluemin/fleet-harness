@@ -153,7 +153,7 @@ describe("oversized skill payloads", () => {
 // 전체를 받아 주면, raw id를 아는 호출자가 사용자가 끈 모델로 그 구독을 그대로 쓴다.
 
 describe("Astra asynchronous tools", () => {
-  it("opts streaming read-only calls into async without widening caller execution authority", async () => {
+  it("keeps async tools disabled by default and preserves caller parallel-tool control", async () => {
     const bodies: Array<Record<string, any>> = [];
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       bodies.push(JSON.parse(String(init?.body)));
@@ -179,9 +179,7 @@ describe("Astra asynchronous tools", () => {
         await router.handle(ctx({ res, token: ANTHROPIC_CRED, rawBody }));
         expect(res.status).toBe(200);
       }
-      expect(bodies[0]?.tools.filter((tool: { async?: boolean }) => tool.async).map((tool: { name: string }) => tool.name))
-        .toEqual(["Read", "Grep", "Glob"]);
-      for (const body of bodies.slice(1)) {
+      for (const body of bodies) {
         expect(body.tools.every((tool: { async?: boolean }) => tool.async === undefined)).toBe(true);
       }
       expect(bodies[0]?.store).toBe(false);
