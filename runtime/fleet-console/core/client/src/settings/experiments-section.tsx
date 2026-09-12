@@ -65,6 +65,19 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           </div>
         );
       })}
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.experiments.consoleControl.title")}
+            <SettingsHelp title={t("settings.experiments.consoleControl.title")}>{t("settings.experiments.consoleControl.help")}</SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <SettingsToggle checked={experiments.consoleControl} disabled={saving}
+            ariaLabel={t("settings.experiments.consoleControl.title")}
+            onChange={(next) => save({ ...experiments, consoleControl: next })} />
+        </div>
+      </div>
     </section>
     {/* 사이드바 카드 — 모델이 없는 실험이라 스위치 하나만 선다. 켜야만 서버가 git을 읽는다. */}
     <section className="global-settings-card" aria-label={t("settings.experiments.sidebarCard")}>

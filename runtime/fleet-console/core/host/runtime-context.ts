@@ -15,6 +15,7 @@ export interface ConsoleRuntimeContext {
   readonly dataDir: string;
   readonly legacyDataDir: string;
   readonly host: ConsoleRuntimeHost;
+  readonly consoleControl?: import("./mcp/console-control.js").ConsoleControl;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
@@ -26,6 +27,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
+  readonly consoleControl?: import("./mcp/console-control.js").ConsoleControl;
 }): ConsoleRuntimeContext {
   const basePath = "/api/v1";
   const wsBasePath = "/api/v1/terminal/ws";
@@ -37,6 +39,7 @@ export function createConsoleRuntimeContext(deps: {
   };
   return {
     host: deps.host,
+    consoleControl: deps.consoleControl,
     dataDir: deps.dataDir,
     legacyDataDir: deps.legacyDataDir,
     basePath,

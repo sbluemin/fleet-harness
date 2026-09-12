@@ -168,6 +168,8 @@ function probeClaudeExecutable(): string | null {
 function withResolvedExecutable(
   options: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> {
+  // 호출자가 선택한 실행기를 SDK 동봉 버전으로 덮어쓰지 않는다.
+  if (options.pathToClaudeCodeExecutable !== undefined) return { ...options };
   const executable = claudeExecutablePath();
   return executable === null ? { ...options } : { ...options, pathToClaudeCodeExecutable: executable };
 }

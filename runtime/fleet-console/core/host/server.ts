@@ -14,6 +14,7 @@ import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDir
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import { createAiGatewayMcpHost } from "./mcp/ai-gateway.js";
+import { createConsoleControl } from "./mcp/console-control.js";
 import { createConsoleUseMcpHost } from "./mcp/console-use.js";
 import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
 import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
@@ -560,7 +561,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }) ?? null;
   const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
+  const consoleControl = createConsoleControl({ enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   const consoleUse = createConsoleUseMcpHost({
+    control: consoleControl,
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
@@ -590,6 +593,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (input.id && deletionCoordinator.hasPendingOperation(input.id)) throw new Error("pending_deletion");
         const operation = operations.create(input);
         persistDurableState();
+        broadcastOperationChanged(operation);
         return operation;
       },
       patch: (id, input) => {
@@ -2184,6 +2188,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
+    consoleControl.dispose();
     try { await Promise.all([consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
@@ -2449,6 +2454,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         await rehydrateDurableState();
         coreLaunchKinds = await startConsoleExecution(createConsoleRuntimeContext({
+          consoleControl,
           host: { ...pluginHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),

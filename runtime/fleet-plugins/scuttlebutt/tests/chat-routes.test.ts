@@ -4,6 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { registerChatRoutes } from "../server/chat-routes.js";
 import type { ChatEvent, ChatSessionLike } from "../server/chat-session.js";
 
@@ -50,6 +51,8 @@ describe("session controls", () => {
     // 모델 id는 `--model`에 그대로 들어간다 — 모양이 어긋난 값은 자식에게 닿기 전에 거절한다.
     const created: unknown[] = [];
     const harness = createHarness(true, { admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
+    let consoleUse = true;
+    Object.assign(harness.ctx.host, { experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, consoleControl: consoleUse }) } });
     registerChatRoutes(harness.ctx, {
       createSession: (options) => {
         created.push(options);
@@ -65,6 +68,11 @@ describe("session controls", () => {
     expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
     expect(created[0]).toMatchObject({ admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
     expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
+    const injected = (created[0] as { consoleRead: { consoleRead: { enabled: () => boolean; tools: string[] } } }).consoleRead.consoleRead;
+    expect(injected.tools).toEqual(["console_theaters", "console_operations"]);
+    expect(injected.enabled()).toBe(true);
+    consoleUse = false;
+    expect(injected.enabled()).toBe(false);
 
     const unsafe = createHarness(true, { admiral: "tori", model: "sonnet --dangerously-skip" });
     registerChatRoutes(unsafe.ctx, { createSession: () => new FakeSession() });

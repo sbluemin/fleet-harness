@@ -160,6 +160,9 @@ export interface ClaudeGatewaySdkOptions {
    * 당긴다.
    */
   readonly models: readonly string[];
+  /** 호스트가 선택한 Claude Code 실행 파일의 절대 경로. 생략하면 SDK 동봉 실행기를 사용한다.
+   * 지정한 경로가 실패해도 다른 실행기로 폴백하지 않는다. 턴 입력으로는 바꿀 수 없다. */
+  readonly executablePath?: string;
   /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
   /**

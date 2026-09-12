@@ -10,7 +10,7 @@ describe("published Console manifest", () => {
       private: true,
       dependencies: {
         "node-pty": "^1.0.0",
-        "@anthropic-ai/claude-agent-sdk": "^0.3.212",
+        "@anthropic-ai/claude-agent-sdk": "^0.3.269",
         ws: "^8.18.0",
         "font-list": "^2.1.0",
         "@vscode/ripgrep": "1.18.0",
@@ -32,6 +32,6 @@ describe("published Console manifest", () => {
       expect(Object.values(entries).some((value) => typeof value === "string" && value.startsWith("workspace:"))).toBe(false);
     }
     expect(manifest.devDependencies).toEqual({ typescript: "^6.0.2" });
-    expect(manifest.dependencies).toEqual({ "node-pty": "^1.0.0", "@anthropic-ai/claude-agent-sdk": "^0.3.212", ws: "^8.18.0", "font-list": "^2.1.0", "@vscode/ripgrep": "1.18.0", selfsigned: "^5.5.0", esbuild: "0.27.7" });
+    expect(manifest.dependencies).toEqual({ "node-pty": "^1.0.0", "@anthropic-ai/claude-agent-sdk": "^0.3.269", ws: "^8.18.0", "font-list": "^2.1.0", "@vscode/ripgrep": "1.18.0", selfsigned: "^5.5.0", esbuild: "0.27.7" });
   });
 });

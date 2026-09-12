@@ -12,7 +12,11 @@ export interface AiGatewayMcpHost {
   connect(): ConsoleUseMcpConnection;
 }
 
-export type ConsoleUseToolId = "console_theaters" | "console_operations";
+export type { ConsoleActionInput, ConsoleActionKind, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
+
+export const CONSOLE_READ_TOOLS = ["console_context", "console_theaters", "console_operations", "console_operation", "console_events"] as const;
+export const CONSOLE_CONTROL_TOOLS = [...CONSOLE_READ_TOOLS, "console_launch", "console_send", "console_interrupt", "console_action", "console_automation"] as const;
+export type ConsoleUseToolId = (typeof CONSOLE_CONTROL_TOOLS)[number];
 
 export interface ConsoleUseSnapshot {
   readonly takenAt?: string;
@@ -71,5 +75,7 @@ export interface ConsoleUseMcpHost {
     readonly tools: readonly ConsoleUseToolId[];
     readonly snapshot?: () => ConsoleUseSnapshot | null;
     readonly enabled?: () => boolean;
+    /** 호스트 Admiral 연결만 요청한다. 읽기 옵트인은 제어 권한으로 승격되지 않는다. */
+    readonly allowControl?: boolean;
   }): ConsoleUseMcpConnection;
 }

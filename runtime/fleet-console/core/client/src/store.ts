@@ -371,9 +371,10 @@ export function hydrateInitialOperations(operations: readonly OperationNode[]): 
 
 export function applyOperationUpdate(operation: OperationNode): void {
   const index = state.operations.findIndex((op) => op.id === operation.id);
-  if (index === -1) return;
   const operations = [...state.operations];
-  operations[index] = normalizeOperationOwner(operation);
+  // MCP·다른 창에서 생성한 Operation은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
+  if (index === -1) operations.push(normalizeOperationOwner(operation));
+  else operations[index] = normalizeOperationOwner(operation);
   setState({ operations });
 }
 

@@ -191,7 +191,7 @@ function buildMobileSettingsGroups(
 function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
   if (state === null) return null;
   const { experiments } = state;
-  const on = [experiments.promptRefine, experiments.sessionWatch, experiments.aideConsoleRead].filter(Boolean).length;
+  const on = [experiments.promptRefine, experiments.sessionWatch, experiments.consoleControl].filter(Boolean).length;
   return on === 0 ? null : `${on} ${t("mobile.settings.on")}`;
 }
 

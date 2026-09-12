@@ -9,9 +9,9 @@
  * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
  */
 
-export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "aideConsoleRead" | "operationContext";
+export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "operationContext";
 
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "aideConsoleRead", "operationContext"];
+export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "operationContext"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
@@ -25,8 +25,8 @@ export interface ConsoleExperimentSettings {
   /** Operation마다 켜는 세션 분석가 관찰. */
   readonly sessionWatch: boolean;
   readonly sessionWatchModel: string;
-  /** 퀘이커 부관이 Console을 읽는다 — 모델은 부관단 카드의 모델 설정을 따른다. */
-  readonly aideConsoleRead: boolean;
+  /** 켜져 있는 동안 Console MCP 실행과 제한된 자동 운영을 포괄 승인한다. */
+  readonly consoleControl: boolean;
   /**
    * 사이드바 Operation 칩이 브랜치와 Theater 기준 작업 폴더를 한 줄 더 싣는다. 켜야만 서버가 git을
    * 읽고 HEAD를 감시한다 — 꺼진 Console은 이 축을 계산하지도 내보내지도 않는다.
@@ -48,7 +48,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   promptRefineModel: DEFAULT_EXPERIMENT_MODELS.promptRefine,
   sessionWatch: false,
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
-  aideConsoleRead: false,
+  consoleControl: false,
   operationContext: false,
 };
 
@@ -99,7 +99,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     promptRefineModel: model("promptRefine"),
     sessionWatch: record.sessionWatch === true,
     sessionWatchModel: model("sessionWatch"),
-    aideConsoleRead: record.aideConsoleRead === true,
+    consoleControl: record.consoleControl === true,
     operationContext: record.operationContext === true,
   };
 }

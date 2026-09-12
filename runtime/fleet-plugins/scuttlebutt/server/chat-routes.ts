@@ -90,9 +90,9 @@ async function handleStart(
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   let consoleRead: Awaited<ReturnType<typeof createConsoleReadTools>> | undefined;
   try {
-    // 실험: 세션이 시작되는 순간의 설정으로 정한다 — 대화 도중 켜고 끄면 다음 세션부터 따른다.
+    // 콘솔 사용을 켠 뒤 시작한 부관 세션에 도구를 주입한다. 끄면 기존 도구도 호출 시 차단한다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
-    consoleRead = experiments.aideConsoleRead
+    consoleRead = experiments.consoleControl
       ? await createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null)
       : undefined;
     result = await registry.start(chatId, (onEvent) => createSession({

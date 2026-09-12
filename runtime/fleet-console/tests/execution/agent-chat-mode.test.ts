@@ -9,6 +9,8 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../../core/host/agent/routes.js";
+import { createConsoleControl } from "../../core/host/mcp/console-control.js";
+import { resolveAgentCliBinary } from "../../core/host/agent/agent-cli-paths.js";
 import type { TerminalRuntime, TerminalSocket } from "../../core/host/terminal/index.js";
 import { createPluginTerminalTicketRegistry } from "../../core/host/terminal/tickets.js";
 
@@ -41,6 +43,75 @@ afterEach(async () => {
 });
 
 describe("agent chat mode routes", () => {
+  it("tracks Terminal requests to matching hook turns, projects public output, and confirms interruption", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+    const receipt = harness.consoleControl.request(sessionId, "terminal-send", { kind: "send", operationId: sessionId, text: "Check terminal output" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)?.status).toBe("running"));
+    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Check terminal output" }) });
+    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Public result /private/example/output.txt sk-123456789012345678901234" }) });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)).toMatchObject({ status: "finished", outcome: "completed" }));
+    const output = harness.consoleControl.observe(sessionId)?.output;
+    expect(output).toMatchObject({ status: "available", outcome: "completed", source: "terminal_hook" });
+    expect(output?.text).toContain("Public result");
+    expect(output?.text).not.toContain("/private/example");
+    expect(output?.text).not.toContain("sk-123456789012345678901234");
+    expect(harness.consoleControl.observe(sessionId)?.supportedActions).not.toContain("interrupt");
+    const actionsBeforeIdleInterrupt = harness.consoleControl.state().actions.length;
+    expect(() => harness.consoleControl.request(sessionId, "idle-interrupt", { kind: "interrupt", operationId: sessionId })).toThrow("nothing_to_interrupt");
+    expect(harness.consoleControl.state().actions).toHaveLength(actionsBeforeIdleInterrupt);
+    expect(harness.writes).not.toContain("");
+    const next = harness.consoleControl.request(sessionId, "terminal-next", { kind: "send", operationId: sessionId, text: "Wait for interruption" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(next.id)?.status).toBe("running"));
+    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Wait for interruption" }) });
+    const interrupt = harness.consoleControl.request(sessionId, "terminal-interrupt", { kind: "interrupt", operationId: sessionId });
+    await vi.waitFor(() => expect(harness.writes).toContain(""));
+    expect(harness.consoleControl.getAction(interrupt.id)?.status).not.toBe("finished");
+    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Interrupted" }) });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(interrupt.id)).toMatchObject({ status: "finished", outcome: "interrupted" }));
+    expect(harness.consoleControl.getAction(next.id)?.outcome).toBe("interrupted");
+    const mismatch = harness.consoleControl.request(sessionId, "terminal-mismatch", { kind: "send", operationId: sessionId, text: "Expected prompt" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(mismatch.id)?.status).toBe("running"));
+    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Someone else's prompt" }) });
+    expect(harness.consoleControl.getAction(mismatch.id)?.status).toBe("outcome_unknown");
+    await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), "\n" + JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "private thought" }, { type: "text", text: "Fresh terminal result" }] } }) + "\n");
+    await harness.post(sessionId, "turn", { phase: "end", input: "{}" });
+    await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript"));
+    expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result");
+    expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
+    const launch = harness.consoleControl.request(sessionId, "terminal-launch", { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)?.operationId).toBeDefined());
+    const launched = harness.consoleControl.getAction(launch.id)!.operationId!;
+    harness.setLive(launched);
+    expect(harness.consoleControl.getAction(launch.id)?.status).toBe("running");
+    await harness.post(launched, "turn", { phase: "start", input: JSON.stringify({ prompt: "Launch terminal check" }) });
+    await harness.post(launched, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Launch completed" }) });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)).toMatchObject({ status: "finished", outcome: "completed" }));
+  });
+  it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+    const receipt = harness.consoleControl.request(sessionId, "console-message", { kind: "send", operationId: sessionId, text: "Inspect the build" });
+    expect(harness.sends).toEqual([]);
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)?.status).toBe("finished"));
+    expect(harness.sends).toEqual(["Inspect the build"]);
+    expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
+    expect(harness.consoleControl.getAction(receipt.id)).toMatchObject({ outcome: "succeeded", operationId: sessionId });
+    expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing");
+    const launch = harness.consoleControl.request(sessionId, "console-launch", { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)?.status).toBe("finished"));
+    const launched = harness.consoleControl.getAction(launch.id)!;
+    expect(launched.operationId).not.toBe(sessionId);
+    expect(harness.operation(launched.operationId!)?.payload.chatBorn).toBe(true);
+    expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]);
+    const command = harness.consoleControl.request(sessionId, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
+  });
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -200,12 +271,11 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       },
     };
   });
-  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async ({ models }: { readonly models: readonly string[] }) => ({
-    configDir: sdkConfigDir,
-    models,
-    openSession,
-    dispose: async () => {},
-  });
+  const sdkOptions: Array<{ readonly executablePath?: string }> = [];
+  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async (options: { readonly models: readonly string[]; readonly executablePath?: string }) => {
+    sdkOptions.push(options);
+    return { configDir: sdkConfigDir, models: options.models, openSession, dispose: async () => {} };
+  };
 
   const operations: OperationNode[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
@@ -249,7 +319,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     stop: async () => {},
   };
+  const consoleControl = createConsoleControl({ enabled: () => true, directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }] });
+  lifecycleCleanups.push(() => consoleControl.dispose());
   const ctx = {
+    consoleControl,
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,
     basePath: "/api/v1",
@@ -369,6 +442,8 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   }
 
   return {
+    consoleControl,
+    sdkOptions,
     fleetDataDir,
     attach,
     terminate,

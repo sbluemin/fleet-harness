@@ -11,7 +11,7 @@ import {
   useModelPickerOptions,
 } from "@fleet-console/sdk/settings/browser";
 
-import { isExperimentsSaving, readExperiments, readModelOptions, subscribeConsoleRead, writeConsoleRead } from "./console-read.js";
+import { readModelOptions } from "./console-read.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -43,7 +43,6 @@ export const scuttlebuttSettingsSection = defineSettingsSection({
       getT(locale)("settings.section.roster"),
       getT(locale)("settings.section.departure"),
       getT(locale)("settings.section.size"),
-      getT(locale)("settings.section.consoleRead"),
       getT(locale)("settings.section.model"),
     ].join(" "),
     "aide quaker tori bori dori mascot bell announce chat size scale figure px model effort",
@@ -165,7 +164,6 @@ function ScuttlebuttSettingsSection() {
         </SettingsRow>
       ) : null}
       <ModelRow t={t} saving={saving} model={settings.model} effort={settings.effort} onSave={save} />
-      <ConsoleReadRow t={t} saving={saving} />
       <SettingsRow
         label={t("settings.section.departure")}
         helpTip={
@@ -219,40 +217,6 @@ function ModelRow({ t, saving, model, effort, onSave }: {
           labelOf: (level) => t(`effort.${level as AideEffort}`),
           onChange: (next) => void onSave({ effort: next as AideEffort }),
         }}
-      />
-    </SettingsRow>
-  );
-}
-
-/**
- * 실험 "부관의 Console 읽기" — 설정은 코어 general의 experiments 필드이고 이 카드는 자기 행만 고쳐
- * 넘긴다. 모델은 위의 부관단 모델을 따르므로 이 행에는 선택기가 없다.
- */
-function ConsoleReadRow({ t, saving }: { readonly t: ReturnType<typeof getT>; readonly saving: boolean }) {
-  const experiments = useStoreSnapshot(subscribeConsoleRead, readExperiments);
-  // 코어의 AI 확장 행이 같은 experiments 필드를 저장하는 동안은 이 스위치도 잠근다 — 겹친 저장은
-  // 코어가 거절하므로, 열어 두면 눌린 값이 아무 말 없이 버려진다.
-  const coreSaving = useStoreSnapshot(subscribeConsoleRead, isExperimentsSaving);
-  const [busy, setBusy] = React.useState(false);
-  if (!experiments) return null;
-  const write = async (enabled: boolean) => {
-    setBusy(true);
-    try { await writeConsoleRead(enabled); } finally { setBusy(false); }
-  };
-  return (
-    <SettingsRow
-      label={t("settings.section.consoleRead")}
-      helpTip={
-        <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.consoleRead") })}>
-          {t("settings.section.consoleReadHint")}
-        </SettingsHelpTip>
-      }
-    >
-      <SettingsToggle
-        ariaLabel={t("settings.section.consoleReadToggle")}
-        checked={experiments.aideConsoleRead}
-        disabled={saving || busy || coreSaving}
-        onChange={(enabled) => void write(enabled)}
       />
     </SettingsRow>
   );
