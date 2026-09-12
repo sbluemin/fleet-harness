@@ -1560,7 +1560,9 @@
   .repository-staging-root.has-hunk > .repository-hunk-pane { border-left: 0; border-top: 1px solid var(--surface-rim); }
 }
 .repository-staging-lists { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-.repository-staging-section { display: flex; flex-direction: column; min-height: 0; }
+/* 섹션은 목록 스크롤 컨테이너 안에서 제 높이를 지켜야 한다. 축소를 허용하면 두 섹션이 컨테이너 높이에
+   맞춰 눌리고, 긴 미스테이지 목록이 넘쳐 흐른 위로 스테이지 헤더가 겹쳐 그려진다(362개 변경 재현). */
+.repository-staging-section { display: flex; flex-direction: column; flex: none; }
 .repository-staging-head {
   display: flex;
   align-items: center;
