@@ -1,4 +1,4 @@
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
@@ -465,6 +465,8 @@ export interface GlobalSettingsState {
   readonly language: ConsoleLanguagePreference;
   /** 실험 기능과 모델 좌석 — 구서버 응답에는 없을 수 있고, 그때는 전부 꺼짐으로 정규화한다. */
   readonly experiments: ConsoleExperimentSettings;
+  /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 구서버 응답에는 없을 수 있고, 그때는 빈 객체다. */
+  readonly shortcuts: ShortcutBindings;
 }
 
 export interface GlobalSettingsMutationResult {

@@ -83,7 +83,8 @@ export interface PaletteCommandEntry {
   readonly danger?: boolean;
   readonly undoable?: boolean;
   /** 같은 일을 하는 전역 단축키(있을 때만). 행 오른쪽에 kbd로 선다. */
-  readonly shortcut?: readonly string[];
+  /** 등록부 명령 id — 팔레트가 현재 조합을 그린다. */
+  readonly shortcut?: string;
   /** 대상이 있는 명령의 대상 이름 — 현재 Operation 구역의 행 아래 캡션. */
   readonly subject?: string;
   /** 「모노그램」 글리프의 재료 — Theater 라벨. */
@@ -145,7 +146,7 @@ export function buildPaletteCommands(
     (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
   ) ?? null;
   if (options?.canUndoLastClose === true) {
-    push({ commandId: "undo-close", label: t("palette.undoClose"), aliasLabel: alias("palette.undoClose"), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: ["Mod", "Z"] });
+    push({ commandId: "undo-close", label: t("palette.undoClose"), aliasLabel: alias("palette.undoClose"), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: "console.undo-close" });
   }
   // 현재 Operation — 이 구역만이 Operation을 가리키는 명령을 가진다. 다른 Operation의 동작은
   // 검색 결과 행의 동작 띠가 맡는다(Operation마다 재개·닫기 쌍을 늘어놓던 옛 홈은 첫 화면을
@@ -166,16 +167,16 @@ export function buildPaletteCommands(
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
-    push({ commandId: "new-operation", label: t("palette.newOperation", { label: activeTheater.label }), aliasLabel: alias("palette.newOperation", { label: activeTheater.label }), action: { kind: "new-operation" }, group: "theater", glyph: "operation-new", shortcut: ["Mod", "J"] });
+    push({ commandId: "new-operation", label: t("palette.newOperation", { label: activeTheater.label }), aliasLabel: alias("palette.newOperation", { label: activeTheater.label }), action: { kind: "new-operation" }, group: "theater", glyph: "operation-new", shortcut: "console.quick-launch" });
     const theaterOperations = current.operations.filter((operation) => operation.theaterId === activeTheater.id);
     if (theaterOperations.length > 0) {
       push({ commandId: "minimize-all-operations", label: t("palette.minimizeAll"), aliasLabel: alias("palette.minimizeAll"), action: { kind: "minimize-all-operations" }, group: "view", glyph: "view-minimize-all" });
-      push({ commandId: "fit-all-panels", label: t("palette.fitAllPanels"), aliasLabel: alias("palette.fitAllPanels"), action: { kind: "fit-all-panels" }, group: "view", glyph: "view-fit", shortcut: ["Shift", "1"] });
+      push({ commandId: "fit-all-panels", label: t("palette.fitAllPanels"), aliasLabel: alias("palette.fitAllPanels"), action: { kind: "fit-all-panels" }, group: "view", glyph: "view-fit", shortcut: "operations.fit-all" });
     }
-    push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: ["Alt", "T"] });
-    push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), action: { kind: "toggle-formation" }, group: "view", glyph: "view-tactical", shortcut: ["Alt", "F"] });
+    push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: "operations.toggle-triage" });
+    push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), action: { kind: "toggle-formation" }, group: "view", glyph: "view-tactical", shortcut: "operations.toggle-formation" });
     push({ commandId: "toggle-station-keeping", label: t("palette.toggleStationKeeping"), aliasLabel: alias("palette.toggleStationKeeping"), action: { kind: "toggle-station-keeping" }, group: "view", glyph: "view-station-keeping" });
-    push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: ["Alt", "S"] });
+    push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });
   }
   for (const panel of railPanels) {
     // 설정은 아래에서 자기 이름의 일급 명령(open-settings)으로 선다 — 같은 표면을 여는
@@ -192,8 +193,8 @@ export function buildPaletteCommands(
       ...(panel.icon === undefined ? {} : { railIcon: panel.icon }),
     });
   }
-  push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: ["Mod", "B"] });
-  push({ commandId: "toggle-rail", label: t("palette.toggleRail"), aliasLabel: alias("palette.toggleRail"), action: { kind: "toggle-rail" }, group: "console", glyph: "console-rail", shortcut: ["Mod", "Alt", "B"] });
+  push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });
+  push({ commandId: "toggle-rail", label: t("palette.toggleRail"), aliasLabel: alias("palette.toggleRail"), action: { kind: "toggle-rail" }, group: "console", glyph: "console-rail", shortcut: "console.toggle-rail" });
   // 전체화면에서 밴드가 숨은 동안 그 안의 토글은 inert라 닿지 않는다 — 팔레트가 표면 밖 경로다.
   // 라벨은 저장된 선호를 따른다: 이 항목은 전환이므로 한 방향으로만 읽히면 이미 켜 둔 사용자가
   // 켜는 줄 알고 골랐다가 밴드를 끄게 된다. current는 false로 둔다 — 전환 항목은 배지 대상이 아니고,

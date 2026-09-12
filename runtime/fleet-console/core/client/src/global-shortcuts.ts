@@ -1,5 +1,6 @@
 import { isBlockingDialogOpen } from "./shortcuts.js";
 import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
+import { isShortcutRecording, matchesShortcutCommand } from "./shortcut-bindings.js";
 
 export type PanelShortcutOutcome = "suppress" | "reveal" | "apply";
 
@@ -28,15 +29,6 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly undoLastClose?: () => void;
 }
 
-function isSpaceKey(event: KeyboardEvent): boolean {
-  return event.code === "Space" || event.key === " ";
-}
-
-function isQuickLaunchToggleShortcut(event: KeyboardEvent): boolean {
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "j") return true;
-  return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && isSpaceKey(event);
-}
-
 // 가운데 Quick Launch와 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
 // 열기만 하고 닫히지 않는다(⌘K가 팔레트를 못 닫던 실측). 자기 표면이 아닌 다른 차단
 // 다이얼로그가 떠 있을 때만 막는다.
@@ -50,13 +42,15 @@ function isForeignBlockingDialogOpen(documentFor: Document, ownSelector: string)
 export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcutDependencies, windowFor: Window = window): () => void {
   const handleKeyDown = (event: KeyboardEvent) => {
     if (isKeyboardShortcutsModalOpen()) return;
+    // 설정 카드가 조합을 기록하는 동안은 어떤 명령도 발화하지 않는다 — 기록기가 그 키를 받는다.
+    if (isShortcutRecording(windowFor.document)) return;
+    const matches = (commandId: string) => matchesShortcutCommand(event, commandId);
     // Quick Launch: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
     // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
-    // Mod+J는 Alt만 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
-    // Ctrl+Space는 모든 OS에서 Control+Space다(macOS의 Command+Space/Spotlight가 아니다).
-    // Shift·Alt·Meta는 거른다 — Ctrl+Shift+Space와 IME/Spotlight 코드를 삼키지 않는다.
+    // 조합은 등록부가 정한다(기본 Mod+J 또는 Ctrl+Space). 수식키는 정확히 맞아야 하므로
+    // Ctrl+Shift+Space나 IME/Spotlight 코드를 삼키지 않는다.
     // 토글은 자기 모달 가드보다 먼저 본다 — 가운데 컴포저가 aria-modal이라 닫힘이 막히면 안 된다.
-    if (isQuickLaunchToggleShortcut(event)) {
+    if (matches("console.quick-launch")) {
       if (isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -65,7 +59,7 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     }
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+    if (matches("console.search-operations")) {
       // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
       // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
       if (windowFor.document.body.dataset.codexReading === "true") return;
@@ -78,7 +72,7 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       else dependencies.openOperationSearch("");
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
+    if (matches("console.command-palette")) {
       if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -86,7 +80,7 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z" && dependencies.canUndoLastClose?.()) {
+    if (matches("console.undo-close") && dependencies.canUndoLastClose?.()) {
       const active = windowFor.document.activeElement;
       if (active instanceof HTMLElement && (active.matches("input, textarea, [contenteditable='true']") || active.closest(".xterm"))) return;
       event.preventDefault();
@@ -94,17 +88,15 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       dependencies.undoLastClose?.();
       return;
     }
-    // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
-    // Win/Linux의 Ctrl+Alt는 일부 레이아웃에서 AltGr(문자 입력)와 동일하게 보고되고, Firefox/Windows는
-    // 진성 Ctrl+Alt에도 AltGraph=true를 주므로(신뢰 불가) AltGraph 대신 "이 키가 실제로 문자 b를
-    // 냈는가"(event.key)로 판정한다: meta면 발화, 아니면 key가 'b'일 때만 발화(AltGr `{` 등은 미삼킴).
-    if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && event.altKey && !event.shiftKey && (event.metaKey || event.key.toLowerCase() === "b")) {
+    // Mod+Alt+B(rail): macOS는 ⌘⌥로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
+    // Win/Linux의 AltGr 오인은 등록부의 matchesChord가 event.key 교차 판정으로 거른다.
+    if (matches("console.toggle-rail")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleRailChrome();
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.code === "KeyB" && !event.altKey && !event.shiftKey) {
+    if (matches("console.toggle-sidebar")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.setSideBarCollapsed(!dependencies.getSideBarCollapsed());

@@ -9,7 +9,7 @@ import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/r
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
-import { focusEdgeDockWhenPanelContainsActiveElement, railShortcutLabel } from "../shortcuts.js";
+import { focusEdgeDockWhenPanelContainsActiveElement, useRailShortcutLabel } from "../shortcuts.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
@@ -53,6 +53,7 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
 
 export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
   const t = useT();
+  const railShortcut = useRailShortcutLabel();
   const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
     subscribe,
@@ -314,8 +315,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         <button
           type="button"
           className="right-rail-ico right-rail-collapse"
-          aria-label={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcutLabel() })}
-          title={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcutLabel() })}
+          aria-label={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcut })}
+          title={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcut })}
           onClick={() => setRailChromeExpanded(railPeeking ? true : false)}
         >
           {railPeeking ? <RailKeepOpenGlyph /> : <RailCollapseGlyph />}

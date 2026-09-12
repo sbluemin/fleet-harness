@@ -17,7 +17,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
 import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
-import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts.js";
+import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
@@ -38,12 +38,6 @@ interface NavigatorWithUserAgentData extends Navigator {
   readonly userAgentData?: {
     readonly platform?: string;
   };
-}
-
-function resolveModLabel(): string {
-  const userAgentDataPlatform = (navigator as NavigatorWithUserAgentData).userAgentData?.platform;
-  const platform = userAgentDataPlatform ?? navigator.platform;
-  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
 }
 
 /**
@@ -1509,7 +1503,9 @@ export function QuickLaunch() {
     : (target
       ? registry.providers.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
       : null);
-  const modLabel = resolveModLabel();
+  // 접힌 띠의 힌트는 등록부의 현재 조합을 말한다 — 재배정이 바뀌면 함께 바뀐다.
+  useShortcutOverrides();
+  const toggleChords = resolveShortcutChords("console.quick-launch");
 
   return (
     <div
@@ -1553,10 +1549,10 @@ export function QuickLaunch() {
               {draftTrace.length === 0 ? t("chrome.quickLaunch.placeholder") : draftTrace}
             </span>
             <span className="quick-launch-strip-keys" aria-hidden="true">
-              {QUICK_LAUNCH_TOGGLE_COMBOS.map((combo, index) => (
-                <span key={combo.join("+")}>
+              {toggleChords.map((chord, index) => (
+                <span key={chord}>
                   {index > 0 ? <span className="quick-launch-strip-or">{t("chrome.shortcuts.or")}</span> : null}
-                  <kbd className="quick-launch-strip-key">{formatShortcutCombo(combo, modLabel)}</kbd>
+                  <kbd className="quick-launch-strip-key">{chordLabel(chord)}</kbd>
                 </span>
               ))}
             </span>

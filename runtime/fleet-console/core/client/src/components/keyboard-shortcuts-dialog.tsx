@@ -2,6 +2,19 @@ import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } 
 import { createPortal } from "react-dom";
 
 import { buildShortcutGroups, useActiveCompanionShortcuts } from "../shortcuts.js";
+import { useShortcutOverrides } from "../shortcut-bindings.js";
+import { openPane } from "../pane/pane-store.js";
+import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
+import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
+import { getViewModeSnapshot } from "../view-mode-store.js";
+
+// 설정은 레일 표면이다(팔레트의 「설정 열기」와 같은 길). 폰에는 키보드 단축키도 레일도 없어
+// 이 링크를 세우지 않는다.
+function openShortcutSettings(): void {
+  openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+  setRailChromeExpanded(true);
+  openPane({ paneId: SETTINGS_PANE_ID, params: { section: "shortcuts" } });
+}
 import { useT } from "../i18n/index.js";
 
 interface KeyboardShortcutsDialogProps {
@@ -22,9 +35,12 @@ export function shouldHandleOperationsKeyboardShortcut(): boolean {
 export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProps) {
   const t = useT();
   const companionShortcuts = useActiveCompanionShortcuts();
+  const overrides = useShortcutOverrides();
   const shortcutGroups = useMemo(
     () => buildShortcutGroups(t, companionShortcuts),
-    [companionShortcuts, t],
+    // 재배정이 바뀌면 목록을 다시 짓는다 — overrides는 그 신호다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [companionShortcuts, overrides, t],
   );
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +82,9 @@ export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProp
 
   return createPortal(<div className="keyboard-shortcuts-scrim" onMouseDown={onClose}><div ref={dialogRef} className="keyboard-shortcuts-dialog" role="dialog" aria-modal="true" aria-label={t("chrome.shortcuts.title")} tabIndex={-1} onKeyDown={handleKeyDown} onMouseDown={(event) => event.stopPropagation()}>
     <div className="keyboard-shortcuts-dialog-head"><strong>{t("chrome.shortcuts.title")}</strong><button type="button" onClick={onClose} aria-label={t("chrome.shortcuts.closeAria")}>✕</button></div>
-    {shortcutGroups.map((group) => <section key={group.title} className="keyboard-shortcuts-group"><h3>{group.title}</h3><dl>{group.entries.map((entry) => <div key={`${group.title}:${entry.description}`}><dt>{entry.combos.map((combo, index) => <span key={combo.join("+")}>{index > 0 ? t("chrome.shortcuts.or") : null}{combo.map((key) => <kbd key={key}>{key === "Mod" ? t("chrome.shortcuts.modKey") : key}</kbd>)}</span>)}</dt><dd>{entry.description}</dd></div>)}</dl></section>)}
+    {getViewModeSnapshot().effective === "mobile" ? null : <p className="keyboard-shortcuts-dialog-foot">
+      <button type="button" onClick={() => { onClose(); openShortcutSettings(); }}>{t("chrome.shortcuts.customize")}</button>
+    </p>}
+    {shortcutGroups.map((group) => <section key={group.title} className="keyboard-shortcuts-group"><h3>{group.title}</h3><dl>{group.entries.map((entry) => <div key={`${group.title}:${entry.description}`}><dt>{entry.combos.map((combo, index) => <span key={combo.join("+")}>{index > 0 ? t("chrome.shortcuts.or") : null}{combo.map((key, keyIndex) => <kbd key={`${keyIndex}:${key}`}>{key}</kbd>)}</span>)}</dt><dd>{entry.description}</dd></div>)}</dl></section>)}
   </div></div>, document.body);
 }

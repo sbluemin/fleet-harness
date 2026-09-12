@@ -1833,7 +1833,9 @@ describe("Instrument core design contract", () => {
     const commandBand = source("components/command-band.tsx");
     const watchDeck = source("canvas/triage-watch-deck.tsx");
 
-    expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
+    // 조합은 등록부가 정한다(기본 Alt+S, Settings에서 재배정 가능) — 리터럴 키 판정이 되돌아오면 안 된다.
+    expect(operations).toContain('matchesShortcutCommand(event, "operations.sort-by-status")');
+    expect(operations).not.toContain('event.code === "KeyS"');
     expect(operations).toContain("toggleSideBarStatusAxis();");
     // 상태별 보기는 스위치 하나다 — 스트립에 토글로 한 번만 서고(Theater 행에 되돌리면 배치가
     // 스코프를 속인다), 켜지면 Theater마다 상태 섹션이 선다. 기본 화면은 Theater 묶음만 말한다.

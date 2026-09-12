@@ -9,6 +9,8 @@ import type { CoreMessageKey } from "./i18n/index.js";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import { chordKeyLabels, isApplePlatform, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "./shortcut-bindings.js";
+
 // ─── catalog — entries, groups, and combo formatting ───────────────────────────
 
 export interface ShortcutEntry {
@@ -22,51 +24,45 @@ export interface ShortcutGroup {
 }
 
 export interface CompanionShortcutEntry {
-  readonly label: string;
+  /** 등록부 명령 id — 도움말과 설정 카드가 같은 자리에서 재배정을 읽는다. */
+  readonly commandId: string;
+  readonly defaultChord: string;
   readonly title: string;
 }
 
 type T = Translate<CoreMessageKey>;
 
-/** Quick Launch 토글. 전역 단축키와 접힌 바 힌트가 같은 목록을 쓴다. */
-export const QUICK_LAUNCH_TOGGLE_COMBOS = [
-  ["Mod", "J"],
-  ["Ctrl", "Space"],
-] as const;
-
 /**
- * 접힌 바처럼 한 덩어리로 읽는 힌트. Mod는 플랫폼 글쇠(⌘/Ctrl)로 바꾸고,
- * ⌘ 조합만 붙여 쓴다(⌘J). 그 밖은 +로 잇는다(Ctrl+J, Ctrl+Space).
+ * 도움말 목록. 재배정 가능한 명령은 등록부(현재 조합)를 읽고, 문법 묶음(Alt+화살표)과 제스처는
+ * 글쇠 라벨 리터럴로 남는다. 조합 라벨은 플랫폼으로 푼다(⌘ 또는 Ctrl) — 팔레트·접힘 힌트와 같은 표기.
  */
-export function formatShortcutCombo(combo: readonly string[], modLabel: string): string {
-  const keys = combo.map((key) => (key === "Mod" ? modLabel : key));
-  return keys.join(keys[0] === "⌘" ? "" : "+");
-}
-
 export function buildShortcutGroups(
   t: T,
   companionShortcuts: readonly CompanionShortcutEntry[] = [],
 ): readonly ShortcutGroup[] {
+  const alt = isApplePlatform() ? "⌥" : "Alt";
+  const shift = isApplePlatform() ? "⇧" : "Shift";
+  const bound = (commandId: string, defaults?: readonly string[]) => resolveShortcutChords(commandId, defaults).map((chord) => chordKeyLabels(chord));
   return [
     {
       title: t("shortcuts.group.console"),
       entries: [
-        { combos: [["Mod", "K"]], description: t("shortcuts.console.searchOps") },
-        { combos: [["Mod", "P"]], description: t("shortcuts.console.commandPalette") },
-        { combos: [...QUICK_LAUNCH_TOGGLE_COMBOS], description: t("shortcuts.console.quickLaunch") },
-        { combos: [["Mod", "B"]], description: t("shortcuts.console.toggleSidebar") },
-        { combos: [["Mod", "Alt", "B"]], description: t("shortcuts.console.toggleRail") },
+        { combos: bound("console.search-operations"), description: t("shortcuts.console.searchOps") },
+        { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
+        { combos: bound("console.quick-launch"), description: t("shortcuts.console.quickLaunch") },
+        { combos: bound("console.toggle-sidebar"), description: t("shortcuts.console.toggleSidebar") },
+        { combos: bound("console.toggle-rail"), description: t("shortcuts.console.toggleRail") },
       ],
     },
     {
       title: t("shortcuts.group.operations"),
       entries: [
-        { combos: [["Mod", "Z"]], description: t("shortcuts.operations.undoClose") },
-        { combos: [["Shift", "Enter"]], description: t("shortcuts.operations.insertNewline") },
+        { combos: bound("console.undo-close"), description: t("shortcuts.operations.undoClose") },
+        { combos: [[shift, "Enter"]], description: t("shortcuts.operations.insertNewline") },
         { combos: [["Enter"], ["Esc"]], description: t("shortcuts.operations.renameConfirm") },
         { combos: [["↑"], ["↓"]], description: t("shortcuts.operations.menuNav") },
         ...companionShortcuts.map((entry) => ({
-          combos: [["Alt", entry.label]],
+          combos: bound(entry.commandId, [entry.defaultChord]),
           description: t("shortcuts.operations.toggleCompanion", { title: entry.title }),
         })),
       ],
@@ -74,19 +70,19 @@ export function buildShortcutGroups(
     {
       title: t("shortcuts.group.map"),
       entries: [
-        { combos: [["Alt", "←"], ["Alt", "→"]], description: t("shortcuts.map.focusPrevNext") },
-        { combos: [["Alt", "→"]], description: t("shortcuts.map.triageDefer") },
-        { combos: [["Alt", "↑"]], description: t("shortcuts.map.maximizePanel") },
-        { combos: [["Alt", "↓"]], description: t("shortcuts.map.minimizePanel") },
-        { combos: [["Alt", "↓"]], description: t("shortcuts.map.triageSetAside") },
-        { combos: [["Alt", "F"]], description: t("shortcuts.map.toggleFormation") },
-        { combos: [["Alt", "T"]], description: t("shortcuts.map.toggleTriage") },
-        { combos: [["Alt", "S"]], description: t("shortcuts.map.sortByStatus") },
+        { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
+        { combos: [[alt, "→"]], description: t("shortcuts.map.triageDefer") },
+        { combos: [[alt, "↑"]], description: t("shortcuts.map.maximizePanel") },
+        { combos: [[alt, "↓"]], description: t("shortcuts.map.minimizePanel") },
+        { combos: [[alt, "↓"]], description: t("shortcuts.map.triageSetAside") },
+        { combos: bound("operations.toggle-formation"), description: t("shortcuts.map.toggleFormation") },
+        { combos: bound("operations.toggle-triage"), description: t("shortcuts.map.toggleTriage") },
+        { combos: bound("operations.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
         { combos: [["Drag"]], description: t("shortcuts.map.pan") },
-        { combos: [["Shift", "Drag"]], description: t("shortcuts.map.drawTerminal") },
+        { combos: [[shift, "Drag"]], description: t("shortcuts.map.drawTerminal") },
         { combos: [["Space", "Drag"]], description: t("shortcuts.map.panWithSpace") },
         { combos: [["Scroll"]], description: t("shortcuts.map.zoom") },
-        { combos: [["Shift", "1"]], description: t("shortcuts.map.fitAll") },
+        { combos: bound("operations.fit-all"), description: t("shortcuts.map.fitAll") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
         { combos: [["Double-click"]], description: t("shortcuts.map.doubleClick") },
         { combos: [["Click"]], description: t("shortcuts.map.clearFocus") },
@@ -239,33 +235,27 @@ export function focusEdgeDockWhenPanelContainsActiveElement(panel: HTMLElement |
   document.querySelector<HTMLButtonElement>(dockSelector)?.focus();
 }
 
-// ⌘(mac 계열) / Ctrl(그 외) — 패널 접기 컨트롤의 라벨이 단축키를 함께 말할 때 쓴다.
-// 구 command-band 토글에서 이관된 판별식이며, UI 컴포넌트가 아니라 여기(단축키 정책)가 거처다.
-function resolveModLabel(): string {
-  const userAgentDataPlatform = (navigator as Navigator & { readonly userAgentData?: { readonly platform?: string } }).userAgentData?.platform;
-  const platform = userAgentDataPlatform ?? navigator.platform;
-  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+// 패널 접기 컨트롤과 엣지 독의 라벨이 단축키를 함께 말할 때 쓴다 — 등록부의 현재 조합을 읽고,
+// 재배정이 바뀌면 다시 그리도록 구독한다.
+export function useSideBarShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.toggle-sidebar");
 }
 
 // ⌘K / Ctrl+K — 검색 팔레트 단축키 표기. 첫 실행 시작 블록처럼 팔레트 밖에서 그 단축키를 말하는 자리가 쓴다.
-export function searchShortcutLabel(): string {
-  const modLabel = resolveModLabel();
-  return `${modLabel}${modLabel === "⌘" ? "" : "+"}K`;
+export function useSearchShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.search-operations");
 }
 
-export function sideBarShortcutLabel(): string {
-  const modLabel = resolveModLabel();
-  return `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
+export function useSideBarStatusViewShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("operations.sort-by-status");
 }
 
-// Alt+S는 플랫폼 수식키 표기와 무관하게 Alt 그대로다(operations.tsx의 KeyS 핸들러가 altKey를 본다).
-export function sideBarStatusViewShortcutLabel(): string {
-  return "Alt+S";
-}
-
-export function railShortcutLabel(): string {
-  const modLabel = resolveModLabel();
-  return `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
+export function useRailShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.toggle-rail");
 }
 
 // ─── editing guard — when typing swallows an Operations shortcut ───────────────

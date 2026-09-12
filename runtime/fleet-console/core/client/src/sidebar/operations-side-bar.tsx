@@ -11,7 +11,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { OperationStatusIcon } from "../components/operation-status-icon.js";
-import { focusEdgeDockWhenPanelContainsActiveElement, searchShortcutLabel } from "../shortcuts.js";
+import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
@@ -345,6 +345,7 @@ export function OperationsSideBar({
   onForgetTheater,
 }: OperationsSideBarProps) {
   const t = useT();
+  const searchShortcut = useSearchShortcutLabel();
   const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
@@ -1253,7 +1254,7 @@ export function OperationsSideBar({
             </button>
             {/* Tactical·War Room 단축키는 Theater가 없으면 아무 일도 하지 않으므로 여기서는 말하지 않는다. */}
             <p className="side-bar-starter-hints">
-              <kbd>{searchShortcutLabel()}</kbd> {t("sidebar.starter.hintSearch")}
+              <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
             </p>
           </li>
         ) : (

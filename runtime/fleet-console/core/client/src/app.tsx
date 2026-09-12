@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts } from "./shortcuts.js";
+import { companionDefaultChord, companionShortcutCommandId } from "./shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
@@ -173,7 +174,8 @@ export function App() {
     const activeCompanions = availableCompanionPanels(activeKind?.companions ?? [], activeOperation);
     return usableCompanionShortcuts(activeCompanions).flatMap((companion) => companion.shortcut
       ? [{
-          label: companion.shortcut.label,
+          commandId: companionShortcutCommandId(activeOperation.pluginId, companion.id),
+          defaultChord: companionDefaultChord(companion.shortcut.code),
           title: resolveLocalizedText(companion.title, consoleLocale),
         }]
       : []) ?? [];

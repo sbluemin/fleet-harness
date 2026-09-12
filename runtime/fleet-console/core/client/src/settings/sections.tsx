@@ -12,6 +12,7 @@ import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { SettingsHelp } from "../components/settings-help.js";
 import { ExperimentsSection } from "./experiments-section.js";
+import { ShortcutsCard } from "./shortcuts-section.js";
 import { PairDeviceDialog } from "../components/pair-device-dialog.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "../global-settings-store.js";
@@ -40,7 +41,7 @@ interface PortModeOption {
   readonly label: string;
 }
 
-export type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced" | "experiments";
+export type CoreSettingsSectionId = "appearance" | "language" | "shortcuts" | "connectivity" | "advanced" | "experiments";
 type PluginSettingsSectionId = `${string}:${string}`;
 export type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
@@ -160,6 +161,13 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       entries: [t("settings.language.title"), t("settings.language.label"), t("settings.core.language.keywords")],
     },
     {
+      id: "shortcuts",
+      group: "setup",
+      label: t("settings.core.shortcuts.label"),
+      help: t("settings.shortcuts.help"),
+      entries: [t("settings.shortcuts.title"), t("settings.shortcuts.groupCompanion"), t("settings.core.shortcuts.keywords")],
+    },
+    {
       id: "connectivity",
       group: "experiments",
       embeddedIn: "experiments",
@@ -245,6 +253,8 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
           {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving.has("remoteAccess")} />}
         </>
       );
+    case "shortcuts":
+      return <ShortcutsCard state={state} saving={saving.has("shortcuts")} />;
     case "advanced":
       return <BackendApiSection />;
     case "experiments":

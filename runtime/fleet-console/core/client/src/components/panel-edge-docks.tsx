@@ -1,7 +1,7 @@
 import { useEffect, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../i18n/index.js";
-import { railShortcutLabel, sideBarShortcutLabel } from "../shortcuts.js";
+import { useRailShortcutLabel, useSideBarShortcutLabel } from "../shortcuts.js";
 import { setRailChromeExpanded, setRailPeeking, useRailChromeExpanded, useRailPeeking } from "../rail/rail-store.js";
 import { setSideBarCollapsed, setSideBarPeeking, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 
@@ -15,12 +15,13 @@ import { setSideBarCollapsed, setSideBarPeeking, useSideBarState } from "../side
 export function SideBarEdgeDock() {
   const t = useT();
   const { collapsed, peeking } = useSideBarState();
+  const shortcut = useSideBarShortcutLabel();
   if (!collapsed) return null;
   return (
     <EdgeDock
       side="left"
       peeking={peeking}
-      label={t("sidebar.chrome.edgeExpand", { shortcut: sideBarShortcutLabel() })}
+      label={t("sidebar.chrome.edgeExpand", { shortcut })}
       triggerClassName="side-bar-edge-dock"
       panelSelector=".operations-side-bar"
       onPeek={setSideBarPeeking}
@@ -35,12 +36,13 @@ export function RailEdgeDock() {
   const t = useT();
   const railChromeExpanded = useRailChromeExpanded();
   const peeking = useRailPeeking();
+  const shortcut = useRailShortcutLabel();
   if (railChromeExpanded) return null;
   return (
     <EdgeDock
       side="right"
       peeking={peeking}
-      label={t("rail.chrome.edgeExpand", { shortcut: railShortcutLabel() })}
+      label={t("rail.chrome.edgeExpand", { shortcut })}
       triggerClassName="rail-edge-dock"
       panelSelector=".right-rail"
       onPeek={setRailPeeking}

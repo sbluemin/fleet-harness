@@ -23,6 +23,7 @@ const BASE: GlobalSettingsState = {
   theme: "instrument",
   liquidGlass: true,
   unfocusedPanelFade: 50,
+  shortcuts: {},
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
   experiments: DEFAULT_EXPERIMENT_SETTINGS,
