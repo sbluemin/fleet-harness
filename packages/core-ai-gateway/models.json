@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-07T00:00:00Z",
+  "updatedAt": "2026-09-12T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -936,7 +936,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it. muse-spark-1.3-contributor replaced 1.2 as the current generation on 2026-09-03 from the live list; /responses was the only working wire in three endpoint probes, none and max were refused while minimal/low/medium/high/xhigh succeeded, and only tool_choice auto was accepted. Its 1048576 contextWindow comes from the models.dev opencode-go entry (2026-09-03). 2026-09-06: 공식 GET https://opencode.ai/zen/go/v1/models의 35개 ID와 https://opencode.ai/docs/go/의 모델별 endpoint 표, models.dev api.json의 opencode-go contextWindow를 대조하여 누락된 현세대 및 독립 라인업 10개를 추가했다. Kimi K2.7 Code는 코딩 특화 라인업, Qwen3.7 Plus는 최신 Plus 라인업, Hy4 Preview는 안정판 Hy3와 별도의 preview로 포함한다. 기존 등록은 유지하되 대체된 구세대와 과거 실패로 제외한 모델은 복원하지 않는다. 새 모델의 실제 추론 호출은 검증하지 않았다. Grok 4.6의 effort는 models.dev의 opencode-go 선언을 사용하고, 새 Chat Completions 모델의 effort는 기존 실측 정책에 따라 아직 노출하지 않는다",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it. muse-spark-1.3-contributor replaced 1.2 as the current generation on 2026-09-03 from the live list; /responses was the only working wire in three endpoint probes, none and max were refused while minimal/low/medium/high/xhigh succeeded, and only tool_choice auto was accepted. Its 1048576 contextWindow comes from the models.dev opencode-go entry (2026-09-03). 2026-09-06: 공식 GET https://opencode.ai/zen/go/v1/models의 35개 ID와 https://opencode.ai/docs/go/의 모델별 endpoint 표, models.dev api.json의 opencode-go contextWindow를 대조하여 누락된 현세대 및 독립 라인업 10개를 추가했다. Kimi K2.7 Code는 코딩 특화 라인업, Qwen3.7 Plus는 최신 Plus 라인업, Hy4 Preview는 안정판 Hy3와 별도의 preview로 포함한다. 기존 등록은 유지하되 대체된 구세대와 과거 실패로 제외한 모델은 복원하지 않는다. 새 모델의 실제 추론 호출은 검증하지 않았다. Grok 4.6의 effort는 models.dev의 opencode-go 선언을 사용하고, 새 Chat Completions 모델의 effort는 기존 실측 정책에 따라 아직 노출하지 않는다. 2026-09-12: 공식 GET https://opencode.ai/zen/go/v1/models의 37개 ID와 https://opencode.ai/docs/go/의 endpoint 표를 대조하여 DeepSeek V4 Flash를 현세대 deepseek-v4.1-flash로 교체했다. Chat Completions wire는 공식 문서, 1000000 contextWindow는 models.dev api.json의 opencode-go 항목에서 확인했다. 별도 Vision Exp 라인업은 유지한다. 공개 목록에만 있는 deepseek-flash는 정체와 사양이 확인되지 않아 제외하며 구세대 및 과거 실패 모델은 복원하지 않는다. 공식 Go 모델 목록에서 사라진 ox-alpha-free는 models.dev 잔존 여부와 무관하게 제거했다. 실제 추론 호출과 effort는 새로 검증하지 않았다",
       "models": [
         {
           "modelId": "minimax-m3",
@@ -1077,8 +1077,8 @@
           }
         },
         {
-          "modelId": "deepseek-v4-flash",
-          "name": "DeepSeek-V4-Flash",
+          "modelId": "deepseek-v4.1-flash",
+          "name": "DeepSeek-V4.1-Flash",
           "capabilityClass": "light",
           "wire": "chat-completions",
           "contextWindow": 1000000
@@ -1124,21 +1124,6 @@
           "capabilityClass": "flagship",
           "wire": "chat-completions",
           "contextWindow": 256000
-        },
-        {
-          "modelId": "ox-alpha-free",
-          "name": "Ox-Alpha-Free",
-          "capabilityClass": "flagship",
-          "wire": "chat-completions",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "high",
-              "max"
-            ]
-          }
         }
       ]
     },
