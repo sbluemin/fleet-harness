@@ -248,56 +248,14 @@
   overflow-wrap: anywhere;
 }
 
-/* 에이전트 턴 — 좌측 스파인 노드가 상태를 신호 토큰으로만 말한다. */
+/* 에이전트 턴 — 단일 열. 좌측 스파인·노드 띠는 퇴역했다: 상태는 본문의 시계·접힘 줄·결말 문구가
+   이미 말하고, 14px 띠는 그 말을 한 번 더 하면서 읽는 폭만 먹었다. */
 .agent-chat-turn {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
-  gap: var(--space-3);
+  display: block;
 }
 
-.agent-chat-turn-spine {
-  position: relative;
-}
-
-.agent-chat-turn-spine::before {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 22px;
-  bottom: 2px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--hairline);
-}
-
-.agent-chat-turn-node {
-  position: absolute;
-  left: 0;
-  top: 4px;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  border: 2px solid var(--positive);
-  /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */
-  background: var(--glass-tint-panel);
-}
-
-.agent-chat-turn.is-working .agent-chat-turn-node {
-  border-color: var(--aurora);
-  animation: agent-chat-node-pulse 1.6s ease-in-out infinite;
-}
-
-.agent-chat-turn.is-working .agent-chat-turn-spine::before {
-  background: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
-}
-
-.agent-chat-turn.is-error .agent-chat-turn-node {
-  border-color: var(--coral);
-}
-
-@keyframes agent-chat-node-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; box-shadow: 0 0 10px 1px var(--aurora-glow); }
+.agent-chat-turn-body {
+  min-width: 0;
 }
 
 .agent-chat-turn-head {
@@ -445,6 +403,16 @@
   color: var(--text-secondary);
 }
 
+/* 생각의 점선 원은 라이브 줄에서 천천히 돈다 — 내용 없는 원이 "시간만 흐른다"를 말하는데, 멈춘
+   원은 그 시간을 말하지 않는다. 링(0.9s)보다 느려 두 번째 스피너가 아니라 숨으로 읽힌다. */
+.agent-chat-tally.is-live .agent-chat-tally-glyph > .agent-glyph[data-glyph="think"] {
+  animation: agent-chat-think-spin 3s linear infinite;
+}
+
+@keyframes agent-chat-think-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* 글리프 알파벳의 한 글자. 24 뷰박스에 1.8 스트로크를 13px로 그리면 12px 모노 활자와
    같은 시각 무게가 된다(실측: 문자 글리프 ▤·❯의 x-높이 자리). */
 .agent-glyph {
@@ -481,13 +449,17 @@
   width: 3ch;
 }
 
+/* 점은 opacity가 아니라 visibility로 숨긴다. 이 점들은 물결(.agent-chat-live-text)의 자식이고,
+   물결은 배경을 글자 모양으로 클립해 그리므로 자식의 opacity가 0이어도 부모의 배경이 그 글자
+   모양대로 그대로 비쳐 세 점이 항상 켜져 있었다(실측: "생각 중..." 고정). visibility: hidden은
+   글자를 아예 그리지 않아 클립 마스크에서도 빠진다 — 자리는 지키므로 폭이 흔들리지 않는다. */
 .agent-chat-thinking-dots > span {
   width: 1ch;
-  opacity: 0;
+  visibility: hidden;
 }
 
 .agent-chat-thinking-dots > span:first-child {
-  opacity: 1;
+  visibility: visible;
 }
 
 .agent-chat-thinking-dots > span:nth-child(2) {
@@ -499,13 +471,13 @@
 }
 
 @keyframes agent-chat-thinking-dot-mid {
-  0%, 33.332% { opacity: 0; }
-  33.333%, 100% { opacity: 1; }
+  0%, 33.332% { visibility: hidden; }
+  33.333%, 100% { visibility: visible; }
 }
 
 @keyframes agent-chat-thinking-dot-end {
-  0%, 66.665% { opacity: 0; }
-  66.666%, 100% { opacity: 1; }
+  0%, 66.665% { visibility: hidden; }
+  66.666%, 100% { visibility: visible; }
 }
 
 /* 도는 구간의 집계 줄. 예전에는 최근 여덟 스텝이 전폭 행으로 흘러가는 것이 "일하는 중"의
@@ -2353,10 +2325,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-chat-turn.is-working .agent-chat-turn-node,
   .agent-chat-ask-dot,
   .agent-chat-step-orbit,
+  /* 점의 순환만 멎고 세 점은 다 켜 둔다 — 하나만 남기면 생각 중이 아니라 문장이 끝난 것처럼 읽힌다. */
   .agent-chat-thinking-dots > span {
+    animation: none;
+    visibility: visible;
+  }
+
+  .agent-chat-tally-glyph > .agent-glyph[data-glyph="think"] {
     animation: none;
   }
 

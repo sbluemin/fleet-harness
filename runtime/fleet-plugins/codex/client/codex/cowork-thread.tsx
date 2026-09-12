@@ -168,7 +168,6 @@ function TurnView({ turn, last, state }: { readonly turn: CoworkTurn; readonly l
   const showFold = !working && turn.steps.length > 0;
   return (
     <li className={`cowork-turn ${tone}`}>
-      <div className="cowork-turn-spine" aria-hidden="true"><span className="cowork-turn-node" /></div>
       <div className="cowork-turn-body">
         <div className="cowork-turn-head">
           <span className="cowork-turn-who">{t("codex.cowork.you")}</span>
