@@ -1987,10 +1987,10 @@ class AgentChatSession {
     const session = this.session;
     if (session) this.requestContextSnapshot(session, "end");
     // 자식이 실제로 돈 턴만 알린다 — 자식에 닿기 전에 닫힌 턴은 transcript에 아무것도 더하지 않았다.
-    if (reachedChild && end.stopped !== true) {
-      this.seed.onTurnEnded?.();
-      if (this.seed.onCwdChanged) void this.reportTranscriptCwd();
-    }
+    if (reachedChild && end.stopped !== true) this.seed.onTurnEnded?.();
+    // 자식에 닿은 턴은 중단됐어도 cwd를 옮겼을 수 있다 — 자식과 그 작업은 중단을 넘어 살아 있으므로
+    // 위치 동기화는 턴의 결말과 무관하게 한다.
+    if (reachedChild && this.seed.onCwdChanged) void this.reportTranscriptCwd();
   }
 
   /**

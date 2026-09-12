@@ -1879,11 +1879,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
       // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채
       // 사이드바만 휴면이라고 말한다(이 결함의 재시작 판).
+      const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
       if (operation.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
         const adopted = observability.setTerminalSessionChatActive(operation.id, true);
         if (adopted) observability.notifySessionUpdated(adopted);
+        // 복원된 채팅 Operation은 화면상 살아 있다 — 다음 턴을 기다리지 않고 "지금 어디" 축도 되세운다.
+        if (cwd) workspaceContext.observe(operation.id, operation.theaterId, cwd);
       }
-      const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
       ctx.host.operations.patch(operation.id, {
         payload: {
           ...toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle),
