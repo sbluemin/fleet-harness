@@ -37,9 +37,12 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
 
 const CORE_COMMANDS_BY_ID = new Map(CORE_SHORTCUT_COMMANDS.map((command) => [command.id, command]));
 
-/** 플러그인 companion 패널의 명령 id — 플러그인과 패널 id가 함께 자리를 정한다. */
-export function companionShortcutCommandId(pluginId: string, companionId: string): string {
-  return `companion:${pluginId}:${companionId}`;
+/**
+ * companion 패널의 명령 id — 소유자와 패널 id가 함께 자리를 정한다. 소유자 null은 Console 코어가
+ * 직접 소유한 작전 종류(Agent)라 `console`로 적는다.
+ */
+export function companionShortcutCommandId(pluginId: string | null, companionId: string): string {
+  return `companion:${pluginId ?? "console"}:${companionId}`;
 }
 
 export function companionDefaultChord(code: string): string {
