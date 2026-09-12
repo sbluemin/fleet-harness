@@ -1016,9 +1016,8 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
 
   const disabledSet = new Set(disabled);
   const toggle = (name: string, enabled: boolean) => {
-    // 로스터에 있는 이름만 남긴다 — 사라진 옵트아웃은 여기서 함께 걷힌다.
-    const known = new Set(roster?.agents ?? []);
-    const next = disabled.filter((entry) => known.has(entry) && entry !== name);
+    // 실행 조건이나 CLI 버전 때문에 로스터에서 빠진 Agent의 제외 설정도 유지한다.
+    const next = disabled.filter((entry) => entry !== name);
     if (!enabled) next.push(name);
     onChange(next);
   };
