@@ -200,7 +200,12 @@
      Whites가 자기 값을 따로 잡는다. 패널 면과 같은 값이 되면 로그 위계가 통째로 사라진다. */
   --surface-panel-raised: var(--ink-mid);
   --surface-glass-strong: var(--ink-mid);
-  --surface-pillar: var(--ink-veil);
+  /* 부유 카드(⌘K/⌘P 검색·Quick Launch)의 pillar 티어. 유리가 꺼진 순간 --glass-tint-pillar가
+     이 값으로 떨어지므로, 유리 ON(ink-veil α52% + 블러 → 실측 L≈18%)과 같은 자리에 서야 한다.
+     ink-veil(L 23.5%) 불투명을 그대로 두면 Instrument만 크롬(ink-deep L 16.5%)보다 7단 밝은
+     슬레이트 판이 되어 테마와 동떨어진다 — Maritime(L 22%/α86%)·Carbon(L 20%/α88%)처럼
+     deep 바로 위의 반투명 리터럴로 둔다. */
+  --surface-pillar: oklch(19% 0.018 245 / 86%);
   --surface-rim: var(--hairline);
   --surface-rim-strong: var(--hairline-strong);
   --surface-band: var(--canvas-sea-core);
