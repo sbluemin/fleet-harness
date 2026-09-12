@@ -5,6 +5,42 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.90.0] - 2026-09-12
+
+### fleet-cli
+
+#### Changed
+- Fleet 스킬과 gateway_models 도구 대신 fleet-ai-gateway MCP resources로 모델 라우팅 지침과 실시간 모델 현황을 제공합니다.
+- 실행 중인 Console 없이도 Wiki 도구는 `fleet-codex`, Gateway 모델 조회는 `fleet-console-use`로 분리해 제공합니다.
+- OpenCode Go의 DeepSeek Flash 모델을 1M 토큰 컨텍스트의 DeepSeek V4.1 Flash로 갱신했습니다.
+
+#### Removed
+- 공급자 모델 목록에서 사라진 Ox Alpha Free를 OpenCode Go 모델 선택에서 제거했습니다.
+
+### fleet-console
+
+#### Added
+- `fleet-console-use`로 Theater, Operation, Gateway 모델 도구를 제공하며 플러그인 에이전트는 자체 도구와 함께 이 호스트 MCP를 연결할 수 있습니다.
+- 플러그인은 SDK를 통해 `fleet-{pluginId}` 이름으로 Admiral MCP 도구를 제공하며 Codex는 Wiki 도구를 `fleet-codex`로 제공합니다.
+- Console 어디서든 Ctrl+Backquote로 Global Shell을, Cmd/Ctrl+Shift+E로 Repository를 여닫고 Settings에서 단축키를 변경할 수 있으며 레일과 명령 팔레트에서도 조합을 확인할 수 있습니다.
+- Settings에서 Console 키보드 단축키를 바꿀 수 있습니다. 조합을 누른 뒤 원하는 키를 누르면 도움말, 커맨드 팔레트, 패널 힌트가 새 조합을 따릅니다. 겹치는 키는 서로 바꿀 수 있고, 행마다 또는 전체를 기본값으로 되돌릴 수 있습니다.
+- 탐색 크롬을 숨기고 Map을 상단까지 확장하면서 열린 작업면은 유지하는 Zen mode를 추가했습니다. 단축키와 상시 종료 버튼을 제공합니다.
+
+#### Changed
+- Fleet 스킬 없이 Agent 세션을 fleet-ai-gateway MCP resources에 연결하여 모델 라우팅 지침과 실시간 모델 현황을 제공합니다.
+- 채팅뷰, Analyst 패널, Codex cowork 스레드의 에이전트 턴에서 좌측 세로 스파인과 상태 노드를 제거해 평평하게 만들었습니다. 진행 시계, 접힘 줄, 결말 문구가 이미 그 상태를 말합니다.
+- 채팅뷰의 생각 중 꼬리에 움직임을 더했습니다. 점이 하나, 둘, 셋으로 차오르며 순환하고, 도구 호출 사이에 점선 생각 글리프가 천천히 회전합니다.
+- 첫 실행 화면을 시작 지점으로 바꿨습니다. Theater가 없을 때 사이드바가 Theater가 무엇인지 설명하고 폴더 선택을 바로 열며 설정 가이드로 되돌아가는 링크를 제공합니다. 지도는 Theater 등록 뒤 채워질 모습을 실루엣으로 보여 줍니다. 설정 가이드는 명령 팔레트에서도 다시 열 수 있습니다.
+- OpenCode Go 모델 목록에서 DeepSeek V4 Flash 대신 DeepSeek V4.1 Flash를 제공합니다.
+- Cmd+K 팔레트는 Operation뿐 아니라 파일과 Codex 문서로도 이동하므로 이름을 「이동」으로 바꿨습니다. Cmd+K와 Cmd+P의 행이 더 촘촘해졌고, Operation 행에서는 공급자 캡션과 구역 머리글에 이미 있는 Theater 이름을 반복하지 않습니다. 파일·문서 행은 경로나 태그를 제목 옆에 두고 탐색기 트리와 같은 파일 종류 아이콘을 앞세워 한 줄로 섭니다.
+
+#### Fixed
+- Repository 변경 탭에서 미스테이지 목록이 길 때 스테이지 섹션이 목록 위에 겹쳐 그려지던 문제를 바로잡았습니다. 이제 각 섹션이 스크롤 목록 안에서 제 높이를 지킵니다.
+
+#### Removed
+- 공급자 모델 목록에서 사라진 Ox Alpha Free를 OpenCode Go 모델 목록에서 제거했습니다.
+- 실험 기능인 런치 컨텍스트 팩과 관련 설정, 실행 전 Wiki 및 커밋 후보 자동 수집을 제거했습니다.
+
 ## [1.89.0] - 2026-09-11
 
 ### fleet-cli

@@ -5,6 +5,42 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.90.0] - 2026-09-12
+
+### fleet-cli
+
+#### Changed
+- Provide model routing guidance and live model availability through fleet-ai-gateway MCP resources instead of Fleet skills and the gateway_models tool.
+- Separate Wiki tools into `fleet-codex` and gateway model discovery into `fleet-console-use`, without requiring a running Console.
+- Update OpenCode Go's DeepSeek Flash model to DeepSeek V4.1 Flash with a 1M-token context window.
+
+#### Removed
+- Remove Ox Alpha Free from OpenCode Go model selection after it disappeared from the provider's model list.
+
+### fleet-console
+
+#### Added
+- Provide Theater, Operation, and gateway model tools through `fleet-console-use`; plugin agents can attach this host MCP alongside their own tools.
+- Let plugins supply Admiral MCP tools through the SDK under `fleet-{pluginId}`; Codex supplies the Wiki tools as `fleet-codex`.
+- Toggle Global Shell with Ctrl+Backquote and Repository with Cmd/Ctrl+Shift+E from anywhere in Console, with customizable bindings in Settings and shortcut hints in the rail and command palette.
+- Rebind Console keyboard shortcuts from Settings: click a shortcut, press the keys you want, and the help dialog, command palette, and panel hints follow the new combination. Conflicting keys can be swapped, and any row or all rows can return to their defaults.
+- Add Zen mode to hide navigation chrome and expand Map to the top while keeping open work surfaces, with a keyboard shortcut and an always-available exit.
+
+#### Changed
+- Connect Agent sessions to fleet-ai-gateway MCP resources for model routing guidance and live model availability without Fleet skills.
+- Flatten agent turns in Chat view, the Analyst panel, and the Codex cowork thread by removing the left spine and status node; the working clock, fold line, and outcome text already carry that state.
+- Animate the thinking tail in Chat view: the dots now step through one, two, and three, and the dashed thinking glyph slowly spins while the model is between tool calls.
+- Turn the first-launch screen into a starting point: with no Theater registered, the sidebar now explains what a Theater is, opens the folder picker directly, and links back to the setup guide, while the map sketches how it fills in once a Theater exists. The setup guide is also reachable again from the command palette.
+- Offer DeepSeek V4.1 Flash in the OpenCode Go model catalog in place of DeepSeek V4 Flash.
+- The Cmd+K palette is now labeled "Go to" since it reaches Operations, files, and Codex documents alike. Rows in both Cmd+K and Cmd+P are tighter: Operation rows drop the provider caption and the repeated Theater name already shown in the group heading, and file and document rows sit on one line with their path or tags beside the title and the same file-type icon the explorer tree uses.
+
+#### Fixed
+- Keep the Repository changes list from drawing the staged section over a long unstaged list; each section now holds its full height inside the scrolling list.
+
+#### Removed
+- Remove Ox Alpha Free from the OpenCode Go model catalog after it disappeared from the provider's model list.
+- Remove the experimental launch context pack, including its settings and automatic Wiki and commit candidate collection before launch.
+
 ## [1.89.0] - 2026-09-11
 
 ### fleet-cli
