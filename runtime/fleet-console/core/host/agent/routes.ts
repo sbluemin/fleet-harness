@@ -1707,7 +1707,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const providerSession = readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
       observability.updateTerminalSessionProviderSession(operationId, providerSession);
+      // 휴면은 추적 대상이 아니다 — 추적기에서 잊는 것만으로는 스토어에 남은 투영이 DTO에 계속 실리고,
+      // 그 뒤 실험을 꺼도 추적기가 모르는 세션이라 지우지 못한다. 잊을 때 투영도 함께 지운다.
       workspaceContext.forget(operationId);
+      observability.setTerminalSessionWorkspace(operationId, null);
       const dormant = observability.transitionTerminalSessionToDormant(operationId, providerSession);
       if (dormant) {
         // 전이 전 발급된 미소비 ticket이 WS consume으로 PTY를 되살리지 못하도록 폐기한다.

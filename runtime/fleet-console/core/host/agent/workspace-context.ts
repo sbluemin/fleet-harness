@@ -101,10 +101,13 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
         if (tracked.debounce) clearTimeout(tracked.debounce);
         tracked.debounce = setTimeout(() => {
           tracked.debounce = null;
-          // 브랜치만 다시 읽는다 — 폴더는 cwd가 바뀔 때 observe가 다시 계산한다.
-          void readBranch(tracked.cwd).then((next) => {
-            if (!enabled || sessions.get(sessionId) !== tracked) return;
-            deps.onChange(sessionId, projectWorkspace({ cwd: tracked.cwd, theaterRoot: deps.resolveTheaterPath(tracked.theaterId), branch: next }));
+          // 브랜치만 다시 읽는다 — 폴더는 cwd가 바뀔 때 observe가 다시 계산한다. 읽는 동안 cwd가
+          // 바뀌면(observe가 세대를 올린다) 이 결과는 옛 디렉터리의 것이므로 버린다 — refresh와 같은 규칙이다.
+          const readCwd = tracked.cwd;
+          const readGeneration = tracked.generation;
+          void readBranch(readCwd).then((next) => {
+            if (!enabled || sessions.get(sessionId) !== tracked || tracked.generation !== readGeneration) return;
+            deps.onChange(sessionId, projectWorkspace({ cwd: readCwd, theaterRoot: deps.resolveTheaterPath(tracked.theaterId), branch: next }));
           });
         }, HEAD_DEBOUNCE_MS);
       });
