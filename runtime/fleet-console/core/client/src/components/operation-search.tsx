@@ -28,7 +28,7 @@ import {
   type RailSearchGroup,
 } from "../operation-search.js";
 import { noteCommandRun, readRecentCommandIds } from "../palette-recent.js";
-import { PaletteActionGlyph, PaletteCommandGlyph, PaletteSectionGlyph } from "./palette-glyphs.js";
+import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
@@ -647,6 +647,7 @@ export function OperationSearch({
 
   const renderRailGroups = (offset: number) => railSearchGroups.map((group) => {
     const headingId = railGroupHeadingId(group.panelId);
+    const panelIcon = railPanels.find((panel) => panel.id === group.panelId)?.icon;
     return (
       <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
         <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
@@ -680,6 +681,7 @@ export function OperationSearch({
               onMouseEnter={() => setSelectedIndex(index)}
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
+              <PaletteRailIcon icon={panelIcon} />
               {/* 패널 결과도 한 줄이다 — 부제(경로·태그)는 제목 오른쪽에 조용한 메타로 서고,
                   제목과 같은 부제(파일명 = 상대 경로)는 반복하지 않는다. */}
               <span className="operation-search-result-text operation-search-result-text-inline">

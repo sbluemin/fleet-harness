@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { OperationActivityVisual } from "./operation-activity.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -84,6 +85,8 @@ const UNASSIGNED_GROUP_KEY = "__unassigned__";
 export interface PaletteSearchPanel {
   readonly id: string;
   readonly title: LocalizedText;
+  /** 레일 엔트리가 등록한 아이콘. 이 패널의 검색 결과 행은 새 글리프를 그리지 않고 이것을 앞세운다. */
+  readonly icon?: ReactNode | (() => ReactNode);
   readonly search?: PaneSearchProvider;
   /** 페인 대신 확대 표면을 여는 엔트리라면 그 표면의 id — 팔레트의 착지가 이 값을 따른다. */
   readonly surfaceId?: string;
