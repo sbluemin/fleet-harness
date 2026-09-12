@@ -63,7 +63,7 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
   ),
   retryableStatus: claudeRetryableUpstreamStatus,
   transientErrorStatus: GATEWAY_TRANSIENT_ERROR_STATUS,
-  asyncToolNames: ["Read", "Grep", "Glob"],
+  asyncToolNames: [],
 };
 
 export { ANTHROPIC_CREDENTIAL_PREFIX };
