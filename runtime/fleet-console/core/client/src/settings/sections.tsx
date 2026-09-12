@@ -193,7 +193,6 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       entries: [
         t("settings.experiments.aiCard"),
         t("settings.experiments.promptRefine.title"),
-        t("settings.experiments.launchContextPack.title"),
         t("settings.experiments.sessionWatch.title"),
         t("settings.experiments.aideConsoleRead.title"),
         t("settings.core.experiments.keywords"),

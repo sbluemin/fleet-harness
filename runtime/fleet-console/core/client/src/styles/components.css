@@ -15698,8 +15698,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .quick-launch-suggest-apply,
 .quick-launch-suggest-dismiss,
-.quick-launch-context-confirm,
-.quick-launch-context-skip {
+.quick-launch-refine-confirm,
+.quick-launch-refine-skip {
   padding: 2px var(--space-2);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
@@ -15711,28 +15711,28 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-suggest-apply,
-.quick-launch-context-confirm {
+.quick-launch-refine-confirm {
   border-color: color-mix(in oklch, var(--brass) 55%, transparent);
   color: var(--brass);
 }
 
 .quick-launch-suggest-apply:hover,
 .quick-launch-suggest-dismiss:hover,
-.quick-launch-context-confirm:hover,
-.quick-launch-context-skip:hover {
+.quick-launch-refine-confirm:hover,
+.quick-launch-refine-skip:hover {
   background: var(--control-hover-fill);
   border-color: var(--control-hover-rim);
 }
 
 .quick-launch-suggest-apply:focus-visible,
 .quick-launch-suggest-dismiss:focus-visible,
-.quick-launch-context-confirm:focus-visible,
-.quick-launch-context-skip:focus-visible {
+.quick-launch-refine-confirm:focus-visible,
+.quick-launch-refine-skip:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
 
-/* 다듬은 초안 카드 — 컨텍스트 팩과 같은 카드 문법. 초안은 원문 그대로 줄바꿈을 지킨다. */
+/* 다듬은 초안 카드 — 초안은 원문 그대로 줄바꿈을 지킨다. */
 .quick-launch-refine {
   display: grid;
   gap: var(--space-2);
@@ -15764,22 +15764,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   gap: 2px;
 }
 
-.quick-launch-context {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0 var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklab, var(--ink-deep) 42%, transparent);
-  font-size: var(--t-sm);
-}
-
-.quick-launch-context.is-pending {
-  color: var(--text-tertiary);
-}
-
-.quick-launch-context-title {
+.quick-launch-refine-title {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -15792,53 +15777,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   color: var(--text-secondary);
 }
 
-.quick-launch-context-count {
-  font-weight: var(--weight-regular);
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--text-tertiary);
-}
-
-.quick-launch-context-item {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 2px 0;
-  cursor: pointer;
-}
-
-.quick-launch-context-item input {
-  accent-color: var(--brass);
-  margin: 0;
-  align-self: center;
-}
-
-.quick-launch-context-kind {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.quick-launch-context-name {
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-launch-context-detail {
-  grid-column: 3;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-launch-context-actions {
+.quick-launch-refine-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -15846,7 +15785,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: var(--space-1) 0 0;
 }
 
-.quick-launch-context-hint {
+.quick-launch-refine-hint {
   color: var(--text-tertiary);
   font-size: var(--t-xs);
 }

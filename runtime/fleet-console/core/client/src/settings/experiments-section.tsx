@@ -1,5 +1,5 @@
 import { ExperimentalBadge, ModelPicker, SettingsToggle, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
-import type { ConsoleExperimentSettings, ExperimentFeatureId, ExperimentModelFeatureId } from "@fleet-console/sdk/settings";
+import type { ConsoleExperimentSettings, ExperimentModelFeatureId } from "@fleet-console/sdk/settings";
 
 import { SettingsHelp } from "../components/settings-help.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
@@ -9,18 +9,15 @@ import { collectExperimentModelOptions } from "../experiment-model-options.js";
 import type { GlobalSettingsState } from "../types.js";
 
 interface FeatureRow {
-  readonly id: ExperimentFeatureId;
+  readonly id: ExperimentModelFeatureId;
   readonly titleKey: CoreMessageKey;
   readonly helpKey: CoreMessageKey;
-  /** AI를 쓰는 기능만 모델 필드를 갖는다 — 컨텍스트 팩은 검색만 한다. */
-  readonly model: ExperimentModelFeatureId | null;
 }
 
 /** 「AI 확장」 카드의 행 — 부관의 Console 읽기는 퀘이커 부관단 카드가 자기 행으로 갖는다. */
 const FEATURE_ROWS: readonly FeatureRow[] = [
-  { id: "promptRefine", titleKey: "settings.experiments.promptRefine.title", helpKey: "settings.experiments.promptRefine.help", model: "promptRefine" },
-  { id: "launchContextPack", titleKey: "settings.experiments.launchContextPack.title", helpKey: "settings.experiments.launchContextPack.help", model: null },
-  { id: "sessionWatch", titleKey: "settings.experiments.sessionWatch.title", helpKey: "settings.experiments.sessionWatch.help", model: "sessionWatch" },
+  { id: "promptRefine", titleKey: "settings.experiments.promptRefine.title", helpKey: "settings.experiments.promptRefine.help" },
+  { id: "sessionWatch", titleKey: "settings.experiments.sessionWatch.title", helpKey: "settings.experiments.sessionWatch.help" },
 ];
 
 export function ExperimentsSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
@@ -37,8 +34,8 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
       </h3>
       {FEATURE_ROWS.map((row) => {
         const enabled = experiments[row.id];
-        const modelField = row.model === null ? null : (`${row.model}Model` as const);
-        const current = modelField === null ? null : experiments[modelField];
+        const modelField = `${row.id}Model` as const;
+        const current = experiments[modelField];
         return (
           <div className="global-settings-row experiments-row" key={row.id}>
             <div className="global-settings-row-text">
@@ -50,15 +47,13 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
             {/* 한 줄: 모델 선택기와 스위치가 오른쪽에 나란히 선다 — 어느 기능의 모델인지는 왼쪽 제목이 말한다.
                 스위치가 행 제목을 이름으로 쓰므로 선택기는 "{기능} 모델"로 구별해 이름 짓는다. */}
             <div className="experiments-row-controls">
-              {modelField !== null && current !== null ? (
-                <ModelPicker
-                  value={current}
-                  options={options}
-                  disabled={saving}
-                  label={t("settings.experiments.modelAria", { feature: t(row.titleKey) })}
-                  onChange={(value) => save({ ...experiments, [modelField]: value })}
-                />
-              ) : null}
+              <ModelPicker
+                value={current}
+                options={options}
+                disabled={saving}
+                label={t("settings.experiments.modelAria", { feature: t(row.titleKey) })}
+                onChange={(value) => save({ ...experiments, [modelField]: value })}
+              />
               <SettingsToggle
                 checked={enabled}
                 disabled={saving}
