@@ -501,6 +501,7 @@ export function OperationSearch({
       case "assign-operation-group":
       case "set-operation-accent":
       case "minimize-operation": {
+        setZenMode(false);
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (getSideBarState().collapsed) setSideBarCollapsed(false);
