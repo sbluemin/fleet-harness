@@ -3195,19 +3195,14 @@
 }
 
 .operation-launch-control--canvas {
-  position: absolute;
-  z-index: 30;
+  /* body 포털: Map의 contain/clip과 부유 사이드바를 벗어나 Console 전역에 선다. */
+  position: fixed;
+  z-index: var(--z-overlay);
   /* 캔버스 메뉴 폭의 단일 소유자. 메뉴 박스와 설명 어사이드의 기준점이 여기 하나로 모인다 —
      컨테이너에 폭이 없으면 어사이드의 100%가 메뉴 오른쪽이 아니라 왼쪽 모서리를 가리켜
      설명이 메뉴 위를 덮는다. 컴포넌트의 MENU_WIDTH(측정 전 clamp 폴백)만 이 값을 따로 안다. */
   --canvas-menu-width: 264px;
   width: var(--canvas-menu-width);
-}
-
-/* War Room의 메뉴는 이 모드의 층 위에 서야 한다 — 덱(80)과 레일(90)이 같은 스태킹 문맥에서 위에
-   있으면 메뉴가 보여도 항목의 클릭을 덱 카드가 먼저 받는다. Cruise의 30은 그대로 둔다. */
-.operation-launch-control--triage {
-  z-index: var(--z-overlay);
 }
 
 .workspace-add-button {
@@ -3678,8 +3673,7 @@
   position: absolute;
   /* 덱과 같은 자리 — 아레나 인셋 위 26px, 가로는 부유 카드에 12px 가산으로 다가선다. */
   inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
-  /* 캔버스 실행 메뉴(.operation-launch-control--canvas, 30) 아래 — 판이 메뉴를 덮으면 메뉴는
-     보이는데 눌리지 않는다(핸드오프 1차 결함). 월드(무 z-index)와 미니맵(14)보다는 위. */
+  /* Console 전역 실행 메뉴 아래, 월드(무 z-index)와 미니맵(14)보다는 위. */
   z-index: 20;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

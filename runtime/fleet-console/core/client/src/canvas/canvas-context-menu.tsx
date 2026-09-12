@@ -12,7 +12,7 @@ import { launchProviderFromGroupId, launchProviderGlyph } from "../components/la
 import { ChatBubbleIcon, TerminalViewIcon } from "../components/start-view-glyphs.js";
 
 interface CanvasContextMenuProps {
-  // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
+  // body 포털에서 쓰는 Console 뷰포트 좌표. 메뉴를 이 지점에 띄운다.
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
   // above = anchor.y를 캔버스 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
@@ -23,9 +23,6 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
-  // true면 anchor를 뷰포트 기준 좌표로 보고 position: fixed로 띄운다 — 선별 처리처럼
-  // 월드/스테이지 프레임이 anchor 좌표계를 침범하는 모드에서 쓴다.
-  readonly fixed?: boolean;
 }
 
 // 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
@@ -67,7 +64,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const t = useT();
   const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -125,15 +122,16 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   };
   const openEffortMenu = (rowId: string) => {
     cancelEffortClose();
+    if (openEffortRow === rowId) return;
     const item = effortAnchorRefs.current.get(rowId);
-    const container = containerRef.current;
-    if (!item || !container) return;
+    const menu = menuRef.current;
+    if (!item || !menu) return;
+    const bounds = menu.getBoundingClientRect();
     const placement = placeCascade({
-      // 부모 상자는 컨테이너 왼쪽 끝에서 시작한다 — 그 바깥 경계가 다음 단의 기준이다.
-      boxLeft: containerLeft(container),
-      boxWidth: menuSize?.width ?? MENU_WIDTH,
-      top: itemTop(item, container),
-      width: EFFORT_SUBMENU_WIDTH,
+      boxLeft: bounds.left,
+      boxWidth: bounds.width,
+      top: item.getBoundingClientRect().top - 6,
+      width: effortMenuRef.current?.offsetWidth ?? EFFORT_SUBMENU_WIDTH,
       boundsWidth: viewportBounds?.width,
       preferLeft: false,
     });
@@ -273,26 +271,46 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     };
   }, []);
 
-  // Effort submenu uses a measured-height clamp — opening near the bottom would
-  // otherwise leave lower effort choices off-screen.
+  // 실제 폭으로 좌우를 고른다 — 최악 폭으로 왼쪽을 배치하면 짧은 트랙과 메뉴 사이가 벌어진다.
+  // offset 치수는 진입 애니메이션의 transform을 제외하므로 팝오버가 움직이는 중에도 안정적이다.
   useLayoutEffect(() => {
     const element = effortMenuRef.current;
-    if (!element || !viewportBounds || !openEffortRow) return;
+    const menu = menuRef.current;
+    const item = openEffortRow === null ? null : effortAnchorRefs.current.get(openEffortRow);
+    if (!element || !menu || !item || !openEffortRow) return;
     const measure = () => {
-      const height = element.getBoundingClientRect().height;
-      const maxTop = Math.max(MENU_MARGIN, viewportBounds.height - height - MENU_MARGIN);
+      const bounds = menu.getBoundingClientRect();
+      const position = placeCascade({
+        boxLeft: bounds.left,
+        boxWidth: bounds.width,
+        top: item.getBoundingClientRect().top - 6,
+        width: element.offsetWidth,
+        boundsWidth: viewportBounds?.width,
+        preferLeft: false,
+      });
+      const maxTop = viewportBounds
+        ? Math.max(MENU_MARGIN, viewportBounds.height - element.offsetHeight - MENU_MARGIN)
+        : Number.POSITIVE_INFINITY;
+      const top = Math.min(position.top, maxTop);
       setEffortPosition((previous) => {
         if (!previous || previous.id !== openEffortRow) return previous;
-        const nextTop = Math.max(MENU_MARGIN, Math.min(previous.top, maxTop));
-        return Math.abs(nextTop - previous.top) < 0.5 ? previous : { ...previous, top: nextTop };
+        return Math.abs(position.left - previous.left) < 0.5 && Math.abs(top - previous.top) < 0.5
+          && position.opensLeft === previous.opensLeft
+          ? previous
+          : { id: openEffortRow, ...position, top };
       });
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [openEffortRow, viewportBounds]);
+    observer.observe(menu);
+    menu.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      menu.removeEventListener("scroll", measure);
+    };
+  }, [openEffortRow, viewportBounds, menuSize]);
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -343,7 +361,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         closeEffortMenu();
         return;
       }
-      openEffortMenu(openEffortRow);
     };
     menu.addEventListener("scroll", follow, { passive: true });
     return () => menu.removeEventListener("scroll", follow);
@@ -518,9 +535,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   return (
     <div
-      className={`operation-launch-control operation-launch-control--canvas ${fixed ? "operation-launch-control--triage" : ""} ${placement === "above" ? "operation-launch-control--up" : ""}`}
+      className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
-      style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize, fixed)}
+      style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
       data-canvas-blocker
     >
       <div
@@ -871,20 +888,6 @@ function expandsVariants(kind: OperationLaunchKind, canLaunch: boolean): boolean
   return canLaunch && kind.disabled !== true && (kind.variants?.length ?? 0) > 0;
 }
 
-// 컨테이너는 자기 좌표를 인라인 스타일로 들고 있다. 캐스케이드의 모든 단이 이 좌표계 위에서
-// 계산된다 — 각 단은 fixed로 그 자리에 그려지므로, 다음 단의 기준은 DOM 측정이 아니라 앞 단이
-// 이미 확정한 좌표다.
-function containerLeft(container: HTMLElement): number {
-  const styled = Number.parseFloat(container.style.left);
-  return Number.isFinite(styled) ? styled : container.offsetLeft;
-}
-
-function itemTop(item: HTMLElement, container: HTMLElement): number {
-  const styled = Number.parseFloat(container.style.top);
-  const top = Number.isFinite(styled) ? styled : container.offsetTop;
-  return top + item.getBoundingClientRect().top - container.getBoundingClientRect().top - 6;
-}
-
 // 캐스케이드 한 단의 배치. 두 축의 기준이 서로 다르다: 가로는 앞 단의 **상자**가 정하고, 세로만
 // 짚은 행이 정한다. 가로까지 행에 맡기면 행은 상자 안쪽 패딩만큼 좁아, 다음 단이 부모 위로
 // 그만큼 파고든다.
@@ -942,14 +945,12 @@ function clampedAnchorStyle(
   bounds: { readonly width: number; readonly height: number } | undefined,
   placement: "above" | "cursor",
   size: { readonly width: number; readonly height: number } | null,
-  fixed: boolean,
 ): CSSProperties {
   // 상한도 뷰포트에서 산출한다 — 520px보다 낮은 화면에서 메뉴가 잘려 나가지 않게.
   const maxHeight = bounds
     ? Math.max(MENU_MIN_HEIGHT, Math.min(MENU_MAX_HEIGHT, bounds.height - MENU_MARGIN * 2))
     : MENU_MAX_HEIGHT;
-  const base = fixed ? { position: "fixed", "--canvas-menu-max-height": `${maxHeight}px` } as CSSProperties
-    : { "--canvas-menu-max-height": `${maxHeight}px` };
+  const base = { "--canvas-menu-max-height": `${maxHeight}px` };
   const width = size?.width ?? MENU_WIDTH;
   // 측정 전 첫 렌더는 높이 0으로 두어 커서 좌표를 그대로 쓴다 —
   // useLayoutEffect 측정이 페인트 전에 반영되므로 위치가 튀지 않는다.
