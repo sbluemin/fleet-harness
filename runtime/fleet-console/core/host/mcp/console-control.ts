@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@dotobokuri/core-infra";
+import { sanitizeLaunchPrompt } from "@dotobokuri/fleet-admiral";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { ConsoleActionInput, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
@@ -17,6 +18,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   if (value.kind === "launch" ? !value.theaterId || !value.text || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
   if (value.kind !== "launch" && (value.model || value.effort || value.viewMode)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && value.text) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
+  if (value.text !== undefined && !sanitizeLaunchPrompt(value.text)) ctx.addIssue({ code: "custom", message: "empty_prompt" });
 });
 export const automationSchema = z.object({
   name: z.string().trim().min(1).max(100), theaterId: z.string().min(1).max(128),

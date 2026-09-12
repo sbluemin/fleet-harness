@@ -52,6 +52,9 @@ describe("fleet-console-use gateway roster", () => {
       expect((await call("console_send", args)).error).toBe("console_control_disabled");
       expect(executions).toBe(0);
       enabled = true;
+      expect((await call("console_launch", { requestId: "empty", theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
+      expect(control.state().actions).toHaveLength(0);
+      expect(executions).toBe(0);
       const receipt = await call("console_send", args);
       expect(receipt.status).toBe("accepted");
       expect((await call("console_send", args)).id).toBe(receipt.id);
