@@ -20,6 +20,7 @@ export interface ShortcutCommand {
   readonly group: ShortcutCommandGroup;
   readonly descriptionKey: CoreMessageKey;
   readonly defaults: readonly string[];
+  readonly railEntryId?: string;
 }
 
 export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
@@ -29,6 +30,8 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.toggle-sidebar", group: "console", descriptionKey: "shortcuts.console.toggleSidebar", defaults: ["Mod+KeyB"] },
   { id: "console.toggle-rail", group: "console", descriptionKey: "shortcuts.console.toggleRail", defaults: ["Mod+Alt+KeyB"] },
   { id: "console.toggle-zen", group: "console", descriptionKey: "zen.toggle", defaults: ["Mod+Alt+KeyZ"] },
+  { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
+  { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.operations.undoClose", defaults: ["Mod+KeyZ"] },
   { id: "operations.sort-by-status", group: "operations", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
   { id: "operations.toggle-formation", group: "operations", descriptionKey: "shortcuts.map.toggleFormation", defaults: ["Alt+KeyF"] },

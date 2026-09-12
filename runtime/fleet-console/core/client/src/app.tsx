@@ -22,7 +22,7 @@ import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { LiquidGlassWelcome } from "./components/liquid-glass-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { PersistentPluginComponents } from "./persistent-components.js";
-import { bindExpandedSurfaceCloseNotifier } from "./expanded-surface/store.js";
+import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "./update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "./global-shortcuts.js";
@@ -167,7 +167,7 @@ export function App() {
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.
-      .filter((binding) => binding.panes.length > 0 || binding.entry.search !== undefined)
+      .filter((binding) => binding.panes.length > 0 || binding.entry.search !== undefined || binding.entry.surfaceId !== undefined)
       .map((binding) => {
         const providers = [
           ...binding.panes.flatMap((pane) => pane.search === undefined ? [] : [pane.search]),
@@ -408,10 +408,19 @@ export function App() {
         }
         toggleRailChrome();
       },
+      toggleRailSurface: (entryId) => {
+        const outcome = resolvePanelShortcut();
+        const surfaceId = railBindings.find((binding) => binding.entry.id === entryId)?.entry.surfaceId;
+        if (outcome === "suppress" || getState().activeTheaterId === null || surfaceId === undefined) return false;
+        if (outcome === "reveal") navigate("/operations");
+        if (outcome === "apply" && getExpandedSurfaceState().instances.some((instance) => instance.surfaceId === surfaceId)) closeExpandedSurfacesOf(surfaceId);
+        else openExpandedSurface({ surfaceId });
+        return true;
+      },
       canUndoLastClose,
       undoLastClose,
     });
-  }, [canUndoLastClose, navigate, resolvePanelShortcut, undoLastClose]);
+  }, [canUndoLastClose, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
 
   return (
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>

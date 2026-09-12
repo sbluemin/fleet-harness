@@ -10,6 +10,7 @@ import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import "../styles/rail.css";
 import { focusEdgeDockWhenPanelContainsActiveElement, useRailShortcutLabel } from "../shortcuts.js";
+import { CORE_SHORTCUT_COMMANDS, shortcutCommandLabel, useShortcutOverrides } from "../shortcut-bindings.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
@@ -569,6 +570,9 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
     }
     toggleRailPanel(entry.id);
   }, [context, entry]);
+  useShortcutOverrides();
+  const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
+  const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
   const icon = typeof entry.icon === "function" ? entry.icon() : entry.icon;
   const title = resolveLocalizedText(entry.title, language);
 
@@ -581,7 +585,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       aria-pressed={isActive}
       aria-label={title}
       disabled={entry.activate !== undefined && context.theaterId === null}
-      title={title}
+      title={shortcut ? `${title} (${shortcut})` : title}
       onClick={handleClick}
     >
       {icon}

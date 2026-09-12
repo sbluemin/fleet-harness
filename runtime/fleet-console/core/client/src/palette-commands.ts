@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
+import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
 import { getCommandBandDocked } from "./fullscreen-band-store.js";
 import { isZenMode } from "./zen-mode.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
@@ -192,6 +193,7 @@ export function buildPaletteCommands(
       action: { kind: "open-rail-panel", panelId: panel.id, ...(panel.surfaceId === undefined ? {} : { surfaceId: panel.surfaceId }) },
       group: "panel",
       glyph: "rail-entry",
+      shortcut: CORE_SHORTCUT_COMMANDS.find((command) => command.railEntryId === panel.id)?.id,
       ...(panel.icon === undefined ? {} : { railIcon: panel.icon }),
     });
   }
