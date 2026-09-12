@@ -113,8 +113,8 @@ export type ChordModifier = (typeof CHORD_MODIFIERS)[number];
 // 같은 공간이라 화이트리스트를 두면 그 기본값이 조용히 죽는다. 수식키 자체와 Escape·Tab만 제외한다.
 export const CHORD_KEY_CODE = /^(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|Escape$|Tab$)[A-Za-z0-9]{1,32}$/u;
 
-/** 재배정 밖의 고정 문법(Alt+화살표 넷) — 기록기가 이 조합을 받으면 그 문법이 가려진다. */
-export const RESERVED_CHORDS: readonly string[] = ["Alt+ArrowLeft", "Alt+ArrowRight", "Alt+ArrowUp", "Alt+ArrowDown"];
+/** 재배정 밖의 고정 문법 — Alt+화살표 넷과 터미널의 Shift+Enter(줄바꿈). 기록기가 받으면 그 문법이 가려진다. */
+export const RESERVED_CHORDS: readonly string[] = ["Alt+ArrowLeft", "Alt+ArrowRight", "Alt+ArrowUp", "Alt+ArrowDown", "Shift+Enter", "Shift+NumpadEnter"];
 
 export interface ParsedChord {
   readonly modifiers: ReadonlySet<ChordModifier>;

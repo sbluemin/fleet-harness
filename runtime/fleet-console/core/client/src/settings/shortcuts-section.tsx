@@ -144,19 +144,20 @@ export function ShortcutsCard({ state, saving }: {
         setNote(row.commandId, {
           kind: "conflict",
           text: t("settings.shortcuts.conflict", { chord: chordLabel(chord), other: other.title }),
-          // 안내를 띄워 둔 채 다른 조합을 바꾸거나 설정이 다시 실릴 수 있다 — 클릭 시점의 등록부로
-          // 다시 계산해야 그 사이의 변경이 통째로 덮이지 않는다. 그새 충돌이 풀렸으면 그냥 배정한다.
+          // 안내를 띄워 둔 채 다른 조합을 바꾸거나 설정이 다시 실릴 수 있다 — 클릭 시점의 등록부에서
+          // 지금 그 조합을 쥔 명령을 다시 찾아야 그 사이의 변경이 덮이거나 제3의 명령과 겹치지 않는다.
           swap: () => {
             const live = getShortcutOverrides();
             const previousChord = chordsOf(row, live)[slot.index] ?? chord;
-            const otherIndex = chordsOf(other, live).findIndex((current) => chordsEquivalent(current, chord));
-            if (otherIndex < 0) {
+            const holder = rows.find((candidate) => candidate.commandId !== row.commandId && chordsOf(candidate, live).some((current) => chordsEquivalent(current, chord)));
+            if (!holder) {
               persist(assign(row, slot.index, chord, live));
               setNote(row.commandId, { kind: "saved", text: t("settings.shortcuts.saved", { chord: chordLabel(chord) }) });
               return;
             }
-            persist(assign(other, otherIndex, previousChord, assign(row, slot.index, chord, live)));
-            setNote(row.commandId, { kind: "saved", text: t("settings.shortcuts.swapped", { chord: chordLabel(chord), other: other.title, otherChord: chordLabel(previousChord) }) });
+            const holderIndex = chordsOf(holder, live).findIndex((current) => chordsEquivalent(current, chord));
+            persist(assign(holder, holderIndex, previousChord, assign(row, slot.index, chord, live)));
+            setNote(row.commandId, { kind: "saved", text: t("settings.shortcuts.swapped", { chord: chordLabel(chord), other: holder.title, otherChord: chordLabel(previousChord) }) });
           },
         });
         return;
@@ -168,7 +169,8 @@ export function ShortcutsCard({ state, saving }: {
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
-      if (target instanceof Element && target.closest(`[data-shortcut-slot="${slot.commandId}:${slot.index}"]`)) return;
+      // 명령 id는 불투명 문자열이라 선택자에 끼우지 않는다 — 속성값을 직접 비교한다.
+      if (target instanceof Element && target.closest("[data-shortcut-slot]")?.getAttribute("data-shortcut-slot") === `${slot.commandId}:${slot.index}`) return;
       stopRecording();
     };
     window.addEventListener("keydown", onKeyDown, true);
