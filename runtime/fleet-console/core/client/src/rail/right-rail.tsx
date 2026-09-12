@@ -17,7 +17,7 @@ import { getState, subscribe } from "../store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPeeking } from "./rail-store.js";
+import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPeeking } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -29,6 +29,7 @@ import {
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
+import { setPaneWidth } from "../pane/pane-width-store.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -40,6 +41,8 @@ interface RightRailProps {
 const STABLE_RAIL_SURFACES = createHostCapabilities().surfaces;
 /** 아이콘 열 폭 — rail.css .right-rail-icons와 한 값. */
 const RAIL_ICON_STRIP_WIDTH = 44;
+/** 카드 양쪽 테두리 — 열 실측과 카드 폭 사이의 차이. */
+const RAIL_CARD_BORDER_WIDTH = 2;
 /** 엔트리의 대표 페인 — 폭 기본값 등 표면 차원의 힌트를 primary가 말한다(pane 계약). */
 function primaryPaneOf(binding: RailEntryBinding | null) {
   if (binding === null) return null;
@@ -67,7 +70,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const rootRef = useRef<HTMLDivElement>(null);
   const activePanelId = useRailActivePanelId();
-  const extraWidth = useRailPanelExtraWidth();
+  const requestedExtraWidth = useRailPanelExtraWidth();
+  const soloWidth = useRailPanelSoloWidth();
+  const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
   const railChromeExpanded = useRailChromeExpanded();
   const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
@@ -123,9 +128,13 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 저장 폭은 클램프 없이 desired로 보존한다 — init에서 클램프한 값을 desired로 심으면
   // 큰 화면에서 저장한 폭이 좁은 창 로드 한 번에 소실되어, 창을 다시 넓혀도 복원되지
   // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
-  const desiredWidth = activeBinding === null
-    ? declaredWidthOf(null)
-    : Math.max(MIN_PANEL_WIDTH, storedWidths[activeBinding.entry.id] ?? declaredWidthOf(activeBinding));
+  // 분할 카드 폭에는 문서에 준 여유도 포함된다. 문서가 떠나면 목록 폭만 세우고,
+  // 분할 카드의 기억은 그대로 두어 돌아올 때 문서가 같은 자리를 되찾게 한다.
+  const desiredWidth = soloWidth !== null
+    ? soloWidth + RAIL_CARD_BORDER_WIDTH
+    : activeBinding === null
+      ? declaredWidthOf(null)
+      : Math.max(MIN_PANEL_WIDTH, storedWidths[activeBinding.entry.id] ?? declaredWidthOf(activeBinding));
   const [cardWidth, setCardWidthState] = useState(() => Math.min(maxPanelWidth, desiredWidth));
   const cardWidthRef = useRef(cardWidth);
   const [isDragging, setIsDragging] = useState(false);
@@ -136,6 +145,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 조절은 언제나 **화면에 선 도구**의 몫이다 — 핸들러는 안정 참조로 두고 대상만 ref로 읽는다.
   const activePaneIdRef = useRef<string | null>(null);
   activePaneIdRef.current = activeBinding?.entry.id ?? null;
+  const soloPaneRef = useRef<ReturnType<typeof primaryPaneOf>>(null);
+  soloPaneRef.current = soloWidth === null ? null : primaryPaneOf(activeBinding);
 
   useLayoutEffect(() => {
     const onResize = () => {
@@ -182,6 +193,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     // 제스처가 지속되는 동안 플러그인의 `panels.open`이나 라우트 변경이 다른 패널을 세울 수
     // 있고, 놓는 순간의 활성 도구를 읽으면 끌던 폭이 도착한 도구의 기억으로 샌다.
     const dragPanelId = activePaneIdRef.current;
+    const soloPane = soloPaneRef.current;
     setIsDragging(true);
 
     const onMove = (ev: PointerEvent) => {
@@ -196,7 +208,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       setIsDragging(false);
-      if (dragPanelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, dragPanelId, cardWidthRef.current));
+      if (soloPane !== null) setPaneWidth(soloPane.id, cardWidthRef.current - RAIL_CARD_BORDER_WIDTH);
+      else if (dragPanelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, dragPanelId, cardWidthRef.current));
     };
 
     document.addEventListener("pointermove", onMove);
@@ -230,7 +243,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     cardWidthRef.current = next;
     setCardWidthState(next);
     const panelId = activePaneIdRef.current;
-    if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, next));
+    const soloPane = soloPaneRef.current;
+    if (soloPane !== null) setPaneWidth(soloPane.id, next - RAIL_CARD_BORDER_WIDTH);
+    else if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, next));
   }, []);
 
   // 가장자리 더블클릭의 "패널 폭 초기화" — 그 도구의 기억만 지운다. 폭은 그 뒤 클램프
@@ -238,7 +253,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const handleResetCardWidth = useCallback(() => {
     const panelId = activePaneIdRef.current;
     if (panelId === null) return;
-    setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
+    const soloPane = soloPaneRef.current;
+    if (soloPane !== null) setPaneWidth(soloPane.id, Math.max(MIN_PANEL_WIDTH, resolvePaneDefaultWidth(soloPane)) - RAIL_CARD_BORDER_WIDTH);
+    else setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
   }, []);
 
   const baseCtx: RailPanelContext = useMemo(() => ({
