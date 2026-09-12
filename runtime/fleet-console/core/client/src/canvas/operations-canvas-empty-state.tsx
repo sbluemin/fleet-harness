@@ -71,7 +71,7 @@ export function OperationsCanvasEmptyState({
           <span className="operations-canvas-blueprint-title">{t("canvas.empty.blueprintCard3")}</span>
           <i /><i style={{ width: "80%" }} /><i style={{ width: "30%" }} />
         </span>
-        <span className="operations-canvas-blueprint-caption operations-canvas-blueprint-caption--guide">{t("canvas.empty.guide")}</span>
+        <span className="operations-canvas-blueprint-caption operations-canvas-blueprint-caption--guide">{t("canvas.empty.blueprintGuide")}</span>
       </div>
     );
   }

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { addTheater, issueTheaterFolderGrant } from "../api.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
+import { takeCommissioningReturnFocus } from "../shortcuts.js";
 import { useT } from "../i18n/index.js";
 import { beginAddTheater, closeOnboarding, completeAddTheater, failAddTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -32,7 +33,9 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
 
   useEffect(() => {
     if (!state.onboardingOpen) return;
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 body다.
+    returnFocusRef.current = takeCommissioningReturnFocus()
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     primaryActionRef.current?.focus();
     return () => {
       const target = returnFocusRef.current;

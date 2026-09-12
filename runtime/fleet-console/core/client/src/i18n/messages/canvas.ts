@@ -4,6 +4,7 @@ export const canvasEn = {
   "canvas.empty.blueprintCard1": "claude · your-project",
   "canvas.empty.blueprintCard2": "codex · api-service",
   "canvas.empty.blueprintCard3": "shell · notes",
+  "canvas.empty.blueprintGuide": "After registration: Shift-drag creates a Shell, right-click opens actions, drag pans and scroll zooms.",
   "canvas.empty.standingBy_one": "{count} operation standing by",
   "canvas.empty.standingBy_other": "{count} operations standing by",
   "canvas.empty.openOperation": "Open operation {title}",
@@ -221,6 +222,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.empty.blueprintCard1": "claude · your-project",
   "canvas.empty.blueprintCard2": "codex · api-service",
   "canvas.empty.blueprintCard3": "shell · notes",
+  "canvas.empty.blueprintGuide": "등록 뒤에는 Shift-드래그로 Shell을 만들고, 우클릭으로 동작을 열고, 드래그로 이동·스크롤로 확대합니다.",
   // standby(꺼둠)는 War Room의 대기(awaiting)와 다른 상태다 — 같은 "대기"로 쓰면 빈 캔버스 "대기 6"과
   // War Room "대기 0"이 같은 세션에서 모순된다.
   "canvas.empty.standingBy_one": "꺼둔 Operation {count}개",
