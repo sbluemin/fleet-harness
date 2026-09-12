@@ -681,7 +681,7 @@ export function OperationSearch({
               onMouseEnter={() => setSelectedIndex(index)}
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
-              <PaletteRailIcon icon={panelIcon} />
+              <PaletteRailIcon icon={result.icon ?? panelIcon} />
               {/* 패널 결과도 한 줄이다 — 부제(경로·태그)는 제목 오른쪽에 조용한 메타로 서고,
                   제목과 같은 부제(파일명 = 상대 경로)는 반복하지 않는다. */}
               <span className="operation-search-result-text operation-search-result-text-inline">

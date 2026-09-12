@@ -262,6 +262,8 @@ export interface PaneSearchResult {
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
+  /** 행 앞에 설 글리프. 생략하면 팔레트는 이 결과를 낸 레일 엔트리의 아이콘을 쓴다. */
+  readonly icon?: ReactNode;
   /** 열 자리를 값으로 돌려준다. 아무것도 열지 않는 결과라면 반환을 생략한다. */
   readonly activate: () => PaneTarget | void | Promise<PaneTarget | void>;
   /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠진다. */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
@@ -86,12 +87,17 @@ export const fileExplorerPane: PaneDescriptor = {
     if (!response.ok) throw new Error("file_search_failed");
     const result = await response.json() as FileSearchResult;
     const t = getT(language);
-    const items: RailSearchResult[] = result.files.map((file) => ({
-      id: file.relativePath,
-      title: file.relativePath.split("/").at(-1) ?? file.relativePath,
-      subtitle: file.relativePath,
-      activate: () => activateFileSearchTarget(theaterId, file.relativePath),
-    }));
+    const items: RailSearchResult[] = result.files.map((file) => {
+      const name = file.relativePath.split("/").at(-1) ?? file.relativePath;
+      return {
+        id: file.relativePath,
+        title: name,
+        subtitle: file.relativePath,
+        // 트리와 같은 종류 아이콘 — 팔레트 행이 폴더 레일 아이콘 대신 파일이 무엇인지 말한다.
+        icon: <FileIcon name={name} />,
+        activate: () => activateFileSearchTarget(theaterId, file.relativePath),
+      };
+    });
     // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마커 자리를 확보하되
     // 자리가 남으면 결과를 줄이지 않는다. 추가 매치 수는 실제로 유지되는 결과 기준으로 센다.
     const keep = Math.min(items.length, Math.max(0, limit - 1));
