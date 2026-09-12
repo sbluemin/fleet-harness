@@ -1239,7 +1239,7 @@ export function OperationsSideBar({
             <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
             <button
               type="button"
-              className={addingTheater ? "side-bar-starter-primary" : "side-bar-starter-primary is-live"}
+              className="side-bar-starter-primary"
               onClick={openTheaterBrowser}
               disabled={addingTheater}
             >
