@@ -5,6 +5,7 @@
 // `Plan`, `statusline-setup`; 진입점·환경 변수·정책에 따라 달라진다), 문서화된 열거 API는 없다. 유일하게
 // 안정된 표면은 `--output-format stream-json`의 첫 줄인 `system/init` 메시지의 `agents` 배열이다.
 // 그래서 설치된 CLI를 격리 환경에서 잠깐 띄워 그 첫 줄만 읽고 바로 죽인다.
+// 단, init 로스터에 없는 특수 타입 fork는 제외 설정용 선택지로 별도 보완한다.
 //
 // 격리의 이유: 사용자의 Claude 홈(`CLAUDE_CONFIG_DIR`)과 프로젝트 디렉터리를 읽으면 사용자
 // 정의 Agent와 플러그인 Agent가 같은 배열에 섞여 내장을 가릴 수 없다. 빈 임시 홈과 빈 임시
@@ -89,7 +90,9 @@ export function createClaudeBuiltInAgentProbe(deps: ClaudeBuiltInAgentProbeDeps)
     let snapshot: ClaudeBuiltInAgentsSnapshot;
     try {
       const payload = await runProbe(resolved, deps.env ?? process.env);
-      snapshot = { available: true, agents: payload.agents, version: payload.version, error: null };
+      // fork는 init 로스터 밖에서 추가되는 특수 Agent지만 Agent(fork) deny는 지원한다.
+      const agents = [...new Set([...payload.agents, "fork"])];
+      snapshot = { available: true, agents, version: payload.version, error: null };
     } catch {
       snapshot = { available: false, agents: [], version: null, error: "probe_failed" };
     }
