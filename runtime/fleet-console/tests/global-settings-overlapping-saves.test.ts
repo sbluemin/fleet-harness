@@ -95,6 +95,25 @@ describe("overlapping global settings saves", () => {
     expect(store.getGlobalSettingsStoreState().error).toBeNull();
   });
 
+  it("does not let a read started before a save restore the old value", async () => {
+    const api = await import("../core/client/src/global-settings-api.js");
+    let resolveRead!: (state: GlobalSettingsState) => void;
+    vi.mocked(api.fetchGlobalSettingsState).mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const store = await import("../core/client/src/global-settings-store.js");
+    store.hydrateGlobalSettings(BASE);
+    const reading = store.loadGlobalSettings();
+    const saving = store.setGlobalSettingsField("language", "ko");
+    expect(store.getGlobalSettingsStoreState().savingFields.has("language")).toBe(true);
+    expect(store.getGlobalSettingsStoreState().savingFields.has("theme")).toBe(false);
+    deferred.get("language")!.resolve({ state: { ...BASE, language: "ko" } });
+    await saving;
+    resolveRead(BASE);
+    await reading;
+    expect(store.getGlobalSettingsStoreState().state?.language).toBe("ko");
+    expect(store.getGlobalSettingsStoreState().loading).toBe(false);
+    expect(store.getGlobalSettingsStoreState().savingFields.size).toBe(0);
+  });
+
   it("still refuses a second write to the same field while one is in flight", async () => {
     const store = await import("../core/client/src/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);

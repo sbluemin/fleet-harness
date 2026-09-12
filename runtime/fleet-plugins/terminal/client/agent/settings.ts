@@ -192,7 +192,7 @@ export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeS
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
   readonly state: SystemPromptSettingsState | null;
-  readonly savingField: SystemPromptSettingsField | null;
+  readonly savingFields: ReadonlySet<SystemPromptSettingsField>;
   readonly error: string | null;
 }
 
@@ -202,17 +202,19 @@ const listeners = new Set<Listener>();
 let snapshot: SystemPromptSettingsStoreState = {
   loading: false,
   state: null,
-  savingField: null,
+  savingFields: new Set(),
   error: null,
 };
 // 로드 세대값. 저장(낙관적 갱신)이 시작되면 증가시켜, 그 이전에 출발한 in-flight GET 응답을 폐기한다.
 let loadGeneration = 0;
+const savingFields = new Set<SystemPromptSettingsField>();
+const failedFields = new Map<SystemPromptSettingsField, string>();
 
 export function useSystemPromptSettingsStore(): SystemPromptSettingsStoreState {
   return React.useSyncExternalStore(subscribe, getSystemPromptSettingsStoreState, getSystemPromptSettingsStoreState);
 }
 
-function getSystemPromptSettingsStoreState(): SystemPromptSettingsStoreState {
+export function getSystemPromptSettingsStoreState(): SystemPromptSettingsStoreState {
   return snapshot;
 }
 
@@ -224,16 +226,19 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export async function loadSystemPromptSettings(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted || savingFields.size > 0) return;
   const generation = ++loadGeneration;
-  setSnapshot({ loading: true, error: null });
+  setSnapshot({ loading: true });
   try {
     const state = await fetchSystemPromptSettings(signal);
-    // 저장이 끼어들어 세대가 바뀌었으면 stale 응답이므로 저장 결과를 덮지 않는다.
-    if (generation !== loadGeneration) return;
-    setSnapshot({ loading: false, state, error: null });
+    if (signal?.aborted || generation !== loadGeneration) return;
+    failedFields.clear();
+    setSnapshot({ state, error: null });
   } catch (error) {
     if (signal?.aborted || generation !== loadGeneration) return;
-    setSnapshot({ loading: false, error: toErrorMessage(error) });
+    setSnapshot({ error: toErrorMessage(error) });
+  } finally {
+    if (generation === loadGeneration) setSnapshot({ loading: false });
   }
 }
 
@@ -242,18 +247,24 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
   value: SystemPromptSettingsState[Field],
 ): Promise<boolean> {
   const current = snapshot.state;
-  if (!current) return false;
-  // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
+  if (!current || savingFields.has(field)) return false;
   loadGeneration += 1;
   const optimistic = { ...current, [field]: value };
   const update = toSettingsUpdate(field, optimistic);
-  setSnapshot({ state: optimistic, savingField: field, error: null });
+  savingFields.add(field);
+  failedFields.delete(field);
+  setSnapshot({ state: optimistic, loading: false, error: currentError() });
   try {
     const state = await saveSystemPromptSettings(update);
-    setSnapshot({ state, savingField: null, error: null });
+    savingFields.delete(field);
+    failedFields.delete(field);
+    // 전체 응답은 다른 필드의 낙관값과 카탈로그를 되감는다. 저장한 필드만 확정한다.
+    setSnapshot({ state: { ...snapshot.state!, [field]: state[field] }, error: currentError() });
     return true;
   } catch (error) {
-    setSnapshot({ state: current, savingField: null, error: toErrorMessage(error) });
+    savingFields.delete(field);
+    failedFields.set(field, toErrorMessage(error));
+    setSnapshot({ state: { ...snapshot.state!, [field]: current[field] }, error: currentError() });
     return false;
   }
 }
@@ -287,8 +298,14 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
 
+function currentError(): string | null {
+  let latest: string | null = null;
+  for (const message of failedFields.values()) latest = message;
+  return latest;
+}
+
 function setSnapshot(patch: Partial<SystemPromptSettingsStoreState>): void {
-  snapshot = { ...snapshot, ...patch };
+  snapshot = { ...snapshot, ...patch, savingFields: new Set(savingFields) };
   for (const listener of listeners) listener();
 }
 

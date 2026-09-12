@@ -9,8 +9,7 @@ interface GlobalSettingsStoreState {
   readonly loadStatus: "pending" | "ready" | "failed";
   readonly loading: boolean;
   readonly state: GlobalSettingsState | null;
-  /** 지금 저장 중인 필드 중 하나. 아무것도 저장 중이 아니면 null. */
-  readonly savingField: GlobalSettingsField | null;
+  readonly savingFields: ReadonlySet<GlobalSettingsField>;
   /** 아직 해소되지 않은 저장 실패 중 가장 최근 것. 해소되면 사라진다. */
   readonly error: string | null;
 }
@@ -33,9 +32,10 @@ let snapshot: GlobalSettingsStoreState = {
   loadStatus: "pending",
   loading: false,
   state: null,
-  savingField: null,
+  savingFields: new Set(),
   error: null,
 };
+let loadGeneration = 0;
 
 export function useGlobalSettingsStore(): GlobalSettingsStoreState {
   return useSyncExternalStore(subscribe, getGlobalSettingsStoreState, getGlobalSettingsStoreState);
@@ -46,6 +46,7 @@ export function getGlobalSettingsStoreState(): GlobalSettingsStoreState {
 }
 
 export function hydrateGlobalSettings(state: GlobalSettingsState): void {
+  loadGeneration += 1;
   // 서버가 권위 있는 상태를 다시 준 순간, 그 전의 저장 실패는 더 이상 화면이 말할 사실이
   // 아니다. 여기서 거두지 않으면 다음에 성공하는 저장이 이미 사라진 경고를 되살린다.
   failedFields.clear();
@@ -71,14 +72,20 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export async function loadGlobalSettings(signal?: AbortSignal): Promise<void> {
-  setSnapshot({ loading: true, error: null });
+  // 저장 중인 값은 GET보다 최신이다. 저장 전 출발한 읽기도 세대로 걸러낸다.
+  if (signal?.aborted || savingFields.size > 0) return;
+  const generation = ++loadGeneration;
+  setSnapshot({ loading: true });
   try {
     const state = await fetchGlobalSettingsState(signal);
+    if (signal?.aborted || generation !== loadGeneration) return;
     failedFields.clear();
-    setSnapshot({ loadStatus: "ready", loading: false, state, error: null });
+    setSnapshot({ loadStatus: "ready", state, error: null });
   } catch (error) {
-    if (signal?.aborted) return;
-    setSnapshot({ loadStatus: "failed", loading: false, error: toErrorMessage(error) });
+    if (signal?.aborted || generation !== loadGeneration) return;
+    setSnapshot({ loadStatus: "failed", error: toErrorMessage(error) });
+  } finally {
+    if (generation === loadGeneration) setSnapshot({ loading: false });
   }
 }
 
@@ -86,12 +93,13 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
   // 같은 필드에 대한 겹친 저장만 막는다. 다른 필드는 서로를 기다릴 이유가 없고, 기다리게 하면
   // 그 사이 눌린 설정이 아무 말 없이 버려진다.
   if (savingFields.has(field)) return false;
+  loadGeneration += 1;
   const previousValue = snapshot.state ? snapshot.state[field] : undefined;
   const optimisticState = snapshot.state ? { ...snapshot.state, [field]: value } as GlobalSettingsState : null;
   savingFields.add(field);
   // 이 필드를 다시 시도하는 것이므로 이 필드의 지난 실패만 거둔다.
   failedFields.delete(field);
-  setSnapshot({ state: optimisticState, savingField: field, error: currentError() });
+  setSnapshot({ state: optimisticState, loading: false, error: currentError() });
   try {
     const result = await updateGlobalSettings({ [field]: value });
     savingFields.delete(field);
@@ -101,7 +109,7 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
       ? { ...snapshot.state, [field]: result.state[field] } as GlobalSettingsState
       : result.state;
     failedFields.delete(field);
-    setSnapshot({ state: merged, savingField: anySavingField(), error: currentError() });
+    setSnapshot({ state: merged, error: currentError() });
     return true;
   } catch (error) {
     savingFields.delete(field);
@@ -110,14 +118,9 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
       ? { ...snapshot.state, [field]: previousValue } as GlobalSettingsState
       : snapshot.state;
     failedFields.set(field, toErrorMessage(error));
-    setSnapshot({ state: reverted, savingField: anySavingField(), error: currentError() });
+    setSnapshot({ state: reverted, error: currentError() });
     return false;
   }
-}
-
-function anySavingField(): GlobalSettingsField | null {
-  for (const field of savingFields) return field;
-  return null;
 }
 
 /** 해소되지 않은 실패 중 가장 최근 것. 하나도 없으면 null이라 화면이 조용해진다. */
@@ -128,7 +131,7 @@ function currentError(): string | null {
 }
 
 function setSnapshot(patch: Partial<GlobalSettingsStoreState>): void {
-  snapshot = { ...snapshot, ...patch };
+  snapshot = { ...snapshot, ...patch, savingFields: new Set(savingFields) };
   for (const listener of listeners) listener();
 }
 
