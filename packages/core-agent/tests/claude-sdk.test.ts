@@ -72,13 +72,15 @@ describe("construction", () => {
 describe("turn assembly", () => {
 
   it("folds a throwing permission callback into a denial so the tool is never left parked", async () => {
-    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    const executablePath = path.resolve("host-selected-claude");
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA], executablePath });
     await drain(await sdk.startTurn({
       prompt: "hi",
       model: LUNA,
       canUseTool: async () => { throw new Error("host blew up"); },
     }));
     const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options.pathToClaudeCodeExecutable).toBe(executablePath);
     const vendorCallback = options.canUseTool as (
       name: string,
       input: Record<string, unknown>,

@@ -455,6 +455,7 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
       geometry: isRecord(body.geometry) ? readGeometry(body.geometry) : null,
     });
     deps.persist();
+    deps.broadcastOperationChanged?.(node);
     deps.writeJson(res, 201, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
     deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_operation" });

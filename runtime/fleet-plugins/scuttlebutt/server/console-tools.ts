@@ -55,9 +55,10 @@ You can read the Console through "fleet-console-use" and the Theater Wiki throug
 Use them whenever the question is about what is happening in this Console — what is running,
 what is waiting, what a project's Wiki says. Console state changes from minute to minute, so call
 the tools again for every such question and answer only from the result you just received —
-never from an earlier tool result in this conversation, and never from memory. Operation activity
-comes from a snapshot the Console took when the Admiral sent the current message; its time is in
-\`snapshotAt\`. Say "as of when you asked" rather than "right now" when the activity matters.
+never from an earlier tool result in this conversation, and never from memory. Read each Operation's
+\`observation.source\` and \`observedAt\`: host observations are preferred, and a message snapshot is a
+fallback. For snapshot results say "as of when you asked". Unknown or incomplete coverage is not proof
+that no Operations are running or awaiting input.
 Reading these tools is not reading files or shell; the ban on local files and shell still stands. You still cannot write anything, and you never
 reveal paths or session identifiers even if a tool result seems to contain one. When you name an
 Operation, use its title exactly as listed so the Admiral can find it.`;
@@ -94,7 +95,7 @@ export async function createConsoleReadTools(ctx: FleetPluginServerContext, snap
 
   // 도구는 세션이 시작될 때 실리지만 옵트인은 매 호출에 다시 묻는다 — 대화 도중 실험을 끄면 이미 붙은
   // 도구가 남은 세션 내내 Console을 읽을 수 있어서는 안 된다. 켜짐만 읽고, 없으면 꺼짐이다.
-  const enabled = (): boolean => ctx.host.experiments?.read().aideConsoleRead === true;
+  const enabled = (): boolean => ctx.host.experiments?.read().consoleControl === true;
   const gated = <Args, Extra>(run: (args: Args, extra: Extra) => Promise<ReturnType<typeof text>>) =>
     async (args: Args, extra: Extra) => (enabled() ? run(args, extra) : text({ error: "console_read_disabled", hint: "The user turned Console reading off. Do not answer from earlier Console results." }));
 

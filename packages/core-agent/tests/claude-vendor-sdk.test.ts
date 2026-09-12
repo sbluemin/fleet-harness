@@ -181,5 +181,9 @@ describe("child binary handoff", () => {
 
     expect(afterFirst).toBeGreaterThan(0);
     expect(fsProbe.existsCalls.length).toBe(afterFirst);
+    fresh.runVendorQuery({ prompt: "host-selected", options: { pathToClaudeCodeExecutable: "/host/claude" } });
+    fresh.runVendorSession({ options: { pathToClaudeCodeExecutable: "/host/claude" } });
+    expect(query.mock.calls.slice(-2).map(([input]) => input.options.pathToClaudeCodeExecutable)).toEqual(["/host/claude", "/host/claude"]);
+    expect(fsProbe.existsCalls.length).toBe(afterFirst);
   });
 });

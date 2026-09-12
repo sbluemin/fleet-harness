@@ -95,6 +95,25 @@ describe("operations SSE update availability", () => {
     vi.unstubAllGlobals();
   });
 
+  it("adds Operations created by another caller and updates them without duplicates or focus changes", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    const actual = await vi.importActual<typeof import("../core/client/src/store.js")>("../core/client/src/store.js");
+    const previous = actual.getState();
+    actual.setState({ operations: [], activeOperationId: null });
+    mocks.applyOperationUpdate.mockImplementation(actual.applyOperationUpdate);
+    try {
+      connectOperationsSse();
+      const operation = { id: "external-operation", theaterId: "theater-1", type: "agent", pluginId: null, title: "External launch", payload: {}, geometry: null, ts: { createdAt: 1, updatedAt: 1 } };
+      const source = TestEventSource.instances.at(-1)!;
+      source.emit("operation:changed", JSON.stringify({ operation }));
+      expect(actual.getState().operations).toMatchObject([{ id: operation.id, title: "External launch" }]);
+      source.emit("operation:changed", JSON.stringify({ operation: { ...operation, title: "Renamed" } }));
+      expect(actual.getState().operations).toMatchObject([{ id: operation.id, title: "Renamed" }]);
+      expect(actual.getState().operations).toHaveLength(1);
+      expect(actual.getState().activeOperationId).toBeNull();
+    } finally { actual.setState({ operations: previous.operations, activeOperationId: previous.activeOperationId }); }
+  });
+
   it("re-reads observer status instead of trusting an update frame payload", async () => {
     const status = { version: "1.0.0", updateAvailable: true };
     vi.stubGlobal("EventSource", TestEventSource);

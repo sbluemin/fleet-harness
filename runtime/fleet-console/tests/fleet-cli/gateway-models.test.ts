@@ -1,5 +1,10 @@
 import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createConsoleControl } from "../../core/host/mcp/console-control.js";
+import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 
 import {
 	type GatewayLoadout,
@@ -18,27 +23,99 @@ afterEach(async () => {
 });
 
 describe("fleet-console-use gateway roster", () => {
+  it("requires blanket opt-in, deduplicates actions and bounds automation across restart", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "console-control-"));
+    let time = Date.now();
+    let enabled = false;
+    let activity: "idle" | "running" = "idle";
+    const operations = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, payload: {}, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const deps = { enabled: () => enabled, directory, now: () => time, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
+    const control = createConsoleControl(deps);
+    let executions = 0;
+    const adapter = {
+      observe: () => ({ activity, lifecycle: "live" as const, observedAt: new Date(time).toISOString(), source: "host" as const, attention: { kind: "none" as const }, surface: "chat" as const, supportedActions: ["send" as const], output: { status: "unavailable" as const, outcome: "unknown" as const } }),
+      execute: async (_input: unknown, assertCurrent: () => void, settled: (result: "succeeded") => void) => { assertCurrent(); executions += 1; settled("succeeded"); return { operationId: "op-a", delivery: "confirmed" as const }; },
+    };
+    control.attach(adapter);
+    const host = createConsoleUseMcpHost({ ...deps, control });
+    const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "op-a", cwd: directory })[0]!;
+      const call = async (name: string, args: unknown) => {
+        const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+        const json = await response.json();
+        return JSON.parse(json.result.content[0].text);
+      };
+      expect((await call("console_context", {})).caller.operationId).toBe("op-a");
+      const args = { requestId: "request-a", operationId: "op-a", text: "Check build" };
+      expect((await call("console_send", args)).error).toBe("console_control_disabled");
+      expect(executions).toBe(0);
+      enabled = true;
+      const receipt = await call("console_send", args);
+      expect(receipt.status).toBe("accepted");
+      expect((await call("console_send", args)).id).toBe(receipt.id);
+      await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
+      expect(executions).toBe(1);
+      expect((await call("console_send", args)).id).toBe(receipt.id);
+      const conflicting = control.request("op-a", "request-b", { kind: "send", operationId: "op-a", text: "Check build" });
+      activity = "running";
+      await vi.waitFor(() => expect(control.getAction(conflicting.id)?.error).toBe("conflict"));
+      expect(executions).toBe(1);
+      activity = "idle";
+      const policy = control.automation("op-a", { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
+      time += 300_001;
+      await control.tick();
+      expect(control.state().automations[0]).toMatchObject({ runs: 1, briefing: { total: 1, unknown: 0 } });
+      time += 300_001;
+      await control.tick();
+      expect(control.state().automations[0]?.status).toBe("exhausted");
+      const automated = control.automation("op-a", { name: "Check on idle", theaterId: "theater-a", trigger: { kind: "activity", operationId: "op-a", activity: "idle" }, action: { kind: "send", operationId: "op-a", text: "Run approved check" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
+      activity = "running"; await control.tick();
+      activity = "idle"; await control.tick();
+      await vi.waitFor(() => expect(executions).toBe(2));
+      await control.tick();
+      expect(control.state().automations.find((a) => a.id === automated.id)?.status).toBe("exhausted");
+      const pending = control.automation("op-a", { name: "Later", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
+      enabled = false;
+      time += 300_001;
+      await control.tick();
+      expect(control.state().automations.find((a) => a.id === pending.id)?.runs).toBe(0);
+      expect(() => control.request("op-a", "disabled", { kind: "send", operationId: "op-a", text: "No" })).toThrow("console_control_disabled");
+      enabled = true;
+      const cursor = (await control.readEvents()).cursor;
+      control.dispose();
+      const restarted = createConsoleControl(deps);
+      try {
+        expect(restarted.state().automations.find((a) => a.id === pending.id)?.status).toBe("paused");
+        expect(restarted.request("op-a", "request-a", { kind: "send", operationId: "op-a", text: "Check build" }).id).toBe(receipt.id);
+        await expect(restarted.readEvents(cursor)).rejects.toThrow("cursor_expired");
+      } finally { restarted.dispose(); }
+    } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
+  });
   it("scopes Console reads per connection and revokes access without exposing server paths", async () => {
     let enabled = true;
     const host = createConsoleUseMcpHost({
       theaters: () => [{ id: "theater-a", name: "Project A" }],
       operations: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: "terminal", payload: { secret: "/private/transcript" }, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }],
     });
-    const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: "first", theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
+    const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
     const b = host.connect({ tools: ["console_theaters", "console_operations"] });
     try {
       const endpointA = (await a.getEndpoint()).servers[0]!;
       const endpointB = (await b.getEndpoint()).servers[0]!;
       const tokenA = a.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
       const tokenB = b.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
-      async function call(url: string, token: string, name: string) {
-        return (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: {} } }) })).json();
+      async function call(url: string, token: string, name: string, args: unknown = {}) {
+        return (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) })).json();
       }
       const first = await call(endpointA.url, tokenA.token, "console_operations");
-      expect(JSON.parse(first.result.content[0].text)).toMatchObject({ snapshotAt: "first", operations: [{ activity: "running" }] });
+      expect(JSON.parse(first.result.content[0].text)).toMatchObject({ snapshotAt: expect.any(String), operations: [{ activity: "running" }] });
       expect(JSON.stringify(first)).not.toContain("/private/transcript");
       const second = await call(endpointB.url, tokenB.token, "console_operations");
       expect(JSON.parse(second.result.content[0].text)).toMatchObject({ snapshotAt: null, operations: [{ activity: "unknown" }] });
+      const filtered = await call(endpointB.url, tokenB.token, "console_operations", { activity: "awaiting" });
+      expect(JSON.parse(filtered.result.content[0].text)).toMatchObject({ operations: [], coverage: { unknown: 1, complete: false } });
       expect((await call(endpointA.url, tokenA.token, "console_theaters")).error).toBeDefined();
       expect((await call(endpointB.url, tokenA.token, "console_operations")).error).toBeDefined();
       enabled = false;

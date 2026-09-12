@@ -1,5 +1,5 @@
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
-import type { ConsoleExperimentSettings, ExperimentModelOption } from "@fleet-console/sdk/settings";
+import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -18,7 +18,7 @@ export function connectConsoleRead(context: PluginInstallContext): void {
 }
 
 export function isConsoleReadEnabled(): boolean {
-  return experiments?.read()?.aideConsoleRead === true;
+  return experiments?.read()?.consoleControl === true;
 }
 
 export function subscribeConsoleRead(listener: () => void): () => void {
@@ -42,21 +42,4 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
 /** 모델 선택지 — Claude 별칭 + Gateway 모델. 호스트가 아직 없으면 빈 목록. */
 export function readModelOptions(): Promise<readonly ExperimentModelOption[]> {
   return experiments?.modelOptions() ?? Promise.resolve([]);
-}
-
-/** 코어가 experiments 필드를 저장 중이면 true — 그동안 이 행의 스위치는 잠긴다. */
-export function isExperimentsSaving(): boolean {
-  return experiments?.saving() === true;
-}
-
-/** 설정 카드가 읽는 실험 설정 전체 — 없으면(호스트가 아직 안 실었으면) null. */
-export function readExperiments(): ConsoleExperimentSettings | null {
-  return experiments?.read() ?? null;
-}
-
-/** 부관의 Console 읽기 행 저장 — 코어 general 설정의 experiments 필드를 통째로 넘긴다. */
-export async function writeConsoleRead(enabled: boolean): Promise<boolean> {
-  const current = experiments?.read();
-  if (!experiments || !current) return false;
-  return experiments.update({ ...current, aideConsoleRead: enabled });
 }

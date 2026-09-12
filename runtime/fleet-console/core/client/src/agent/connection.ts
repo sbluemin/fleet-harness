@@ -1,4 +1,6 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
+import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
+export { sessionRuntime, sessionActivity } from "@fleet-console/sdk/operations/activity";
 import type { ClientNotificationsCapability, ClientOperationRuntimeCapability, ClientOperationsCapability, OperationActivity, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { currentTerminalLocale, getT } from "./i18n/index.js";
@@ -95,32 +97,7 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
 // 절대 running으로 주장하지 않는다. turnState는 경쟁 소스가 아니라 OSC 타이틀을 인식하지 못했을 때의 폴백이다 —
 // 두 optional 필드가 모두 부재할 때만 도달한다. 미인식 타이틀은 무의견으로 남아야 하며, 그래야 타이틀 어휘가 드리프트해도
 // 거짓 idle 대신 hook 기반 동작으로 퇴보한다.
-export function sessionRuntime(session: SessionInfo): OperationRuntimeState {
-  // 채팅이 인수했으면 PTY의 죽음은 수명주기의 죽음이 아니다. 활동은 SDK 턴 경계가 말한다.
-  if (session.chatActive === true) {
-    // 활동 해석은 표면과 무관하다 — 두 어댑터가 같은 필드에 쓰므로 같은 함수가 읽는다.
-    return { lifecycle: "live", activity: sessionActivity(session) };
-  }
-  if (session.status === "dormant") return { lifecycle: "dormant" };
-  return { lifecycle: "live", activity: sessionActivity(session) };
-}
-
-export function sessionActivity(session: SessionInfo): OperationActivity {
-  if (session.attentionPending === true) return "awaiting";
-  // 타이틀 스피너는 누구의 작업인지 말해주지 않는다 — 호스트 턴이 도는 동안에도, 턴이 끝나고 백그라운드
-  // 서브에이전트·워크플로우만 남은 동안에도 똑같이 돈다(2026-08-12 실측). 그 둘을 가르는 것은 턴 경계다:
-  // 턴 종료가 보고된 뒤에 남은 작업은 정의상 백그라운드이므로, 이 구간에서만 backgroundPending이
-  // 스피너보다 앞선다. 턴이 도는 동안에는 종전대로 running이 우선이다.
-  if (session.turnState === "ended" && session.backgroundPending === true) return "background";
-  if (session.modelActivity === "working") return "running";
-  if (session.modelActivity === "not-working") return backgroundOrIdle(session);
-  if (session.turnState === "running") return "running";
-  return backgroundOrIdle(session);
-}
-
-function backgroundOrIdle(session: SessionInfo): OperationActivity {
-  return session.backgroundPending === true ? "background" : "idle";
-}
+// 같은 해석을 Console MCP도 소비하므로 SDK의 순수 투영을 공유한다.
 
 // status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
 // 같은 상태 반복은 알리지 않는다. idle 종료 알림은 실제 턴 완료(running/awaiting/background -> idle)에서만 보내며,

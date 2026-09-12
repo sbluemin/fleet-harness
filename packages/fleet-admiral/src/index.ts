@@ -21,6 +21,7 @@ export {
   assertLaunchPromptShimSafe,
   estimateWindowsCommandLineChars,
   LaunchPromptError,
+  LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX,
   resolveLaunchCommandLineLimit,
   sanitizeLaunchPrompt,
   WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS,

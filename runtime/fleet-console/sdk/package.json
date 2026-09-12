@@ -14,6 +14,11 @@
       "import": "./operations/types.ts",
       "default": "./operations/types.ts"
     },
+    "./operations/activity": {
+      "types": "./operations/activity.ts",
+      "import": "./operations/activity.ts",
+      "default": "./operations/activity.ts"
+    },
     "./operations/browser": {
       "types": "./operations/browser.tsx",
       "browser": "./operations/browser.tsx",

@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   GATEWAY_MODEL_ALIAS_PREFIX,
   findGatewayModel,
@@ -48,6 +49,9 @@ type AcceptedModel =
 export async function createClaudeGatewaySdk(
   options: ClaudeGatewaySdkOptions,
 ): Promise<ClaudeGatewaySdk> {
+  if (options.executablePath !== undefined && (typeof options.executablePath !== "string" || !path.isAbsolute(options.executablePath) || options.executablePath.includes("\0"))) {
+    throw new TypeError("executablePath must be an absolute executable path.");
+  }
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const accepted = resolveModels(options.models);
   // 캐시는 카탈로그 별칭을 유효하게 만드는 장치다. 네이티브 모델은 실을 것이 없다.
@@ -110,6 +114,7 @@ export async function createClaudeGatewaySdk(
   ): Record<string, unknown> => ({
     env,
     model,
+    ...(options.executablePath === undefined ? {} : { pathToClaudeCodeExecutable: options.executablePath }),
     ...(request.systemPrompt === undefined
       ? {}
       : { systemPrompt: vendorSystemPrompt(request.systemPrompt) }),

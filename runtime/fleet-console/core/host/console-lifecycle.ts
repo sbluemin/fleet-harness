@@ -613,7 +613,7 @@ export async function main(): Promise<void> {
       // 턴 종료(Stop) payload에는 그 시점에 살아 있는 백그라운드 작업 목록도 실려 있다. 같은 POST로 넘겨
       // 서버가 두 축을 한 번에 반영하게 한다 — 따로 보내면 둘 사이의 찰나에 세션이 거짓 유휴로 보인다.
       if (hookCommand.command === "turn-start") {
-        await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: "start" }, process.env);
+        await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: "start", input: await readStdinBestEffort() }, process.env);
         return;
       }
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: "end", input: await readStdinBestEffort() }, process.env);

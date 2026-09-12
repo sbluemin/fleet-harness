@@ -71,6 +71,8 @@ export type AgentChatSessionOrigin =
   | { readonly kind: "fresh" };
 
 export interface AgentChatSessionSeed {
+  /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
+  readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
   readonly compactHookToken?: string;
   readonly model: string;
@@ -751,8 +753,27 @@ class AgentChatSession {
     return this.seed.canReportActivity();
   }
 
-  send(text: string, display: string = text): void {
-    if (this.disposed) return;
+  private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] } | undefined;
+
+  readConsoleOutput(): import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] {
+    const busy = this.pendingTurns > 0 || this.turnOpen || this.settlingStoppedTurn;
+    if (this.consoleOutputCache?.seq === this.seq && this.consoleOutputCache.busy === busy) return this.consoleOutputCache.value;
+    const start = this.journal.findLastIndex(({ event }) => event.kind === "dispatch" || event.kind === "turn-start");
+    const entries = this.journal.slice(Math.max(0, start));
+    const text = entries.flatMap(({ event }) => event.kind === "text" ? [event.text] : []).join("\n\n");
+    const ending = entries.findLast(({ event }) => event.kind === "turn-end")?.event;
+    const safe = chatShellTailFromOutput(text, { cwd: this.seed.cwd });
+    const value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] = {
+      status: text ? "available" : "unavailable", ...(text ? { text: safe.tail, truncated: safe.truncated || start < 0 } : {}),
+      revision: this.seq,
+      outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
+    };
+    this.consoleOutputCache = { seq: this.seq, busy, value };
+    return value;
+  }
+
+  send(text: string, display: string = text, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void): void {
+    if (this.disposed) { onSettled?.("unknown"); return; }
     const id = `q${++this.queueSeq}`;
     this.pendingTurns += 1;
     this.queuedDispatches.set(id, { text, display });
@@ -767,10 +788,14 @@ class AgentChatSession {
       .then(() => {
         // 자기 차례에 자리가 비어 있으면 그 사이 취소된 것이다. 취소는 좌표를 지우는 것이
         // 전부이고, 판정은 이 한 줄이 진다 — 별도의 취소 집합을 두면 그것이 영원히 자란다.
-        if (!this.queuedDispatches.delete(id)) return;
+        if (!this.queuedDispatches.delete(id)) { onSettled?.("interrupted"); return; }
         // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
         this.pushQueue();
-        return this.dispatch(text);
+        const before = this.seq;
+        return this.dispatch(text).then(() => {
+          const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === "turn-end")?.event;
+          onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : "unknown");
+        });
       })
       .catch(() => undefined)
       .finally(() => {
@@ -820,6 +845,21 @@ class AgentChatSession {
    * 돌려주는 값은 "끊을 것이 있었는가"다. 없는데 true를 돌려주면 화면이 멈춤을 그리고 아무 일도
    * 일어나지 않는다.
    */
+  async interruptForConsole(): Promise<boolean> {
+    const session = this.session;
+    if (!session || this.disposed || !this.turnOpen) return false;
+    // UI의 낙관적 stop과 달리 MCP는 자식의 확인 전 완료를 보고하지 않는다.
+    let wake!: () => void;
+    const closed = new Promise<boolean>((resolve) => { wake = () => resolve(true); this.turnCloseWaiters.add(wake); });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        session.interrupt().then(() => closed),
+        new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 25_000); }),
+      ]);
+    } finally { if (timer) clearTimeout(timer); this.turnCloseWaiters.delete(wake); }
+  }
+
   stopTurn(): boolean {
     if (this.disposed) return false;
     if (this.pendingTurns === 0 && !this.turnOpen) return false;
@@ -1482,7 +1522,12 @@ class AgentChatSession {
           });
         this.workspaceHook = this.seed.bindWorkspaceHook?.(claudeSession.sessionId) ?? null;
         try {
+          const executablePath = await this.seed.resolveExecutablePath?.().catch((error: unknown) => {
+            this.push({ kind: "error", code: "chat_cli_unavailable" });
+            throw error;
+          });
           const sdk = await this.createSdk({
+            ...(executablePath === undefined ? {} : { executablePath }),
             baseUrl: this.seed.baseUrl,
             models: [this.seed.model],
             // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
