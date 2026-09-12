@@ -136,6 +136,12 @@ export interface AgentChatSessionSeed {
    */
   readonly onTurnEnded?: () => void;
   /**
+   * 자식이 턴 동안 옮겨 간 작업 디렉터리. hook이 닿지 않는 채팅 자식의 cwd는 트랜스크립트
+   * 레코드가 유일한 출처라, 턴이 닫힐 때 마지막 레코드의 `cwd`를 읽어 바뀌었을 때만 알린다.
+   * 절대 경로는 여기서 호스트 추적기로만 들어가고 브라우저로는 투영만 나간다.
+   */
+  readonly onCwdChanged?: (cwd: string) => void;
+  /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
    * 두 번째 메시지가 조기 턴 종료 신호를 만든다.
@@ -288,6 +294,24 @@ const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
  * 창보다 큰 경우(큰 JSON 레코드 하나를 찍는 명령)에 개행이 창의 맨 끝에만 있거나 아예 없어서,
  * 그대로 잘라내면 화면이 **빈 꼬리**를 보인다. 잘린 줄 하나가 빈 화면보다 정직하다.
  */
+const TRANSCRIPT_CWD_READ_BYTES = 64 * 1024;
+
+/** 꼬리 창의 마지막 완전한 레코드가 말하는 절대 cwd. 잘린 첫 줄과 cwd 없는 레코드는 건너뛴다. */
+export function latestTranscriptCwd(text: string): string | null {
+  const lines = text.split("\n");
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim();
+    if (!line) continue;
+    try {
+      const record = JSON.parse(line) as { readonly cwd?: unknown };
+      if (typeof record.cwd === "string" && path.isAbsolute(record.cwd)) return record.cwd;
+    } catch {
+      // 창 경계에서 잘린 줄이거나 JSON이 아닌 줄 — 다음 레코드를 본다.
+    }
+  }
+  return null;
+}
+
 async function readFileTail(file: string, windowBytes: number): Promise<{ readonly text: string; readonly headCut: boolean } | null> {
   const handle = await fs.open(file, "r").catch(() => null);
   if (handle === null) return null;
@@ -345,6 +369,8 @@ class AgentChatSession {
   private latestSessionId: string | null;
   /** 이미 Operation에 심은 세션 id. 같은 좌표를 매 턴 다시 심지 않기 위한 축이다. */
   private reportedSessionId: string | null = null;
+  /** 마지막으로 알린 자식 cwd. 실행 cwd로 출발하므로 같은 자리는 다시 알리지 않는다. */
+  private reportedCwd: string;
   /** 날고 있는 좌표 심기. 리더가 메시지마다 이 자리를 지나므로 겹치지 않게 붙든다. */
   private syncFlight: Promise<void> | null = null;
   /** 그 비행 중에 들어온 요청이 있었다. 착지 후 좌표가 아직 남아 있으면 한 번 더 간다. */
@@ -533,6 +559,7 @@ class AgentChatSession {
     this.operationId = operationId;
     this.seed = seed;
     this.createSdk = createSdk;
+    this.reportedCwd = seed.cwd;
     this.latestSessionId = seed.origin.kind === "resume"
       ? path.basename(seed.origin.transcriptPath, ".jsonl")
       : null;
@@ -1960,7 +1987,28 @@ class AgentChatSession {
     const session = this.session;
     if (session) this.requestContextSnapshot(session, "end");
     // 자식이 실제로 돈 턴만 알린다 — 자식에 닿기 전에 닫힌 턴은 transcript에 아무것도 더하지 않았다.
-    if (reachedChild && end.stopped !== true) this.seed.onTurnEnded?.();
+    if (reachedChild && end.stopped !== true) {
+      this.seed.onTurnEnded?.();
+      if (this.seed.onCwdChanged) void this.reportTranscriptCwd();
+    }
+  }
+
+  /**
+   * 트랜스크립트 꼬리에서 자식의 현재 cwd를 읽는다. Claude Code는 user·assistant 레코드마다
+   * 그 시점의 cwd를 적으므로(EnterWorktree·Bash `cd` 뒤에 바뀐다 — 실측), 마지막 레코드가 곧 지금
+   * 자리다. 파일 전체가 아니라 꼬리 창만 읽고, 못 읽으면 무의견이다.
+   */
+  private async reportTranscriptCwd(): Promise<void> {
+    const sessionId = this.latestSessionId;
+    if (!sessionId || this.disposed) return;
+    const transcriptPath = await this.locateTranscript(sessionId);
+    if (!transcriptPath) return;
+    const window = await readFileTail(transcriptPath, TRANSCRIPT_CWD_READ_BYTES);
+    if (window === null) return;
+    const cwd = latestTranscriptCwd(window.text);
+    if (cwd === null || cwd === this.reportedCwd || this.disposed) return;
+    this.reportedCwd = cwd;
+    this.seed.onCwdChanged?.(cwd);
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */

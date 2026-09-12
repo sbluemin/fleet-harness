@@ -1513,6 +1513,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
         // 채팅 턴의 끝은 Stop hook 대신 세션이 직접 알린다 — 세션 관찰이 두 얼굴 모두에서 돈다.
         onTurnEnded: () => deps.onTurnEnded?.(node.id),
+        // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
+        onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
         reportActivity: (working) => {
           const updated = observability.setTerminalSessionChatWorking(node.id, working);
           // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
