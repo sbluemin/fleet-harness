@@ -23,7 +23,7 @@ The two defaults never trade. Mechanical fans are wide and absorb distribution; 
 2. **Name the regime and the dominant risk** — one word: too little context, unreliable tool use, correlated judgment, convention drift, or incomplete coverage.
 3. **Fill judgment seats first.** Rank the reachable identities — readable provider, not `critical` unless the user's spend priority lists it — by quality evidence, and seat every judgment role in the top band. When band-eligible identities number fewer than the fan wants, repeat-seat one as independent runs or shrink the fan; a judgment seat is never filled from below the band to make a count.
 4. **Spread the mechanical rest by allowance**, using the fan rules below.
-5. **선택한 모델의 effort를 확인한다.** 대상의 `effortLadder`에 있는 값만 사용한다. normalized benchmark를 근거로 골랐다면 그 `benchmark.effort`를 요청해야 한다. 다른 effort의 성능 곡선은 주어지지 않았으므로 같은 점수라고 가정하거나 빈 rung을 보간하지 않는다. 비교 가능한 근거가 없을 때에는 작업 난도와 기존 capability prior로 판단하고, stage 입력이 `contextWindow`에 들어오는지 확인한다.
+5. **Check the selected model's effort.** Use only values in its `effortLadder`. When selecting by a normalized benchmark, request its measured `benchmark.effort`. No performance curve for other efforts is provided: do not assume equal scores or interpolate missing rungs. Without comparable evidence, use task difficulty and the capability prior, and confirm the stage input fits `contextWindow`.
 6. **Diversify where disagreement is the product.** A verifier sharing its subject's lineage inherits the same blind spots — judge lineage against the subject, never against this session. Diversity sizes the quorum, not the bulk fan, and works within the band the regime sets.
 7. **Confirm each name resolves.** Names register at session start; the reading may carry names this session cannot reach.
 8. **Say what carried what.** When provenance matters, the user-facing synthesis names which identities ran which branches and why — the routing resource's synthesis rules own the wording.
@@ -42,7 +42,7 @@ Bulk fan-out on the session's model is the pattern with no case: it concentrates
 ## Sizing a mechanical fan
 
 - **The task sets the branch count.** An allowance reading never trims it below what the work needs, and a window still called `ok` is not a reason to run fewer branches.
-- **`quotaConsumptionPriority`는 지정 공급자의 quota를 먼저 소비하도록 균등 분배를 대체한다.** 가장 작은 `rank`부터 소비하고, 재시도 후에도 실행이 실패할 때 다음 순위로 이동한다. 배열 위치가 아니라 명시된 순위 숫자를 따른다. 미지정 공급자는 남은 작업을 균등 분배한다.
+- **`quotaConsumptionPriority` replaces even distribution with the user's provider spend order.** Spend the smallest `rank` first and move to the next only when execution still fails after retry. Follow explicit ranks, not array positions. Distribute remaining work evenly among unranked providers.
 - **Split evenly across eligible providers** — readable window, not `critical` — with no provider more than one branch above another, counting providers rather than identities: a provider exposing two models does not draw twice the share.
 - **One eligible provider left carries the whole fan**, whatever its percentage reads; the only place left to move is the session's own allowance, which the rules above already price.
 - **An unreadable allowance joins no even split** — absence is not headroom — but it is not exhausted either: give it a bounded share and promote it once runs return.

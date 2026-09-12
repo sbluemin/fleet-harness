@@ -20,13 +20,12 @@ edit_policy: |
 ## 1. Purpose
 
 This document is the operational reference for the Admiral's delegation-policy
-surface and runtime lifecycle model. **Fleet no longer assembles a system prompt.**
-There is no per-turn runtime-context tag prefix and no `<fleet>` block; a gateway
-session runs on Claude Code's own prompt plus the project's own instruction files.
-Fleet contributes only compact on-demand plugin skills, never an always-on prompt
-layer. What Fleet still owns is the delegation policy, and it is enforced as code —
-see §2. Live state is consumed through public leaf package APIs and package-local
-policy modules.
+surface and runtime lifecycle model. Fleet appends one concise
+`<fleet_gateway_routing>` entrypoint to host sessions; detailed policy and live
+model state remain on-demand MCP resources. Fleet does not distribute delegation
+skills or inject per-turn runtime-context tags. This is behavioral guidance, not
+a code-enforced delegation gate. Live state is consumed through public leaf
+package APIs and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
 guide. Post-verification documentation and Fleet Wiki mutation remain host-owned
@@ -36,49 +35,30 @@ operations; they are not delegated.
 
 ## 2. Delegation Policy Surface
 
-Fleet writes no system prompt of its own. `--append-system-prompt-file` is absent from
-every launch path, and the terminal prompt mode setting that once chose between Fleet
-prompt compositions is gone from the settings store, the routes, and the UI.
+Fleet contributes a single English host-routing entrypoint from
+`packages/fleet-admiral/src/ai-gateway/host-prompt.ts`. POSIX CLI launches pass
+`--append-system-prompt`; Windows launches use `--append-system-prompt-file`
+with a private temporary file, shim-safe path validation, and launch-owned cleanup.
 
-One switch remains in its place, and it governs Claude Code's own prompt rather than
-Fleet's: `claudeCodeSystemPrompt` (`on` | `off`) in the global options store, absent
-meaning `on`. `off` passes `--system-prompt ""`, so the child's system block is
-empty instead of Claude Code's — measured on 2.1.235 as 26,036 to 19,546 total input
-tokens per turn. Nothing is written to disk: the file form that once carried the Fleet
-prompt existed because that prompt was long, and an empty prompt has no body to move. The same option reaches Chat Mode as the SDK's
-`{ mode: "preset" }` when `on`, and as an omitted `systemPrompt` when `off`; measured on
-SDK 0.3.212 as 24,632 against 18,272. Both launch surfaces — the Console terminal plugin
-and the standalone `fleet` launcher — read that one option, and it binds new sessions only.
+`claudeCodeSystemPrompt` (`on` | `off`, default `on`) controls the harness prompt,
+not the Fleet entrypoint. CLI `off` supplies `--system-prompt ""` while retaining
+the append. SDK `on` uses `{ mode: "append", text }`; SDK `off` uses
+`{ mode: "replace", text }`. Both preserve the same Fleet text. Historical token
+measurements made without this entrypoint are not measurements of this composition.
 
-The delegation contract that used to live in the Standing Orders is now split between
-one on-demand skill, the live Workflow tool, the `gateway_models` tool, and one embedded
-hook. `fleet:delegation` owns semantic execution-graph decisions and per-dispatch
-identity choice, and opens with a preflight that requires a `gateway_models` call; the
-Workflow tool owns graph mechanics and its own dispatch options; `gateway_models` owns
-the identity roster and reports its own spellings and constraints. The host reads that
-roster itself.
+The entrypoint directs coordinating hosts to read `fleet://ai-gateway/routing`
+and relevant guides before finalizing Agent or dynamic Workflow assignments,
+and to obtain a fresh `fleet://ai-gateway/models` snapshot per dispatch batch.
+Static guidance may be reused while present in context. Assigned children must
+not redelegate without explicit authorization. Tool contracts, permissions,
+workflow opt-in, and host integration ownership remain unchanged.
 
-The skill's SKILL.md body stays a compact case router; the deep doctrine the retired
-tool doctrine and gateway workflow skills once carried lives on demand under the skill's
-`references/` directory — reading a `gateway_models` payload (allowance verdicts,
-benchmark evidence, lineage, spend priority), seat and effort assignment, surface choice
-and in-flight conduct, and the recurring run shapes (research, review, decide, and the
-mechanical implementation exception). A reference loads only when its case is live, so
-the depth returns without recreating an always-on prompt layer, and it is rewritten
-against the current contracts: no pin mandate, no `agentType` prohibition, no prefix
-spelling rules, no Standing Orders ceremony.
-`packages/fleet-admiral/tests/embedded-skill-assets.test.ts` binds the references to the
-live loadout payload: every field the references teach must still exist in a
-representative `buildGatewayLoadout` serialization, so the docs and the payload cannot
-age apart silently.
-
-Routing into the skill is owned by the skill's own `description`: it names the concrete
-triggers — calling an agent, using the dynamic Workflow tool, orchestrating parallel or
-multi-agent work, delegating work to another model — and instructs loading the skill
-before the first `Agent` or `Workflow` call. A per-turn UserPromptSubmit reminder
-(`remind`) used to carry that routing, but the sessions that failed to load the skill
-were failing on an abstract description, not on a missing injection, so the reminder was
-retired instead of kept as standing per-turn context.
+`fleet-ai-gateway` server instructions describe resource discovery and credential
+handling rather than duplicating the host behavioral policy. English policy
+resources under `assets/ai-gateway/` own loadout interpretation, role and effort
+selection, execution surfaces, and task-specific guides. The models resource
+owns live roster spellings, constraints, and execution availability. There is
+no `gateway_models` tool or `fleet:delegation` skill.
 
 The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
@@ -98,9 +78,9 @@ whitespace-before-colon spelling skipping validation. What retired it was the li
 Workflow contract itself: `agent()` accepts an `agentType` pin resolved from the same
 registry as the Agent tool, and documents omitting `model` — inheriting the session model
 — as the normal default, so "every stage must pin a model" had become a doctrine the
-runtime's own grammar contradicts. Per-dispatch identity choice is now the delegation
-skill's semantic policy: an unnamed dispatch inherits the session model, deliberately or
-not, and making that choice conscious is the skill's job, not a spelling gate's.
+runtime's own grammar contradicts. Per-dispatch identity choice is now the routing
+resource's semantic policy: an unnamed dispatch inherits the session model, deliberately or
+not, and making that choice conscious is the host entrypoint and routing policy's job, not a spelling gate's.
 Retired subcommands (`remind`, `gate-delegation`) still exit zero without judging, because
 the shared plugin tree is replaced in place and a live session executes the new script
 from its next event while its loaded `hooks.json` may still name them.
@@ -113,7 +93,7 @@ verbose log. An earlier design injected the roster from a `PostToolUse` MCP hook
 that way and recorded a prompt-scoped receipt the dispatch gate validated against; it
 never fired once, no receipt was ever written, and the gate refused every gateway pin
 while the pin contract itself never reached the host. The roster now reaches the host
-through its own attention — the skill description's triggers and the skill preflight.
+through the host routing entrypoint and explicit MCP resource reads.
 
 Two properties of the harness keep the identity roster necessary, both measured on
 Claude Code 2.1.235:
@@ -130,7 +110,7 @@ Claude Code 2.1.235:
 
 Identity descriptions are one label line (`xai/grok-4.6 @low`). Everything a choice needs
 — capability class, benchmark figures, effort ladder, provider allowance, the
-`agentTypes` name map — is reported by `gateway_models` at call time, so repeating it
+`agentTypes` name map — is reported by `fleet://ai-gateway/models` at read time, so repeating it
 once per identity would put the same table in the session window twenty times over.
 
 ## 3. Live State Access
@@ -138,8 +118,8 @@ once per identity would put the same table in the session window twenty times ov
 Runtime state is read through direct owners:
 
 - Workflow receipt and version stamp: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions and per-dispatch identity choice, with its case-routed deep doctrine under `delegation/references/`; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
-- Tool-facing facts: `gateway_models` in `runtime/fleet-console/core/host/mcp/gateway-models-tool.ts`, served by `fleet-console-use`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
+- On-demand policy assets: `packages/fleet-admiral/assets/ai-gateway/`, generated into `EMBEDDED_AI_GATEWAY_ASSETS` and served through `buildGatewayPolicyResources`. These resources own detailed routing doctrine; no Fleet skills are rendered.
+- Model facts: `runtime/fleet-console/core/host/mcp/gateway-models.ts`, served as `fleet://ai-gateway/models` by `fleet-ai-gateway`. The host reads the live roster directly, with no hook receipt.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 
@@ -160,7 +140,7 @@ composes the thin gateway process directly:
 
 - creates infrastructure services
 - opens the AI Gateway settings store and the in-process quota service
-- registers Fleet Wiki agent tools and the `gateway_models` tool
+- connects the host-owned Admiral MCP tools and the resource-only `fleet-ai-gateway` server
 - starts the in-process Fleet MCP runtime
   (`createFleetGatewayAgentRuntimeLifecycle`, fleet-admiral)
 - applies the stored gateway wire-log switch

@@ -670,7 +670,7 @@ function resolveGatewayModelBenchmark(
     sources: Object.freeze(Object.values(benchmarks.sources).map((source) => `${source.name} ${source.benchVersion}`)),
     observedAt: benchmarks.updatedAt,
     routingTieBandPoints: benchmarks.normalization.tieBandPoints,
-    caveat: "동일 소스 집합을 갖춘 코호트 내 상대 지수이며 절대 정확도가 아닙니다. 측정한 effort에만 적용되며 실제 서빙 성공을 추론하지 않습니다.",
+    caveat: "A relative index within a cohort sharing the same source set, not absolute accuracy. Applies only to the measured effort and does not establish serving success.",
   });
 }
 

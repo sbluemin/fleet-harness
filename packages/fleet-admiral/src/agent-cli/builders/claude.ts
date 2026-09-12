@@ -1,10 +1,11 @@
+import { FLEET_GATEWAY_HOST_PROMPT } from "../../ai-gateway/host-prompt.js";
 import { buildClaudeAgentDenyRules } from "../claude-agent-rules.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildSessionArgs(context.sessionCoordinate),
-    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
+    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt, context.gatewayHostPromptFile),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -114,12 +115,16 @@ function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinat
 }
 
 /**
- * Claude Code 기본 시스템 프롬프트를 끌 때만 플래그가 실린다. Fleet은 실을 본문이 없으므로
- * 값은 빈 문자열이다 — 대체할 텍스트가 아니라 비우는 수단이다. 파일로 쓰던 옛 경로는 Fleet
- * 프롬프트가 길어서 필요했던 것이고, 여기에는 옮길 본문 자체가 없다.
+ * Claude Code 기본 프롬프트의 선택과 Fleet 라우팅 진입점을 분리한다.
+ * 기본 프롬프트를 꺼도 짧은 호스트 라우팅 지침은 유지하며 상세 정책은 MCP에서 읽는다.
  */
-function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined): string[] {
-  return claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : [];
+function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined, promptFile?: string): string[] {
+  return [
+    ...(claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : []),
+    ...(promptFile
+      ? ["--append-system-prompt-file", promptFile]
+      : ["--append-system-prompt", FLEET_GATEWAY_HOST_PROMPT]),
+  ];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

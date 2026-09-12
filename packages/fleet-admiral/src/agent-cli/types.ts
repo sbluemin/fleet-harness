@@ -83,6 +83,7 @@ export type ClaudeSessionCoordinate =
 
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
+  readonly gatewayHostPromptFile?: string;
   /**
    * Claude Code `--settings`의 `skillOverrides` 맵. 세션이 싣지 않을 내장 스킬을
    * `off`로 넣는다. 프로세스 단위 필터라 서브에이전트 목록에도 함께 적용된다.
