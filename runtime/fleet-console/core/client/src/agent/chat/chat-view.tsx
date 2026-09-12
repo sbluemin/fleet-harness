@@ -699,7 +699,6 @@ function ChatTurn({
       ) : null}
       {turn.items.length > 0 || working || view.answer !== null ? (
         <div className={`agent-chat-turn is-${turn.state}`}>
-          <div className="agent-chat-turn-spine" aria-hidden="true"><span className="agent-chat-turn-node" /></div>
           <div className="agent-chat-turn-body">
             {/* 모델·강도는 상단 세션 바가 이미 말한다 — 진행 중 헤드는 턴의 시간축만 맡는다.
                 완료 턴에는 따로 두지 않는다: 접힘 줄이 같은 시간을 말하므로 두 줄이 겹친다. */}

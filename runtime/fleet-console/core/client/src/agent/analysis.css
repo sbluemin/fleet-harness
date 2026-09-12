@@ -91,15 +91,9 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__ask-meta .session-analyst__ask-who { color: color-mix(in oklch, var(--id-cerulean) 75%, var(--text-tertiary)); }
 .session-analyst__ask-bubble { max-width: 64ch; background: color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised)); border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline)); border-radius: 14px 14px 5px 14px; padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--t-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* 분석가 턴 — 좌측 스파인 노드가 상태를 신호 토큰으로만 말한다. */
-.session-analyst__message--analyst { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--space-3); animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
-.session-analyst__turn-spine { position: relative; }
-.session-analyst__turn-spine::before { content: ""; position: absolute; left: 5px; top: 22px; bottom: 2px; width: 2px; border-radius: var(--radius-pill); background: var(--hairline); }
-.session-analyst__turn-node { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; border-radius: var(--radius-pill); border: 2px solid var(--positive); /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */ background: var(--glass-tint-panel); }
-.session-analyst__message--analyst.is-working .session-analyst__turn-node { border-color: var(--aurora); animation: analyst-node-pulse 1.6s ease-in-out infinite; }
-.session-analyst__message--analyst.is-working .session-analyst__turn-spine::before { background: color-mix(in oklch, var(--aurora) 40%, var(--hairline)); }
-.session-analyst__message--analyst.is-error .session-analyst__turn-node { border-color: var(--coral); }
-.session-analyst__message--analyst.is-stopped .session-analyst__turn-node { border-color: var(--text-tertiary); }
+/* 분석가 턴 — 단일 열. 스파인·노드는 채팅 원장과 함께 퇴역했다: 상태는 시계·접힘 줄·결말 문구가 말한다. */
+.session-analyst__message--analyst { display: block; animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
+.session-analyst__turn-main { min-width: 0; }
 .session-analyst__turn-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 
 /* 진행 펄스 행 — 채팅 뷰의 agent-chat-pulse와 한 계열. 정직성 마이크로카피가 아래에 붙는다. */
@@ -363,7 +357,6 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 @keyframes analyst-orbit { to { transform: rotate(360deg); } }
 @keyframes analyst-orbit-pulse { from { opacity: .7; transform: scale(.92); } to { opacity: 0; transform: scale(1.12); } }
-@keyframes analyst-node-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; box-shadow: 0 0 10px 1px var(--aurora-glow); } }
 @keyframes analyst-chip-dot-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @keyframes analyst-status-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes analyst-answer-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -390,10 +383,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
   .session-analyst__pulse-copy strong.session-analyst__live-text { animation: none; background-image: none; color: var(--text-secondary); }
   .session-analyst__turn-head .session-analyst__live-text { color: var(--text-tertiary); }
 
-  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node, .session-analyst__settle { transition: none; }
+  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__settle { transition: none; }
   .session-analyst__step[data-tone="live"] .session-analyst__step-mark { animation: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
-  .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
+  .session-analyst__chip-dot, .session-analyst__pulse-orbit { animation: none !important; }
 }
 
 /* ── 세션 관찰(실험) 결과 말풍선 — 캡션 눈 버튼 아래 ────────────────────────

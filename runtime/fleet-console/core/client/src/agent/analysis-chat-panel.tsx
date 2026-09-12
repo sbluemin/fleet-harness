@@ -480,7 +480,7 @@ export function AnalystCaption({ context }: { readonly context: OperationRenderC
   );
 }
 
-/* 분석가 턴 — 채팅뷰 원장 문법: 스파인 노드가 상태를, 구간(문장+스텝)이 과정을,
+/* 분석가 턴 — 채팅뷰 원장 문법: 시계·접힘 줄·결말 문구가 상태를, 구간(문장+스텝)이 과정을,
    응답 seam 아래가 확정 답을 말한다. 끝난 턴의 과정은 fold 한 줄로 접힌다.
    entry=null이면 아직 아무 이벤트도 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
    entry.receipt만으로 그린다 — 전역 상태는 다음 send에서 이미 초기화됐다. */
@@ -508,7 +508,6 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
     : null;
   return (
     <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}${!isError && isStopped ? " is-stopped" : ""}`}>
-      <span className="session-analyst__turn-spine" aria-hidden="true"><span className="session-analyst__turn-node" /></span>
       <div className="session-analyst__turn-main">
         {/* 도는 동안의 시계는 채팅 원장과 같은 명도 물결을 진다 — 두 면이 같은 사실("이 턴이
             아직 살아 있다")을 말하므로 어휘가 갈리면 안 된다. */}

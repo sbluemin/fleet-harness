@@ -2689,9 +2689,10 @@ describe("Instrument core design contract", () => {
     expect(chatRootBlock).toContain("background: var(--glass-tint-panel-face);");
     expect(chatRootBlock).not.toContain("--surface-window");
     expect(chatRootBlock).not.toContain("transition: background");
-    const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatNodeBlock).toContain("background: var(--glass-tint-panel);");
-    expect(chatNodeBlock).not.toContain("--surface-window");
+    // 좌측 스파인·노드 띠는 퇴역했다 — 상태는 본문의 시계·접힘 줄·결말 문구가 말한다. 세 표면이
+    // 같은 문법을 썼으므로 함께 물러난다.
+    expect(chat).not.toContain(".agent-chat-turn-spine");
+    expect(chat).not.toContain(".agent-chat-turn-node");
     // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
     // 떠 있던 잡 스트립은 폐기됐다 — 로그와 컴포저의 이음새에 걸터앉아 어느 쪽에도 속하지
@@ -2887,13 +2888,14 @@ describe("Instrument core design contract", () => {
     expect(chatView0).toContain('className="agent-chat-thinking-dots" aria-hidden="true"');
     const thinkingDotsBlock = chat.match(/\.agent-chat-thinking-dots > span \{[^}]*\}/)?.[0] ?? "";
     expect(thinkingDotsBlock).toContain("width: 1ch;");
-    expect(thinkingDotsBlock).toContain("opacity: 0;");
-    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*opacity: 1;\s*\}/);
+    expect(thinkingDotsBlock).toContain("visibility: hidden;");
+    expect(thinkingDotsBlock).not.toContain("opacity");
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*visibility: visible;\s*\}/);
     expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(2\) \{\s*animation: agent-chat-thinking-dot-mid 1\.2s steps\(1, end\) infinite;\s*\}/);
     expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(3\) \{\s*animation: agent-chat-thinking-dot-end 1\.2s steps\(1, end\) infinite;\s*\}/);
-    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-mid \{\s*0%, 33\.332% \{ opacity: 0; \}\s*33\.333%, 100% \{ opacity: 1; \}\s*\}/);
-    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-end \{\s*0%, 66\.665% \{ opacity: 0; \}\s*66\.666%, 100% \{ opacity: 1; \}\s*\}/);
-    expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-thinking-dots > span \{\s*animation: none;\s*\}/);
+    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-mid \{\s*0%, 33\.332% \{ visibility: hidden; \}\s*33\.333%, 100% \{ visibility: visible; \}\s*\}/);
+    expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-end \{\s*0%, 66\.665% \{ visibility: hidden; \}\s*66\.666%, 100% \{ visibility: visible; \}\s*\}/);
+    expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-thinking-dots > span \{\s*animation: none;\s*visibility: visible;\s*\}/);
     // 흐르는 글의 표식 — 캐럿은 secondary 잉크(채널 없음)로 마지막 블록 끝에 서고, 끝단
     // 옅어짐은 알파 마스크다. 둘 다 흐르는 동안만 걸리고 감속 모션에서 점멸·마스크가 걷힌다.
     const chatCaretBlock = chat.match(/\.agent-chat-stream\.is-streaming > :last-child:not\(ol, ul, pre\)::after,[\s\S]*?\}/)?.[0] ?? "";
@@ -3202,7 +3204,7 @@ describe("Instrument core design contract", () => {
     // 정체·상태·모드는 호스트 캡션 밴드가 진다 — 본문 위에 떠서 첫 문단을 가리지 않는다.
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__chips \{/);
     expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__chips \{[^}]*position: absolute/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__turn-node \{/);
+    expect(terminalAnalysisCss).not.toContain(".session-analyst__turn-node");
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
     // 끝난 턴의 접힘은 채팅 원장의 `.agent-chat-fold`와 같은 문법이다 — 문장이지 카드가 아니다.
     // 알약(면·테두리)으로 되돌아가면 이 줄이 결말을 말하는 문장이 아니라 물건으로 읽힌다.
@@ -3210,7 +3212,7 @@ describe("Instrument core design contract", () => {
     expect(analystReceiptSummary).not.toContain("border:");
     expect(analystReceiptSummary).not.toContain("background:");
     expect(analystReceiptSummary).not.toContain("radius-pill");
-    // 결말의 성패는 스파인 노드가 진다 — 접힘 줄이 ✓를 또 들면 두 곳이 같은 말을 한다.
+    // 결말의 성패는 접힘 줄 아래 결말 문구가 진다 — 접힘 줄이 ✓를 또 들면 두 곳이 같은 말을 한다.
     expect(terminalAnalysisCss).not.toContain(".session-analyst__receipt-mark");
     // 물결은 채팅 원장의 것과 한 벌이다. 값이 갈라지면 같은 사실을 두 면이 다른 속도로 말한다.
     // 줄머리에 못을 박는다 — 앵커 없는 `.session-analyst__live-text {`는 합성 규칙의

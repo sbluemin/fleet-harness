@@ -3046,27 +3046,9 @@ button.chip:focus-visible {
 }
 .cowork-hero-suggestion:hover { border-color: var(--brass); color: var(--text-primary); }
 
-/* ── 스레드 — 스파인 + 턴. 공식은 agent-chat과 같다(14px 열, 2px 스파인, 12px 노드). ── */
+/* ── 스레드 — 단일 열 턴. 스파인·노드는 agent-chat과 함께 퇴역했다: 상태는 접힘 줄·결말 문구가 말한다. ── */
 .cowork-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-.cowork-turn { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--space-3); }
-.cowork-turn-spine { position: relative; }
-.cowork-turn-spine::before { content: ""; position: absolute; left: 5px; top: 22px; bottom: 2px; width: 2px; border-radius: var(--radius-pill); background: var(--hairline); }
-.cowork-turn-node {
-  position: absolute;
-  left: 0;
-  top: 4px;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  border: 2px solid var(--positive);
-  /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 면을 따라야 링으로 읽힌다. */
-  background: var(--surface-panel);
-}
-.cowork-turn.is-working .cowork-turn-node { border-color: var(--aurora); animation: cowork-node-pulse 1.6s ease-in-out infinite; }
-.cowork-turn.is-working .cowork-turn-spine::before { background: color-mix(in oklch, var(--aurora) 40%, var(--hairline)); }
-.cowork-turn.is-error .cowork-turn-node { border-color: var(--coral); }
-.cowork-turn.is-stopped .cowork-turn-node { border-color: var(--hairline-strong); }
-.cowork-turn.is-review .cowork-turn-node { border-color: var(--brass); }
+.cowork-turn { display: block; }
 .cowork-turn-body { display: grid; gap: var(--space-2); min-width: 0; }
 .cowork-turn-head { display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.06em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .cowork-turn-who { color: var(--text-secondary); }
@@ -3345,7 +3327,6 @@ button.chip:focus-visible {
 @keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes cowork-rise { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
 @keyframes cowork-orbit { to { transform: rotate(360deg); } }
-@keyframes cowork-node-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; box-shadow: 0 0 10px 1px var(--aurora-glow); } }
 @keyframes cowork-live-sweep { from { background-position: 0 0; } to { background-position: -200% 0; } }
 @keyframes cowork-caret { 50% { opacity: 0; } }
 @keyframes cowork-dot-mid { 0%, 33.332% { opacity: 0; } 33.333%, 100% { opacity: 1; } }
@@ -3358,7 +3339,7 @@ button.chip:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cowork-pill, .cowork-composer, .cowork-dock-zone.is-open, .cowork-turn-node, .cowork-orbit, .cowork-thinking-dots > span, .cowork-answer-body::after { animation: none !important; }
+  .cowork-pill, .cowork-composer, .cowork-dock-zone.is-open, .cowork-orbit, .cowork-thinking-dots > span, .cowork-answer-body::after { animation: none !important; }
   .cowork-live-text { background-image: none; color: var(--text-secondary); animation: none; }
   .cowork-thinking-dots > span { opacity: 1; }
   .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-model-chip, .cowork-card, .cowork-composer-frame, .cowork-fold-chev, .cowork-hero-suggestion { transition: none; }
