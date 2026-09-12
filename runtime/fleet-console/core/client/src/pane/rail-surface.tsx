@@ -184,7 +184,7 @@ export const RailSurface = memo(function RailSurface({
   if (standing.length > 0) splitWidthRef.current = desiredPrimaryWidth;
   const primaryWidth = clampPrimaryWidth(desiredPrimaryWidth, limits);
   const soloWidth = standing.length === 0 && splitWidthRef.current !== undefined
-    ? desiredPrimaryWidth
+    ? Math.min(Math.max(primary?.minWidth ?? MIN_PANE_PX, desiredPrimaryWidth), splitMaxWidthRef.current ?? Infinity)
     : null;
   const soloMaxWidth = soloWidth === null ? null : splitMaxWidthRef.current;
   useLayoutEffect(() => {
