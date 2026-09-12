@@ -35,6 +35,7 @@ import { readHostPickerSurface } from "./components/command-band-system-cluster.
 import { HostPickerScreen } from "./components/host-picker-surface.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "./global-settings-store.js";
+import { setShortcutOverrides } from "./shortcut-bindings.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "./store.js";
@@ -87,6 +88,7 @@ try {
   setLiquidGlass(settings.liquidGlass);
   setUnfocusedPanelFade(settings.unfocusedPanelFade);
   setActiveUiFont(settings.uiFont);
+  setShortcutOverrides(settings.shortcuts);
   hydrateGlobalSettings(settings);
   await migrateStoredCommissioningSeen();
 } catch (error) {

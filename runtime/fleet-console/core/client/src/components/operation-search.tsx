@@ -43,6 +43,7 @@ import {
   type ScoredPaletteCommand,
 } from "../palette-commands.js";
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
+import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../shortcut-bindings.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
@@ -159,7 +160,11 @@ export function OperationSearch({
   })();
   const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
   const selectedOperation = mode === "operations" ? filteredEntries[clampedSelectedIndex] ?? null : null;
-  const modKey = isApplePlatform() ? "⌘" : "Ctrl";
+  // 탭·범례·힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
+  useShortcutOverrides();
+  const searchShortcut = shortcutCommandLabel("console.search-operations");
+  const paletteShortcut = shortcutCommandLabel("console.command-palette");
+  const undoShortcut = shortcutCommandLabel("console.undo-close");
 
   // 패널 내용 검색은 Operation 모드에서만 — 명령 모드는 명령만 보여 주는 편이 손에 맞는다.
   useEffect(() => {
@@ -713,11 +718,11 @@ export function OperationSearch({
                 className={`operation-search-switch-option${candidate === mode ? " is-active" : ""}`}
                 aria-selected={candidate === mode}
                 tabIndex={-1}
-                title={candidate === "operations" ? `${modKey}K` : `${modKey}P`}
+                title={candidate === "operations" ? searchShortcut : paletteShortcut}
                 onClick={() => switchMode(candidate)}
               >
                 {t(candidate === "operations" ? "chrome.operationSearch.tabOperations" : "chrome.operationSearch.tabCommands")}
-                <kbd>{candidate === "operations" ? `${modKey}K` : `${modKey}P`}</kbd>
+                <kbd>{candidate === "operations" ? searchShortcut : paletteShortcut}</kbd>
               </button>
             ))}
           </div>
@@ -726,7 +731,7 @@ export function OperationSearch({
           {!hasResults ? (
             <p className="operation-search-empty">
               {emptyMessage}
-              {mode === "operations" ? <span className="operation-search-empty-hint">{t("chrome.operationSearch.noMatchingOperationsHint", { mod: modKey })}</span> : null}
+              {mode === "operations" ? <span className="operation-search-empty-hint">{t("chrome.operationSearch.noMatchingOperationsHint", { shortcut: paletteShortcut })}</span> : null}
             </p>
           ) : mode !== "operations" ? (
             <>
@@ -764,8 +769,8 @@ export function OperationSearch({
                             {command.subject && section.id === "current-operation" ? <small>{command.subject}</small> : null}
                           </span>
                           {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
-                          {command.undoable ? <span className="operation-search-undoable">{t("chrome.operationSearch.undoable", { mod: modKey })}</span> : null}
-                          {command.shortcut ? <span className="operation-search-shortcut">{command.shortcut.map((key) => <kbd key={key}>{key === "Mod" ? modKey : key}</kbd>)}</span> : null}
+                          {command.undoable ? <span className="operation-search-undoable">{t("chrome.operationSearch.undoable", { shortcut: undoShortcut })}</span> : null}
+                          {command.shortcut ? <span className="operation-search-shortcut">{chordKeyLabels(resolveShortcutChords(command.shortcut)[0] ?? "").map((key, keyIndex) => <kbd key={`${keyIndex}:${key}`}>{key}</kbd>)}</span> : null}
                         </button>
                       );
                     })}
@@ -854,7 +859,7 @@ export function OperationSearch({
           <span><kbd>↵</kbd>{t(mode === "operations" ? "chrome.operationSearch.legendOpen" : "chrome.operationSearch.legendRun")}</span>
           {mode === "operations" ? <span><kbd>→</kbd>{t("chrome.operationSearch.legendActions")}</span> : null}
           <span><kbd>esc</kbd>{t("chrome.operationSearch.legendClose")}</span>
-          <span className="operation-search-legend-switch">{t(mode === "operations" ? "chrome.operationSearch.legendToCommands" : "chrome.operationSearch.legendToOperations", { mod: modKey })}</span>
+          <span className="operation-search-legend-switch">{t(mode === "operations" ? "chrome.operationSearch.legendToCommands" : "chrome.operationSearch.legendToOperations", { shortcut: mode === "operations" ? paletteShortcut : searchShortcut })}</span>
         </div>
       </section>
     </div>
@@ -867,10 +872,6 @@ interface RowAction {
   readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-minimize" | "operation-close";
   readonly danger?: boolean;
   readonly run: () => void;
-}
-
-function isApplePlatform(): boolean {
-  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 }
 
 function commandSectionHeadingId(id: string): string {

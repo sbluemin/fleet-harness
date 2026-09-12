@@ -85,6 +85,23 @@ describe("global settings routes", () => {
     expect(harness.currentGeneral()?.remoteAccess).toEqual({ ...base, acknowledgment });
   });
 
+  it("stores only well-formed shortcut bindings and rejects a malformed chord outright", async () => {
+    const shortcuts = { "console.toggle-sidebar": ["Mod+Shift+KeyB"], "console.quick-launch": ["Mod+KeyJ", "Alt+Space"] };
+    const harness = createRouterHarness({ authorized: true, body: { shortcuts } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.shortcuts).toEqual(shortcuts);
+    expect(harness.writes[0]?.body).toMatchObject({ state: { shortcuts } });
+
+    // 물리 코드가 아닌 글자, 수식키 없는 조합, 중복 조합은 저장 전에 400이다 — 조용히 걸러 저장하면
+    // 화면이 「저장됨」을 그리고 다른 창은 다른 조합을 발화한다.
+    for (const malformed of [{ "console.toggle-sidebar": ["Mod+b"] }, { "console.toggle-sidebar": ["KeyB"] }, { "console.quick-launch": ["Mod+KeyJ", "Mod+KeyJ"] }, { "console.toggle-sidebar": "Mod+KeyB" }]) {
+      const invalid = createRouterHarness({ authorized: true, body: { shortcuts: malformed } });
+      await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(invalid.writes[0]).toEqual({ status: 400, body: { error: "invalid_shortcuts" } });
+      expect(invalid.updateCalls).toBe(0);
+    }
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
     const harness = createRouterHarness({ authorized: false, body: { theme: "instrument" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });

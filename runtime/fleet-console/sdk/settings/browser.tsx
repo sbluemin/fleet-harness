@@ -17,6 +17,8 @@ export {
   isExperimentModelId,
   resolveExperimentSettings,
 } from "./experiments.js";
+export type { ShortcutBindings } from "./shortcuts.js";
+export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
 export interface SettingsCardProps {
   readonly title?: React.ReactNode;

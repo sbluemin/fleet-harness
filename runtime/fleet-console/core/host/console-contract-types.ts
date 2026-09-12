@@ -1,4 +1,4 @@
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { ConsoleThemeId, UiFontSettings } from "./settings/settings-domain.js";
 
 export interface ConsoleLockPayload {
@@ -310,6 +310,8 @@ export interface GlobalSettingsState {
   readonly uiFont: UiFontSettings;
   /** 실험 기능과 모델 좌석 — 항상 실린다(기본은 전부 꺼짐). */
   readonly experiments: ConsoleExperimentSettings;
+  /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 항상 실리며 빈 객체는 전부 기본값이다. */
+  readonly shortcuts: ShortcutBindings;
 }
 
 export interface GlobalSettingsMutationResult {

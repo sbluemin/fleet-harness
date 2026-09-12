@@ -10,7 +10,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId, resolveExperimentSettings, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../paths.js";
 
@@ -78,6 +78,11 @@ export interface ConsoleGeneralSettings {
    * 형태와 정제기는 SDK가 소유한다(플러그인 서버·브라우저가 같은 규칙으로 읽는다).
    */
   readonly experiments?: ConsoleExperimentSettings;
+  /**
+   * 사용자가 바꾼 단축키만 담는다(명령 id → 조합 목록). 부재·빈 객체는 전부 기본값이다.
+   * 문법과 정제기는 SDK가 소유한다 — 브라우저의 기록기와 서버의 검증이 같은 규칙을 읽는다.
+   */
+  readonly shortcuts?: ShortcutBindings;
 }
 
 /** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
@@ -281,6 +286,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
+  const shortcuts = sanitizeShortcutBindings(value.shortcuts);
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -292,6 +298,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
+    ...(shortcuts !== undefined ? { shortcuts } : {}),
   };
 }
 
@@ -430,6 +437,7 @@ interface GlobalSettingsBody {
   readonly unfocusedPanelFade?: unknown;
   readonly uiFont?: unknown;
   readonly experiments?: unknown;
+  readonly shortcuts?: unknown;
 }
 
 const GLOBAL_SETTINGS_MIN_STATIC_PORT = 1024;
@@ -544,6 +552,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_experiments" });
     return;
   }
+  if (body.shortcuts !== undefined && !isShortcutBindingsInput(body.shortcuts)) {
+    deps.writeJson(res, 400, { error: "invalid_shortcuts" });
+    return;
+  }
   const theme = body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon"
     || body.theme === "whites"
     ? body.theme
@@ -566,6 +578,7 @@ async function mutateGlobalSettings(
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
+      ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
     },
     plugins: current.plugins,
   }));
@@ -634,6 +647,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
+    shortcuts: general.shortcuts ?? {},
   };
 }
 

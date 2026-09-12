@@ -1,5 +1,5 @@
 import { useT } from "../i18n/index.js";
-import { sideBarShortcutLabel, sideBarStatusViewShortcutLabel } from "../shortcuts.js";
+import { useSideBarShortcutLabel, useSideBarStatusViewShortcutLabel } from "../shortcuts.js";
 import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from "./operations-side-bar-store.js";
 
 // 접기는 패널 자신의 동사다(Periscope 문법 — 밴드 토글 퇴역). 도킹 중에는 접기 셰브런이,
@@ -9,10 +9,10 @@ import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from ".
 export function SideBarCollapseControl() {
   const t = useT();
   const { collapsed, peeking } = useSideBarState();
+  const shortcut = useSideBarShortcutLabel();
   // 접힌 채 픽도 아니면 카드 자체가 없다 — 컨트롤의 문은 엣지 독이 진다.
   if (collapsed && !peeking) return null;
   const pinning = collapsed && peeking;
-  const shortcut = sideBarShortcutLabel();
   const label = t(pinning ? "sidebar.chrome.keepOpen" : "sidebar.chrome.collapse", { shortcut });
   return (
     <button
@@ -41,7 +41,7 @@ function KeepOpenIcon() {
 // "지금 이 보기"를 말한다. 축은 의도적으로 세션 메모리에만 산다(operations-side-bar-store).
 export function SideBarStatusViewToggle({ active }: { readonly active: boolean }) {
   const t = useT();
-  const label = t("sidebar.view.byStatus", { shortcut: sideBarStatusViewShortcutLabel() });
+  const label = t("sidebar.view.byStatus", { shortcut: useSideBarStatusViewShortcutLabel() });
   return (
     <button
       type="button"

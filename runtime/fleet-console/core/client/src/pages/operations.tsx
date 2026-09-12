@@ -30,6 +30,7 @@ import { useRailOccupiedPx } from "../rail/rail-store.js";
 import { ExpandedSurfaceLayer } from "../expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
+import { companionDefaultChord, companionShortcutCommandId, isShortcutRecording, matchesChord, matchesShortcutCommand, resolveShortcutChords } from "../shortcut-bindings.js";
 import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
@@ -155,6 +156,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
+      if (isShortcutRecording()) return;
       if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
       const editing = active instanceof HTMLElement
@@ -167,7 +169,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         disarmTriageSetAside();
         return;
       }
-      if (event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && event.code === "Digit1") {
+      if (matchesShortcutCommand(event, "operations.fit-all")) {
         if (active instanceof HTMLElement && active.closest(".xterm")) return;
         if (isTriageActive()) return;
         if (!stateRef.current.operationsHydrated) return;
@@ -176,21 +178,21 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         fitAllOperations();
         return;
       }
-      if (!event.altKey || event.metaKey || event.ctrlKey) return;
-      // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
-      if (event.code === "KeyS" && !event.shiftKey) {
+      // 조합은 등록부가 정한다(기본 Alt+S/F/T). macOS의 Option+문자는 합성 문자를 내보내므로
+      // 등록부는 물리 키(event.code)로 판정한다.
+      if (matchesShortcutCommand(event, "operations.sort-by-status")) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleSideBarStatusAxis();
         return;
       }
-      if (event.code === "KeyF" && !event.shiftKey) {
+      if (matchesShortcutCommand(event, "operations.toggle-formation")) {
         event.preventDefault();
         event.stopImmediatePropagation();
         toggleFormationView();
         return;
       }
-      if (event.code === "KeyT" && !event.shiftKey) {
+      if (matchesShortcutCommand(event, "operations.toggle-triage")) {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (isTriageActive()) {
@@ -200,7 +202,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         }
         return;
       }
-      if (event.shiftKey) return;
       const snapshot = stateRef.current;
       const activeOperation = snapshot.operations.find((operation) => operation.id === snapshot.activeOperationId);
       const activeKind = activeOperation
@@ -211,8 +212,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const activeCompanions = activeOperation
         ? availableCompanionPanels(activeKind?.companions ?? [], activeOperation)
         : [];
-      const companion = usableCompanionShortcuts(activeCompanions)
-        .find((candidate) => candidate.shortcut?.code === event.code);
+      const companion = activeOperation
+        ? usableCompanionShortcuts(activeCompanions).find((candidate) => candidate.shortcut !== undefined
+          && resolveShortcutChords(companionShortcutCommandId(activeOperation.pluginId, candidate.id), [companionDefaultChord(candidate.shortcut.code)])
+            .some((chord) => matchesChord(event, chord)))
+        : undefined;
       if (activeOperation && companion?.shortcut) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -231,6 +235,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (toggle.closeLayer) clearCompanionOperationId();
         return;
       }
+      // Alt+화살표 넷은 한 문법 묶음이라 재배정 대상이 아니다 — 여기서만 Alt를 직접 본다.
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
       const theaterId = snapshot.activeTheaterId;
       const triageActive = isTriageActive();
       const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.code);
