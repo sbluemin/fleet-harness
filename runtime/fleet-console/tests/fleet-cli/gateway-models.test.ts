@@ -6,6 +6,7 @@ import {
 	type GatewayQuotaSnapshot,
 	isHostSessionToolAllowed,
 } from "@dotobokuri/fleet-admiral";
+import { createAiGatewayMcpHost } from "../../core/host/mcp/ai-gateway.js";
 import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
 import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
 
@@ -22,7 +23,6 @@ describe("fleet-console-use gateway roster", () => {
     const host = createConsoleUseMcpHost({
       theaters: () => [{ id: "theater-a", name: "Project A" }],
       operations: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: "terminal", payload: { secret: "/private/transcript" }, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }],
-      gateway: { readSelection: () => ({ models: [] }) },
     });
     const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: "first", theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
     const b = host.connect({ tools: ["console_theaters", "console_operations"] });
@@ -63,24 +63,25 @@ describe("fleet-console-use gateway roster", () => {
 			codex: { status: "signed_out" },
 			cursor: { status: "ok", windows: [{ id: "cycle", scope: "auto", usedPercent: 100 }] },
 		};
-		const host = createConsoleUseMcpHost({ gateway: {
+		const host = createAiGatewayMcpHost({
             readSelection: () => ({ models, providerPriority: ["codex", "xai", "cursor", "antigravity"] }),
             readQuota: () => {
                 if (!quota) throw new Error("quota unavailable");
                 return quota;
             },
-        } });
-        lifecycle = host.connect({ tools: ["gateway_models"] });
+        });
+        lifecycle = host.connect();
 
 		const [serverToken] = lifecycle.issueSessionToken({
 			label: "gateway-host",
+			registeredAgentNames: ["fleet:cursor-grok-4-5-high"],
 			cwd: process.cwd(),
 			includeTool: (toolId) => isHostSessionToolAllowed(toolId),
 		});
-		expect(serverToken?.name).toBe("fleet-console-use");
+		expect(serverToken?.name).toBe("fleet-ai-gateway");
 		const endpoint = await lifecycle.getEndpoint();
 		expect(endpoint.servers).toHaveLength(1);
-		expect(endpoint.servers[0]).toMatchObject({ name: "fleet-console-use" });
+		expect(endpoint.servers[0]).toMatchObject({ name: "fleet-ai-gateway" });
 		expect(new URL(endpoint.servers[0]!.url).protocol).toBe("http:");
 
 		const response = await fetch(endpoint.servers[0]!.url, {
@@ -95,7 +96,7 @@ describe("fleet-console-use gateway roster", () => {
 			readonly result: { readonly tools: readonly { readonly name: string }[] };
 		};
 		const toolIds = payload.result.tools.map((tool) => tool.name).sort();
-		expect(toolIds).toEqual(["gateway_models"]);
+		expect(toolIds).toEqual([]);
 		expect(toolIds).not.toContain("carrier_dispatch");
 		expect(toolIds).not.toContain("carrier_jobs");
 
@@ -107,20 +108,31 @@ describe("fleet-console-use gateway roster", () => {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					jsonrpc: "2.0", id: "loadout", method: "tools/call",
-					params: { name: "gateway_models", arguments: {} },
+					jsonrpc: "2.0", id: "loadout", method: "resources/read",
+					params: { uri: "fleet://ai-gateway/models" },
 				}),
 			});
 			const payload = await call.json() as {
-				result: { content: { type: string; text: string }[]; isError: boolean };
+				result: { contents: { text: string }[] };
 			};
-			expect(payload.result.isError).toBe(false);
-			return JSON.parse(payload.result.content[0]!.text) as GatewayLoadout;
+			return JSON.parse(payload.result.contents[0]!.text) as GatewayLoadout;
 		}
 
+		async function rpc(method: string, params = {}, token = serverToken!.token) {
+			return (await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params }) })).json();
+		}
+		const initialized = await rpc("initialize");
+		expect(initialized.result.capabilities).toEqual({ resources: {} });
+		expect(initialized.result.instructions).toBeTruthy();
+		const listed = await rpc("resources/list");
+		expect(listed.result.resources.some((resource: { uri: string }) => resource.uri === "fleet://ai-gateway/models")).toBe(true);
+		for (const resource of listed.result.resources) expect((await rpc("resources/read", { uri: resource.uri })).result.contents[0].text).toBeTruthy();
+		expect((await rpc("resources/read", { uri: "fleet://ai-gateway/models" }, "foreign-token")).error).toBeDefined();
+		expect((await rpc("resources/read", { uri: "file:///private/secret" })).error.code).toBe(-32002);
 		const loadout = await readLoadout();
 		expect(Object.keys(loadout.providers)).toEqual(["cursor", "antigravity"]);
 		expect(loadout.providers.cursor?.models).toHaveLength(1);
+		expect(loadout.providers.cursor?.models[0]).toMatchObject({ execution: { high: { availableNow: true, requiresNewSession: false }, low: { availableNow: false, requiresNewSession: true } } });
 		expect(loadout.providers.cursor?.quota).toMatchObject({ windows: [{ pressure: "critical" }] });
 		expect(loadout.providers.antigravity?.quota.status).toBe("unsupported");
 		expect(loadout.quotaConsumptionPriority).toEqual({
@@ -146,5 +158,7 @@ describe("fleet-console-use gateway roster", () => {
 		const empty = await readLoadout();
 		expect(empty.providers).toEqual({});
 		expect(empty).not.toHaveProperty("quotaConsumptionPriority");
+		lifecycle.releaseSessionToken("gateway-host");
+		expect((await rpc("resources/read", { uri: "fleet://ai-gateway/models" })).error).toBeDefined();
 	});
 });

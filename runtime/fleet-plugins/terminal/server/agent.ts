@@ -144,10 +144,12 @@ export async function registerAgentRoutes(
 async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
-  const consoleUse = ctx.host.consoleUse.connect({ tools: ["console_theaters", "console_operations", "gateway_models"] });
+  const consoleUse = ctx.host.consoleUse.connect({ tools: ["console_theaters", "console_operations"] });
   ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
+  const aiGatewayMcp = ctx.host.aiGatewayMcp.connect();
+  ctx.host.lifecycle.registerCleanup(() => aiGatewayMcp.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect()],
+    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect()],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,

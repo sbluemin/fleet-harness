@@ -1,12 +1,12 @@
 # Shape — reviewing what exists
 
-The output is a judged finding list, not a fix list. A reviewer that also repairs what it finds loses the independence that made the finding worth having, and repairs things that were never broken. The delegation skill owns whether to fan out at all; `references/seat-assignment.md` owns the seats; `references/surfaces-and-flight.md` owns the surface and wiring.
+The output is a judged finding list, not a fix list. A reviewer that also repairs what it finds loses the independence that made the finding worth having, and repairs things that were never broken. The routing resource owns whether to fan out at all; `fleet://ai-gateway/guides/seat-assignment` owns the seats; `fleet://ai-gateway/guides/surfaces-and-flight` owns the surface and wiring.
 
 ## When not to use
 
 - The defect is known and only the repair remains — that is implementation, normally the host's own work.
-- Deciding between designs — see `references/shape-decide.md`.
-- Establishing facts with no standard to judge against — see `references/shape-research.md`.
+- Deciding between designs — see `fleet://ai-gateway/guides/decide`.
+- Establishing facts with no standard to judge against — see `fleet://ai-gateway/guides/research`.
 
 ## Skeleton
 

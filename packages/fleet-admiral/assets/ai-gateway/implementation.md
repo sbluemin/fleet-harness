@@ -1,6 +1,6 @@
 # Shape — the mechanical implementation exception
 
-The delegation skill owns whether implementation leaves the host at all; its conditions are deliberately hard to meet, and nothing here loosens them. What lives here is how the exception runs once it holds. Delegated writing's characteristic risk is not failure — a failed edit is visible — but convergence: several branches each producing something reasonable that together do not match the codebase.
+The routing resource owns whether implementation leaves the host at all; its conditions are deliberately hard to meet, and nothing here loosens them. What lives here is how the exception runs once it holds. Delegated writing's characteristic risk is not failure — a failed edit is visible — but convergence: several branches each producing something reasonable that together do not match the codebase.
 
 ## Rules
 

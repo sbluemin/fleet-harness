@@ -3,6 +3,7 @@ import type { McpTool, RegisteredTool } from "./spec.js";
 export interface McpToolSnapshotStore {
   registerToolsForSession(sessionToken: string, tools: McpTool[]): void;
   getToolsForSession(sessionToken: string): RegisteredTool[];
+  hasSession(sessionToken: string): boolean;
   getToolNamesForSession(sessionToken: string): Set<string>;
   removeToolsForSession(sessionToken: string): void;
   clearAllTools(): void;
@@ -37,6 +38,9 @@ export function createMcpToolSnapshotStore(): McpToolSnapshotStore {
 
       sessionTools.set(sessionToken, registered);
       sessionToolNames.set(sessionToken, new Set(tools.map((tool) => tool.name)));
+    },
+    hasSession(sessionToken) {
+      return sessionTools.has(sessionToken);
     },
     getToolsForSession(sessionToken) {
       return sessionTools.get(sessionToken) ?? [];

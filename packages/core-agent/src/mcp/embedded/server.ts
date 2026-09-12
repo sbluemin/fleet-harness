@@ -32,7 +32,9 @@ export function defineTool<TInput extends Record<string, unknown>>(
 export function createEmbeddedMcpServer(options: ClaudeGatewayMcpServerOptions): ClaudeGatewayMcpServer {
   return createVendorMcpServer({
     name: options.name,
+    ...(options.resources === undefined ? {} : { resources: options.resources }),
     ...(options.version === undefined ? {} : { version: options.version }),
+    ...(options.instructions === undefined ? {} : { instructions: options.instructions }),
     ...(options.tools === undefined ? {} : { tools: [...options.tools] }),
     ...(options.alwaysLoad === undefined ? {} : { alwaysLoad: options.alwaysLoad }),
   });

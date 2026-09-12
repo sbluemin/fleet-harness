@@ -23,6 +23,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
         releaseSessionToken: () => {}, cleanup: () => {},
       }) },
       consoleUse: { connect: () => { throw new Error("not implemented"); } },
+      aiGatewayMcp: { connect: () => { throw new Error("not implemented"); } },
   operations: {
     list: () => [],
     get: () => null,

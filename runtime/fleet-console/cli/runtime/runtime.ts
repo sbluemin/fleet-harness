@@ -2,7 +2,7 @@ import { createMcpHttpTransport } from "../../core/host/mcp/http-transport.js";
 import { createCodexMcpTools } from "@fleet-plugins/codex/mcp";
 import { createPluginAdmiralMcpHost } from "../../core/host/mcp/plugin-mcp.js";
 import path from "node:path";
-import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
+import { createAiGatewayMcpHost } from "../../core/host/mcp/ai-gateway.js";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
@@ -64,7 +64,7 @@ export async function createFleetCliRuntime(
     ),
   });
   const mcpHttp = createMcpHttpTransport();
-  const consoleUse = createConsoleUseMcpHost({ transport: mcpHttp.transport, gateway: {
+  const aiGatewayMcp = createAiGatewayMcpHost({ transport: mcpHttp.transport,
     readSelection: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return {
@@ -81,14 +81,14 @@ export async function createFleetCliRuntime(
         return undefined;
       }
     },
-  } });
+  });
 
   const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   pluginMcp.register("codex", createCodexMcpTools(wikiWorkspaceResolver));
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
     const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
-      additionalMcpSessions: [consoleUse.connect({ tools: ["gateway_models"] }), pluginMcp.connect()],
+      additionalMcpSessions: [aiGatewayMcp.connect(), pluginMcp.connect()],
     });
     let cleaned = false;
     return {
@@ -101,12 +101,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        try { await agentRuntime.cleanup(); } finally { try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); } }
+        try { await agentRuntime.cleanup(); } finally { try { await Promise.all([aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); } }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
-    try { await Promise.all([consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     throw error;
   }
 }

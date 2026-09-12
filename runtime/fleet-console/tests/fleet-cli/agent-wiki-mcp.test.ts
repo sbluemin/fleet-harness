@@ -40,7 +40,7 @@ describe("fleet-cli gateway MCP composition", () => {
     dataDir = undefined;
   });
 
-  it("exposes exactly Wiki and gateway_models tools on a gateway-doctrine fleet session", async () => {
+  it("exposes exactly Wiki tools and Gateway resources on a gateway-doctrine fleet session", async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-cli-runtime-"));
     runtime = await createFleetCliRuntime({ dataDir });
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
@@ -52,13 +52,13 @@ describe("fleet-cli gateway MCP composition", () => {
 
     expect(new Set(endpoint.servers.map((server) => new URL(server.url).origin)).size).toBe(1);
     expect(new Set(endpoint.servers.map((server) => new URL(server.url).pathname)).size).toBe(endpoint.servers.length);
-    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-console-use", "fleet-codex"]);
-    expect(tokens.map((token) => token.name)).toEqual(["fleet-console-use", "fleet-codex"]);
+    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-ai-gateway", "fleet-codex"]);
+    expect(tokens.map((token) => token.name)).toEqual(["fleet-ai-gateway", "fleet-codex"]);
     const fleetServer = endpoint.servers[1]!;
     const fleetToken = tokens[1]!;
     const toolNames = await listMcpTools(fleetServer.url, fleetToken.token);
     const expected = [...EXPECTED_WIKI_TOOL_IDS].sort();
-    expect(await listMcpTools(endpoint.servers[0]!.url, tokens[0]!.token)).toEqual(new Set(["gateway_models"]));
+    expect(await listMcpTools(endpoint.servers[0]!.url, tokens[0]!.token)).toEqual(new Set([]));
 
     expect([...toolNames].sort()).toEqual(expected);
     expect(toolNames.has("carrier_dispatch")).toBe(false);

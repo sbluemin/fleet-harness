@@ -1,6 +1,6 @@
-# Reading a `gateway_models` payload
+# Reading a `fleet://ai-gateway/models` payload
 
-The tool returns facts as JSON and stops there: nothing in the payload recommends a model, and every judgement below is the host's to make. Mechanics — call arguments, name spellings, which dispatch field takes which value — belong to the live tool description; this file owns what the numbers and flags mean once a reading is in hand.
+The models resource returns facts as JSON and stops there: nothing in the payload recommends a model, and every judgement below is the host's to make. Mechanics — call arguments, name spellings, which dispatch field takes which value — belong to the live resource description; this file owns what the numbers and flags mean once a reading is in hand.
 
 ## The payload's frame
 
@@ -36,7 +36,7 @@ Three constraint fields answer three different questions, and none implies anoth
 
 ## Names
 
-`agentTypes` maps each exposed reasoning rung to the name that selects the identity (`none` when the model has no effort control), and `modelId` is the model as a value for a field that takes a model rather than a name — including matching the session's own model back to the roster. The names are candidate selectors, not proof of registration: they are derived live from the exposure while the agent registry froze at session start, so confirm a name is one this session actually carries before dispatching on it. Which dispatch field takes which spelling is the tool description's contract; take both verbatim from the reading, never reconstructed.
+`agentTypes` maps each exposed reasoning rung to the name that selects the identity (`none` when the model has no effort control), and `modelId` is the model as a value for a field that takes a model rather than a name — including matching the session's own model back to the roster. The names are candidate selectors, not proof of registration: they are derived live from the exposure while the agent registry froze at session start, so confirm a name is one this session actually carries before dispatching on it. Which dispatch field takes which spelling is the resource description's contract; take both verbatim from the reading, never reconstructed.
 
 ## Gotchas
 

@@ -1,6 +1,6 @@
 # Dispatch surfaces and in-flight conduct
 
-The delegation skill derives the graph; this file owns which surface executes it and how the host behaves between dispatch and result. Call mechanics — argument names, script syntax, accepted values, opt-in triggers — belong to each surface's live tool description; read them there every time, and inspect the live surface before concluding anything, since tools may be lazy-loaded.
+The routing resource derives the graph; this file owns which surface executes it and how the host behaves between dispatch and result. Call mechanics — argument names, script syntax, accepted values, opt-in triggers — belong to each surface's live tool description; read them there every time, and inspect the live surface before concluding anything, since tools may be lazy-loaded.
 
 ## Choosing a surface
 
@@ -31,7 +31,7 @@ A fan-out helper turns a failed branch into an empty result, so a run that lost 
 
 - Have each branch return its failure as a value, not throw into the helper.
 - Check the returned branch count against what was dispatched before synthesizing. A missing branch is a finding.
-- Never report coverage you did not verify; say so when the run capped, sampled, or dropped anything. The delegation skill's evaluation rules own acceptance — this is what makes them checkable.
+- Never report coverage you did not verify; say so when the run capped, sampled, or dropped anything. The routing resource's evaluation rules own acceptance — this is what makes them checkable.
 
 ## Gotchas
 

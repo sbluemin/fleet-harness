@@ -67,6 +67,7 @@ export interface ExecutorSessionRequest {
    * Omit to expose every registered agent tool.
    */
   readonly includeTool?: (toolId: string) => boolean;
+  readonly registeredAgentNames?: readonly string[];
 }
 
 export interface ExecutorServerToken {
@@ -251,7 +252,7 @@ function issueSessionToken(
       const tools = request.includeTool
         ? allTools.filter((tool) => request.includeTool?.(tool.id) ?? true)
         : allTools;
-      assertNonEmptyExecutorTools(name, tools);
+      if (!runtime.resources?.length) assertNonEmptyExecutorTools(name, tools);
       const token = crypto.randomUUID();
       registerExecutorSessionTools(runtime, token, tools);
       installExecutorToolCallRouter(runtime, token, {

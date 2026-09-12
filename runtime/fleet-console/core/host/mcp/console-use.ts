@@ -10,13 +10,11 @@ import {
 } from "@dotobokuri/core-agent";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import { buildGatewayModelsToolSpec, type GatewayModelsToolDeps } from "./gateway-models-tool.js";
 
 export interface ConsoleUseDeps {
   readonly transport?: McpHttpTransport;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
-  readonly gateway: GatewayModelsToolDeps;
 }
 
 function text(value: unknown) {
@@ -24,7 +22,7 @@ function text(value: unknown) {
 }
 
 function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null): AgentToolSpec[] {
-  const specs: AgentToolSpec[] = [buildGatewayModelsToolSpec(deps.gateway)];
+  const specs: AgentToolSpec[] = [];
   if (!deps.theaters || !deps.operations) return specs;
   const theaters = deps.theaters;
   const operations = deps.operations;

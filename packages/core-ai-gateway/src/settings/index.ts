@@ -29,7 +29,7 @@ export interface AiGatewayStoredModel {
   readonly efforts?: readonly string[];
   /**
    * true면 모델은 와이어(`/v1/models`, `/v1/messages` 노출 게이트, 실행 선택기)에 남지만
-   * 위임 정체성을 등록하지 않고 `gateway_models` 로스터에서도 제외한다. 부재는 위임 가능이며,
+   * 위임 정체성을 등록하지 않고 `fleet://ai-gateway/models` 로스터에서도 제외한다. 부재는 위임 가능이며,
    * 저장 정규형은 true만 보존한다.
    */
   readonly hostOnly?: boolean;

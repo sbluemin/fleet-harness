@@ -10,6 +10,7 @@
  * `scripts/check-claude-agent-sdk-boundary.mjs`가 매 PR에 강제하며, 이 패키지 안에서도
  * `src/claude/vendor-sdk.ts` 한 곳만 그 이름을 안다.
  */
+export type { McpResource } from "./mcp/resources.js";
 export type {
   AgentToolCtx,
   AgentToolSpec,

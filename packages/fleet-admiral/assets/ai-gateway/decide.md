@@ -1,12 +1,12 @@
 # Shape — deciding between approaches
 
-A decision procedure, not a survey. The run must end with **one committed approach and a stated cost**, because an even-handed list of options leaves the judgment undone. The final choice stays on the host — the delegation skill's propose-branch rule — and this shape is how the material for that choice gets built. `references/seat-assignment.md` owns the seats; `references/surfaces-and-flight.md` owns the surface and wiring.
+A decision procedure, not a survey. The run must end with **one committed approach and a stated cost**, because an even-handed list of options leaves the judgment undone. The final choice stays on the host — the routing resource's propose-branch rule — and this shape is how the material for that choice gets built. `fleet://ai-gateway/guides/seat-assignment` owns the seats; `fleet://ai-gateway/guides/surfaces-and-flight` owns the surface and wiring.
 
 ## When not to use
 
 - The approach is settled and only the work remains — that is implementation, normally the host's own work.
-- Judging code that exists against a standard — see `references/shape-review.md`.
-- Gathering facts with no decision attached — see `references/shape-research.md`.
+- Judging code that exists against a standard — see `fleet://ai-gateway/guides/review`.
+- Gathering facts with no decision attached — see `fleet://ai-gateway/guides/research`.
 
 ## Skeleton
 
