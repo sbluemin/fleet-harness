@@ -346,7 +346,7 @@ export function OperationsSideBarChip({
         ) : (
           <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
         )}
-        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" /> : null}
+        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={!detailEnabled} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {theaterName ? (
