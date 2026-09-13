@@ -1247,15 +1247,37 @@
   background: var(--brass-glow);
 }
 
+/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용)와 폭 토글, 오류 알림이 선다. 읽기 컬럼과 같은 폭에 정렬한다. */
+.agent-chat-composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: var(--agent-chat-composer-measure);
+  margin-inline: auto;
+  min-width: 0;
+  padding: 0 2px 6px;
+}
+
+/* 한 줄 컴포저 — 첨부 트레이(있을 때)와 [입력][첨부][계기][중지][전송] 행이 세로로 선다.
+   휴지 높이 44px(패딩 6 + 버튼 30 + 6 + 테두리 2). */
 .agent-chat-composer-field {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-2);
+  padding: 6px 6px 6px var(--space-3);
+}
+
+.agent-chat-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .agent-chat-composer-input {
+  /* 인라인 textarea는 베이스라인 아래 7px 빈 띠를 남겨 한 줄 상자가 44px를 넘는다 — 블록으로 세운다. */
+  display: block;
   flex: 1 1 100%;
   /* 무장 중에는 입력이 flex 컨테이너(field)가 아니라 상대 배치 래퍼(input-wrap) 안에 들어가
      flex 기반 폭이 무력해진다 — textarea의 intrinsic cols 폭으로 줄지 않게 폭을 명시한다
@@ -1270,11 +1292,12 @@
   font-size: var(--t-md);
   line-height: 1.5;
   padding: 0;
-  /* Quick Launch와 같은 46px에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가
-     지는 이유는 자동 높이가 매 입력마다 scrollHeight를 인라인 height로 쓰기 때문이다 — rows
-     속성만 두면 첫 렌더에서 한 줄로 깎인다. 아래 컨트롤 행은 별도 layout으로 그대로 남는다. */
-  min-height: 46px;
-  max-height: calc(1.5em * 6);
+  /* 한 줄(30px)에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가 지는 이유는 자동
+     높이가 매 입력마다 scrollHeight를 인라인 height로 쓰기 때문이다 — rows 속성만 두면 첫 렌더에서
+     한 줄로 깎인다. 위아래 5px 패딩이 30px 버튼과 글줄의 중심을 맞춘다. */
+  padding: 5px 0;
+  min-height: 30px;
+  max-height: calc(1.5em * 6 + 10px);
 }
 
 .agent-chat-composer-input::placeholder {
@@ -1289,7 +1312,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  flex: 1 1 100%;
+  padding-top: 4px;
 }
 
 .agent-chat-composer-attachment {
@@ -1424,20 +1447,12 @@
 
 /* 컨트롤 행 — Quick Launch bar와 같은 문법: 좌측은 프레임에 바로 새긴 좌표(사실)와 키 안내,
    우측은 액션. 좌표에 별도 배지를 두르지 않아 툴 행 자체가 한 장으로 읽힌다. */
-.agent-chat-composer-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
-  border-top: 1px solid var(--surface-rim);
-}
-
 .agent-chat-composer-actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 4px;
   flex: none;
+  height: 30px;
 }
 
 .agent-chat-composer-error {
@@ -1447,25 +1462,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 선다. 읽는 화면에 상주하면 여러 패널이
-   같은 문구를 나란히 반복하고, 프레임 밖 셋째 줄로 두면 그만큼 입력이 좁아진다. */
-.agent-chat-composer-hint {
-  display: flex;
-  gap: var(--space-3);
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  font-family: var(--agent-chat-font);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  opacity: 0;
-  transition: opacity var(--duration-base) var(--ease-glide);
-}
-
-.agent-chat-composer-frame:focus-within .agent-chat-composer-hint {
-  opacity: 1;
 }
 
 .agent-chat-composer-attach {
@@ -1545,8 +1541,8 @@
 }
 
 .agent-chat-composer-send {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   border: 0;
   background: var(--surface-panel-raised);
@@ -2196,21 +2192,10 @@
 /* 남는 폭은 모델명이 줄임표로 접는다. 좌표는 태생 기록 퇴역 뒤 유일한 실행 좌표이므로 좁은
    패널에서도 물러나지 않는다. 가르는 것은 뷰포트가 아니라 이 패널의 폭이다 — 넓은 창 안에서도
    패널은 얼마든지 좁아진다. */
-@container (max-width: 600px) {
-  .agent-chat-composer-hint .is-optional {
-    display: none;
-  }
-}
-
 @container (max-width: 470px) {
-  .agent-chat-composer-hint {
-    display: none;
-  }
-
-  .agent-chat-composer-field { padding-inline: var(--space-3); }
+  .agent-chat-composer-field { padding-left: var(--space-2); }
   .agent-chat-composer-queue { padding-inline: var(--space-3); }
-  .agent-chat-composer-bar { padding-left: var(--space-3); }
-  .agent-chat-composer-actions { gap: var(--space-1); }
+  .agent-chat-composer-actions { gap: 2px; }
   .agent-chat-composer-stop { padding: 5px; }
   /* 폭 글리프는 좌표(모델 칩)보다 먼저 자리를 내준다 — 이 폭에서 컴포저는 이미 패널의 95%라
      전폭으로 넓힐 여지가 없고, 좌표는 유일한 실행 표시라 끝까지 남는다. */
@@ -2393,10 +2378,6 @@
     text-decoration: underline dashed;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
-  }
-
-  .agent-chat-composer-hint {
-    transition: none;
   }
 
   /* 컴포저 무장: 점화는 세우고 정지한 apex 테두리·글로우는 남긴다(상태는 유지). 단어 물결은

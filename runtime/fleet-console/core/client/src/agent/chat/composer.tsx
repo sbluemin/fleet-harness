@@ -4,7 +4,6 @@ import {
   COMPOSER_ATTACHMENT_MAX_BYTES,
   COMPOSER_MAX_ATTACHMENTS,
   ComposerAttachControl,
-  ComposerBar,
   ComposerField,
   ComposerInput,
   ComposerSubmitButton,
@@ -460,8 +459,42 @@ export function AgentChatComposer({
             ? t("terminal.chat.composerAttachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) })
             : t("terminal.chat.composerAttachFailed");
 
+  const hint = turnRunning
+    ? `${t("terminal.chat.composerHintQueue")} · ${t("terminal.chat.composerHintStop")} · ${t("terminal.chat.composerHintNewline")}`
+    : `${t("terminal.chat.composerHintEnter")} · ${t("terminal.chat.composerHintNewline")}`;
+
   return (
     <div className="agent-chat-composer">
+      {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 상자 폭을 바꾸는 토글이 여기 선다; 오류 알림은
+          좌표 자리를 잠시 빌린다(Cowork·Analyst의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
+      <div className="agent-chat-composer-meta">
+        {notice !== null ? (
+          <span className="agent-chat-composer-error" role="alert">{notice}</span>
+        ) : coordinate}
+        {/* 입력창 폭 글리프 — 쓰는 자리에서 폭을 정하는 유일한 문이다(설정에는 표면이 없다).
+            기본은 읽기 폭 따름이고, 켜면 이 콘솔의 모든 채팅 입력창이 패널 전폭으로 선다
+            — 읽기 폭 선호와 같은 자리에 서버 영속하는 전역 값이기 때문이다. */}
+        <button
+          type="button"
+          className="agent-chat-composer-width"
+          onClick={() => {
+            if (composerWidthLocked) return;
+            setChatComposerWidth(nextChatComposerWidth(composerWidth));
+          }}
+          aria-pressed={composerWidthOn}
+          aria-disabled={composerWidthLocked}
+          aria-label={t(composerWidthLocked
+            ? "terminal.chat.composerWidthLockedAria"
+            : composerWidthOn ? "terminal.chat.composerWidthFollowAria" : "terminal.chat.composerWidthPanelAria")}
+          title={t(composerWidthLocked
+            ? "terminal.chat.composerWidthLocked"
+            : composerWidthOn ? "terminal.chat.composerWidthFollow" : "terminal.chat.composerWidthPanel")}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+            <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25M2.5 8h11" />
+          </svg>
+        </button>
+      </div>
       <div
         className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
@@ -530,112 +563,10 @@ export function AgentChatComposer({
             </ul>
           </div>
         ) : null}
+        {/* 한 줄 컴포저 — 첨부 트레이는 입력 위 자기 줄, 그 아래 [입력][첨부][계기][중지][전송]이 한 줄에 앉는다.
+            입력이 여러 줄로 자라도 동작은 아래 변에 남는다(align-items: flex-end). 키 안내 줄은 전송 버튼의
+            title로 옮겼다. */}
         <ComposerField className="agent-chat-composer-field">
-          {/* textarea와 미러를 한 flex 아이템으로 묶는다 — 미러를 field에 직접 붙이면 첨부 칩이 선
-              줄에서 시작점이 어긋난다. 묶으면 정렬 기준이 textarea의 박스 하나로 줄어든다. */}
-          <span className="agent-chat-composer-input-wrap">
-            {/* 덱은 input-wrap에 걸린다 — 이 요소가 컴포저 안에서 유일하게 position:relative다.
-                패널이 짧으면 `.canvas-operation-terminal`의 overflow:hidden에 잘리는데, 그것은
-                Quick Launch가 fixed 오버레이로 피하는 대가를 이 표면은 치른다는 뜻이다. */}
-            {deckOpen ? (
-              <ChatComposerDeck
-                deckId={deckId}
-                token={deckToken}
-                sections={deckSections}
-                rows={deckRows}
-                activeIndex={deckIndex}
-                pending={deckPending && !catalogTried}
-                language={language}
-                optionId={deckOptionId}
-                onPick={pickDeckRow}
-                onHover={setDeckIndex}
-              />
-            ) : null}
-            {highlightSpans.length > 0 ? (
-              <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
-                {renderComposerSpans(draft, highlightSpans)}
-              </div>
-            ) : null}
-            <ComposerInput
-              ref={inputRef}
-              className="agent-chat-composer-input"
-              rows={1}
-              value={draft}
-              placeholder={placeholder}
-              aria-label={t("terminal.chat.composerInputAria")}
-              spellCheck={false}
-              // 덱은 listbox이고 이 입력이 그 소유자다 — 활성 행을 aria로 잇지 않으면
-              // 스크린리더에서 방향키 이동이 아무 말도 하지 않는다(QL 덱과 같은 계약).
-              {...(deckOpen ? { "aria-controls": deckId, "aria-expanded": true } : {})}
-              {...(deckOpen && deckRows.length > 0 ? { "aria-activedescendant": deckOptionId(deckIndex) } : {})}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                setCaret(event.target.selectionStart ?? event.target.value.length);
-                setFailed(false);
-                // 친 글자가 곧 다음 지시다 — 앞 지시의 답과 무장은 여기서 함께 만료한다.
-                // 특히 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
-                setConsoleNotice(null);
-                setClearArmed(false);
-              }}
-              onScroll={syncUltracodeHighlight}
-              onPaste={(event) => {
-                const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
-                if (files.length === 0) return;
-                // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
-                event.preventDefault();
-                addFiles(files);
-              }}
-              onKeyDown={(event) => {
-                // caret이 인식된 `ultracode` 바로 뒤일 때의 수식 없는 Backspace 한 번은 글자가 아니라
-                // 무장을 지운다 — 다음 Backspace는 평소대로 지운다. 키 반복·수식 붙은 삭제는 손대지 않는다.
-                if (event.key === "Backspace" && !event.repeat && ultracodeArmed
-                  && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
-                  && isUltracodeDisarmCaret(draft, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
-                  event.preventDefault();
-                  setUltracodeIgnored(true);
-                  return;
-                }
-                // 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면 Enter를 잡지
-                // 않는다 — "일치 없으면 쓴 문장이 그대로 나간다"가 두 컴포저 공통 계약이다.
-                if (deckOpen && deckRows.length > 0 && !event.nativeEvent.isComposing) {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setDeckIndex((current) => (current + 1 >= deckRows.length ? 0 : current + 1));
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setDeckIndex((current) => (current - 1 < 0 ? deckRows.length - 1 : current - 1));
-                    return;
-                  }
-                  if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
-                    event.preventDefault();
-                    pickDeckRow(deckIndex);
-                    return;
-                  }
-                }
-                // 열린 덱을 먼저 닫는다. 프레임의 Esc(도는 턴 중지)까지 올라가지 않도록 전파를
-                // 끊는다 — 열린 표면을 닫는 것이 Esc의 통상 위계이고, 여기서 멈추지 않으면 한
-                // 번의 Esc가 덱을 닫으면서 턴까지 끊는다.
-                if (event.key === "Escape" && deckOpen && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setDeckDismissed(true);
-                  return;
-                }
-                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  void send();
-                }
-              }}
-              // 캐럿이 움직이면 `@` 토큰의 유효 구간도 움직인다 — 클릭·방향키 이동까지
-              // 따라잡으려면 입력 이벤트만으로는 부족하다.
-              onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
-              onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-            />
-          </span>
           {attachments.length > 0 ? (
             <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
               {attachments.map((attachment) => (
@@ -654,88 +585,155 @@ export function AgentChatComposer({
               ))}
             </div>
           ) : null}
-        </ComposerField>
-        <ComposerBar className="agent-chat-composer-bar">
-          {coordinate}
-          {notice !== null ? (
-            <span className="agent-chat-composer-error" role="alert">{notice}</span>
-          ) : (
-            /* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 서고, 좁은 패널에서는
-               ⇧Enter 항목부터 접힌다(CSS @container). 읽는 화면에 상주하면 여러 패널이
-               같은 문구를 나란히 반복한다.
-
-               예약 수는 여기서 말하지 않는다 — 목록이 field 위에 문면째로 서 있고, 같은 사실을
-               두 자리에서 말하면 한쪽이 반드시 먼저 낡는다. 대신 도는 동안에만 중지 키를 밝힌다:
-               그 키가 실제로 듣는 구간이 이 안내가 서는 구간(포커스)과 같다. */
-            <span className="agent-chat-composer-hint" aria-hidden="true">
-              <span>{t(turnRunning ? "terminal.chat.composerHintQueue" : "terminal.chat.composerHintEnter")}</span>
-              {turnRunning ? <span>{t("terminal.chat.composerHintStop")}</span> : null}
-              <span className="is-optional">{t("terminal.chat.composerHintNewline")}</span>
+          <div className="agent-chat-composer-row">
+            <span className="agent-chat-composer-input-wrap">
+              {/* 덱은 input-wrap에 걸린다 — 이 요소가 컴포저 안에서 유일하게 position:relative다.
+                  패널이 짧으면 `.canvas-operation-terminal`의 overflow:hidden에 잘리는데, 그것은
+                  Quick Launch가 fixed 오버레이로 피하는 대가를 이 표면은 치른다는 뜻이다. */}
+              {deckOpen ? (
+                <ChatComposerDeck
+                  deckId={deckId}
+                  token={deckToken}
+                  sections={deckSections}
+                  rows={deckRows}
+                  activeIndex={deckIndex}
+                  pending={deckPending && !catalogTried}
+                  language={language}
+                  optionId={deckOptionId}
+                  onPick={pickDeckRow}
+                  onHover={setDeckIndex}
+                />
+              ) : null}
+              {highlightSpans.length > 0 ? (
+                <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
+                  {renderComposerSpans(draft, highlightSpans)}
+                </div>
+              ) : null}
+              <ComposerInput
+                ref={inputRef}
+                className="agent-chat-composer-input"
+                rows={1}
+                value={draft}
+                placeholder={placeholder}
+                aria-label={t("terminal.chat.composerInputAria")}
+                spellCheck={false}
+                // 덱은 listbox이고 이 입력이 그 소유자다 — 활성 행을 aria로 잇지 않으면
+                // 스크린리더에서 방향키 이동이 아무 말도 하지 않는다(QL 덱과 같은 계약).
+                {...(deckOpen ? { "aria-controls": deckId, "aria-expanded": true } : {})}
+                {...(deckOpen && deckRows.length > 0 ? { "aria-activedescendant": deckOptionId(deckIndex) } : {})}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setCaret(event.target.selectionStart ?? event.target.value.length);
+                  setFailed(false);
+                  // 친 글자가 곧 다음 지시다 — 앞 지시의 답과 무장은 여기서 함께 만료한다.
+                  // 특히 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
+                  setConsoleNotice(null);
+                  setClearArmed(false);
+                }}
+                onScroll={syncUltracodeHighlight}
+                onPaste={(event) => {
+                  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
+                  if (files.length === 0) return;
+                  // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
+                  event.preventDefault();
+                  addFiles(files);
+                }}
+                onKeyDown={(event) => {
+                  // caret이 인식된 `ultracode` 바로 뒤일 때의 수식 없는 Backspace 한 번은 글자가 아니라
+                  // 무장을 지운다 — 다음 Backspace는 평소대로 지운다. 키 반복·수식 붙은 삭제는 손대지 않는다.
+                  if (event.key === "Backspace" && !event.repeat && ultracodeArmed
+                    && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+                    && isUltracodeDisarmCaret(draft, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
+                    event.preventDefault();
+                    setUltracodeIgnored(true);
+                    return;
+                  }
+                  // 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면 Enter를 잡지
+                  // 않는다 — "일치 없으면 쓴 문장이 그대로 나간다"가 두 컴포저 공통 계약이다.
+                  if (deckOpen && deckRows.length > 0 && !event.nativeEvent.isComposing) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setDeckIndex((current) => (current + 1 >= deckRows.length ? 0 : current + 1));
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setDeckIndex((current) => (current - 1 < 0 ? deckRows.length - 1 : current - 1));
+                      return;
+                    }
+                    if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+                      event.preventDefault();
+                      pickDeckRow(deckIndex);
+                      return;
+                    }
+                  }
+                  // 열린 덱을 먼저 닫는다. 프레임의 Esc(도는 턴 중지)까지 올라가지 않도록 전파를
+                  // 끊는다 — 열린 표면을 닫는 것이 Esc의 통상 위계이고, 여기서 멈추지 않으면 한
+                  // 번의 Esc가 덱을 닫으면서 턴까지 끊는다.
+                  if (event.key === "Escape" && deckOpen && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDeckDismissed(true);
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    void send();
+                  }
+                }}
+                // 캐럿이 움직이면 `@` 토큰의 유효 구간도 움직인다 — 클릭·방향키 이동까지
+                // 따라잡으려면 입력 이벤트만으로는 부족하다.
+                onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+                onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+              />
             </span>
-          )}
-          <span className="agent-chat-composer-actions">
-            {/* 입력창 폭 글리프 — 쓰는 자리에서 폭을 정하는 유일한 문이다(설정에는 표면이 없다).
-                기본은 읽기 폭 따름이고, 켜면 이 콘솔의 모든 채팅 입력창이 패널 전폭으로 선다
-                — 읽기 폭 선호와 같은 자리에 서버 영속하는 전역 값이기 때문이다. */}
-            <button
-              type="button"
-              className="agent-chat-composer-width"
-              onClick={() => {
-                if (composerWidthLocked) return;
-                setChatComposerWidth(nextChatComposerWidth(composerWidth));
-              }}
-              aria-pressed={composerWidthOn}
-              aria-disabled={composerWidthLocked}
-              aria-label={t(composerWidthLocked
-                ? "terminal.chat.composerWidthLockedAria"
-                : composerWidthOn ? "terminal.chat.composerWidthFollowAria" : "terminal.chat.composerWidthPanelAria")}
-              title={t(composerWidthLocked
-                ? "terminal.chat.composerWidthLocked"
-                : composerWidthOn ? "terminal.chat.composerWidthFollow" : "terminal.chat.composerWidthPanel")}
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-                <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25M2.5 8h11" />
-              </svg>
-            </button>
-            <ComposerAttachControl
-              className="agent-chat-composer-attach"
-              label={t("terminal.chat.composerAttach")}
-              onFiles={addFiles}
-            />
-            {meter}
-            {turnRunning ? (
-              // 중지와 다음 지시는 서로 배타적이지 않다. 현재 턴을 끊는 문과 그 뒤에 실행할 지시를
-              // 예약하는 문을 함께 세워, 포인터와 Enter가 서로 다른 일을 하면서도 그 차이를 숨기지 않는다.
-              <>
-                <button
-                  type="button"
-                  className="agent-chat-composer-stop"
-                  disabled={stopping}
-                  onClick={() => { void stop(); }}
-                  aria-label={t("terminal.chat.stopAria")}
-                  title={t("terminal.chat.stopTitle")}
-                >
-                  <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
-                </button>
+            <span className="agent-chat-composer-actions">
+              {/* 첨부는 도는 동안 물러난다 — 다음 지시에만 실리므로 예약 전송과 함께 돌아오면 충분하고,
+                  좁은 패널의 오른쪽이 [계기][중지][예약]으로 숨 쉴 자리를 얻는다. */}
+              {turnRunning ? null : (
+                <ComposerAttachControl
+                  className="agent-chat-composer-attach"
+                  label={t("terminal.chat.composerAttach")}
+                  onFiles={addFiles}
+                />
+              )}
+              {meter}
+              {turnRunning ? (
+                // 중지와 다음 지시는 서로 배타적이지 않다. 현재 턴을 끊는 문과 그 뒤에 실행할 지시를
+                // 예약하는 문을 함께 세워, 포인터와 Enter가 서로 다른 일을 하면서도 그 차이를 숨기지 않는다.
+                <>
+                  <button
+                    type="button"
+                    className="agent-chat-composer-stop"
+                    disabled={stopping}
+                    onClick={() => { void stop(); }}
+                    aria-label={t("terminal.chat.stopAria")}
+                    title={t("terminal.chat.stopTitle")}
+                  >
+                    <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
+                  </button>
+                  <ComposerSubmitButton
+                    className={`agent-chat-composer-send is-queue${canSend ? " is-armed" : ""}`}
+                    disabled={!canSend}
+                    onClick={() => { void send(); }}
+                    aria-label={t("terminal.chat.composerQueue")}
+                    title={hint}
+                  />
+                </>
+              ) : (
                 <ComposerSubmitButton
-                  className={`agent-chat-composer-send is-queue${canSend ? " is-armed" : ""}`}
+                  className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
                   disabled={!canSend}
                   onClick={() => { void send(); }}
-                  aria-label={t("terminal.chat.composerQueue")}
-                  title={t("terminal.chat.composerQueue")}
+                  aria-label={t("terminal.chat.composerSend")}
+                  title={hint}
                 />
-              </>
-            ) : (
-              <ComposerSubmitButton
-                className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
-                disabled={!canSend}
-                onClick={() => { void send(); }}
-                aria-label={t("terminal.chat.composerSend")}
-                title={t("terminal.chat.composerSend")}
-              />
-            )}
-          </span>
-        </ComposerBar>
+              )}
+            </span>
+          </div>
+        </ComposerField>
       </div>
     </div>
   );
