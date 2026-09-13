@@ -3,11 +3,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { MACOS_COMPUTER_USE_TRANSPORT } from "../../core/host/agent/computer-use-macos-transport.js";
+import { MACOS_COMPUTER_USE_TRANSPORT } from "@fleet-console/computer-use/codex-transport";
 import { ComputerUseService } from "../../core/host/agent/computer-use.js";
-import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "../../core/host/agent/computer-use-platform.js";
-import { macOSComputerUsePlatform } from "../../core/host/agent/computer-use-macos.js";
+import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "@fleet-console/computer-use";
+import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { createComputerUseMcpHost } from "../../core/host/mcp/computer-use.js";
+
+const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}) });
 
 // 기존 MCP 테스트는 읽기 전용 Console 목록뿐이다. 실제 기기 접근의 승인·소유권·회수 경계를 여기서 검증한다.
 describe("Computer Use authorization and lifecycle", () => {

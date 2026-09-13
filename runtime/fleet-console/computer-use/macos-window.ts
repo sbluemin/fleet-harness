@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { ComputerUseInputError, type ComputerUseWindowIdentity, type ComputerUseWindowState, type ComputerUseOpenResult } from "./computer-use-platform.js";
+import { ComputerUseInputError, type ComputerUseWindowIdentity, type ComputerUseWindowState, type ComputerUseOpenResult } from "./platform.js";
 
 // Read only: no AX writes, app activation, window raising, or process launch.
 const INTERACTION_READINESS = `

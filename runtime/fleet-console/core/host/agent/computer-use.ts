@@ -1,7 +1,8 @@
+import { computerUseToolDescriptions } from "./computer-use-descriptions.js";
 import crypto from "node:crypto";
 import { z } from "zod";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
-import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "./computer-use-platform.js";
+import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "@fleet-console/computer-use";
 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 type ObservationMode = "text" | "text_and_image";
@@ -148,24 +149,24 @@ export class ComputerUseService {
       execute: (args, context) => this.execute(id, args, context.sessionLabel, context.signal),
     });
     return [
-      { ...spec("computer_end", this.deps.platform.toolDescriptions.computer_end, { type: "object", properties: {}, additionalProperties: false }), execute: async (_args, context) => {
+      { ...spec("computer_end", computerUseToolDescriptions.computer_end, { type: "object", properties: {}, additionalProperties: false }), execute: async (_args, context) => {
         if (!context.sessionLabel) return result({ error: "computer_use_session_unavailable" }, true);
         if (this.owner && this.owner !== context.sessionLabel) return result({ error: "computer_use_foreign_session" }, true);
         await this.stop();
         return result({ ended: true, cleanupStatus: this.cleanupStatus, threadReleaseStatus: this.threadReleaseStatus, cleanupFailure: this.cleanupFailure, captureStopped: "unverified", reconnect: "on_next_use", warning: this.warning, hint: this.deps.platform.endHint });
       } },
-      { ...spec("computer_status", this.deps.platform.toolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
-      spec("computer_apps", this.deps.platform.toolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 4096, description: "Optional app name, bundle ID or path search." }, includeWindowState: { type: "boolean", description: "Read window state without capture or activation. Requires query; inspects at most 20 matched installations and reports truncation." } }, additionalProperties: false }),
-      spec("computer_open", this.deps.platform.toolDescriptions.computer_open, { type: "object", properties: { app: { type: "string", minLength: 1, maxLength: 4096, description: "Exact absolute .app installation path observed in computer_apps or supplied by the user. No bundle IDs or name lookup." }, reason: { type: "string", minLength: 1, maxLength: 600 }, activate: { type: "boolean", default: false, description: "Default false requests background launch/reopen. The app may still activate itself; not a focus guarantee. Set true only when foreground opening is authorized." } }, required: ["app", "reason"], additionalProperties: false }),
-      spec("computer_state", this.deps.platform.toolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
-      spec("computer_paste", this.deps.platform.toolDescriptions.computer_paste, {
+      { ...spec("computer_status", computerUseToolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
+      spec("computer_apps", computerUseToolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 4096, description: "Optional app name, bundle ID or path search." }, includeWindowState: { type: "boolean", description: "Read window state without capture or activation. Requires query; inspects at most 20 matched installations and reports truncation." } }, additionalProperties: false }),
+      spec("computer_open", computerUseToolDescriptions.computer_open, { type: "object", properties: { app: { type: "string", minLength: 1, maxLength: 4096, description: "Exact absolute .app installation path observed in computer_apps or supplied by the user. No bundle IDs or name lookup." }, reason: { type: "string", minLength: 1, maxLength: 600 }, activate: { type: "boolean", default: false, description: "Default false requests background launch/reopen. The app may still activate itself; not a focus guarantee. Set true only when foreground opening is authorized." } }, required: ["app", "reason"], additionalProperties: false }),
+      spec("computer_state", computerUseToolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
+      spec("computer_paste", computerUseToolDescriptions.computer_paste, {
         type: "object", properties: {
           app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" },
           text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] },
           reason: { type: "string", minLength: 1, maxLength: 600 }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA },
         }, required: ["app", "snapshotId", "text", "format", "reason"], additionalProperties: false,
       }),
-      spec("computer_action", this.deps.platform.toolDescriptions.computer_action, {
+      spec("computer_action", computerUseToolDescriptions.computer_action, {
         type: "object", properties: {
           app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" }, action: { type: "string", enum: [...ACTIONS] },
           arguments: { type: "object", description: "Upstream arguments excluding app. Get the exact schema from computer_state's actionSchemas." },

@@ -68,6 +68,7 @@
     "@dotobokuri/fleet-wiki": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
+    "@fleet-console/computer-use": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "@fleet-plugins/codex": "workspace:*",
     "@vscode/ripgrep": "1.18.0",

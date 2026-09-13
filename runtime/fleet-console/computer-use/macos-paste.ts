@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { marked } from "marked";
-import { ComputerUseInputError } from "./computer-use-platform.js";
+import { ComputerUseInputError } from "./platform.js";
 
 export type ClipboardRestoration = "restored" | "preserved_newer_contents" | "failed";
 

@@ -51,7 +51,6 @@ export interface ComputerUseBackendOptions {
   readonly approve: (request: Record<string, unknown>) => Promise<boolean>;
 }
 export interface ComputerUsePlatform {
-  readonly toolDescriptions: Readonly<Record<"computer_status" | "computer_end" | "computer_apps" | "computer_open" | "computer_state" | "computer_action" | "computer_paste", string>>;
   readonly supported: () => boolean;
   readonly appTargetSchema: Record<string, unknown>;
   readonly endHint: string;
@@ -83,4 +82,9 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 export function computerUseText(value: ComputerUseResult): string {
   return value.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
+}
+
+export interface ComputerUseRuntimeDependencies {
+  readonly resolveCodex: () => { bin: string; prefixArgs: readonly string[] } | null;
+  readonly childEnv: () => NodeJS.ProcessEnv;
 }
