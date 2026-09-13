@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
+import { LiveLine } from "@fleet-console/sdk/components/live-line";
 import { createPortal } from "react-dom";
 
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -97,28 +99,88 @@ export function CoworkThread({ state, actions }: { readonly state: CoworkThreadS
   // 스트리밍 중에는 읽던 끝을 따라간다: 사용자가 위로 올려 읽는 중이면 따라가지 않는다.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
+  // 이력은 마지막 문답만 보여 준다 — 앞선 턴은 상단 밴드 뒤에 접히고, 누르거나 맨 위에서 위로 한 번
+  // 더 굴리면 펼쳐진다. 새 지시가 서면 다시 접히고 그 지시가 이력 상단에 앉는다.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // 답변 창은 접힌다. 새 지시를 보내면 펼쳐지고, 도크 바깥을 누르면 접힌다 — 읽기 본문이 다시
+  // 넓어지고, 컴포저의 칩 하나가 답이 몇 개 있는지와 펼칠 길을 말한다.
+  const [threadOpen, setThreadOpen] = useState(state.turns.length > 0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const earlierCount = Math.max(0, state.turns.length - 1);
+  const previousTurnCountRef = useRef(state.turns.length);
+  const revealHistory = useCallback(() => setHistoryOpen(true), []);
+  useHistoryReveal({ ref: scrollRef, armed: !historyOpen && earlierCount > 0, onReveal: revealHistory });
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (!element || !pinnedRef.current) return;
-    element.scrollTop = element.scrollHeight;
+    if (!element) return;
+    const arrived = state.turns.length > previousTurnCountRef.current;
+    previousTurnCountRef.current = state.turns.length;
+    if (arrived) {
+      setHistoryOpen(false);
+      setThreadOpen(true);
+      pinnedRef.current = true;
+      element.scrollTop = 0;
+      return;
+    }
+    if (pinnedRef.current) element.scrollTop = element.scrollHeight;
   });
+  useEffect(() => {
+    if (!threadOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target || rootRef.current?.contains(target)) return;
+      setThreadOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [threadOpen]);
+  const onToggleThread = useCallback(() => setThreadOpen((open) => !open), []);
   const onScroll = () => {
     const element = scrollRef.current;
     if (!element) return;
     pinnedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
   };
   return (
-    <div className="cowork-thread-root">
-      <div ref={scrollRef} className="cowork-thread-scroll" onScroll={onScroll}>
-        {state.turns.length > 0 ? (
-          <ol className="cowork-thread" aria-label={t("codex.cowork.threadAria")}>
-            {state.turns.map((turn, index) => (
-              <TurnView key={turn.id} turn={turn} last={index === state.turns.length - 1} state={state} />
-            ))}
-          </ol>
+    <div ref={rootRef} className="cowork-thread-root">
+      {/* 답변 창의 접기·펼치기는 창 자신의 머리줄이 진다 — 이전 대화 밴드와 같은 헤어라인 한 줄이고,
+          접히면 이 줄만 남아 답이 몇 개 있는지와 펼칠 길을 말한다. */}
+      <div className={`cowork-thread-panel${state.turns.length > 0 || state.notice || state.panelOpen ? "" : " is-empty"}`}>
+      {state.turns.length > 0 ? (
+        <button
+          type="button"
+          className={`cowork-thread-bar${threadOpen ? " is-open" : ""}`}
+          aria-expanded={threadOpen}
+          onClick={onToggleThread}
+        >
+          <span className="cowork-thread-bar__title">{t("codex.cowork.threadTitle", { count: state.turns.length })}</span>
+          <span className="cowork-thread-bar__action">{t(threadOpen ? "codex.cowork.threadHide" : "codex.cowork.threadShow")}</span>
+          <span className="cowork-thread-bar__chev" aria-hidden="true">⌄</span>
+        </button>
+      ) : null}
+      <div ref={scrollRef} className={`cowork-thread-scroll${!threadOpen && !state.notice && !state.panelOpen ? " is-folded" : ""}`} onScroll={onScroll}>
+        {state.turns.length > 0 && threadOpen ? (
+          <>
+            <HistoryBand
+              count={earlierCount}
+              open={historyOpen}
+              onToggle={() => setHistoryOpen((current) => !current)}
+              label={t(historyOpen ? "codex.cowork.historyBandOpen" : "codex.cowork.historyBand", { count: earlierCount })}
+            />
+            <ol className="cowork-thread" aria-label={t("codex.cowork.threadAria")}>
+              <li className="cowork-history" hidden={!historyOpen}>
+                <ol className="cowork-thread">
+                  {state.turns.slice(0, -1).map((turn) => (
+                    <TurnView key={turn.id} turn={turn} last={false} state={state} />
+                  ))}
+                </ol>
+              </li>
+              <TurnView key={state.turns[state.turns.length - 1]!.id} turn={state.turns[state.turns.length - 1]!} last state={state} />
+            </ol>
+          </>
         ) : null}
         {state.notice ? <NoticeCard notice={state.notice} actions={actions} /> : null}
         {state.panelOpen ? <AnnotationPanel state={state} actions={actions} /> : null}
+      </div>
       </div>
       {state.dirty && !state.running ? <ReviewDock state={state} actions={actions} /> : null}
       <Composer state={state} actions={actions} />
@@ -169,24 +231,18 @@ function TurnView({ turn, last, state }: { readonly turn: CoworkTurn; readonly l
   return (
     <li className={`cowork-turn ${tone}`}>
       <div className="cowork-turn-body">
-        <div className="cowork-turn-head">
-          <span className="cowork-turn-who">{t("codex.cowork.you")}</span>
-          <span className="cowork-turn-time">{formatClock(turn.startedAt, state.locale)}</span>
-        </div>
         <div className="cowork-dispatch">
           {turn.quote ? <q className="cowork-dispatch-quote">{turn.quote}</q> : null}
           <span className="cowork-dispatch-text">{turn.instruction}</span>
         </div>
+        {/* 도는 동안은 Live line 한 줄뿐이다 — 지금 도는 도구와 스텝 수·경과가 제자리에서 갱신되고,
+            과정 전체는 끝난 뒤 접힘을 펼쳐야 나온다(채팅뷰·분석가·부관과 같은 문법). */}
         {working ? (
-          <div className="cowork-tally" role="status" aria-live="polite">
-            <span className="cowork-orbit" aria-hidden="true" />
-            <span className="cowork-live-text">{liveLabel}</span>
-            {!runningStep && !turn.hasReply ? <ThinkingDots /> : null}
-            {turn.steps.length > 0 ? <span className="cowork-tally-count">· {t("codex.cowork.stepCount", { count: turn.steps.length })}</span> : null}
-          </div>
-        ) : null}
-        {working && turn.steps.length > 0 ? (
-          <div className="cowork-steps">{turn.steps.slice(-3).map((step) => <StepRow key={step.id} step={step} />)}</div>
+          <LiveLine
+            label={liveLabel}
+            thinking={!runningStep && !turn.hasReply}
+            meta={`${turn.steps.length > 0 ? `${t("codex.cowork.stepCount", { count: turn.steps.length })} · ` : ""}${duration}`}
+          />
         ) : null}
         {showFold ? (
           <details className="cowork-fold">
@@ -233,10 +289,6 @@ function StepRow({ step }: { readonly step: CoworkStep }) {
       <span className="cowork-step-object">{step.tool}</span>
     </div>
   );
-}
-
-function ThinkingDots() {
-  return <span className="cowork-thinking-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>;
 }
 
 // ── 알림 카드 ─────────────────────────────────────────────────────────────────
@@ -571,12 +623,5 @@ function formatDuration(ms: number, locale: "en" | "ko"): string {
   return locale === "ko" ? `${minutes}분 ${rest}초` : `${minutes}m ${rest}s`;
 }
 
-function formatClock(at: number, locale: "en" | "ko"): string {
-  try {
-    return new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(at));
-  } catch {
-    return "";
-  }
-}
 
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }

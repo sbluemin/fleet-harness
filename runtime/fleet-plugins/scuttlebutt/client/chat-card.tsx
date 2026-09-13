@@ -1,15 +1,28 @@
-import { renderMarkdown } from "@fleet-console/markdown/core";
+import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
+import { LiveFold, LiveLine, LiveStep } from "@fleet-console/sdk/components/live-line";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
+import { exchanges, lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, placeDockedCard, type CardPlacement } from "./geometry.js";
-import { ClearIcon, CloseIcon, DockIcon, HeadAction, MoorIcon, UndockIcon } from "./head-action.js";
-import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
+import { GrantLine, GrantMarks, grantSummary } from "./grant-chips.js";
+import { ClearIcon, CloseIcon, DockIcon, HeadAction, MoreIcon, MoorIcon, UndockIcon } from "./head-action.js";
+import { foldStatus, isBusy, liveStatus } from "./live-status.js";
+import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
+import type { AideGrants } from "./settings-store.js";
 import type { ChatStreamUsage } from "./sse-client.js";
+import { useStreamedHtml } from "./streamed-html.js";
+
+/** 어느 실험이 켜져 있는가 — 켜진 확장만 메뉴에 행으로 선다(Operation 메뉴와 같다). */
+export interface AideExtensionAvailability {
+  readonly consoleUse: boolean;
+  readonly computerUse: boolean;
+}
 
 export function ChatCard({
   state,
@@ -19,6 +32,9 @@ export function ChatCard({
   moored,
   docked,
   canDock,
+  grants,
+  extensions,
+  onGrantChange,
   onDock,
   onUndock,
   onAsk,
@@ -45,6 +61,10 @@ export function ChatCard({
   readonly docked: boolean;
   /** 글리프가 설 밴드 슬롯이 있는가. 없으면(모바일 배치) 「상단 바에 두기」를 내지 않는다. */
   readonly canDock: boolean;
+  /** 이 부관의 AI 확장 허용 — 헤더 표식·인사말·메뉴 행의 상태. */
+  readonly grants: AideGrants;
+  readonly extensions: AideExtensionAvailability;
+  readonly onGrantChange: (patch: Partial<AideGrants>) => void;
   readonly onDock: () => void;
   readonly onUndock: () => void;
   readonly onAsk: (text: string) => void;
@@ -70,6 +90,17 @@ export function ChatCard({
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
   const { copied, copy: copyAnswer } = useCopyAnswer();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  // 메뉴는 문서 끝으로 포털한다 — 카드는 overflow: hidden 이고 인사말만 있을 때는 메뉴보다 낮아서,
+  // 카드 안에 두면 잘린다. 닻은 ··· 버튼의 실제 자리다(헤더 도움말 말풍선과 같은 계약).
+  const moreRef = React.useRef<HTMLSpanElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuAnchor, setMenuAnchor] = React.useState<{ readonly top: number; readonly right: number } | null>(null);
+  React.useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const rect = moreRef.current?.getBoundingClientRect();
+    if (rect) setMenuAnchor({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
+  }, [menuOpen, positionRevision]);
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -119,11 +150,36 @@ export function ChatCard({
     return () => window.removeEventListener("resize", position);
   }, [position]);
 
+  // 로그는 마지막 문답만 보여 준다. 앞선 문답은 상단 밴드 뒤에 접히고, 누르거나 맨 위에서 위로 한 번
+  // 더 굴리면 펼쳐진다. 새 질문이 서면 다시 접히고 그 질문이 로그 상단에 앉는다 — 답은 그 아래에서
+  // 자라고, 화면을 넘길 때만 바닥을 따른다(사용자가 위로 올려 읽는 중이면 따라가지 않는다).
+  const groups = exchanges(state);
+  const earlier = groups.slice(0, -1);
+  const current = groups.at(-1) ?? [];
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const previousGroupCountRef = React.useRef(groups.length);
+  const nearBottomRef = React.useRef(true);
+  const revealHistory = React.useCallback(() => setHistoryOpen(true), []);
+  useHistoryReveal({ ref: logRef, armed: !historyOpen && earlier.length > 0, onReveal: revealHistory });
   React.useLayoutEffect(() => {
     const log = logRef.current;
-    if (log) log.scrollTop = log.scrollHeight;
+    if (!log) return;
+    const asked = groups.length > previousGroupCountRef.current;
+    previousGroupCountRef.current = groups.length;
+    if (asked) {
+      setHistoryOpen(false);
+      nearBottomRef.current = true;
+      log.scrollTop = 0;
+    } else if (nearBottomRef.current) {
+      log.scrollTop = log.scrollHeight;
+    }
     position();
-  }, [state.entries, state.phase, position]);
+  }, [groups.length, state.entries, state.phase, position]);
+  const onLogScroll = React.useCallback(() => {
+    const log = logRef.current;
+    if (!log || log.clientHeight === 0) return;
+    nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  }, []);
 
   // `mermaid` 펜스의 자리표시자를 도식으로 채운다 — 말풍선과 같은 설치 계약.
   React.useEffect(() => {
@@ -166,6 +222,7 @@ export function ChatCard({
       const target = event.target as Node | null;
       if (!target) return;
       if (cardRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
       if (mascot.current?.contains(target)) return;
       onClose(false);
     };
@@ -174,12 +231,18 @@ export function ChatCard({
   }, [mascot, onClose]);
 
   const style = placementStyle(placement);
-  const busy = state.phase === "starting" || state.phase === "thinking";
+  const busy = isBusy(state);
   const answer = lastAnswer(state);
   const canSend = !busy && draft.trim().length > 0;
   const submit = () => {
     if (canSend) onAsk(draft);
   };
+  const summary = grantSummary(grants, locale);
+  const greeting = `${t(`chat.greeting.${admiral}`)} ${summary ? t("greeting.grantsOn", { grants: summary }) : t("greeting.grantsOff")}`;
+  const menuRows = [
+    extensions.consoleUse ? { id: "console" as const, key: "consoleUse" as const, glyph: <CaptionConsoleUseGlyph />, name: t("menu.consoleUse"), hint: t(grants.consoleUse ? "menu.consoleUseOn" : "menu.consoleUseOff") } : null,
+    extensions.computerUse ? { id: "computer" as const, key: "computerUse" as const, glyph: <CaptionComputerUseGlyph />, name: t("menu.computerUse"), hint: t(grants.computerUse ? "menu.computerUseOn" : "menu.computerUseOff") } : null,
+  ].filter((row) => row !== null);
   return (
     <div
       ref={cardRef}
@@ -188,15 +251,21 @@ export function ChatCard({
       role="dialog"
       aria-label={t(`chat.label.${admiral}`)}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          onClose(true);
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        if (menuOpen) {
+          setMenuOpen(false);
+          return;
         }
+        onClose(true);
       }}
     >
       <div className="scuttlebutt-chat-head">
         <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
-        <span className="scuttlebutt-chat-who">{t(`chat.label.${admiral}`)}</span>
+        <span className="scuttlebutt-chat-who">
+          {t(`chat.label.${admiral}`)}
+          <GrantMarks grants={grants} locale={locale} />
+        </span>
         {/* 자리 조작은 그 부관에게만 걸린다 — 전역 설정으로 빼지 않고 헤더에 아이콘으로만 둔다.
             시트(상단 바)에서는 정박이 의미가 없으므로 떼어내기 하나만 선다. */}
         {docked ? (
@@ -238,21 +307,76 @@ export function ChatCard({
             onClick={onClear}
           />
         ) : null}
+        {/* AI 확장은 이 부관 자신의 ··· 메뉴에서 켠다 — Operation 메뉴의 「AI 확장」 섹션과 같은 행,
+            같은 글리프, 같은 문구. 켜진 실험의 확장만 행으로 서고, 아무것도 안 켜져 있으면 설정으로
+            가는 길만 한 줄 선다. */}
+        <span ref={moreRef} className="scuttlebutt-head-slot">
+          <HeadAction
+            id={`scuttlebutt-more-${admiral}`}
+            label={t("menu.more")}
+            hint={t("menu.more.hint")}
+            icon={<MoreIcon />}
+            pressed={menuOpen}
+            quiet={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          />
+        </span>
+        {menuOpen && menuAnchor ? createPortal(
+          <div
+            ref={menuRef}
+            className="scuttlebutt-menu"
+            role="menu"
+            aria-label={t("menu.aiExtensions")}
+            style={{ top: menuAnchor.top, right: menuAnchor.right }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              setMenuOpen(false);
+            }}
+          >
+            <div className="scuttlebutt-menu-label">{t("menu.aiExtensions")}</div>
+            {menuRows.length === 0 ? (
+              <div className="scuttlebutt-menu-hint">{t("menu.experimentOff")}</div>
+            ) : menuRows.map((row) => (
+              <MenuRow
+                key={row.id}
+                id={`scuttlebutt-menu-${admiral}-${row.id}`}
+                item={row.id}
+                name={row.name}
+                hint={row.hint}
+                glyph={row.glyph}
+                checked={grants[row.key]}
+                onToggle={() => onGrantChange({ [row.key]: !grants[row.key] })}
+              />
+            ))}
+          </div>,
+          document.body,
+        ) : null}
+        {/* 닫기는 아이콘이 스스로 말한다 — 말풍선 없이 aria-label만. */}
         <HeadAction
           id={`scuttlebutt-tuck-${admiral}`}
           label={t("chat.tuck")}
-          hint={t("chat.tuck.hint")}
           icon={<CloseIcon />}
           onClick={onTuck}
         />
       </div>
-      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
+      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
         {state.entries.length === 0 ? (
-          <div className="scuttlebutt-message-sam">
-            {t(`chat.greeting.${admiral}`)}
+          <div className="scuttlebutt-greeting">
+            <div className="scuttlebutt-message-sam">{greeting}</div>
+            <GrantLine grants={grants} locale={locale} />
           </div>
         ) : null}
-        {state.entries.map((entry) => renderEntry(entry, locale))}
+        <HistoryBand
+          count={earlier.length}
+          open={historyOpen}
+          onToggle={() => setHistoryOpen((open) => !open)}
+          label={t(historyOpen ? "history.bandOpen" : "history.band", { count: String(earlier.length) })}
+        />
+        <div className="scuttlebutt-history" hidden={!historyOpen}>
+          {earlier.map((exchange) => <Exchange key={exchange[0]!.id} exchange={exchange} live={false} locale={locale} onStop={onStop} />)}
+        </div>
+        {current.length > 0 ? <Exchange key={current[0]!.id} exchange={current} live={busy} locale={locale} onStop={onStop} /> : null}
         {answer && !busy ? (
           <div className="scuttlebutt-answer-actions">
             {answer.sources.length > 0 ? (
@@ -282,12 +406,6 @@ export function ChatCard({
           </div>
         ) : null}
       </div>
-      {busy ? (
-        <div className="scuttlebutt-thinking">
-          <i /><i /><i />{t(`chat.thinking.${admiral}`)}
-          <button type="button" className="scuttlebutt-stop" onClick={onStop}>{t("action.stop")}</button>
-        </div>
-      ) : null}
       <form className="scuttlebutt-composer" onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -314,23 +432,120 @@ export function ChatCard({
   );
 }
 
-function renderEntry(entry: ChatEntry, locale: ConsoleLocale | undefined): React.ReactNode {
-  if (entry.kind === "assistant") {
-    return (
-      <div
-        key={entry.id}
-        className="scuttlebutt-message-sam scuttlebutt-markdown-body"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.text, markdownRenderOptions(locale)).html }}
-      />
-    );
-  }
-  if (entry.kind === "user") return <div key={entry.id} className="scuttlebutt-message-user">{entry.text}</div>;
-  if (entry.kind === "notice") return <div key={entry.id} className="scuttlebutt-status-row is-notice">{entry.text}</div>;
+/**
+ * 메뉴의 한 줄 체크 행. 상태 문구는 행 아래에 쌓지 않고, 마우스를 올리거나 포커스했을 때 한 줄
+ * 말풍선으로 선다 — 헤더 아이콘의 도움말과 같은 계약·같은 포털(role="tooltip").
+ */
+function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
+  readonly id: string;
+  readonly item: string;
+  readonly name: string;
+  readonly hint: string;
+  readonly glyph: React.ReactNode;
+  readonly checked: boolean;
+  readonly onToggle: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const rowRef = React.useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = React.useState<{ readonly top: number; readonly left: number } | null>(null);
+  const tipId = `${id}-tip`;
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const rect = rowRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left, window.innerWidth - 276)) });
+  }, [open, hint]);
   return (
-    <div key={entry.id} className={`scuttlebutt-status-row${entry.kind === "error" ? " is-error" : ""}`}>
-      {entry.text}
+    <>
+      <button
+        ref={rowRef}
+        type="button"
+        className={`scuttlebutt-menu-row${checked ? " is-on" : ""}`}
+        role="menuitemcheckbox"
+        aria-checked={checked}
+        aria-label={`${name} · ${hint}`}
+        aria-describedby={tipId}
+        data-aide-menu-item={item}
+        onClick={onToggle}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      >
+        <span className="scuttlebutt-menu-glyph" aria-hidden="true">{glyph}</span>
+        <span className="scuttlebutt-menu-name">{name}</span>
+        <svg viewBox="0 0 12 12" className="scuttlebutt-menu-check" aria-hidden="true">
+          <path d="M2 6l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {createPortal(
+        <span
+          className="scuttlebutt-head-tip"
+          role="tooltip"
+          id={tipId}
+          hidden={!open || anchor === null}
+          style={anchor ? { top: anchor.top, left: anchor.left, right: "auto" } : undefined}
+        >
+          <b>{name}</b>
+          {hint}
+        </span>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+/**
+ * 문답 하나 — 질문, 그 아래 과정 한 줄(도는 동안은 Live line, 끝나면 접힘), 그리고 답.
+ * 도구 호출은 행으로 서지 않는다. 답 조각은 도구 호출로 끊긴 순서대로 이어 그린다.
+ */
+function Exchange({ exchange, live, locale, onStop }: {
+  readonly exchange: readonly ChatEntry[];
+  readonly live: boolean;
+  readonly locale: ConsoleLocale | undefined;
+  readonly onStop: () => void;
+}) {
+  const t = getT(locale);
+  const now = useNow(live);
+  const fold = live ? null : foldStatus(exchange, locale);
+  const status = live ? liveStatus(exchange, locale, now) : null;
+  const question = exchange.find((entry) => entry.kind === "user");
+  // 과정 한 줄은 질문 바로 아래, 답 조각 앞에 선다 — 답이 도구 호출로 끊겨 조각이 여럿이어도 줄은 하나다.
+  return (
+    <div className="scuttlebutt-exchange">
+      {question?.kind === "user" ? <div className="scuttlebutt-message-user">{question.text}</div> : null}
+      {status ? <LiveLine label={status.label} thinking={status.thinking} meta={status.meta} stopLabel={t("action.stop")} onStop={onStop} /> : null}
+      {fold ? (
+        <LiveFold summary={fold.summary} tone={fold.tone} ariaLabel={t("fold.aria")}>
+          {fold.steps.length > 0 ? fold.steps.map((step, index) => <LiveStep key={index} mark={step.mark} label={step.label} {...(step.detail ? { detail: step.detail } : {})} />) : undefined}
+        </LiveFold>
+      ) : null}
+      {exchange.map((entry, index) => {
+        if (entry.kind === "assistant") {
+          return <AssistantText key={entry.id} text={entry.text} streaming={live && index === exchange.length - 1} locale={locale} />;
+        }
+        if (entry.kind === "notice") return <div key={entry.id} className="scuttlebutt-status-row is-notice">{entry.text}</div>;
+        if (entry.kind === "error") return <div key={entry.id} className="scuttlebutt-status-row is-error">{entry.text}</div>;
+        return null;
+      })}
     </div>
   );
+}
+
+function AssistantText({ text, streaming, locale }: { readonly text: string; readonly streaming: boolean; readonly locale: ConsoleLocale | undefined }) {
+  const html = useStreamedHtml(text, streaming, locale);
+  return <div className={`scuttlebutt-message-sam markdown-body${streaming ? " is-streaming" : ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/** 도는 동안만 1초 시계 — 경과가 Live line의 오른쪽 끝에 선다. 멈추면 시계도 멈춘다. */
+function useNow(live: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
+  return now;
 }
 
 /** 마지막 오류 항목. 재시도 버튼은 그 항목이 재시도 가능하다고 말할 때만 선다. */

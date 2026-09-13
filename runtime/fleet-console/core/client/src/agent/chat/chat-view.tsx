@@ -1,6 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
+import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT, type TerminalMessageKey } from "../i18n/index.js";
 import { useChatComposerWidth, useChatReadingWidth, useTerminalFontFamily, type ChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
@@ -91,6 +92,9 @@ export function AgentChatView({
   // 열 때마다 로그의 절반을 가져갔다 — 시트는 대화의 아래쪽을 잠시 덮을 뿐 밀어내지 않고,
   // 접으면 로그와 컴포저는 처음 그 자리다. 여는 것이 레이아웃 사건이 아니어야 닫는 것도 가볍다.
   const [workOpen, setWorkOpen] = React.useState(false);
+  // 로그는 마지막 문답만 보여 준다. 앞선 턴은 상단 밴드 뒤에 접혀 있고, 누르거나 맨 위에서
+  // 위로 한 번 더 굴리면 펼쳐진다. 새 턴이 서면(팔로우 중일 때) 다시 접힌다.
+  const [historyOpen, setHistoryOpen] = React.useState(false);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
   // 선반의 문. Esc로 접었을 때 초점이 돌아가는 자리다 — 문을 누르지 않고 닫았어도 다음 Tab이
   // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
@@ -181,8 +185,17 @@ export function AgentChatView({
     if (wasSnapshotting) return;
     const arrived = Math.max(0, state.turns.length - previous);
     if (arrived === 0) return;
-    if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
-  }, [state.observedTurns, state.snapshotting, state.turns.length]);
+    if (!nearBottomRef.current) {
+      setUnseenTurns((current) => current + arrived);
+      return;
+    }
+    // 새 문답이 서면 앞선 문답은 밴드 뒤로 물러나고 그 질문이 로그 상단에 앉는다 — 답은 그
+    // 아래에서 자라고, 화면을 넘길 때만 팔로우가 바닥을 따른다.
+    setHistoryOpen(false);
+    requestAnimationFrame(() => applyScrollTop(0));
+  }, [applyScrollTop, state.observedTurns, state.snapshotting, state.turns.length]);
+  const revealHistory = React.useCallback(() => setHistoryOpen(true), []);
+  useHistoryReveal({ ref: logRef, armed: !historyOpen && state.turns.length > 1, onReveal: revealHistory });
 
   React.useEffect(() => {
     const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;
@@ -409,20 +422,45 @@ export function AgentChatView({
       {state.errorCode === "chat_replay_unavailable"
         ? <div className="agent-chat-sys agent-chat-sys--warn">{t("terminal.chat.replayUnavailable")}</div>
         : null}
-      {state.turns.map((turn, index) => (
+      {/* 마지막 턴만 선다. 앞선 턴은 밴드 뒤에 접힌 채 마운트를 유지한다 — 펼치면 문서 순서
+          그대로 위에 서고, 접힘은 렌더가 아니라 표시만 거둔다(빠른 Shell 연속성 같은 턴 내부
+          상태가 접힘으로 사라지지 않게). */}
+      <HistoryBand
+        count={state.turns.length - 1}
+        open={historyOpen}
+        onToggle={() => setHistoryOpen((current) => !current)}
+        label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: state.turns.length - 1 })}
+      />
+      <div className="agent-chat-history" hidden={!historyOpen}>
+        {state.turns.slice(0, -1).map((turn, index) => (
+          <ChatTurn
+            key={index}
+            operationId={context.operationId}
+            turn={turn}
+            nextContextBefore={state.turns[index + 1]?.contextBefore}
+            language={language}
+            timeFormat={timeFormat}
+            streaming={false}
+            jobsByToolUse={jobsByToolUse}
+            onOpenJob={showJob}
+            onAnswer={state.answerAsk}
+          />
+        ))}
+      </div>
+      {state.turns.length > 0 ? (
         <ChatTurn
-          key={index}
+          key={state.turns.length - 1}
           operationId={context.operationId}
-          turn={turn}
-          nextContextBefore={state.turns[index + 1]?.contextBefore}
+          turn={state.turns[state.turns.length - 1]!}
+          nextContextBefore={undefined}
           language={language}
           timeFormat={timeFormat}
-          streaming={index === state.turns.length - 1 && turn.state === "working"}
+          streaming={state.turns[state.turns.length - 1]!.state === "working"}
           jobsByToolUse={jobsByToolUse}
           onOpenJob={showJob}
           onAnswer={state.answerAsk}
         />
-      ))}
+      ) : null}
       {state.errorCode === "chat_turn_failed"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
         : null}

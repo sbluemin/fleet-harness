@@ -4,7 +4,7 @@ import { React, usePluginApi, useStoreSnapshot } from "@fleet-console/sdk/plugin
 import { AnswerBubble } from "./answer-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
-import { readConsoleSnapshot } from "./console-read.js";
+import { isComputerUseExperimentEnabled, isConsoleReadEnabled, readConsoleSnapshot, subscribeConsoleRead } from "./console-read.js";
 import { connectDockActivate, firstDockGlyph, readDockGlyph, readDockSnapshot, subscribeDock, writeDock } from "./dock-store.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { IntroBubble } from "./intro-bubble.js";
@@ -32,9 +32,18 @@ import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
   writeAideDocked,
+  writeAideGrants,
   writeAideStayPut,
   writeScuttlebuttSettings,
 } from "./settings-store.js";
+
+/** 어느 AI 확장 실험이 켜져 있는가. 같은 값이면 같은 참조 — 스토어 스냅샷 계약. */
+let extensionSnapshot = { consoleUse: false, computerUse: false };
+function readExtensionAvailability(): { readonly consoleUse: boolean; readonly computerUse: boolean } {
+  const next = { consoleUse: isConsoleReadEnabled(), computerUse: isComputerUseExperimentEnabled() };
+  if (next.consoleUse !== extensionSnapshot.consoleUse || next.computerUse !== extensionSnapshot.computerUse) extensionSnapshot = next;
+  return extensionSnapshot;
+}
 
 const MORPHS = ["tori", "bori", "dori"] as const;
 type OneShot = "cheer" | "salute" | null;
@@ -108,10 +117,23 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       return { model: current.model, effort: current.effort };
     },
     console: readConsoleSnapshot,
+    grants: () => getScuttlebuttSettings().grants[admiral],
   })), [pluginApi]);
   React.useEffect(() => () => {
     for (const session of sessions) session.close();
   }, [sessions]);
+  // 허용이 바뀌면 살아 있는 세션에 바로 알린다 — 서버가 호출마다 읽으므로 다음 호출부터 듣는다.
+  const grantsRef = React.useRef(settings.grants);
+  React.useEffect(() => {
+    const previous = grantsRef.current;
+    grantsRef.current = settings.grants;
+    MORPHS.forEach((admiral, index) => {
+      const before = previous[admiral];
+      const after = settings.grants[admiral];
+      if (before.consoleUse !== after.consoleUse || before.computerUse !== after.computerUse) void sessions[index]!.syncGrants();
+    });
+  }, [sessions, settings.grants]);
+  const extensions = useStoreSnapshot(subscribeConsoleRead, readExtensionAvailability);
   const toriChat = useStoreSnapshot(sessions[0]!.subscribe, sessions[0]!.snapshot);
   const boriChat = useStoreSnapshot(sessions[1]!.subscribe, sessions[1]!.snapshot);
   const doriChat = useStoreSnapshot(sessions[2]!.subscribe, sessions[2]!.snapshot);
@@ -977,6 +999,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           state={chats[MORPHS.indexOf(admiral)]!.state}
           mascot={{ current: docked[admiral] ? readDockGlyph(admiral) : birdRefs.current[MORPHS.indexOf(admiral)] ?? null }}
           docked={docked[admiral]}
+          grants={settings.grants[admiral]}
           locale={context.language}
           positionRevision={positionRevision}
           onExpand={() => {
@@ -1002,6 +1025,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           moored={moored[MORPHS.indexOf(openAdmiral)] ?? false}
           docked={docked[openAdmiral]}
           canDock={dockHost}
+          grants={settings.grants[openAdmiral]}
+          extensions={extensions}
+          onGrantChange={(patch) => writeAideGrants(openAdmiral, patch).catch(() => undefined)}
           onDock={() => dockAide(openAdmiral)}
           onUndock={() => undockAide(openAdmiral)}
           locale={context.language}

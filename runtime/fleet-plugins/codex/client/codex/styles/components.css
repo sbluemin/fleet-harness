@@ -3014,6 +3014,41 @@ button.chip:focus-visible {
 }
 /* 이력만 스크롤포트다 — 리뷰 도크·컴포저는 아래 고정 행이라 답이 길어져도 중지·적용이 보인다.
    빈 영역(첫 진입)은 높이를 차지하지 않는다. */
+/* 답변 창 — 머리줄과 스크롤포트가 한 면이다. 머리줄 전체가 접기·펼치기 버튼이고, 접히면 머리줄만
+   남는다. 면은 패널 표면, 제목은 secondary 잉크, 꺾쇠가 방향을 말한다 — 헤어라인 한 줄은 본문
+   위에서 묻혀 보이지 않았다. */
+.cowork-thread-panel {
+  display: grid;
+  min-height: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+.cowork-thread-panel.is-empty { display: none; }
+.cowork-thread-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.cowork-thread-bar:hover { background: var(--ink-veil); color: var(--text-primary); }
+.cowork-thread-bar:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.cowork-thread-bar__title { flex: 1; min-width: 0; font-weight: var(--weight-medium); }
+.cowork-thread-bar__action { color: var(--text-tertiary); font-size: var(--t-xs); }
+.cowork-thread-bar__chev { display: inline-block; color: var(--text-tertiary); transform: rotate(180deg); transition: transform var(--duration-fast) var(--ease-glide); }
+.cowork-thread-bar.is-open .cowork-thread-bar__chev { transform: none; }
+.cowork-thread-bar.is-open { border-bottom: 1px solid var(--hairline); }
+@media (prefers-reduced-motion: reduce) { .cowork-thread-bar__chev { transition: none; } }
 .cowork-thread-scroll {
   display: grid;
   gap: var(--space-3);
@@ -3021,11 +3056,10 @@ button.chip:focus-visible {
   max-height: min(44vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--surface-panel);
-  border-radius: var(--radius-md);
   padding: var(--space-3);
 }
-.cowork-thread-scroll:empty { display: none; }
+.cowork-thread-scroll:empty,
+.cowork-thread-scroll.is-folded { display: none; }
 
 /* 빈 상태 — Analyst hero와 같은 짜임. */
 .cowork-hero { display: grid; gap: var(--space-1); padding: var(--space-2) 0 var(--space-1); }
@@ -3050,8 +3084,6 @@ button.chip:focus-visible {
 .cowork-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .cowork-turn { display: block; }
 .cowork-turn-body { display: grid; gap: var(--space-2); min-width: 0; }
-.cowork-turn-head { display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.06em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.cowork-turn-who { color: var(--text-secondary); }
 
 /* 사용자 dispatch — agent-chat-dispatch-bubble 공식. 인용은 brass 왼 테두리. */
 .cowork-dispatch {
@@ -3476,3 +3508,6 @@ button.chip:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
+
+/* 이전 대화 밴드 — 스크롤포트의 첫 자식. 접힌 역사는 표시만 거둔다. */
+.cowork-history:not([hidden]) { display: contents; }

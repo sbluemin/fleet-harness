@@ -6,7 +6,7 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "@fleet-console/sdk/settings";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { createConsoleUseTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
+import { COMPUTER_PROMPT_ADDENDUM, createConsoleUseTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
 
 import {
   ADMIRAL_IDS,
@@ -26,12 +26,23 @@ export interface ChatRouteDeps {
 /** 사용자 노출 이름. 플러그인 id(`scuttlebutt`)는 경로·저장 키로만 남는다. */
 const API_CATEGORY = "Quaker Aides";
 
+/**
+ * 부관별 AI 확장 허용. 브라우저가 세션을 열 때와 바꿀 때 실어 보내고, 서버는 세션마다 마지막 값을
+ * 들고 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 기본은 전부 꺼짐이다.
+ */
+export interface AideGrants {
+  readonly consoleUse: boolean;
+  readonly computerUse: boolean;
+}
+const NO_GRANTS: AideGrants = { consoleUse: false, computerUse: false };
+
 export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRouteDeps = {}): SessionRegistry {
   const registry = new SessionRegistry();
   const createSession = deps.createSession ?? ((options) => new ChatSession(options));
   const id = deps.id ?? crypto.randomUUID;
   // 콘솔 사용의 보조 활동 스냅샷 — 세션마다 브라우저가 메시지에 실어 보낸 마지막 것.
   const snapshots = new Map<string, ConsoleSnapshot>();
+  const grants = new Map<string, AideGrants>();
   registerRouter(ctx, "chat", async ({ req, res, pathname }) => {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 403, { error: "forbidden" });
@@ -43,9 +54,10 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
       // 설 때마다 산 세션의 것만 남긴다. 맵의 크기는 언제나 동시 세션 상한을 넘지 않는다.
       const live = new Set(registry.liveIds());
       for (const key of [...snapshots.keys()]) if (!live.has(key)) snapshots.delete(key);
-      return handleStart(ctx, req, res, registry, createSession, id, snapshots);
+      for (const key of [...grants.keys()]) if (!live.has(key)) grants.delete(key);
+      return handleStart(ctx, req, res, registry, createSession, id, snapshots, grants);
     }
-    const match = routePath.match(/^\/([^/]+)\/(message|stream|stop|cancel)$/u);
+    const match = routePath.match(/^\/([^/]+)\/(message|stream|stop|cancel|grants)$/u);
     if (!match) return false;
     const chatId = decodePathSegment(match[1]);
     if (chatId === null) {
@@ -55,7 +67,9 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     if (match[2] === "message") return handleMessage(ctx, req, res, chatId, registry, snapshots);
     if (match[2] === "stream") return handleStream(ctx, req, res, chatId, registry);
     if (match[2] === "cancel") return handleCancel(ctx, req, res, chatId, registry);
+    if (match[2] === "grants") return handleGrants(ctx, req, res, chatId, registry, grants);
     snapshots.delete(chatId);
+    grants.delete(chatId);
     const handled = await handleStop(ctx, req, res, chatId, registry);
     return handled;
   }, [
@@ -63,6 +77,7 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     { method: "POST", path: "/:chatId/message", summary: "Send a message to a Quaker aide.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
     { method: "GET", path: "/:chatId/stream", summary: "Stream a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "sse" },
     { method: "POST", path: "/:chatId/cancel", summary: "Stop the aide's current answer, keeping the session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:chatId/grants", summary: "Allow or revoke Console use and Computer Use for this aide session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
     { method: "POST", path: "/:chatId/stop", summary: "Stop a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
   ]);
 
@@ -78,6 +93,7 @@ async function handleStart(
   createSession: NonNullable<ChatRouteDeps["createSession"]>,
   id: () => string,
   snapshots: Map<string, ConsoleSnapshot>,
+  grants: Map<string, AideGrants>,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -87,13 +103,19 @@ async function handleStart(
     return true;
   }
   const chatId = id();
+  grants.set(chatId, body.grants ?? NO_GRANTS);
+  const granted = (kind: keyof AideGrants) => grants.get(chatId)?.[kind] === true;
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   let consoleUse: Awaited<ReturnType<typeof createConsoleUseTools>> | undefined;
   try {
-    // 콘솔 사용을 켠 뒤 시작한 부관 세션에 도구를 주입한다. 끄면 기존 도구도 호출 시 차단한다.
+    // 실험이 켜진 뒤 시작한 부관 세션에 도구를 주입한다. 허용은 호출마다 이 부관의 스위치와 실험을
+    // 함께 다시 읽으므로, 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
     consoleUse = experiments.consoleControl
-      ? await createConsoleUseTools(ctx, () => snapshots.get(chatId) ?? null)
+      ? await createConsoleUseTools(ctx, () => snapshots.get(chatId) ?? null, () => granted("consoleUse"))
+      : undefined;
+    const computerUse = experiments.computerUse
+      ? { computerUse: { enabled: () => granted("computerUse"), language: () => body.locale ?? null }, promptAddendum: COMPUTER_PROMPT_ADDENDUM }
       : undefined;
     result = await registry.start(chatId, (onEvent) => createSession({
       agent: ctx.host.agent,
@@ -103,6 +125,7 @@ async function handleStart(
       ...(body.locale ? { locale: body.locale } : {}),
       onEvent,
       ...(consoleUse ? { consoleUse } : {}),
+      ...(computerUse ? { computerUse } : {}),
     }));
   } catch (error) {
     // 시작 실패는 서버 로그에만 남긴다 — 브라우저에는 코드 한 줄이면 충분하고, 원문에는 경로가 섞일 수 있다.
@@ -110,6 +133,7 @@ async function handleStart(
     ctx.host.http.writeJson(res, 503, { error: "session_unavailable" });
     return true;
   }
+  if (result !== "started") grants.delete(chatId);
   if (result === "capacity") {
     ctx.host.http.writeJson(res, 429, { error: "session_capacity" });
     return true;
@@ -180,6 +204,33 @@ function handleStream(
   return true;
 }
 
+/** 허용 갱신 — 다음 호출부터 듣는다. 컴퓨터 사용을 거두면 진행 중 기기 호출까지 끊는다. */
+async function handleGrants(
+  ctx: FleetPluginServerContext,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  chatId: string,
+  registry: SessionRegistry,
+  grants: Map<string, AideGrants>,
+): Promise<boolean> {
+  if (req.method !== "POST") return methodNotAllowed(ctx, res);
+  if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
+  const body = await ctx.host.http.readJsonBody<unknown>(req);
+  if (!isGrants(body)) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_grants" });
+    return true;
+  }
+  if (registry.status(chatId) === null) {
+    ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+    return true;
+  }
+  const previous = grants.get(chatId) ?? NO_GRANTS;
+  grants.set(chatId, body);
+  if (previous.computerUse && !body.computerUse) registry.revokeComputerUse(chatId);
+  ctx.host.http.writeJson(res, 200, { grants: body });
+  return true;
+}
+
 async function handleCancel(
   ctx: FleetPluginServerContext,
   req: http.IncomingMessage,
@@ -234,6 +285,14 @@ interface StartBody {
   readonly model?: string;
   readonly effort?: AideEffort;
   readonly locale?: ConsoleLocale;
+  readonly grants?: AideGrants;
+}
+
+/** 허용은 두 불리언뿐이며 알 수 없는 키는 거절한다 — 이 값이 곧 도구 게이트다. */
+function isGrants(value: unknown): value is AideGrants {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value).filter((key) => key !== "consoleUse" && key !== "computerUse");
+  return keys.length === 0 && typeof value.consoleUse === "boolean" && typeof value.computerUse === "boolean";
 }
 
 /**
@@ -242,9 +301,10 @@ interface StartBody {
  */
 function isStartBody(value: unknown): value is StartBody {
   if (!isRecord(value)) return false;
-  const keys = Object.keys(value).filter((key) => !["admiral", "model", "effort", "locale"].includes(key));
+  const keys = Object.keys(value).filter((key) => !["admiral", "model", "effort", "locale", "grants"].includes(key));
   if (keys.length > 0) return false;
   if (typeof value.admiral !== "string" || !ADMIRAL_IDS.some((admiral) => admiral === value.admiral)) return false;
+  if (value.grants !== undefined && !isGrants(value.grants)) return false;
   if (value.model !== undefined && !isExperimentModelId(value.model)) return false;
   if (value.effort !== undefined && !isAideEffort(value.effort)) return false;
   if (value.locale !== undefined && !(LOCALES as readonly unknown[]).includes(value.locale)) return false;

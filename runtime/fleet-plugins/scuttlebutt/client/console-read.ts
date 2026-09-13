@@ -21,6 +21,11 @@ export function isConsoleReadEnabled(): boolean {
   return experiments?.read()?.consoleControl === true;
 }
 
+/** 컴퓨터 사용 실험 스위치 — 켜져 있어야 부관 메뉴에 「컴퓨터 사용」 행이 선다(Operation 메뉴와 같다). */
+export function isComputerUseExperimentEnabled(): boolean {
+  return experiments?.read()?.computerUse === true;
+}
+
 export function subscribeConsoleRead(listener: () => void): () => void {
   return experiments?.subscribe(listener) ?? (() => undefined);
 }

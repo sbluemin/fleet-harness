@@ -25,6 +25,8 @@ import { useAnalysisStore } from "./analysis-store.js";
 import { closeAnalystCompanionPanels } from "./analysis-visibility.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
+import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
+import { LiveLine } from "@fleet-console/sdk/components/live-line";
 
 const SUGGESTIONS = [
   { icon: "◈", tone: "aurora", textKey: "terminal.analyst.suggestion.walkthrough" },
@@ -74,6 +76,18 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const chatRef = React.useRef<HTMLElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const latestEntry = state.entries.at(-1);
+  // 로그는 마지막 문답만 보여 준다 — 앞선 문답은 상단 밴드 뒤에 접히고, 누르거나 맨 위에서 위로
+  // 한 번 더 굴리면 펼쳐진다. 새 질문이 서면 다시 접히고 그 질문이 로그 상단에 앉는다.
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const lastAskIndex = state.entries.reduce((found, entry, index) => entry.role === "user" ? index : found, -1);
+  const earlierEntries = lastAskIndex > 0 ? state.entries.slice(0, lastAskIndex) : [];
+  const currentEntries = lastAskIndex >= 0 ? state.entries.slice(lastAskIndex) : state.entries;
+  const earlierCount = earlierEntries.filter((entry) => entry.role === "user").length;
+  const askCount = earlierCount + (lastAskIndex >= 0 ? 1 : 0);
+  const previousAskCountRef = React.useRef(askCount);
+  const nearBottomRef = React.useRef(true);
+  const revealHistory = React.useCallback(() => setHistoryOpen(true), []);
+  useHistoryReveal({ ref: chatRef, armed: !historyOpen && earlierCount > 0, onReveal: revealHistory });
   const slashMatches = state.draft.startsWith("/")
     ? SLASH_COMMANDS.filter((item) => item.command.toLowerCase().startsWith(state.draft.toLowerCase()))
     : [];
@@ -88,8 +102,23 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   React.useLayoutEffect(() => {
     const chat = chatRef.current;
     if (!chat || !hasInteracted) return;
-    chat.scrollTop = chat.scrollHeight;
-  }, [hasInteracted, state.entries, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
+    const asked = askCount > previousAskCountRef.current;
+    previousAskCountRef.current = askCount;
+    if (asked) {
+      // 새 질문 — 앞선 문답은 밴드 뒤로, 질문은 로그 상단으로. 답은 그 아래에서 자란다.
+      setHistoryOpen(false);
+      nearBottomRef.current = true;
+      chat.scrollTop = 0;
+      return;
+    }
+    // 답이 화면을 넘길 때만 바닥을 따른다 — 사용자가 위로 올려 읽는 중이면 따라가지 않는다.
+    if (nearBottomRef.current) chat.scrollTop = chat.scrollHeight;
+  }, [askCount, hasInteracted, state.entries, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
+  const onChatScroll = React.useCallback(() => {
+    const chat = chatRef.current;
+    if (!chat || chat.clientHeight === 0) return;
+    nearBottomRef.current = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
+  }, []);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -174,10 +203,43 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
       {mode === "artifacts" ? <AnalystArtifactsPanel context={context} /> : (
       <div className="session-analyst__workspace">
-        <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
+        <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy} onScroll={onChatScroll}>
           {hasInteracted ? (
+            <>
+            <HistoryBand
+              count={earlierCount}
+              open={historyOpen}
+              onToggle={() => setHistoryOpen((current) => !current)}
+              label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: earlierCount })}
+            />
             <ol className="session-analyst__transcript" onClick={handleTranscriptClick}>
-              {state.entries.map((entry, index) => entry.role === "user" ? (
+              {/* 앞선 문답은 표시만 거둔다 — 펼치면 문서 순서 그대로 위에 선다. */}
+              <li className="session-analyst__history" hidden={!historyOpen}>
+                <ol className="session-analyst__transcript">
+                  {earlierEntries.map((entry, index) => entry.role === "user" ? (
+                    <li className="session-analyst__message session-analyst__message--user" key={`user-${index}`}>
+                      <span className="session-analyst__ask-meta">
+                        <span className="session-analyst__ask-who">{t("terminal.analyst.you")}</span>
+                        {entry.at !== undefined ? <span>{formatClock(entry.at, language)}</span> : null}
+                      </span>
+                      <div className="session-analyst__ask-bubble">{entry.text}</div>
+                    </li>
+                  ) : (
+                    <AnalystTurn
+                      key={`analyst-${index}`}
+                      state={state}
+                      language={language}
+                      entry={entry}
+                      isLast={false}
+                      liveElapsedMs={liveElapsedMs}
+                      decorateEvidence={decorateEvidence}
+                    />
+                  ))}
+                </ol>
+              </li>
+              {currentEntries.map((entry, offset) => {
+                const index = Math.max(0, lastAskIndex) + offset;
+                return entry.role === "user" ? (
                 <li className="session-analyst__message session-analyst__message--user" key={`user-${index}`}>
                   <span className="session-analyst__ask-meta">
                     <span className="session-analyst__ask-who">{t("terminal.analyst.you")}</span>
@@ -195,11 +257,13 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   liveElapsedMs={liveElapsedMs}
                   decorateEvidence={decorateEvidence}
                 />
-              ))}
+              );
+              })}
               {pendingTurn ? (
                 <AnalystTurn state={state} language={language} entry={null} isLast liveElapsedMs={liveElapsedMs} decorateEvidence={decorateEvidence} />
               ) : null}
             </ol>
+            </>
           ) : (
             <div className="session-analyst__hero-wrap">
               <header className="session-analyst__hero">
@@ -511,28 +575,14 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
       <div className="session-analyst__turn-main">
         {/* 도는 동안의 시계는 채팅 원장과 같은 명도 물결을 진다 — 두 면이 같은 사실("이 턴이
             아직 살아 있다")을 말하므로 어휘가 갈리면 안 된다. */}
+        {/* 도는 동안은 Live line 한 줄뿐이다 — 지금 하는 것과 경과·스텝 수가 제자리에서 갱신되고,
+           과정 전체는 끝난 뒤 접힘을 펼쳐야 나온다(채팅뷰·코워크·부관과 같은 문법). */}
         {working ? (
-          <div className="session-analyst__turn-head">
-            <span className="session-analyst__live-text">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</span>
-          </div>
-        ) : null}
-        {/* 살아 있는 턴의 과정은 접지 않는다 — 원장이 곧 진행 표시다. 도구는 줄을 쌓지 않고
-           마지막 한 줄이 제자리에서 갱신된다: 스트리밍 중 도구 행렬이 자라면 문장이 밀려나고,
-           끝난 뒤 fold를 펼치면 어차피 전체가 나온다. */}
-        {working && hasLedger ? (
-          <div className="session-analyst__ledger">
-            {process.map((segment, index) => (
-              <LedgerSegment key={index} segment={segment} language={language} decorateEvidence={decorateEvidence} live={index === process.length - 1 && answer === null} stepsMode="none" />
-            ))}
-            {(() => {
-              const liveStep = process.flatMap((segment) => segment.steps).at(-1);
-              return liveStep ? (
-                <div className="session-analyst__steps">
-                  <LedgerStep step={liveStep} live />
-                </div>
-              ) : null;
-            })()}
-          </div>
+          <LiveLine
+            label={currentActivity(state.latestActivity, language).label}
+            thinking={!state.latestActivity || state.latestActivity.kind === "starting" || state.latestActivity.kind === "reasoning"}
+            meta={`${stepsLabel ? `${stepsLabel} · ` : ""}${formatElapsed(liveElapsedMs)}`}
+          />
         ) : null}
         {/* 끝난 턴의 과정은 fold 한 줄로 접힌다 — 채팅 원장의 접힘과 같은 문법. */}
         {!working && foldSummary !== null ? (
@@ -552,9 +602,8 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
             <div className="session-analyst__receipt is-flat"><span className="session-analyst__receipt-label">{foldSummary}</span></div>
           )
         ) : null}
-        {/* 이벤트가 아직 없을 때만 펄스가 선다 — 원장이 서면 원장이 진행을 말한다. */}
-        {(working && !hasLedger && answer === null) || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
-        {working && hasLedger ? <span className="session-analyst__truth-mark">{t("terminal.analyst.lastConfirmedOnly")}</span> : null}
+        {/* 펄스는 실패를 말할 때만 선다 — 진행은 위 Live line 하나가 말한다. */}
+        {liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {!liveStopped && !working && receipt?.outcome === "stopped" ? (
           <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>

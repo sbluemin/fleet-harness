@@ -19,25 +19,30 @@ export function HeadAction({
   icon,
   pressed,
   disabled,
+  quiet = false,
   onClick,
 }: {
   readonly id: string;
   readonly label: string;
-  readonly hint: string;
+  /** 한 줄 설명. 닫기처럼 아이콘이 스스로 말하는 조작은 비워 두면 말풍선이 서지 않는다(aria-label은 남는다). */
+  readonly hint?: string;
   readonly icon: React.ReactNode;
   readonly pressed?: boolean;
   readonly disabled?: boolean;
+  /** 참인 동안 말풍선을 세우지 않는다 — 버튼이 연 메뉴가 이미 그 설명을 대신한다. */
+  readonly quiet?: boolean;
   readonly onClick: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = React.useState<{ readonly top: number; readonly right: number } | null>(null);
   const bubbleId = `${id}-tip`;
+  const tipped = hint !== undefined && !quiet;
   React.useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || !tipped) return;
     const rect = buttonRef.current?.getBoundingClientRect();
     if (rect) setAnchor({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
-  }, [open]);
+  }, [open, tipped]);
   return (
     <span
       className="scuttlebutt-head-slot"
@@ -50,7 +55,7 @@ export function HeadAction({
         className={`scuttlebutt-head-action${pressed ? " is-on" : ""}`}
         aria-label={label}
         aria-pressed={pressed}
-        aria-describedby={bubbleId}
+        aria-describedby={tipped ? bubbleId : undefined}
         disabled={disabled}
         onClick={onClick}
         onFocus={() => setOpen(true)}
@@ -58,7 +63,7 @@ export function HeadAction({
       >
         {icon}
       </button>
-      {createPortal(
+      {tipped ? createPortal(
         <span
           className="scuttlebutt-head-tip"
           role="tooltip"
@@ -70,7 +75,7 @@ export function HeadAction({
           {hint}
         </span>,
         document.body,
-      )}
+      ) : null}
     </span>
   );
 }
@@ -109,6 +114,17 @@ export function ClearIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true" {...STROKE}>
       <path d="M5 3.5 1.8 7 5 10.5h7.2V3.5ZM7.2 5.5l3 3M10.2 5.5l-3 3" />
+    </svg>
+  );
+}
+
+/** 점 셋 — 더 보기(AI 확장 메뉴). Operation 캡션의 ··· 과 같은 문법. */
+export function MoreIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor">
+      <circle cx="2.5" cy="7" r="1.3" />
+      <circle cx="7" cy="7" r="1.3" />
+      <circle cx="11.5" cy="7" r="1.3" />
     </svg>
   );
 }

@@ -5,12 +5,15 @@ import type { AgentHost, AgentSession, AgentSessionOptions } from "@fleet-consol
 import { FLEET_AI_GATEWAY_MCP_SERVER, FLEET_CONSOLE_USE_MCP_SERVER, type AiGatewayMcpHost, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
+import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type ComputerUsePluginOptions } from "../mcp/computer-use.js";
 
 export interface PluginAgentDeps {
   readonly baseUrl: () => string | null;
   readonly dataDir: string;
   readonly consoleUse: ConsoleUseMcpHost;
   readonly aiGatewayMcp: Pick<AiGatewayMcpHost, "connect">;
+  /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)에서는 `tools.computerUse` 요청이 조용히 빠진다. */
+  readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection };
   readonly createSdk?: typeof createClaudeGatewaySdk;
 }
 
@@ -49,6 +52,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
 
     let consoleConnection: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
     let gatewayConnection: ReturnType<AiGatewayMcpHost["connect"]> | undefined;
+    let computerConnection: ComputerUsePluginConnection | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const builtins: string[] = [...(options.tools?.builtins ?? []), ...(options.tools?.aiGateway ? MCP_RESOURCE_TOOLS : [])];
     const allowed: string[] = [...builtins];
@@ -108,6 +112,9 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         tail = work.catch(() => undefined);
         return work;
       },
+      revokeComputerUse() {
+        computerConnection?.revoke();
+      },
       cancel() {
         if (closed || cancelled) return;
         if (!active) {
@@ -127,7 +134,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         closing = (async () => {
           try { await loop.dispose(); await tail; }
           finally {
-            try { await Promise.all([consoleConnection?.dispose(), gatewayConnection?.dispose()]); }
+            try { await Promise.all([consoleConnection?.dispose(), gatewayConnection?.dispose(), computerConnection?.dispose()]); }
             finally { sessions.delete(session); await fs.rm(cwd, { recursive: true, force: true }); }
           }
         })();
@@ -158,6 +165,15 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         consoleConnection = deps.consoleUse.connect({ ...consoleOptions, enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && consoleOptions.enabled?.() !== false });
         servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleConnection.embeddedServer as ClaudeGatewayMcpServer;
         allowed.push(...options.tools.consoleUse.tools.map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
+      }
+      if (options.tools?.computerUse && deps.computerUseMcp) {
+        const computerOptions = options.tools.computerUse;
+        computerConnection = deps.computerUseMcp.connectPlugin({
+          enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && computerOptions.enabled(),
+          ...(computerOptions.language ? { language: computerOptions.language } : {}),
+        });
+        servers[FLEET_COMPUTER_USE_MCP_SERVER] = computerConnection.embeddedServer;
+        allowed.push(...computerConnection.toolNames.map((name) => `mcp__${FLEET_COMPUTER_USE_MCP_SERVER}__${name}`));
       }
       if (options.tools?.aiGateway) {
         gatewayConnection = deps.aiGatewayMcp.connect();
@@ -198,7 +214,7 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.timeoutMs !== undefined && options.settlement !== "result-required") throw new Error("agent_timeout_requires_result_settlement");
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
   if (options.tools?.builtins?.some((tool) => tool !== "WebSearch" && tool !== "WebFetch")) throw new Error("agent_builtin_not_allowed");
-  const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_AI_GATEWAY_MCP_SERVER]);
+  const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_AI_GATEWAY_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER]);
   for (const group of options.tools?.custom ?? []) {
     if (!/^[a-zA-Z0-9_-]+$/.test(group.name) || groups.has(group.name)) throw new Error("agent_tool_group_invalid");
     groups.add(group.name);

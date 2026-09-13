@@ -17046,3 +17046,243 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   }
 }
 
+
+/* ── Live line · History band (sdk/components) ───────────────────────────────
+   도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
+   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 세션 분석가·코워크·부관이 같은 줄을 쓴다.
+   링은 진행(신호), 물결은 명도(--live-sweep-*), 잉크는 3티어 텍스트 — 어느 채널도 겹치지 않는다. */
+.fc-live-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 22px;
+  padding: 2px var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-live-line__orbit {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  align-self: center;
+  border-radius: var(--radius-pill);
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  animation: fc-live-orbit 0.9s linear infinite;
+}
+
+@keyframes fc-live-orbit {
+  to { transform: rotate(360deg); }
+}
+
+.fc-live-line__text {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 물결은 채팅뷰의 .agent-chat-live-sweep 과 같은 이동량(이미지 200%, 200%→0%)이라 이음매가 없다. */
+.fc-live-line__sweep {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background-image: linear-gradient(
+    100deg,
+    var(--live-sweep-trough) 0%,
+    var(--live-sweep-trough) 34%,
+    var(--live-sweep-crest) 50%,
+    var(--live-sweep-trough) 66%,
+    var(--live-sweep-trough) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: fc-live-sweep 2.4s linear infinite;
+}
+
+@keyframes fc-live-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* 생각의 점 — visibility로 숨겨야 물결의 클립 마스크에서도 빠진다(opacity는 배경이 비친다). */
+.fc-live-line__dots {
+  display: inline-flex;
+  width: 3ch;
+  color: var(--text-tertiary);
+}
+
+.fc-live-line__dots > span {
+  width: 1ch;
+  visibility: hidden;
+}
+
+.fc-live-line__dots > span:first-child { visibility: visible; }
+.fc-live-line__dots > span:nth-child(2) { animation: fc-live-dot-mid 1.2s steps(1, end) infinite; }
+.fc-live-line__dots > span:nth-child(3) { animation: fc-live-dot-end 1.2s steps(1, end) infinite; }
+
+@keyframes fc-live-dot-mid {
+  0%, 33% { visibility: hidden; }
+  34%, 100% { visibility: visible; }
+}
+
+@keyframes fc-live-dot-end {
+  0%, 66% { visibility: hidden; }
+  67%, 100% { visibility: visible; }
+}
+
+.fc-live-line__meta {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+/* 멈추기는 줄 위의 텍스트 행동이다 — 버튼 크롬을 벗기고 밑줄로만 누를 곳임을 알린다. */
+.fc-live-line__stop {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.fc-live-line__stop:hover { color: var(--text-primary); }
+
+.fc-live-line__stop:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* 끝난 턴의 접힘 한 줄 — 면도 테두리도 없다. 이 줄은 카드가 아니라 문장이다. */
+.fc-live-fold {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-live-fold__summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px var(--space-1);
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.fc-live-fold.is-flat .fc-live-fold__summary { cursor: default; }
+.fc-live-fold__summary::-webkit-details-marker { display: none; }
+.fc-live-fold__summary:hover { color: var(--text-secondary); }
+
+.fc-live-fold__summary:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.fc-live-fold.is-error .fc-live-fold__summary { color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary)); }
+
+.fc-live-fold__chev {
+  transition: transform var(--duration-fast) var(--ease-glide);
+}
+
+.fc-live-fold[open] .fc-live-fold__chev { transform: rotate(180deg); }
+
+.fc-live-fold__body {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-1) 0 var(--space-1) calc(9px + var(--space-2) + var(--space-1));
+}
+
+.fc-live-step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.fc-live-step__mark {
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+  width: 9px;
+  color: var(--positive);
+}
+
+.fc-live-step.is-fail .fc-live-step__mark { color: var(--coral); }
+
+.fc-live-step__label { color: var(--text-secondary); flex: none; }
+
+.fc-live-step__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 로그 상단의 이전 대화 밴드. 흐름 안의 헤어라인 한 줄이다 — 면도 배경도 두지 않아 어느
+   표면 위에서도 이질감이 없다(sticky 면은 유리 위에서 다른 재질로 읽혔다). */
+.fc-history-band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-1) 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+
+.fc-history-band::before,
+.fc-history-band::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.fc-history-band:hover { color: var(--text-primary); }
+
+.fc-history-band:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  border-radius: var(--radius-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-live-line__orbit,
+  .fc-live-line__dots > span,
+  .fc-live-fold__chev {
+    animation: none;
+    transition: none;
+  }
+
+  /* 감속 모션에서는 물결 대신 secondary 잉크 — `color: transparent`가 남으면 문구가 통째로 사라진다. */
+  .fc-live-line__sweep {
+    animation: none;
+    background: none;
+    color: var(--text-secondary);
+  }
+}

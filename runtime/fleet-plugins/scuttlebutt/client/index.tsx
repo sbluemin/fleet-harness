@@ -1,7 +1,9 @@
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { connectConsoleRead, isConsoleReadEnabled } from "./console-read.js";
+import { connectConsoleRead } from "./console-read.js";
+import { grantCapabilityLabel, grantDescription } from "./grant-chips.js";
+import { getScuttlebuttSettings } from "./settings-store.js";
 
 import type { AdmiralId } from "./chat-session.js";
 import { DockGlyphs } from "./dock-glyphs.js";
@@ -11,6 +13,7 @@ import { QUAKER_HEAD_VIEW_BOX, QuakerFigure } from "./quaker-figure.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { scuttlebuttSettingsSection } from "./settings-section.js";
 import { connectScuttlebuttSettings } from "./settings-store.js";
+import "@fleet-console/markdown/styles.css";
 import "./styles.css";
 
 /**
@@ -24,14 +27,19 @@ function mentionTargets(): readonly MentionTargetDescriptor[] {
   const bridge = readScuttlebuttMentionBridge();
   if (!bridge) return [];
   const t = getT(bridge.locale());
-  return bridge.onDuty().map((admiral) => ({
-    id: admiral,
-    label: bridge.label(admiral),
-    categoryLabel: t("mention.category"),
-    capabilityLabel: t(isConsoleReadEnabled() ? "mention.capabilityConsole" : "mention.capability"),
-    description: t(isConsoleReadEnabled() ? "mention.descriptionConsole" : "mention.description", { name: bridge.label(admiral) }),
-    renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
-  }));
+  const locale = bridge.locale();
+  return bridge.onDuty().map((admiral) => {
+    // 권한은 부관마다 다르다 — 덱 행은 그 부관의 허용을 말한다(기능 이름이 아니라 무엇을 할 수 있는지).
+    const grants = getScuttlebuttSettings().grants[admiral];
+    return {
+      id: admiral,
+      label: bridge.label(admiral),
+      categoryLabel: t("mention.category"),
+      capabilityLabel: grantCapabilityLabel(grants, locale),
+      description: grantDescription(bridge.label(admiral), grants, locale),
+      renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
+    };
+  });
 }
 
 async function messageMentionTarget(targetId: string, text: string): Promise<void> {
