@@ -89,7 +89,7 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
       expect(parse(denied).message).toContain("컴퓨터 사용");
       expect(f.call).not.toHaveBeenCalled();
-      expect((await call("computer_status")).isError).toBe(false);
+      expect(parse(await call("computer_status"))).toMatchObject({ reason: "operation_not_authorized" });
       operations[0]!.payload = { computerUse: { enabled: true, language: "en" } };
       experiment = false;
       expect(parse(await call("computer_apps"))).toMatchObject({ error: "computer_use_not_authorized", reason: "experiment_disabled", remedy: { surface: "settings" } });

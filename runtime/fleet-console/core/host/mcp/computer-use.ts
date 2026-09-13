@@ -11,17 +11,14 @@ export interface ComputerUseMcpDeps {
   readonly transport?: McpHttpTransport;
   readonly service: ComputerUseService;
   /**
-   * 호출자 Operation 단위 판정의 재료. 주어지면 `computer_status`·`computer_end`를 뺀 모든 도구가
-   * 실험 플래그와 그 Operation의 토글을 **둘 다** 요구한다 — 콘솔 사용과 같은 정책이다. 없으면
-   * (테스트·플러그인 없는 구성) 실험 플래그만 본다.
+   * 호출자 Operation 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
+   * 그 Operation의 토글을 둘 다 요구한다 — 콘솔 사용과 같은 정책이다. 없으면(테스트·플러그인 없는
+   * 구성) 실험 플래그만 본다.
    */
   readonly operations?: () => readonly OperationNode[];
   readonly experimentEnabled?: () => boolean;
   readonly language?: () => "en" | "ko" | null;
 }
-
-/** 도구 토큰과 무관하게 언제나 답하는 조회·정리 도구 — 거부 대상이 아니다. */
-const UNGATED_TOOLS = new Set(["computer_status", "computer_end"]);
 
 export function readComputerUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
   const value = payload?.computerUse;
@@ -117,7 +114,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           const parsed = schema.safeParse(args);
           if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true });
           // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
-          const denied = UNGATED_TOOLS.has(spec.id) ? null : denyComputerUse(deps, context.sessionLabel);
+          const denied = denyComputerUse(deps, context.sessionLabel);
           if (denied) return Promise.resolve(denied);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
