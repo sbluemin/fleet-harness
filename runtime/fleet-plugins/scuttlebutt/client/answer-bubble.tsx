@@ -171,11 +171,14 @@ export function AnswerBubble({
   // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
   // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
   // 뺏으면 사용자가 치던 글자가 말풍선으로 간다.
+  // 모달이 열려 있으면 그 안의 포커스를 빼앗지 않는다 — Escape 리스너와 같은 독점 계약. 그 답은 모달을
+  // 닫은 뒤 사용자가 스스로 찾아 읽는다(그때 돌아갈 자리도 없으므로 기억하지 않는다). 렌더 시점에
+  // 정하는 이유: 포커스를 옮기면 보조 기술이 본문을 읽으므로 라이브 영역은 같은 렌더에서 비워야 한다 —
+  // 효과에서 비우면 이미 채워진 영역이 한 번 낭독을 예약한 뒤라 답이 두 번 읽힌다.
+  const settledUnderModal = !working && document.querySelector('[aria-modal="true"]') !== null;
+
   React.useEffect(() => {
-    if (working) return;
-    // 모달이 열려 있으면 그 안의 포커스를 빼앗지 않는다 — Escape 리스너와 같은 독점 계약. 그 답은 모달을
-    // 닫은 뒤 사용자가 스스로 찾아 읽는다(그때 돌아갈 자리도 없으므로 기억하지 않는다).
-    if (document.querySelector('[aria-modal="true"]')) return;
+    if (working || settledUnderModal) return;
     const bubble = bubbleRef.current;
     const text = textRef.current;
     if (!bubble || !text) return;
@@ -189,7 +192,7 @@ export function AnswerBubble({
       if (!viaBubble) sharedReturnTarget = active;
     }
     text.focus({ preventScroll: true });
-  }, [working]);
+  }, [working, settledUnderModal]);
 
   // 닫으면 기억한 자리로 돌아간다 — 단, 포커스가 아직 말풍선(또는 문서)에 있을 때만이다. 사용자가
   // 그새 다른 곳을 눌렀다면 그 자리가 지금의 자리이고, 되돌리면 그것을 뺏는다.
@@ -228,9 +231,11 @@ export function AnswerBubble({
     >
       {/* 답은 한 글자씩 스트리밍된다 — 보이는 문단을 라이브 영역으로 두면 청크마다 전체가 다시
           읽힌다. 상시 존재하는 이 영역은 턴이 정착한 뒤에만 내용을 갖고, 그래서 한 번만 읽힌다
-          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). */}
+          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). 정착과 함께 본문에
+          포커스가 가면 보조 기술이 그 본문을 읽으므로 여기는 비운다 — 모달 뒤에서 정착해 포커스를
+          옮기지 않을 때만 라이브 영역이 답을 알린다. */}
       <span className="scuttlebutt-answer-announce" aria-live="polite" aria-atomic="true">
-        {working ? "" : answer?.text ?? ""}
+        {working || !settledUnderModal ? "" : answer?.text ?? ""}
       </span>
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
