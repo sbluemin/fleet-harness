@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.93.0] - 2026-09-13
+
+### fleet-console
+
+#### Added
+- 에이전트가 Mac 앱의 창이 열려 있는지 확인하고, 명시적으로 다시 열어 컴퓨터 사용을 이어갈 수 있습니다.
+
 ## [1.92.0] - 2026-09-13
 
 ### fleet-console

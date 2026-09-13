@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.93.0] - 2026-09-13
+
+### fleet-console
+
+#### Added
+- Let agents check whether a Mac app has an open window and explicitly reopen it before continuing Computer Use.
+
 ## [1.92.0] - 2026-09-13
 
 ### fleet-console
