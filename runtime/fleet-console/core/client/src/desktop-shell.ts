@@ -20,7 +20,11 @@ export interface DesktopShellHome {
  * "아직 모른다"와 "집이 없다"는 다르다. 둘을 하나의 null로 합치면, 답이 오기 전 잠깐 동안
  * 손님 콘솔이 자기가 집인 것처럼 보인다 — 그 사이 사용자가 칩을 누르면 남의 목록이 펼쳐진다.
  */
-export function useDesktopHomeOrigin(): DesktopShellHome {
+/**
+ * `reloadToken`이 바뀌면 다시 읽는다. 셸의 게시는 창을 띄우는 마감과 경주하므로 첫 읽기가 버전을
+ * 놓칠 수 있다 — 그 값이 필요한 화면(도움말 메뉴)은 열릴 때 한 번 더 묻는다.
+ */
+export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
   const [home, setHome] = useState<DesktopShellHome>({ origin: null, pending: true, desktopVersion: null });
 
   useEffect(() => {
@@ -30,7 +34,7 @@ export function useDesktopHomeOrigin(): DesktopShellHome {
       // 끊긴 요청은 답이 아니다 — 이 화면은 이미 사라졌거나 곧 다시 묻는다.
       .catch(() => { if (!controller.signal.aborted) setHome({ origin: null, pending: false, desktopVersion: null }); });
     return () => controller.abort();
-  }, []);
+  }, [reloadToken]);
 
   return home;
 }

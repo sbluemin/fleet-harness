@@ -606,7 +606,10 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const globalSettings = useGlobalSettingsStore();
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
-  const shell = useDesktopHomeOrigin();
+  // 메뉴가 열릴 때마다 셸 스냅샷을 다시 읽는다 — 느린 핸드오프에서는 버전이 첫 읽기 뒤에 도착한다.
+  const [opens, setOpens] = useState(0);
+  useEffect(() => { if (open) setOpens((count) => count + 1); }, [open]);
+  const shell = useDesktopHomeOrigin(opens);
   const desktopCheck = useDesktopLatestVersion(shell.desktopVersion);
   const desktopLatest = desktopCheck.latest;
   // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는

@@ -10,6 +10,8 @@ export interface ConsoleUpdateStatus {
 export interface ConsoleUpdateCheckService {
   getStatus(): ConsoleUpdateStatus;
   refresh(options?: ConsoleUpdateRefreshOptions): Promise<ConsoleUpdateStatus>;
+  /** 지금 레지스트리를 다시 묻는다. refresh와 달리 조회 실패를 "업데이트 없음"으로 뭉개지 않고 거부한다. */
+  check?(): Promise<ConsoleUpdateStatus>;
   start?(): void;
   stop?(): void;
   onChange?(listener: ConsoleUpdateCheckChangeListener): () => void;
@@ -73,14 +75,10 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
     return current?.status ?? NO_UPDATE_STATUS;
   };
 
-  const refresh = async (options: ConsoleUpdateRefreshOptions = {}): Promise<ConsoleUpdateStatus> => {
-    const current = cached;
-    if (options.force !== true && current && now() - current.checkedAt < current.ttlMs) {
-      return current.status;
-    }
-    if (inFlight) {
-      return inFlight;
-    }
+  // 조회 한 번을 공유한다. 실패는 짧은 오류 TTL로 캐시하되 약속 자체는 거부한 채 두어,
+  // 배경 갱신(refresh)은 "없음"으로 내려앉고 사용자가 누른 확인(check)은 실패를 실패로 안다.
+  const lookup = (): Promise<ConsoleUpdateStatus> => {
+    if (inFlight) return inFlight;
     inFlight = resolveUpdateStatus()
       .then((status) => {
         const previousStatus = cached?.status ?? NO_UPDATE_STATUS;
@@ -88,15 +86,25 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
         notifyIfChanged(previousStatus, status);
         return status;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         cached = { status: NO_UPDATE_STATUS, checkedAt: now(), ttlMs: errorTtlMs };
-        return NO_UPDATE_STATUS;
+        throw error;
       })
       .finally(() => {
         inFlight = null;
       });
     return inFlight;
   };
+
+  const refresh = async (options: ConsoleUpdateRefreshOptions = {}): Promise<ConsoleUpdateStatus> => {
+    const current = cached;
+    if (options.force !== true && current && now() - current.checkedAt < current.ttlMs) {
+      return current.status;
+    }
+    return lookup().catch(() => NO_UPDATE_STATUS);
+  };
+
+  const check = (): Promise<ConsoleUpdateStatus> => lookup();
 
   const resolveUpdateStatus = async (): Promise<ConsoleUpdateStatus> => {
     const release = readRelease();
@@ -147,5 +155,5 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
     }
   }
 
-  return { getStatus, refresh, start, stop, onChange };
+  return { getStatus, refresh, check, start, stop, onChange };
 }

@@ -29,4 +29,16 @@ describe("console update check", () => {
     await expect(service.refresh()).resolves.toEqual({ updateAvailable: false });
     expect(service.getStatus()).toEqual({ updateAvailable: false });
   });
+
+  it("rejects an explicit check when the registry lookup fails", async () => {
+    const service = createConsoleUpdateCheckService({
+      readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
+      fetchLatest: async () => {
+        throw new Error("offline");
+      },
+    });
+
+    // 사용자가 누른 확인은 "모름"을 "최신"으로 바꿔 말하면 안 된다.
+    await expect(service.check!()).rejects.toThrow("offline");
+  });
 });

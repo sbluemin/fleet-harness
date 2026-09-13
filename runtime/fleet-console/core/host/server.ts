@@ -71,7 +71,7 @@ import { TheaterRegistry } from "./theaters/theater-domain.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theaters/theater-domain.js";
 import { createConsoleUpdateApplyService, isManagedRuntimePackageRoot, type ConsoleUpdateApplyService } from "./update-apply.js";
 import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
-import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
+import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService, type ConsoleUpdateStatus } from "./update-check.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -2062,7 +2062,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const status = await updateCheck.refresh({ force: true });
+    // 조회 실패를 "최신"으로 답하면 안 된다 — 사용자는 방금 확인을 눌렀고, 답은 셋 중 하나다: 새 버전, 최신, 모름.
+    let status: ConsoleUpdateStatus;
+    try {
+      status = updateCheck.check ? await updateCheck.check() : await updateCheck.refresh({ force: true });
+    } catch {
+      writeJson(res, 503, { error: "registry_unreachable" });
+      return;
+    }
     writeJson(res, 200, { updateAvailable: status.updateAvailable, ...(status.latestVersion ? { latestVersion: status.latestVersion } : {}) });
   }
 
