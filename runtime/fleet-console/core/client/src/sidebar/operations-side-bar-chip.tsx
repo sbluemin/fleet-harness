@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -6,7 +6,8 @@ import { useAgentState } from "../agent/store.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
-import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "../components/operation-workspace-context.js";
+import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../components/operation-workspace-context.js";
+import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
@@ -15,6 +16,10 @@ import {
   subscribeSideBarOperationAction,
   type SideBarOperationMenuAction,
 } from "./interaction.js";
+import { OperationDetailCard } from "./operation-detail-card.js";
+
+/** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
+const DETAIL_HOVER_DELAY_MS = 400;
 
 export interface SideBarEntry {
   readonly operation: OperationNode;
@@ -108,10 +113,19 @@ export function OperationsSideBarChip({
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
-  // "지금 어디" 축 — 실험 기능이 켜진 동안 서버가 세션 DTO에 실어 보내는 투영이다. 칩은 이름 아래
-  // 한 줄로 그리되, 브랜치도 폴더 편차도 없으면 줄 자체를 내지 않아 오늘의 한 줄 칩과 같다.
-  const context = visibleWorkspace(useAgentState().sessions[operation.id]?.workspace);
+  // "지금 어디" 축 — 실험 기능이 켜진 동안 서버가 세션 DTO에 실어 보내는 투영이다. 칩이 그리는 것은
+  // 브랜치 한 조각뿐이고, 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
+  const session = useAgentState().sessions[operation.id];
+  const context = visibleWorkspace(session?.workspace);
+  const chipContext = chipWorkspace(context);
   const workspaceContext = context ? describeWorkspace(t, context) : "";
+  // 상세 카드는 위치 축과 같은 실험 아래에서만 뜬다 — 칩이 폴더를 내려놓는 것과 같은 스위치다.
+  // 상태에 담는 것은 칩의 자리뿐이다: 내용을 스냅샷으로 얼려 두면 열어 둔 채 활동이나 작업 폴더가
+  // 바뀌었을 때 카드가 지난 사실을 계속 말한다.
+  const detailEnabled = useGlobalSettingsStore().state?.experiments.operationContext === true;
+  const [detailAnchor, setDetailAnchor] = useState<DOMRect | null>(null);
+  const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailId = useId();
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
@@ -128,7 +142,7 @@ export function OperationsSideBarChip({
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
-    context ? "side-bar-chip--with-context" : "",
+    chipContext ? "side-bar-chip--with-context" : "",
   ].filter(Boolean).join(" ");
   const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
@@ -148,6 +162,30 @@ export function OperationsSideBarChip({
   const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
   };
+  // 상세 카드 — 포인터는 잠깐 머문 뒤에, 키보드 포커스는 곧바로 연다. 이름을 고치는 중이거나
+  // 끌고 있거나 닫기가 armed면 열지 않는다: 그 순간의 칩은 읽는 자리가 아니라 조작하는 자리다.
+  // preview 칩이 내려놓는 것은 close·rename·accent 같은 조작 어포던스이지 읽을 거리가 아니다.
+  // 폴더를 칩에서 내린 뒤로는 카드가 그 자리를 지므로, 여기서 막으면 미리보기만 위치를 잃는다.
+  const detailBlocked = !detailEnabled || rename.renaming || dragging || isCloseArmed;
+  // 지연 타이머는 걸릴 때의 렌더를 붙들고 있다 — 기다리는 사이에 바뀐 차단 상태를 ref로 다시 본다.
+  const detailBlockedRef = useRef(detailBlocked);
+  detailBlockedRef.current = detailBlocked;
+  const closeDetail = () => {
+    if (detailTimerRef.current) {
+      clearTimeout(detailTimerRef.current);
+      detailTimerRef.current = null;
+    }
+    setDetailAnchor(null);
+  };
+  const armDetail = (event: ReactPointerEvent<HTMLLIElement>) => {
+    if (detailBlocked || event.pointerType !== "mouse") return;
+    const element = event.currentTarget;
+    if (detailTimerRef.current) clearTimeout(detailTimerRef.current);
+    detailTimerRef.current = setTimeout(() => {
+      detailTimerRef.current = null;
+      if (!detailBlockedRef.current) setDetailAnchor(element.getBoundingClientRect());
+    }, DETAIL_HOVER_DELAY_MS);
+  };
   const close = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (!isCloseArmed) {
@@ -164,6 +202,34 @@ export function OperationsSideBarChip({
     onDisarmClose();
     onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
   };
+
+  // 카드는 열릴 때 잰 칩 자리를 들고 있다 — 목록이 스크롤되거나 창이 바뀌면 그 자리는 이미 거짓이다.
+  // 따라 옮기는 대신 닫는다: 읽던 사람이 손을 움직인 것이고, 다시 겨누면 다시 열린다.
+  useEffect(() => {
+    if (!detailAnchor) return;
+    const dismiss = () => setDetailAnchor(null);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [detailAnchor]);
+
+  // 조작이 시작되면 이미 열려 있던 카드도 물러난다. 닫기 버튼은 포인터 이벤트를 삼키므로 칩의
+  // 이탈 처리가 닿지 않는다 — 열지 않는 조건과 닫는 조건을 같은 값 하나로 묶어야 어긋나지 않는다.
+  useEffect(() => {
+    if (!detailBlocked) return;
+    if (detailTimerRef.current) {
+      clearTimeout(detailTimerRef.current);
+      detailTimerRef.current = null;
+    }
+    setDetailAnchor(null);
+  }, [detailBlocked]);
+
+  useEffect(() => () => {
+    if (detailTimerRef.current) clearTimeout(detailTimerRef.current);
+  }, []);
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     if (request.operationId !== operation.id || preview) return false;
@@ -204,24 +270,40 @@ export function OperationsSideBarChip({
       aria-haspopup={preview || !menuEnabled ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
-      title={resumeOnActivate
-        ? t("sidebar.chip.resumeTitle")
-        : preview
-          ? t("sidebar.chip.previewTitle")
-          : active
-            ? t("sidebar.chip.activeTitle")
-            : t("sidebar.chip.idleTitle")}
+      aria-describedby={detailAnchor ? detailId : undefined}
+      /* 상세 카드가 뜨는 동안에는 네이티브 툴팁을 내려놓는다 — 두 개가 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
+      title={detailEnabled
+        ? undefined
+        : resumeOnActivate
+          ? t("sidebar.chip.resumeTitle")
+          : preview
+            ? t("sidebar.chip.previewTitle")
+            : active
+              ? t("sidebar.chip.activeTitle")
+              : t("sidebar.chip.idleTitle")}
       style={chipStyle}
       onClick={focus}
       onContextMenu={preview || !menuEnabled ? undefined : openAccent}
-      onFocus={() => {
+      onPointerEnter={armDetail}
+      onPointerLeave={closeDetail}
+      onFocus={(event) => {
         if (!isCloseArmed) onDisarmClose();
+        if (event.target === event.currentTarget && !detailBlocked) setDetailAnchor(event.currentTarget.getBoundingClientRect());
       }}
-      onPointerDown={reorderEnabled ? (event) => onPointerDragStart(event, operation.id) : undefined}
+      onBlur={closeDetail}
+      onPointerDown={(event) => {
+        closeDetail();
+        if (reorderEnabled) onPointerDragStart(event, operation.id);
+      }}
       onPointerUp={() => {
         if (dragging) suppressClickRef.current = true;
       }}
       onKeyDown={(event) => {
+        if (event.key === "Escape" && detailAnchor) {
+          event.preventDefault();
+          closeDetail();
+          return;
+        }
         if (event.target !== event.currentTarget) return;
         // 재배치: Alt+Shift+↑/↓ — shift 없는 Alt+↑/↓는 operations의 Operation 순환이 가져간다.
         if (!preview && reorderEnabled && event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
@@ -264,7 +346,7 @@ export function OperationsSideBarChip({
         ) : (
           <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
         )}
-        {context ? <OperationWorkspaceContext workspace={context} className="side-bar-chip-context" /> : null}
+        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={!detailEnabled} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {theaterName ? (
@@ -319,6 +401,15 @@ export function OperationsSideBarChip({
           {isCloseArmed ? t("sidebar.chip.closeArmed") : <SideBarCloseIcon />}
         </button>
       )}
+      {detailAnchor ? (
+        <OperationDetailCard
+          id={detailId}
+          anchor={detailAnchor}
+          activity={markVisual}
+          workspace={context}
+          createdAt={session?.createdAt ?? operation.ts.createdAt}
+        />
+      ) : null}
     </li>
   );
 }
