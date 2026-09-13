@@ -5,6 +5,44 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.92.0] - 2026-09-13
+
+### fleet-console
+
+#### Added
+- Choose which Operations may use your Mac, and grant or withdraw access without restarting the session.
+- Let agents read and control Mac apps with Computer Use, and see which Operations are using the computer or Console.
+- Let authorized agents and Quaker Aides start and direct Operations, check results, and automate recurring work with Console Use. Manage agent access from each Operation's menu.
+- Keep Quaker Aides on the top bar and open their answers or conversations when needed.
+- Allow Console use and Computer Use for each Quaker aide from its own menu, off by default, and see what each aide is allowed to do as access chips.
+
+#### Changed
+- Choose the model and effort for Cowork and Session Analyst once in Settings > Experimental features > AI extensions (default Sonnet, medium) instead of in each conversation.
+- The chat, Cowork, Session Analyst, and aide message boxes are a single row with the send button inside the box; the chat box shows its model and effort above the box.
+- Manage Session watch, Console Use, and Computer Use from each Operation's menu.
+- Check Console and Desktop versions in Help, apply Console updates, or open the latest Desktop download.
+- With "Show Operation location" enabled, hover over an Operation in the sidebar to see its status, working folder, and start time.
+- With "Show Operation location" enabled, see each Operation's branch and working folder in Cmd+K search results.
+- Keep aide answers and follow-up conversations in a consistent reading view.
+- Read completed aide answers with keyboard focus, then return to your previous input when you close the answer.
+- Conversations in Chat view, Session Analyst, Cowork and Quaker aides show the latest exchange first, with earlier exchanges one click or scroll above.
+- While an answer is in progress, Session Analyst, Cowork and Quaker aides show a single quiet line of what is happening now instead of a growing list of steps.
+- Quaker aide answers read like the rest of Console, with proper tables, quotes and code blocks.
+
+#### Fixed
+- Keep Claude Code model selection consistent when switching between Chat and Terminal views.
+
+#### Removed
+- Remove the one-time Liquid glass welcome card; the appearance option remains available in Settings.
+
+### fleet-desktop
+
+#### Added
+- Follow the agent's work in a live app preview that you can move, resize, or maximize within its Operation.
+
+#### Changed
+- See your Desktop version and available updates in the Help menu.
+
 ## [1.91.0] - 2026-09-12
 
 ### fleet-console
