@@ -397,10 +397,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 /* 관찰 말풍선은 시각·상태를 세는 한 줄이라 계기 서체가 맞지만, 이쪽은 무엇을 허용했는지 말하는
    문장이다 — 읽는 글은 읽는 서체로 싣는다. */
 
-/* 세션 관찰 결과 말풍선 — 캡션 선반 끝의 폭 없는 앵커 아래. */
+/* 세션 관찰 결과 말풍선 — 캡션 선반 끝의 폭 없는 앵커에 걸되, 오른쪽 변과 꼬리는 그 옆 ··· 버튼(6px 간격 + 24px)에 맞춘다: 스위치가 있는 곳을 가리켜야 한다. */
 .session-watch-host { position: relative; display: inline-flex; }
-.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: 0; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
-.session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 10px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
+.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: -30px; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
+.session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 8px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
 .session-watch-bubble__text { min-width: 0; }
 .session-watch-bubble.is-reviewing { color: var(--text-tertiary); }
 .session-watch-bubble.is-alert { border-color: color-mix(in oklch, var(--warn) 55%, transparent); color: var(--text-primary); }
