@@ -60,10 +60,10 @@
   will-change: transform;
 }
 
+/* 새는 포커스 링을 두르지 않는다 — 마스코트를 상자로 감싸면 UI 컨트롤로 읽힌다. 키보드 포커스는
+   이름표(.scuttlebutt-bird-tag)가 뜨는 것으로 보인다. */
 .scuttlebutt-bird:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-  border-radius: var(--radius-md);
+  outline: none;
 }
 
 .scuttlebutt-bird-tag {
@@ -163,6 +163,11 @@
   --qk-zzz: var(--scuttlebutt-qk-ink-spectral);
   --qk-mark-edge: var(--scuttlebutt-qk-ink-abyss);
   overflow: visible;
+}
+
+/* 머리 창(QUAKER_HEAD_VIEW_BOX)으로 그린 마크. 창 밖의 날개·꼬리를 잘라 내야 슬롯 크기 그대로 선다. */
+.scuttlebutt-qk.is-cropped {
+  overflow: hidden;
 }
 
 .scuttlebutt-qk[data-morph="dori"] {
@@ -608,6 +613,16 @@
   line-height: 1.5;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    box-shadow var(--duration-fast) var(--ease-glide);
+}
+
+/* 포커스가 말풍선 안에 있는 동안 은은하게 밝아진다 — 답이 정착해 포커스가 여기로 왔음을 상자 링 없이
+   알린다(brass = 지금 서 있는 자리). 벗어나면 평소의 테두리로 가라앉는다. */
+.scuttlebutt-answer-bubble:focus-within {
+  border-color: color-mix(in oklab, var(--brass) 70%, var(--hairline));
+  box-shadow: var(--shadow-floating), 0 0 0 4px var(--brass-glow);
 }
 
 /* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
@@ -671,10 +686,10 @@
   mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
 }
 
+/* 답이 오면 본문이 포커스를 받는다 — 말풍선 자체가 새로 선 표면이라 링을 두르지 않는다(마스코트와
+   같은 규약). 키보드 스크롤은 그대로 된다. */
 .scuttlebutt-answer-text:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-  border-radius: var(--radius-xs);
+  outline: none;
 }
 
 .scuttlebutt-answer-foot {
@@ -732,24 +747,28 @@
   color: var(--text-primary);
 }
 
-/* 진행 중 신호 — 무한 애니메이션이 허용되는 유일한 자리다(응답이 실제로 도는 동안만 산다). */
+/* 진행 중 신호 — 무한 애니메이션이 허용되는 유일한 자리다(응답이 실제로 도는 동안만 산다).
+   Operation 캡션 레일(is-running--turn)과 같은 왕복 트래블이다: 한 방향 순환은 끝에서 되감기며
+   튀지만, 왕복은 양 끝에서 감속해 되돌아온다. 같은 제품의 "일하는 중"은 같은 운동으로 읽혀야 한다. */
 .scuttlebutt-answer-wait {
   grid-column: 1 / -1;
   height: 1px;
   background: linear-gradient(
     90deg,
-    transparent,
-    color-mix(in oklch, var(--brass) 70%, transparent),
-    transparent
+    transparent 0%,
+    color-mix(in oklch, var(--brass) 70%, transparent) 30%,
+    color-mix(in oklch, var(--brass) 70%, transparent) 70%,
+    transparent 100%
   );
-  background-size: 40% 100%;
+  background-size: 55% 100%;
   background-repeat: no-repeat;
-  animation: scuttlebutt-answer-wait 1.4s var(--ease-glide) infinite;
+  animation: scuttlebutt-answer-wait 3.8s ease-in-out infinite;
 }
 
 @keyframes scuttlebutt-answer-wait {
-  from { background-position: -40% 0; }
-  to { background-position: 140% 0; }
+  0% { background-position: -60% 0; }
+  50% { background-position: 160% 0; }
+  100% { background-position: -60% 0; }
 }
 
 /* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
@@ -1412,12 +1431,10 @@
     border-color var(--duration-fast) var(--ease-spring);
 }
 
-/* 밴드의 다른 글리프(16px)와 같은 크기다. 머리 viewBox 밖의 날개·꼬리는 잘라 낸다 — 그것이
-   새어 나오면 이웃보다 커 보인다. */
+/* 밴드의 다른 글리프(16px)와 같은 크기다. 잘라 내기는 머리 창 마크의 공통 규칙이 진다. */
 .scuttlebutt-dock-glyph svg {
   width: 16px;
   height: 16px;
-  overflow: hidden;
 }
 
 .scuttlebutt-dock-glyph:hover,
@@ -1427,10 +1444,6 @@
   outline: none;
 }
 
-.scuttlebutt-dock-glyph:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
-}
 
 .scuttlebutt-dock-glyph[aria-pressed="true"] {
   border-color: transparent;

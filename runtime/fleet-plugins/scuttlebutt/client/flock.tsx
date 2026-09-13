@@ -985,12 +985,11 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             closeAnswer(admiral);
             setOpenAdmiral(admiral);
           }}
-          onDismiss={(restoreFocus) => {
+          onDismiss={() => {
             // 정박은 이 답을 읽으라고 세운 것이다 — 답을 닫으면 함께 풀려 다시 순항한다.
+            // 말풍선은 포커스를 가져간 적이 없다(pointerdown을 막는다) — 닫는다고 새로 포커스를
+            // 옮기면 사용자가 보던 자리를 잃고 새가 표식을 얻는다. 포커스는 있던 곳에 둔다.
             closeAnswer(admiral);
-            // 키보드로 닫았을 때만 새로 돌아간다 — 마우스로 닫고도 포커스를 옮기면 새를 감싼
-            // 링이 남는다(그 링은 포인터 사용자가 부른 적 없는 표식이다).
-            if (restoreFocus) focusAdmiral(admiral);
           }}
         />
       ))}

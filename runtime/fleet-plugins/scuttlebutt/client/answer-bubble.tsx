@@ -49,15 +49,13 @@ export function AnswerBubble({
    */
   readonly docked?: boolean;
   readonly onExpand: () => void;
-  /**
-   * `restoreFocus`는 키보드로 닫았을 때만 참이다. 마우스로 닫고도 새에 포커스를 되돌리면
-   * `:focus-visible` 링이 새를 감싸고 다른 곳을 누를 때까지 남는다 — 누른 적 없는 곳에 뜬 테두리는
-   * 사용자가 지울 방법을 모른다. 키보드로 닫은 사람에게는 반대로 그 링이 지금 어디에 서 있는지다.
-   */
-  readonly onDismiss: (restoreFocus: boolean) => void;
+  /** 닫힘은 포커스를 옮기지 않는다 — 말풍선은 포커스를 가져간 적이 없으므로 돌려줄 곳도 없다. */
+  readonly onDismiss: () => void;
 }) {
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
   const textRef = React.useRef<HTMLDivElement | null>(null);
+  /** 답이 도착해 포커스를 가져오기 직전에 서 있던 자리 — 닫으면 여기로 돌아간다. */
+  const returnRef = React.useRef<HTMLElement | null>(null);
   const t = getT(locale);
   const { copied, copy } = useCopyAnswer();
 
@@ -82,8 +80,9 @@ export function AnswerBubble({
         text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
         const clipped = text.scrollHeight > text.clientHeight + 1;
         text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
-        if (clipped) text.setAttribute("tabindex", "0");
-        else text.removeAttribute("tabindex");
+        // 잘렸을 때만 Tab 순서에 든다(키보드로 굴리라고). 안 잘려도 -1은 남는다 — 답이 정착하면
+        // 본문이 포커스를 받아야 Escape 한 번으로 물었던 자리로 돌아간다.
+        text.setAttribute("tabindex", clipped ? "0" : "-1");
       }
       bubble.style.left = `${Math.max(margin, window.innerWidth - margin - width - slot * (width + gap))}px`;
       bubble.style.bottom = "";
@@ -130,8 +129,7 @@ export function AnswerBubble({
       // 넘치는 답은 아래 가장자리를 흐려 "더 있다"고 말하고, 키보드로도 굴릴 수 있게 포커스 자리를 준다.
       const clipped = text.scrollHeight > text.clientHeight + 1;
       text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
-      if (clipped) text.setAttribute("tabindex", "0");
-      else text.removeAttribute("tabindex");
+      text.setAttribute("tabindex", clipped ? "0" : "-1");
     }
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
     // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
@@ -166,6 +164,47 @@ export function AnswerBubble({
     if (bubble) installDiagramHydrator(bubble, diagramHydratorLabels(locale));
   }, [locale]);
 
+  const answer = readAnswer(state);
+  const sources = readAnswerSources(state);
+  const working = state.phase === "starting" || state.phase === "thinking";
+
+  // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
+  // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
+  // 뺏으면 사용자가 치던 글자가 말풍선으로 간다.
+  // 모달이 열려 있으면 그 안의 포커스를 빼앗지 않는다 — Escape 리스너와 같은 독점 계약. 그 답은 모달을
+  // 닫은 뒤 사용자가 스스로 찾아 읽는다(그때 돌아갈 자리도 없으므로 기억하지 않는다). 렌더 시점에
+  // 정하는 이유: 포커스를 옮기면 보조 기술이 본문을 읽으므로 라이브 영역은 같은 렌더에서 비워야 한다 —
+  // 효과에서 비우면 이미 채워진 영역이 한 번 낭독을 예약한 뒤라 답이 두 번 읽힌다.
+  const settledUnderModal = !working && document.querySelector('[aria-modal="true"]') !== null;
+
+  React.useEffect(() => {
+    if (working || settledUnderModal) return;
+    const bubble = bubbleRef.current;
+    const text = textRef.current;
+    if (!bubble || !text) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !bubble.contains(active)) {
+      // 다른 부관의 말풍선이 포커스를 들고 있으면 그 말풍선이 아니라 그것이 기억한 원래 자리를 잇는다 —
+      // 둘이 함께 답할 때 먼저 온 답을 먼저 닫으면 그 본문은 사라지고, 나중 답을 닫는 순간 돌아갈
+      // 곳이 없어진다. 원래 자리(터미널·입력창)는 말풍선을 몇 개 거치든 하나다.
+      const viaBubble = active.closest(".scuttlebutt-answer-bubble") !== null;
+      returnRef.current = viaBubble ? sharedReturnTarget : active;
+      if (!viaBubble) sharedReturnTarget = active;
+    }
+    text.focus({ preventScroll: true });
+  }, [working, settledUnderModal]);
+
+  // 닫으면 기억한 자리로 돌아간다 — 단, 포커스가 아직 말풍선(또는 문서)에 있을 때만이다. 사용자가
+  // 그새 다른 곳을 눌렀다면 그 자리가 지금의 자리이고, 되돌리면 그것을 뺏는다.
+  const dismiss = React.useCallback(() => {
+    const bubble = bubbleRef.current;
+    const active = document.activeElement;
+    const target = returnRef.current;
+    const parked = active === null || active === document.body || (bubble !== null && bubble.contains(active));
+    onDismiss();
+    if (parked && target?.isConnected) target.focus({ preventScroll: true });
+  }, [onDismiss]);
+
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -174,16 +213,12 @@ export function AnswerBubble({
       // (도착 알림과 같은 계약).
       window.setTimeout(() => {
         if (event.defaultPrevented) return;
-        onDismiss(true);
+        dismiss();
       }, 0);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onDismiss]);
-
-  const answer = readAnswer(state);
-  const sources = readAnswerSources(state);
-  const working = state.phase === "starting" || state.phase === "thinking";
+  }, [dismiss]);
   const name = t(`chat.label.${admiral}` as "chat.label.tori");
 
   return (
@@ -196,9 +231,11 @@ export function AnswerBubble({
     >
       {/* 답은 한 글자씩 스트리밍된다 — 보이는 문단을 라이브 영역으로 두면 청크마다 전체가 다시
           읽힌다. 상시 존재하는 이 영역은 턴이 정착한 뒤에만 내용을 갖고, 그래서 한 번만 읽힌다
-          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). */}
+          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). 정착과 함께 본문에
+          포커스가 가면 보조 기술이 그 본문을 읽으므로 여기는 비운다 — 모달 뒤에서 정착해 포커스를
+          옮기지 않을 때만 라이브 영역이 답을 알린다. */}
       <span className="scuttlebutt-answer-announce" aria-live="polite" aria-atomic="true">
-        {working ? "" : answer?.text ?? ""}
+        {working || !settledUnderModal ? "" : answer?.text ?? ""}
       </span>
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
@@ -208,10 +245,11 @@ export function AnswerBubble({
         {answer === null
           ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>
           : answer.kind === "error"
-            ? <div ref={textRef} className="scuttlebutt-answer-text is-error">{answer.text}</div>
+            ? <div ref={textRef} tabIndex={-1} className="scuttlebutt-answer-text is-error">{answer.text}</div>
             : (
               <div
                 ref={textRef}
+                tabIndex={-1}
                 className="scuttlebutt-answer-text scuttlebutt-markdown-body"
                 onClick={(event) => copyCodeBlock(event, t("action.copied"))}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text, markdownRenderOptions(locale)).html }}
@@ -241,9 +279,7 @@ export function AnswerBubble({
         type="button"
         className="scuttlebutt-answer-dismiss"
         aria-label={t("answer.dismiss")}
-        // detail === 0은 키보드 활성화다(새 버튼의 onClick이 쓰는 판별과 같다). 마우스 클릭은
-        // 포인터가 이미 자리를 말했으므로 포커스를 옮기지 않는다.
-        onClick={(event) => onDismiss(event.detail === 0)}
+        onClick={dismiss}
       >
         ✕
       </button>
@@ -251,6 +287,9 @@ export function AnswerBubble({
     </div>
   );
 }
+
+/** 답 말풍선들이 공유하는 "원래 자리" — 마지막으로 말풍선 밖에서 포커스를 가져온 요소. */
+let sharedReturnTarget: HTMLElement | null = null;
 
 /** 본문이 이보다 낮아지면 한두 줄도 못 담는다 — 새가 화면 가장자리에 붙어도 이만큼은 읽힌다. */
 const ANSWER_MIN_HEIGHT_PX = 72;
