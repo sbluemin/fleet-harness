@@ -39,7 +39,6 @@ export interface ConsoleActionReceipt {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly expiresAt: string;
-  readonly expectedRevision: string;
   readonly operationId?: string;
   readonly policyId?: string;
   readonly error?: string;

@@ -130,7 +130,6 @@ export function createConsoleTerminalObserver(deps: {
   }
   return {
     begin, start, end, interrupt,
-    busy: (id: string) => pending.has(id),
     read: (id: string): PublicOutput => outputs.get(id)?.output ?? unavailable(),
     cancel(id: string) { complete(id, "unknown"); },
     forget(id: string) { complete(id, "unknown"); outputs.delete(id); },

@@ -83,7 +83,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const saved = (raw.version === 1 ? { ...raw, version: 2, actions: raw.actions.map(migrate), automations: raw.automations.map(migrate) } : raw) as SavedState;
     if (saved.version !== 2 || !Array.isArray(saved.actions) || !Array.isArray(saved.automations)
       || saved.actions.length > ACTION_LIMIT || saved.automations.length > 100
-      || saved.actions.some((a) => !a || typeof a.id !== "string" || typeof a.requestId !== "string" || !callerSchema.safeParse(a.caller).success || typeof a.expectedRevision !== "string" || !Number.isFinite(Date.parse(a.createdAt)) || !Number.isFinite(Date.parse(a.expiresAt)) || !["approval_required", "accepted", "running", "finished", "rejected", "failed", "outcome_unknown"].includes(a.status) || !actionSchema.safeParse(a.input).success)
+      || saved.actions.some((a) => !a || typeof a.id !== "string" || typeof a.requestId !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isFinite(Date.parse(a.createdAt)) || !Number.isFinite(Date.parse(a.expiresAt)) || !["approval_required", "accepted", "running", "finished", "rejected", "failed", "outcome_unknown"].includes(a.status) || !actionSchema.safeParse(a.input).success)
       || saved.automations.some((a) => !a || typeof a.id !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
     // 쓰기 직전에 죽었다면 재실행하지 않는다. 자동 정책은 기존 계약대로 재시작 뒤 일시 중지한다.
     state = { ...saved, actions: saved.actions.map((a) => pendingStatuses.has(a.status) ? { ...a, status: "outcome_unknown", error: "host_restarted" } : (a.status as string) === "approval_required" ? { ...a, status: "rejected", error: "approval_flow_removed" } : a), automations: saved.automations.map((a) => a.status === "active" || (a.status as string) === "approval_required" ? { ...a, status: "paused" } : a) };
@@ -132,17 +132,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     return !!operation && readConsoleUseFlag(operation.payload) !== null;
   }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
-  function revision(id: string) {
-    const op = node(id);
-    if (!op) return null;
-    const obs = observe(id);
-    // 본문·경로·provider id는 해시 입력에만 남고 응답에는 절대 싣지 않는다.
-    return hash([op.id, op.theaterId, op.type, op.pluginId, op.payload, obs?.lifecycle, obs?.activity]);
-  }
-  function targetRevision(input: ConsoleActionInput) {
-    if (input.kind === "launch") return deps.theaters().some((t) => t.id === input.theaterId) ? hash(["launch", input.theaterId]) : null;
-    return revision(input.operationId!);
-  }
   function validTarget(input: ConsoleActionInput, theaterId?: string) {
     if (input.kind === "launch") {
       if (!deps.theaters().some((t) => t.id === input.theaterId) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
@@ -172,7 +161,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     publish({ kind: "automation", automationId: id });
     return next;
   }
-  function request(caller: ConsoleCaller, requestId: string, raw: ConsoleActionInput, expectedRevision?: string, policyId?: string) {
+  function request(caller: ConsoleCaller, requestId: string, raw: ConsoleActionInput, policyId?: string) {
     if (disposed) fail("console_unavailable");
     if (storageError) fail("storage_unavailable");
     if (!callerAvailable(caller)) fail("caller_unavailable");
@@ -186,11 +175,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     }
     if (!deps.enabled()) fail("console_control_disabled");
     validTarget(input);
-    const current = targetRevision(input)!;
-    if (expectedRevision && expectedRevision !== current) fail("conflict");
     state.actions = state.actions.filter((a) => now() - Date.parse(a.createdAt) < RETENTION_DAYS * 86_400_000 || pendingStatuses.has(a.status));
     if (state.actions.length >= ACTION_LIMIT) fail("action_capacity");
-    const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, caller, input, status: "accepted", expectedRevision: current, createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
+    const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, caller, input, status: "accepted", createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
     state.actions.push(receipt);
     persist();
     publish({ kind: "action", actionId: receipt.id });
@@ -210,7 +197,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         const policy = state.automations.find((a) => a.id === entry.policyId);
         if (!policy || policy.status !== "active" || Date.parse(policy.input.expiresAt) <= now()) fail("policy_paused");
       }
-      if (targetRevision(entry.input) !== entry.expectedRevision) fail("conflict");
     };
     try { assertCurrent(); validTarget(entry.input); }
     catch (error) { return updateAction(id, { status: "failed", error: code(error) }); }
@@ -294,7 +280,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
           if (item.input.action.kind === "briefing") updateAutomation(item.id, { briefing: briefing(item.input.theaterId), lastError: undefined });
           else {
             validTarget(item.input.action, item.input.theaterId);
-            request(item.caller, `automation:${item.id}:${item.runs + 1}`, item.input.action, undefined, item.id);
+            request(item.caller, `automation:${item.id}:${item.runs + 1}`, item.input.action, item.id);
           }
         } catch (error) { updateAutomation(item.id, { status: "paused", lastError: code(error) }); }
       }
@@ -319,7 +305,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
-    observe, revision, request, automation, readEvents, briefing, tick,
+    observe, request, automation, readEvents, briefing, tick,
     getAction(id: string, caller?: ConsoleCaller) { return state.actions.find((a) => a.id === id && (!caller || sameCaller(a.caller, caller))) ?? null; },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },

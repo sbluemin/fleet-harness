@@ -126,7 +126,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       return {
         id: op.id, title: op.title, theaterId: op.theaterId, theater: names.get(op.theaterId) ?? op.theaterId,
         kind: op.type, activity: observation?.activity ?? (stale ? "unknown" : snapshotActivity ?? "unknown"),
-        createdAt: new Date(op.ts.createdAt).toISOString(), revision: control?.revision(op.id) ?? String(op.ts.updatedAt),
+        createdAt: new Date(op.ts.createdAt).toISOString(),
         observation: { source: observation ? "host" : snapshotActivity ? "snapshot" : "unavailable", observedAt: observation?.observedAt ?? current?.takenAt ?? null, stale },
         attention: observation?.attention ?? { kind: snapshotActivity === "awaiting" ? "input" : "unknown" },
       };
@@ -157,7 +157,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const { snapshotAt, values } = rows();
       const scope = values.filter((r) => (!args.theaterId || r.theaterId === args.theaterId) && (!args.kind || r.kind === args.kind) && (!args.query || r.title.toLowerCase().includes(args.query.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id));
       const filtered = scope.filter((r) => !args.activity || r.activity === args.activity);
-      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.query, filtered.map((r) => [r.id, r.revision])])).digest("hex").slice(0, 16);
+      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.query, filtered.map((r) => r.id)])).digest("hex").slice(0, 16);
       let offset = 0;
       if (args.cursor) { const [key, raw] = args.cursor.split(":"); offset = Number(raw); if (key !== generation || !Number.isSafeInteger(offset) || offset < 0 || offset > filtered.length) throw new ConsoleControlError("cursor_expired"); }
       const limit = args.limit ?? 50;
@@ -172,10 +172,10 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     }),
     define("console_events", "Read bounded Console changes or wait up to 25 seconds. No persistent wakeup guarantee. Expired cursors require a new snapshot. Cancel releases the wait.", z.object({ cursor: z.string().max(200).optional(), waitMs: z.number().int().min(0).max(25000).optional() }).strict(), (args, ctx) => { if (!control) throw new ConsoleControlError("observation_unavailable"); return control.readEvents(args.cursor, args.waitMs, ctx.signal); }),
   ];
-  for (const kind of ["launch", "send", "interrupt"] as const) specs.push(define(`console_${kind}`, `${kind === "interrupt" ? "Interrupt only the in-flight foreground turn. This does not terminate the process, close/delete the Operation, or stop background jobs. idle/ended returns nothing_to_interrupt immediately." : `${kind} a Console Operation through its supported execution path.`} Requires Experiments > Console use opt-in and, for an Operation caller, that Operation's own Console use toggle; together they authorize execution without individual approval. Returns a receipt, NOT completion. Reuse requestId after timeout.`, z.object({ requestId: ids, operationId: ids.optional(), theaterId: ids.optional(), text: z.string().min(1).max(32000).optional(), model: ids.optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), expectedRevision: ids.optional() }).strict(), (args, ctx) => {
+  for (const kind of ["launch", "send", "interrupt"] as const) specs.push(define(`console_${kind}`, `${kind === "interrupt" ? "Interrupt only the in-flight foreground turn. This does not terminate the process, close/delete the Operation, or stop background jobs. idle/ended returns nothing_to_interrupt immediately." : `${kind} a Console Operation through its supported execution path.`} Requires Experiments > Console use opt-in and, for an Operation caller, that Operation's own Console use toggle; together they authorize execution without individual approval. Returns a receipt, NOT completion. Reuse requestId after timeout.`, z.object({ requestId: ids, operationId: ids.optional(), theaterId: ids.optional(), text: z.string().min(1).max(32000).optional(), model: ids.optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional() }).strict(), (args, ctx) => {
     const id = requireCaller(ctx);
-    const { requestId, expectedRevision, ...input } = args;
-    return control!.request(id, requestId, { ...input, kind }, expectedRevision);
+    const { requestId, ...input } = args;
+    return control!.request(id, requestId, { ...input, kind });
   }));
   specs.push(define("console_action", "Read your action receipt: accepted is not finished. Same requestId deduplicates while the receipt is retained (7 days, at most 500 receipts).", z.object({ actionId: ids }).strict(), (args, ctx) => { const id = requireCaller(ctx); const action = control!.getAction(args.actionId, id); if (!action) throw new ConsoleControlError("action_not_found"); return action; }));
   specs.push(define("console_automation", "Create a bounded automation, list yours, pause or resume one. Console use opt-in plus the caller Operation's own toggle is blanket authorization; no individual approval. A policy is paused, not run, whenever its owner's authorization is gone at fire time. Exact target/action, expiry and attempt budget are fixed; restart pauses policies. Briefing performs no model call. No automatic approval of another agent's questions.", z.object({ mode: z.enum(["propose", "list", "pause", "resume"]), automationId: ids.optional(), policy: automationSchema.optional() }).strict(), (args, ctx) => { const id = requireCaller(ctx); if (args.mode === "list") return control!.listAutomations(id); if (args.mode === "pause" && args.automationId) return control!.pauseAutomation(args.automationId, id); if (args.mode === "resume" && args.automationId) return control!.resumeAutomation(args.automationId, id); if (args.mode === "propose" && args.policy) return control!.automation(id, args.policy); throw new ConsoleControlError("invalid_arguments"); }));
