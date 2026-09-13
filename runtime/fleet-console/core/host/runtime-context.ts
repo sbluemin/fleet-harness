@@ -4,7 +4,7 @@ import type { RouteRegistry, UpgradeRegistry } from "./route-registry/registry.j
 
 type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "aiGatewayMcp" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
   readonly admiralMcp: Pick<FleetPluginHostCapabilities["admiralMcp"], "connect">;
-  readonly computerUseMcp?: { connect(): import("./mcp/computer-use.js").ComputerUseMcpConnection };
+  readonly computerUseMcp?: { connect(): import("./mcp/computer-use.js").ComputerUseMcpConnection; revokeOperation(operationId: string): void };
   readonly operations: Pick<FleetPluginHostCapabilities["operations"], "list" | "get" | "create" | "patch" | "delete">;
   readonly paths: Omit<FleetPluginHostCapabilities["paths"], "pluginDataDir">;
 };

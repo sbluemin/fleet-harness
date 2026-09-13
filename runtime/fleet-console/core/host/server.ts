@@ -575,7 +575,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
   });
-  const computerUseMcp = createComputerUseMcpHost({ transport: mcpHttp.transport, service: computerUse });
+  const computerUseMcp = createComputerUseMcpHost({
+    transport: mcpHttp.transport,
+    service: computerUse,
+    operations: () => operations.list(),
+    experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
+  });
   const consoleUse = createConsoleUseMcpHost({
     control: consoleControl,
     transport: mcpHttp.transport,

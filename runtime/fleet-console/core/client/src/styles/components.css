@@ -6312,6 +6312,46 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
    기존 operation spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
+/* 켜진 AI 확장의 마크 무리 — 이름 뒤, pill 앞. 캡션·메뉴와 같은 글리프를 12px로 줄여 싣고
+   본문 잉크(--text-secondary)로 선다: 허용은 위치(brass)도 활동(signal)도 아닌 사실이다.
+   검토 중인 관찰만 aurora 점을 단다(진행 채널). */
+.side-bar-chip-marks {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 9%, transparent);
+  color: var(--text-secondary);
+}
+
+.side-bar-chip-mark {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.side-bar-chip-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.side-bar-chip-mark.is-busy::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  box-shadow: 0 0 5px var(--aurora-glow);
+  animation: caption-action-live 1.6s ease-in-out infinite;
+}
+
 .side-bar-chip-group-mark {
   display: block;
   flex: none;
@@ -7291,6 +7331,43 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .group-context-menu-item.is-selected .group-context-menu-item__check {
   visibility: visible;
+}
+
+/* 스위치 행 — 마크 + 이름 + 체크, 다른 항목과 같은 28px 한 줄. 마크는 캡션 마크와 같은 14px
+   격자를 쓰고, 켬은 체크 글리프만이 말한다(brass는 위치 채널). 상태 문구는 툴팁이 진다. */
+.group-context-menu-item--switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.group-context-menu-item__glyph {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+}
+
+.group-context-menu-item--switch.is-selected .group-context-menu-item__glyph,
+.group-context-menu-item--switch:hover .group-context-menu-item__glyph {
+  color: currentColor;
+}
+
+.group-context-menu-item__glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 검토 중은 aurora(상태 채널) 점 — 캡션의 진행 표시와 같은 말이다. */
+.group-context-menu-item__live {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  box-shadow: 0 0 6px var(--aurora-glow);
+  animation: caption-action-live 1.6s ease-in-out infinite;
 }
 
 .group-context-menu-item__plus {

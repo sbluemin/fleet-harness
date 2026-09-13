@@ -68,6 +68,73 @@ describe("Computer Use authorization and lifecycle", () => {
     } finally { await host.dispose(); }
   });
 
+  it("revoking an Operation aborts a call that passed authorization but has not claimed the device yet", async () => {
+    // 인가는 통과했지만 대상을 풀고 있는(파일시스템 대기) 사이에 허용이 거둬지면, 그 호출은 기기에 닿지 않아야 한다.
+    const f = setup();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const operations = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const service = new ComputerUseService({
+      directory: "unused", enabled: () => true, localControl: () => true,
+      platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true, resolveTarget: async (app) => { await gate; return app; }, createBroker: async () => { throw new Error("device must not be claimed"); } },
+    });
+    services.push(service);
+    const host = createComputerUseMcpHost({ service, operations: () => operations, experimentEnabled: () => true });
+    const connection = host.connect();
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!.token;
+      const pending = fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_state", arguments: { app: "/Applications/TextEdit.app" } } }) });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      operations[0]!.payload = {};
+      host.revokeOperation("op-a");
+      release();
+      const result = (await (await pending).json()).result as { isError: boolean; content: { text: string }[] };
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: "computer_use_session_unavailable" });
+      expect(service.status().state).toBe("idle");
+    } finally { await host.dispose(); }
+  });
+
+  it("refuses every device tool until the caller Operation is allowed, and revoking drops its device session", async () => {
+    // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Operation의 토글이 둘 다 참일 때만 통과하고,
+    // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.
+    const f = setup();
+    let experiment = true;
+    const operations = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const host = createComputerUseMcpHost({ service: f.service, operations: () => operations, experimentEnabled: () => experiment, language: () => "ko" });
+    const connection = host.connect();
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!.token;
+      const call = async (name: string, args = {}) => (await (await fetch(endpoint.url, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+      })).json()).result as { isError: boolean; content: { text: string }[] };
+      const parse = (result: { content: { text: string }[] }) => JSON.parse(result.content[0]!.text);
+      const denied = await call("computer_state", { app: "com.apple.TextEdit" });
+      expect(denied.isError).toBe(true);
+      expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
+      expect(parse(denied).message).toContain("컴퓨터 사용");
+      expect(f.call).not.toHaveBeenCalled();
+      expect(parse(await call("computer_status"))).toMatchObject({ reason: "operation_not_authorized" });
+      operations[0]!.payload = { computerUse: { enabled: true, language: "en" } };
+      experiment = false;
+      expect(parse(await call("computer_apps"))).toMatchObject({ error: "computer_use_not_authorized", reason: "experiment_disabled", remedy: { surface: "settings" } });
+      experiment = true;
+      const allowed = await call("computer_state", { app: "com.apple.TextEdit" });
+      expect(allowed.isError).toBe(false);
+      expect(f.call).toHaveBeenCalledTimes(1);
+      expect(f.service.status().state).not.toBe("idle");
+      operations[0]!.payload = {};
+      host.revokeOperation("op-a");
+      await f.service.stop();
+      expect(f.stop).toHaveBeenCalledTimes(1);
+      expect(parse(await call("computer_apps"))).toMatchObject({ reason: "operation_not_authorized" });
+      expect(f.call).toHaveBeenCalledTimes(1);
+    } finally { await host.dispose(); }
+  });
+
   it("keeps the default-off and remote boundary ahead of process startup", async () => {
     const f = setup();
     f.enable(false);

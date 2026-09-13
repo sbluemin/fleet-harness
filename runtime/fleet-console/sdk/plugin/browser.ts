@@ -9,6 +9,7 @@ import type {
   ClientSettingsCapability,
   FleetClientPlugin,
   OperationKindDescriptor,
+  OperationMenuContext,
   OperationRuntimeHydration,
   OperationRuntimeState,
   PluginInstallContext,

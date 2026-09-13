@@ -39,15 +39,46 @@ export function CaptionWatchGlyph() {
 }
 
 /**
- * 콘솔 사용(실험) — 이 세션이 바깥의 Console을 잡는다는 뜻이다. 관찰의 눈과 달리 밖을 향한 화살을
- * 진다: 지켜보는 것이 아니라 건드리는 권한이므로 표식도 달라야 한다.
+ * "~Use" 계열의 공통 포인터 — 프레임의 오른쪽 아래 모서리를 문다. 관찰의 눈이 지켜보기만 한다면
+ * 이쪽은 밖에서 안으로 손을 넣는 권한이므로, 프레임은 그 자리를 비우고 포인터가 차지한다.
+ * 캡션 마크 가운데 유일하게 채운 획이다: 선 프레임 위에서 포인터가 대상이 아니라 행위자로 읽히게.
  */
+function UsePointer() {
+  return <path d="M8.7 8.2 14 10.3 11.7 11.2 10.8 13.6Z" fill="currentColor" stroke="currentColor" strokeWidth={0.9} strokeLinejoin="round" />;
+}
+
+/** 모서리를 비운 창 — Console·Browser Use가 같은 프레임을 쓰고 안의 표식으로만 갈린다. */
+const USE_WINDOW = "M8 12.8H3.7A1.6 1.6 0 0 1 2.1 11.2V4.8A1.6 1.6 0 0 1 3.7 3.2h8.6a1.6 1.6 0 0 1 1.6 1.6v2.6";
+
+/** 콘솔 사용(실험) — Shell 마크와 같은 창 + 프롬프트 ❯. fleet-console 자체를 잡는다는 뜻이다. */
 export function CaptionConsoleUseGlyph() {
   return (
     <CaptionGlyph>
-      <rect x="2.1" y="3.2" width="11.8" height="9.6" rx="1.6" {...STROKE} />
-      <path d="M5.2 7.1 7.1 8.9 5.2 10.7" {...STROKE} />
-      <path d="M8.7 10.8h2.4" {...STROKE} />
+      <path d={USE_WINDOW} {...STROKE} />
+      <path d="M4.9 6.3 6.7 8 4.9 9.7" {...STROKE} />
+      <UsePointer />
+    </CaptionGlyph>
+  );
+}
+
+/** 컴퓨터 사용 — 화면 + 받침대. OS 화면 전체를 뜻하는 가장 작은 실루엣이다. */
+export function CaptionComputerUseGlyph() {
+  return (
+    <CaptionGlyph>
+      <path d="M8 10.6H3.9a1.4 1.4 0 0 1-1.4-1.4V4a1.4 1.4 0 0 1 1.4-1.4h8.2A1.4 1.4 0 0 1 13.5 4v3" {...STROKE} />
+      <path d="M1.6 13h6" {...STROKE} />
+      <UsePointer />
+    </CaptionGlyph>
+  );
+}
+
+/** 브라우저 사용 — 창 + 주소 표시줄 한 선. 탭·지구본 없이도 14px에서 브라우저로 읽힌다. */
+export function CaptionBrowserUseGlyph() {
+  return (
+    <CaptionGlyph>
+      <path d={USE_WINDOW} {...STROKE} />
+      <path d="M2.1 6.2h11.8" {...STROKE} />
+      <UsePointer />
     </CaptionGlyph>
   );
 }
