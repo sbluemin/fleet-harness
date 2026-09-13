@@ -107,7 +107,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           active = true;
           cancelled = false;
           try { await loop.run(text); }
-          finally { active = false; turnController?.abort(); turnController = null; }
+          finally { active = false; computerConnection?.revoke(); turnController?.abort(); turnController = null; }
         });
         tail = work.catch(() => undefined);
         return work;
@@ -122,6 +122,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           return;
         }
         cancelled = true;
+        computerConnection?.revoke();
         turnController?.abort();
         loop.cancel();
         options.onEvent?.({ kind: "cancelled" });

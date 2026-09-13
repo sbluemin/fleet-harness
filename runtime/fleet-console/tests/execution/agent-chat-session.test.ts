@@ -276,7 +276,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-1", () => freshSeedFor(home));
+    const cancelComputerUse = vi.fn();
+    const session = await registry.ensure("op-1", () => ({ ...freshSeedFor(home), cancelComputerUse }));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
     // 되돌릴 과거가 0턴이라는 사실도 명시적으로 닫힌 경계가 말한다.
@@ -285,6 +286,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     session.send("let us talk about the render path");
     await drainTurn(registry, "op-1");
 
+    expect(cancelComputerUse).toHaveBeenCalledTimes(1);
     expect(sends).toEqual(["let us talk about the render path"]);
     const request = openSession.mock.calls[0]?.[0] as Record<string, unknown>;
     expect("resume" in request).toBe(false);

@@ -23,7 +23,8 @@ function run(args) {
   if (matches.length!==1) return 'null';
   var running=matches[0], pid=Number(running.processIdentifier);
   var app=$.AXUIElementCreateApplication(pid), focused=Ref();
-  if ($.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused)!==0) return 'null';
+  var axError=$.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused);
+  if (axError!==0) throw Error('window_accessibility_'+axError);
   var id=Ref();
   if ($._AXUIElementGetWindow(focused[0],id)!==0) return 'null';
   var rows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
@@ -41,7 +42,7 @@ export function verifyMacWindowIdentity(target: ComputerUseWindowIdentity): Prom
 export function readMacWindowIdentity(app: string): Promise<ComputerUseWindowIdentity | null> {
   return new Promise((resolve) => {
     execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, app], { timeout: 3000, maxBuffer: 64 * 1024 }, (error, stdout) => {
-      if (error) { process.stderr.write(`[fleet-computer-use] window identity unavailable: ${error.message}\n`); resolve(null); return; }
+      if (error) { process.stderr.write(`[fleet-computer-use] window identity unavailable: ${/window_accessibility_-25211/.test(error.message) ? "accessibility_permission_required" : "window_lookup_failed"}\n`); resolve(null); return; }
       try {
         const value = JSON.parse(stdout) as ComputerUseWindowIdentity | null;
         resolve(value && Number.isSafeInteger(value.pid) && value.pid > 0 && Number.isSafeInteger(value.windowId) && value.windowId > 0

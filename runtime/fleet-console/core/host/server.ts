@@ -982,7 +982,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
       const candidate = computerCaptureTarget;
       if (candidate && !await computerUse.verifyCaptureTarget(candidate) && computerCaptureTarget?.id === candidate.id) computerCaptureTarget = null;
-      writeJson(res, 200, { target: computerUse.status().enabled ? computerCaptureTarget : null });
+      const unavailableOwner = computerUse.captureUnavailableOwner();
+      const unavailableOperationId = unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null;
+      writeJson(res, 200, { target: computerUse.status().enabled ? computerCaptureTarget : null, unavailableOperationId });
       return true;
     }
     writeJson(res, 405, { error: "method_not_allowed" });
@@ -2560,8 +2562,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     activeLockFile = null;
     activeEndpoint = null;
     deletionCoordinator.dispose();
+    // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
+    const stoppingComputerUse = computerUseMcp.dispose();
     try {
       await Promise.all([
+        stoppingComputerUse,
         closeHttpServer(current),
         closeHttpServer(currentLoopback),
       ]);

@@ -64,8 +64,16 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       try {
         const response = await fetch("/api/v1/desktop/computer-capture", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
         if (!response.ok) throw new Error("capture_target_unavailable");
-        const { target } = await response.json() as { target: CaptureTarget | null };
+        const { target, unavailableOperationId } = await response.json() as { target: CaptureTarget | null; unavailableOperationId?: string | null };
         if (disposed) return;
+        if (!target && unavailableOperationId) {
+          stop();
+          currentId = null;
+          attemptedId = null;
+          setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, title: "" }, stream: null, failed: true });
+          return;
+        }
+        if (!target) setCapture(null);
         if ((target?.id ?? null) !== currentId) {
           stop();
           currentId = target?.id ?? null;
@@ -191,6 +199,6 @@ export function ComputerScreenShare({ operationId }: { operationId: string }) {
         const next = { width: Math.min(parent.clientWidth - (position?.x ?? 12), Math.max(96, size.width + direction[0]!)), height: Math.min(parent.clientHeight - (position?.y ?? 12), Math.max(72, size.height + direction[1]!)) };
         preferredSize.current = next; setSize(next);
       }}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="m5 13 8-8m-3 8 3-3" /></svg></button> : null}
-    </> : <><p role="status">{t("settings.computerUse.shareError")}</p><button type="button" className="computer-screen-share-retry" onClick={own.retry}>{t("settings.computerUse.shareRetry")}</button></>}
+    </> : <><p role="status">{t("settings.computerUse.shareError")}</p>{own.retry ? <button type="button" className="computer-screen-share-retry" onClick={own.retry}>{t("settings.computerUse.shareRetry")}</button> : <p>{t("settings.computerUse.sharePermission")}</p>}</>}
   </aside>;
 }

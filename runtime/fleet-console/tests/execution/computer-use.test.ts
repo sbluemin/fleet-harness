@@ -80,11 +80,18 @@ describe("Computer Use authorization and lifecycle", () => {
       f.call.mockResolvedValueOnce({ captureWindow: { pid: 2, windowId: 43, processStartedAt: 124, title: "" }, content: [{ type: "text", text: 'App=Gemini (bundleID com.google.GeminiMacOS, pid 2)\nWindow: "", App: Gemini.\n0 standard window Gemini - Conversation, Secondary Actions: Raise' }] });
       await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.GeminiMacOS" } });
       expect(f.onCaptureTarget.mock.lastCall?.[0]).toMatchObject({ pid: 2, title: "" });
+      // 턴 종료는 기기만 놓고 같은 MCP 토큰의 다음 턴은 다시 사용할 수 있다.
+      connection.cancelSession("on");
+      expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
+      await f.service.stop();
+      expect(f.service.activeOwner()).toBeNull();
+      await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.GeminiMacOS" } });
+      expect(f.start).toHaveBeenCalledTimes(2);
       connection.releaseSessionToken("on");
       expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
       expect(host.operationIdForOwner(capture.owner)).toBeNull();
       expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).error).toBeDefined();
-      expect(f.call).toHaveBeenCalledTimes(4);
+      expect(f.call).toHaveBeenCalledTimes(5);
       await f.service.stop();
       expect(f.stop).toHaveBeenCalled();
     } finally { await host.dispose(); }

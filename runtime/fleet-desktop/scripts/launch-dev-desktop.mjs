@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -19,7 +20,12 @@ export async function createMacDevWrapper(input) {
   const contentsDirectory = path.join(wrapperPath, "Contents");
   const executablePath = path.join(contentsDirectory, "MacOS", "Electron");
   const wrapperIconPath = path.join(contentsDirectory, "Resources", "icon.icns");
-  if (await isReusableWrapper(wrapperPath, electronAppPath)) {
+  // checkout 경로를 서명된 Info.plist에 넣으면 같은 Electron도 worktree마다 다른 앱이 된다.
+  const sourceIdentity = createHash("sha256");
+  for (const file of [path.join(electronAppPath, "Contents", "MacOS", "Electron"), path.join(electronAppPath, "Contents", "Info.plist"), input.iconPath,
+    path.join(desktopDirectory, "build", "entitlements.mac.plist")]) sourceIdentity.update(await readFile(file));
+  const identity = sourceIdentity.digest("hex");
+  if (await isReusableWrapper(wrapperPath, identity)) {
     return { appPath: wrapperPath, executablePath };
   }
 
@@ -29,7 +35,7 @@ export async function createMacDevWrapper(input) {
   const sourceInfoPath = path.join(electronAppPath, "Contents", "Info.plist");
   const wrapperInfoPath = path.join(contentsDirectory, "Info.plist");
   const sourceInfo = await readFile(sourceInfoPath, "utf8");
-  await writeFile(wrapperInfoPath, createInfoPlist(sourceInfo, electronAppPath));
+  await writeFile(wrapperInfoPath, createInfoPlist(sourceInfo, identity));
   await copyFile(input.iconPath, wrapperIconPath);
   await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", "--identifier", bundleIdentifier,
     "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath]);

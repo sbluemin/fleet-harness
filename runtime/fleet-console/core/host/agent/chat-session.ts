@@ -2015,6 +2015,8 @@ class AgentChatSession {
   private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
+    // SDK 대화 세션이 살아 있어도 기기 제어는 이 턴과 함께 끝난다.
+    this.seed.cancelComputerUse?.();
     const reachedChild = this.turnReachedChild;
     this.turnReachedChild = false;
     this.push({

@@ -1700,7 +1700,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     if (updated.chatActive !== true) {
       if (turnState === "running") consoleTerminal.start(sessionId, body?.input);
-      else void consoleTerminal.end(sessionId, body?.input).catch(() => consoleTerminal.cancel(sessionId));
+      else {
+        computerUseMcp?.cancelSession(sessionId);
+        void consoleTerminal.end(sessionId, body?.input).catch(() => consoleTerminal.cancel(sessionId));
+      }
     }
     oscActivityTrackers.get(sessionId)?.reset();
     // hook stdin의 cwd는 에이전트가 세션 중 옮겨 간 자리다 — 실행 cwd와 다르면 "지금 어디" 축이 따라간다.
