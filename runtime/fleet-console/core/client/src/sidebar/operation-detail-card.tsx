@@ -15,6 +15,8 @@ export interface OperationDetailProps {
   /** 열려 있는 동안에도 살아 있는 값을 그대로 받는다 — 카드는 스냅샷을 들고 있지 않는다. */
   readonly activity: OperationMarkVisual | undefined;
   readonly workspace: OperationWorkspace | null;
+  /** 위치의 뿌리 — 세션이 Theater 아래 어디에 서 있는지를 이름부터 이어 붙인다. */
+  readonly theaterLabel: string | null;
   readonly createdAt: number;
   /** 칩이 `aria-describedby`로 가리키는 id — 포털로 나간 요소는 자동으로 연결되지 않는다. */
   readonly id: string;
@@ -25,12 +27,12 @@ export interface OperationDetailProps {
  * 카드를 연 사람은 어느 칩을 겨눴는지 알고 있으므로 제목을 다시 얹지 않는다. 읽기 전용이라
  * 초점을 가져가지 않고, 포인터가 지나가도 반응하지 않는다(pointer-events: none).
  */
-export function OperationDetailCard({ anchor, activity, workspace, createdAt, id }: OperationDetailProps) {
+export function OperationDetailCard({ anchor, activity, workspace, theaterLabel, createdAt, id }: OperationDetailProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<CSSProperties | null>(null);
-  const location = locationLine(workspace);
+  const location = locationLine(workspace, theaterLabel);
 
   // 자리는 카드 크기를 알아야 정해진다 — 그리기 전 프레임에 재고 나서 한 번에 앉힌다.
   // 열린 채로 내용이 바뀌면 높이도 바뀌므로 그때마다 다시 잰다.
