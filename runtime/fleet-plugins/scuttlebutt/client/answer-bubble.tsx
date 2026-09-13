@@ -54,6 +54,8 @@ export function AnswerBubble({
 }) {
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
   const textRef = React.useRef<HTMLDivElement | null>(null);
+  /** 답이 도착해 포커스를 가져오기 직전에 서 있던 자리 — 닫으면 여기로 돌아간다. */
+  const returnRef = React.useRef<HTMLElement | null>(null);
   const t = getT(locale);
   const { copied, copy } = useCopyAnswer();
 
@@ -162,6 +164,36 @@ export function AnswerBubble({
     if (bubble) installDiagramHydrator(bubble, diagramHydratorLabels(locale));
   }, [locale]);
 
+  const answer = readAnswer(state);
+  const sources = readAnswerSources(state);
+  const working = state.phase === "starting" || state.phase === "thinking";
+
+  // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
+  // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
+  // 뺏으면 사용자가 치던 글자가 말풍선으로 간다.
+  React.useEffect(() => {
+    if (working) return;
+    const bubble = bubbleRef.current;
+    const text = textRef.current;
+    if (!bubble || !text) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !bubble.contains(active)) {
+      returnRef.current = active;
+    }
+    text.focus({ preventScroll: true });
+  }, [working]);
+
+  // 닫으면 기억한 자리로 돌아간다 — 단, 포커스가 아직 말풍선(또는 문서)에 있을 때만이다. 사용자가
+  // 그새 다른 곳을 눌렀다면 그 자리가 지금의 자리이고, 되돌리면 그것을 뺏는다.
+  const dismiss = React.useCallback(() => {
+    const bubble = bubbleRef.current;
+    const active = document.activeElement;
+    const target = returnRef.current;
+    const parked = active === null || active === document.body || (bubble !== null && bubble.contains(active));
+    onDismiss();
+    if (parked && target?.isConnected) target.focus({ preventScroll: true });
+  }, [onDismiss]);
+
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -170,16 +202,12 @@ export function AnswerBubble({
       // (도착 알림과 같은 계약).
       window.setTimeout(() => {
         if (event.defaultPrevented) return;
-        onDismiss();
+        dismiss();
       }, 0);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onDismiss]);
-
-  const answer = readAnswer(state);
-  const sources = readAnswerSources(state);
-  const working = state.phase === "starting" || state.phase === "thinking";
+  }, [dismiss]);
   const name = t(`chat.label.${admiral}` as "chat.label.tori");
 
   return (
@@ -204,10 +232,11 @@ export function AnswerBubble({
         {answer === null
           ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>
           : answer.kind === "error"
-            ? <div ref={textRef} className="scuttlebutt-answer-text is-error">{answer.text}</div>
+            ? <div ref={textRef} tabIndex={-1} className="scuttlebutt-answer-text is-error">{answer.text}</div>
             : (
               <div
                 ref={textRef}
+                tabIndex={-1}
                 className="scuttlebutt-answer-text scuttlebutt-markdown-body"
                 onClick={(event) => copyCodeBlock(event, t("action.copied"))}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text, markdownRenderOptions(locale)).html }}
@@ -237,9 +266,7 @@ export function AnswerBubble({
         type="button"
         className="scuttlebutt-answer-dismiss"
         aria-label={t("answer.dismiss")}
-        // detail === 0은 키보드 활성화다(새 버튼의 onClick이 쓰는 판별과 같다). 마우스 클릭은
-        // 포인터가 이미 자리를 말했으므로 포커스를 옮기지 않는다.
-        onClick={() => onDismiss()}
+        onClick={dismiss}
       >
         ✕
       </button>

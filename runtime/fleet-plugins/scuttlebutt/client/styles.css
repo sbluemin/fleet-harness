@@ -676,10 +676,10 @@
   mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
 }
 
+/* 답이 오면 본문이 포커스를 받는다 — 말풍선 자체가 새로 선 표면이라 링을 두르지 않는다(마스코트와
+   같은 규약). 키보드 스크롤은 그대로 된다. */
 .scuttlebutt-answer-text:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-  border-radius: var(--radius-xs);
+  outline: none;
 }
 
 .scuttlebutt-answer-foot {
