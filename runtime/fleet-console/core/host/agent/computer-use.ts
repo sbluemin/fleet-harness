@@ -65,15 +65,31 @@ export class ComputerUseService {
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
+  private platformRevision = 0;
+  private switchingPlatform = false;
 
   constructor(private readonly deps: {
     readonly directory: string;
     readonly enabled: () => boolean;
     readonly localControl: () => boolean;
-    readonly platform: ComputerUsePlatform;
+    platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
   }) {}
+
+  async setPlatform(platform: ComputerUsePlatform): Promise<void> {
+    const revision = ++this.platformRevision;
+    if (this.deps.platform === platform && !this.switchingPlatform) return;
+    this.switchingPlatform = true;
+    try {
+      await this.stop();
+      if (revision !== this.platformRevision) return;
+      this.deps.platform = platform;
+      this.installation = "unchecked";
+      this.error = null;
+      this.lastCall = null;
+    } finally { if (revision === this.platformRevision) this.switchingPlatform = false; }
+  }
 
   status(): ComputerUseStatus {
     const enabled = this.deps.enabled();
@@ -191,6 +207,8 @@ export class ComputerUseService {
   }
 
   private async executeInternal(tool: string, input: unknown, owner: string | undefined, signal?: AbortSignal): Promise<ComputerUseResult> {
+    const platformRevision = this.platformRevision;
+    if (this.switchingPlatform) return result({ error: "computer_use_busy" }, true);
     if (!this.deps.enabled()) return result({ error: "computer_use_disabled" }, true);
     if (!this.status().supported) return result({ error: this.deps.platform.unavailableError }, true);
     if (!this.deps.localControl()) return result({ error: "computer_use_local_only" }, true);
@@ -209,7 +227,7 @@ export class ComputerUseService {
       try { app = await this.deps.platform.resolveTarget(app); }
       catch (error) { if (error instanceof ComputerUseInputError) return result({ error: error.message }, true); throw error; }
     }
-    if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy" }, true);
+    if (this.switchingPlatform || platformRevision !== this.platformRevision || this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy" }, true);
     if (!this.deps.enabled() || !this.deps.localControl() || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
     this.busy = true;
     this.activeTool = tool;

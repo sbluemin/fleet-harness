@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useSelect } from "@fleet-console/sdk/react/browser";
+import type { ComputerUseBackendId } from "@fleet-console/sdk/settings";
+import { isComputerUseBackendId } from "@fleet-console/sdk/settings/browser";
 import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { SettingsHelp } from "../components/settings-help.js";
 import { useT } from "../i18n/index.js";
@@ -14,15 +18,19 @@ interface Status {
   readonly elapsedMs: number;
   readonly apps: readonly string[];
   readonly error: string | null;
+  readonly installer?: { phase: string; error: string | null; supported: boolean; version: string };
 }
 
-export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled: boolean; readonly saving: boolean; readonly onChange: (enabled: boolean) => void }) {
+const BACKENDS = [{ value: "sky-computer-use", label: "SkyComputerUse" }, { value: "cua-driver", label: "Cua Driver" }];
+
+export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendChange }: { readonly enabled: boolean; readonly backend: ComputerUseBackendId; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly onBackendChange: (backend: ComputerUseBackendId) => void }) {
   const t = useT();
   const [status, setStatus] = useState<Status | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const select = useSelect({ value: backend, options: BACKENDS, disabled: saving || working, onChange: value => { if (isComputerUseBackendId(value)) { setStatus(null); onBackendChange(value); } } });
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -37,7 +45,7 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
     };
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [enabled, refreshKey]);
+  }, [enabled, backend, refreshKey]);
 
   const stop = async () => {
     setWorking(true);
@@ -51,7 +59,17 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
     } catch (error) { setError(error instanceof Error ? error.message : "request_failed"); }
     finally { setWorking(false); }
   };
-  const code = error ?? (enabled ? status?.error : null);
+  const installing = working || ["downloading", "verifying", "installing"].includes(status?.installer?.phase ?? "");
+  const install = async () => {
+    setWorking(true); setError(null);
+    try {
+      const response = await fetch("/api/v1/computer-use/install", { method: "POST" });
+      if (!response.ok) throw new Error("computer_use_install_failed");
+      setRefreshKey(key => key + 1);
+    } catch { setError("computer_use_install_failed"); }
+    finally { setWorking(false); }
+  };
+  const code = error ?? (backend === "cua-driver" ? status?.installer?.error : null) ?? (enabled ? status?.error : null);
   const errorKey = code === "computer_use_automation_permission_denied" ? "permission"
     : code === "computer_use_runtime_incompatible" ? "incompatible"
       : code === "computer_use_no_action_window" ? "noActionWindow"
@@ -66,11 +84,21 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
           <SettingsHelp title={t("settings.computerUse.title")}>
             <p>{t("settings.computerUse.help")}</p>
             <p>{t("settings.computerUse.notice")}</p>
-            {status?.installation === "missing" && <p>{t("settings.computerUse.missing")}</p>}
+            {status?.installation === "missing" && <p>{t(backend === "cua-driver" ? "settings.computerUse.missing" : "settings.computerUse.skyMissing")}</p>}
           </SettingsHelp>
         </p>
       </div>
       <div className="experiments-row-controls">
+        <div {...select.rootProps}>
+          <button {...select.triggerProps} aria-label={t("settings.computerUse.backend")}>
+            <span className="fc-select__value">{BACKENDS.find(option => option.value === backend)?.label}</span>
+            <span className="fc-select__caret" aria-hidden="true">⌄</span>
+          </button>
+          {select.isOpen && createPortal(<ul {...select.listboxProps} aria-label={t("settings.computerUse.backend")}>
+            {BACKENDS.map((option, index) => <li key={option.value} {...select.getOptionProps(index)}>{option.label}</li>)}
+          </ul>, document.body)}
+        </div>
+        {backend === "cua-driver" && status?.installation === "missing" && status.installer?.supported && <button type="button" className="fc-settings-reset" disabled={installing || saving} onClick={() => void install()}>{t(installing ? "settings.computerUse.installing" : "settings.computerUse.install")}</button>}
         {unavailable && <button type="button" className="fc-settings-reset" onClick={() => setRefreshKey((key) => key + 1)}>{t("settings.computerUse.retry")}</button>}
         {active && <button type="button" className="fc-settings-reset" disabled={working || status.state === "stopping"} onClick={() => void stop()}>{t("settings.computerUse.stop")}</button>}
         <SettingsToggle checked={enabled} disabled={saving || working || (!enabled && (!status?.supported || unavailable || status.installation !== "available"))} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />

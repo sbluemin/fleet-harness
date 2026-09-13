@@ -121,7 +121,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
             onChange={(next) => save({ ...experiments, consoleControl: next })} />
         </div>
       </div>
-      <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} />
+      <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
     </section>
   );
 }

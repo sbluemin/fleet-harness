@@ -587,5 +587,14 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(f.service.status()).toMatchObject({ state: "idle", apps: [] });
     await f.invoke("computer_apps", {}, "session-b");
     expect(f.start).toHaveBeenCalledTimes(2);
+    let finish!: () => void;
+    f.call.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ content: [{ type: "text", text: "old backend" }] }); }));
+    const previous = f.invoke("computer_state", { app: "Fixture" }, "session-b");
+    await vi.waitFor(() => expect(f.service.status().activeTool).toBe("computer_state"));
+    await f.service.setPlatform({ ...macOSComputerUsePlatform, supported: () => false });
+    finish();
+    expect(await previous).toMatchObject({ isError: true });
+    expect(f.service.status()).toMatchObject({ supported: false, installation: "unchecked", apps: [] });
+    expect(f.service.activeOwner()).toBeNull();
   });
 });

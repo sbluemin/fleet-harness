@@ -25,7 +25,7 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
     const respond: typeof callback = (streams) => { answered = true; callback(streams); };
     void (async () => {
       const origin = localOrigin();
-      if (process.platform !== "darwin" || !origin || request.frame !== contents.mainFrame || !request.videoRequested || request.audioRequested) { log("computer capture rejected: request scope"); respond({}); return; }
+      if (!origin || request.frame !== contents.mainFrame || !request.videoRequested || request.audioRequested) { log("computer capture rejected: request scope"); respond({}); return; }
       const readTarget = async () => {
         const response = await fetch(`${origin}${DESKTOP_COMPUTER_CAPTURE_PATH}`, { signal: AbortSignal.timeout(3000) });
         if (!response.ok) return null;
@@ -35,10 +35,12 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
       const target = await readTarget();
       if (!target) { log("computer capture rejected: window identity unavailable"); respond({}); return; }
       // Electron 자신의 TCC 요청을 거친다. 목록은 floating 창을 생략할 수 있어 식별의 근거가 아니다.
-      await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
-      if (!await verifyWindow(target)) { log("computer capture rejected: window owner changed or closed"); respond({}); return; }
+      const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
+      const source = sources.find(source => source.id === `window:${target.windowId}:0`);
+      if (process.platform !== "darwin" && !source) { log("computer capture rejected: exact window source unavailable"); respond({}); return; }
+      if (process.platform === "darwin" && !await verifyWindow(target)) { log("computer capture rejected: window owner changed or closed"); respond({}); return; }
       const current = await readTarget();
-      if (current?.id !== target.id || localOrigin() !== origin || !await verifyWindow(target)) { log("computer capture rejected: selection changed"); respond({}); return; }
+      if (current?.id !== target.id || localOrigin() !== origin || (process.platform === "darwin" && !await verifyWindow(target))) { log("computer capture rejected: selection changed"); respond({}); return; }
       log(`computer capture source selected window=${target.windowId}`);
       respond({ video: { id: `window:${target.windowId}:0`, name: target.title } });
     })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${systemPreferences.getMediaAccessStatus("screen")}`); if (!answered) respond({}); });

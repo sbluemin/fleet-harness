@@ -30,6 +30,7 @@ export interface SettingsSectionDescriptor {
 
 export type {
   ConsoleExperimentSettings,
+  ComputerUseBackendId,
   ExperimentAideId,
   ExperimentAideSelection,
   ExperimentEffort,
@@ -48,6 +49,7 @@ export {
   EXPERIMENT_MODEL_FEATURES,
   experimentAideSelection,
   experimentFeatureModel,
+  isComputerUseBackendId,
   isExperimentEffort,
   isExperimentModelId,
   resolveExperimentSettings,

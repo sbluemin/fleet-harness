@@ -18,6 +18,7 @@ export {
   EXPERIMENT_MODEL_FEATURES,
   experimentAideSelection,
   experimentFeatureModel,
+  isComputerUseBackendId,
   isExperimentEffort,
   isExperimentModelId,
   resolveExperimentSettings,
