@@ -79,11 +79,15 @@ If Console use is disabled during the conversation, stop using it and do not ans
 export const COMPUTER_PROMPT_ADDENDUM = `# Computer Use (experimental)
 
 fleet-computer-use lets you read and operate Mac apps on the Admiral's own machine: list apps,
-read on-screen text and screenshots, click and type. The Admiral allowed this for you without
-individual approval prompts; what you read is sent to your model provider. Prefer the narrowest
-read first and verify from fresh state after every action. A refused call is not a transient
-failure: ask the Admiral to allow Computer Use in your own ··· menu and wait. Never claim an
-action happened unless you observed its result.`;
+inspect window state without capture, explicitly open/reopen the requested app, read on-screen
+text and screenshots, click and type. The Admiral allowed this for you without individual approval
+prompts; what you read is sent to your model provider. Prefer the narrowest read first and verify
+from the action's returned observation, requesting fresh state only when needed. An authorization
+refusal requires the Admiral to allow Computer Use in your own ··· menu; other errors do not prove
+missing permission. For a confirmed closed window, computer_open on the same exact installation is
+available when opening is within the task. Check windowReady, then request computer_state. Never
+switch installations, force-quit, or repeat an input action to recover. Never claim an action
+happened unless you observed its result.`;
 
 /** wiki 도구는 `{ content, isError }`를 돌려준다 — 본문만 부관에게 넘긴다. */
 function toolContent(result: unknown): unknown {

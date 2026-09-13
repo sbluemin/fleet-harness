@@ -36,7 +36,9 @@ import { createDeferredDeletionCoordinator, DeferredDeletionError, type Deferred
 import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
 import { ComputerUseService } from "./agent/computer-use.js";
-import { macOSComputerUsePlatform } from "./agent/computer-use-macos.js";
+import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
+import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
+import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -590,7 +592,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
     },
-    platform: macOSComputerUsePlatform,
+    platform: createMacOSComputerUsePlatform({
+      resolveCodex: () => resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} }).resolved ?? null,
+      childEnv: () => stripConsoleInternalEnv(process.env),
+    }),
     directory: path.join(fleetDataDir, "computer-use"),
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,

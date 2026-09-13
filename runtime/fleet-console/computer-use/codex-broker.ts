@@ -2,12 +2,10 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child
 import { constants, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
-import { resolveAgentCliBinary } from "./agent-cli-paths.js";
-import { assertMacInteractionReadiness, readMacWindowIdentity } from "./computer-use-window.js";
-import { MACOS_COMPUTER_USE_TRANSPORT } from "./computer-use-macos-transport.js";
-import { prepareMacPaste, type ClipboardRestoration } from "./computer-use-macos-paste.js";
-import { ComputerUseInputError, isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
+import { assertMacInteractionReadiness, readMacWindowIdentity } from "./macos-window.js";
+import { MACOS_COMPUTER_USE_TRANSPORT } from "./codex-transport.js";
+import { prepareMacPaste, type ClipboardRestoration } from "./macos-paste.js";
+import { ComputerUseInputError, isRecord, type ComputerUseRuntimeDependencies, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./platform.js";
 
 export interface ComputerUseInstallation {
   readonly codex: string;
@@ -20,12 +18,12 @@ const TOOL_NAMES = new Set(["list_apps", "get_app_state", "click", "perform_seco
 const MAX_FRAME_BYTES = 24 * 1024 * 1024;
 const RPC_TIMEOUT_MS = 90_000;
 
-export async function findComputerUseInstallation(): Promise<ComputerUseInstallation | null> {
+export async function findComputerUseInstallation(runtime: ComputerUseRuntimeDependencies): Promise<ComputerUseInstallation | null> {
   if (process.platform !== "darwin") return null;
   const clientHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   if (!path.isAbsolute(clientHome)) return null;
   const client = path.join(clientHome, "computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient");
-  const { resolved } = resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} });
+  const resolved = runtime.resolveCodex();
   if (!resolved) return null;
   try {
     await fs.access(client, constants.X_OK);
@@ -48,13 +46,13 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
   threadReleaseStatus: "not_requested" | "not_needed" | "released" | "failed" = "not_requested";
   cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | null = null;
 
-  constructor(private readonly deps: ComputerUseBackendOptions & { readonly installation: ComputerUseInstallation }) {}
+  constructor(private readonly deps: ComputerUseBackendOptions & { readonly installation: ComputerUseInstallation; readonly runtime: ComputerUseRuntimeDependencies }) {}
 
   async start(): Promise<void> {
     await fs.mkdir(this.deps.directory, { recursive: true, mode: 0o700 });
     this.directory = await fs.mkdtemp(path.join(this.deps.directory, "broker-"));
     if (this.closed) { await this.removeDirectory(); throw new Error("computer_use_stopped"); }
-    const env = stripConsoleInternalEnv(process.env);
+    const env = this.deps.runtime.childEnv();
     delete env.FLEET_CONSOLE_SESSION_ID;
     delete env.OPENAI_API_KEY;
     delete env.OPENAI_BASE_URL;
@@ -245,7 +243,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
       this.cleanupStatus = threadId ? "failed" : "not_needed";
       if (threadId) {
         const client = this.deps.installation.client;
-        const env = stripConsoleInternalEnv(process.env);
+        const env = this.deps.runtime.childEnv();
         delete env.FLEET_CONSOLE_SESSION_ID;
         env.CODEX_HOME = this.deps.installation.clientHome;
         await new Promise<void>((resolve) => {

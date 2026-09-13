@@ -1,0 +1,13 @@
+{
+  "name": "@fleet-console/computer-use",
+  "version": "1.92.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.ts", "import": "./index.ts", "default": "./index.ts" },
+    "./codex-transport": { "types": "./codex-transport.ts", "import": "./codex-transport.ts", "default": "./codex-transport.ts" }
+  },
+  "dependencies": { "marked": "^16.4.1" },
+  "devDependencies": { "@types/node": "^24.10.0", "typescript": "^6.0.2" },
+  "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json" }
+}
