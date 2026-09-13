@@ -35,6 +35,11 @@ export interface AgentSessionOptions {
     readonly builtins?: readonly ("WebSearch" | "WebFetch")[];
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
+    /**
+     * fleet-ai-gateway 리소스(라우팅 가이드·노출 모델 로스터)를 이 세션에 연결한다. 도구는 없고
+     * 읽기뿐이므로 호스트가 MCP 리소스 읽기 내장 도구를 함께 연다. 위임 실행 능력은 주지 않는다.
+     */
+    readonly aiGateway?: boolean;
   };
   readonly onEvent?: (event: AgentEvent) => void;
 }

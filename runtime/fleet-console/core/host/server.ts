@@ -752,7 +752,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse: consoleUse.forPlugin(pluginId) });
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse: consoleUse.forPlugin(pluginId), aiGatewayMcp });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },

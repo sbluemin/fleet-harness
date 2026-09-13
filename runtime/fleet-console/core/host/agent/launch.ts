@@ -6,7 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-process";
-import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
+import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
 import {
   createSessionCaptureHookExec,
@@ -298,7 +298,9 @@ async function createAgentCliLaunchSpec(options: {
       if (nativeAlias) {
         resolvedModel = nativeAlias;
       } else {
-        const model = gatewaySelection?.models.find((candidate) => candidate.id === resolvedModel);
+        // 스코프 id와 `fleet://ai-gateway/models`가 싣는 `claude-gateway--…[1m]` 표기를 같은 모델로 받는다 —
+        // 로스터를 읽고 그대로 옮겨 적은 호출자가 거절당하면 안 된다.
+        const model = gatewaySelection ? findGatewayModel(resolvedModel, gatewaySelection.models) : undefined;
         if (!model) {
           throw new GatewayLaunchOptionError(
             "gateway_model_not_enabled",

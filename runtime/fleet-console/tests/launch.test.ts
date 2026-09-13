@@ -177,6 +177,25 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
   });
 
+  it("accepts the roster spelling of an enabled gateway model", async () => {
+    // `fleet://ai-gateway/models`는 `claude-gateway--…[1m]` 표기를 싣는다. 그것을 옮겨 적은 호출자는
+    // 스코프 id를 적은 호출자와 같은 모델로 통과해야 한다.
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime(() => undefined) as never,
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: resolveProfile as never,
+      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "kimi--k3" }] }),
+    });
+
+    await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--kimi--k3[1m]" });
+
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--kimi--k3[1m]" }));
+  });
+
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {
     const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
