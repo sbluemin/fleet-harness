@@ -79,6 +79,7 @@ submitting; a completed key action is not proof the app accepted the paste.
 The paste helper keeps the previous clipboard items/types in process memory, not
 temporary files or logs. `clipboardRestoration` reports `restored`,
 `preserved_newer_contents` (another writer changed the clipboard), or `failed`.
+Refused calls can report `not_touched`; preparation failures can report `unverified`.
 It skips restoration when a newer clipboard change is detected; that check is
 best-effort, not atomic across apps. Restoration is best-effort on
 native failures and parent exit, not guaranteed after forced termination or OS
@@ -93,10 +94,19 @@ launch/activation/restoration; use it only when the task authorizes that effect,
 not as an automatic error fallback. Window addressing and cross-app snapshot reuse
 remain unsupported; the native element-ID lifetime is not established across apps.
 
+Paste carries the call's explicit activation permission into the broker (default
+false). It checks readiness before clipboard preparation, checks the foreground
+app again immediately before replacing clipboard contents, and rechecks readiness
+before sending Command+V. A late refusal sends no paste key and attempts clipboard
+restoration; it returns `actionOutcome: "not_started"` with `snapshotId: null`.
+These checks are not atomic with native dispatch and do not bind a snapshot to a
+specific window. Do not treat them as protection against every same-app window change.
+
 Computer Use diagnostic logs distinguish `scope: "native_output"` (raw backend
 response) from `scope: "model_output"` (final service response after projection and
 metadata). They record only text character counts, image counts/decoded bytes,
-timing and outcome—not screen text, image data, arguments or reasons. These are
+timing, outcome and paste's effective activation permission—not screen text,
+image data, input text or reasons. These are
 payload measurements, not billed tokens; compare provider usage separately.
 
 ## Security Notes

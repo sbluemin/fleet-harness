@@ -4,10 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { resolveAgentCliBinary } from "./agent-cli-paths.js";
-import { readMacWindowIdentity } from "./computer-use-window.js";
+import { assertMacInteractionReadiness, readMacWindowIdentity } from "./computer-use-window.js";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "./computer-use-macos-transport.js";
-import { prepareMacPaste } from "./computer-use-macos-paste.js";
-import { isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
+import { prepareMacPaste, type ClipboardRestoration } from "./computer-use-macos-paste.js";
+import { ComputerUseInputError, isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
 
 export interface ComputerUseInstallation {
   readonly codex: string;
@@ -116,19 +116,33 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
     } catch (error) { await this.stop(); throw error; }
   }
 
-  async call(tool: string, args: Record<string, unknown>): Promise<ComputerUseResult> {
+  async call(tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult> {
     if (!this.threadId || !this.tools.has(tool)) throw new Error("computer_use_tool_unavailable");
     if (tool === "paste") {
-      const clipboard = await prepareMacPaste(args.text as string, args.format as "text" | "md" | "html");
+      const app = args.app as string;
+      const allowActivation = options?.allowActivation === true;
+      let clipboard: Awaited<ReturnType<typeof prepareMacPaste>> | undefined;
       let value: ComputerUseResult;
-      let clipboardRestoration;
-      try { value = await this.call("press_key", { app: args.app, key: "super+v" }); }
-      catch { value = { isError: true, content: [{ type: "text", text: "computer_use_paste_outcome_unknown: Do not repeat the paste automatically." }] }; }
-      finally { clipboardRestoration = await clipboard.finish(); }
+      let clipboardRestoration: ClipboardRestoration | "not_touched" | "unverified" = "not_touched";
+      try {
+        await assertMacInteractionReadiness(app, allowActivation);
+        clipboardRestoration = "unverified";
+        clipboard = await prepareMacPaste(app, args.text as string, args.format as "text" | "md" | "html", allowActivation);
+        value = await this.callNative("press_key", { app, key: "super+v" }, () => assertMacInteractionReadiness(app, allowActivation));
+      } catch (error) {
+        const blocked = error instanceof ComputerUseInputError;
+        if (blocked && !clipboard) clipboardRestoration = "not_touched";
+        value = { isError: true, ...(blocked ? { dispatchBlocked: true as const } : {}), content: [{ type: "text", text: blocked ? error.message : "computer_use_paste_outcome_unknown: Do not repeat the paste automatically." }] };
+      } finally { if (clipboard) clipboardRestoration = await clipboard.finish(); }
       return { ...value, content: [...value.content, { type: "text", text: JSON.stringify({ clipboardRestoration, ...(clipboardRestoration === "failed" ? { warning: "Previous clipboard could not be restored; do not repeat the paste." } : {}) }) }] };
     }
+    return this.callNative(tool, args);
+  }
+
+  private async callNative(tool: string, args: Record<string, unknown>, beforeDispatch?: () => Promise<void>): Promise<ComputerUseResult> {
     const app = typeof args.app === "string" ? args.app : null;
     const before = app ? await readMacWindowIdentity(app) : null;
+    await beforeDispatch?.();
     const value = await this.request("mcpServer/tool/call", { threadId: this.threadId, server: "computer-use", tool, arguments: args });
     if (!isRecord(value) || !Array.isArray(value.content) || value.content.some((block) => !isRecord(block))) throw new Error("computer_use_invalid_result");
     const after = app && value.isError !== true ? await readMacWindowIdentity(app) : null;

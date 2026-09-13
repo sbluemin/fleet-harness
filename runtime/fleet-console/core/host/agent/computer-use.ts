@@ -278,13 +278,13 @@ export class ComputerUseService {
       if (this.lastAgentActions.size >= 32 && !this.lastAgentActions.has(target)) this.lastAgentActions.delete(this.lastAgentActions.keys().next().value!);
       const lastAgentAction = { action: input.action, outcome: "unknown" as "unknown" | "returned" | "error", at: new Date().toISOString() };
       this.lastAgentActions.set(target, lastAgentAction);
-      const actionResult = await this.call(broker, input.action, args);
+      const actionResult = await this.call(broker, input.action, args, input.action === "paste" ? { allowActivation: input.allowActivation === true } : undefined);
       actionText = actionResult.content.filter((block) => block.type === "text");
-      actionOutcome = actionResult.isError ? "error" : "completed";
+      actionOutcome = actionResult.dispatchBlocked ? "not_started" : actionResult.isError ? "error" : "completed";
       this.assertActive(lifetime);
       if (actionResult.isError) {
         const error = this.deps.platform.classifyFailure(actionResult);
-        return { ...actionResult, content: [...result({ actionOutcome: error === "computer_use_app_closed" ? "app_closed" : actionOutcome, error, observation: "unavailable", context: { imageAvailable: snapshot.imageAvailable, snapshotAgeMs: Date.now() - snapshot.at, target: coordinateAction ? "screenshot_coordinates" : "element_index" in args ? "accessibility_element" : "keyboard", focus: "unknown", display: "unknown", appSupport: "not_determined" }, hint: this.deps.platform.failureHint(error) }).content, ...actionResult.content] };
+        return { ...actionResult, content: [...result({ actionOutcome: error === "computer_use_app_closed" ? "app_closed" : actionOutcome, error, observation: "unavailable", ...(actionResult.dispatchBlocked ? { snapshotId: null } : {}), context: { imageAvailable: snapshot.imageAvailable, snapshotAgeMs: Date.now() - snapshot.at, target: coordinateAction ? "screenshot_coordinates" : "element_index" in args ? "accessibility_element" : "keyboard", focus: "unknown", display: "unknown", appSupport: "not_determined" }, hint: this.deps.platform.failureHint(error) }).content, ...actionResult.content] };
       }
       // Native actions already return their own observation. A second read may
       // restore a just-minimized window or activate an app. Never read implicitly.
@@ -359,12 +359,12 @@ export class ComputerUseService {
     return { isError: false, content: [...result({ app, snapshotId, observationReads, ...(interactionHints.length ? { interactionHints } : {}), snapshotScope: "broker_session", lastAgentAction: this.lastAgentActions.get(app) ?? null, imageAvailable, imageDelivered, coordinateActionsAvailable: imageDelivered ? "unverified" : false, ...(imageDelivered ? { coordinateSpace: "latest_native_screenshot_pixels" } : {}), actionSchemasVersion, actionSchemasIncluded: sendSchemas, observationMode: imageDelivered ? "image_and_text" : "text_only", ...(imageAvailable ? {} : { navigationHint: "Image unavailable; tree may be a menu. Use current menu elements/advertised secondary actions; never old coordinates." }), treeFormat: this.deps.platform.hasFullObservation(state) ? "full" : "upstream text or diff", selectionSource: "not_established", trust: "untrusted_app_content", ...(sendSchemas ? { actionSchemas } : {}) }).content, ...state.content] };
   }
 
-  private async call(broker: ComputerUseBackend, tool: string, args: Record<string, unknown>): Promise<ComputerUseResult> {
+  private async call(broker: ComputerUseBackend, tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult> {
     const startedAt = Date.now();
     const emit = (event: ComputerUseDiagnostic) => { try { this.deps.diagnostic?.({ ...event, scope: "native_output" }); } catch { /* 진단 실패가 조작을 반복시키면 안 된다. */ } };
-    emit({ tool, phase: "start" });
+    emit({ tool, phase: "start", ...(options ? { allowActivation: options.allowActivation } : {}) });
     try {
-      const value = await broker.call(tool, args);
+      const value = await (options ? broker.call(tool, args, options) : broker.call(tool, args));
       // 반환된 시점에 이력을 확정한 뒤 직렬화해야 액션과 후속 관찰의 값이 일치한다.
       if (tool !== "get_app_state" && typeof args.app === "string") {
         const lastAction = this.lastAgentActions.get(args.app);
@@ -385,7 +385,7 @@ export class ComputerUseService {
       emit({ tool, phase: "end", elapsedMs: this.lastCall.elapsedMs, outcome: value.isError ? "error" : "returned", ...(error ? { error } : {}),
         ...contentMetrics(value.content),
       });
-      return { content, isError: value.isError === true, ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}) };
+      return { content, isError: value.isError === true, ...(value.dispatchBlocked ? { dispatchBlocked: true } : {}), ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}) };
     } catch (error) {
       this.lastCall = { tool, outcome: "unknown", elapsedMs: Date.now() - startedAt, error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" };
       emit({ tool, phase: "end", elapsedMs: Date.now() - startedAt, outcome: "unknown", error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" });
@@ -400,6 +400,7 @@ export class ComputerUseService {
 }
 
 export interface ComputerUseDiagnostic {
+  readonly allowActivation?: boolean;
   readonly scope?: "native_output" | "model_output";
   readonly tool: string;
   readonly phase: "start" | "end";

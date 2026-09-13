@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readMacInteractionReadiness, verifyMacWindowIdentity } from "./computer-use-window.js";
+import { assertMacInteractionReadiness, verifyMacWindowIdentity } from "./computer-use-window.js";
 import { promises as fs } from "node:fs";
 import { MacOSComputerUseBroker, findComputerUseInstallation } from "./computer-use-macos-broker.js";
 import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, computerUseText, isRecord, type ComputerUseAppTarget, type ComputerUsePlatform, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
@@ -29,6 +29,7 @@ function appTargets(value: ComputerUseResult): ComputerUseAppTarget[] {
 }
 
 function classifyNativeFailure(value: ComputerUseResult): string {
+  if (value.dispatchBlocked) return "computer_use_activation_blocked";
   const text = computerUseText(value);
   if (/Ambiguous app identifier/.test(text)) return "computer_use_ambiguous_app";
   if (/Invalid app:/.test(text)) return "computer_use_app_not_found";
@@ -45,6 +46,7 @@ function classifyNativeFailure(value: ComputerUseResult): string {
 }
 
 function nativeFailureHint(error: string): string {
+  if (error === "computer_use_activation_blocked") return "Paste was blocked before the native key was sent. Check clipboardRestoration; a late refusal consumes the snapshot. Request state explicitly for the intended window when ready. Do not automatically allow activation or retry.";
   if (error === "computer_use_ambiguous_app" || error === "computer_use_app_not_found") return "The native runtime could not uniquely resolve this app identifier. Localized display names may differ from the native app name. Use the exact bundle ID or absolute .app path from computer_apps, not a translated display name; for duplicate bundle IDs prefer the exact observed path.";
   if (error === "computer_use_native_timeout") return "The native service reported timeoutReached. Running in the app inventory does not guarantee accessibility or control, including virtualized app windows. This does not prove the entire app is unsupported. Do not loop or replay a possibly executed action. Check the intended window with the user and obtain fresh state before deciding how to proceed.";
   if (error === "computer_use_no_action_window") return "The native runtime cannot find an actionable window, even though screenshots or accessibility reads may succeed. This is not proof the app is closed or an element/coordinate is wrong. Do not loop through scroll/click/key alternatives or restart the broker as a workaround. Check with the user that the intended main or conversation window is actually open and visible on the current Space, not merely a running tray/menu-bar process. A closed main window is one possible cause, not an established diagnosis. Ask the user to show the intended window (not minimized), then read fresh state before ONE explicit retry. Do not move or activate user windows automatically. If it still fails, stop and report the native limitation; do not claim earlier content was inspected.";
@@ -125,11 +127,7 @@ export const macOSComputerUsePlatform: ComputerUsePlatform = {
     }
     return app;
   },
-  preflight: async (app, allowActivation) => {
-    if (allowActivation) return;
-    const readiness = await readMacInteractionReadiness(app);
-    if (readiness !== "ready") throw new ComputerUseInputError("computer_use_activation_blocked", `Native call not sent (${readiness}). This backend can activate apps and restore minimized windows, even on reads. Ask the user to show/focus the intended window, or use allowActivation:true only when the task authorizes foreground use. This is a best-effort preflight, not background execution support.`);
-  },
+  preflight: assertMacInteractionReadiness,
   displayTarget: (app) => path.isAbsolute(app) ? path.basename(app, ".app") : app,
   captureTarget: (value) => value.captureWindow ?? null,
   verifyCaptureTarget: verifyMacWindowIdentity,

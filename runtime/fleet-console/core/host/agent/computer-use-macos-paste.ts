@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { marked } from "marked";
+import { ComputerUseInputError } from "./computer-use-platform.js";
 
 export type ClipboardRestoration = "restored" | "preserved_newer_contents" | "failed";
 
@@ -37,6 +38,13 @@ function run() {
   if (!replacement.setStringForType($(payload.text),$('public.utf8-plain-text'))) throw Error('clipboard_encode_failed');
   if (payload.html!==undefined && !replacement.setStringForType($(payload.html),$('public.html'))) throw Error('clipboard_encode_failed');
   if (Number(board.changeCount)!==originalCount) throw Error('clipboard_changed');
+  if (payload.allowActivation!==true) {
+    var front=$.NSWorkspace.sharedWorkspace.frontmostApplication;
+    if (!(ObjC.unwrap(front.bundleIdentifier)===payload.app || ObjC.unwrap(front.bundleURL.path)===payload.app || ObjC.unwrap(front.localizedName)===payload.app)) {
+      emit({activationBlocked:true});
+      return;
+    }
+  }
   board.clearContents;
   var ownedCount=Number(board.changeCount);
   try {
@@ -55,11 +63,11 @@ function run() {
   }
 }`;
 
-export async function prepareMacPaste(text: string, format: "text" | "md" | "html"): Promise<{ finish(): Promise<ClipboardRestoration> }> {
+export async function prepareMacPaste(app: string, text: string, format: "text" | "md" | "html", allowActivation: boolean): Promise<{ finish(): Promise<ClipboardRestoration> }> {
   const markup = format === "md" ? await marked.parse(text, { async: false }) : format === "html" ? text : undefined;
   // NSPasteboard HTML otherwise defaults to a legacy encoding in some Mac apps.
   const html = markup === undefined ? undefined : `<meta charset="utf-8">${markup}`;
-  const payload = Buffer.from(JSON.stringify({ text, ...(html === undefined ? {} : { html }) }));
+  const payload = Buffer.from(JSON.stringify({ app, allowActivation, text, ...(html === undefined ? {} : { html }) }));
   const child = spawn("/usr/bin/osascript", ["-l", "JavaScript", "-e", PASTEBOARD], { stdio: ["pipe", "pipe", "pipe"] });
   child.stderr.resume(); // Never forward errors that might contain clipboard content.
   let restoration: ClipboardRestoration = "failed";
@@ -95,6 +103,7 @@ export async function prepareMacPaste(text: string, format: "text" | "md" | "htm
       output = output.slice(newline + 1);
       try {
         const record = JSON.parse(line);
+        if (record.activationBlocked === true) { close(); rejectReady(new ComputerUseInputError("computer_use_activation_blocked", "The target stopped being frontmost before clipboard replacement. No paste key was sent.")); }
         if (record.ready === true) { ready = true; clearTimeout(startTimer); release(); }
         if (["restored", "preserved_newer_contents", "failed"].includes(record.restoration)) restoration = record.restoration;
       } catch { fail(); }

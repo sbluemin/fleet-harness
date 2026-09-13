@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import type { ComputerUseWindowIdentity } from "./computer-use-platform.js";
+import { ComputerUseInputError, type ComputerUseWindowIdentity } from "./computer-use-platform.js";
 
 // Read only: no AX writes, app activation, window raising, or process launch.
 const INTERACTION_READINESS = `
@@ -14,7 +14,7 @@ function run(args) {
   if (matches.length!==1) return 'ambiguous';
   var running=matches[0];
   if (running.hidden) return 'hidden';
-  if (!running.active) return 'not_frontmost';
+  if (Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier)!==Number(running.processIdentifier)) return 'not_frontmost';
   var app=$.AXUIElementCreateApplication(Number(running.processIdentifier)), focused=Ref();
   if ($.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused)!==0) return 'window_unavailable';
   var minimized=Ref();
@@ -31,6 +31,12 @@ export function readMacInteractionReadiness(app: string): Promise<MacInteraction
       resolve(!error && ["ready", "not_running", "ambiguous", "hidden", "not_frontmost", "window_unavailable", "minimized"].includes(state) ? state as MacInteractionReadiness : "unavailable");
     });
   });
+}
+
+export async function assertMacInteractionReadiness(app: string, allowActivation: boolean): Promise<void> {
+  if (allowActivation) return;
+  const readiness = await readMacInteractionReadiness(app);
+  if (readiness !== "ready") throw new ComputerUseInputError("computer_use_activation_blocked", `Native call not sent (${readiness}). Ask the user to show/focus the intended window, or use allowActivation:true only when the task authorizes foreground use. This is a best-effort preflight, not background execution support.`);
 }
 
 // 제목·창 순서 대신 해당 프로세스의 AX 선택 창을 CGWindowID로 연결한다.

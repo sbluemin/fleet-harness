@@ -6,6 +6,8 @@ export interface ComputerUseWindowIdentity {
 }
 
 export interface ComputerUseResult {
+  /** Host-side refusal before native dispatch; never inferred from app text. */
+  readonly dispatchBlocked?: true;
   readonly captureWindow?: ComputerUseWindowIdentity | null;
   readonly content: readonly Record<string, unknown>[];
   readonly structuredContent?: unknown;
@@ -25,7 +27,7 @@ export interface ComputerUseBackend {
   readonly threadReleaseStatus: "not_requested" | "not_needed" | "released" | "failed";
   readonly cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | null;
   start(): Promise<void>;
-  call(tool: string, args: Record<string, unknown>): Promise<ComputerUseResult>;
+  call(tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult>;
   stop(): Promise<void>;
 }
 export interface ComputerUseBackendOptions {
