@@ -73,11 +73,15 @@ describe("Computer Use authorization and lifecycle", () => {
       const capture = f.onCaptureTarget.mock.lastCall?.[0];
       expect(capture).toMatchObject({ pid: 1, title: "Fixture" });
       expect(host.operationIdForOwner(capture.owner)).toBe("on");
+      const captureCalls = f.onCaptureTarget.mock.calls.length;
+      f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }] });
+      await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
+      expect(f.onCaptureTarget).toHaveBeenCalledTimes(captureCalls);
       connection.releaseSessionToken("on");
       expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
       expect(host.operationIdForOwner(capture.owner)).toBeNull();
       expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).error).toBeDefined();
-      expect(f.call).toHaveBeenCalledTimes(2);
+      expect(f.call).toHaveBeenCalledTimes(3);
       await f.service.stop();
       expect(f.stop).toHaveBeenCalled();
     } finally { await host.dispose(); }

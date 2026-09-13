@@ -38,7 +38,8 @@ describe("fleet-console-use gateway roster", () => {
       execute: async (_input: unknown, assertCurrent: () => void, settled: (result: "succeeded") => void) => { assertCurrent(); executions += 1; settled("succeeded"); return { operationId: "op-a", delivery: "confirmed" as const }; },
     };
     control.attach(adapter);
-    const host = createConsoleUseMcpHost({ ...deps, control, experimentEnabled: () => enabled, language: () => "ko" });
+    const onOperationUse = vi.fn();
+    const host = createConsoleUseMcpHost({ ...deps, control, onOperationUse, experimentEnabled: () => enabled, language: () => "ko" });
     const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -63,7 +64,14 @@ describe("fleet-console-use gateway roster", () => {
       expect(executions).toBe(0);
       // 켜면 같은 연결·같은 토큰으로 다음 호출이 통과한다. 재연결도 재시작도 없다.
       allow(true);
+      expect(onOperationUse).not.toHaveBeenCalled();
       expect((await call("console_context", {})).caller.operationId).toBe("op-a");
+      await call("console_operations", {});
+      expect(onOperationUse.mock.calls).toEqual([["op-a", true]]);
+      expect(await call("console_end", {})).toMatchObject({ ended: true });
+      expect(onOperationUse).toHaveBeenLastCalledWith("op-a", false);
+      await call("console_context", {});
+      expect(onOperationUse).toHaveBeenLastCalledWith("op-a", true);
       expect((await call("console_launch", { requestId: "empty", theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
       expect(control.state().actions).toHaveLength(0);
       expect(executions).toBe(0);
@@ -95,6 +103,7 @@ describe("fleet-console-use gateway roster", () => {
       enabled = true;
       // 허용을 거두면 이미 예약된 자동 운영도 더는 돌지 않는다 — 도구 호출만 막으면 여기가 우회로가 된다.
       allow(false);
+      await vi.waitFor(() => expect(onOperationUse).toHaveBeenLastCalledWith("op-a", false));
       time += 300_001;
       await control.tick();
       expect(control.state().automations.find((a) => a.id === pending.id)).toMatchObject({ runs: 0, status: "paused", lastError: "owner_not_authorized" });

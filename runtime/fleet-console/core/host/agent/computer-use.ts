@@ -31,6 +31,7 @@ function result(value: unknown, isError = false): ComputerUseResult {
 export class ComputerUseService {
   private broker: ComputerUseBackend | null = null;
   private owner: string | null = null;
+  private captureApp: string | null = null;
   private controller: AbortController | null = null;
   private busy = false;
   private state: ComputerUseStatus["state"] = "idle";
@@ -83,6 +84,8 @@ export class ComputerUseService {
     return this.status();
   }
 
+  activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
+
   release(owner: string): void { if (this.owner === owner) void this.stop(); }
   /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
   releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) void this.stop(); }
@@ -90,6 +93,7 @@ export class ComputerUseService {
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
+    this.captureApp = null;
     this.deps.onCaptureTarget?.(null);
     this.controller?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
@@ -264,6 +268,10 @@ export class ComputerUseService {
   }
 
   private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true): Promise<ComputerUseResult> {
+    if (this.captureApp !== app) {
+      this.captureApp = app;
+      this.deps.onCaptureTarget?.(null);
+    }
     this.snapshots.clear();
     this.state = "running";
     this.stage = "get_app_state";
@@ -284,7 +292,9 @@ export class ComputerUseService {
       state = { isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
     }
     const captureTarget = this.deps.platform.captureTarget?.(state);
-    this.deps.onCaptureTarget?.(captureTarget && this.owner ? { ...captureTarget, owner: this.owner } : null);
+    // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
+    // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
+    if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
     const interactionHints = this.deps.platform.interactionHints(state);
     this.apps.add(this.deps.platform.displayTarget(app));
     const snapshotId = crypto.randomUUID();

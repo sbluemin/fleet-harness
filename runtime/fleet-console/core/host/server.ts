@@ -597,7 +597,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
+  const consoleUseActivity = new Map<string, number>();
   const consoleUse = createConsoleUseMcpHost({
+    onOperationUse: (operationId, active) => {
+      const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
+      if (count) consoleUseActivity.set(operationId, count);
+      else consoleUseActivity.delete(operationId);
+    },
     control: consoleControl,
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
@@ -974,6 +980,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return true;
     }
     writeJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  });
+  routeRegistry.register("/api/v1/operation-use", async ({ req, res }) => {
+    if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    const experiments = readExperimentSettings(consoleSettingsStore);
+    const current = operations.list();
+    const consoleOperations: string[] = [];
+    for (const [id] of consoleUseActivity) {
+      if (!current.some((operation) => operation.id === id)) continue;
+      if (experiments.consoleControl && current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+    }
+    const owner = computerUse.activeOwner();
+    const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
+    writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [] });
     return true;
   });
   routeRegistry.register("/api/v1/computer-use", async ({ req, res, pathname }) => {
