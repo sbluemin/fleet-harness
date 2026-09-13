@@ -385,6 +385,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console or the computer.", category: "Observer", gate: "loopback", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
