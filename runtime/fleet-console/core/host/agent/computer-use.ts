@@ -58,6 +58,7 @@ export class ComputerUseService {
     readonly localControl: () => boolean;
     readonly platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
+    readonly onCaptureTarget?: (target: { pid: number; title: string; owner: string } | null) => void;
   }) {}
 
   status(): ComputerUseStatus {
@@ -89,6 +90,7 @@ export class ComputerUseService {
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
+    this.deps.onCaptureTarget?.(null);
     this.controller?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
@@ -247,7 +249,7 @@ export class ComputerUseService {
       const code = error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed";
       this.error = code;
       await this.stop();
-      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: actionOutcome === "completed" ? "The action completed but follow-up observation failed. The following text is from the action, not a new full tree. Call computer_state; do not repeat the action." : "Do not retry the action automatically. Read computer_state to recover." }).content, ...actionText] };
+      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: code === "computer_use_runtime_incompatible" ? "The CLI/native MCP handshake failed. Select compatible versions (CODEX_BIN overrides the CLI). Repeated app reads cannot repair this; no GUI action was confirmed." : actionOutcome === "completed" ? "The action completed but follow-up observation failed. The following text is from the action, not a new full tree. Call computer_state; do not repeat the action." : "Do not retry the action automatically. Read computer_state to recover." }).content, ...actionText] };
     } finally {
       signal?.removeEventListener("abort", onAbort);
       this.busy = false;
@@ -273,14 +275,16 @@ export class ComputerUseService {
       this.assertActive(lifetime);
       observationReads += 1;
     }
-    if (state.isError) return state;
+    if (state.isError) { this.deps.onCaptureTarget?.(null); return state; }
     if (observationReads === 1 && this.deps.platform.needsObservationRefresh(state)) {
       const next = await this.call(broker, "get_app_state", { app });
       this.assertActive(lifetime);
       observationReads = 2;
-      if (next.isError) return next;
+      if (next.isError) { this.deps.onCaptureTarget?.(null); return next; }
       state = { isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
     }
+    const captureTarget = this.deps.platform.captureTarget?.(state);
+    this.deps.onCaptureTarget?.(captureTarget && this.owner ? { ...captureTarget, owner: this.owner } : null);
     const interactionHints = this.deps.platform.interactionHints(state);
     this.apps.add(this.deps.platform.displayTarget(app));
     const snapshotId = crypto.randomUUID();

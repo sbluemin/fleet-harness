@@ -3,11 +3,14 @@ import { constants, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
+import { resolveAgentCliBinary } from "./agent-cli-paths.js";
+import { MACOS_COMPUTER_USE_TRANSPORT } from "./computer-use-macos-transport.js";
 import { isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
 
 export interface ComputerUseInstallation {
   readonly codex: string;
-  readonly pluginRoot: string;
+  readonly codexArgs: readonly string[];
+  readonly client: string;
   readonly clientHome: string;
 }
 
@@ -20,19 +23,12 @@ export async function findComputerUseInstallation(): Promise<ComputerUseInstalla
   const clientHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   if (!path.isAbsolute(clientHome)) return null;
   const client = path.join(clientHome, "computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient");
-  for (const app of ["/Applications/ChatGPT.app", "/Applications/Codex.app", path.join(os.homedir(), "Applications/ChatGPT.app"), path.join(os.homedir(), "Applications/Codex.app")]) {
-    const resources = path.join(app, "Contents/Resources");
-    const codex = path.join(resources, "codex");
-    const pluginRoot = path.join(resources, "plugins/openai-bundled/plugins/computer-use");
-    try {
-      await Promise.all([codex, client, path.join(pluginRoot, "bin/computer-use-client-launcher")].map((file) => fs.access(file, constants.X_OK)));
-      const manifest = JSON.parse(await fs.readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
-      const entry = manifest?.mcpServers?.["computer-use"];
-      if (entry?.command !== "./bin/computer-use-client-launcher" || JSON.stringify(entry.args) !== '["mcp"]' || entry.cwd !== ".") continue;
-      return { codex, pluginRoot, clientHome };
-    } catch { /* 설치되지 않았거나 호환되지 않는 번들은 다음 후보로 넘긴다. */ }
-  }
-  return null;
+  const { resolved } = resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} });
+  if (!resolved) return null;
+  try {
+    await fs.access(client, constants.X_OK);
+    return { codex: resolved.bin, codexArgs: resolved.prefixArgs, client, clientHome };
+  } catch { return null; }
 }
 
 /** 모델 턴을 시작하지 않는다. 별도 CODEX_HOME에 ephemeral thread만 두고 native client 설치는 참조한다. */
@@ -61,7 +57,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
     delete env.OPENAI_API_KEY;
     delete env.OPENAI_BASE_URL;
     env.CODEX_HOME = this.directory;
-    const child = spawn(this.deps.installation.codex, ["app-server", "--stdio", "--enable", "computer_use", "--enable", "plugins", "--enable", "tool_call_mcp_elicitation"], {
+    const child = spawn(this.deps.installation.codex, [...this.deps.installation.codexArgs, "app-server", "--stdio", "--enable", "computer_use", "--enable", "plugins", "--enable", "tool_call_mcp_elicitation"], {
       cwd: this.directory, env, stdio: ["pipe", "pipe", "pipe"],
     });
     this.process = child;
@@ -78,13 +74,13 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
         capabilities: { experimentalApi: true, requestAttestation: false },
       });
       this.write({ method: "initialized" });
-      const { pluginRoot, clientHome } = this.deps.installation;
+      const { client, clientHome } = this.deps.installation;
       const started = await this.request("thread/start", {
         ephemeral: true, cwd: this.directory, approvalPolicy: "on-request", sandbox: "read-only",
         config: {
           features: { computer_use: true, plugins: true, tool_call_mcp_elicitation: true },
           mcp_servers: { "computer-use": {
-            command: path.join(pluginRoot, "bin/computer-use-client-launcher"), args: ["mcp"], cwd: pluginRoot,
+            command: process.execPath, args: ["-e", MACOS_COMPUTER_USE_TRANSPORT, client], cwd: this.directory,
             env: { CODEX_HOME: clientHome }, enabled: true,
           } },
         },
@@ -161,7 +157,10 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
         if (!pending) continue;
         clearTimeout(pending.timer);
         this.pending.delete(message.id);
-        if (message.error) pending.reject(new Error("computer_use_upstream_error"));
+        if (message.error) {
+          const detail = isRecord(message.error) && typeof message.error.message === "string" ? message.error.message : "";
+          pending.reject(new Error(/handshaking with MCP server failed/.test(detail) ? "computer_use_runtime_incompatible" : "computer_use_upstream_error"));
+        }
         else pending.resolve(message.result);
       }
     }
@@ -211,7 +210,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
       // 인스턴스가 생성한 thread만 종료 알림으로 회수한다. 공유 native 서비스 자체는 죽이지 않는다.
       this.cleanupStatus = threadId ? "failed" : "not_needed";
       if (threadId) {
-        const client = path.join(this.deps.installation.clientHome, "computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient");
+        const client = this.deps.installation.client;
         const env = stripConsoleInternalEnv(process.env);
         delete env.FLEET_CONSOLE_SESSION_ID;
         env.CODEX_HOME = this.deps.installation.clientHome;

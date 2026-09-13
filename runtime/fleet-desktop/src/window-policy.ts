@@ -59,12 +59,18 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
   });
   const permitsClipboardWrite = (permission: string, requestingUrl: string): boolean =>
     Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(requestingUrl, consoleOrigin ?? "");
+  const permitsDisplayCapture = (permission: string, requestingUrl: string): boolean =>
+    permission === "display-capture" && Boolean(consoleOrigin && isLoopbackConsoleOrigin(consoleOrigin))
+    && isAllowedConsoleUrl(requestingUrl, consoleOrigin ?? "");
   // Chromium은 플랫폼별로 check에서 곧장 끝내기도, 거부된 check 뒤 request로 이어 가기도 한다.
   // 둘을 같은 exact-origin 판정에 묶어 Windows에서도 쓰기를 허용하되 권한 범위는 넓히지 않는다.
   contents.session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) =>
     (requestingContents === null || requestingContents === contents)
-    && permitsClipboardWrite(permission, details.requestingUrl ?? requestingOrigin));
-  contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permitsClipboardWrite(permission, details.requestingUrl)));
+    && (permitsClipboardWrite(permission, details.requestingUrl ?? requestingOrigin)
+      || (requestingContents === contents && permitsDisplayCapture(permission, details.requestingUrl ?? requestingOrigin))));
+  contents.session.setPermissionRequestHandler((wc, permission, callback, details) => callback(permitsClipboardWrite(permission, details.requestingUrl)
+    || (wc === contents && details.isMainFrame && permission === "media" && "mediaTypes" in details && details.mediaTypes?.length === 0
+      && permitsDisplayCapture("display-capture", details.requestingUrl))));
   const admittedRemoteOrigins = new Set<string>();
   const validateOrigin = (origin: string): void => {
     // 루프백은 언제나, 원격은 지문을 대조해 들인 뒤에만.

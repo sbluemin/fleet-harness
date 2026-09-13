@@ -121,6 +121,15 @@ export const macOSComputerUsePlatform: ComputerUsePlatform = {
     return app;
   },
   displayTarget: (app) => path.isAbsolute(app) ? path.basename(app, ".app") : app,
+  captureTarget: (value) => {
+    const text = computerUseText(value);
+    const states = [...text.matchAll(/App=[^\n]*\(bundleID [^,]+, pid (\d+)\)\nWindow: "([^\n]*)", App: [^\n]*\.\n([^\n]*)/g)];
+    const match = states.at(-1);
+    if (!match) return null;
+    const title = match[3]?.match(/^0 (?:표준 윈도우|standard window|window) (.*?)(?:, (?:URL|ID|Description|Help|Secondary Actions):|$)/i)?.[1] ?? match[2];
+    const pid = Number(match[1]);
+    return Number.isSafeInteger(pid) && pid > 0 && title ? { pid, title } : null;
+  },
   appTargets,
   appCandidates,
   prepareAction: (action, input) => {

@@ -20,6 +20,7 @@ import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } f
 import type { ClientExecutionProvider, ClientExperimentsCapability, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { ComputerScreenShare } from "./computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -701,6 +702,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
+        <ComputerScreenShare operationId={context.operationId} />
       </div>
     );
   }
@@ -730,6 +732,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
+      <ComputerScreenShare operationId={context.operationId} />
     </div>
   );
 }

@@ -32,6 +32,7 @@ import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js"
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
+import { installComputerCapture } from "./computer-capture.js";
 import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -249,6 +250,7 @@ async function boot(): Promise<void> {
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
+        installComputerCapture(createdWindow.webContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         bridge.attach(createdWindow.webContents);
         // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
         createdWindow.webContents.on("did-navigate", () => picker.close());

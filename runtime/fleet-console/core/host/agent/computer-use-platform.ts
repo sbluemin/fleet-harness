@@ -35,6 +35,7 @@ export interface ComputerUsePlatform {
   createBroker(options: ComputerUseBackendOptions): Promise<ComputerUseBackend | null>;
   resolveTarget(app: string): Promise<string>;
   displayTarget(app: string): string;
+  captureTarget?(value: ComputerUseResult): { pid: number; title: string } | null;
   appTargets(value: ComputerUseResult): ComputerUseAppTarget[];
   appCandidates(value: ComputerUseResult, app: unknown, targets: readonly ComputerUseAppTarget[]): ComputerUseAppTarget[];
   prepareAction(action: string, args: Record<string, unknown>): Record<string, unknown>;

@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { spawn } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { MACOS_COMPUTER_USE_TRANSPORT } from "../../core/host/agent/computer-use-macos-transport.js";
 import { ComputerUseService } from "../../core/host/agent/computer-use.js";
 import type { ComputerUseResult, ComputerUseBackend } from "../../core/host/agent/computer-use-platform.js";
 import { macOSComputerUsePlatform } from "../../core/host/agent/computer-use-macos.js";
@@ -14,6 +19,7 @@ describe("Computer Use authorization and lifecycle", () => {
     let local = true;
     const call = vi.fn(async (): Promise<ComputerUseResult> => ({ content: [{ type: "text", text: "app state" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }] }));
     const diagnostic = vi.fn();
+    const onCaptureTarget = vi.fn();
     const start = vi.fn(async () => undefined);
     const stop = vi.fn(async () => undefined);
     let approve: (() => Promise<boolean>) | undefined;
@@ -26,13 +32,13 @@ describe("Computer Use authorization and lifecycle", () => {
       ["type_text", { name: "type_text", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string" } }, required: ["app", "text"], additionalProperties: false } }],
     ]) } as unknown as ComputerUseBackend;
     const service = new ComputerUseService({
-      directory: "unused", diagnostic, enabled: () => enabled, localControl: () => local,
+      directory: "unused", diagnostic, onCaptureTarget, enabled: () => enabled, localControl: () => local,
       platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true,
         createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
     const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(input, { cwd: "", sessionLabel, signal });
-    return { service, invoke, call, diagnostic, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
+    return { service, invoke, call, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
   }
 
   it("serves a separate opt-in MCP and revokes device access with its token", async () => {
@@ -47,20 +53,29 @@ describe("Computer Use authorization and lifecycle", () => {
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
       })).json();
       f.enable(false);
+      expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
       const off = connection.issueSessionToken({ label: "off", cwd: process.cwd() })[0]!;
-      expect((await rpc(off.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_status", "computer_end"]));
+      expect((await rpc(off.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toContain("computer_state");
+      expect((await rpc(off.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).result.isError).toBe(true);
+      expect(f.call).not.toHaveBeenCalled();
       f.enable(true);
+      expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
       const on = connection.issueSessionToken({ label: "on", cwd: process.cwd() })[0]!;
       expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action"]));
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
-      f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>HTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>" }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
+      f.call.mockResolvedValueOnce({ content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window Fixture, ID: main\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
       const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
       expect(JSON.parse(read.result.content[0].text)).toMatchObject({ observationReads: 2 });
       expect(read.result.isError).toBe(false);
       expect(read.result.content.filter((block: { type: string }) => block.type === "image")).toHaveLength(1);
       expect(JSON.stringify(read.result.content.filter((block: { type: string }) => block.type === "text"))).not.toContain("aW1hZ2U=");
       expect(f.call).toHaveBeenCalledTimes(2);
+      const capture = f.onCaptureTarget.mock.lastCall?.[0];
+      expect(capture).toMatchObject({ pid: 1, title: "Fixture" });
+      expect(host.operationIdForOwner(capture.owner)).toBe("on");
       connection.releaseSessionToken("on");
+      expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
+      expect(host.operationIdForOwner(capture.owner)).toBeNull();
       expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).error).toBeDefined();
       expect(f.call).toHaveBeenCalledTimes(2);
       await f.service.stop();
@@ -296,6 +311,34 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(f.service.status()).toMatchObject({ error: null, warning: "computer_use_cleanup_unconfirmed" });
     expect(f.stop).toHaveBeenCalledTimes(1);
     expect(f.service.status()).toMatchObject({ state: "idle", apps: [] });
+  });
+
+  it.skipIf(process.platform === "win32")("preserves MCP frames and approvals across the native compatibility transport", async () => {
+    // 서비스 mock으로는 실제 자식의 UTF-8 프레임·승인 전달·EOF 회수 계약을 검증할 수 없다.
+    const directory = await mkdtemp(path.join(os.tmpdir(), "fleet-native-transport-"));
+    const native = path.join(directory, "native-client");
+    await writeFile(native, `#!${process.execPath}\nprocess.stdin.pipe(process.stdout);`, { mode: 0o700 });
+    const child = spawn(process.execPath, ["-e", MACOS_COMPUTER_USE_TRANSPORT, native], { stdio: ["pipe", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { output += chunk; });
+    const exited = new Promise<number | null>((resolve, reject) => { child.once("exit", resolve); child.once("error", reject); });
+    try {
+      const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: { experimental: { "codex/auth-change": {}, retained: {} }, elicitation: { form: {} } }, clientInfo: { name: "codex", version: "0.154.0" } } };
+      const input = JSON.stringify(initialize) + '\n' + JSON.stringify({ id: 2, result: { action: "decline", content: null } }) + '\n' + JSON.stringify({ method: "tools/call", params: { text: "한글 🚀", "codex/auth-change": "unchanged" } }) + '\n';
+      const bytes = Buffer.from(input);
+      const split = bytes.indexOf(Buffer.from("한글")) + 1;
+      child.stdin.write(bytes.subarray(0, split));
+      child.stdin.end(bytes.subarray(split));
+      expect(await exited).toBe(0);
+      const frames = output.trim().split('\n').map((line) => JSON.parse(line));
+      expect(frames[0]).toEqual({ ...initialize, params: { ...initialize.params, capabilities: { experimental: { retained: {} }, elicitation: { form: {} } } } });
+      expect(frames[1]).toEqual({ id: 2, result: { action: "decline", content: null } });
+      expect(frames[2]).toEqual({ method: "tools/call", params: { text: "한글 🚀", "codex/auth-change": "unchanged" } });
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("binds desktop ownership and discards a late result when its session ends", async () => {

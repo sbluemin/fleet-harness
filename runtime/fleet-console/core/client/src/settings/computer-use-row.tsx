@@ -53,7 +53,8 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
   };
   const code = error ?? (enabled ? status?.error : null);
   const errorKey = code === "computer_use_automation_permission_denied" ? "permission"
-    : code === "computer_use_no_action_window" ? "noActionWindow"
+    : code === "computer_use_runtime_incompatible" ? "incompatible"
+      : code === "computer_use_no_action_window" ? "noActionWindow"
       : code?.includes("timeout") ? "timeout"
         : code && /app_not_found|ambiguous_app|element_not_found|secondary_action_unavailable|coordinate_target_unavailable/.test(code) ? "target" : "failed";
   const active = enabled && status && status.state !== "idle" && status.state !== "off";

@@ -6,7 +6,7 @@ const HOME = "http://127.0.0.1:4310";
 
 function createPickerContents() {
   const listeners = new Map<string, (...args: never[]) => unknown>();
-  const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() };
+  const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() };
   const contents = {
     on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)),
     setWindowOpenHandler: vi.fn(),
@@ -50,7 +50,7 @@ describe("secure window policy", () => {
 
   it("locks the entry renderer until the main process activates one exact Console origin", () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() } };
     const policy = applyWindowPolicy(contents as never, async () => undefined);
     const before = vi.fn();
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: before }, "http://127.0.0.1:4310/console/");
@@ -68,7 +68,7 @@ describe("secure window policy", () => {
 
   it("allows clipboard writes only after activating the exact Console origin", () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
-    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() };
+    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() };
     const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session };
     const policy = applyWindowPolicy(contents as never, async () => undefined);
     const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string }) => boolean;
@@ -80,6 +80,10 @@ describe("secure window policy", () => {
     expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
     expect(check(null, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
     expect(check(contents, "clipboard-read", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "display-capture", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(null, "display-capture", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "display-capture", "https://fleet.example", { requestingUrl: "https://fleet.example/console/settings" })).toBe(false);
+    expect(check(contents, "media", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
     expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: "http://localhost:4310/console/settings" })).toBe(false);
     expect(check({}, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
 
@@ -93,7 +97,7 @@ describe("secure window policy", () => {
   it("blocks popups and navigation while brokering HTTP links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() } };
     applyWindowPolicy(contents as never, "http://127.0.0.1:4310", openExternal);
     const handler = contents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
     expect(handler({ url: "https://fleet.example/docs" })).toEqual({ action: "deny" });
