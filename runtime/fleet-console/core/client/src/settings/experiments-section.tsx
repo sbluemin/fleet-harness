@@ -2,6 +2,7 @@ import { ExperimentalBadge, ModelPicker, SettingsToggle, useModelPickerOptions }
 import type { ConsoleExperimentSettings, ExperimentModelFeatureId } from "@fleet-console/sdk/settings";
 
 import { SettingsHelp } from "../components/settings-help.js";
+import { ComputerUseRow } from "./computer-use-row.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import type { CoreMessageKey } from "../i18n/messages/index.js";
@@ -78,6 +79,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
             onChange={(next) => save({ ...experiments, consoleControl: next })} />
         </div>
       </div>
+      <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} />
     </section>
     {/* 사이드바 카드 — 모델이 없는 실험이라 스위치 하나만 선다. 켜야만 서버가 git을 읽는다. */}
     <section className="global-settings-card" aria-label={t("settings.experiments.sidebarCard")}>

@@ -22,6 +22,8 @@ interface WriteJsonCall {
 
 interface RouterHarnessOptions {
   readonly authorized?: boolean;
+  readonly local?: boolean;
+  readonly installation?: "available" | "missing" | "unsupported";
   readonly body?: unknown;
   readonly bodyNull?: boolean;
   readonly general?: ConsoleGeneralSettings;
@@ -103,6 +105,20 @@ describe("global settings routes", () => {
     }
   });
 
+  it("reserves computer access opt-in to the local owner", async () => {
+    const remote = createRouterHarness({ local: false, body: { experiments: { computerUse: true } } });
+    await remote.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(remote.writes[0]?.status).toBe(403);
+    expect(remote.updateCalls).toBe(0);
+    const local = createRouterHarness({ body: { experiments: { computerUse: true } } });
+    await local.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(local.currentGeneral()?.experiments?.computerUse).toBe(true);
+    const missing = createRouterHarness({ installation: "missing", body: { experiments: { computerUse: true } } });
+    await missing.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(missing.writes[0]).toMatchObject({ status: 409, body: { error: "computer_use_install_required" } });
+    expect(missing.updateCalls).toBe(0);
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
     const harness = createRouterHarness({ authorized: false, body: { theme: "instrument" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
@@ -123,6 +139,8 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       update: (mutate) => { updateCalls += 1; data = mutate(data) ?? data; return data; },
     },
     isAuthorized: () => options.authorized ?? true,
+    isRemoteAccessOwner: () => options.local ?? true,
+    computerUseAvailability: async () => options.installation ?? "available",
     onThemeChanged: options.onThemeChanged,
     onRemoteAccessChanged: options.onRemoteAccessChanged,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,

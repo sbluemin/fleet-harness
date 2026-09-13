@@ -45,6 +45,7 @@ describe("createAgentTerminalLaunchResolver launch environment", () => {
       cwd: "/work",
       env: {
         COLORTERM: "256color",
+        CLAUDE_CODE_CHILD_SESSION: "1",
         FLEET_TERMINAL_CMD: "/bin/sh",
         PATH: "/bin",
       } as NodeJS.ProcessEnv,
@@ -57,6 +58,7 @@ describe("createAgentTerminalLaunchResolver launch environment", () => {
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
     });
+    expect(spec.env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined();
   });
 });
 

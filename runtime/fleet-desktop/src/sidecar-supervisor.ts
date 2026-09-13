@@ -45,11 +45,12 @@ export class SidecarSupervisor {
     let startupFailure: Error | null = null;
     let sidecarReady = false;
     try {
-      this.child = spawn(runtime.nodePath, [runtime.cliPath, "serve"], { cwd: path.dirname(path.dirname(runtime.cliPath)), env: this.options.env, stdio: ["ignore", "ignore", "pipe"], detached: false, windowsHide: true });
+      this.child = spawn(runtime.nodePath, [runtime.cliPath, "serve"], { cwd: path.dirname(path.dirname(runtime.cliPath)), env: this.options.env, stdio: ["ignore", "pipe", "pipe"], detached: false, windowsHide: true });
     } catch (error) {
       throw this.createSpawnFailure(error);
     }
     const child = this.child;
+    child.stdout?.on("data", (chunk: Buffer) => this.options.log.info(chunk.toString("utf8")));
     child.stderr?.on("data", (chunk: Buffer) => this.options.log.error(chunk.toString("utf8")));
     child.once("error", (error) => {
       const failure = sidecarReady ? new Error(`sidecar_runtime_error: ${error.message}`) : this.createSpawnFailure(error);
