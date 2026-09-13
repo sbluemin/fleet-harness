@@ -86,6 +86,12 @@ export type AgentChatQueueCancelOutcome = "canceled" | "started" | "unreachable"
 
 type QueueRejection = { readonly kind: "started" | "unreachable" };
 
+const COMPOSER_NAME_MAX = 32;
+function clipComposerName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length > COMPOSER_NAME_MAX ? `${trimmed.slice(0, COMPOSER_NAME_MAX - 1)}…` : trimmed;
+}
+
 export function AgentChatComposer({
   context,
   coordinate,
@@ -442,7 +448,9 @@ export function AgentChatComposer({
   // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
   const uploading = attachments.some((attachment) => attachment.uploading);
   const canSend = draft.trim().length > 0 && !sending && !uploading;
-  const placeholder = t("terminal.chat.composerPlaceholder", { name: context.operation.title });
+  // 제목이 긴 Operation(첫 프롬프트가 제목인 세션)은 placeholder가 두 줄로 접혀 한 줄 상자에서 잘린다 —
+  // 이름을 한 줄 분량으로 자른다. 실제 제목은 캡션이 이미 온전히 보여 준다.
+  const placeholder = t("terminal.chat.composerPlaceholder", { name: clipComposerName(context.operation.title) });
   const notice = consoleNotice !== null
     ? consoleNotice
     : failed
