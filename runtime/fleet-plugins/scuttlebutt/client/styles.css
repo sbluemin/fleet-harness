@@ -60,10 +60,10 @@
   will-change: transform;
 }
 
+/* 새는 포커스 링을 두르지 않는다 — 마스코트를 상자로 감싸면 UI 컨트롤로 읽힌다. 키보드 포커스는
+   이름표(.scuttlebutt-bird-tag)가 뜨는 것으로 보인다. */
 .scuttlebutt-bird:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-  border-radius: var(--radius-md);
+  outline: none;
 }
 
 .scuttlebutt-bird-tag {
@@ -1434,10 +1434,6 @@
   outline: none;
 }
 
-.scuttlebutt-dock-glyph:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
-}
 
 .scuttlebutt-dock-glyph[aria-pressed="true"] {
   border-color: transparent;
