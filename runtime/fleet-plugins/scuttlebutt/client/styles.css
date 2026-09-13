@@ -943,9 +943,10 @@
   margin: var(--space-3) var(--space-4) var(--space-4);
   min-height: 44px;
   padding: 6px 6px 6px var(--space-3);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
-  background: var(--ink-abyss);
+  /* 카드는 유리(glass) 위에 뜬다 — 가장 어두운 abyss를 깔면 다크 테마에서 구멍처럼 읽힌다. Analyst 컴포저와 같은 raised 면. */
+  background: var(--surface-panel-raised);
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
