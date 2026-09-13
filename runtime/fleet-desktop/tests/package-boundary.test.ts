@@ -2,13 +2,29 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createInfoPlist, createMacDevLaunchArguments } from "../scripts/launch-dev-desktop.mjs";
+import { applyDesktopIdentity } from "../src/identity.js";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = path.join(desktopRoot, "src");
 const entryRoot = path.join(desktopRoot, "assets", "entry");
 
 describe("desktop package boundary", () => {
+  it("separates development app identity and forwards only explicit development data overrides", () => {
+    const source = '<plist><dict><key>CFBundleName</key><string>Electron</string><key>CFBundleDisplayName</key><string>Electron</string><key>CFBundleIdentifier</key><string>com.github.Electron</string><key>CFBundleIconFile</key><string>electron.icns</string></dict></plist>';
+    const plist = createInfoPlist(source, "/isolated/Electron.app");
+    expect(plist).toContain("<string>com.dotobokuri.fleet-console.dev</string>");
+    expect(plist).not.toContain("<string>com.dotobokuri.fleet-console</string>");
+    const setName = vi.fn();
+    applyDesktopIdentity({ setName, isPackaged: false }, "darwin");
+    expect(setName).toHaveBeenLastCalledWith("Fleet Console Dev");
+    applyDesktopIdentity({ setName, isPackaged: true }, "darwin");
+    expect(setName).toHaveBeenLastCalledWith("Fleet Console");
+    expect(createMacDevLaunchArguments("/dev/Fleet Console Dev.app", "/checkout/desktop", [], { FLEET_CONSOLE_DATA_DIR: "/isolated/console", OTHER_SECRET: "not-forwarded" }))
+      .toEqual(["-W", "-n", "--env", "FLEET_CONSOLE_DATA_DIR=/isolated/console", "/dev/Fleet Console Dev.app", "--args", "/checkout/desktop"]);
+  });
+
   it("has no copied renderer, HTTP server, PTY, preload, or raw IPC surface", () => {
     const source = fs.readdirSync(sourceRoot, { recursive: true })
       .filter((entry): entry is string => typeof entry === "string" && entry.endsWith(".ts"))

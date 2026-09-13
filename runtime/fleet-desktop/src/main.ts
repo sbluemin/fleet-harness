@@ -47,7 +47,7 @@ const desktopResources = resolveDesktopResourcePaths(isPackaged);
 
 applyDesktopIdentity(app);
 if (!isPackaged) app.setPath("userData", resolveDesktopUserDataDirectory(app.getPath("userData"), desktopResources.serviceRoot, false));
-app.setAsDefaultProtocolClient(FLEET_PROTOCOL);
+if (isPackaged) app.setAsDefaultProtocolClient(FLEET_PROTOCOL);
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else void boot().catch((error: unknown) => {

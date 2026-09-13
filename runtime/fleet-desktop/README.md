@@ -56,6 +56,8 @@ pnpm --filter @dotobokuri/fleet-desktop package:unsigned
 pnpm --filter @dotobokuri/fleet-desktop verify:package
 ```
 
+macOS 개발 실행은 `pnpm desktop` 또는 `pnpm --filter @dotobokuri/fleet-desktop dev`를 사용합니다. 실행 없이 개발 앱을 만들려면 `pnpm --filter @dotobokuri/fleet-desktop build:dev`를 사용합니다. 생성 위치는 `runtime/fleet-desktop/.stage/dev-app/Fleet Console Dev.app`이며, 파일명·번들 이름·실행 이름은 `Fleet Console Dev`, Bundle ID는 `com.dotobokuri.fleet-console.dev`입니다. 릴리스 앱과 별도의 macOS 권한 항목을 사용하고 `fleet://` 기본 앱 등록은 하지 않습니다. 화면 기록·접근성 권한이 필요하면 이 개발 앱을 별도로 허용하세요. 개발 wrapper는 ad hoc 서명되며 재사용 시 서명된 내용을 변경하지 않습니다. Electron 교체로 wrapper가 재생성되면 권한 재승인이 필요할 수 있습니다. 실행은 workspace 경로를 전달하는 개발 스크립트로 수행합니다. Windows/Linux의 `build:dev`는 번들만 빌드하며 macOS `.app`을 만들지 않습니다.
+
 `build` copies the entry assets, pinned Node manifest, and icon into `dist`. `package:dir` is the credential-free local package check. `package:unsigned` produces local unsigned artifacts. `verify:package` requires a shell-only ASAR with entry assets and a Node manifest, while rejecting embedded Console/Node payloads, the legacy embedded runtime directory, updater metadata, and standalone blockmaps.
 
 `package:release` is the only protected release path. It requires the platform signing credentials and fails closed when they are absent; its post-package verification checks release signing/notarization or checksum/GPG evidence. Local success is not release-signing evidence. Windows native package and live verification are [Unverified] on non-Windows hosts.

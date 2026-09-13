@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @dotobokuri/fleet-console build && pnpm build && node scripts/launch-dev-desktop.mjs",
+    "build:dev": "pnpm --filter @dotobokuri/fleet-console build && pnpm build && node scripts/launch-dev-desktop.mjs --build-only",
     "build": "tsup && node scripts/copy-entry-assets.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
