@@ -253,6 +253,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__composer-surface:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
 .session-analyst__composer textarea { display: block; box-sizing: border-box; width: auto; min-width: 3rem; min-height: 30px; height: 30px; max-height: calc(1.5em * 6 + 10px); flex: 1 1 auto; resize: none; overflow-x: hidden; overflow-y: hidden; white-space: pre-wrap; border: 0; outline: 0; background: transparent; color: var(--text-primary); padding: 5px 4px; font-weight: var(--weight-regular); font-size: var(--t-md); line-height: 1.5; font-family: var(--font-body); transition: opacity var(--duration-base) var(--ease-glide); }
 .session-analyst__composer textarea::placeholder { color: var(--text-tertiary); }
+/* 입력박스에는 스크롤바를 세우지 않는다 — 여섯 줄을 넘으면 caret·휠로 안에서 스크롤되지만 막대는 그리지 않는다.
+   소수점 줄높이(19.5px)로 내용이 꼭 맞을 때도 막대가 깜빡이던 자리다. */
+.session-analyst__composer textarea { scrollbar-width: none; }
+.session-analyst__composer textarea::-webkit-scrollbar { display: none; }
 /* 「/」 입구 — 슬래시 목록을 다시 만나는 유일한 길이라 placeholder 문구로 대신하지 않는다. */
 .session-analyst__slash-hint { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 1px; border: 1px dashed var(--hairline); border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); padding: 0; font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
 .session-analyst__slash-hint:hover { border-color: var(--hairline-strong); color: var(--text-secondary); }
