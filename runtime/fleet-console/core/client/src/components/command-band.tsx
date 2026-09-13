@@ -430,7 +430,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div ref={bandRightRef} className="command-band-right">
         {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
             두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
-        {commandBandEntries.map((entry) => (
+        {/* 밴드가 숨은 동안(Zen·전체화면)은 항목을 내리지 않는다 — 밴드는 마운트된 채 inert로 숨으므로,
+            항목을 그대로 두면 플러그인은 슬롯이 있다고 믿고 상태를 거기에 숨긴다. 내려야 "슬롯 없음"이 된다. */}
+        {commandBandHidden ? null : commandBandEntries.map((entry) => (
           // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 밴드 전체를
           // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
           <PluginErrorBoundary key={entry.id} fallback={null}>

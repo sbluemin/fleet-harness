@@ -1,4 +1,3 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
@@ -19,10 +18,10 @@ const MORPHS: readonly AdmiralId[] = ["tori", "bori", "dori"];
  * 밴드 버튼 문법(24×24, hover 림·워시)은 호스트 클래스에 기대지 않고 플러그인 CSS가 토큰으로
  * 다시 그린다 — 호스트 클래스명은 플러그인 계약이 아니다.
  */
-export function DockGlyphs({ locale }: { readonly locale?: ConsoleLocale }) {
+export function DockGlyphs() {
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const dock = useStoreSnapshot(subscribeDock, readDockSnapshot);
-  const t = getT(locale);
+  const t = getT(dock.locale);
   // 이 컴포넌트가 서 있다는 것이 곧 슬롯이 있다는 뜻이다 — 아무것도 그리지 않는 동안에도.
   React.useEffect(() => {
     writeDock({ host: true });

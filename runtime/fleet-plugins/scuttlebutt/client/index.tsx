@@ -46,8 +46,8 @@ async function messageMentionTarget(targetId: string, text: string): Promise<voi
 const scuttlebuttPlugin = definePlugin({
   id: "scuttlebutt",
   floatingWidgets: [{ id: "mascot", render: (context) => <ScuttlebuttFlock context={context} /> }],
-  // 상단 바에 둔 부관의 글리프. 로케일은 무리가 다리에 실어 둔 것을 읽는다 — 밴드 슬롯은 문맥을 주지 않는다.
-  commandBandEntries: [{ id: "dock", render: () => <DockGlyphs locale={readScuttlebuttMentionBridge()?.locale()} /> }],
+  // 상단 바에 둔 부관의 글리프. 로케일은 무리가 독 스토어에 반응적으로 싣는다 — 밴드 슬롯은 문맥을 주지 않는다.
+  commandBandEntries: [{ id: "dock", render: () => <DockGlyphs /> }],
   settingsSections: [scuttlebuttSettingsSection],
   mentionTargets,
   messageMentionTarget,

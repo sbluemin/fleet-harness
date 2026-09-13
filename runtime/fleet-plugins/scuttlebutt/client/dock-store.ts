@@ -1,3 +1,5 @@
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
 import type { AdmiralId } from "./chat-session.js";
 
 /**
@@ -25,9 +27,11 @@ export interface DockSnapshot {
    * 숨기면 되찾을 길이 없다.
    */
   readonly host: boolean;
+  /** 무리가 싣는 현재 로케일. 밴드 슬롯은 문맥을 주지 않으므로 글리프는 여기서 반응적으로 읽는다. */
+  readonly locale: ConsoleLocale | undefined;
 }
 
-const EMPTY: DockSnapshot = { open: null, unread: [], busy: [], dropArmed: false, host: false };
+const EMPTY: DockSnapshot = { open: null, unread: [], busy: [], dropArmed: false, host: false, locale: undefined };
 let snapshot: DockSnapshot = EMPTY;
 const listeners = new Set<() => void>();
 const glyphs = new Map<AdmiralId, HTMLButtonElement>();
@@ -82,6 +86,7 @@ function sameSnapshot(left: DockSnapshot, right: DockSnapshot): boolean {
   return left.open === right.open
     && left.dropArmed === right.dropArmed
     && left.host === right.host
+    && left.locale === right.locale
     && sameList(left.unread, right.unread)
     && sameList(left.busy, right.busy);
 }

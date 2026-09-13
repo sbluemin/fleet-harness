@@ -94,6 +94,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const localeRef = React.useRef(context.language);
   React.useEffect(() => {
     localeRef.current = context.language;
+    // 글리프는 다른 리액트 트리(밴드)에 산다 — 스토어를 거쳐야 언어 변경에 다시 그린다.
+    writeDock({ locale: context.language });
   }, [context.language]);
 
   // 대화는 카드보다 오래 산다 — 카드를 닫아도 답이 끝까지 도착해야 완료 연출이 나온다.
@@ -123,6 +125,17 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     bori: dockHost && settings.docked.bori,
     dori: dockHost && settings.docked.dori,
   }), [dockHost, settings.docked]);
+
+  // 슬롯이 사라지면(모바일·Zen) 고정 부관은 새로 돌아간다 — 그때 밴드 아래 서 있던 답 말풍선은 거둔다.
+  // 고정 답은 정박을 세우지 않았으므로 두면 나는 새를 따라다닌다. 글리프의 점은 시트가 이어받지 못하니
+  // 답이 정착한 것은 다음 열림에서 카드로 읽는다.
+  const dockHostRef = React.useRef(dockHost);
+  React.useEffect(() => {
+    const lost = dockHostRef.current && !dockHost;
+    dockHostRef.current = dockHost;
+    if (!lost) return;
+    setAnswering((current) => current.filter((admiral) => !settings.docked[admiral]));
+  }, [dockHost, settings.docked]);
   // 캔버스에 나는 부관만 편대에 든다 — 상단 바에 둔 부관은 근무 중이지만 새가 아니라 글리프다.
   const activeIndices = React.useMemo(
     () => MORPHS.map((morph, index) => settings[morph] && !docked[morph] ? index : -1).filter((index) => index >= 0),
