@@ -174,12 +174,17 @@ async function boot(): Promise<void> {
         headers: { "Content-Type": "application/json", Origin: origin },
         body: JSON.stringify(body),
       });
-      let response = await put({ homeOrigin: home, version: app.getVersion() });
-      // 이 버전을 모르는 옛 Console은 낯선 키를 400으로 거절한다. 돌아갈 줄은 버전 표기보다 중요하므로
-      // 집만 적은 몸으로 한 번 더 보낸다.
-      if (response.status === 400) response = await put({ homeOrigin: home });
+      // 돌아갈 줄이 버전 표기보다 중요하다. 게시 전체는 창을 띄우는 마감(console-handoff.ts)과 경주하므로,
+      // 어느 Console이든 받는 집만 적은 몸을 먼저 보내 마감이 이겨도 집은 남게 한다.
+      const response = await put({ homeOrigin: home });
       // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
-      if (!response.ok) logger.error(`shell home publish rejected status=${response.status}`);
+      if (!response.ok) {
+        logger.error(`shell home publish rejected status=${response.status}`);
+        return;
+      }
+      // 버전은 그 위에 덧쓴다. 이 키를 모르는 옛 Console은 400으로 거절하고, 그때는 이미 게시된 집이 그대로 선다.
+      const versioned = await put({ homeOrigin: home, version: app.getVersion() });
+      if (!versioned.ok && versioned.status !== 400) logger.error(`shell version publish rejected status=${versioned.status}`);
     } catch (error) {
       logger.error(`shell home publish failed: ${describeError(error)}`);
     }
