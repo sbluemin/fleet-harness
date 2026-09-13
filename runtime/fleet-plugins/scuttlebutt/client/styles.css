@@ -931,29 +931,41 @@
   color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
 }
 
+/* 한 줄 컴포저 — 카드 아래 한 면 안에 입력과 동작(보내기/중지)이 앉는다. 테두리는 textarea가 아니라
+   면이 지고, 입력이 여러 줄로 자라도 동작은 아래 변에 남는다(align-items: flex-end). */
 .scuttlebutt-composer {
   position: relative;
   display: flex;
   flex-shrink: 0;
   flex-wrap: nowrap;
+  align-items: flex-end;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--hairline);
-  background: var(--surface-glass);
+  margin: var(--space-3) var(--space-4) var(--space-4);
+  min-height: 44px;
+  padding: 6px 6px 6px var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--ink-abyss);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
-.scuttlebutt-composer {
-  align-items: flex-end;
+.scuttlebutt-composer:focus-within {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.scuttlebutt-composer.is-working {
+  border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline));
 }
 
 .scuttlebutt-composer textarea {
   min-width: 0;
+  min-height: 30px;
   max-height: 9.5em;
   flex: 1 1 auto;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  background: var(--ink-abyss);
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
   font: inherit;
   font-size: var(--t-md);
@@ -964,30 +976,63 @@
 }
 
 .scuttlebutt-composer textarea:focus {
-  border-color: var(--brass);
   outline: none;
-  box-shadow: 0 0 0 3px var(--brass-glow);
 }
 
 .scuttlebutt-composer textarea:disabled {
   opacity: 0.6;
 }
 
-.scuttlebutt-stop {
-  margin-left: auto;
-  padding: 2px var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--coral) 45%, var(--hairline));
+/* 보내기 — 원형 brass(Quick Launch·Cowork와 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
+.scuttlebutt-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  background: transparent;
-  color: color-mix(in oklch, var(--coral) 80%, var(--text-primary));
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
+  background: var(--ink-mid);
+  color: var(--text-tertiary);
+  cursor: default;
+  transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
 }
 
-.scuttlebutt-stop:hover {
-  background: color-mix(in oklch, var(--coral) 10%, transparent);
+.scuttlebutt-send.is-armed {
+  border-color: var(--brass);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  cursor: pointer;
+}
+
+.scuttlebutt-send.is-armed:hover {
+  transform: translateY(-1px);
+}
+
+.scuttlebutt-send:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-send:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.scuttlebutt-stop {
+  border-color: var(--hairline-strong);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.scuttlebutt-stop span {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: currentColor;
 }
 
 .scuttlebutt-stop:focus-visible {
@@ -1093,27 +1138,6 @@
   clip: rect(0 0 0 0);
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.scuttlebutt-send {
-  padding: var(--space-2) var(--space-4);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: var(--brass);
-  color: var(--text-on-brass);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-md);
-  font-weight: var(--weight-medium);
-}
-
-.scuttlebutt-send:focus-visible {
-  outline: 2px solid var(--text-primary);
-}
-
-.scuttlebutt-send:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 
 @keyframes scuttlebutt-qk-flap-l {

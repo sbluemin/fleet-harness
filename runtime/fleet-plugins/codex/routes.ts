@@ -4,6 +4,7 @@ import path from "node:path";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 import { createCodexMcpTools } from "./server/wiki-mcp.js";
@@ -60,6 +61,7 @@ export default definePlugin({
       host: "127.0.0.1",
       version: "1",
       readAiGatewaySettings: aiGatewaySettings.read,
+      readExperiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
       theaterPaths: {
         canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),
         hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),

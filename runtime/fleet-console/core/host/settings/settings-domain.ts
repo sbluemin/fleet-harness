@@ -10,7 +10,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ShortcutBindings } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentEffort, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../paths.js";
 
@@ -684,8 +684,11 @@ function isExperimentSettingsInput(value: unknown): boolean {
   for (const key of ["promptRefine", "sessionWatch", "consoleControl", "operationContext", "computerUse"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
-  for (const key of ["promptRefineModel", "sessionWatchModel"]) {
+  for (const key of ["promptRefineModel", "sessionWatchModel", "coworkModel", "analystModel"]) {
     if (key in value && !isExperimentModelId(value[key])) return false;
+  }
+  for (const key of ["coworkEffort", "analystEffort"]) {
+    if (key in value && !isExperimentEffort(value[key])) return false;
   }
   return true;
 }

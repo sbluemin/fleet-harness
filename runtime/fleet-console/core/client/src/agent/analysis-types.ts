@@ -13,12 +13,15 @@ export interface AnalysisCli {
   readonly models: readonly AnalysisModel[];
 }
 
-export interface AnalysisCatalog { readonly clis: readonly AnalysisCli[]; }
+/** 서버가 Settings › 실험 기능 › AI 확장 › Session Analyst를 카탈로그와 대조해 정한 실행 좌표. */
 export interface AnalysisSelection {
   readonly cliId: string;
   readonly model: string;
   readonly effort: string;
+  /** 설정의 모델이 목록에 없어(꺼진 Gateway 모델) Sonnet으로 내려간 상태. */
+  readonly fallback: boolean;
 }
+export interface AnalysisCatalog { readonly clis: readonly AnalysisCli[]; readonly selection?: AnalysisSelection; }
 export interface AnalysisError { readonly code: string; readonly message: string; }
 export interface AnalysisArtifact { readonly id: string; readonly title: string; readonly html: string; readonly createdAt: number; }
 export type AnalysisEvent =
@@ -42,7 +45,9 @@ function hasForbiddenAnalysisKey(value: unknown): boolean {
 export function parseAnalysisCatalog(value: unknown): AnalysisCatalog | null {
   if (hasForbiddenAnalysisKey(value) || !isRecord(value) || !Array.isArray(value.clis)) return null;
   const clis = value.clis.map(parseCli);
-  return clis.every((cli): cli is AnalysisCli => cli !== null) ? { clis } : null;
+  if (!clis.every((cli): cli is AnalysisCli => cli !== null)) return null;
+  const selection = parseSelection(value.selection);
+  return selection ? { clis, selection } : { clis };
 }
 
 export function parseAnalysisEvent(value: unknown): AnalysisEvent | null {
@@ -64,6 +69,10 @@ function parseCli(value: unknown): AnalysisCli | null {
   if (!isRecord(value) || typeof value.cliId !== "string" || typeof value.label !== "string" || typeof value.available !== "boolean" || !Array.isArray(value.models)) return null;
   const models = value.models.map((model): AnalysisModel | null => isRecord(model) && typeof model.id === "string" && typeof model.label === "string" && Array.isArray(model.effortLevels) && model.effortLevels.every((effort) => typeof effort === "string") ? { id: model.id, label: model.label, effortLevels: model.effortLevels, defaultEffort: typeof model.defaultEffort === "string" ? model.defaultEffort : undefined } : null);
   return models.every((model): model is AnalysisModel => model !== null) ? { cliId: value.cliId, label: value.label, available: value.available, defaultModel: typeof value.defaultModel === "string" ? value.defaultModel : undefined, models } : null;
+}
+function parseSelection(value: unknown): AnalysisSelection | undefined {
+  if (!isRecord(value) || typeof value.cliId !== "string" || typeof value.model !== "string" || typeof value.effort !== "string") return undefined;
+  return { cliId: value.cliId, model: value.model, effort: value.effort, fallback: value.fallback === true };
 }
 function isError(value: unknown): value is AnalysisError { return isRecord(value) && typeof value.code === "string" && typeof value.message === "string"; }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

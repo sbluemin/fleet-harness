@@ -7,6 +7,9 @@
  *
  * 모델은 기능마다 고른다. 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 —
  * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
+ *
+ * Cowork와 Session Analyst는 자기 컴포저에서 모델을 고르지 않는다 — 이 설정의 두 행(모델 + 강도)이
+ * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
  */
 
 export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "operationContext" | "computerUse";
@@ -17,6 +20,20 @@ export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefin
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
 
 export const EXPERIMENT_MODEL_FEATURES: readonly ExperimentModelFeatureId[] = ["promptRefine", "sessionWatch"];
+
+/** 항상 켜져 있어 스위치 없이 모델·강도만 고르는 보조 AI 표면. */
+export type ExperimentAideId = "cowork" | "analyst";
+
+export const EXPERIMENT_AIDES: readonly ExperimentAideId[] = ["cowork", "analyst"];
+
+/** 보조 AI의 강도 사다리 — 부관단 카드와 같은 고정 3단. 강도를 받지 않는 모델은 무시한다. */
+export const EXPERIMENT_EFFORTS = ["low", "medium", "high"] as const;
+export type ExperimentEffort = (typeof EXPERIMENT_EFFORTS)[number];
+
+export interface ExperimentAideSelection {
+  readonly model: string;
+  readonly effort: ExperimentEffort;
+}
 
 export interface ConsoleExperimentSettings {
   /** Quick Launch가 사용자의 요청을 명확한 작업 지시문으로 고쳐 쓴 초안을 내놓는다(메타 프롬프팅). */
@@ -34,6 +51,12 @@ export interface ConsoleExperimentSettings {
   readonly operationContext: boolean;
   /** 로컬 macOS의 Codex Computer Use broker. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
+  /** Wiki 초안 Cowork 대화의 모델·강도. 다음 턴부터 적용된다. */
+  readonly coworkModel: string;
+  readonly coworkEffort: ExperimentEffort;
+  /** Session Analyst 대화의 모델·강도. 새 분석 세션부터 적용된다. */
+  readonly analystModel: string;
+  readonly analystEffort: ExperimentEffort;
 }
 
 /**
@@ -45,6 +68,9 @@ export const DEFAULT_EXPERIMENT_MODELS: Readonly<Record<ExperimentModelFeatureId
   sessionWatch: "sonnet",
 };
 
+/** 보조 AI의 기본 좌표 — 판단이 드는 일이라 sonnet, 강도는 일상 단인 medium. */
+export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { model: "sonnet", effort: "medium" };
+
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   promptRefine: false,
   promptRefineModel: DEFAULT_EXPERIMENT_MODELS.promptRefine,
@@ -53,6 +79,10 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   consoleControl: false,
   operationContext: false,
   computerUse: false,
+  coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
+  coworkEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
+  analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
+  analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
 };
 
 /**
@@ -86,6 +116,10 @@ export function isExperimentModelId(value: unknown): value is string {
   return typeof value === "string" && MODEL_ID.test(value);
 }
 
+export function isExperimentEffort(value: unknown): value is ExperimentEffort {
+  return typeof value === "string" && (EXPERIMENT_EFFORTS as readonly string[]).includes(value);
+}
+
 /**
  * 저장값·요청 본문·응답을 같은 규칙으로 정제한다. 알 수 없는 값은 기본값으로 떨어진다 —
  * 모델 필드가 비거나 깨져 있어도 기능이 모델 없이 도는 상태는 존재하지 않는다.
@@ -97,6 +131,14 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     const raw = record[`${feature}Model`];
     return isExperimentModelId(raw) ? raw : DEFAULT_EXPERIMENT_MODELS[feature];
   };
+  const aideModel = (aide: ExperimentAideId): string => {
+    const raw = record[`${aide}Model`];
+    return isExperimentModelId(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.model;
+  };
+  const aideEffort = (aide: ExperimentAideId): ExperimentEffort => {
+    const raw = record[`${aide}Effort`];
+    return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
+  };
   return {
     promptRefine: record.promptRefine === true,
     promptRefineModel: model("promptRefine"),
@@ -105,7 +147,16 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     consoleControl: record.consoleControl === true,
     operationContext: record.operationContext === true,
     computerUse: record.computerUse === true,
+    coworkModel: aideModel("cowork"),
+    coworkEffort: aideEffort("cowork"),
+    analystModel: aideModel("analyst"),
+    analystEffort: aideEffort("analyst"),
   };
+}
+
+/** 한 보조 AI에 배정된 모델·강도. */
+export function experimentAideSelection(settings: ConsoleExperimentSettings, aide: ExperimentAideId): ExperimentAideSelection {
+  return { model: settings[`${aide}Model`], effort: settings[`${aide}Effort`] };
 }
 
 /** 한 기능에 배정된 모델 id. */

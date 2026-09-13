@@ -1,4 +1,23 @@
-import type { ClientApiCapability, PromptRefineInput, PromptRefinement } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ClientExperimentsCapability, PromptRefineInput, PromptRefinement } from "@fleet-console/sdk/plugin";
+import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+
+/**
+ * install에서 받은 실험 설정 능력 — 렌더 밖(store)에서도 읽고 구독해야 하므로 모듈 스코프에 둔다.
+ * 코어 번들 안의 상태라 호스트/플러그인 경계를 넘지 않는다.
+ */
+let installedExperiments: ClientExperimentsCapability | null = null;
+
+export function setInstalledExperiments(capability: ClientExperimentsCapability | null): void {
+  installedExperiments = capability;
+}
+
+export function readInstalledExperiments(): ConsoleExperimentSettings | null {
+  return installedExperiments?.read() ?? null;
+}
+
+export function subscribeInstalledExperiments(listener: () => void): () => void {
+  return installedExperiments?.subscribe(listener) ?? (() => undefined);
+}
 
 /** 서버 `experiments-routes.ts`의 채널 이름과 같은 값 — 두 번들이 문자열로만 만난다. */
 export const SESSION_WATCH_EVENT_CHANNEL = "terminal:session-watch";

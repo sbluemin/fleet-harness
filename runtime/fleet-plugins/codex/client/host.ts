@@ -1,6 +1,7 @@
 import type {
   ClientConsoleStateCapability,
   ClientExpandedSurfacesCapability,
+  ClientExperimentsCapability,
   ClientNavigationCapability,
   ClientRailCapability,
   ConsoleTheme,
@@ -20,6 +21,8 @@ interface CodexHostCapabilities {
   readonly navigation: ClientNavigationCapability;
   readonly surfaces: ClientExpandedSurfacesCapability;
   readonly rail: ClientRailCapability;
+  /** 실험 설정 읽기·구독 — Cowork 좌표가 바뀌면 열려 있는 도크가 따라간다. */
+  readonly experiments: ClientExperimentsCapability;
 }
 
 let capabilities: CodexHostCapabilities | null = null;

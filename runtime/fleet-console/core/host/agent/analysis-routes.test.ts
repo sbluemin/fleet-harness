@@ -18,7 +18,8 @@ vi.mock("@dotobokuri/core-ai-gateway", () => ({
   toClaudeGatewayModelId: (model: { id: string }) => `claude-gateway--${model.id}`,
 }));
 
-import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent } from "./analysis-types.js";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isMessageBody, type AnalysisEvent } from "./analysis-types.js";
 import { readProviderSession } from "./provider-session.js";
 
 /**
@@ -33,8 +34,8 @@ const ANALYST_NATIVE_MODELS = [
   { modelId: "fixed-effort", name: "Fixed Effort", effort: { supported: false } },
 ] as const;
 
-/** 카탈로그가 받아들이는 선택. 강도를 지원하는 모델은 강도 없이 시작할 수 없다. */
-const START_SELECTION = { cliId: "claude", model: "sonnet", effort: "low" } as const;
+/** 시작 본문 — 좌표는 서버가 Settings에서 정하므로 본문은 출력 언어뿐이다. */
+const START_SELECTION = {} as const;
 
 type AnalysisRouteDeps = NonNullable<Parameters<typeof registerAnalysisRoutes>[1]>;
 
@@ -73,6 +74,38 @@ describe("Session Analyst server contract", () => {
 
     expect(router.responses.at(-1)).toEqual({ status: 200, body: { ready: true } });
     expect(JSON.stringify(router.responses.at(-1))).not.toContain(transcriptPath);
+  });
+
+  it("starts with the Settings coordinate, ignores a client-chosen model, and falls back to Sonnet when the configured model is off", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-selection-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
+    const sessions: Array<{ model: string; effort: string | undefined }> = [];
+    let experiments = { ...DEFAULT_EXPERIMENT_SETTINGS, analystModel: "fixed-effort", analystEffort: "high" as const };
+    registerAnalysis(router, {
+      readExperiments: () => experiments,
+      createSession: ((options: { model: string; effort: string | undefined }) => {
+        sessions.push({ model: options.model, effort: options.effort });
+        return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
+      }) as never,
+    });
+
+    await router.call("GET", "/api/v1/analysis/catalog");
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { selection: { cliId: "claude", model: "fixed-effort", effort: "", fallback: false } } });
+    // 좌표는 서버가 정한다 — 본문에 실린 모델은 계약 밖이라 거절되고, 세션은 시작되지 않는다.
+    await router.call("POST", "/api/v1/analysis/op/start", { cliId: "claude", model: "sonnet", effort: "low" });
+    expect(router.responses.at(-1)).toMatchObject({ status: 400, body: { error: { code: "analysis_catalog_invalid" } } });
+    expect(sessions).toEqual([]);
+    await router.call("POST", "/api/v1/analysis/op/start", { language: "ko" });
+    expect(router.responses.at(-1)).toEqual({ status: 200, body: { started: true } });
+    expect(sessions).toEqual([{ model: "fixed-effort", effort: undefined }]);
+
+    // 설정의 모델이 목록에 없으면(꺼진 Gateway 모델) Sonnet으로 내려가고, 강도는 그 모델의 사다리 안에서 산다.
+    experiments = { ...experiments, analystModel: "claude-gateway--off-model" };
+    await router.call("GET", "/api/v1/analysis/catalog");
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { selection: { model: "sonnet", effort: "high", fallback: true } } });
   });
 
   it("wraps hostile artifact CSS with a validated host-owned canvas for every Console theme", async () => {
@@ -217,7 +250,7 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-1)).toMatchObject({ status: 403, body: { error: { code: "analysis_catalog_invalid" } } });
 
     router.allowHost = true;
-    await router.call("POST", "/api/v1/analysis/op/start", { cliId: "claude", model: "sonnet", effort: "low" });
+    await router.call("POST", "/api/v1/analysis/op/start", {});
     expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
     expect(JSON.stringify(router.responses)).not.toContain("private");
   });

@@ -1,4 +1,4 @@
-import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent, AnalysisSelection } from "./analysis-types.js";
+import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent } from "./analysis-types.js";
 
 // Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
 export const MAX_ANALYSIS_ARTIFACTS = 32;
@@ -38,9 +38,11 @@ export type AnalysisActivity =
 
 export interface AnalysisState {
   readonly catalog: AnalysisCatalog | null;
+  /** 실행 좌표 — Settings › 실험 기능 › AI 확장 › Session Analyst의 값. 패널은 고르지 않고 보여 주기만 한다. */
   readonly cliId: string;
   readonly model: string;
   readonly effort: string;
+  readonly modelFallback: boolean;
   readonly draft: string;
   readonly queue: readonly string[];
   readonly started: boolean;
@@ -54,8 +56,6 @@ export interface AnalysisState {
   readonly artifacts: readonly AnalysisArtifact[];
   readonly artifactAuthoring: { readonly startedAt: number } | null;
   readonly artifactPublished: { readonly artifact: AnalysisArtifact; readonly durationMs: number | null } | null;
-  readonly selectionLocked: boolean;
-  readonly selectionSaved: boolean;
   /* 모드는 캡션의 세그먼트가 바꾸고 본문이 따른다 — 두 슬롯이 서로 다른 React 서브트리라
      지역 상태로는 공유되지 않는다. */
   readonly viewMode: "chat" | "artifacts";
@@ -67,6 +67,7 @@ export const initialAnalysisState: AnalysisState = {
   cliId: "",
   model: "",
   effort: "",
+  modelFallback: false,
   draft: "",
   queue: [],
   started: false,
@@ -80,17 +81,12 @@ export const initialAnalysisState: AnalysisState = {
   artifacts: [],
   artifactAuthoring: null,
   artifactPublished: null,
-  selectionLocked: false,
-  selectionSaved: false,
   viewMode: "chat",
   error: null,
 };
 
 export type AnalysisAction =
-  | { readonly type: "catalog"; readonly catalog: AnalysisCatalog; readonly selection?: AnalysisSelection | null }
-  | { readonly type: "select-cli"; readonly cliId: string }
-  | { readonly type: "select-model"; readonly model: string }
-  | { readonly type: "select-effort"; readonly effort: string }
+  | { readonly type: "catalog"; readonly catalog: AnalysisCatalog }
   | { readonly type: "set-draft"; readonly draft: string }
   | { readonly type: "queue-push"; readonly text: string }
   | { readonly type: "queue-cancel"; readonly index: number }
@@ -102,27 +98,15 @@ export type AnalysisAction =
   | { readonly type: "start-failed"; readonly message: string; readonly now: number }
   | { readonly type: "stopped"; readonly now: number }
   | { readonly type: "stop-failed"; readonly message: string; readonly now: number }
-  | { readonly type: "reset"; readonly selection?: AnalysisSelection | null }
-  | { readonly type: "selection-lock"; readonly locked: boolean }
-  | { readonly type: "selection-saved" }
-  | { readonly type: "selection-saved-clear" }
+  | { readonly type: "reset" }
   | { readonly type: "clear-artifacts" }
   | { readonly type: "view-mode"; readonly mode: "chat" | "artifacts" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
-    return { ...state, catalog: action.catalog, ...resolvePersistedSelection(action.catalog, action.selection) };
+    // 진행 중 세션의 좌표는 시작 때 값으로 잠긴다 — 목록은 갱신하되 표시 좌표는 갈아끼우지 않는다.
+    return state.started ? { ...state, catalog: action.catalog } : { ...state, catalog: action.catalog, ...resolveCatalogSelection(action.catalog) };
   }
-  if (action.type === "select-cli" && !state.started) {
-    const cli = state.catalog?.clis.find((item) => item.cliId === action.cliId);
-    const model = cli?.models.find((item) => item.id === cli.defaultModel) ?? cli?.models[0];
-    return { ...state, cliId: action.cliId, model: model?.id ?? "", effort: model?.defaultEffort ?? model?.effortLevels[0] ?? "" };
-  }
-  if (action.type === "select-model" && !state.started) {
-    const model = state.catalog?.clis.find((item) => item.cliId === state.cliId)?.models.find((item) => item.id === action.model);
-    return { ...state, model: action.model, effort: model?.defaultEffort ?? model?.effortLevels[0] ?? "" };
-  }
-  if (action.type === "select-effort" && !state.started) return { ...state, effort: action.effort };
   if (action.type === "set-draft") return { ...state, draft: action.draft };
   if (action.type === "queue-push") return { ...state, queue: [...state.queue, action.text] };
   if (action.type === "queue-cancel") {
@@ -156,13 +140,8 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   }
   if (action.type === "reset") {
     const catalog = state.catalog;
-    return catalog
-      ? { ...initialAnalysisState, catalog, selectionLocked: state.selectionLocked, ...resolvePersistedSelection(catalog, action.selection) }
-      : { ...initialAnalysisState, selectionLocked: state.selectionLocked };
+    return catalog ? { ...initialAnalysisState, catalog, ...resolveCatalogSelection(catalog) } : initialAnalysisState;
   }
-  if (action.type === "selection-lock") return state.selectionLocked === action.locked ? state : { ...state, selectionLocked: action.locked };
-  if (action.type === "selection-saved") return { ...state, selectionSaved: true };
-  if (action.type === "selection-saved-clear") return state.selectionSaved ? { ...state, selectionSaved: false } : state;
   // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
   if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null };
   if (action.type === "view-mode") return state.viewMode === action.mode ? state : { ...state, viewMode: action.mode };
@@ -211,27 +190,11 @@ function resolveInitialSelection(catalog: AnalysisCatalog): Pick<AnalysisState, 
   return { cliId: cli?.cliId ?? "", model: model?.id ?? "", effort };
 }
 
-function resolvePersistedSelection(catalog: AnalysisCatalog, selection?: AnalysisSelection | null): Pick<AnalysisState, "cliId" | "model" | "effort"> {
-  const fallback = resolveInitialSelection(catalog);
-  if (!selection) return fallback;
-  const persistedCli = catalog.clis.find((item) => item.cliId === selection.cliId && item.available);
-  const cli = persistedCli ?? catalog.clis.find((item) => item.cliId === fallback.cliId);
-  if (!cli) return fallback;
-  const fallbackModel = persistedCli
-    ? cli.models.find((item) => item.id === cli.defaultModel) ?? cli.models[0]
-    : cli.models.find((item) => item.id === fallback.model)
-      ?? cli.models.find((item) => item.id === cli.defaultModel)
-      ?? cli.models[0];
-  const persistedModel = cli.models.find((item) => item.id === selection.model);
-  const model = persistedModel ?? fallbackModel;
-  if (!model) return { cliId: cli.cliId, model: "", effort: "" };
-  const fallbackEffort = model.effortLevels.includes("medium")
-    ? "medium"
-    : model.defaultEffort ?? model.effortLevels[0] ?? "";
-  const effort = model.effortLevels.length === 0
-    ? (selection.effort === "" ? "" : fallbackEffort)
-    : (model.effortLevels.includes(selection.effort) ? selection.effort : fallbackEffort);
-  return { cliId: cli.cliId, model: model.id, effort };
+/** 서버가 정한 좌표를 그대로 싣는다 — 응답에 좌표가 없으면(구버전 호스트) 카탈로그 기본으로 내려간다. */
+function resolveCatalogSelection(catalog: AnalysisCatalog): Pick<AnalysisState, "cliId" | "model" | "effort" | "modelFallback"> {
+  const selection = catalog.selection;
+  if (selection) return { cliId: selection.cliId, model: selection.model, effort: selection.effort, modelFallback: selection.fallback };
+  return { ...resolveInitialSelection(catalog), modelFallback: false };
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {

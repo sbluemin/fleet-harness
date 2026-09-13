@@ -7,7 +7,8 @@ import type { ConsoleRuntimeContext } from "../runtime-context.js";
 import { registerRouter } from "../runtime-context.js";
 
 import { AnalysisRegistry } from "./analysis-registry.js";
-import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisSelection, isMessageBody, resolveAnalysisGatewayBaseUrl, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
+import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisStartBody, isMessageBody, resolveAnalysisGatewayBaseUrl, withAnalystSelection, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
 import { readAnalysisProviderSession } from "./provider-session.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 
@@ -66,9 +67,10 @@ type AnalysisRouteDeps = {
   readonly createSession?: (options: AnalysisSessionOptions) => AnalystSession;
   /** 사용자가 Console에서 켠 게이트웨이 모델 선별. 미주입이면 분석가를 시작할 수 없다. */
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
-  /** 분석가가 고를 수 있는 네이티브 Claude 별칭의 출처. */
   /** 분석가가 고를 수 있는 native Claude 별칭. */
   readonly nativeModels?: typeof nativeClaudeAnalystModels;
+  /** Settings › 실험 기능 읽기 — 분석가의 모델·강도 좌표. 미주입이면 호스트의 실험 설정을 읽는다. */
+  readonly readExperiments?: () => ConsoleExperimentSettings;
 };
 
 type InFlightStartDeletionMarker = {
@@ -83,11 +85,13 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
   // 분석가가 쓸 수 있는 모델은 사용자가 켠 선별이고, 시작 가능 여부는 Console이 리슨 중인지에
   // 달렸다. 등록 시점에 고정하면 이후 설정 변경이 카탈로그에 반영되지 않는다.
   const nativeModels = deps.nativeModels ?? nativeClaudeAnalystModels;
-  const catalog = async (): Promise<AnalysisCatalog> => buildAnalysisCatalog(
+  const readExperiments = deps.readExperiments ?? (() => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS);
+  // 좌표(모델·강도)는 Settings의 것이다 — 카탈로그를 읽을 때마다 함께 대조하므로 바꾼 직후의 조회부터 새 값을 본다.
+  const catalog = async (): Promise<AnalysisCatalog> => withAnalystSelection(buildAnalysisCatalog(
     nativeModels(),
     readAiGatewaySettings ? resolveAiGatewaySelection(readAiGatewaySettings()).models : [],
     ctx.host.server.origin() !== null,
-  );
+  ), readExperiments());
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
   registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
@@ -599,7 +603,9 @@ async function handleStart(
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody(req);
   const currentCatalog = await catalog();
-  if (!isAnalysisSelection(currentCatalog, body)) {
+  const selection = currentCatalog.selection;
+  const cli = currentCatalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
+  if (!isAnalysisStartBody(body) || !selection || !cli?.available) {
     writeError(ctx, res, 400, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis selection is unavailable.");
     return true;
   }
@@ -628,8 +634,8 @@ async function handleStart(
     if (!origin) throw new Error("analysis_gateway_unavailable");
     const result = await registry.start(operation.id, (onEvent) => createSession({
       baseUrl: resolveAnalysisGatewayBaseUrl(origin),
-      model: body.model,
-      effort: body.effort || undefined,
+      model: selection.model,
+      effort: selection.effort || undefined,
       language: body.language,
       cwd,
       capturePath: transcriptPath,

@@ -1,23 +1,15 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { AgentGlyph } from "./agent-glyphs.js";
-import { EffortTrack } from "@fleet-console/sdk/components/effort-track";
-import {
-  groupModelsByLaunchProvider,
-  launchEtcGlyph,
-  launchProviderCaption,
-  launchProviderFromModelId,
-  launchProviderGlyph,
-} from "@fleet-console/sdk/components/launch-provider-glyphs";
-import { Select } from "@fleet-console/sdk/react/browser";
-import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import { launchEtcGlyph, launchProviderCaption, launchProviderFromModelId, launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
-import { createPortal } from "react-dom";
 import "@fleet-console/markdown/styles.css";
 
+import { openPane } from "../pane/pane-store.js";
+import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
+import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
 import { splitAnalystLedger, type AnalysisActivity, type AnalysisEntry, type AnalysisSegment, type AnalysisState, type AnalysisToolStep } from "./analysis-state.js";
-import type { AnalysisModel } from "./analysis-types.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "./i18n/index.js";
 import { decorateEvidenceHtml } from "./analysis-evidence.js";
@@ -65,11 +57,17 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const { state, dispatch, send, stop, refreshCatalog } = useAnalysisStore(context);
   const language = context.language ?? "en";
   const t = getT(language);
-  const reducedMotion = usePrefersReducedMotion();
   const [slashSelection, setSlashSelection] = React.useState(0);
   const [slashDismissed, setSlashDismissed] = React.useState(false);
   const cli = state.catalog?.clis.find((item) => item.cliId === state.cliId);
   const model = cli?.models.find((item) => item.id === state.model);
+  const modelProvider = launchProviderFromModelId(state.model);
+  const modelCaption = modelProvider ? launchProviderCaption(modelProvider) : undefined;
+  const openAnalystSettings = () => {
+    openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+    openPane({ paneId: SETTINGS_PANE_ID, params: { section: "experiments" } });
+    setRailChromeExpanded(true);
+  };
   const hasInteracted = state.entries.length > 0;
   // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 캡션 세그먼트가 이 본문을 가른다.
   const mode = state.viewMode;
@@ -335,8 +333,35 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               ))}
             </div>
           ) : null}
+          {/* 모델 표시줄 — 상자 밖 한 줄. 좌표는 Settings의 것이라 여기서는 보여 주고 바꾸는 길만 잇는다.
+             시작한 세션은 그 좌표로 잠기므로 「이 세션에 고정」이 그 계약을 말한다. */}
+          <div className="session-analyst__composer-meta">
+            <span className="session-analyst__composer-model" title={t("terminal.analyst.modelFrom")}>
+              <span className={`session-analyst__composer-model-mark operation-launch-provider-glyph${modelProvider ? ` is-${modelProvider}` : " operation-launch-provider-glyph--etc"}`} aria-hidden="true">
+                {modelProvider ? launchProviderGlyph(modelProvider) : launchEtcGlyph()}
+              </span>
+              <span className="session-analyst__composer-model-label">{model ? shortModelLabel(model.label, modelCaption) : state.model || "—"}</span>
+              {state.effort ? <span className="session-analyst__composer-model-effort">{state.effort.toUpperCase()}</span> : null}
+              {state.modelFallback ? <span className="session-analyst__composer-model-fallback">{t("terminal.analyst.modelFallback")}</span> : null}
+              {state.started ? <span className="session-analyst__composer-model-pinned">{t("terminal.analyst.pinnedForSession")}</span> : null}
+            </span>
+            <button type="button" className="session-analyst__composer-settings" onClick={openAnalystSettings}>{t("terminal.analyst.changeInSettings")}</button>
+          </div>
+          {/* 한 줄 컴포저 — 「/」 입구 · 입력 · 동작(중단·전송)이 한 면 안에 앉는다. 입력이 자라도 입구와 동작은 아래 변에 남는다. */}
           <div className="session-analyst__composer-surface">
             <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>{t("terminal.analyst.askAboutSession")}</label>
+            <button
+              type="button"
+              className="session-analyst__slash-hint"
+              aria-label={t("terminal.analyst.commands")}
+              title={t("terminal.analyst.slashHint")}
+              onClick={() => {
+                dispatch({ type: "set-draft", draft: "/" });
+                setSlashDismissed(false);
+                setSlashSelection(0);
+                window.requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+            >/</button>
             <textarea
               ref={textareaRef}
               id={`analysis-${context.operationId}`}
@@ -345,7 +370,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               aria-controls={slashListboxId}
               aria-activedescendant={activeSlashOption ? slashOptionId(activeSlashOption.command) : undefined}
               rows={1}
-              placeholder={t("terminal.analyst.composerPlaceholder")}
+              placeholder={t(state.busy ? "terminal.analyst.queueHint" : "terminal.analyst.composerPlaceholder")}
               value={state.draft}
               onChange={(event) => {
                 dispatch({ type: "set-draft", draft: event.target.value });
@@ -386,76 +411,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 void submit(state.draft, true);
               }}
             />
-            {/* 좌표 레일 — 채팅뷰 컴포저와 같은 조립: 한 면 안에 입력 위층 + 컨트롤 아래층.
-               좌표(모델·강도·슬래시)는 왼쪽, 전송·중단은 오른쪽. 첫 질문 뒤에도 그대로 선다 —
-               잠긴 선택은 disabled가 말한다(두 벌 레이아웃은 한쪽만 고쳐지는 자리가 된다). */}
-            <div className="session-analyst__composer-rail" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
-              {/* 공급자 축은 고를 것이 둘 이상일 때만 컨트롤이 된다 — 항상 한 줄만 뜨는 메뉴는
-                  자리를 차지하면서 아무것도 바꾸지 못한다. 값은 계속 선택에 실린다. */}
-              {(state.catalog?.clis.length ?? 0) > 1 ? (
-                <span className="session-analyst__select">
-                  <Select
-                    compact
-                    label={t("terminal.analyst.cli")}
-                    value={state.cliId}
-                    disabled={state.started || state.selectionLocked || !state.catalog}
-                    options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
-                    onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
-                  />
-                </span>
-              ) : null}
-              <AnalystModelChip
-                models={cli?.models ?? []}
-                value={state.model}
-                disabled={state.started || state.selectionLocked || !model}
-                label={t("terminal.analyst.model")}
-                menuLabel={t("terminal.analyst.modelMenu")}
-                etcLabel={t("terminal.analyst.modelGroup.etc")}
-                onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
-              />
-              {model && model.effortLevels.length > 0 ? (
-                <span className="session-analyst__effort" inert={state.started || state.selectionLocked || undefined}>
-                  <EffortTrack
-                    row={analystEffortRow(model)}
-                    value={state.effort}
-                    onChange={(effort) => {
-                      if (effort !== null) dispatch({ type: "select-effort", effort });
-                    }}
-                    autoLabel={t("terminal.analyst.effortAuto")}
-                    autoSlot={false}
-                    ariaLabel={t("terminal.analyst.effort")}
-                    autoValueText={t("terminal.analyst.effortAutoValue")}
-                    className="session-analyst__effort-track"
-                  />
-                </span>
-              ) : (
-                <span className="session-analyst__effort-na">{t("terminal.analyst.na")}</span>
-              )}
-              {/* 슬래시 목록은 placeholder 문구에만 있었다 — 읽고 지나가면 다시 만날 길이 없다. */}
-              <button
-                type="button"
-                className="session-analyst__slash-hint"
-                aria-label={t("terminal.analyst.commands")}
-                onClick={() => {
-                  dispatch({ type: "set-draft", draft: "/" });
-                  setSlashDismissed(false);
-                  setSlashSelection(0);
-                  window.requestAnimationFrame(() => textareaRef.current?.focus());
-                }}
-              >{t("terminal.analyst.slashHint")}</button>
-              <span
-                className="session-analyst__saved"
-                aria-live="polite"
-                aria-atomic="true"
-                style={{
-                  opacity: state.selectionSaved ? 1 : 0,
-                  transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
-                }}
-              >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
-              {actions}
-            </div>
+            {actions}
           </div>
-          {state.busy ? <div className="session-analyst__composer-hint">{t("terminal.analyst.queueHint")}</div> : null}
         </form>
         {/* 받침 — 채팅뷰 settle과 동형. 첫 질문 전에는 flex-grow 0.8로 초대·컴포저를 중앙에
            세우고, 스트리밍이 시작되면 0으로 줄며 컴포저가 하단에 내려앉는다(비율 전환이라
@@ -707,7 +664,7 @@ function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {
   const lineHeight = Number.parseFloat(style.lineHeight) || 18.75;
   const verticalPadding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
   const maxHeight = (lineHeight * 6) + verticalPadding;
-  const nextHeight = Math.max(36, Math.min(textarea.scrollHeight, maxHeight));
+  const nextHeight = Math.max(30, Math.min(textarea.scrollHeight, maxHeight));
   textarea.style.height = `${nextHeight}px`;
   textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
@@ -835,170 +792,4 @@ function shortModelLabel(label: string, providerCaption?: string): string {
     return stripped.slice(providerCaption.length + 1);
   }
   return stripped;
-}
-
-const ANALYST_MENU_MAX_HEIGHT = 520;
-const ANALYST_MENU_MIN_HEIGHT = 120;
-const ANALYST_MENU_MARGIN = 12;
-const ANALYST_MENU_GAP = 8;
-const ANALYST_MENU_WIDTH = 216;
-
-function placeAnalystModelMenu(chip: HTMLElement): React.CSSProperties {
-  const rect = chip.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const spaceBelow = viewportHeight - rect.bottom - ANALYST_MENU_GAP - ANALYST_MENU_MARGIN;
-  const spaceAbove = rect.top - ANALYST_MENU_GAP - ANALYST_MENU_MARGIN;
-  const openBelow = spaceBelow >= ANALYST_MENU_MIN_HEIGHT || spaceBelow >= spaceAbove;
-  const maxHeight = Math.max(
-    ANALYST_MENU_MIN_HEIGHT,
-    Math.min(ANALYST_MENU_MAX_HEIGHT, openBelow ? spaceBelow : spaceAbove),
-  );
-  const width = Math.min(ANALYST_MENU_WIDTH, viewportWidth - ANALYST_MENU_MARGIN * 2);
-  const left = Math.min(
-    Math.max(ANALYST_MENU_MARGIN, rect.left),
-    viewportWidth - width - ANALYST_MENU_MARGIN,
-  );
-  const top = openBelow
-    ? rect.bottom + ANALYST_MENU_GAP
-    : Math.max(ANALYST_MENU_MARGIN, rect.top - ANALYST_MENU_GAP - maxHeight);
-  return {
-    position: "fixed",
-    top,
-    left,
-    zIndex: 40,
-    width,
-    maxHeight,
-    overflowY: "auto",
-  };
-}
-
-function analystEffortRow(model: AnalysisModel): OperationLaunchVariantRow {
-  return {
-    id: model.id,
-    label: model.label,
-    launch: { model: model.id },
-    effortAxis: [...model.effortLevels],
-    chips: model.effortLevels.map((id) => ({
-      id,
-      label: id.toUpperCase(),
-      launch: { model: model.id, effort: id },
-    })),
-  };
-}
-
-function AnalystModelChip({
-  models,
-  value,
-  disabled,
-  label,
-  menuLabel,
-  etcLabel,
-  onChange,
-}: {
-  readonly models: readonly AnalysisModel[];
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly label: string;
-  readonly menuLabel: string;
-  readonly etcLabel: string;
-  readonly onChange: (model: string) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const chipRef = React.useRef<HTMLButtonElement>(null);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
-  const selected = models.find((item) => item.id === value) ?? models[0];
-  const selectedProvider = launchProviderFromModelId(selected?.id ?? value);
-  const selectedCaption = selectedProvider ? launchProviderCaption(selectedProvider) : undefined;
-  const groups = groupModelsByLaunchProvider(models);
-  React.useLayoutEffect(() => {
-    if (!open || !chipRef.current) return;
-    setMenuStyle(placeAnalystModelMenu(chipRef.current));
-  }, [open, models]);
-  React.useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (chipRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setOpen(false);
-      chipRef.current?.focus();
-    };
-    const onReposition = () => {
-      if (chipRef.current) setMenuStyle(placeAnalystModelMenu(chipRef.current));
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("resize", onReposition);
-    window.addEventListener("scroll", onReposition, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
-  }, [open]);
-  return (
-    <>
-      <button
-        ref={chipRef}
-        type="button"
-        className={`session-analyst__model-chip${selectedProvider ? ` is-${selectedProvider}` : ""}`}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => { if (!disabled) setOpen((current) => !current); }}
-      >
-        <span className="session-analyst__model-mark operation-launch-provider-glyph" aria-hidden="true">
-          {selectedProvider ? launchProviderGlyph(selectedProvider) : launchEtcGlyph()}
-        </span>
-        <span className="session-analyst__model-chip-label">{selected ? shortModelLabel(selected.label, selectedCaption) : value}</span>
-        <span className="session-analyst__model-chip-caret" aria-hidden="true">▾</span>
-      </button>
-      {open && typeof document !== "undefined"
-        ? createPortal(
-          <div ref={menuRef} className="session-analyst__model-menu theater-menu" role="menu" aria-label={menuLabel} style={menuStyle}>
-            {groups.map((group, groupIndex) => {
-              const caption = group.provider ? launchProviderCaption(group.provider) : etcLabel;
-              return (
-                <div key={group.provider ?? "etc"} role="group" aria-label={caption}>
-                  {groupIndex > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-                  <p className={`operation-launch-variant-caption${group.provider ? ` is-${group.provider}` : ""}`}>
-                    <span className={`operation-launch-provider-glyph${group.provider ? "" : " operation-launch-provider-glyph--etc"}`} aria-hidden="true">
-                      {group.provider ? launchProviderGlyph(group.provider) : launchEtcGlyph()}
-                    </span>
-                    <span>{caption}</span>
-                  </p>
-                  {group.models.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="operation-launch-variant-row"
-                      role="menuitemradio"
-                      aria-checked={item.id === value}
-                      onClick={() => {
-                        onChange(item.id);
-                        setOpen(false);
-                        chipRef.current?.focus();
-                      }}
-                    >
-                      <span className="operation-launch-variant-row-label">{shortModelLabel(item.label, caption)}</span>
-                      {item.id === value ? <span className="session-analyst__model-check" aria-hidden="true">✓</span> : null}
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
-          </div>,
-          document.body,
-        )
-        : null}
-    </>
-  );
 }

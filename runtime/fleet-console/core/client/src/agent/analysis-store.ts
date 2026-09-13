@@ -3,8 +3,7 @@ import type { ClientApiCapability, ClientSettingsCapability, OperationRenderCont
 
 import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
-import type { AnalysisSelection } from "./analysis-types.js";
-import { mergeTerminalSettingsRecord } from "../terminal/shared/terminal-preferences.js";
+import { subscribeInstalledExperiments } from "./experiments-api.js";
 
 export interface AnalysisStore {
   readonly getSnapshot: () => AnalysisState;
@@ -59,11 +58,9 @@ const CONNECT_WAIT_MS = 2_000;
    재무장되므로, 살아 있는 턴은 얼마든지 길어질 수 있고 SSE가 조용히 끊긴 고착만 걸린다. */
 const ANALYSIS_INACTIVITY_TIMEOUT_MS = 180_000;
 
-function createAnalysisStore(operationId: string, api: ClientApiCapability, initialSettings?: ClientSettingsCapability, initialLanguage?: "en" | "ko"): AnalysisStore {
+function createAnalysisStore(operationId: string, api: ClientApiCapability, _initialSettings?: ClientSettingsCapability, initialLanguage?: "en" | "ko"): AnalysisStore {
   let state = initialAnalysisState;
-  let settingsCapability = initialSettings;
   let language = initialLanguage;
-  let persistedSelection: AnalysisSelection | null = null;
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
@@ -72,48 +69,16 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
   let startController: AbortController | null = null;
   let stopFlight: Promise<void> | null = null;
   let resetFlight: Promise<void> | null = null;
-  let selectionWriteFlight: Promise<void> = Promise.resolve();
-  let selectionWriteEpoch = 0;
-  let selectionSavedTimer: ReturnType<typeof setTimeout> | null = null;
   let streamGeneration = 0;
   let runGeneration = 0;
   const listeners = new Set<() => void>();
 
   const dispatch = (action: AnalysisAction) => {
     if (disposed) return;
-    const savesSelection = action.type === "select-cli" || action.type === "select-model" || action.type === "select-effort";
-    if (savesSelection && state.selectionLocked) return;
     const next = analysisReducer(state, action);
     if (next === state) return;
-    if (savesSelection && selectionSavedTimer !== null) {
-      clearTimeout(selectionSavedTimer);
-      selectionSavedTimer = null;
-    }
-    state = savesSelection && next.selectionSaved ? { ...next, selectionSaved: false } : next;
+    state = next;
     for (const listener of listeners) listener();
-    if (savesSelection) queueSelectionSave({ cliId: state.cliId, model: state.model, effort: state.effort });
-  };
-
-  const queueSelectionSave = (selection: AnalysisSelection) => {
-    const settings = settingsCapability;
-    if (!settings) return;
-    const epoch = ++selectionWriteEpoch;
-    selectionWriteFlight = selectionWriteFlight.then(async () => {
-      try {
-        await mergeTerminalSettingsRecord(settings, {
-          analyst: { selection },
-        });
-        persistedSelection = selection;
-        if (disposed || epoch !== selectionWriteEpoch) return;
-        dispatch({ type: "selection-saved" });
-        selectionSavedTimer = setTimeout(() => {
-          selectionSavedTimer = null;
-          dispatch({ type: "selection-saved-clear" });
-        }, 1_500);
-      } catch {
-        // best-effort — the current in-memory selection remains usable.
-      }
-    });
   };
 
   const disarmWatchdog = () => {
@@ -184,12 +149,11 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     const pendingReset = resetFlight;
     const pendingStop = stopFlight;
     const pendingStart = startFlight;
-    const pendingSelectionWrite = selectionWriteFlight;
     const pendingStartController = startController;
     disposed = true;
     stores.delete(operationId);
     invalidateRun();
-    if (selectionSavedTimer !== null) clearTimeout(selectionSavedTimer);
+    unsubscribeExperiments();
     listeners.clear();
     pendingStartController?.abort();
     const flight = (async () => {
@@ -197,7 +161,6 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
       if (pendingStart) await pendingStart.catch(() => {});
       if (pendingReset) await pendingReset.catch(() => {});
       if (pendingStop) await pendingStop.catch(() => {});
-      await pendingSelectionWrite;
       await stopAnalysis(api, operationId);
     })().catch(() => {});
     disposalFlights.set(operationId, flight);
@@ -211,20 +174,21 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
   // 영원히 없다. 선택이 잠긴 뒤(started)에는 읽지 않는다 — 진행 중 세션의 표시 선택을 뒤에서
   // 갈아끼우게 된다. 그 잠금은 reset이 푸는 자리이므로 reset도 이 읽기를 함께 돌린다: 한 번이라도
   // 돌린 세션은 started가 complete 뒤에도 참이라, 여기서 읽지 않으면 초기화해도 새 모델이 없다.
-  // 현재 선택을 그대로 넘겨 아직 고를 수 있는 값이면 사용자의 선택이 산다. 이미 읽는 중이면
-  // (첫 마운트의 하이드레이션 포함) 그 결과를 기다린다 — 아래 하이드레이션 주석 참조.
+  // 좌표(모델·강도)도 이 응답에 실려 온다 — Settings가 바뀌면 아래 구독이 같은 읽기를 돌린다. 이미 읽는
+  // 중이면(첫 마운트의 하이드레이션 포함) 그 결과를 기다린다 — 아래 하이드레이션 주석 참조.
   const refreshCatalogNow = (): void => {
     if (state.started || catalogFlight) return;
     catalogFlight = fetchAnalysisCatalog(api)
       .then((catalog) => {
         if (disposed || state.started) return;
-        dispatch({ type: "catalog", catalog, selection: { cliId: state.cliId, model: state.model, effort: state.effort } });
+        dispatch({ type: "catalog", catalog });
       })
       // 목록 갱신 실패는 조용히 지나간다 — 이미 들고 있는 카탈로그로 계속 쓸 수 있고,
       // 여기서 오류 문구를 띄우면 아직 아무것도 요청하지 않은 화면이 실패한 것처럼 읽힌다.
       .catch(() => undefined)
       .finally(() => { catalogFlight = null; });
   };
+  const unsubscribeExperiments = subscribeInstalledExperiments(() => { if (!disposed) refreshCatalogNow(); });
 
   const store: AnalysisStore = {
     getSnapshot: () => state,
@@ -246,11 +210,11 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
       const generation = ++runGeneration;
       // Output language belongs to the server session created by this start. Later global
       // language changes update panel copy live, but apply to output only after reset/restart.
-      const selection = { cliId: state.cliId, model: state.model, effort: state.effort, ...(language ? { language } : {}) };
+      const startBody = language ? { language } : {};
       dispatch({ type: "sending", started: starting, text: trimmed, now: Date.now() });
       if (starting) {
         const controller = new AbortController();
-        const flight = startAnalysis(api, operationId, selection, controller.signal);
+        const flight = startAnalysis(api, operationId, startBody, controller.signal);
         startController = controller;
         startFlight = flight;
         try {
@@ -300,16 +264,14 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     reset: async () => {
       if (resetFlight) return resetFlight;
       if (disposed) return;
-      dispatch({ type: "selection-lock", locked: true });
       const shouldStopServer = state.started || state.phase !== "idle" || state.entries.length > 0 || state.artifacts.length > 0;
       invalidateRun();
       const flight = (async () => {
         if (stopFlight) await stopFlight;
         if (startFlight) await startFlight.catch(() => {});
-        await selectionWriteFlight;
         if (shouldStopServer) await stopAnalysis(api, operationId);
         await clearAnalysisArtifacts(api, operationId).catch(() => {});
-        dispatch({ type: "reset", selection: persistedSelection });
+        dispatch({ type: "reset" });
         // reset이 started를 푼 직후가 목록을 다시 읽을 수 있게 되는 첫 시점이다.
         refreshCatalogNow();
       })().catch((error: unknown) => {
@@ -321,13 +283,11 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
         await flight;
       } finally {
         if (resetFlight === flight) resetFlight = null;
-        dispatch({ type: "selection-lock", locked: false });
       }
     },
     refreshCatalog: refreshCatalogNow,
     dispose,
-    updateContext: (settings, nextLanguage) => {
-      if (settings) settingsCapability = settings;
+    updateContext: (_settings, nextLanguage) => {
       language = nextLanguage;
     },
   };
@@ -337,11 +297,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
   // 고른 모델을 뒤늦게 도착한 하이드레이션이 저장본으로 덮어쓴다.
   const previousDisposal = disposalFlights.get(operationId);
   catalogFlight = (previousDisposal ?? Promise.resolve())
-    .then(() => Promise.all([fetchAnalysisCatalog(api), readPersistedSelection(settingsCapability)]))
-    .then(([catalog, selection]) => {
-      persistedSelection = selection;
-      dispatch({ type: "catalog", catalog, selection });
-    })
+    .then(() => fetchAnalysisCatalog(api))
+    .then((catalog) => { dispatch({ type: "catalog", catalog }); })
     .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }))
     .finally(() => { catalogFlight = null; });
   void catalogFlight;
@@ -349,34 +306,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
   return store;
 }
 
-async function readPersistedSelection(settings: ClientSettingsCapability | undefined): Promise<AnalysisSelection | null> {
-  if (!settings) return null;
-  try {
-    const current = await settings.read(null);
-    if (!current) return null;
-    const analyst = record(current["analyst"]);
-    const selection = record(analyst["selection"]);
-    if (typeof selection["cliId"] !== "string"
-      || typeof selection["model"] !== "string"
-      || typeof selection["effort"] !== "string") return null;
-    const persisted = {
-      cliId: selection["cliId"],
-      model: selection["model"] === "fable" ? "fable[1m]" : selection["model"],
-      effort: selection["effort"],
-    };
-    // 이전 Fable id는 새 카탈로그와 맞춘 뒤 한 번 저장한다. 저장 실패가 현재 복원을 막지는 않는다.
-    if (persisted.model !== selection["model"]) {
-      await mergeTerminalSettingsRecord(settings, { analyst: { selection: persisted } }).catch(() => {});
-    }
-    return persisted;
-  } catch {
-    return null;
-  }
-}
 
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
 
 function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Analysis is unavailable.";
