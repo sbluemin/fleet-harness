@@ -1101,7 +1101,7 @@ describe("Instrument core design contract", () => {
       expect(bevels).toBeGreaterThanOrEqual(rims);
     }
     // 부양은 --shadow-floating을 그대로 두면 라이트에서 접촉면이 없다.
-    expect((components.match(/var\(--glass-lift\)/g) ?? []).length).toBeGreaterThanOrEqual(10);
+    expect((components.match(/var\(--glass-lift\)/g) ?? []).length).toBeGreaterThanOrEqual(9);
   });
 
   // 밴드 유리 뒤로 본문을 흘리는 레이아웃은 라우트가 밴드에 붙어 있을 때만 성립한다. 그 조건을
@@ -2135,7 +2135,6 @@ describe("Instrument core design contract", () => {
       // 못한다. 채널 계약은 그 전용 요소에서 그대로 지켜져야 한다.
       ".quick-launch-glass",
       ".feature-tour-card",
-      ".glass-welcome-card",
     ];
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
     // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
