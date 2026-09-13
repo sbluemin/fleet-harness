@@ -77,5 +77,11 @@ export interface ConsoleUseMcpHost {
     readonly enabled?: () => boolean;
     /** 제어 도구는 명시적으로 요청하며 호스트가 호출자와 콘솔 사용 옵트인을 검증한다. */
     readonly allowControl?: boolean;
+    /**
+     * 이 연결의 호출자는 Operation이다. 호출마다 호출자 Operation을 풀어 실험 옵트인과 그
+     * Operation의 콘솔 사용 토글을 함께 확인하고, 읽기를 포함한 모든 도구를 거부할 수 있다.
+     * 플러그인 소유 연결은 Operation을 갖지 않으므로 이 축을 쓰지 않는다.
+     */
+    readonly operationCallers?: boolean;
   }): ConsoleUseMcpConnection;
 }

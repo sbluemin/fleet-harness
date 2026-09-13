@@ -581,6 +581,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
+    experimentEnabled: () => readExperimentSettings(consoleSettingsStore).consoleControl,
+    // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
+    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const aiGatewayMcp = createAiGatewayMcpHost({
     transport: mcpHttp.transport,

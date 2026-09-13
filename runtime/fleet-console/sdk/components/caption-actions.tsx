@@ -38,6 +38,20 @@ export function CaptionWatchGlyph() {
   );
 }
 
+/**
+ * 콘솔 사용(실험) — 이 세션이 바깥의 Console을 잡는다는 뜻이다. 관찰의 눈과 달리 밖을 향한 화살을
+ * 진다: 지켜보는 것이 아니라 건드리는 권한이므로 표식도 달라야 한다.
+ */
+export function CaptionConsoleUseGlyph() {
+  return (
+    <CaptionGlyph>
+      <rect x="2.1" y="3.2" width="11.8" height="9.6" rx="1.6" {...STROKE} />
+      <path d="M5.2 7.1 7.1 8.9 5.2 10.7" {...STROKE} />
+      <path d="M8.7 10.8h2.4" {...STROKE} />
+    </CaptionGlyph>
+  );
+}
+
 /** Session Analyst — 제품이 이미 쓰는 ✳ 표식을 선으로 옮겨 그린 것. */
 export function CaptionAnalystGlyph() {
   return (

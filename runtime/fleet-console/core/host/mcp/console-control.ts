@@ -36,6 +36,19 @@ export const automationSchema = z.object({
 export class ConsoleControlError extends Error {
   constructor(readonly code: string) { super(code); }
 }
+
+/**
+ * Operation 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. `payload.watch`와 같은
+ * 자리·같은 모양이다. 실험 옵트인을 꺼도 이 기록은 남는다: 두 축이 다르고, 허용이 둘의 AND라
+ * 남은 기록만으로는 아무 권한도 서지 않는다.
+ */
+export function readConsoleUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
+  const value = payload?.consoleUse;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (record.enabled !== true) return null;
+  return { enabled: true, language: record.language === "ko" ? "ko" : "en" };
+}
 const fail = (code: string): never => { throw new ConsoleControlError(code); };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
 const RETENTION_DAYS = 7;
@@ -105,6 +118,19 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   }
   function node(id: string) { return deps.operations().find((op) => op.id === id); }
   function callerAvailable(caller: ConsoleCaller) { return caller.kind === "operation" ? !!node(caller.operationId) : deps.pluginAvailable?.(caller.pluginId) === true; }
+  /**
+   * 소유자가 아직 콘솔 사용을 허용받고 있는가. 존재(`callerAvailable`)와 다른 축이다 — 살아 있는
+   * Operation이 허용만 거둔 경우가 있고, 그때 사용자가 할 일도 다르다.
+   *
+   * 이 판정이 여기에도 서야 하는 이유는 자동 운영이다: 정책은 소유자를 대신해 **나중에** 실행되므로,
+   * 도구 호출 경로에만 게이트를 두면 이미 예약된 정책이 그 게이트를 우회해 돌아 버린다.
+   * 플러그인 소유자는 Operation을 갖지 않으며 실험 옵트인(`deps.enabled`)이 그 자리를 지킨다.
+   */
+  function callerAuthorized(caller: ConsoleCaller) {
+    if (caller.kind !== "operation") return true;
+    const operation = node(caller.operationId);
+    return !!operation && readConsoleUseFlag(operation.payload) !== null;
+  }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
   function revision(id: string) {
     const op = node(id);
@@ -150,6 +176,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (disposed) fail("console_unavailable");
     if (storageError) fail("storage_unavailable");
     if (!callerAvailable(caller)) fail("caller_unavailable");
+    if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId)) fail("invalid_request_id");
     const input = actionSchema.parse(raw);
     const duplicate = state.actions.find((a) => sameCaller(a.caller, caller) && a.requestId === requestId);
@@ -178,6 +205,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (disposed || !deps.enabled() || storageError) fail("control_paused");
       if (Date.parse(entry.expiresAt) <= now()) fail("request_expired");
       if (!callerAvailable(entry.caller)) fail("caller_unavailable");
+      if (!callerAuthorized(entry.caller)) fail("console_use_not_authorized");
       if (entry.policyId) {
         const policy = state.automations.find((a) => a.id === entry.policyId);
         if (!policy || policy.status !== "active" || Date.parse(policy.input.expiresAt) <= now()) fail("policy_paused");
@@ -202,6 +230,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   }
   function automation(caller: ConsoleCaller, raw: ConsoleAutomationInput) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
+    if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     if (!deps.enabled()) fail("console_control_disabled");
     const input = automationSchema.parse(raw);
     const expires = Date.parse(input.expiresAt);
@@ -251,6 +280,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
         if (!callerAvailable(item.caller) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
+        // 소유자가 허용을 거둔 정책은 여기서 멈춘다 — 사라진 것이 아니라 권한이 걷힌 것이라 사유를 구분한다.
+        if (!callerAuthorized(item.caller)) { updateAutomation(item.id, { status: "paused", lastError: "owner_not_authorized" }); continue; }
         if (state.actions.some((a) => a.policyId === item.id && pendingStatuses.has(a.status))) continue;
         if (Date.parse(item.input.expiresAt) <= now()) { updateAutomation(item.id, { status: "expired" }); continue; }
         if (item.runs >= item.input.maxRuns) { updateAutomation(item.id, { status: "exhausted" }); continue; }
