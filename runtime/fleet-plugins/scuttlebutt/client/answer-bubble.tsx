@@ -173,6 +173,9 @@ export function AnswerBubble({
   // 뺏으면 사용자가 치던 글자가 말풍선으로 간다.
   React.useEffect(() => {
     if (working) return;
+    // 모달이 열려 있으면 그 안의 포커스를 빼앗지 않는다 — Escape 리스너와 같은 독점 계약. 그 답은 모달을
+    // 닫은 뒤 사용자가 스스로 찾아 읽는다(그때 돌아갈 자리도 없으므로 기억하지 않는다).
+    if (document.querySelector('[aria-modal="true"]')) return;
     const bubble = bubbleRef.current;
     const text = textRef.current;
     if (!bubble || !text) return;
