@@ -1,0 +1,53 @@
+.computer-screen-share {
+  position: absolute;
+  right: .75rem;
+  bottom: .75rem;
+  z-index: 5;
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100% - 1.5rem);
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: .75rem;
+  background: var(--surface-panel-raised);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+.computer-screen-share:hover,
+.computer-screen-share.is-dragging {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px var(--brass), 0 0 14px var(--brass-glow);
+}
+.computer-screen-share.is-dragging { cursor: grabbing; }
+.computer-screen-share.is-maximized { cursor: default; border-radius: 0; }
+.computer-screen-share-maximize,
+.computer-screen-share-resize { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); color: var(--text-primary); background: var(--surface-panel-raised); opacity: 0; transition: opacity var(--duration-fast); }
+.computer-screen-share-maximize { top: 6px; right: 6px; cursor: pointer; }
+.computer-screen-share-resize { right: 0; bottom: 0; cursor: nwse-resize; touch-action: none; }
+.computer-screen-share:hover button,
+.computer-screen-share:focus-within button { opacity: 1; }
+.computer-screen-share button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.computer-screen-share button svg { width: 100%; height: 100%; }
+.computer-screen-share-maximize:hover,
+.computer-screen-share-resize:hover { background: color-mix(in oklab, var(--brass) 20%, var(--surface-panel-raised)); color: var(--brass-ink); border-color: var(--brass); }
+@media (hover: none) { .computer-screen-share button { opacity: 1; } }
+
+/* OS 공유 표시처럼 조작 허용만 알리는 공통 배지. 캡션 면·정체성·활동 색상은 바꾸지 않는다. */
+.agent-control-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 20px; margin-inline-end: 0; border-radius: var(--radius-pill); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
+.agent-operation-marks { display: inline-flex; align-items: center; gap: 2px; }
+.agent-operation-marks:empty { display: none; }
+.agent-operation-marks .agent-control-badge { margin-inline-end: 0; }
+.agent-control-badge svg { width: 16px; height: 16px; }
+.agent-control-badge { overflow: hidden; animation: agent-use-enter 180ms ease-out both; }
+.agent-control-badge.is-console { background: var(--console-use-badge); color: var(--console-use-badge-ink); }
+.agent-control-badge.is-leaving { animation: agent-use-leave 180ms ease-in both; }
+@keyframes agent-use-enter { from { width: 0; margin-inline-end: 0; opacity: 0; transform: scale(.85); } to { width: 30px; margin-inline-end: 0; opacity: 1; transform: scale(1); } }
+@keyframes agent-use-leave { from { width: 30px; margin-inline-end: 0; opacity: 1; } to { width: 0; margin-inline-end: 0; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .agent-control-badge, .agent-control-badge.is-leaving { animation: none; } .agent-control-badge.is-leaving { opacity: 0; } }
+.computer-screen-share video { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.computer-screen-share p { margin: 0; padding: .75rem; color: var(--text-secondary); font-size: var(--t-xs); }
+.computer-screen-share-retry { margin: 0 .75rem .75rem; padding: .35rem .6rem; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-primary); cursor: pointer; font: inherit; }
+.computer-screen-share-retry:hover { border-color: var(--brass); }
+.computer-screen-share-retry:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }

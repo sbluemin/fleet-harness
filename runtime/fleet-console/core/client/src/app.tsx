@@ -21,6 +21,7 @@ import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion 
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { PersistentPluginComponents } from "./persistent-components.js";
+import { ComputerScreenShareProvider } from "./agent/computer-screen-share.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "./update-progress-store.js";
@@ -422,6 +423,7 @@ export function App() {
   }, [canUndoLastClose, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
 
   return (
+    <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
       <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
         <button type="button" className="zen-mode-exit" hidden={!zenActive} onClick={() => {
@@ -538,5 +540,6 @@ export function App() {
         </ToastHost>
       </div>
     </ActiveCompanionShortcutsProvider>
+    </ComputerScreenShareProvider>
   );
 }

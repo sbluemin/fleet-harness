@@ -14,7 +14,7 @@ export interface AiGatewayMcpHost {
 
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
 
-export const CONSOLE_READ_TOOLS = ["console_context", "console_theaters", "console_operations", "console_operation", "console_events"] as const;
+export const CONSOLE_READ_TOOLS = ["console_context", "console_theaters", "console_operations", "console_operation", "console_events", "console_end"] as const;
 export const CONSOLE_CONTROL_TOOLS = [...CONSOLE_READ_TOOLS, "console_launch", "console_send", "console_interrupt", "console_action", "console_automation"] as const;
 export type ConsoleUseToolId = (typeof CONSOLE_CONTROL_TOOLS)[number];
 

@@ -576,7 +576,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUse = new ComputerUseService({
+    onCaptureTarget: (target) => {
+      const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
+      if (!target || !operationId || !operations.list().some((operation) => operation.id === operationId)) { computerCaptureTarget = null; return; }
+      if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
+        && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
+        computerCaptureTarget = { ...computerCaptureTarget, title: target.title };
+        return;
+      }
+      computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
+    },
     platform: macOSComputerUsePlatform,
     directory: path.join(fleetDataDir, "computer-use"),
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
@@ -590,7 +601,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
+  const consoleUseActivity = new Map<string, number>();
   const consoleUse = createConsoleUseMcpHost({
+    onOperationUse: (operationId, active) => {
+      const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
+      if (count) consoleUseActivity.set(operationId, count);
+      else consoleUseActivity.delete(operationId);
+    },
     control: consoleControl,
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
@@ -959,6 +976,31 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await pluginSettingsRouter(ctx)) return true;
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
+  });
+  routeRegistry.register("/api/v1/desktop/computer-capture", async ({ req, res, pathname }) => {
+    if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
+      const candidate = computerCaptureTarget;
+      if (candidate && !await computerUse.verifyCaptureTarget(candidate) && computerCaptureTarget?.id === candidate.id) computerCaptureTarget = null;
+      writeJson(res, 200, { target: computerUse.status().enabled ? computerCaptureTarget : null });
+      return true;
+    }
+    writeJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  });
+  routeRegistry.register("/api/v1/operation-use", async ({ req, res }) => {
+    if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    const experiments = readExperimentSettings(consoleSettingsStore);
+    const current = operations.list();
+    const consoleOperations: string[] = [];
+    for (const [id] of consoleUseActivity) {
+      if (!current.some((operation) => operation.id === id)) continue;
+      if (experiments.consoleControl && current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+    }
+    const owner = computerUse.activeOwner();
+    const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
+    writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [] });
+    return true;
   });
   routeRegistry.register("/api/v1/computer-use", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }

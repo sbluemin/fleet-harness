@@ -53,15 +53,11 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
   };
   const code = error ?? (enabled ? status?.error : null);
   const errorKey = code === "computer_use_automation_permission_denied" ? "permission"
-    : code === "computer_use_no_action_window" ? "noActionWindow"
+    : code === "computer_use_runtime_incompatible" ? "incompatible"
+      : code === "computer_use_no_action_window" ? "noActionWindow"
       : code?.includes("timeout") ? "timeout"
         : code && /app_not_found|ambiguous_app|element_not_found|secondary_action_unavailable|coordinate_target_unavailable/.test(code) ? "target" : "failed";
   const active = enabled && status && status.state !== "idle" && status.state !== "off";
-  const label = unavailable ? t("settings.computerUse.connectionFailed")
-    : !status || status.installation === "unchecked" ? t("settings.computerUse.checking")
-      : !status.supported ? t("settings.computerUse.unavailable")
-        : status.installation === "missing" ? t("settings.computerUse.missingLabel")
-          : t(`settings.computerUse.${enabled ? status.state : "off"}`);
   return <>
     <div className="global-settings-row experiments-row">
       <div className="global-settings-row-text">
@@ -73,7 +69,6 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
             {status?.installation === "missing" && <p>{t("settings.computerUse.missing")}</p>}
           </SettingsHelp>
         </p>
-        <p className="global-settings-help" role="status">{label}</p>
       </div>
       <div className="experiments-row-controls">
         {unavailable && <button type="button" className="fc-settings-reset" onClick={() => setRefreshKey((key) => key + 1)}>{t("settings.computerUse.retry")}</button>}
@@ -81,7 +76,6 @@ export function ComputerUseRow({ enabled, saving, onChange }: { readonly enabled
         <SettingsToggle checked={enabled} disabled={saving || working || (!enabled && (!status?.supported || unavailable || status.installation !== "available"))} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />
       </div>
     </div>
-    {enabled && status?.activeTool && <p className="global-settings-help" role="status">{t("settings.computerUse.progressLabel", { seconds: String(Math.floor(status.elapsedMs / 1000)) })}</p>}
     {status?.warning && <p className="global-settings-help" role="status">{t("settings.computerUse.cleanupWarning")}</p>}
     {code && <p role="alert" className="global-settings-help">
       {t(`settings.computerUse.${errorKey}`)}

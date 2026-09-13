@@ -5,10 +5,29 @@ import path from 'node:path';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 
-import { branchFragmentName, writeChangelogs } from './compile-changelog-fragments.mjs';
+import { branchFragmentName, writeChangelogs, rewriteHistory } from './compile-changelog-fragments.mjs';
 
 const COMPILER = path.resolve('scripts/compile-changelog-fragments.mjs');
 const EMPTY_CHANGELOG = '# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\nRelease v0.1.0\n';
+
+test('rewrites historical copy without changing release structure and refuses stale edits before writing', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'changelog-editorial-'));
+  const options = { changelogPath: path.join(directory, 'en.md'), changelogKoPath: path.join(directory, 'ko.md') };
+  const prefix = '# Changelog\n\n## [1.0.0] - 2026-01-01\n\n### fleet-console\n';
+  fs.writeFileSync(options.changelogPath, prefix + '- Old summary.\n');
+  fs.writeFileSync(options.changelogKoPath, prefix + '- 이전 설명입니다.\n');
+  const edit = { line: 6, beforeEn: 'Old summary.', beforeKo: '이전 설명입니다.', en: 'Read agent results.', ko: '에이전트 결과를 읽을 수 있습니다.' };
+  try {
+    assert.throws(() => rewriteHistory(options, [{ ...edit, beforeKo: '다른 원문' }]), /source changed/);
+    assert.equal(fs.readFileSync(options.changelogPath, 'utf8'), prefix + '- Old summary.\n');
+    assert.throws(() => rewriteHistory(options, [{ ...edit, en: 'Read CLI results.' }]), /drops technical tokens/);
+    assert.equal(fs.readFileSync(options.changelogKoPath, 'utf8'), prefix + '- 이전 설명입니다.\n');
+    rewriteHistory(options, [edit]);
+    assert.equal(fs.readFileSync(options.changelogPath, 'utf8'), prefix + '- Read agent results.\n');
+    assert.equal(fs.readFileSync(options.changelogKoPath, 'utf8'), prefix + '- 에이전트 결과를 읽을 수 있습니다.\n');
+    assert.throws(() => rewriteHistory(options, [edit]), /source changed/);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('validates adjacent bilingual pairs and renders deterministic dual previews', () => {
   const fixture = createFixture();

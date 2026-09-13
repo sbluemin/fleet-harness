@@ -1,6 +1,12 @@
 :root {
   color-scheme: dark;
 
+  /* OS 공유 표시를 본뜬 조작 허용 배지 전용 채널. 사용자 정체성이나 활동 상태 색이 아니다. */
+  --agent-control-badge: oklch(57% 0.24 285);
+  --agent-control-badge-ink: oklch(100% 0 0);
+  --console-use-badge: oklch(76% 0.15 60);
+  --console-use-badge-ink: oklch(22% 0.025 60);
+
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
   /* 텍스트 3티어(--text-*)는 판독 계약을 지는 유일한 색 역할이다. 어느 테마에서든 본문 표면 위에서

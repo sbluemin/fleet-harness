@@ -20,6 +20,7 @@ import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } f
 import type { ClientExecutionProvider, ClientExperimentsCapability, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -588,8 +589,13 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     ? <span className="session-watch-host" aria-hidden={liveReview === null ? true : undefined}><SessionWatchBubble context={context} review={liveReview} /></span>
     : null;
 
+  const using = useOperationUse(context.operationId);
   return (
     <>
+      <span className="agent-operation-marks">
+        <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
+        <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+      </span>
       {analyst}
       {viewSwitch}
       {readingWidthAction}
@@ -603,6 +609,19 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
  * 사용자가 무엇이든 누르거나 입력하면 사라진다: 결과는 알려야 하지만 화면을 차지해서는 안 된다.
  * 새 결과가 오면 다시 뜬다. 마지막 결과 자체는 ··· 메뉴의 관찰 행 툴팁과 칩 마크가 계속 갖고 있다.
  */
+function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer"; label: string }) {
+  const [present, setPresent] = React.useState(active);
+  React.useEffect(() => {
+    if (active) { setPresent(true); return; }
+    const timer = setTimeout(() => setPresent(false), 180);
+    return () => clearTimeout(timer);
+  }, [active]);
+  if (!present && !active) return null;
+  return <span className={`agent-control-badge is-${kind}${active ? "" : " is-leaving"}`} role="img" aria-label={label} title={label}>
+    {kind === "console" ? <CaptionConsoleUseGlyph /> : <CaptionComputerUseGlyph />}
+  </span>;
+}
+
 function SessionWatchBubble({ context, review }: { readonly context: OperationRenderContext; readonly review: SessionWatchReview | null }) {
   const t = getT(context.language ?? "en");
   const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
@@ -701,6 +720,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
+        <ComputerScreenShare operationId={context.operationId} />
       </div>
     );
   }
@@ -730,6 +750,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
+      <ComputerScreenShare operationId={context.operationId} />
     </div>
   );
 }
@@ -807,25 +828,20 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
   );
 }
 
-/** 사이드바 칩의 실험 마크 — 켜진 것만, 메뉴 행과 같은 글리프로. 검토 중인 관찰은 aurora 점을 단다. */
+/** 사용 배지는 캡션과 같은 수명을 공유하고, 세션 관찰 마크는 기존 정책을 유지한다. */
 function AgentOperationMarks({ context }: { readonly context: OperationMenuContext }) {
   const t = getT(context.language);
   const experiments = useExperimentsSnapshot();
   const payload = context.operation.payload;
   const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operation.id), () => null);
   const review = liveReview ?? readWatchLast(payload);
-  if (!experiments) return null;
-  const marks = [
-    experiments.sessionWatch === true && readWatchEnabled(payload) ? { id: "session-watch", glyph: <CaptionWatchGlyph />, label: t("terminal.experiments.menuWatch"), busy: review?.phase === "started" } : null,
-    experiments.consoleControl === true && readConsoleUseEnabled(payload) ? { id: "console-use", glyph: <CaptionConsoleUseGlyph />, label: t("terminal.experiments.menuConsoleUse"), busy: false } : null,
-    experiments.computerUse === true && readComputerUseEnabled(payload) ? { id: "computer-use", glyph: <CaptionComputerUseGlyph />, label: t("terminal.experiments.menuComputerUse"), busy: false } : null,
-  ].filter((mark) => mark !== null);
-  if (marks.length === 0) return null;
+  const using = useOperationUse(context.operation.id);
+  const watch = experiments?.sessionWatch === true && readWatchEnabled(payload);
   return (
-    <span className="side-bar-chip-marks" role="img" aria-label={t("terminal.experiments.marksAria", { names: marks.map((mark) => mark.label).join(", ") })}>
-      {marks.map((mark) => (
-        <span key={mark.id} className={`side-bar-chip-mark${mark.busy ? " is-busy" : ""}`} title={mark.label} data-operation-mark={mark.id}>{mark.glyph}</span>
-      ))}
+    <span className="agent-operation-marks">
+      {watch ? <span className="side-bar-chip-marks"><span className={`side-bar-chip-mark${review?.phase === "started" ? " is-busy" : ""}`} role="img" aria-label={t("terminal.experiments.menuWatch")} title={t("terminal.experiments.menuWatch")} data-operation-mark="session-watch"><CaptionWatchGlyph /></span></span> : null}
+      <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
+      <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
     </span>
   );
 }

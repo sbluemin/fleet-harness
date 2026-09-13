@@ -9,8 +9,8 @@ const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
-const productName = "Fleet Console";
-const bundleIdentifier = "com.dotobokuri.fleet-console";
+const productName = "Fleet Console Dev";
+const bundleIdentifier = "com.dotobokuri.fleet-console.dev";
 const wrapperSourceKey = "FleetConsoleDevElectronApp";
 
 export async function createMacDevWrapper(input) {
@@ -20,7 +20,6 @@ export async function createMacDevWrapper(input) {
   const executablePath = path.join(contentsDirectory, "MacOS", "Electron");
   const wrapperIconPath = path.join(contentsDirectory, "Resources", "icon.icns");
   if (await isReusableWrapper(wrapperPath, electronAppPath)) {
-    await copyFile(input.iconPath, wrapperIconPath);
     return { appPath: wrapperPath, executablePath };
   }
 
@@ -32,11 +31,14 @@ export async function createMacDevWrapper(input) {
   const sourceInfo = await readFile(sourceInfoPath, "utf8");
   await writeFile(wrapperInfoPath, createInfoPlist(sourceInfo, electronAppPath));
   await copyFile(input.iconPath, wrapperIconPath);
+  await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", "--identifier", bundleIdentifier,
+    "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath]);
+  await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
   return { appPath: wrapperPath, executablePath };
 }
 
 export function createInfoPlist(sourceInfo, electronAppPath) {
-  return appendPlistString(
+  return appendPlistString(appendPlistString(
     replacePlistString(
       replacePlistString(
         replacePlistString(
@@ -52,22 +54,25 @@ export function createInfoPlist(sourceInfo, electronAppPath) {
     ),
     wrapperSourceKey,
     electronAppPath,
-  );
+  ), "NSAppleEventsUsageDescription", "Fleet Console Dev uses the Computer Use service to read and control apps when you allow an Operation.");
 }
 
-export function createMacDevLaunchArguments(wrapperPath, appPath) {
-  return ["-W", "-n", wrapperPath, "--args", appPath];
+export function createMacDevLaunchArguments(wrapperPath, appPath, args = [], env = process.env) {
+  const overrides = ["FLEET_CONSOLE_DATA_DIR", "FLEET_DESKTOP_DATA_DIR", "FLEET_DATA_DIR", "FLEET_CONSOLE_NODE_PATH"]
+    .flatMap((key) => env[key] ? ["--env", `${key}=${env[key]}`] : []);
+  return ["-W", "-n", ...overrides, wrapperPath, "--args", appPath, ...args];
 }
 
 async function main() {
   const electronBinary = require("electron");
-  if (process.platform !== "darwin") return run(electronBinary, [desktopDirectory]);
+  if (process.platform !== "darwin") return process.argv.includes("--build-only") ? 0 : run(electronBinary, [desktopDirectory, ...process.argv.slice(2)]);
   const wrapper = await createMacDevWrapper({
     electronBinary,
     iconPath: path.join(desktopDirectory, "build", "icon.icns"),
     stageDirectory: path.join(desktopDirectory, ".stage", "dev-app"),
   });
-  return run("/usr/bin/open", createMacDevLaunchArguments(wrapper.appPath, desktopDirectory));
+  if (process.argv.includes("--build-only")) { process.stdout.write(`${wrapper.appPath}\n`); return 0; }
+  return run("/usr/bin/open", createMacDevLaunchArguments(wrapper.appPath, desktopDirectory, process.argv.slice(2)));
 }
 
 async function cloneMacApp(sourcePath, destinationPath) {
@@ -80,7 +85,10 @@ async function isReusableWrapper(wrapperPath, electronAppPath) {
       readFile(path.join(wrapperPath, "Contents", "Info.plist"), "utf8"),
       stat(path.join(wrapperPath, "Contents", "MacOS", "Electron")),
     ]);
-    return executable.isFile() && info.includes(plistString(wrapperSourceKey, electronAppPath));
+    if (!executable.isFile() || !info.includes(plistString(wrapperSourceKey, electronAppPath))
+      || !info.includes(`<string>${bundleIdentifier}</string>`) || !info.includes(`<string>${productName}</string>`)) return false;
+    await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
+    return true;
   } catch {
     return false;
   }

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
-import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "./computer-use-platform.js";
+import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "./computer-use-platform.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 
@@ -31,6 +31,7 @@ function result(value: unknown, isError = false): ComputerUseResult {
 export class ComputerUseService {
   private broker: ComputerUseBackend | null = null;
   private owner: string | null = null;
+  private captureApp: string | null = null;
   private controller: AbortController | null = null;
   private busy = false;
   private state: ComputerUseStatus["state"] = "idle";
@@ -58,6 +59,7 @@ export class ComputerUseService {
     readonly localControl: () => boolean;
     readonly platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
+    readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
   }) {}
 
   status(): ComputerUseStatus {
@@ -82,6 +84,12 @@ export class ComputerUseService {
     return this.status();
   }
 
+  async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
+    return this.deps.enabled() && this.deps.localControl() && await (this.deps.platform.verifyCaptureTarget?.(target) ?? false);
+  }
+
+  activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
+
   release(owner: string): void { if (this.owner === owner) void this.stop(); }
   /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
   releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) void this.stop(); }
@@ -89,6 +97,8 @@ export class ComputerUseService {
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
+    this.captureApp = null;
+    this.deps.onCaptureTarget?.(null);
     this.controller?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
@@ -247,7 +257,7 @@ export class ComputerUseService {
       const code = error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed";
       this.error = code;
       await this.stop();
-      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: actionOutcome === "completed" ? "The action completed but follow-up observation failed. The following text is from the action, not a new full tree. Call computer_state; do not repeat the action." : "Do not retry the action automatically. Read computer_state to recover." }).content, ...actionText] };
+      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: code === "computer_use_runtime_incompatible" ? "The CLI/native MCP handshake failed. Select compatible versions (CODEX_BIN overrides the CLI). Repeated app reads cannot repair this; no GUI action was confirmed." : actionOutcome === "completed" ? "The action completed but follow-up observation failed. The following text is from the action, not a new full tree. Call computer_state; do not repeat the action." : "Do not retry the action automatically. Read computer_state to recover." }).content, ...actionText] };
     } finally {
       signal?.removeEventListener("abort", onAbort);
       this.busy = false;
@@ -262,6 +272,10 @@ export class ComputerUseService {
   }
 
   private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true): Promise<ComputerUseResult> {
+    if (this.captureApp !== app) {
+      this.captureApp = app;
+      this.deps.onCaptureTarget?.(null);
+    }
     this.snapshots.clear();
     this.state = "running";
     this.stage = "get_app_state";
@@ -273,14 +287,19 @@ export class ComputerUseService {
       this.assertActive(lifetime);
       observationReads += 1;
     }
-    if (state.isError) return state;
+    if (state.isError) { this.deps.onCaptureTarget?.(null); return state; }
     if (observationReads === 1 && this.deps.platform.needsObservationRefresh(state)) {
       const next = await this.call(broker, "get_app_state", { app });
       this.assertActive(lifetime);
       observationReads = 2;
-      if (next.isError) return next;
-      state = { isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
+      if (next.isError) { this.deps.onCaptureTarget?.(null); return next; }
+      state = { ...next, isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
     }
+    const captureTarget = this.deps.platform.captureTarget?.(state);
+    // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
+    // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
+    if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
+    else if (state.captureWindow === null) this.deps.onCaptureTarget?.(null);
     const interactionHints = this.deps.platform.interactionHints(state);
     this.apps.add(this.deps.platform.displayTarget(app));
     const snapshotId = crypto.randomUUID();
@@ -325,7 +344,7 @@ export class ComputerUseService {
         imageCount: content.filter((block) => block.type === "image").length,
         imageBytes: content.reduce((sum, block) => sum + (block.type === "image" && typeof block.data === "string" ? Buffer.byteLength(block.data, "base64") : 0), 0),
       });
-      return { content, isError: value.isError === true };
+      return { content, isError: value.isError === true, ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}) };
     } catch (error) {
       this.lastCall = { tool, outcome: "unknown", elapsedMs: Date.now() - startedAt, error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" };
       emit({ tool, phase: "end", elapsedMs: Date.now() - startedAt, outcome: "unknown", error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" });

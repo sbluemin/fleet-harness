@@ -1,4 +1,5 @@
 import path from "node:path";
+import { verifyMacWindowIdentity } from "./computer-use-window.js";
 import { promises as fs } from "node:fs";
 import { MacOSComputerUseBroker, findComputerUseInstallation } from "./computer-use-macos-broker.js";
 import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, computerUseText, isRecord, type ComputerUseAppTarget, type ComputerUsePlatform, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
@@ -121,6 +122,8 @@ export const macOSComputerUsePlatform: ComputerUsePlatform = {
     return app;
   },
   displayTarget: (app) => path.isAbsolute(app) ? path.basename(app, ".app") : app,
+  captureTarget: (value) => value.captureWindow ?? null,
+  verifyCaptureTarget: verifyMacWindowIdentity,
   appTargets,
   appCandidates,
   prepareAction: (action, input) => {

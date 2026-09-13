@@ -16,6 +16,7 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
 
 export interface ConsoleUseDeps {
   readonly control?: ConsoleControl;
+  readonly onOperationUse?: (operationId: string, active: boolean) => void;
   readonly transport?: McpHttpTransport;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
@@ -147,6 +148,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   const empty = z.object({}).strict();
   const ids = z.string().min(1).max(128);
   const specs = [
+    define("console_end", "End this caller's Console Use session and release pending reads. Call when finished using Console tools. Does not close Operations, undo accepted actions, or remove durable automations. The next authorized Console tool starts a new session.", empty, () => ({ ended: true })),
     define("console_context", "Read caller identity, observation coverage, and available Console capabilities. Caller is not the browser focus. No paths or provider session identities.", empty, (_args, ctx) => {
       const all = rows().values;
       const callerId = caller(ctx);
@@ -189,24 +191,67 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   const connect = (options: Parameters<ConsoleUseMcpHost["connect"]>[0], pluginId?: string): ConsoleUseMcpConnection => {
       if (disposed) throw new Error("Console MCP host is disposed");
       const requested = new Set(options.tools);
+      requested.add("console_end");
       const specs = consoleSpecs(deps, options.snapshot ?? (() => null), options.allowControl === true, pluginId).filter((spec) => requested.has(spec.id as typeof options.tools[number]));
       if (!specs.length || specs.length !== requested.size) throw new Error("Unavailable Console MCP tools");
       const registry = createMcpToolRegistry();
       const snapshotStore = createMcpToolSnapshotStore();
       let closed = false;
       const controller = new AbortController();
+      const uses = new Map<string, { operationId?: string; controller: AbortController; calls: number; timer?: ReturnType<typeof setTimeout> }>();
+      const endUse = (label: string) => {
+        const use = uses.get(label);
+        if (!use) return;
+        uses.delete(label);
+        clearTimeout(use.timer);
+        use.controller.abort();
+        if (use.operationId) deps.onOperationUse?.(use.operationId, false);
+      };
+      const endAll = () => { for (const label of uses.keys()) endUse(label); };
+      const authorizationTimer = setInterval(() => {
+        for (const [label] of uses) {
+          if (closed || options.enabled?.() === false || (options.operationCallers === true && denyConsoleUse(deps, { cwd: "", sessionLabel: label }))) endUse(label);
+        }
+      }, 250);
+      authorizationTimer.unref?.();
       const schemas = new Map(specs.map((spec) => [spec.id, z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject]));
       for (const spec of specs) registry.registerAgentTool({
         ...spec,
+        description: `${spec.description} Console Use lifecycle: the first authorized call starts a session shared by all Console tools on this connection. Call console_end when done. Five idle minutes, permission withdrawal, or connection cleanup ends it.`,
         execute: async (args, ctx) => {
           if (closed || options.enabled?.() === false) return Promise.resolve({ ...text({ error: "console_read_disabled", hint: "Console access is disabled. Do not answer from earlier Console results." }), isError: true });
           // 읽기까지 포함해 전부 여기서 막는다. 도구는 세션이 열릴 때 실리지만 허용은 매 호출에 다시
           // 묻는다 — 그래야 토글이 재연결 없이 다음 호출부터 듣는다.
           const denied = options.operationCallers === true ? denyConsoleUse(deps, ctx) : null;
-          if (denied) return Promise.resolve({ ...text(denied), isError: true });
+          if (denied) { if (ctx.sessionLabel) endUse(ctx.sessionLabel); return { ...text(denied), isError: true }; }
           const parsed = schemas.get(spec.id)!.safeParse(args);
           if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments" }), isError: true });
-          const result = await spec.execute(parsed.data, { ...ctx, signal: ctx.signal ? AbortSignal.any([ctx.signal, controller.signal]) : controller.signal });
+          const label = ctx.sessionLabel ?? "embedded";
+          if (ctx.signal?.aborted) return { ...text({ error: "console_use_stopped" }), isError: true };
+          if (spec.id === "console_end") { endUse(label); return text({ ended: true, reconnect: "on_next_use" }); }
+          let use = uses.get(label);
+          if (!use) {
+            const operationId = options.operationCallers === true ? (label.startsWith("chat:") ? label.slice(5) : label) : undefined;
+            use = { operationId, controller: new AbortController(), calls: 0 };
+            uses.set(label, use);
+            if (operationId) deps.onOperationUse?.(operationId, true);
+          }
+          clearTimeout(use.timer);
+          use.calls++;
+          const signal = AbortSignal.any([use.controller.signal, controller.signal, ...(ctx.signal ? [ctx.signal] : [])]);
+          const cancel = () => { if (uses.get(label) === use) endUse(label); };
+          ctx.signal?.addEventListener("abort", cancel, { once: true });
+          let result;
+          try { result = await spec.execute(parsed.data, { ...ctx, signal }); }
+          finally {
+            ctx.signal?.removeEventListener("abort", cancel);
+            use.calls--;
+            if (uses.get(label) === use && use.calls === 0) {
+              use.timer = setTimeout(() => endUse(label), 5 * 60_000);
+              use.timer.unref?.();
+            }
+          }
+          if (signal.aborted) return { ...text({ error: "console_use_stopped" }), isError: true };
           if (closed || options.enabled?.() === false) return { ...text({ error: "console_read_disabled" }), isError: true };
           // 호출 중에 꺼졌으면 이미 모은 결과도 내보내지 않는다 — 거부의 의미가 시간에 따라 새면 안 된다.
           const revoked = options.operationCallers === true ? denyConsoleUse(deps, ctx) : null;
@@ -236,11 +281,13 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
           if (closed) throw new Error("Console MCP connection is disposed");
           return manager.issueSessionToken(request);
         },
-        releaseSessionToken: (label) => manager.releaseSessionToken(label),
-        cleanup: () => manager.cleanup(),
+        releaseSessionToken: (label) => { endUse(label); manager.releaseSessionToken(label); },
+        cleanup: () => { endAll(); manager.cleanup(); },
         dispose: () => {
           if (closing) return closing;
           closed = true;
+          clearInterval(authorizationTimer);
+          endAll();
           controller.abort();
           manager.cleanup();
           connections.delete(connection);

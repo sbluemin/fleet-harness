@@ -101,8 +101,10 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   // 진행 중인 도구 호출을 호출자 Operation별로 기억한다 — 허용을 거둘 때 아직 기기를 잡기 전
   // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
   const inFlight = new Map<string, Set<AbortController>>();
+  const operationOwners = new Map<string, string>();
   let disposed = false;
   return {
+    operationIdForOwner: (owner: string) => operationOwners.get(owner) ?? null,
     connect(): ComputerUseMcpConnection {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
       const prefix = randomUUID();
@@ -122,6 +124,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
           const operationId = operationIdFromSessionLabel(context.sessionLabel);
+          operationOwners.set(sessionLabel, operationId);
           const call = new AbortController();
           const calls = inFlight.get(operationId) ?? new Set<AbortController>();
           calls.add(call);
@@ -135,8 +138,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server } }] });
       let closed = false;
       let closing: Promise<void> | null = null;
-      const release = (label: string) => { const id = owner(label); deps.service.release(id); owners.delete(id); };
-      const cleanup = () => { for (const id of owners) deps.service.release(id); owners.clear(); manager.cleanup(); };
+      const release = (label: string) => { const id = owner(label); deps.service.release(id); owners.delete(id); operationOwners.delete(id); };
+      const cleanup = () => { for (const id of owners) { deps.service.release(id); operationOwners.delete(id); } owners.clear(); manager.cleanup(); };
       const connection: ComputerUseMcpConnection = {
         getEndpoint: async () => { if (closed) throw new Error("Computer Use MCP disposed"); return manager.getEndpoint(); },
         issueSessionToken: (request) => {
