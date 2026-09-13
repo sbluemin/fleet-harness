@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { resolveAgentCliBinary } from "./agent-cli-paths.js";
+import { readMacWindowIdentity } from "./computer-use-window.js";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "./computer-use-macos-transport.js";
 import { isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
 
@@ -113,9 +114,15 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
 
   async call(tool: string, args: Record<string, unknown>): Promise<ComputerUseResult> {
     if (!this.threadId || !this.tools.has(tool)) throw new Error("computer_use_tool_unavailable");
+    const app = tool === "get_app_state" && typeof args.app === "string" ? args.app : null;
+    const before = app ? await readMacWindowIdentity(app) : null;
     const value = await this.request("mcpServer/tool/call", { threadId: this.threadId, server: "computer-use", tool, arguments: args });
     if (!isRecord(value) || !Array.isArray(value.content) || value.content.some((block) => !isRecord(block))) throw new Error("computer_use_invalid_result");
-    return { content: value.content, isError: value.isError === true } as ComputerUseResult;
+    const after = app && value.isError !== true ? await readMacWindowIdentity(app) : null;
+    if (app) process.stdout.write(`[fleet-computer-use] window identity ${JSON.stringify({ before: before ? { pid: before.pid, windowId: before.windowId } : null, after: after ? { pid: after.pid, windowId: after.windowId } : null })}\n`);
+    const captureWindow = before && after && before.pid === after.pid && before.windowId === after.windowId
+      && before.processStartedAt === after.processStartedAt ? after : null;
+    return { content: value.content, isError: value.isError === true, ...(app ? { captureWindow } : {}) } as ComputerUseResult;
   }
 
   private request(method: string, params: unknown, timeoutMs = RPC_TIMEOUT_MS): Promise<unknown> {

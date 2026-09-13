@@ -1,4 +1,12 @@
+export interface ComputerUseWindowIdentity {
+  readonly pid: number;
+  readonly windowId: number;
+  readonly processStartedAt: number;
+  readonly title: string;
+}
+
 export interface ComputerUseResult {
+  readonly captureWindow?: ComputerUseWindowIdentity | null;
   readonly content: readonly Record<string, unknown>[];
   readonly structuredContent?: unknown;
   readonly isError?: boolean;
@@ -35,7 +43,8 @@ export interface ComputerUsePlatform {
   createBroker(options: ComputerUseBackendOptions): Promise<ComputerUseBackend | null>;
   resolveTarget(app: string): Promise<string>;
   displayTarget(app: string): string;
-  captureTarget?(value: ComputerUseResult): { pid: number; title: string } | null;
+  captureTarget?(value: ComputerUseResult): ComputerUseWindowIdentity | null;
+  verifyCaptureTarget?(target: ComputerUseWindowIdentity): Promise<boolean>;
   appTargets(value: ComputerUseResult): ComputerUseAppTarget[];
   appCandidates(value: ComputerUseResult, app: unknown, targets: readonly ComputerUseAppTarget[]): ComputerUseAppTarget[];
   prepareAction(action: string, args: Record<string, unknown>): Record<string, unknown>;

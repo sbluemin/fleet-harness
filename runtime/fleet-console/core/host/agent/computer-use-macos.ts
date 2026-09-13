@@ -1,4 +1,5 @@
 import path from "node:path";
+import { verifyMacWindowIdentity } from "./computer-use-window.js";
 import { promises as fs } from "node:fs";
 import { MacOSComputerUseBroker, findComputerUseInstallation } from "./computer-use-macos-broker.js";
 import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, computerUseText, isRecord, type ComputerUseAppTarget, type ComputerUsePlatform, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
@@ -121,15 +122,8 @@ export const macOSComputerUsePlatform: ComputerUsePlatform = {
     return app;
   },
   displayTarget: (app) => path.isAbsolute(app) ? path.basename(app, ".app") : app,
-  captureTarget: (value) => {
-    const text = computerUseText(value);
-    const states = [...text.matchAll(/App=[^\n]*\(bundleID [^,]+, pid (\d+)\)\nWindow: "([^\n]*)", App: [^\n]*\.\n([^\n]*)/g)];
-    const match = states.at(-1);
-    if (!match) return null;
-    const title = match[3]?.match(/^0 (?:표준 윈도우|standard window|window) (.*?)(?:, (?:URL|ID|Description|Help|Secondary Actions):|$)/i)?.[1] ?? match[2];
-    const pid = Number(match[1]);
-    return Number.isSafeInteger(pid) && pid > 0 && title ? { pid, title } : null;
-  },
+  captureTarget: (value) => value.captureWindow ?? null,
+  verifyCaptureTarget: verifyMacWindowIdentity,
   appTargets,
   appCandidates,
   prepareAction: (action, input) => {

@@ -28,6 +28,12 @@ function main() {
       return;
     }
 
+    if (options.rewriteHistory) {
+      rewriteHistory(options, JSON.parse(fs.readFileSync(options.rewriteHistory, 'utf8')));
+      console.log('OK: rewrote bilingual historical summaries without changing release structure.');
+      return;
+    }
+
     const fragments = readFragments(options.fragmentsDir);
     const entries = validateFragments(fragments);
 
@@ -66,6 +72,7 @@ function parseArgs(args) {
     fragmentsDir: DEFAULT_FRAGMENTS_DIR,
     nameForBranch: null,
     version: '',
+    rewriteHistory: '',
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -77,6 +84,7 @@ function parseArgs(args) {
       options.nameForBranch = value ?? '';
       if (value !== null) index += 1;
     }
+    else if (arg === '--rewrite-history') options.rewriteHistory = readOptionValue(args, (index += 1), arg);
     else if (arg === '--version') options.version = readOptionValue(args, (index += 1), arg);
     else if (arg === '--date') options.date = readOptionValue(args, (index += 1), arg);
     else if (arg === '--changelog') options.changelogPath = readOptionValue(args, (index += 1), arg);
@@ -84,12 +92,54 @@ function parseArgs(args) {
     else if (arg === '--fragments-dir') options.fragmentsDir = readOptionValue(args, (index += 1), arg);
     else throw new Error(`Unknown option: ${arg}`);
   }
+  if (options.rewriteHistory) {
+    if (options.nameForBranch !== null || options.check || options.dryRun || options.version || options.allowEmpty) throw new Error('Editorial rewrite cannot be combined with release or validation modes.');
+    return options;
+  }
   if (options.nameForBranch !== null) return options;
   if (options.check && options.dryRun) throw new Error('Use only one of --check or --dry-run.');
   if (!options.check && !options.version) throw new Error(`${options.dryRun ? 'Dry-run' : 'Write'} mode requires --version <semver>.`);
   if (options.version && !/^\d+\.\d+\.\d+$/.test(options.version)) throw new Error(`Invalid --version value: ${options.version}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(options.date)) throw new Error(`Invalid --date value: ${options.date}`);
   return options;
+}
+
+// 명시적으로 요청한 문구 정리만 수행한다. 릴리스 구조와 원문 대조가 맞지 않으면 쓰지 않는다.
+export function rewriteHistory(options, edits) {
+  if (!Array.isArray(edits) || edits.length === 0) throw new Error('Editorial rewrite requires a nonempty edit array.');
+  const paths = [options.changelogPath, options.changelogKoPath];
+  if (path.resolve(paths[0]) === path.resolve(paths[1])) throw new Error('Historical rewrite requires separate language files.');
+  const originals = paths.map((file) => fs.readFileSync(file, 'utf8'));
+  const lines = originals.map((text) => text.split('\n'));
+  if (lines[0].length !== lines[1].length) throw new Error('Bilingual history structure differs.');
+  for (let index = 0; index < lines[0].length; index++) {
+    if (!lines[0][index].startsWith('- ') && lines[0][index] !== lines[1][index]) throw new Error('Bilingual history structure differs.');
+  }
+  const seen = new Set();
+  const tags = (value) => /^((?:\[[^\]]+\]\s*)*)/.exec(value)[1];
+  const tokens = (value) => [...value.matchAll(/`[^`]+`|https?:\/\/[^\s)]+|--[a-z][\w-]*|\b(?:v?\d+(?:\.\d+)+(?:-[\w.]+)?)\b|\b[A-Z][A-Z0-9_]{2,}|(?<![\w\p{L}])(?:~\/|\/)[\w./:@-]*[\w/]/gu)].map((match) => match[0]);
+  for (const edit of edits) {
+    if (!Number.isSafeInteger(edit.line) || edit.line < 1 || seen.has(edit.line)) throw new Error('Invalid or duplicate historical line.');
+    seen.add(edit.line);
+    for (const [index, language] of ['en', 'ko'].entries()) {
+      const before = edit[`before${language === 'en' ? 'En' : 'Ko'}`];
+      const after = edit[language];
+      if (typeof before !== 'string' || lines[index][edit.line - 1] !== `- ${before}`) throw new Error(`Historical source changed at line ${edit.line}.`);
+      if (typeof after !== 'string' || !after.trim() || /[\r\n]/.test(after) || tags(after) !== tags(before)) throw new Error(`Invalid historical summary at line ${edit.line}.`);
+      if (language === 'en' ? /[^\x20-\x7e]/.test(after) : !/\p{Script=Hangul}/u.test(after)) throw new Error(`Invalid ${language} summary at line ${edit.line}.`);
+      const links = [...before.matchAll(/https?:\/\/[^\s)]+|\(#\d+\)/g)].map((match) => match[0]);
+      if (links.some((link) => !after.includes(link))) throw new Error(`Historical links changed at line ${edit.line}.`);
+      lines[index][edit.line - 1] = `- ${after}`;
+    }
+    const translated = new Set(tokens(edit.ko));
+    if (tokens(edit.en).some((token) => !translated.has(token))) throw new Error(`Korean summary drops technical tokens at line ${edit.line}.`);
+  }
+  const outputs = lines.map((rows) => rows.join('\n'));
+  try { paths.forEach((file, index) => fs.writeFileSync(file, outputs[index])); }
+  catch (error) {
+    paths.forEach((file, index) => { try { fs.writeFileSync(file, originals[index]); } catch { /* 최초 쓰기 실패를 보존한다. */ } });
+    throw error;
+  }
 }
 
 function readOptionValue(args, index, optionName) {

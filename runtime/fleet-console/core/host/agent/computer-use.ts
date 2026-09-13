@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
-import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "./computer-use-platform.js";
+import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "./computer-use-platform.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 
@@ -59,7 +59,7 @@ export class ComputerUseService {
     readonly localControl: () => boolean;
     readonly platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
-    readonly onCaptureTarget?: (target: { pid: number; title: string; owner: string } | null) => void;
+    readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
   }) {}
 
   status(): ComputerUseStatus {
@@ -82,6 +82,10 @@ export class ComputerUseService {
   async readStatus(): Promise<ComputerUseStatus> {
     await this.inspectInstallation();
     return this.status();
+  }
+
+  async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
+    return this.deps.enabled() && this.deps.localControl() && await (this.deps.platform.verifyCaptureTarget?.(target) ?? false);
   }
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
@@ -289,12 +293,13 @@ export class ComputerUseService {
       this.assertActive(lifetime);
       observationReads = 2;
       if (next.isError) { this.deps.onCaptureTarget?.(null); return next; }
-      state = { isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
+      state = { ...next, isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
     }
     const captureTarget = this.deps.platform.captureTarget?.(state);
     // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
     // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
     if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
+    else if (state.captureWindow === null) this.deps.onCaptureTarget?.(null);
     const interactionHints = this.deps.platform.interactionHints(state);
     this.apps.add(this.deps.platform.displayTarget(app));
     const snapshotId = crypto.randomUUID();
@@ -339,7 +344,7 @@ export class ComputerUseService {
         imageCount: content.filter((block) => block.type === "image").length,
         imageBytes: content.reduce((sum, block) => sum + (block.type === "image" && typeof block.data === "string" ? Buffer.byteLength(block.data, "base64") : 0), 0),
       });
-      return { content, isError: value.isError === true };
+      return { content, isError: value.isError === true, ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}) };
     } catch (error) {
       this.lastCall = { tool, outcome: "unknown", elapsedMs: Date.now() - startedAt, error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" };
       emit({ tool, phase: "end", elapsedMs: Date.now() - startedAt, outcome: "unknown", error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" });

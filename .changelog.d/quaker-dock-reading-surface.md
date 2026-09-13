@@ -4,10 +4,10 @@ branch: quaker-dock-reading-surface
 
 ### fleet-console
 #### Added
-- Quaker Aides can be put on the top bar: an icon in the aide's chat header (or dragging the bird up into the command band) moves that aide to a glyph at the top right, its answers and follow-up conversation open in a 480px sheet beneath the glyph regardless of where the bird was, unread answers mark the glyph, and a detach icon in the sheet returns the bird to the canvas.
-  ko: 퀘이커 부관을 상단 바에 둘 수 있습니다. 부관 채팅 헤더의 아이콘(또는 새를 커맨드 밴드로 끌어올리기)으로 그 부관을 우측 상단 글리프로 옮기면, 답과 이어 묻기 대화가 새의 위치와 무관하게 글리프 아래 480px 시트에 열리고, 읽지 않은 답은 글리프에 표시되며, 시트의 떼어내기 아이콘으로 새를 캔버스로 되돌립니다.
+- Keep Quaker Aides on the top bar and open their answers or conversations when needed.
+  ko: 퀘이커 부관을 상단 바에 두고 필요할 때 답변을 읽거나 대화를 이어갈 수 있습니다.
 #### Changed
-- The aide answer bubble and follow-up card now share one envelope (420px, 13px body, same height ceiling), so "Ask a follow-up" no longer reopens the answer in a different-sized box, and the chat header controls (stay put, top bar, clear, close) are icon-only with hover and focus tooltips.
-  ko: 부관 답변 말풍선과 이어 묻기 카드가 한 봉투(420px, 본문 13px, 같은 높이 상한)를 쓰므로 「이어 묻기」가 답을 다른 크기의 상자에 다시 열지 않으며, 채팅 헤더 조작(제자리에 두기, 상단 바에 두기, 지우기, 닫기)은 hover·포커스 말풍선이 있는 아이콘으로만 표시됩니다.
-- When an aide answer settles, the answer bubble takes keyboard focus with a soft brass glow, and Escape or the close button returns focus to where it was before (for example the terminal input you asked from); closing no longer moves focus to the bird, the bird and top-bar glyph no longer draw a focus ring, the answer-in-progress line travels back and forth like the Operation caption rail, and the aide mark in the Quick Launch mention deck is cropped to its slot instead of overflowing it.
-  ko: 부관의 답이 정착하면 말풍선이 은은한 brass 후광과 함께 키보드 포커스를 받고, Escape나 닫기 버튼은 포커스를 그 전 자리(예: 물었던 터미널 입력)로 되돌립니다. 닫아도 새로 포커스가 옮겨가지 않고, 새와 상단 바 글리프는 포커스 링을 그리지 않으며, 진행 중 선은 Operation 캡션 레일처럼 좌우로 왕복하고, 퀵런치 멘션 덱의 부관 마크는 슬롯 밖으로 넘치지 않고 잘려 표시됩니다.
+- Keep aide answers and follow-up conversations in a consistent reading view.
+  ko: 부관의 답변을 읽다가 후속 대화로 이어가도 일관된 읽기 화면을 유지합니다.
+- Read completed aide answers with keyboard focus, then return to your previous input when you close the answer.
+  ko: 완성된 부관 답변을 키보드로 읽고, 답변을 닫으면 이전 입력 위치로 돌아갈 수 있습니다.

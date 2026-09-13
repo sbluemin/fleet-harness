@@ -63,7 +63,7 @@ describe("Computer Use authorization and lifecycle", () => {
       const on = connection.issueSessionToken({ label: "on", cwd: process.cwd() })[0]!;
       expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action"]));
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
-      f.call.mockResolvedValueOnce({ content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window Fixture, ID: main\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
+      f.call.mockResolvedValueOnce({ captureWindow: { pid: 1, windowId: 42, processStartedAt: 123, title: "Fixture" }, content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window URL: localhost, Secondary Actions: Raise, Fixture - Chrome - Profile\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
       const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
       expect(JSON.parse(read.result.content[0].text)).toMatchObject({ observationReads: 2 });
       expect(read.result.isError).toBe(false);
@@ -77,11 +77,14 @@ describe("Computer Use authorization and lifecycle", () => {
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }] });
       await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
       expect(f.onCaptureTarget).toHaveBeenCalledTimes(captureCalls);
+      f.call.mockResolvedValueOnce({ captureWindow: { pid: 2, windowId: 43, processStartedAt: 124, title: "" }, content: [{ type: "text", text: 'App=Gemini (bundleID com.google.GeminiMacOS, pid 2)\nWindow: "", App: Gemini.\n0 standard window Gemini - Conversation, Secondary Actions: Raise' }] });
+      await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.GeminiMacOS" } });
+      expect(f.onCaptureTarget.mock.lastCall?.[0]).toMatchObject({ pid: 2, title: "" });
       connection.releaseSessionToken("on");
       expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
       expect(host.operationIdForOwner(capture.owner)).toBeNull();
       expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).error).toBeDefined();
-      expect(f.call).toHaveBeenCalledTimes(3);
+      expect(f.call).toHaveBeenCalledTimes(4);
       await f.service.stop();
       expect(f.stop).toHaveBeenCalled();
     } finally { await host.dispose(); }

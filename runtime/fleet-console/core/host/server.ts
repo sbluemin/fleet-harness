@@ -576,13 +576,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
-  let computerCaptureTarget: { id: string; pid: number; title: string; operationId: string } | null = null;
+  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
       if (!target || !operationId || !operations.list().some((operation) => operation.id === operationId)) { computerCaptureTarget = null; return; }
-      if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.title === target.title && computerCaptureTarget.operationId === operationId) return;
-      computerCaptureTarget = { pid: target.pid, title: target.title, operationId, id: crypto.randomUUID() };
+      if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
+        && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
+        computerCaptureTarget = { ...computerCaptureTarget, title: target.title };
+        return;
+      }
+      computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
     },
     platform: macOSComputerUsePlatform,
     directory: path.join(fleetDataDir, "computer-use"),
@@ -976,6 +980,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/desktop/computer-capture", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
+      const candidate = computerCaptureTarget;
+      if (candidate && !await computerUse.verifyCaptureTarget(candidate) && computerCaptureTarget?.id === candidate.id) computerCaptureTarget = null;
       writeJson(res, 200, { target: computerUse.status().enabled ? computerCaptureTarget : null });
       return true;
     }

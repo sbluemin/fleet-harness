@@ -4,6 +4,8 @@ export const DESKTOP_COMPUTER_CAPTURE_PATH = "/api/v1/desktop/computer-capture";
 export interface DesktopComputerCaptureTarget {
   readonly id: string;
   readonly pid: number;
+  readonly windowId: number;
+  readonly processStartedAt: number;
   readonly title: string;
 }
 export function isDesktopComputerCaptureTarget(value: unknown): value is DesktopComputerCaptureTarget {
@@ -11,7 +13,9 @@ export function isDesktopComputerCaptureTarget(value: unknown): value is Desktop
   const target = value as Partial<DesktopComputerCaptureTarget>;
   return typeof target.id === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(target.id)
     && Number.isSafeInteger(target.pid) && (target.pid ?? 0) > 0
-    && typeof target.title === "string" && target.title.length > 0 && target.title.length <= 4096;
+    && Number.isSafeInteger(target.windowId) && (target.windowId ?? 0) > 0
+    && Number.isFinite(target.processStartedAt) && (target.processStartedAt ?? 0) > 0
+    && typeof target.title === "string" && target.title.length <= 4096;
 }
 
 export type ConsoleOwnerKind = "cli" | "desktop";
