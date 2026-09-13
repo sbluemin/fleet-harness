@@ -206,6 +206,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     MORPHS.map((morph) => getScuttlebuttSettings().stayPut[morph].enabled),
   );
   const [positionRevision, setPositionRevision] = React.useState(0);
+  // 밴드 아래 말풍선 몇 개가 나란히 설 수 있는지는 창 폭이 정한다 — 창이 좁아지면 접는 계산이 다시 돈다.
+  const [viewportWidth, setViewportWidth] = React.useState(() => window.innerWidth);
 
   const applyMoored = React.useCallback((index: number, resolve: (current: boolean) => boolean) => {
     setMoored((current) => {
@@ -381,14 +383,14 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   // 점으로 남긴다(글리프를 누르면 시트에서 읽는다). 세로로 쌓이면 둘째 답이 화면 밖으로 밀린다.
   React.useEffect(() => {
     const showing = answering.filter((admiral) => settings.docked[admiral]);
-    const fit = Math.max(1, Math.floor((window.innerWidth - 8) / (420 + 8)));
+    const fit = Math.max(1, Math.floor((viewportWidth - 8) / (420 + 8)));
     if (showing.length <= fit) return;
     const folded = showing.slice(0, showing.length - fit);
     for (const admiral of folded) {
       if (phases[MORPHS.indexOf(admiral)] === "ready") unreadRef.current.add(admiral);
     }
     setAnswering((current) => current.filter((admiral) => !folded.includes(admiral)));
-  }, [answering, phaseKey, settings.docked]);
+  }, [answering, phaseKey, settings.docked, viewportWidth]);
 
 
   const askFromMentionRef = React.useRef(askFromMention);
@@ -630,6 +632,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   React.useEffect(() => {
     const resize = () => {
       viewportRef.current = { width: window.innerWidth, height: window.innerHeight };
+      setViewportWidth(window.innerWidth);
       if (fleetSignals.reducedMotion) parkBirds();
     };
     window.addEventListener("resize", resize);

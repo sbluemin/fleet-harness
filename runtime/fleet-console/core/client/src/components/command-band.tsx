@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
+import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
@@ -218,7 +218,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
-    return () => observer.disconnect();
+    // 플러그인 항목은 deps 밖에서 나타나고 사라진다(부관을 상단 바에 두면 null → 글리프). 자식
+    // 목록의 변화를 직접 보고 다시 재며, 새 자식도 관찰 대상에 넣는다.
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node instanceof HTMLElement) observer.observe(node);
+      }
+      measure();
+    });
+    if (mutations && bandRight) mutations.observe(bandRight, { childList: true, subtree: true });
+    if (mutations && bandLeft) mutations.observe(bandLeft, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      mutations?.disconnect();
+    };
   }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen]);
 
   useEffect(() => {
@@ -417,7 +430,13 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div ref={bandRightRef} className="command-band-right">
         {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
             두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
-        {commandBandEntries.map((entry) => <Fragment key={entry.id}>{entry.render()}</Fragment>)}
+        {commandBandEntries.map((entry) => (
+          // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 밴드 전체를
+          // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
+          <PluginErrorBoundary key={entry.id} fallback={null}>
+            <CommandBandPluginEntry render={entry.render} />
+          </PluginErrorBoundary>
+        ))}
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
@@ -427,6 +446,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </header>
     </>
   );
+}
+
+function CommandBandPluginEntry({ render }: { readonly render: () => ReactNode }) {
+  return <>{render()}</>;
 }
 
 interface EnvironmentPopoverProps {
