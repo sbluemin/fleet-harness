@@ -14499,6 +14499,35 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .command-band-system-menu .command-band-version-row:disabled { cursor: default; }
 .command-band-system-menu .command-band-version-row:disabled:hover { background: transparent; color: var(--text-secondary); }
 
+/* 정적 행의 ↻ — 행에 hover·포커스가 있을 때만 보인다(확인 중에는 늘). 메뉴의 일반 버튼 규칙(패딩·글꼴)을
+   물려받지 않도록 두 클래스로 덮는다. 결과 문구는 칩 자리에 3초만 선다. */
+.command-band-system-menu .command-band-version-row-refresh {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px 0 -4px auto;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.command-band-version-row:hover .command-band-version-row-refresh,
+.command-band-version-row:focus-within .command-band-version-row-refresh,
+.command-band-system-menu .command-band-version-row-refresh[data-state="busy"] { opacity: 1; }
+.command-band-system-menu .command-band-version-row-refresh:hover,
+.command-band-system-menu .command-band-version-row-refresh:focus-visible { background: var(--surface-glass); color: var(--text-secondary); }
+.command-band-system-menu .command-band-version-row-refresh:disabled { cursor: default; }
+.command-band-system-menu .command-band-version-row-refresh svg { width: 12px; height: 12px; }
+.command-band-version-row-refresh[data-state="busy"] svg { animation: command-band-version-refresh-spin 900ms linear infinite; }
+@keyframes command-band-version-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .command-band-version-row-refresh[data-state="busy"] svg { animation: none; opacity: 0.6; }
+}
+.command-band-version-row-result { margin-left: auto; padding-left: 10px; font-size: var(--t-2xs); font-weight: var(--weight-regular); color: var(--text-tertiary); }
+.command-band-version-row-result--failed { color: var(--coral-ink); }
+
 /* 확인을 기다리는 한 순간만 신호 채널로 발화한다. 묻는 문장은 한 줄 칩에 들어가지 않으므로
    이 상태만 질문이 이름·버전 자리에 서고, 답 문장이 아래로 내려선다. */
 .command-band-system-menu .command-band-version-row--warn { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 2px; white-space: normal; color: var(--warn-ink); }

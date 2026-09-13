@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ApiError, applyConsoleUpdate } from "../api.js";
+import { ApiError, applyConsoleUpdate, checkConsoleUpdate } from "../api.js";
 import { beginUpdateWatch, markUpdateDelegated } from "../update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
@@ -13,7 +13,7 @@ import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openPane } from "../pane/pane-store.js";
 import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../settings/settings-entry.js";
-import { COMMISSIONING_SEEN_KEY, openWhatsNew } from "../store.js";
+import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../store.js";
 import { AddHostDialog } from "./add-host-dialog.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
@@ -607,7 +607,8 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const globalSettings = useGlobalSettingsStore();
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
   const shell = useDesktopHomeOrigin();
-  const desktopLatest = useDesktopLatestVersion(shell.desktopVersion);
+  const desktopCheck = useDesktopLatestVersion(shell.desktopVersion);
+  const desktopLatest = desktopCheck.latest;
   // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는
   // 메뉴를 열면 칩이 말한다.
   const updateReady = updateAvailable || desktopLatest !== null;
@@ -639,7 +640,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
       <div className="command-band-system-menu-divider" role="separator" />
       <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} onStarted={() => setOpen(false)} />
-      {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} latestVersion={desktopLatest} /> : null}
+      {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} latestVersion={desktopLatest} onRefresh={desktopCheck.refresh} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
       <GithubLinks />
     </div> : null}
@@ -663,7 +664,12 @@ function ConsoleVersionRow({ version, latestVersion, onStarted }: {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
   if (latestVersion === null) {
-    return <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.console", { version })}>{body}</div>;
+    return (
+      <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.console", { version })}>
+        {body}
+        <VersionRefresh onRefresh={refreshConsole} />
+      </div>
+    );
   }
   const copy = resolveUpdateApplyCopyFor(applyState, errorCode, latestVersion, t);
 
@@ -712,20 +718,75 @@ function ConsoleVersionRow({ version, latestVersion, onStarted }: {
  * 이 창을 든 Fleet Desktop. Desktop은 스스로 갈아 끼우지 못하므로, 새 버전이 있으면 행이
  * GitHub Release로 가는 링크가 된다 — Desktop 창에서는 셸이 이 항해를 외부 브라우저로 넘긴다.
  */
-function DesktopVersionRow({ version, latestVersion }: {
+function DesktopVersionRow({ version, latestVersion, onRefresh }: {
   readonly version: string;
   readonly latestVersion: string | null;
+  readonly onRefresh: () => Promise<boolean>;
 }) {
   const t = useT();
   const body = <><MonitorGlyph /><span className="command-band-version-row-name">Desktop</span><span className="command-band-version-row-version">v{version}</span></>;
   if (latestVersion === null) {
-    return <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.desktop", { version })}>{body}</div>;
+    return (
+      <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.desktop", { version })}>
+        {body}
+        <VersionRefresh onRefresh={onRefresh} />
+      </div>
+    );
   }
   return (
     <a className="command-band-version-row command-band-version-row--info" href={GITHUB_LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t("chrome.system.version.desktopUpdate", { version, latest: latestVersion })} title={t("chrome.system.version.desktopUpdateTitle", { latest: latestVersion })}>
       {body}
       <span className="command-band-version-row-chip">v{latestVersion} ↗</span>
     </a>
+  );
+}
+
+/**
+ * 캐시를 기다리지 않고 지금 묻는다. 서버가 레지스트리를 다시 조회하고, 그 답을 스토어에 바로 쓴다 —
+ * 달라졌다면 SSE로도 오지만, 같을 때는 이 응답만이 "확인했다"는 증거다.
+ * 새 버전이 있으면 true: 행이 칩 행으로 바뀌므로 "최신" 표시는 필요 없다.
+ */
+async function refreshConsole(): Promise<boolean> {
+  const status = await checkConsoleUpdate();
+  setState({ updateAvailable: status.updateAvailable, latestVersion: status.latestVersion });
+  return status.updateAvailable;
+}
+
+type VersionRefreshState = "idle" | "busy" | "current" | "failed";
+const VERSION_REFRESH_RESULT_MS = 3000;
+
+/**
+ * 정적 버전 행의 오른쪽 끝 — hover·포커스에서만 보이는 ↻. 누르면 그 제품의 최신 버전을 지금 확인한다.
+ * 결과는 같은 자리에 3초만 선다: 새 버전이면 행 자체가 칩 행으로 바뀌므로 여기서는 「최신」과 「확인 실패」만 말한다.
+ */
+function VersionRefresh({ onRefresh }: { readonly onRefresh: () => Promise<boolean> }) {
+  const t = useT();
+  const [state, setRefreshState] = useState<VersionRefreshState>("idle");
+
+  useEffect(() => {
+    if (state !== "current" && state !== "failed") return;
+    const timer = setTimeout(() => setRefreshState("idle"), VERSION_REFRESH_RESULT_MS);
+    return () => clearTimeout(timer);
+  }, [state]);
+
+  const handleRefresh = async () => {
+    if (state === "busy") return;
+    setRefreshState("busy");
+    try {
+      const newer = await onRefresh();
+      setRefreshState(newer ? "idle" : "current");
+    } catch {
+      setRefreshState("failed");
+    }
+  };
+
+  if (state === "current" || state === "failed") {
+    return <span className={`command-band-version-row-result command-band-version-row-result--${state}`} role="status">{t(state === "current" ? "chrome.system.version.upToDate" : "chrome.system.version.checkFailed")}</span>;
+  }
+  return (
+    <button type="button" role="menuitem" className="command-band-version-row-refresh" data-state={state} onClick={handleRefresh} disabled={state === "busy"} aria-label={t(state === "busy" ? "chrome.system.version.checking" : "chrome.system.version.check")} title={t("chrome.system.version.check")}>
+      <RefreshGlyph />
+    </button>
   );
 }
 
@@ -851,7 +912,7 @@ function writeCachedStars(count: number): void {
  * 그 번호를 돌려준다. 비인증 GitHub API는 시간당 60회라 스타 수와 같은 캐시(6h)를 쓰고,
  * 실패·한도 초과·자산명 불일치는 조용히 null이다 — 칩이 비는 것과 "최신"은 같은 모양이다.
  */
-function useDesktopLatestVersion(desktopVersion: string | null): string | null {
+function useDesktopLatestVersion(desktopVersion: string | null): { readonly latest: string | null; readonly refresh: () => Promise<boolean> } {
   const [latest, setLatest] = useState<string | null>(() => readCachedDesktopLatest()?.version ?? null);
 
   useEffect(() => {
@@ -862,20 +923,31 @@ function useDesktopLatestVersion(desktopVersion: string | null): string | null {
       return;
     }
     let cancelled = false;
-    fetch(GITHUB_LATEST_RELEASE_API_URL, { headers: { Accept: "application/vnd.github+json" } })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`status ${response.status}`))))
-      .then((data: { readonly assets?: unknown }) => {
-        if (cancelled) return;
-        const version = readDesktopVersionFromAssets(data.assets);
-        if (version === null) return;
-        writeCachedDesktopLatest(version);
-        setLatest(version);
-      })
+    fetchDesktopLatestVersion()
+      .then((version) => { if (!cancelled) setLatest(version); })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [desktopVersion]);
 
-  return desktopVersion !== null && latest !== null && isNewerVersion(latest, desktopVersion) ? latest : null;
+  const newer = desktopVersion !== null && latest !== null && isNewerVersion(latest, desktopVersion) ? latest : null;
+  // 사용자가 직접 누른 확인은 캐시를 믿지 않는다 — GitHub에 지금 묻고, 그 답으로 캐시를 새로 쓴다.
+  const refresh = async (): Promise<boolean> => {
+    const version = await fetchDesktopLatestVersion();
+    setLatest(version);
+    return desktopVersion !== null && isNewerVersion(version, desktopVersion);
+  };
+  return { latest: newer, refresh };
+}
+
+/** latest 릴리스의 자산 이름에서 Desktop 버전을 읽어 캐시에 쓴다. 자산이 없으면 실패다 — "최신"으로 오해하게 두지 않는다. */
+async function fetchDesktopLatestVersion(): Promise<string> {
+  const response = await fetch(GITHUB_LATEST_RELEASE_API_URL, { headers: { Accept: "application/vnd.github+json" } });
+  if (!response.ok) throw new Error(`status ${response.status}`);
+  const data = await response.json() as { readonly assets?: unknown };
+  const version = readDesktopVersionFromAssets(data.assets);
+  if (version === null) throw new Error("desktop_asset_missing");
+  writeCachedDesktopLatest(version);
+  return version;
 }
 
 function readDesktopVersionFromAssets(assets: unknown): string | null {
@@ -941,6 +1013,11 @@ function TerminalGlyph() {
 // 데스크톱 — 화면과 받침. 이 기계에 설치된 앱을 기기 실루엣으로 말한다.
 function MonitorGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.8" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8 11v2.5M5.5 13.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+}
+
+// 새로고침 — 열린 원호와 화살촉. 다른 메뉴 글리프와 같은 1.2px 선.
+function RefreshGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.8v2.4h-2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function KeyboardGlyph() {
