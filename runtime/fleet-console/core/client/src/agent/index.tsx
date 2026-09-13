@@ -101,6 +101,8 @@ export const agentOperationKind = defineOperationKind({
   // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭·War Room 카드도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
   operationMenu: (context) => <AgentOperationMenu context={context} />,
+  // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
+  operationMarks: (context) => <AgentOperationMarks context={context} />,
   // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
   // 실행 중에도 갱신되지 않으므로 호스트 프리뷰는 이 밴드를 프레임 밖으로 밀어낼 수 있다.
   // 밴드의 단위는 px가 아니라 행이다: 셀 높이가 글꼴 크기를 따르므로(TERMINAL_OPTIONS.lineHeight
@@ -661,8 +663,8 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
 /**
  * Operation 메뉴의 실험 섹션 — 이 세션에 대한 스위치 세 개. 설정에서 켠 실험만 행으로 서고, 켜져
- * 있는지는 Operation payload가 말한다(서버가 쓴다). 행의 두 번째 줄은 그 스위치의 지금 상태다:
- * 관찰은 마지막 검토 결과, 콘솔·컴퓨터 사용은 무엇이 허용됐는지. 켜고 끄는 것은 재연결 없이
+ * 있는지는 Operation payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 지금 상태(관찰의 마지막 검토
+ * 결과, 사용 계열이 무엇을 허용하는지)는 툴팁과 접근성 라벨이 진다. 켜고 끄는 것은 재연결 없이
  * 다음 도구 호출부터 듣는다.
  */
 function AgentOperationMenu({ context }: { readonly context: OperationMenuContext }) {
@@ -712,23 +714,46 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
         <button
           key={row.id}
           type="button"
-          className={`group-context-menu-item group-context-menu-item--switch${row.checked ? " is-selected" : ""}${row.busy ? " is-busy" : ""}`}
+          className={`group-context-menu-item group-context-menu-item--switch${row.checked ? " is-selected" : ""}`}
           role="menuitemcheckbox"
           aria-checked={row.checked}
           aria-busy={row.busy || pending === row.kind}
+          aria-label={`${row.name} · ${row.hint}`}
+          title={row.hint}
           disabled={pending !== null}
           data-operation-menu-item={row.id}
           onClick={() => toggle(row.kind, !row.checked)}
         >
           <span className="group-context-menu-item__glyph" aria-hidden="true">{row.glyph}</span>
-          <span className="group-context-menu-item__text">
-            <span className="group-context-menu-item__name">{row.name}</span>
-            <span className="group-context-menu-item__hint">{row.hint}</span>
-          </span>
+          <span className="group-context-menu-item__name">{row.name}</span>
+          {row.busy ? <span className="group-context-menu-item__live" aria-hidden="true" /> : null}
           <SwitchCheckMark />
         </button>
       ))}
     </>
+  );
+}
+
+/** 사이드바 칩의 실험 마크 — 켜진 것만, 메뉴 행과 같은 글리프로. 검토 중인 관찰은 aurora 점을 단다. */
+function AgentOperationMarks({ context }: { readonly context: OperationMenuContext }) {
+  const t = getT(context.language);
+  const experiments = useExperimentsSnapshot();
+  const payload = context.operation.payload;
+  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operation.id), () => null);
+  const review = liveReview ?? readWatchLast(payload);
+  if (!experiments) return null;
+  const marks = [
+    experiments.sessionWatch === true && readWatchEnabled(payload) ? { id: "session-watch", glyph: <CaptionWatchGlyph />, label: t("terminal.experiments.menuWatch"), busy: review?.phase === "started" } : null,
+    experiments.consoleControl === true && readConsoleUseEnabled(payload) ? { id: "console-use", glyph: <CaptionConsoleUseGlyph />, label: t("terminal.experiments.menuConsoleUse"), busy: false } : null,
+    experiments.computerUse === true && readComputerUseEnabled(payload) ? { id: "computer-use", glyph: <CaptionComputerUseGlyph />, label: t("terminal.experiments.menuComputerUse"), busy: false } : null,
+  ].filter((mark) => mark !== null);
+  if (marks.length === 0) return null;
+  return (
+    <span className="side-bar-chip-marks" role="img" aria-label={t("terminal.experiments.marksAria", { names: marks.map((mark) => mark.label).join(", ") })}>
+      {marks.map((mark) => (
+        <span key={mark.id} className={`side-bar-chip-mark${mark.busy ? " is-busy" : ""}`} title={mark.label} data-operation-mark={mark.id}>{mark.glyph}</span>
+      ))}
+    </span>
   );
 }
 

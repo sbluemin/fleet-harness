@@ -1,7 +1,10 @@
 import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useAgentState } from "../agent/store.js";
+import { useConsoleLocale } from "../i18n/index.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
 import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "../components/operation-workspace-context.js";
 import { useT } from "../i18n/index.js";
@@ -263,6 +266,7 @@ export function OperationsSideBarChip({
         )}
         {context ? <OperationWorkspaceContext workspace={context} className="side-bar-chip-context" /> : null}
       </span>
+      {preview ? null : <PluginOperationMarks operation={operation} />}
       {theaterName ? (
         <span className="side-bar-chip-theater-pill" title={theaterName} aria-hidden="true">
           {theaterName}
@@ -345,3 +349,18 @@ function SideBarMinimizeIcon() {
   );
 }
 
+/**
+ * Operation 종류가 칩에 싣는 표식 — 이 Operation에 허용된 것(관찰·콘솔 사용·컴퓨터 사용)을 목록에서
+ * 읽게 한다. 활동은 비콘이 지므로 여기는 상태가 아니라 사실만 선다. 실패해도 칩은 살아야 한다.
+ */
+function PluginOperationMarks({ operation }: { readonly operation: OperationNode }) {
+  const registry = usePluginRegistry();
+  const language = useConsoleLocale();
+  const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  if (!descriptor?.operationMarks) return null;
+  return (
+    <PluginErrorBoundary fallback={<></>}>
+      {descriptor.operationMarks({ operation, language, onClose: () => undefined })}
+    </PluginErrorBoundary>
+  );
+}

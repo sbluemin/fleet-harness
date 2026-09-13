@@ -433,6 +433,13 @@ export interface OperationKindDescriptor {
    */
   readonly operationMenu?: (context: OperationMenuContext) => ReactNode;
   /**
+   * Small marks the host shows on this Operation's sidebar chip, after its name — the standing
+   * facts about this Operation worth reading in a list (a capability it has been granted, say),
+   * never activity, which the host's own beacon already owns. Return nothing when there is
+   * nothing to mark. Each mark is a 12px glyph the host tints; give it a `title`.
+   */
+  readonly operationMarks?: (context: OperationMenuContext) => ReactNode;
+  /**
    * Current height in panel pixels of fixed bottom chrome this body always paints below its live
    * content (e.g. an agent CLI's input composer and status lines). A host preview that crops the
    * body may push that band out of frame so the live area fills the preview. The host reads it
