@@ -4,9 +4,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@dotobokuri/core-infra";
 import { sanitizeLaunchPrompt } from "@dotobokuri/fleet-admiral";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleActionInput, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
+const callerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("operation"), operationId: z.string().min(1).max(128) }).strict(),
+  z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1).max(128) }).strict(),
+]);
+const sameCaller = (a: ConsoleCaller, b: ConsoleCaller) => a.kind === "operation" && b.kind === "operation"
+  ? a.operationId === b.operationId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId;
 const activity = z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]);
 const actionObjectSchema = z.object({
   kind: z.enum(["launch", "send", "interrupt"]),
@@ -45,23 +51,27 @@ export interface ConsoleControlDeps {
   readonly directory: string;
   readonly operations: () => readonly OperationNode[];
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
+  readonly pluginAvailable?: (pluginId: string) => boolean;
   readonly now?: () => number;
 }
-interface SavedState { version: 1; actions: ConsoleActionReceipt[]; automations: ConsoleAutomation[] }
+interface SavedState { version: 2; actions: ConsoleActionReceipt[]; automations: ConsoleAutomation[] }
 interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly operationId?: string; readonly activity?: ConsoleActivity; readonly actionId?: string; readonly automationId?: string }
 
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
-  let state: SavedState = { version: 1, actions: [], automations: [] };
+  let state: SavedState = { version: 2, actions: [], automations: [] };
   let storageError = false;
   try {
-    const saved = JSON.parse(fs.readFileSync(file, "utf8")) as SavedState;
-    if (saved.version !== 1 || !Array.isArray(saved.actions) || !Array.isArray(saved.automations)
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    // 기존 Operation 소유 기록은 그대로 승계한다. 부관은 별도 플러그인 소유자로 저장한다.
+    const migrate = ({ callerOperationId, ...row }: Record<string, unknown>) => ({ ...row, caller: { kind: "operation", operationId: callerOperationId } });
+    const saved = (raw.version === 1 ? { ...raw, version: 2, actions: raw.actions.map(migrate), automations: raw.automations.map(migrate) } : raw) as SavedState;
+    if (saved.version !== 2 || !Array.isArray(saved.actions) || !Array.isArray(saved.automations)
       || saved.actions.length > ACTION_LIMIT || saved.automations.length > 100
-      || saved.actions.some((a) => !a || typeof a.id !== "string" || typeof a.requestId !== "string" || typeof a.callerOperationId !== "string" || typeof a.expectedRevision !== "string" || !Number.isFinite(Date.parse(a.createdAt)) || !Number.isFinite(Date.parse(a.expiresAt)) || !["approval_required", "accepted", "running", "finished", "rejected", "failed", "outcome_unknown"].includes(a.status) || !actionSchema.safeParse(a.input).success)
-      || saved.automations.some((a) => !a || typeof a.id !== "string" || typeof a.callerOperationId !== "string" || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
+      || saved.actions.some((a) => !a || typeof a.id !== "string" || typeof a.requestId !== "string" || !callerSchema.safeParse(a.caller).success || typeof a.expectedRevision !== "string" || !Number.isFinite(Date.parse(a.createdAt)) || !Number.isFinite(Date.parse(a.expiresAt)) || !["approval_required", "accepted", "running", "finished", "rejected", "failed", "outcome_unknown"].includes(a.status) || !actionSchema.safeParse(a.input).success)
+      || saved.automations.some((a) => !a || typeof a.id !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
     // 쓰기 직전에 죽었다면 재실행하지 않는다. 자동 정책은 기존 계약대로 재시작 뒤 일시 중지한다.
     state = { ...saved, actions: saved.actions.map((a) => pendingStatuses.has(a.status) ? { ...a, status: "outcome_unknown", error: "host_restarted" } : (a.status as string) === "approval_required" ? { ...a, status: "rejected", error: "approval_flow_removed" } : a), automations: saved.automations.map((a) => a.status === "active" || (a.status as string) === "approval_required" ? { ...a, status: "paused" } : a) };
   } catch (error) {
@@ -94,6 +104,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     for (const wake of waiters) wake();
   }
   function node(id: string) { return deps.operations().find((op) => op.id === id); }
+  function callerAvailable(caller: ConsoleCaller) { return caller.kind === "operation" ? !!node(caller.operationId) : deps.pluginAvailable?.(caller.pluginId) === true; }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
   function revision(id: string) {
     const op = node(id);
@@ -135,13 +146,13 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     publish({ kind: "automation", automationId: id });
     return next;
   }
-  function request(callerOperationId: string, requestId: string, raw: ConsoleActionInput, expectedRevision?: string, policyId?: string) {
+  function request(caller: ConsoleCaller, requestId: string, raw: ConsoleActionInput, expectedRevision?: string, policyId?: string) {
     if (disposed) fail("console_unavailable");
     if (storageError) fail("storage_unavailable");
-    if (!node(callerOperationId)) fail("caller_unavailable");
+    if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId)) fail("invalid_request_id");
     const input = actionSchema.parse(raw);
-    const duplicate = state.actions.find((a) => a.callerOperationId === callerOperationId && a.requestId === requestId);
+    const duplicate = state.actions.find((a) => sameCaller(a.caller, caller) && a.requestId === requestId);
     if (duplicate) {
       if (hash(duplicate.input) !== hash(input)) fail("request_conflict");
       return duplicate;
@@ -152,7 +163,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (expectedRevision && expectedRevision !== current) fail("conflict");
     state.actions = state.actions.filter((a) => now() - Date.parse(a.createdAt) < RETENTION_DAYS * 86_400_000 || pendingStatuses.has(a.status));
     if (state.actions.length >= ACTION_LIMIT) fail("action_capacity");
-    const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, callerOperationId, input, status: "accepted", expectedRevision: current, createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
+    const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, caller, input, status: "accepted", expectedRevision: current, createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
     state.actions.push(receipt);
     persist();
     publish({ kind: "action", actionId: receipt.id });
@@ -166,7 +177,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const assertCurrent = () => {
       if (disposed || !deps.enabled() || storageError) fail("control_paused");
       if (Date.parse(entry.expiresAt) <= now()) fail("request_expired");
-      if (!node(entry.callerOperationId)) fail("caller_unavailable");
+      if (!callerAvailable(entry.caller)) fail("caller_unavailable");
       if (entry.policyId) {
         const policy = state.automations.find((a) => a.id === entry.policyId);
         if (!policy || policy.status !== "active" || Date.parse(policy.input.expiresAt) <= now()) fail("policy_paused");
@@ -189,8 +200,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     }).catch(() => { storageError = true; });
     return state.actions.find((a) => a.id === id)!;
   }
-  function automation(callerOperationId: string, raw: ConsoleAutomationInput) {
-    if (!node(callerOperationId)) fail("caller_unavailable");
+  function automation(caller: ConsoleCaller, raw: ConsoleAutomationInput) {
+    if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!deps.enabled()) fail("console_control_disabled");
     const input = automationSchema.parse(raw);
     const expires = Date.parse(input.expiresAt);
@@ -206,7 +217,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       });
     }
     if (state.automations.length >= 100) fail("automation_capacity");
-    const row: ConsoleAutomation = { id: randomUUID(), callerOperationId, input, status: "active", runs: 0, createdAt: stamp(), ...(input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + input.trigger.minutes * 60_000).toISOString() } : {}) };
+    const row: ConsoleAutomation = { id: randomUUID(), caller, input, status: "active", runs: 0, createdAt: stamp(), ...(input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + input.trigger.minutes * 60_000).toISOString() } : {}) };
     state.automations.push(row); persist(); publish({ kind: "automation", automationId: row.id }); return row;
   }
   function briefing(theaterId: string) {
@@ -239,7 +250,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!deps.enabled()) return;
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
-        if (!node(item.callerOperationId) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
+        if (!callerAvailable(item.caller) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
         if (state.actions.some((a) => a.policyId === item.id && pendingStatuses.has(a.status))) continue;
         if (Date.parse(item.input.expiresAt) <= now()) { updateAutomation(item.id, { status: "expired" }); continue; }
         if (item.runs >= item.input.maxRuns) { updateAutomation(item.id, { status: "exhausted" }); continue; }
@@ -252,7 +263,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
           if (item.input.action.kind === "briefing") updateAutomation(item.id, { briefing: briefing(item.input.theaterId), lastError: undefined });
           else {
             validTarget(item.input.action, item.input.theaterId);
-            request(item.callerOperationId, `automation:${item.id}:${item.runs + 1}`, item.input.action, undefined, item.id);
+            request(item.caller, `automation:${item.id}:${item.runs + 1}`, item.input.action, undefined, item.id);
           }
         } catch (error) { updateAutomation(item.id, { status: "paused", lastError: code(error) }); }
       }
@@ -278,12 +289,12 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
     observe, revision, request, automation, readEvents, briefing, tick,
-    getAction(id: string, caller?: string) { return state.actions.find((a) => a.id === id && (!caller || a.callerOperationId === caller)) ?? null; },
-    listAutomations(caller: string) { return state.automations.filter((a) => a.callerOperationId === caller); },
-    pauseAutomation(id: string, caller: string) { const item = state.automations.find((a) => a.id === id && a.callerOperationId === caller); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },
+    getAction(id: string, caller?: ConsoleCaller) { return state.actions.find((a) => a.id === id && (!caller || sameCaller(a.caller, caller))) ?? null; },
+    listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
+    pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },
     state(): ConsoleControlState { return { paused: !deps.enabled(), actions: state.actions, automations: state.automations, retention: { actionDays: RETENTION_DAYS, actionLimit: ACTION_LIMIT, deduplication: "retained_receipts" } }; },
-    resumeAutomation(id: string, caller: string) {
-      const item = state.automations.find((a) => a.id === id && a.callerOperationId === caller); if (!item) return fail("automation_not_found");
+    resumeAutomation(id: string, caller: ConsoleCaller) {
+      const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) return fail("automation_not_found");
       {
         if (!deps.enabled()) fail("console_control_disabled");
         if (Date.parse(item.input.expiresAt) <= now()) fail("request_expired");

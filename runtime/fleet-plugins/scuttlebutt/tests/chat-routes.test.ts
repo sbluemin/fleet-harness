@@ -4,6 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
+import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { registerChatRoutes } from "../server/chat-routes.js";
 import type { ChatEvent, ChatSessionLike } from "../server/chat-session.js";
@@ -58,7 +59,7 @@ describe("session controls", () => {
         created.push(options);
         return new FakeSession();
       },
-      id: () => "chat-a",
+      id: () => `chat-${created.length}`,
     });
     await harness.handler()({
       req: request("POST", { "content-type": "application/json" }) as never,
@@ -68,11 +69,14 @@ describe("session controls", () => {
     expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
     expect(created[0]).toMatchObject({ admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
     expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
-    const injected = (created[0] as { consoleRead: { consoleRead: { enabled: () => boolean; tools: string[] } } }).consoleRead.consoleRead;
-    expect(injected.tools).toEqual(["console_theaters", "console_operations"]);
+    const injected = (created[0] as { consoleUse: { consoleUse: { enabled: () => boolean; tools: string[] } } }).consoleUse.consoleUse;
+    expect(injected.tools).toEqual(CONSOLE_CONTROL_TOOLS);
+    expect(injected).toHaveProperty("allowControl", true);
     expect(injected.enabled()).toBe(true);
     consoleUse = false;
     expect(injected.enabled()).toBe(false);
+    await harness.handler()({ req: request("POST", { "content-type": "application/json" }) as never, res: response() as never, pathname: "/plugins/scuttlebutt/chat/start" });
+    expect(created.at(-1)).not.toHaveProperty("consoleUse");
 
     const unsafe = createHarness(true, { admiral: "tori", model: "sonnet --dangerously-skip" });
     registerChatRoutes(unsafe.ctx, { createSession: () => new FakeSession() });

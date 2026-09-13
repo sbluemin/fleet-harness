@@ -561,7 +561,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }) ?? null;
   const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
-  const consoleControl = createConsoleControl({ enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleAgentOwners = new Set<string>();
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   const consoleUse = createConsoleUseMcpHost({
     control: consoleControl,
     transport: mcpHttp.transport,
@@ -737,7 +738,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
-    createAgentHost: (pluginId) => createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse }),
+    createAgentHost: (pluginId) => {
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse: consoleUse.forPlugin(pluginId) });
+      consoleAgentOwners.add(pluginId);
+      return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
+    },
   });
   const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {

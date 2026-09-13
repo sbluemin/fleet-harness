@@ -4,7 +4,7 @@ import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
 /**
- * 실험 "부관의 Console 읽기"의 브라우저 몫. 설치 컨텍스트의 콘솔 상태와 실험 설정을 기억해 두고,
+ * 콘솔 사용의 보조 스냅샷. 설치 컨텍스트의 콘솔 상태와 실험 설정을 기억해 두고,
  * 메시지를 보낼 때 켜져 있으면 스냅샷(Theater 이름·Operation 제목·활동)을 싣는다. 부유 위젯의
  * 컨텍스트에는 이 두 능력이 없으므로 설치 시점에 한 번 받아 둔다.
  */

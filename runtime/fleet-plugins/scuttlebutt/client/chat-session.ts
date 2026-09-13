@@ -38,8 +38,8 @@ export interface ChatSessionDeps {
   /** 세션을 시작할 때의 모델·강도. 설정에서 바꾸면 다음 세션부터 따른다. */
   readonly launch?: () => ChatLaunchChoice | null;
   /**
-   * 실험 "부관의 Console 읽기"가 켜졌을 때 메시지에 실을 Console 스냅샷. 꺼져 있으면 null을 돌려주고
-   * 본문은 오늘과 같은 `{ text }`다 — 서버도 그 경우 도구를 붙이지 않는다.
+   * 콘솔 사용을 켰을 때 메시지에 싣는 보조 스냅샷. 꺼져 있으면 null이며 본문은 `{ text }`다.
+   * 도구 주입 여부는 세션 시작 시 서버가 결정하고 호출마다 다시 검증한다.
    */
   readonly console?: () => ConsoleSnapshotPayload | null;
 }

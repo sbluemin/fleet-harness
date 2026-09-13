@@ -14,7 +14,7 @@ interface FeatureRow {
   readonly helpKey: CoreMessageKey;
 }
 
-/** 「AI 확장」 카드의 행 — 부관의 Console 읽기는 퀘이커 부관단 카드가 자기 행으로 갖는다. */
+/** 「AI 확장」 카드에서 별도 모델을 고르는 기능. */
 const FEATURE_ROWS: readonly FeatureRow[] = [
   { id: "promptRefine", titleKey: "settings.experiments.promptRefine.title", helpKey: "settings.experiments.promptRefine.help" },
   { id: "sessionWatch", titleKey: "settings.experiments.sessionWatch.title", helpKey: "settings.experiments.sessionWatch.help" },

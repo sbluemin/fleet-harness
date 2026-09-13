@@ -43,7 +43,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     let cancelled = false;
     let closing: Promise<void> | null = null;
 
-    let consoleRead: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
+    let consoleConnection: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const allowed: string[] = [...(options.tools?.builtins ?? [])];
     const redact = (value: unknown): unknown => {
@@ -121,7 +121,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         closing = (async () => {
           try { await loop.dispose(); await tail; }
           finally {
-            try { await consoleRead?.dispose(); }
+            try { await consoleConnection?.dispose(); }
             finally { sessions.delete(session); await fs.rm(cwd, { recursive: true, force: true }); }
           }
         })();
@@ -147,10 +147,11 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         });
         servers[group.name] = createEmbeddedMcpServer({ name: group.name, tools });
       }
-      if (options.tools?.consoleRead) {
-        consoleRead = deps.consoleUse.connect(options.tools.consoleRead);
-        servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleRead.embeddedServer as ClaudeGatewayMcpServer;
-        allowed.push(...options.tools.consoleRead.tools.map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
+      if (options.tools?.consoleUse) {
+        const consoleOptions = options.tools.consoleUse;
+        consoleConnection = deps.consoleUse.connect({ ...consoleOptions, enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && consoleOptions.enabled?.() !== false });
+        servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleConnection.embeddedServer as ClaudeGatewayMcpServer;
+        allowed.push(...options.tools.consoleUse.tools.map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
       }
       await loop.start();
       if (disposed || closed) throw new Error("agent_host_disposed");

@@ -23,16 +23,20 @@ describe("Console-owned plugin Agent", () => {
       { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: `Read ${turn.cwd}/file` } } },
       { type: "result", is_error: false },
     ]); });
-    const host = createPluginAgentHost({ dataDir: root, baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse, createSdk: async () => engine });
-    const session = await host.createSession({ ...options, tools: { builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
+    const connection = { embeddedServer: { type: "sdk", name: "fleet-console-use", instance: {} }, dispose: vi.fn(async () => undefined) };
+    const connect = vi.fn(() => connection as never);
+    const host = createPluginAgentHost({ dataDir: root, baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, createSdk: async () => engine });
+    const session = await host.createSession({ ...options, tools: { consoleUse: { tools: ["console_launch"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
     await session.send("one"); await session.send("two");
-    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read"], permissionMode: "dontAsk" });
-    expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft"]);
+    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launch"], permissionMode: "dontAsk" });
+    expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft", "fleet-console-use"]);
+    expect(connect).toHaveBeenCalledWith({ tools: ["console_launch"], allowControl: true, enabled: expect.any(Function) });
     expect(turns[1]!.resume).toBe("private-child");
     expect(turns[0]!.cwd).toContain(root);
     expect(JSON.stringify(events)).not.toContain(root);
     expect(JSON.stringify(events)).not.toContain("private-child");
     await host.dispose(); await session.dispose();
+    expect(connection.dispose).toHaveBeenCalledOnce();
     expect(await fs.readdir(root)).toEqual([]);
     await expect(host.createSession(options)).rejects.toThrow("agent_host_disposed");
   });

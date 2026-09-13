@@ -11,7 +11,7 @@ import {
   type AgentToolCtx,
   type McpHttpTransport,
 } from "@dotobokuri/core-agent";
-import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
+import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
 export interface ConsoleUseDeps {
@@ -25,16 +25,18 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: Array.isArray(value) ? { items: value } : value, isError: false };
 }
 
-function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null, allowControl: boolean): AgentToolSpec[] {
+function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null, allowControl: boolean, pluginId?: string): AgentToolSpec[] {
   if (!deps.theaters || !deps.operations) return [];
   const theaters = deps.theaters;
   const operations = deps.operations;
   const control = deps.control;
-  const caller = (ctx: AgentToolCtx) => {
-    // 라벨은 토큰 발급자가 고정한 값이다. 도구 인자로 호출자 id를 받지 않는다.
+  const caller = (ctx: AgentToolCtx): ConsoleCaller | null => {
+    // 플러그인 소유자는 호스트가 바인딩한다. 모델 인자·브라우저 초점·토큰 라벨로 가장하지 않는다.
+    if (!allowControl) return null;
+    if (pluginId) return { kind: "plugin", pluginId };
     const label = ctx.sessionLabel ?? "";
     const id = label.startsWith("chat:") ? label.slice(5) : label;
-    return allowControl ? operations().find((op) => op.id === id)?.id ?? null : null;
+    return operations().some((op) => op.id === id) ? { kind: "operation", operationId: id } : null;
   };
   const requireCaller = (ctx: AgentToolCtx) => {
     const id = caller(ctx);
@@ -66,7 +68,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       try { return text(await run(schema.parse(args), ctx)); }
       catch (error) {
         const code = error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "console_unavailable";
-        return { ...text({ error: code, retryable: false, nextAction: code === "nothing_to_interrupt" ? "No foreground turn is running. Do not wait or retry. Interrupt does not close or delete the Operation; use the Console close control for that." : code === "cursor_expired" ? "Read a new snapshot and restart without a cursor." : code === "permission_required" ? "Use an authorized Admiral connection; reading never grants control." : "Inspect current state. Do not repeat a write with a new requestId." }), isError: true };
+        return { ...text({ error: code, retryable: false, nextAction: code === "nothing_to_interrupt" ? "No foreground turn is running. Do not wait or retry. Interrupt does not close or delete the Operation; use the Console close control for that." : code === "cursor_expired" ? "Read a new snapshot and restart without a cursor." : code === "permission_required" ? "Use a host-authorized Console connection; reading never grants control." : "Inspect current state. Do not repeat a write with a new requestId." }), isError: true };
       }
     },
   });
@@ -76,7 +78,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     define("console_context", "Read caller identity, observation coverage, and available Console capabilities. Caller is not the browser focus. No paths or provider session identities.", empty, (_args, ctx) => {
       const all = rows().values;
       const callerId = caller(ctx);
-      return { schemaVersion: 1, caller: callerId ? { operationId: callerId, theaterId: operations().find((op) => op.id === callerId)!.theaterId } : null, focus: "unavailable", capabilities: { read: true, control: allowControl && !!callerId && !!control, approval: "Experiments > Console use is blanket authorization; no individual approvals", enabled: control?.enabled() ?? false }, coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length }, management: { settingsSection: "experiments" }, semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here" } };
+      return { schemaVersion: 1, caller: callerId?.kind === "operation" ? { ...callerId, theaterId: operations().find((op) => op.id === callerId.operationId)!.theaterId } : callerId, focus: "unavailable", capabilities: { read: true, control: allowControl && !!callerId && !!control, approval: "Experiments > Console use is blanket authorization; no individual approvals", enabled: control?.enabled() ?? false }, coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length }, management: { settingsSection: "experiments" }, semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here" } };
     }),
     define("console_theaters", "List registered Console projects (Theaters): id and name. Does not expose filesystem paths.", empty, () => theaters()),
     define("console_operations", "Search Console Operations. Host observation is preferred; unknown is not idle. Coverage includes unobserved rows excluded by activity filters. Cursor expires when the matching list changes.", z.object({ activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), theaterId: ids.optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional() }).strict(), (args) => {
@@ -109,14 +111,13 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
 }
 
 /** 각 연결은 자체 MCP endpoint·토큰·도구 바인딩을 소유한다. 플러그인 도구는 등록하지 않는다. */
-export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost & { dispose(): Promise<void> } {
+export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost & { forPlugin(pluginId: string): ConsoleUseMcpHost; dispose(): Promise<void> } {
   const connections = new Set<ConsoleUseMcpConnection>();
   let disposed = false;
-  return {
-    connect(options) {
+  const connect = (options: Parameters<ConsoleUseMcpHost["connect"]>[0], pluginId?: string): ConsoleUseMcpConnection => {
       if (disposed) throw new Error("Console MCP host is disposed");
       const requested = new Set(options.tools);
-      const specs = consoleSpecs(deps, options.snapshot ?? (() => null), options.allowControl === true).filter((spec) => requested.has(spec.id as typeof options.tools[number]));
+      const specs = consoleSpecs(deps, options.snapshot ?? (() => null), options.allowControl === true, pluginId).filter((spec) => requested.has(spec.id as typeof options.tools[number]));
       if (!specs.length || specs.length !== requested.size) throw new Error("Unavailable Console MCP tools");
       const registry = createMcpToolRegistry();
       const snapshotStore = createMcpToolSnapshotStore();
@@ -170,7 +171,10 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       };
       connections.add(connection);
       return connection;
-    },
+  };
+  return {
+    connect: (options) => connect(options),
+    forPlugin: (pluginId) => ({ connect: (options) => connect(options, pluginId) }),
     async dispose() {
       disposed = true;
       const results = await Promise.allSettled([...connections].map((connection) => connection.dispose()));
