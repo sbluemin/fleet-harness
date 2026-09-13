@@ -409,7 +409,9 @@ export function OperationsSideBarChip({
           id={detailId}
           anchor={detailAnchor}
           activity={markVisual}
-          workspace={context}
+          /* 칩 줄과 달리 카드는 걸러지지 않은 투영을 받는다 — git이 아닌 Theater의 루트는 브랜치도
+             폴더도 없어 칩에는 낼 것이 없지만, 세션이 선 자리는 여전히 그 Theater다. */
+          workspace={session?.workspace ?? null}
           theaterLabel={detailTheaterLabel}
           createdAt={session?.createdAt ?? operation.ts.createdAt}
         />
