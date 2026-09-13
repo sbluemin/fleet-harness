@@ -28,7 +28,8 @@ describe("fleet-console-use gateway roster", () => {
     let time = Date.now();
     let enabled = false;
     let activity: "idle" | "running" = "idle";
-    const operations = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, payload: {}, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const operations = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const allow = (on: boolean) => { if (on) operations[0]!.payload = { consoleUse: { enabled: true, language: "ko" } }; else operations[0]!.payload = {}; };
     const deps = { enabled: () => enabled, directory, now: () => time, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
     let executions = 0;
@@ -37,8 +38,8 @@ describe("fleet-console-use gateway roster", () => {
       execute: async (_input: unknown, assertCurrent: () => void, settled: (result: "succeeded") => void) => { assertCurrent(); executions += 1; settled("succeeded"); return { operationId: "op-a", delivery: "confirmed" as const }; },
     };
     control.attach(adapter);
-    const host = createConsoleUseMcpHost({ ...deps, control });
-    const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
+    const host = createConsoleUseMcpHost({ ...deps, control, experimentEnabled: () => enabled, language: () => "ko" });
+    const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
       const token = connection.issueSessionToken({ label: "op-a", cwd: directory })[0]!;
@@ -47,11 +48,22 @@ describe("fleet-console-use gateway roster", () => {
         const json = await response.json();
         return JSON.parse(json.result.content[0].text);
       };
-      expect((await call("console_context", {})).caller.operationId).toBe("op-a");
+      // 도구가 실려 있다는 것이 허용이 아니다. 기본은 거부이고, 실험 옵트인과 그 Operation의
+      // 토글이 둘 다 참일 때만 통과한다 — 거부는 어느 쪽이 막았는지와 어디를 켜야 하는지를 싣는다.
       const args = { requestId: "request-a", operationId: "op-a", text: "Check build" };
-      expect((await call("console_send", args)).error).toBe("console_control_disabled");
-      expect(executions).toBe(0);
+      const offConsole = await call("console_context", {});
+      expect(offConsole).toMatchObject({ error: "console_use_not_authorized", reason: "experiment_disabled", retryable: true, retryAfter: "user_action", remedy: { actor: "user", surface: "settings" } });
+      expect(offConsole.agentInstruction).toContain("Settings > Experiments > Console use");
+      expect(offConsole.message).toContain("설정 > 실험 기능 > 콘솔 사용");
       enabled = true;
+      // 읽기 5종도 함께 막힌다.
+      for (const [name, body] of [["console_context", {}], ["console_operations", {}], ["console_send", args]] as const) {
+        expect(await call(name, body)).toMatchObject({ error: "console_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
+      }
+      expect(executions).toBe(0);
+      // 켜면 같은 연결·같은 토큰으로 다음 호출이 통과한다. 재연결도 재시작도 없다.
+      allow(true);
+      expect((await call("console_context", {})).caller.operationId).toBe("op-a");
       expect((await call("console_launch", { requestId: "empty", theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
       expect(control.state().actions).toHaveLength(0);
       expect(executions).toBe(0);
@@ -86,6 +98,12 @@ describe("fleet-console-use gateway roster", () => {
       expect(control.state().automations.find((a) => a.id === pending.id)?.runs).toBe(0);
       expect(() => control.request({ kind: "operation", operationId: "op-a" }, "disabled", { kind: "send", operationId: "op-a", text: "No" })).toThrow("console_control_disabled");
       enabled = true;
+      // 허용을 거두면 이미 예약된 자동 운영도 더는 돌지 않는다 — 도구 호출만 막으면 여기가 우회로가 된다.
+      allow(false);
+      time += 300_001;
+      await control.tick();
+      expect(control.state().automations.find((a) => a.id === pending.id)).toMatchObject({ runs: 0, status: "paused", lastError: "owner_not_authorized" });
+      allow(true);
       const cursor = (await control.readEvents()).cursor;
       control.dispose();
       const saved = JSON.parse(readFileSync(path.join(directory, "state.json"), "utf8"));

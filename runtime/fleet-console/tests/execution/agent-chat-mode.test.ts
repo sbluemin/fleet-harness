@@ -47,6 +47,7 @@ describe("agent chat mode routes", () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
+    harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
     const receipt = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-send", { kind: "send", operationId: sessionId, text: "Check terminal output" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)?.status).toBe("running"));
@@ -95,6 +96,7 @@ describe("agent chat mode routes", () => {
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
+    harness.allowConsoleUse(sessionId);
     await harness.post(sessionId, "chat");
     const receipt = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-message", { kind: "send", operationId: sessionId, text: "Inspect the build" });
     expect(harness.sends).toEqual([]);
@@ -523,6 +525,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     /** 원 트랜스크립트를 밖에서 치운다 — 되쓰기 뒤 파일이 사라진 상태의 재현. */
     removeTranscript: () => {
       rmSync(transcriptDir, { recursive: true, force: true });
+    },
+    /** Console 실행 경로를 보려면 그 Operation이 콘솔 사용을 허용받고 있어야 한다. */
+    allowConsoleUse: (sessionId: string) => {
+      const operation = operations.find((candidate) => candidate.id === sessionId);
+      if (!operation) throw new Error("Operation not found");
+      operation.payload.consoleUse = { enabled: true, language: "en" };
     },
     attachProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);

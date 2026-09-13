@@ -340,11 +340,14 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     if (path === "/refine-prompt") return handleRefinePrompt(req, res);
     const watchMatch = /^\/sessions\/([^/]+)\/watch$/u.exec(path);
     if (watchMatch) return handleWatch(req, res, decodeURIComponent(watchMatch[1] ?? ""));
+    const consoleUseMatch = /^\/sessions\/([^/]+)\/console-use$/u.exec(path);
+    if (consoleUseMatch) return handleConsoleUse(req, res, decodeURIComponent(consoleUseMatch[1] ?? ""));
     ctx.host.http.writeJson(res, 404, { error: "not_found" });
     return true;
   }, [
     { method: "POST", path: "/refine-prompt", summary: "Refine a launch prompt or follow-up message (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/watch", summary: "Turn Session watch on or off for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/console-use", summary: "Allow or revoke Console use for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   async function handleRefinePrompt(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -387,6 +390,28 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     else delete payload.watch;
     ctx.host.operations.patch(operation.id, { payload });
     ctx.host.http.writeJson(res, 200, { watch: body.enabled });
+    return true;
+  }
+
+  /**
+   * Operation 하나에 콘솔 사용을 허용하거나 거둔다. 기록은 payload에 남고 판정은 도구 호출마다
+   * 다시 읽히므로, 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 언어를 함께 적는 이유는
+   * 거부 응답이 사용자에게 그대로 옮길 문장을 실어야 하는데 호스트 설정의 `auto`는 호스트가
+   * 풀 수 없기 때문이다 — 켤 때 브라우저가 말해 준 언어를 그대로 보관한다.
+   */
+  async function handleConsoleUse(req: http.IncomingMessage, res: http.ServerResponse, operationId: string): Promise<boolean> {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!readExperiments(ctx).consoleControl) { ctx.host.http.writeJson(res, 404, { error: "experiment_disabled" }); return true; }
+    const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
+    if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const language = body.language === "ko" ? "ko" : "en";
+    const operation = getAgentOperation(ctx, operationId);
+    if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    const payload = { ...(operation.payload ?? {}) };
+    if (body.enabled) payload.consoleUse = { enabled: true, language };
+    else delete payload.consoleUse;
+    ctx.host.operations.patch(operation.id, { payload });
+    ctx.host.http.writeJson(res, 200, { consoleUse: body.enabled });
     return true;
   }
 

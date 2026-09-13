@@ -10,6 +10,7 @@ import {
   CaptionActionButton,
   CaptionAnalystGlyph,
   CaptionChatGlyph,
+  CaptionConsoleUseGlyph,
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
   CaptionWatchGlyph,
@@ -17,7 +18,7 @@ import {
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExecutionProvider, ClientExperimentsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -616,13 +617,76 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     </span>
   );
 
+  // 실험: 콘솔 사용. 도구는 세션이 열릴 때부터 실려 있고 이 토글은 호스트의 허용만 바꾼다 —
+  // 그래서 켜고 끄는 것이 재연결 없이 다음 도구 호출부터 듣는다.
+  const consoleUseEnabled = readConsoleUseEnabled(context.operation.payload);
+  const [consoleUsePending, setConsoleUsePending] = React.useState(false);
+  // 켠 직후 한 번만 안내한다. 다시 열 때마다 튀어나오지 않도록 누른 사실에만 반응한다.
+  const [consoleUseNote, setConsoleUseNote] = React.useState<number | null>(null);
+  const consoleUseAction = experiments?.consoleControl !== true ? null : (
+    <span className="console-use-host">
+    <CaptionActionButton
+      actionId="console-use"
+      label={t(consoleUseEnabled ? "terminal.experiments.consoleUseOff" : "terminal.experiments.consoleUseOn")}
+      pressed={consoleUseEnabled}
+      disabled={consoleUsePending || !installedApi}
+      pending={consoleUsePending}
+      onClick={() => {
+        if (!installedApi) return;
+        const next = !consoleUseEnabled;
+        setConsoleUsePending(true);
+        void setConsoleUse(installedApi, context.operationId, next, context.language ?? "en")
+          .then(() => { setConsoleUseNote(next ? Date.now() : null); return context.api.resync(); })
+          .catch(() => undefined)
+          .finally(() => setConsoleUsePending(false));
+      }}
+    >
+      <CaptionConsoleUseGlyph />
+    </CaptionActionButton>
+    {consoleUseEnabled && consoleUseNote !== null
+      ? <ConsoleUseBubble context={context} at={consoleUseNote} onDismiss={() => setConsoleUseNote(null)} />
+      : null}
+    </span>
+  );
+
   return (
     <>
       {analyst}
+      {consoleUseAction}
       {watchAction}
       {viewSwitch}
       {readingWidthAction}
     </>
+  );
+}
+
+/**
+ * 콘솔 사용을 켠 직후의 안내. 확인 시트를 세우지 않는 대신, 무엇을 허용했고 어떻게 되돌리는지를
+ * 한 번 말한다 — 누름·입력으로 진다(관찰 말풍선과 같은 규율).
+ */
+function ConsoleUseBubble({ context, at, onDismiss }: { readonly context: OperationRenderContext; readonly at: number; readonly onDismiss: () => void }) {
+  const t = getT(context.language ?? "en");
+  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const dismiss = (event: Event) => {
+      if (event.target instanceof Node && bubbleRef.current?.contains(event.target)) return;
+      onDismiss();
+    };
+    // 뜬 직후 같은 프레임의 이벤트(토글을 누른 그 클릭)가 곧바로 닫지 않게 한 박자 뒤에 듣는다.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", dismiss, true);
+      document.addEventListener("keydown", dismiss, true);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("keydown", dismiss, true);
+    };
+  }, [at, onDismiss]);
+  return (
+    <div ref={bubbleRef} className="console-use-bubble" role="status" aria-live="polite">
+      <span className="console-use-bubble__text">{t("terminal.experiments.consoleUseGranted")}</span>
+    </div>
   );
 }
 

@@ -109,6 +109,20 @@ export async function setSessionWatch(api: ClientApiCapability, operationId: str
   });
 }
 
+/** Operation의 콘솔 사용 허용 표식 — 서버가 쓰고 브라우저는 읽기만 한다. */
+export function readConsoleUseEnabled(payload: Record<string, unknown> | undefined): boolean {
+  const value = payload?.consoleUse;
+  return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
+}
+
+export async function setConsoleUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
+  await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, language }),
+  });
+}
+
 /**
  * 프롬프트 다듬기 — 코어가 넘긴 입력을 그대로 서버에 묻는다. 꺼짐(404)·실패는 전부 null이다: 초안이
  * 없는 것이지 오류가 아니며, 컴포저는 수동 흐름 그대로 남는다.
