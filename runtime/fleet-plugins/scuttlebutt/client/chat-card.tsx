@@ -6,7 +6,8 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
-import { placeCard, type CardPlacement } from "./geometry.js";
+import { placeCard, placeDockedCard, type CardPlacement } from "./geometry.js";
+import { ClearIcon, CloseIcon, DockIcon, HeadAction, MoorIcon, UndockIcon } from "./head-action.js";
 import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 
@@ -16,6 +17,10 @@ export function ChatCard({
   admiral,
   mascot,
   moored,
+  docked,
+  canDock,
+  onDock,
+  onUndock,
   onAsk,
   onRetry,
   onStop,
@@ -33,6 +38,15 @@ export function ChatCard({
   readonly admiral: AdmiralId;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly moored: boolean;
+  /**
+   * 상단 바에 둔 부관의 시트로 선다. 닻은 새가 아니라 밴드의 글리프이고, 봉투는 글리프 아래
+   * 우측 정렬 480px — 새의 위치와 무관하게 늘 같은 자리에 답이 선다.
+   */
+  readonly docked: boolean;
+  /** 글리프가 설 밴드 슬롯이 있는가. 없으면(모바일 배치) 「상단 바에 두기」를 내지 않는다. */
+  readonly canDock: boolean;
+  readonly onDock: () => void;
+  readonly onUndock: () => void;
   readonly onAsk: (text: string) => void;
   readonly onRetry: () => void;
   readonly onStop: () => void;
@@ -62,19 +76,23 @@ export function ChatCard({
     const card = cardRef.current;
     if (!mascotElement || !card) return;
     const mascotRect = mascotElement.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
-    setPlacement(placeCard(
-      { width: window.innerWidth, height: window.innerHeight },
-      { left: mascotRect.left, top: mascotRect.top, width: mascotRect.width, height: mascotRect.height },
-      { width: cardRect.width || 380, height: cardRect.height || 320 },
-    ));
-  }, [mascot]);
+    // 레이아웃 크기(offset*)로 잰다 — 진입 애니메이션이 scale로 도는 동안 getBoundingClientRect는
+    // 줄어든 상자를 돌려주고, 그 폭으로 오른쪽을 맞추면 애니메이션이 끝난 뒤 카드가 닻 밖으로 튀어나온다.
+    // 변환은 레이아웃을 바꾸지 않으므로 ResizeObserver도 그 어긋남을 알리지 않는다.
+    const size = { width: card.offsetWidth || (docked ? 480 : 420), height: card.offsetHeight || 320 };
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const anchor = { left: mascotRect.left, top: mascotRect.top, width: mascotRect.width, height: mascotRect.height };
+    const next = docked ? placeDockedCard(viewport, anchor, size) : placeCard(viewport, anchor, size);
+    // 같은 자리면 상태를 바꾸지 않는다 — 시트의 추적 루프가 프레임마다 리렌더를 몰고 오지 않게.
+    setPlacement((current) => (current && samePlacement(current, next) ? current : next));
+  }, [docked, mascot]);
 
-  // 포커스는 카드가 열릴 때(그리고 다른 부관으로 바뀔 때) 한 번만 준다. 재배치 신호에 묶어 두면
-  // 부관 크기 조절처럼 카드 밖에서 일어난 사건이 사용자가 잡고 있던 포커스를 빼앗는다.
+  // 포커스는 카드가 열릴 때(그리고 다른 부관으로 바뀔 때, 자리를 옮길 때) 준다. 재배치 신호에
+  // 묶어 두면 부관 크기 조절처럼 카드 밖에서 일어난 사건이 사용자가 잡고 있던 포커스를 빼앗는다.
+  // 자리를 옮기면 눌렀던 헤더 아이콘이 사라져 포커스가 문서로 떨어진다 — 그러면 Escape가 닿지 않는다.
   React.useLayoutEffect(() => {
     inputRef.current?.focus();
-  }, [admiral]);
+  }, [admiral, docked]);
 
   React.useLayoutEffect(() => {
     position();
@@ -84,6 +102,17 @@ export function ChatCard({
     observer.observe(card);
     return () => observer.disconnect();
   }, [position, positionRevision]);
+
+  // 상단 바의 글리프는 밴드의 다른 칩(호스트·연결 상태)이 늘고 줄 때 옆으로 밀린다 — 시트는 그
+  // 닻을 프레임마다 따라간다(말풍선이 새를 따르는 것과 같다). 자리가 같으면 위에서 걸러진다.
+  React.useLayoutEffect(() => {
+    if (!docked) return;
+    let frame = window.requestAnimationFrame(function follow() {
+      position();
+      frame = window.requestAnimationFrame(follow);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [docked, position]);
 
   React.useEffect(() => {
     window.addEventListener("resize", position);
@@ -113,6 +142,23 @@ export function ChatCard({
     input.style.overflowY = input.scrollHeight > max ? "auto" : "hidden";
   }, [draft]);
 
+  // 시트의 Escape는 창 단위로도 받는다 — 글리프를 눌러 열면 포커스가 밴드의 글리프에 남아 카드의
+  // onKeyDown에 닿지 않는다. 전면 표면이 소비한 Escape와 모달 독점은 답변 말풍선과 같은 계약으로 비켜선다.
+  React.useEffect(() => {
+    if (!docked) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (cardRef.current?.contains(event.target as Node | null)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        onClose(true);
+      }, 0);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [docked, onClose]);
+
   // 카드 바깥을 누르면 닫는다. 캡처 단계나 preventDefault를 쓰지 않으므로 그 클릭은
   // 아래 콘솔에 그대로 도달한다 — 마스코트 위 누름은 드래그 시작이라 닫힘에서 제외한다.
   React.useEffect(() => {
@@ -137,7 +183,7 @@ export function ChatCard({
   return (
     <div
       ref={cardRef}
-      className="scuttlebutt-chat-card"
+      className={`scuttlebutt-chat-card${docked ? " is-docked" : ""}`}
       style={style}
       role="dialog"
       aria-label={t(`chat.label.${admiral}`)}
@@ -151,29 +197,54 @@ export function ChatCard({
       <div className="scuttlebutt-chat-head">
         <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
         <span className="scuttlebutt-chat-who">{t(`chat.label.${admiral}`)}</span>
-        <button
-          type="button"
-          className="scuttlebutt-chat-moor"
-          role="switch"
-          aria-checked={moored}
-          onClick={onToggleMoored}
-        >
-          <span className="scuttlebutt-chat-moor-track" aria-hidden="true"><i /></span>
-          {t("chat.stayPut")}
-        </button>
+        {/* 자리 조작은 그 부관에게만 걸린다 — 전역 설정으로 빼지 않고 헤더에 아이콘으로만 둔다.
+            시트(상단 바)에서는 정박이 의미가 없으므로 떼어내기 하나만 선다. */}
+        {docked ? (
+          <HeadAction
+            id={`scuttlebutt-undock-${admiral}`}
+            label={t("chat.undock")}
+            hint={t("chat.undock.hint")}
+            icon={<UndockIcon />}
+            onClick={onUndock}
+          />
+        ) : (
+          <>
+            <HeadAction
+              id={`scuttlebutt-moor-${admiral}`}
+              label={t("chat.stayPut")}
+              hint={t("chat.stayPut.hint")}
+              icon={<MoorIcon />}
+              pressed={moored}
+              onClick={onToggleMoored}
+            />
+            {canDock ? (
+              <HeadAction
+                id={`scuttlebutt-dock-${admiral}`}
+                label={t("chat.dock")}
+                hint={t("chat.dock.hint")}
+                icon={<DockIcon />}
+                onClick={onDock}
+              />
+            ) : null}
+          </>
+        )}
         {state.entries.length > 0 ? (
-          <button
-            type="button"
-            className="scuttlebutt-chat-clear"
-            title={t("action.clear")}
-            aria-label={t("action.clear")}
+          <HeadAction
+            id={`scuttlebutt-clear-${admiral}`}
+            label={t("action.clear")}
+            hint={t("action.clear.hint")}
+            icon={<ClearIcon />}
             disabled={busy}
             onClick={onClear}
-          >
-            ⌫
-          </button>
+          />
         ) : null}
-        <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
+        <HeadAction
+          id={`scuttlebutt-tuck-${admiral}`}
+          label={t("chat.tuck")}
+          hint={t("chat.tuck.hint")}
+          icon={<CloseIcon />}
+          onClick={onTuck}
+        />
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
         {state.entries.length === 0 ? (
@@ -295,6 +366,13 @@ function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
   return String(count);
+}
+
+function samePlacement(left: CardPlacement, right: CardPlacement): boolean {
+  if (left.side !== right.side || Math.abs(left.left - right.left) > 0.5 || Math.abs(left.maxHeight - right.maxHeight) > 0.5) return false;
+  const leftY = left.side === "above" ? left.bottom : left.top;
+  const rightY = right.side === "above" ? right.bottom : right.top;
+  return Math.abs(leftY - rightY) <= 0.5;
 }
 
 function placementStyle(placement: CardPlacement | null): React.CSSProperties {

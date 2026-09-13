@@ -109,6 +109,15 @@ export interface MentionTargetDescriptor {
   readonly renderMark?: () => ReactNode;
 }
 
+/**
+ * 커맨드 밴드 우측 클러스터 앞에 서는 플러그인 항목. 밴드의 24×24 버튼 문법을 따르는 것은
+ * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다.
+ */
+export interface CommandBandEntryDescriptor {
+  readonly id: string;
+  readonly render: () => ReactNode;
+}
+
 export interface ClientExecutionProvider {
   readonly id: string | null;
   readonly operationKinds?: readonly OperationKindDescriptor[];
@@ -127,6 +136,12 @@ export interface ClientExecutionProvider {
    */
   readonly panes?: readonly PaneDescriptor[];
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
+  /**
+   * 커맨드 밴드 우측에 서는 24px 항목. 플러그인이 자기 상태를 상단 바에 상주시키는 자리다 —
+   * 호스트는 슬롯의 자리와 순서만 소유하고 본문은 플러그인이 그린다. 비어 있는 항목은 아무것도
+   * 그리지 않으면(null) 자리를 차지하지 않는다.
+   */
+  readonly commandBandEntries?: readonly CommandBandEntryDescriptor[];
   /**
    * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은
    * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.

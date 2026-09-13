@@ -5,6 +5,7 @@ import { AnswerBubble } from "./answer-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
 import { readConsoleSnapshot } from "./console-read.js";
+import { connectDockActivate, firstDockGlyph, readDockGlyph, readDockSnapshot, subscribeDock, writeDock } from "./dock-store.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { IntroBubble } from "./intro-bubble.js";
 import { connectScuttlebuttMentions } from "./mention-bridge.js";
@@ -30,6 +31,7 @@ import {
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
+  writeAideDocked,
   writeAideStayPut,
   writeScuttlebuttSettings,
 } from "./settings-store.js";
@@ -46,6 +48,8 @@ const PARKED_GAP = 8;
 /** 회피 영역 재측정 주기. 레일 페인처럼 스토어 밖에서 여닫히는 표면은 이 주기로 따라잡는다. */
 const KEEP_OUT_POLL_MS = 400;
 const KEYBOARD_STEP_PX = 24;
+/** 이 높이 안으로 새를 끌고 오면 밴드에 내려놓는 제스처다(밴드 36px + 여유). */
+const DOCK_DROP_Y = 44;
 const KEYBOARD_STEP_FAST_PX = 96;
 
 function isAideShortcut(event: KeyboardEvent): boolean {
@@ -90,6 +94,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const localeRef = React.useRef(context.language);
   React.useEffect(() => {
     localeRef.current = context.language;
+    // 글리프는 다른 리액트 트리(밴드)에 산다 — 스토어를 거쳐야 언어 변경에 다시 그린다.
+    writeDock({ locale: context.language });
   }, [context.language]);
 
   // 대화는 카드보다 오래 산다 — 카드를 닫아도 답이 끝까지 도착해야 완료 연출이 나온다.
@@ -111,9 +117,33 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const doriChat = useStoreSnapshot(sessions[2]!.subscribe, sessions[2]!.snapshot);
   const chats = [toriChat, boriChat, doriChat] as const;
   const phases = chats.map((chat) => chat.state.phase);
+  // 저장된 「상단 바에 두기」는 글리프가 설 밴드 슬롯이 있을 때만 유효하다 — 모바일 배치처럼 밴드가
+  // 없는 곳에서는 새로 남는다(글리프도 떼어내기도 없는 곳에 숨기면 되찾을 길이 없다).
+  const dockHost = useStoreSnapshot(subscribeDock, readDockSnapshot).host;
+  const docked = React.useMemo<Record<AdmiralId, boolean>>(() => ({
+    tori: dockHost && settings.docked.tori,
+    bori: dockHost && settings.docked.bori,
+    dori: dockHost && settings.docked.dori,
+  }), [dockHost, settings.docked]);
+
+  // 슬롯이 사라지면(모바일·Zen) 고정 부관은 새로 돌아간다 — 그때 밴드 아래 서 있던 답 말풍선은 거둔다.
+  // 고정 답은 정박을 세우지 않았으므로 두면 나는 새를 따라다닌다. 글리프의 점은 시트가 이어받지 못하니
+  // 답이 정착한 것은 다음 열림에서 카드로 읽는다.
+  const dockHostRef = React.useRef(dockHost);
+  React.useEffect(() => {
+    const lost = dockHostRef.current && !dockHost;
+    dockHostRef.current = dockHost;
+    if (!lost) return;
+    setAnswering((current) => current.filter((admiral) => !settings.docked[admiral]));
+  }, [dockHost, settings.docked]);
+  // 캔버스에 나는 부관만 편대에 든다 — 상단 바에 둔 부관은 근무 중이지만 새가 아니라 글리프다.
   const activeIndices = React.useMemo(
-    () => MORPHS.map((morph, index) => settings[morph] ? index : -1).filter((index) => index >= 0),
-    [settings.bori, settings.dori, settings.tori],
+    () => MORPHS.map((morph, index) => settings[morph] && !docked[morph] ? index : -1).filter((index) => index >= 0),
+    [settings.bori, settings.dori, settings.tori, docked],
+  );
+  const dockedAides = React.useMemo(
+    () => MORPHS.filter((morph) => settings[morph] && docked[morph]),
+    [settings.bori, settings.dori, settings.tori, docked],
   );
 
   const [fleetSignals, setFleetSignals] = React.useState(() => context.signals.read());
@@ -172,7 +202,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   // 근무 중인 첫 제독을 매 렌더 뒤 다시 짚는다 — 설정에서 켜고 끌 때마다 대상이 바뀐다.
   React.useLayoutEffect(() => {
     const index = activeIndices[0];
-    announcerRef.current = index === undefined ? null : birdRefs.current[index] ?? null;
+    // 캔버스에 새가 없으면 상단 바의 첫 글리프가 소식을 전한다 — 말풍선은 그 아래로 내려온다.
+    const bird = index === undefined ? null : birdRefs.current[index];
+    announcerRef.current = bird ?? firstDockGlyph();
   });
 
   const [motionFrames, setMotionFrames] = React.useState(motionFramesRef.current);
@@ -195,6 +227,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     MORPHS.map((morph) => getScuttlebuttSettings().stayPut[morph].enabled),
   );
   const [positionRevision, setPositionRevision] = React.useState(0);
+  // 밴드 아래 말풍선 몇 개가 나란히 설 수 있는지는 창 폭이 정한다 — 창이 좁아지면 접는 계산이 다시 돈다.
+  const [viewportWidth, setViewportWidth] = React.useState(() => window.innerWidth);
 
   const applyMoored = React.useCallback((index: number, resolve: (current: boolean) => boolean) => {
     setMoored((current) => {
@@ -246,6 +280,14 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     // 그대로 성공으로 넘기면 컴포저가 초안을 지워 사용자의 문장이 사라진다 — 거절해서 초안을 지킨다.
     const phase = sessions[index]!.snapshot().state.phase;
     if (phase === "starting" || phase === "thinking") throw new Error("destination_busy");
+    // 상단 바에 둔 부관의 답도 말풍선(읽기 표면)이다 — 닻만 새가 아니라 글리프라 늘 같은 자리에
+    // 선다. 정박은 새에게만 뜻이 있으므로 세우지 않는다.
+    if (readDockSnapshot().host && getScuttlebuttSettings().docked[admiral]) {
+      lastSpokenRef.current = admiral;
+      setAnswering((current) => (current.includes(admiral) ? current : [...current, admiral]));
+      void sessions[index]!.ask(text);
+      return;
+    }
     applyMoored(index, (current) => {
       // 사용자가 이미 세워 둔 정박은 우리 것이 아니다 — 답을 거두며 그 스위치를 대신 내리면
       // 사용자가 켠 설정이 조용히 꺼진다.
@@ -301,6 +343,79 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     setAnswering((current) => current.filter((candidate) => candidate !== admiral));
     releaseMentionMoor(admiral);
   }, [releaseMentionMoor]);
+
+  /**
+   * 상단 바에 두기. 답을 위해 세운 정박과 말풍선은 거둔다 — 그 답은 시트가 이어받는다. 사용자의
+   * 「제자리에 두기」 좌표는 지우지 않는다: 떼어낼 때 그 자리로 돌아간다.
+   */
+  const dockAide = React.useCallback((admiral: AdmiralId) => {
+    closeAnswer(admiral);
+    writeAideDocked(admiral, true).catch(() => undefined);
+    setPositionRevision((revision) => revision + 1);
+  }, [closeAnswer]);
+
+  const undockAide = React.useCallback((admiral: AdmiralId) => {
+    // 시트 뒤에 숨어 있던 Quick Launch 말풍선은 거둔다 — 시트가 이미 그 답을 보였고, 새로 돌아간
+    // 부관은 정박이 없어 말풍선이 나는 새를 따라다니게 된다.
+    closeAnswer(admiral);
+    const body = bodiesRef.current?.[MORPHS.indexOf(admiral)];
+    if (body) {
+      body.grab = null;
+      body.pauseUntil = 0;
+      pickWaypoint(body, viewportRef.current, Math.random, keepOutRef.current);
+    }
+    writeAideDocked(admiral, false).catch(() => undefined);
+    setPositionRevision((revision) => revision + 1);
+  }, [closeAnswer]);
+
+  // 글리프가 서고 사라지는 것도 닻의 변화다 — 시트가 다시 재게 한다.
+  React.useEffect(() => subscribeDock(() => setPositionRevision((revision) => revision + 1)), []);
+
+  // 글리프 클릭은 새 클릭과 같은 뜻이다 — 그 부관의 표면을 여닫는다.
+  React.useEffect(() => connectDockActivate((admiral) => {
+    lastSpokenRef.current = admiral;
+    setOpenAdmiral((current) => current === admiral ? null : admiral);
+  }), []);
+
+  // 글리프가 그릴 상태: 열림·답하는 중·읽지 않은 답. 읽지 않음은 시트가 닫힌 채 답이 정착한
+  // 부관에게만 서고, 그 시트를 여는 순간 걷힌다.
+  const unreadRef = React.useRef(new Set<AdmiralId>());
+  const phaseKey = phases.join("|");
+  React.useEffect(() => {
+    const previous = previousPhasesRef.current;
+    for (let index = 0; index < MORPHS.length; index += 1) {
+      const admiral = MORPHS[index]!;
+      if (!docked[admiral]) {
+        unreadRef.current.delete(admiral);
+        continue;
+      }
+      const settled = phases[index] === "ready" && (previous[index] === "starting" || previous[index] === "thinking");
+      // 말풍선이나 시트가 이미 답을 보이고 있으면 읽지 않은 것이 아니다.
+      const showing = openAdmiral === admiral || answering.includes(admiral);
+      if (settled && !showing) unreadRef.current.add(admiral);
+      if (showing) unreadRef.current.delete(admiral);
+    }
+    writeDock({
+      open: openAdmiral !== null && docked[openAdmiral] ? openAdmiral : null,
+      busy: MORPHS.filter((admiral, index) => docked[admiral] && (phases[index] === "starting" || phases[index] === "thinking")),
+      unread: MORPHS.filter((admiral) => unreadRef.current.has(admiral)),
+    });
+    // 완료 만세 효과와 같은 순서로 이전 단계를 갱신한다 — 여기서 먼저 갱신하면 그 효과가 전이를 놓친다.
+  }, [answering, openAdmiral, phaseKey, docked]);
+
+  // 밴드 아래 말풍선은 오른쪽부터 나란히 선다 — 화면 폭을 넘기면 가장 오래된 답부터 접어 글리프의
+  // 점으로 남긴다(글리프를 누르면 시트에서 읽는다). 세로로 쌓이면 둘째 답이 화면 밖으로 밀린다.
+  React.useEffect(() => {
+    const showing = answering.filter((admiral) => docked[admiral]);
+    const fit = Math.max(1, Math.floor((viewportWidth - 8) / (420 + 8)));
+    if (showing.length <= fit) return;
+    const folded = showing.slice(0, showing.length - fit);
+    for (const admiral of folded) {
+      if (phases[MORPHS.indexOf(admiral)] === "ready") unreadRef.current.add(admiral);
+    }
+    setAnswering((current) => current.filter((admiral) => !folded.includes(admiral)));
+  }, [answering, phaseKey, settings.docked, viewportWidth]);
+
 
   const askFromMentionRef = React.useRef(askFromMention);
   askFromMentionRef.current = askFromMention;
@@ -429,7 +544,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
     focusFrameRef.current = window.requestAnimationFrame(() => {
       focusFrameRef.current = null;
-      birdRefs.current[MORPHS.indexOf(admiral)]?.focus();
+      (birdRefs.current[MORPHS.indexOf(admiral)] ?? readDockGlyph(admiral))?.focus();
     });
   }, []);
 
@@ -541,6 +656,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   React.useEffect(() => {
     const resize = () => {
       viewportRef.current = { width: window.innerWidth, height: window.innerHeight };
+      setViewportWidth(window.innerWidth);
       if (fleetSignals.reducedMotion) parkBirds();
     };
     window.addEventListener("resize", resize);
@@ -651,6 +767,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     setGrabbed((current) => replaceAt(current, index, true));
   }, [clearTimer]);
 
+  const dropArmedRef = React.useRef(false);
   const onPointerMove = React.useCallback((index: number, event: React.PointerEvent<HTMLElement>) => {
     const gesture = gesturesRef.current[index];
     const body = bodiesRef.current?.[index];
@@ -664,6 +781,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     gesture.lastX = event.clientX;
     gesture.lastY = event.clientY;
     gesture.lastAt = now;
+    // 밴드까지 끌어올리면 내려놓을 자리를 보인다 — 「상단 바에 두기」의 손 제스처.
+    const armed = readDockSnapshot().host && event.clientY < DOCK_DROP_Y;
+    if (armed !== dropArmedRef.current) {
+      dropArmedRef.current = armed;
+      writeDock({ dropArmed: armed });
+    }
   }, []);
 
   // 취소된 제스처는 클릭이 아니다 — OS가 포인터를 뺏어갔을 뿐인데 챗이 열리면 안 된다.
@@ -692,21 +815,30 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     gesturesRef.current[index] = null;
     setGrabbed((current) => replaceAt(current, index, false));
     const admiral = MORPHS[index]!;
+    if (dropArmedRef.current) {
+      dropArmedRef.current = false;
+      writeDock({ dropArmed: false });
+      if (!cancelled && moved >= 7) {
+        dockAide(admiral);
+        return;
+      }
+    }
     if (body.moored && !mentionMooredRef.current.has(admiral) && moved >= 7) {
       const { nx, ny } = stayPutFractions(body, viewportRef.current);
       writeAideStayPut(admiral, { enabled: true, nx, ny }).catch(() => undefined);
     }
-  }, [clearTimer, clickAction]);
+  }, [clearTimer, clickAction, dockAide]);
 
   const t = getT(context.language);
-  // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다.
-  if (activeIndices.length === 0) return null;
+  // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다. 상단 바에 둔 부관은 새가
+  // 아니어도 시트·소식이 이 레이어에 서므로 남긴다.
+  if (activeIndices.length === 0 && dockedAides.length === 0) return null;
   const quiet = !openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking");
 
   return (
     <>
       {MORPHS.map((morph, index) => {
-        if (!settings[morph]) return null;
+        if (!settings[morph] || docked[morph]) return null;
         // 자세는 상태에서(리렌더를 몰고 온다), 좌표는 ref에서(루프가 쓴 최신 값) 읽는다.
         const motion = motionFrames[index]!;
         const frame = motionFramesRef.current[index] ?? motion;
@@ -826,9 +958,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         positionRevision={positionRevision}
         onShow={saluteAll}
       />
-      {!settings.introduced && quiet ? (
+      {!settings.introduced && quiet && (activeIndices.length > 0 || dockedAides.length > 0) ? (
         <IntroBubble
-          admiral={MORPHS[activeIndices[0]!]!}
+          admiral={activeIndices.length > 0 ? MORPHS[activeIndices[0]!]! : dockedAides[0]!}
           locale={context.language}
           mascot={announcerRef}
           positionRevision={positionRevision}
@@ -843,7 +975,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           key={admiral}
           admiral={admiral}
           state={chats[MORPHS.indexOf(admiral)]!.state}
-          mascot={{ current: birdRefs.current[MORPHS.indexOf(admiral)] ?? null }}
+          mascot={{ current: docked[admiral] ? readDockGlyph(admiral) : birdRefs.current[MORPHS.indexOf(admiral)] ?? null }}
+          docked={docked[admiral]}
           locale={context.language}
           positionRevision={positionRevision}
           onExpand={() => {
@@ -866,8 +999,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           admiral={openAdmiral}
           state={chats[MORPHS.indexOf(openAdmiral)]!.state}
           draft={chats[MORPHS.indexOf(openAdmiral)]!.draft}
-          mascot={{ current: birdRefs.current[MORPHS.indexOf(openAdmiral)] ?? null }}
+          mascot={{ current: docked[openAdmiral] ? readDockGlyph(openAdmiral) : birdRefs.current[MORPHS.indexOf(openAdmiral)] ?? null }}
           moored={moored[MORPHS.indexOf(openAdmiral)] ?? false}
+          docked={docked[openAdmiral]}
+          canDock={dockHost}
+          onDock={() => dockAide(openAdmiral)}
+          onUndock={() => undockAide(openAdmiral)}
           locale={context.language}
           positionRevision={positionRevision}
           onAsk={(text) => {

@@ -11,6 +11,8 @@ export interface AideStayPut {
 }
 
 export type StayPutMap = Record<ScuttlebuttAideId, AideStayPut>;
+/** 부관별 「상단 바에 두기」. 켜진 부관은 캔버스가 아니라 커맨드 밴드 우측 글리프로 선다. */
+export type DockedMap = Record<ScuttlebuttAideId, boolean>;
 /** 부관별 렌더 폭(px). 범위와 격자는 roaming.ts 가 소유한다. */
 export type SizeMap = Record<ScuttlebuttAideId, number>;
 
@@ -26,6 +28,12 @@ export interface ScuttlebuttSettings {
   readonly dori: boolean;
   readonly departureBell: boolean;
   readonly stayPut: StayPutMap;
+  /**
+   * 상단 바 고정. 설정 화면에는 노출하지 않는다 — 전환은 부관 자신의 카드·시트 헤더에서만 한다.
+   * `stayPut`과 따로 두는 이유: 떼어내면 고정 직전의 정박 좌표로 돌아가야 하므로 그 값을 지우지
+   * 않는다.
+   */
+  readonly docked: DockedMap;
   readonly sizes: SizeMap;
   /** 부관단 공통 모델·강도. 실험 설정의 모델 좌석과 같은 id 규약이다. */
   readonly model: string;
@@ -40,6 +48,7 @@ const DEFAULT_STAY_PUT: StayPutMap = Object.freeze({
   bori: IDLE_STAY_PUT,
   dori: IDLE_STAY_PUT,
 });
+const DEFAULT_DOCKED: DockedMap = Object.freeze({ tori: false, bori: false, dori: false });
 const DEFAULT_SIZES: SizeMap = Object.freeze({
   tori: DEFAULT_BIRD_WIDTH,
   bori: DEFAULT_BIRD_WIDTH,
@@ -53,6 +62,7 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   dori: false,
   departureBell: true,
   stayPut: DEFAULT_STAY_PUT,
+  docked: DEFAULT_DOCKED,
   sizes: DEFAULT_SIZES,
   model: DEFAULT_AIDE_MODEL,
   effort: DEFAULT_AIDE_EFFORT,
@@ -141,6 +151,12 @@ export async function writeAideStayPut(
   }));
 }
 
+export async function writeAideDocked(admiral: ScuttlebuttAideId, docked: boolean): Promise<void> {
+  await writeScuttlebuttSettings((current) => ({
+    docked: { ...current.docked, [admiral]: docked },
+  }));
+}
+
 function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettings {
   if (!value) return DEFAULT_SETTINGS;
   return {
@@ -149,6 +165,7 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     dori: typeof value.dori === "boolean" ? value.dori : false,
     departureBell: typeof value.departureBell === "boolean" ? value.departureBell : true,
     stayPut: parseStayPutMap(value.stayPut),
+    docked: parseDockedMap(value.docked),
     sizes: parseSizeMap(value.sizes),
     model: typeof value.model === "string" && MODEL_ID.test(value.model) ? value.model : DEFAULT_AIDE_MODEL,
     effort: AIDE_EFFORTS.includes(value.effort as AideEffort) ? value.effort as AideEffort : DEFAULT_AIDE_EFFORT,
@@ -169,6 +186,12 @@ function parseSizeMap(value: unknown): SizeMap {
     bori: clampBirdWidth(rec.bori),
     dori: clampBirdWidth(rec.dori),
   };
+}
+
+function parseDockedMap(value: unknown): DockedMap {
+  if (!value || typeof value !== "object") return DEFAULT_DOCKED;
+  const rec = value as Record<string, unknown>;
+  return { tori: rec.tori === true, bori: rec.bori === true, dori: rec.dori === true };
 }
 
 function parseStayPutMap(value: unknown): StayPutMap {

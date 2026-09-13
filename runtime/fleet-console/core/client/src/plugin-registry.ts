@@ -3,7 +3,7 @@ import { createContext, useContext, useMemo } from "react";
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
-import type { OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+import type { CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -30,6 +30,7 @@ export interface PluginRegistry {
   readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
+  readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
 }
 
@@ -186,6 +187,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     railEntries: [...railEntries.filter((entry) => entry.id === "codex"), ...railEntries.filter((entry) => entry.id !== "codex")],
     panes,
     floatingWidgets: providers.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
+    commandBandEntries: providers.flatMap((plugin) => (plugin.commandBandEntries ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),

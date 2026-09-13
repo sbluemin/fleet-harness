@@ -584,9 +584,13 @@
   /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
   visibility: hidden;
   display: grid;
-  max-width: min(360px, calc(100vw - var(--space-6)));
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px var(--space-2);
+  /* 말풍선과 카드는 한 봉투다(420px·본문 13px) — 「이어 묻기」로 넘어갈 때 답이 다른 상자에
+     다시 서지 않는다. 종전 360/380의 어긋남이 그 전이를 점프로 만들었다. */
+  width: min(420px, calc(100vw - var(--space-6)));
+  /* 본문은 봉투 폭을 다 쓴다 — 닫기 버튼을 열로 세우면 그 열이 본문 오른쪽을 끝까지 비워 둔다.
+     닫기는 머리 행 오른쪽에 띄우고 머리 행만 그만큼 비운다. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
@@ -600,8 +604,8 @@
   backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  font-size: var(--t-sm);
-  line-height: 1.45;
+  font-size: var(--t-md);
+  line-height: 1.5;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
 }
@@ -630,6 +634,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
+  padding-right: 28px;
   color: var(--brass);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -704,7 +709,9 @@
 }
 
 .scuttlebutt-answer-dismiss {
-  align-self: start;
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-2);
   display: inline-flex;
   min-width: 24px;
   min-height: 24px;
@@ -751,7 +758,7 @@
   z-index: 1;
   pointer-events: auto;
   display: flex;
-  width: min(380px, calc(100vw - var(--space-6)));
+  width: min(420px, calc(100vw - var(--space-6)));
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -797,90 +804,93 @@
   font-weight: var(--weight-medium);
 }
 
-/* 정박 스위치는 카드 머리에 둔다 — 그 제독에게만 걸리는 조작이라 전역 설정으로 빼지 않는다. */
-.scuttlebutt-chat-moor {
-  display: flex;
+/* 헤더 조작은 글자 없는 24px 아이콘이다 — 제자리(닻)·상단 바(막대 위 화살표)·지우기·닫기.
+   라벨은 aria로, 눈에는 hover·focus 때 한 줄 말풍선만 선다(설정 도움말 말풍선과 같은 계약).
+   토글은 aria-pressed로 말하고 켜진 동안 brass로 선다 — 위치·포커스 채널이지 상태 신호가 아니다. */
+.scuttlebutt-head-slot {
+  position: relative;
+  display: inline-flex;
   flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px var(--space-2);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  white-space: nowrap;
 }
 
-.scuttlebutt-chat-moor:hover {
-  color: var(--text-secondary);
-}
-
-.scuttlebutt-chat-moor:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
-}
-
-.scuttlebutt-chat-moor-track {
-  display: block;
-  width: 26px;
-  height: 15px;
-  flex-shrink: 0;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  background: var(--ink-abyss);
-  transition:
-    background var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide);
-}
-
-.scuttlebutt-chat-moor-track i {
-  display: block;
-  width: 9px;
-  height: 9px;
-  margin: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--text-tertiary);
-  transition:
-    transform var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.scuttlebutt-chat-moor[aria-checked="true"] {
-  color: var(--text-primary);
-}
-
-.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track {
-  border-color: var(--brass);
-  background: var(--brass-glow);
-}
-
-.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track i {
-  transform: translateX(11px);
-  background: var(--brass);
-}
-
-.scuttlebutt-chat-tuck {
-  padding: 2px var(--space-1);
-  border: 0;
+.scuttlebutt-head-action {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
   font: inherit;
-  font-weight: var(--weight-regular);
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
 }
 
-.scuttlebutt-chat-tuck:hover {
+.scuttlebutt-head-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.scuttlebutt-head-action:hover:not(:disabled) {
   background: var(--ink-veil);
   color: var(--text-primary);
 }
 
-.scuttlebutt-chat-tuck:focus-visible {
+.scuttlebutt-head-action:focus-visible {
   outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-head-action:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.scuttlebutt-head-action.is-on {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: var(--brass-glow);
+  color: var(--brass);
+}
+
+.scuttlebutt-head-tip {
+  position: fixed;
+  /* 부유 레이어(--z-floating) 위에 서야 한다 — 문서 끝으로 포털된 잠깐의 설명이라 overlay 단을 쓴다. */
+  z-index: var(--z-overlay);
+  pointer-events: none;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: normal;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+}
+
+.scuttlebutt-head-tip[hidden] { display: none; }
+
+.scuttlebutt-head-tip b {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
 }
 
 /* 대화 전체를 보여 주므로 카드가 끝없이 자란다 — 여기서 높이를 잡아야 카드가 부관 위·아래에
@@ -888,7 +898,9 @@
 .scuttlebutt-chat-log {
   display: flex;
   min-height: 0;
-  max-height: min(340px, 45vh);
+  /* 말풍선 본문과 같은 상한 — 이어 물으려 열었더니 덜 보이는 일이 없다. 실제 높이는 카드의
+     배치 maxHeight(새 위아래 남은 공간)가 먼저 자른다. */
+  max-height: 60vh;
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
@@ -1019,31 +1031,6 @@
 
 .scuttlebutt-composer textarea:disabled {
   opacity: 0.6;
-}
-
-.scuttlebutt-chat-clear {
-  padding: 2px var(--space-1);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-weight: var(--weight-regular);
-}
-
-.scuttlebutt-chat-clear:hover:not(:disabled) {
-  background: var(--ink-veil);
-  color: var(--text-primary);
-}
-
-.scuttlebutt-chat-clear:focus-visible {
-  outline: 2px solid var(--brass);
-}
-
-.scuttlebutt-chat-clear:disabled {
-  cursor: default;
-  opacity: 0.4;
 }
 
 .scuttlebutt-stop {
@@ -1387,8 +1374,110 @@
   50% { opacity: 1; }
 }
 
+/* 상단 바에 둔 부관의 시트 — 닻이 새가 아니라 밴드의 글리프라 항상 같은 자리(우측 정렬)에
+   선다. 새 옆 카드보다 넓고(480px) 높이는 화면의 80%까지 쓴다: 읽으려고 고정한 자리다. */
+.scuttlebutt-chat-card.is-docked {
+  width: min(480px, calc(100vw - var(--space-6)));
+}
+
+.scuttlebutt-chat-card.is-docked .scuttlebutt-chat-log {
+  max-height: none;
+}
+
+/* ── 상단 바 글리프 ────────────────────────────────────────────────────────
+   커맨드 밴드 우측, 시스템 클러스터 앞. 밴드 버튼 문법(24×24·hover 림·눌림 워시)을 토큰으로
+   다시 그린다 — 호스트 클래스명은 플러그인 계약이 아니다. */
+.scuttlebutt-dock {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.scuttlebutt-dock-glyph {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+/* 밴드의 다른 글리프(16px)와 같은 크기다. 머리 viewBox 밖의 날개·꼬리는 잘라 낸다 — 그것이
+   새어 나오면 이웃보다 커 보인다. */
+.scuttlebutt-dock-glyph svg {
+  width: 16px;
+  height: 16px;
+  overflow: hidden;
+}
+
+.scuttlebutt-dock-glyph:hover,
+.scuttlebutt-dock-glyph:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  outline: none;
+}
+
+.scuttlebutt-dock-glyph:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-dock-glyph[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--control-wash);
+}
+
+/* 답하는 동안 새가 고개를 갸웃한다 — 캔버스의 is-think와 같은 몸짓이다(깜빡임이 아니라).
+   무한 애니메이션이 허용되는 자리(응답이 실제로 도는 동안). */
+.scuttlebutt-dock-glyph.is-busy .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-tilt 2s ease-in-out infinite;
+  transition: none;
+}
+
+.scuttlebutt-dock-glyph.is-busy .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-glance 2.6s ease-in-out infinite;
+}
+
+/* 읽지 않은 답의 점. 위치·주의 채널인 brass — 상태 신호가 아니라 "여기 새 것이 있다"다. */
+.scuttlebutt-dock-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  box-shadow: 0 0 0 2px var(--ink-deep);
+}
+
+/* 새를 밴드까지 끌어올린 동안 보이는 내려놓을 자리. */
+.scuttlebutt-dock-drop {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 @media (max-width: 560px) {
-  .scuttlebutt-chat-card {
+  .scuttlebutt-chat-card,
+  .scuttlebutt-chat-card.is-docked {
     width: calc(100vw - var(--space-4));
   }
 }
@@ -1407,6 +1496,8 @@
   .scuttlebutt-answer-bubble,
   .scuttlebutt-answer-wait,
   .scuttlebutt-thinking i,
+  .scuttlebutt-dock-glyph .scuttlebutt-qk-head,
+  .scuttlebutt-dock-glyph .scuttlebutt-qk-eyes,
   .scuttlebutt-chat-card {
     animation: none !important;
   }

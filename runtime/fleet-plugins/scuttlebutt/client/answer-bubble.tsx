@@ -15,7 +15,8 @@ import { isConsoleReadEnabled } from "./console-read.js";
  *
  * 지저귐 말풍선(`.scuttlebutt-bird-say`)은 `white-space: nowrap` 한 줄이라 문단을 담지 못한다 —
  * 200자를 그리면 폭이 1,700px가 되어 캔버스를 넘는다. 그래서 봉투는 도착 알림 말풍선의 것
- * (최대 360px·줄바꿈·닫기 버튼·좌표 추적)을 그대로 입고, 색만 지저귐의 brass를 쓴다.
+ * (줄바꿈·닫기 버튼·좌표 추적)을 입되 폭과 본문 글자는 카드와 같다(420px·13px) — 「이어 묻기」로
+ * 넘어갈 때 답이 다른 상자에 다시 서지 않는다. 색만 지저귐의 brass를 쓴다.
  * 도착 알림의 `positive`는 "끝났다"는 **상태**를 말하는 신호 채널이라 답변이 물려받으면 안 된다.
  *
  * 도착 알림과 다른 점 하나: **자동으로 사라지지 않는다.** 6초는 읽는 시간이 아니라 알아채는
@@ -32,6 +33,7 @@ export function AnswerBubble({
   mascot,
   locale,
   positionRevision,
+  docked = false,
   onExpand,
   onDismiss,
 }: {
@@ -40,6 +42,12 @@ export function AnswerBubble({
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
+  /**
+   * 상단 바에 둔 부관의 답. 닻이 글리프라 새 위아래가 아니라 밴드 아래에 서고, 여럿이 함께 답하면
+   * 오른쪽부터 나란히 선다(가장 늦게 물은 답이 글리프에 가장 가깝다). 세로로 쌓으면 두 번째 답이
+   * 첫 답 아래 화면 밖으로 밀린다.
+   */
+  readonly docked?: boolean;
   readonly onExpand: () => void;
   /**
    * `restoreFocus`는 키보드로 닫았을 때만 참이다. 마우스로 닫고도 새에 포커스를 되돌리면
@@ -60,8 +68,30 @@ export function AnswerBubble({
     const mascotRect = mascotElement.getBoundingClientRect();
     const margin = 8;
     const gap = 8;
-    const alignRight = mascotRect.left + mascotRect.width / 2 > window.innerWidth / 2;
     const siblings = Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble"));
+    const text = textRef.current;
+    const chrome = text ? bubble.offsetHeight - text.offsetHeight : bubble.offsetHeight;
+    if (docked) {
+      const row = siblings.filter((sibling) => sibling.classList.contains("is-docked"));
+      // DOM 순서가 물은 순서다 — 마지막(가장 최근)이 오른쪽 끝, 앞선 답은 왼쪽으로 한 칸씩.
+      const slot = Math.max(0, row.length - 1 - row.indexOf(bubble));
+      const width = bubble.offsetWidth;
+      const top = mascotRect.bottom + gap;
+      if (text) {
+        const ceiling = Math.min(window.innerHeight * 0.6, window.innerHeight - top - margin - chrome);
+        text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
+        const clipped = text.scrollHeight > text.clientHeight + 1;
+        text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
+        if (clipped) text.setAttribute("tabindex", "0");
+        else text.removeAttribute("tabindex");
+      }
+      bubble.style.left = `${Math.max(margin, window.innerWidth - margin - width - slot * (width + gap))}px`;
+      bubble.style.bottom = "";
+      bubble.style.top = `${top}px`;
+      bubble.style.visibility = "visible";
+      return;
+    }
+    const alignRight = mascotRect.left + mascotRect.width / 2 > window.innerWidth / 2;
     const measureLane = (above: boolean, left: number, width: number, height: number) => laneOffset({
       bubble,
       siblings,
@@ -73,8 +103,6 @@ export function AnswerBubble({
       anchorBottom: mascotRect.bottom,
       gap,
     });
-    const text = textRef.current;
-    const chrome = text ? bubble.offsetHeight - text.offsetHeight : bubble.offsetHeight;
     // 레인은 지난 프레임의 높이가 아니라 **답이 원하는 높이**(본문 전체, 60vh 상한)로 잰다. 실제 높이로
     // 재면 레인 때문에 줄어든 말풍선이 다음 프레임에 앞 말풍선과 안 겹쳐 레인이 0이 되고, 다시 자라
     // 겹치는 진동이 프레임마다 돈다. 원하는 높이는 상한이 어떻든 같으므로 한 값으로 정착한다.
@@ -119,7 +147,7 @@ export function AnswerBubble({
       bubble.style.top = `${mascotRect.bottom + gap + lane}px`;
     }
     bubble.style.visibility = "visible";
-  }, [mascot]);
+  }, [docked, mascot]);
 
   // 답하는 동안 부관은 정박하지만, 정박 전이·창 리사이즈·다른 새의 이동으로 좌표는 여전히 움직인다.
   React.useLayoutEffect(() => {
@@ -161,7 +189,7 @@ export function AnswerBubble({
   return (
     <div
       ref={bubbleRef}
-      className="scuttlebutt-answer-bubble"
+      className={`scuttlebutt-answer-bubble${docked ? " is-docked" : ""}`}
       role="group"
       aria-label={name}
       onPointerDown={(event) => event.preventDefault()}

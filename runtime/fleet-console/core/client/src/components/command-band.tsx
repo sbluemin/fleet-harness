@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
+import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
@@ -11,6 +11,7 @@ import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-g
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import { useUpdateProgress } from "../update-progress-store.js";
 import { toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
@@ -53,6 +54,7 @@ const TACTICAL_LAYOUTS: readonly {
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
+  const { commandBandEntries } = usePluginRegistry();
   const zenMode = useZenMode();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
@@ -216,7 +218,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
-    return () => observer.disconnect();
+    // 플러그인 항목은 deps 밖에서 나타나고 사라진다(부관을 상단 바에 두면 null → 글리프). 자식
+    // 목록의 변화를 직접 보고 다시 재며, 새 자식도 관찰 대상에 넣는다.
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node instanceof HTMLElement) observer.observe(node);
+      }
+      measure();
+    });
+    if (mutations && bandRight) mutations.observe(bandRight, { childList: true, subtree: true });
+    if (mutations && bandLeft) mutations.observe(bandLeft, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      mutations?.disconnect();
+    };
   }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen]);
 
   useEffect(() => {
@@ -413,6 +428,17 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div>
       </div>
       <div ref={bandRightRef} className="command-band-right">
+        {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
+            두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
+        {/* 밴드가 숨은 동안(Zen·전체화면)은 항목을 내리지 않는다 — 밴드는 마운트된 채 inert로 숨으므로,
+            항목을 그대로 두면 플러그인은 슬롯이 있다고 믿고 상태를 거기에 숨긴다. 내려야 "슬롯 없음"이 된다. */}
+        {commandBandHidden ? null : commandBandEntries.map((entry) => (
+          // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 밴드 전체를
+          // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
+          <PluginErrorBoundary key={entry.id} fallback={null}>
+            <CommandBandPluginEntry render={entry.render} />
+          </PluginErrorBoundary>
+        ))}
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
@@ -422,6 +448,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </header>
     </>
   );
+}
+
+function CommandBandPluginEntry({ render }: { readonly render: () => ReactNode }) {
+  return <>{render()}</>;
 }
 
 interface EnvironmentPopoverProps {
