@@ -567,6 +567,23 @@ export function AgentChatComposer({
             입력이 여러 줄로 자라도 동작은 아래 변에 남는다(align-items: flex-end). 키 안내 줄은 전송 버튼의
             title로 옮겼다. */}
         <ComposerField className="agent-chat-composer-field">
+          {/* 덱은 상자(field)에 걸린다 — 한 줄 컴포저에서 입력 래퍼는 동작 버튼만큼 좁으므로 상자가 기준이다.
+              패널이 짧으면 `.canvas-operation-terminal`의 overflow:hidden에 잘리는데, 그것은
+              Quick Launch가 fixed 오버레이로 피하는 대가를 이 표면은 치른다는 뜻이다. */}
+          {deckOpen ? (
+            <ChatComposerDeck
+              deckId={deckId}
+              token={deckToken}
+              sections={deckSections}
+              rows={deckRows}
+              activeIndex={deckIndex}
+              pending={deckPending && !catalogTried}
+              language={language}
+              optionId={deckOptionId}
+              onPick={pickDeckRow}
+              onHover={setDeckIndex}
+            />
+          ) : null}
           {attachments.length > 0 ? (
             <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
               {attachments.map((attachment) => (
@@ -587,24 +604,7 @@ export function AgentChatComposer({
           ) : null}
           <div className="agent-chat-composer-row">
             <span className="agent-chat-composer-input-wrap">
-              {/* 덱은 input-wrap에 걸린다 — 이 요소가 컴포저 안에서 유일하게 position:relative다.
-                  패널이 짧으면 `.canvas-operation-terminal`의 overflow:hidden에 잘리는데, 그것은
-                  Quick Launch가 fixed 오버레이로 피하는 대가를 이 표면은 치른다는 뜻이다. */}
-              {deckOpen ? (
-                <ChatComposerDeck
-                  deckId={deckId}
-                  token={deckToken}
-                  sections={deckSections}
-                  rows={deckRows}
-                  activeIndex={deckIndex}
-                  pending={deckPending && !catalogTried}
-                  language={language}
-                  optionId={deckOptionId}
-                  onPick={pickDeckRow}
-                  onHover={setDeckIndex}
-                />
-              ) : null}
-              {highlightSpans.length > 0 ? (
+                {highlightSpans.length > 0 ? (
                 <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
                   {renderComposerSpans(draft, highlightSpans)}
                 </div>

@@ -1628,6 +1628,9 @@
    Quick Launch의 도는 conic 링 대신 여기서는 정지한 apex 테두리 + 글로우를 쓴다 — 좌표의
    `is-ultracode`가 이미 이 면에서 같은 결정을 내렸고(도는 링은 히어로 오버레이의 몫), 패널이
    여럿 뜨는 War Room에서 링이 여러 개 돌면 읽기를 흔든다. 움직이는 것은 단어 물결 하나뿐이다. */
+/* 덱과 미러의 기준면은 상자(field)다 — 한 줄 컴포저에서 입력 래퍼는 동작 버튼만큼 좁으므로 여기에
+   걸면 덱이 상자보다 좁게 서고 행이 가로로 넘친다. 미러(highlight)는 입력 위에 겹쳐야 하므로 래퍼가 기준이다. */
+.agent-chat-composer-field { position: relative; }
 .agent-chat-composer-input-wrap {
   position: relative;
   flex: 1 1 100%;
@@ -1645,6 +1648,7 @@
    잘린다 — 짧은 패널에서 위로 잘리는 것은 이 자리의 알려진 대가다. */
 .agent-chat-deck {
   position: absolute;
+  /* field(상자 안쪽) 기준 — 상자와 같은 폭으로 그 위에 선다. */
   left: 0;
   right: 0;
   bottom: calc(100% + var(--space-2));
