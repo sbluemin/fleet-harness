@@ -14,7 +14,9 @@ describe("Computer Use authorization and lifecycle", () => {
   const services: ComputerUseService[] = [];
   afterEach(async () => { await Promise.all(services.splice(0).map((service) => service.stop())); });
 
-  function setup() {
+  // Existing native-image regression cases explicitly retain the visual mode.
+  // null exercises the public default (no observation argument).
+  function setup(observation: "text" | "text_and_image" | null = "text_and_image") {
     let enabled = true;
     let local = true;
     const call = vi.fn(async (): Promise<ComputerUseResult> => ({ content: [{ type: "text", text: "app state" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }] }));
@@ -37,7 +39,7 @@ describe("Computer Use authorization and lifecycle", () => {
         createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
-    const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(input, { cwd: "", sessionLabel, signal });
+    const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(observation && (tool === "computer_state" || tool === "computer_action") ? { observation, ...input as Record<string, unknown> } : input, { cwd: "", sessionLabel, signal });
     return { service, invoke, call, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
   }
 
@@ -64,7 +66,7 @@ describe("Computer Use authorization and lifecycle", () => {
       expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action"]));
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
       f.call.mockResolvedValueOnce({ captureWindow: { pid: 1, windowId: 42, processStartedAt: 123, title: "Fixture" }, content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window URL: localhost, Secondary Actions: Raise, Fixture - Chrome - Profile\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
-      const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
+      const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", observation: "text_and_image" } });
       expect(JSON.parse(read.result.content[0].text)).toMatchObject({ observationReads: 2 });
       expect(read.result.isError).toBe(false);
       expect(read.result.content.filter((block: { type: string }) => block.type === "image")).toHaveLength(1);
@@ -198,7 +200,7 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(JSON.parse(acted.content[4]!.text)).not.toHaveProperty("actionSchemas");
     expect(outputText).not.toContain("actionResult");
     const actionRecords = acted.content.map((block) => { try { return JSON.parse(block.text).lastAgentAction; } catch { return null; } }).filter(Boolean);
-    expect(actionRecords.length).toBeGreaterThan(1);
+    expect(actionRecords).toHaveLength(1);
     expect(actionRecords.every((record) => record.action === "type_text" && record.outcome === "returned")).toBe(true);
     expect(outputText).toContain("Changed element 12");
     expect(outputText).toContain("No changes");
@@ -266,7 +268,7 @@ describe("Computer Use authorization and lifecycle", () => {
     const missingWindow = await f.invoke("computer_action", { app: "com.apple.TextEdit", snapshotId: JSON.parse(state.content[0]!.text as string).snapshotId, action: "click", arguments: { x: 10, y: 10 }, reason: "Test fixture target" }) as ComputerUseResult;
     expect(JSON.parse(missingWindow.content[0]!.text as string)).toMatchObject({ error: "computer_use_no_action_window", observation: "unavailable" });
     expect(f.service.status()).toMatchObject({ state: "ready", error: "computer_use_no_action_window", lastCall: { tool: "click", outcome: "error", error: "computer_use_no_action_window" } });
-    expect(f.diagnostic).toHaveBeenLastCalledWith(expect.objectContaining({ outcome: "error", error: "computer_use_no_action_window" }));
+    expect(f.diagnostic).toHaveBeenCalledWith(expect.objectContaining({ scope: "native_output", outcome: "error", error: "computer_use_no_action_window" }));
     expect(f.call).toHaveBeenCalledTimes(7);
     expect(f.stop).not.toHaveBeenCalled();
     state = await f.invoke("computer_state", { app: "com.apple.TextEdit", includeActionSchemas: true }) as ComputerUseResult;
@@ -305,6 +307,121 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(provenance).toBeGreaterThanOrEqual(0);
     expect(provenance).toBeLessThan(keyboardTexts.findIndex((text) => text.includes("Pay special attention")));
     expect(JSON.parse(keyboardTexts[provenance]!)).toMatchObject({ selectionSource: "not_established", trust: "untrusted_app_content" });
+  });
+
+  function metadata(value: ComputerUseResult) {
+    return value.content.flatMap((block) => {
+      if (block.type !== "text") return [];
+      try { return [JSON.parse(String(block.text))]; } catch { return []; }
+    }).find((block) => block.snapshotId);
+  }
+
+  it("defaults to text, separates captured/delivered images and gates all coordinate actions", async () => {
+    const f = setup(null);
+    const app = "com.apple.TextEdit";
+    const state = await f.invoke("computer_state", { app }) as ComputerUseResult;
+    expect(state.content.some((block) => block.type === "image")).toBe(false);
+    expect(metadata(state)).toMatchObject({ imageAvailable: true, imageDelivered: false, coordinateActionsAvailable: false, observationMode: "text_only" });
+    expect(f.call).toHaveBeenCalledWith("get_app_state", { app });
+    const base = { app, snapshotId: metadata(state).snapshotId, reason: "Synthetic coordinate test" };
+    for (const action of ["click", "scroll", "drag"]) {
+      const blocked = await f.invoke("computer_action", { ...base, action, arguments: { x: 12, y: 34 }, observation: "text_and_image" }) as ComputerUseResult;
+      expect(JSON.parse(String(blocked.content[0]!.text))).toMatchObject({ error: "computer_use_screenshot_required", actionOutcome: "not_started" });
+    }
+    expect(f.call).toHaveBeenCalledTimes(1);
+    // Pre-dispatch failures preserve the snapshot for a valid element action.
+    const edited = await f.invoke("computer_action", { ...base, action: "set_value", arguments: { element_index: "1", value: "한글" } }) as ComputerUseResult;
+    expect(edited.isError).toBe(false);
+    expect(metadata(edited)).toMatchObject({ imageDelivered: false });
+    expect(edited.content.some((block) => block.type === "image")).toBe(false);
+
+    const visual = await f.invoke("computer_state", { app, observation: "text_and_image" }) as ComputerUseResult;
+    expect(metadata(visual)).toMatchObject({ imageAvailable: true, imageDelivered: true, coordinateActionsAvailable: "unverified" });
+    expect(visual.content.filter((block) => block.type === "image")).toHaveLength(1);
+    const stale = await f.invoke("computer_action", { ...base, action: "click", arguments: { x: 12, y: 34 } }) as ComputerUseResult;
+    expect(JSON.parse(String(stale.content[0]!.text)).error).toBe("computer_use_fresh_state_required");
+    const clicked = await f.invoke("computer_action", { ...base, snapshotId: metadata(visual).snapshotId, action: "click", arguments: { x: 12, y: 34 } }) as ComputerUseResult;
+    expect(clicked.isError).toBe(false);
+    expect(metadata(clicked)).toMatchObject({ imageDelivered: false, coordinateActionsAvailable: false });
+    // The visual permission belongs to a snapshot, not a sticky app setting.
+    const hidden = await f.invoke("computer_action", { ...base, snapshotId: metadata(clicked).snapshotId, action: "click", arguments: { x: 12, y: 34 } }) as ComputerUseResult;
+    expect(JSON.parse(String(hidden.content[0]!.text)).error).toBe("computer_use_screenshot_required");
+  });
+
+  it("projects images out of error/recovery results while retaining ordered native diffs", async () => {
+    const f = setup(null);
+    const app = "com.apple.TextEdit";
+    const initial = await f.invoke("computer_state", { app }) as ComputerUseResult;
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "Changed element 12: 한글" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
+    const acted = await f.invoke("computer_action", { app, snapshotId: metadata(initial).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Synthetic diff" }) as ComputerUseResult;
+    const text = acted.content.filter((block) => block.type === "text").map((block) => String(block.text)).join("\n");
+    expect(text.indexOf("Changed element 12")).toBeLessThan(text.indexOf("No changes"));
+    expect(text).toContain("한글");
+    expect(acted.content.some((block) => block.type === "image")).toBe(false);
+    f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "noWindowsAvailable" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
+    const failed = await f.invoke("computer_action", { app, snapshotId: metadata(acted).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Synthetic error" }) as ComputerUseResult;
+    expect(failed.isError).toBe(true);
+    expect(failed.content.some((block) => block.type === "image")).toBe(false);
+    f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "cgWindowNotFound" }] });
+    const recovered = await f.invoke("computer_state", { app }) as ComputerUseResult;
+    expect(metadata(recovered)).toMatchObject({ observationReads: 2, imageAvailable: true, imageDelivered: false });
+    expect(recovered.content.some((block) => block.type === "image")).toBe(false);
+  });
+
+  it("accounts for final output separately, bounds wrapper text, and never logs payloads", async () => {
+    const f = setup(null);
+    const app = "Synthetic";
+    await f.invoke("computer_state", { app });
+    const state = await f.invoke("computer_state", { app }) as ComputerUseResult;
+    expect(metadata(state)).toMatchObject({ actionSchemasIncluded: false });
+    expect(metadata(state)).not.toHaveProperty("actionSchemas");
+    const output = await f.invoke("computer_action", { app, snapshotId: metadata(state).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Private reason sentinel" }) as ComputerUseResult;
+    const textChars = output.content.reduce((n, block) => n + (block.type === "text" ? String(block.text).length : 0), 0);
+    expect(textChars).toBeLessThan(1500); // Previous no-change action wrapper alone was ~2,800 chars.
+    expect(f.diagnostic).toHaveBeenCalledWith(expect.objectContaining({ scope: "native_output", tool: "press_key", imageCount: 1, imageBytes: 5 }));
+    expect(f.diagnostic).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "model_output", tool: "computer_action", textChars, imageCount: 0, imageBytes: 0 }));
+    const logs = JSON.stringify(f.diagnostic.mock.calls);
+    expect(logs).not.toContain("Private reason sentinel");
+    expect(logs).not.toContain("app state");
+    expect(logs).not.toContain("aW1hZ2U=");
+    const visual = await f.invoke("computer_state", { app, observation: "text_and_image" }) as ComputerUseResult;
+    expect(f.diagnostic).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "model_output", imageCount: 1, imageBytes: 5 }));
+    expect(metadata(visual).imageDelivered).toBe(true);
+    f.diagnostic.mockImplementation(() => { throw new Error("diagnostic unavailable"); });
+    expect((await f.invoke("computer_state", { app }) as ComputerUseResult).isError).toBe(false);
+  });
+
+  it("rejects invalid observation modes before starting a broker and exposes the mode schema", async () => {
+    const f = setup(null);
+    for (const tool of ["computer_state", "computer_action"]) {
+      const spec = f.service.specs().find((spec) => spec.id === tool)!;
+      expect((spec.parameters as { properties: Record<string, unknown> }).properties.observation).toMatchObject({ enum: ["text", "text_and_image"], default: "text" });
+      const denied = await f.invoke(tool, { app: "Synthetic", observation: "auto" }) as ComputerUseResult;
+      expect(denied.isError).toBe(true);
+    }
+    expect(f.start).not.toHaveBeenCalled();
+    expect(f.call).not.toHaveBeenCalled();
+  });
+
+  it("preserves default text and explicit visual modes through the HTTP MCP schema", async () => {
+    const f = setup(null);
+    const host = createComputerUseMcpHost({ service: f.service });
+    const connection = host.connect();
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "observation-modes", cwd: process.cwd() })[0]!.token;
+      const read = async (observation?: string) => (await (await fetch(endpoint.url, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_state", arguments: { app: "Synthetic", ...(observation ? { observation } : {}) } } }),
+      })).json()).result as ComputerUseResult;
+      const text = await read();
+      expect(metadata(text)).toMatchObject({ imageAvailable: true, imageDelivered: false });
+      expect(text.content.some((block) => block.type === "image")).toBe(false);
+      const visual = await read("text_and_image");
+      expect(metadata(visual)).toMatchObject({ imageDelivered: true });
+      expect(visual.content.filter((block) => block.type === "image")).toHaveLength(1);
+    } finally { await connection.dispose(); await host.dispose(); }
   });
 
   it("ends only its owner's session and accepts exact app names without claiming capture release", async () => {

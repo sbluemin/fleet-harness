@@ -39,6 +39,29 @@ Folder selection is handled entirely in the browser UI: the React directory brow
 
 Folder grants are one-use and in-memory. Browser-side cancellation stays local to the modal and does not call the server grant endpoint.
 
+## Computer Use observation output
+
+`fleet-computer-use` uses the installed Codex native backend. `computer_state` and
+`computer_action` default to `observation: "text"`: native capture and post-action
+verification reads still run, but screenshot blocks are omitted from model output,
+including error responses. Use `observation: "text_and_image"` when the task needs
+visual verification or before coordinate click, scroll, or drag. On an action this
+option controls its **result**, not the validity of its input snapshot.
+
+`imageAvailable` reports native image availability; `imageDelivered` reports whether
+the current response includes it. Coordinate actions require a fresh snapshot with
+`imageDelivered: true`. Requesting a visual state produces a new `snapshotId` and
+invalidates the previous one. Element actions remain available in text mode.
+Native text/diffs are kept in order; an action diff followed by “No changes” must
+not lose the action diff. Detailed action schemas remain version-cached and can be
+requested again with `includeActionSchemas: true` after context compaction.
+
+Computer Use diagnostic logs distinguish `scope: "native_output"` (raw backend
+response) from `scope: "model_output"` (final service response after projection and
+metadata). They record only text character counts, image counts/decoded bytes,
+timing and outcome—not screen text, image data, arguments or reasons. These are
+payload measurements, not billed tokens; compare provider usage separately.
+
 ## Security Notes
 
 HTTP surfaces are loopback-only. Browser observer routes are directly available on loopback and terminal routes retain their Origin boundary (`isTerminalAuthorized`). MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
