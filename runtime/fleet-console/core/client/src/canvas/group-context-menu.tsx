@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { useT } from "../i18n/index.js";
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { useConsoleLocale, useT } from "../i18n/index.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import type { OperationGroup, OperationNode } from "../types.js";
 import { AccentToneList } from "./accent-tone-list.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -139,6 +141,7 @@ function ChipMenuContent({
 
   return (
     <>
+      <PluginOperationMenuSection operation={operation} onClose={onClose} />
       <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
         const color = resolveAccentColor(group.color);
@@ -198,6 +201,24 @@ function ChipMenuContent({
         onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
       />
     </>
+  );
+}
+
+/**
+ * Operation 종류가 메뉴에 싣는 섹션 — 이 Operation에 **대한** 스위치(관찰·콘솔 사용·컴퓨터 사용 같은).
+ * 캡션·사이드바 우클릭·War Room 카드가 같은 카드를 열므로 여기 한 번만 서면 세 진입점이 같은 것을
+ * 본다. 실패해도 메뉴의 나머지는 살아야 하므로 조각만 조용히 비운다.
+ */
+function PluginOperationMenuSection({ operation, onClose }: { operation: OperationNode; onClose: () => void }) {
+  const registry = usePluginRegistry();
+  const language = useConsoleLocale();
+  const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  if (!descriptor?.operationMenu) return null;
+  return (
+    <PluginErrorBoundary fallback={<></>}>
+      {descriptor.operationMenu({ operation, language, onClose })}
+      <div className="group-context-menu-divider" aria-hidden="true" />
+    </PluginErrorBoundary>
   );
 }
 

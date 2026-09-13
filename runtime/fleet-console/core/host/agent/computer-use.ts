@@ -83,6 +83,8 @@ export class ComputerUseService {
   }
 
   release(owner: string): void { if (this.owner === owner) void this.stop(); }
+  /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
+  releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) void this.stop(); }
 
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;

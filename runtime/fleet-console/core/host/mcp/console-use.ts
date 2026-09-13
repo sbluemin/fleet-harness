@@ -42,13 +42,13 @@ type ConsoleUseRefusal = "experiment_disabled" | "operation_not_authorized" | "c
  */
 const REFUSAL_REMEDY = {
   experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Console use"] },
-  operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Console use"] },
+  operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Console use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
 } as const satisfies Record<ConsoleUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ConsoleUseRefusal, string> = {
   experiment_disabled: "Console use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Settings > Experiments > Console use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
-  operation_not_authorized: "This Operation has not been authorized to use the Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Console use in this Operation's own panel, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  operation_not_authorized: "This Operation has not been authorized to use the Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Console use in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Operation, so these tools can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the Console.",
 };
 
@@ -58,8 +58,8 @@ const REFUSAL_MESSAGE: Record<ConsoleUseRefusal, Record<"en" | "ko", string>> = 
     ko: "Console 사용이 꺼져 있습니다. 설정 > 실험 기능 > 콘솔 사용을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   operation_not_authorized: {
-    en: "This Operation is not allowed to use the Console. Turn on Console use in this Operation's panel — it applies immediately, with no restart.",
-    ko: "이 Operation에 Console 사용이 허용되지 않았습니다. 이 Operation 패널에서 「콘솔 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
+    en: "This Operation is not allowed to use the Console. Turn on Console use in this Operation's ··· menu — it applies immediately, with no restart.",
+    ko: "이 Operation에 Console 사용이 허용되지 않았습니다. 이 Operation의 ··· 메뉴에서 「콘솔 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   caller_unresolved: {
     en: "This session is not bound to a Console Operation, so Console tools are unavailable to it.",
@@ -150,7 +150,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     define("console_context", "Read caller identity, observation coverage, and available Console capabilities. Caller is not the browser focus. No paths or provider session identities.", empty, (_args, ctx) => {
       const all = rows().values;
       const callerId = caller(ctx);
-      return { schemaVersion: 1, caller: callerId?.kind === "operation" ? { ...callerId, theaterId: operations().find((op) => op.id === callerId.operationId)!.theaterId } : callerId, focus: "unavailable", capabilities: { read: true, control: allowControl && !!callerId && !!control, approval: "Experiments > Console use and, for an Operation caller, that Operation's own Console use toggle must both be on. Both being on is blanket authorization; no individual approvals.", enabled: control?.enabled() ?? false }, coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length }, management: { settingsSection: "experiments", operationToggle: "Console use, in the caller Operation's own panel" }, semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here" } };
+      return { schemaVersion: 1, caller: callerId?.kind === "operation" ? { ...callerId, theaterId: operations().find((op) => op.id === callerId.operationId)!.theaterId } : callerId, focus: "unavailable", capabilities: { read: true, control: allowControl && !!callerId && !!control, approval: "Experiments > Console use and, for an Operation caller, that Operation's own Console use toggle must both be on. Both being on is blanket authorization; no individual approvals.", enabled: control?.enabled() ?? false }, coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length }, management: { settingsSection: "experiments", operationToggle: "Console use, in the caller Operation's own ··· menu" }, semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here" } };
     }),
     define("console_theaters", "List registered Console projects (Theaters): id and name. Does not expose filesystem paths.", empty, () => theaters()),
     define("console_operations", "Search Console Operations. Host observation is preferred; unknown is not idle. Coverage includes unobserved rows excluded by activity filters. Cursor expires when the matching list changes.", z.object({ activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), theaterId: ids.optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional() }).strict(), (args) => {

@@ -342,12 +342,15 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     if (watchMatch) return handleWatch(req, res, decodeURIComponent(watchMatch[1] ?? ""));
     const consoleUseMatch = /^\/sessions\/([^/]+)\/console-use$/u.exec(path);
     if (consoleUseMatch) return handleConsoleUse(req, res, decodeURIComponent(consoleUseMatch[1] ?? ""));
+    const computerUseMatch = /^\/sessions\/([^/]+)\/computer-use$/u.exec(path);
+    if (computerUseMatch) return handleComputerUse(req, res, decodeURIComponent(computerUseMatch[1] ?? ""));
     ctx.host.http.writeJson(res, 404, { error: "not_found" });
     return true;
   }, [
     { method: "POST", path: "/refine-prompt", summary: "Refine a launch prompt or follow-up message (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/watch", summary: "Turn Session watch on or off for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/console-use", summary: "Allow or revoke Console use for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/computer-use", summary: "Allow or revoke Computer Use for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   async function handleRefinePrompt(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -412,6 +415,26 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     else delete payload.consoleUse;
     ctx.host.operations.patch(operation.id, { payload });
     ctx.host.http.writeJson(res, 200, { consoleUse: body.enabled });
+    return true;
+  }
+
+  /**
+   * Operation 하나에 컴퓨터 사용을 허용하거나 거둔다 — 콘솔 사용과 같은 정책이다. 기록은 payload에
+   * 남고 판정은 도구 호출마다 다시 읽힌다. 거둘 때는 그 Operation이 잡고 있던 기기도 곧바로 놓는다.
+   */
+  async function handleComputerUse(req: http.IncomingMessage, res: http.ServerResponse, operationId: string): Promise<boolean> {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!readExperiments(ctx).computerUse) { ctx.host.http.writeJson(res, 404, { error: "experiment_disabled" }); return true; }
+    const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
+    if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const language = body.language === "ko" ? "ko" : "en";
+    const operation = getAgentOperation(ctx, operationId);
+    if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    const payload = { ...(operation.payload ?? {}) };
+    if (body.enabled) payload.computerUse = { enabled: true, language };
+    else { delete payload.computerUse; ctx.host.computerUseMcp?.revokeOperation(operation.id); }
+    ctx.host.operations.patch(operation.id, { payload });
+    ctx.host.http.writeJson(res, 200, { computerUse: body.enabled });
     return true;
   }
 

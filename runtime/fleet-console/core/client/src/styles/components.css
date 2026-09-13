@@ -7293,6 +7293,78 @@ body[data-side-bar-animating="true"] .canvas-operation {
   visibility: visible;
 }
 
+/* 스위치 행 — 마크 + 이름/상태 두 줄 + 체크. 이름은 항목 티어, 상태 줄은 섹션 라벨 티어다.
+   마크는 캡션 마크와 같은 14px 격자를 쓰고, 켬은 체크 글리프만이 말한다(brass는 위치 채널). */
+.group-context-menu-item--switch {
+  height: auto;
+  min-height: 28px;
+  padding-block: 5px;
+  align-items: flex-start;
+}
+
+.group-context-menu-item--switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.group-context-menu-item__glyph {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+}
+
+.group-context-menu-item--switch.is-selected .group-context-menu-item__glyph,
+.group-context-menu-item--switch:hover .group-context-menu-item__glyph {
+  color: currentColor;
+}
+
+.group-context-menu-item__glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.group-context-menu-item__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.group-context-menu-item__text .group-context-menu-item__name {
+  flex: none;
+}
+
+/* 상태 줄은 잘라내지 않고 감는다 — "허용됨 · 무엇을 개별 확인 없이"가 곧 이 스위치의 뜻이라 뒷부분이 잘리면 안 된다. */
+.group-context-menu-item__hint {
+  white-space: normal;
+  line-height: 1.3;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.group-context-menu-item--switch .group-context-menu-item__check {
+  margin-top: 4px;
+}
+
+/* 검토 중은 aurora(상태 채널) 점 — 캡션의 진행 표시와 같은 말이다. */
+.group-context-menu-item--switch.is-busy .group-context-menu-item__hint::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-inline-end: 5px;
+  vertical-align: 1px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  box-shadow: 0 0 6px var(--aurora-glow);
+  animation: caption-action-live 1.6s ease-in-out infinite;
+}
+
 .group-context-menu-item__plus {
   flex: none;
   width: 14px;

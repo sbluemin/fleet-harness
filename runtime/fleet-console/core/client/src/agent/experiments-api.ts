@@ -115,6 +115,19 @@ export function readConsoleUseEnabled(payload: Record<string, unknown> | undefin
   return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
 }
 
+export function readComputerUseEnabled(payload: Record<string, unknown> | undefined): boolean {
+  const value = payload?.computerUse;
+  return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
+}
+
+export async function setComputerUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
+  await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/computer-use`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, language }),
+  });
+}
+
 export async function setConsoleUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
   await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
     method: "POST",
