@@ -42,8 +42,8 @@ Folder grants are one-use and in-memory. Browser-side cancellation stays local t
 ## Computer Use observation output
 
 `fleet-computer-use` uses the installed Codex native backend. `computer_state` and
-`computer_action` default to `observation: "text"`: native capture and post-action
-verification reads still run, but screenshot blocks are omitted from model output,
+`computer_action` and `computer_paste` default to `observation: "text"`: native capture is unchanged,
+but screenshot blocks are omitted from model output,
 including error responses. Use `observation: "text_and_image"` when the task needs
 visual verification or before coordinate click, scroll, or drag. On an action this
 option controls its **result**, not the validity of its input snapshot.
@@ -52,9 +52,46 @@ option controls its **result**, not the validity of its input snapshot.
 the current response includes it. Coordinate actions require a fresh snapshot with
 `imageDelivered: true`. Requesting a visual state produces a new `snapshotId` and
 invalidates the previous one. Element actions remain available in text mode.
-Native text/diffs are kept in order; an action diff followed by “No changes” must
-not lose the action diff. Detailed action schemas remain version-cached and can be
+An action returns its own native observation only. Fleet does not issue a second
+read, including after capture errors or incomplete Chrome observations: reads can
+activate apps or undo minimization. A usable native AX observation (wrapped state or
+the action's plain App/Window tree) yields a new
+snapshot; an acknowledgement without it yields `observation: "unavailable"` and
+`snapshotId: null`. Never repeat the action to obtain a snapshot. Request another
+`computer_state` explicitly only when necessary. Detailed action schemas remain version-cached and can be
 requested again with `includeActionSchemas: true` after context compaction.
+
+Use `computer_state({ app, fullTree: true })` after losing the previous AX context.
+This requires a standalone App/Window tree, not a diff: the current native MCP
+returns full trees without a `disableDiff` parameter. Fleet validates the response
+and returns `computer_use_full_tree_unavailable` with no snapshot if it cannot
+recognize a full tree. It makes one read, never replays cached trees or retries.
+This does not guarantee that an app exposes all of its content through AX.
+
+`computer_paste({ app, snapshotId, text, format, reason })` inserts at the already
+verified editable focus/selection. `format` is explicitly `text`, `md`, or `html`;
+Markdown is rendered to HTML, with the original source as the plain-text fallback.
+Formatting and paste support depend on the app. It uses native Command+V once,
+not `type_text` or whole-field `set_value`, and returns that action's observation
+and next snapshot without another read. Inspect the resulting content before
+submitting; a completed key action is not proof the app accepted the paste.
+
+The paste helper keeps the previous clipboard items/types in process memory, not
+temporary files or logs. `clipboardRestoration` reports `restored`,
+`preserved_newer_contents` (another writer changed the clipboard), or `failed`.
+It skips restoration when a newer clipboard change is detected; that check is
+best-effort, not atomic across apps. Restoration is best-effort on
+native failures and parent exit, not guaranteed after forced termination or OS
+errors. Clipboard backups above 64 MiB are refused before replacement.
+
+All three tools default to `allowActivation: false`. A read-only macOS preflight refuses
+native dispatch unless the target is running, active, and has a focused,
+non-minimized window. This is a best-effort guard, **not background execution**:
+the native backend has no no-activation option and desktop state can race the
+check. `allowActivation: true` permits foreground use for that call only, including
+launch/activation/restoration; use it only when the task authorizes that effect,
+not as an automatic error fallback. Window addressing and cross-app snapshot reuse
+remain unsupported; the native element-ID lifetime is not established across apps.
 
 Computer Use diagnostic logs distinguish `scope: "native_output"` (raw backend
 response) from `scope: "model_output"` (final service response after projection and

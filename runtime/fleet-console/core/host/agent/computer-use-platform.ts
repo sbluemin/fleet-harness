@@ -34,7 +34,7 @@ export interface ComputerUseBackendOptions {
   readonly approve: (request: Record<string, unknown>) => Promise<boolean>;
 }
 export interface ComputerUsePlatform {
-  readonly toolDescriptions: Readonly<Record<"computer_status" | "computer_end" | "computer_apps" | "computer_state" | "computer_action", string>>;
+  readonly toolDescriptions: Readonly<Record<"computer_status" | "computer_end" | "computer_apps" | "computer_state" | "computer_action" | "computer_paste", string>>;
   readonly supported: () => boolean;
   readonly appTargetSchema: Record<string, unknown>;
   readonly endHint: string;
@@ -42,6 +42,7 @@ export interface ComputerUsePlatform {
   inspectInstallation(): Promise<boolean>;
   createBroker(options: ComputerUseBackendOptions): Promise<ComputerUseBackend | null>;
   resolveTarget(app: string): Promise<string>;
+  preflight(app: string, allowActivation: boolean): Promise<void>;
   displayTarget(app: string): string;
   captureTarget?(value: ComputerUseResult): ComputerUseWindowIdentity | null;
   verifyCaptureTarget?(target: ComputerUseWindowIdentity): Promise<boolean>;
@@ -49,7 +50,8 @@ export interface ComputerUsePlatform {
   appCandidates(value: ComputerUseResult, app: unknown, targets: readonly ComputerUseAppTarget[]): ComputerUseAppTarget[];
   prepareAction(action: string, args: Record<string, unknown>): Record<string, unknown>;
   actionSchemas(tools: ReadonlyMap<string, ComputerUseTool>): Record<string, unknown>;
-  needsObservationRefresh(value: ComputerUseResult): boolean;
+  hasActionObservation(value: ComputerUseResult): boolean;
+  hasFullObservation(value: ComputerUseResult): boolean;
   interactionHints(value: ComputerUseResult): string[];
   classifyFailure(value: ComputerUseResult): string;
   failureHint(error: string): string;

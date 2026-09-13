@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "../../core/host/agent/computer-use-macos-transport.js";
 import { ComputerUseService } from "../../core/host/agent/computer-use.js";
-import type { ComputerUseResult, ComputerUseBackend } from "../../core/host/agent/computer-use-platform.js";
+import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "../../core/host/agent/computer-use-platform.js";
 import { macOSComputerUsePlatform } from "../../core/host/agent/computer-use-macos.js";
 import { createComputerUseMcpHost } from "../../core/host/mcp/computer-use.js";
 
@@ -19,7 +19,8 @@ describe("Computer Use authorization and lifecycle", () => {
   function setup(observation: "text" | "text_and_image" | null = "text_and_image") {
     let enabled = true;
     let local = true;
-    const call = vi.fn(async (): Promise<ComputerUseResult> => ({ content: [{ type: "text", text: "app state" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }] }));
+    const call = vi.fn(async (): Promise<ComputerUseResult> => ({ content: [{ type: "text", text: "<app_state>app state</app_state>" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }] }));
+    const preflight = vi.fn(async (_app: string, _allowActivation: boolean) => {});
     const diagnostic = vi.fn();
     const onCaptureTarget = vi.fn();
     const start = vi.fn(async () => undefined);
@@ -32,15 +33,16 @@ describe("Computer Use authorization and lifecycle", () => {
       ["select_text", { name: "select_text", inputSchema: { type: "object", properties: { app: { type: "string" }, element_index: { type: "string" }, text: { type: "string" } }, required: ["app", "element_index", "text"], additionalProperties: false } }],
       ["set_value", { name: "set_value", inputSchema: { type: "object", properties: { app: { type: "string" }, element_index: { type: "string" }, value: { type: "string" } }, required: ["app", "element_index", "value"], additionalProperties: false } }],
       ["type_text", { name: "type_text", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string" } }, required: ["app", "text"], additionalProperties: false } }],
+      ["paste", { name: "paste", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] } }, required: ["app", "text", "format"], additionalProperties: false } }],
     ]) } as unknown as ComputerUseBackend;
     const service = new ComputerUseService({
       directory: "unused", diagnostic, onCaptureTarget, enabled: () => enabled, localControl: () => local,
-      platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true,
+      platform: { ...macOSComputerUsePlatform, preflight, supported: () => true, inspectInstallation: async () => true,
         createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
     const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(observation && (tool === "computer_state" || tool === "computer_action") ? { observation, ...input as Record<string, unknown> } : input, { cwd: "", sessionLabel, signal });
-    return { service, invoke, call, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
+    return { service, invoke, call, preflight, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
   }
 
   it("serves a separate opt-in MCP and revokes device access with its token", async () => {
@@ -63,11 +65,16 @@ describe("Computer Use authorization and lifecycle", () => {
       f.enable(true);
       expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
       const on = connection.issueSessionToken({ label: "on", cwd: process.cwd() })[0]!;
-      expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action"]));
+      expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action", "computer_paste"]));
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
       f.call.mockResolvedValueOnce({ captureWindow: { pid: 1, windowId: 42, processStartedAt: 123, title: "Fixture" }, content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window URL: localhost, Secondary Actions: Raise, Fixture - Chrome - Profile\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
-      const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", observation: "text_and_image" } });
-      expect(JSON.parse(read.result.content[0].text)).toMatchObject({ observationReads: 2 });
+      const partial = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", fullTree: true } });
+      expect(partial.result.isError).toBe(true);
+      expect(JSON.parse(partial.result.content[0].text)).toMatchObject({ error: "computer_use_full_tree_unavailable", snapshotId: null });
+      expect(JSON.parse(partial.result.content[0].text)).toMatchObject({ observationReads: 1 });
+      expect(f.call).toHaveBeenCalledTimes(1); // No implicit refresh for incomplete Chrome trees.
+      const read = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", observation: "text_and_image", fullTree: true } });
+      expect(JSON.parse(read.result.content[0].text)).toMatchObject({ observationReads: 1, treeFormat: "full" });
       expect(read.result.isError).toBe(false);
       expect(read.result.content.filter((block: { type: string }) => block.type === "image")).toHaveLength(1);
       expect(JSON.stringify(read.result.content.filter((block: { type: string }) => block.type === "text"))).not.toContain("aW1hZ2U=");
@@ -187,26 +194,36 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(await f.invoke("computer_action", { ...action, arguments: { app: action.app, text: "test" } })).toMatchObject({ isError: true });
     expect(f.stop).not.toHaveBeenCalled();
     expect(f.call).toHaveBeenCalledTimes(1);
-    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "Changed element 12: editable field" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
-    f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "Computer Use server error -10005: cgWindowNotFound" }] });
-    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
-    const acted = await f.invoke("computer_action", action) as { content: { text: string }[] };
-    const nextSnapshot = JSON.parse(acted.content[4]!.text).snapshotId;
+    f.preflight.mockRejectedValueOnce(new ComputerUseInputError("computer_use_activation_blocked", "Target is minimized or not foreground"));
+    expect(await f.invoke("computer_state", { app: "com.apple.TextEdit" })).toMatchObject({ isError: true });
+    f.preflight.mockRejectedValueOnce(new ComputerUseInputError("computer_use_activation_blocked", "Target is minimized or not foreground"));
+    expect(await f.invoke("computer_action", action)).toMatchObject({ isError: true });
+    expect(f.call).toHaveBeenCalledTimes(1); // Refusal neither dispatches nor consumes the valid snapshot.
+    const nativeActionTree = 'App=com.apple.TextEdit (pid 123)\nWindow: "Disposable", App: TextEdit.\n0 standard window Disposable\n\t12 text field (settable) Value: test';
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: nativeActionTree }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
+    const acted = await f.invoke("computer_action", { ...action, allowActivation: true }) as { content: { text: string }[] };
+    expect(f.preflight).toHaveBeenLastCalledWith("com.apple.TextEdit", true);
+    const nextSnapshot = JSON.parse(acted.content[1]!.text).snapshotId;
     expect(nextSnapshot).not.toBe(snapshotId);
     expect(acted.content.filter((block) => (block as unknown as { type: string }).type === "image")).toHaveLength(1);
     const outputText = JSON.stringify(acted.content.filter((block) => (block as unknown as { type: string }).type === "text"));
     expect(outputText).not.toContain("aW1hZ2U=");
-    expect(JSON.parse(acted.content[4]!.text)).toMatchObject({ actionSchemasVersion: metadata.actionSchemasVersion, actionSchemasIncluded: false });
-    expect(JSON.parse(acted.content[4]!.text)).not.toHaveProperty("actionSchemas");
+    expect(JSON.parse(acted.content[1]!.text)).toMatchObject({ actionSchemasVersion: metadata.actionSchemasVersion, actionSchemasIncluded: false });
+    expect(JSON.parse(acted.content[1]!.text)).not.toHaveProperty("actionSchemas");
     expect(outputText).not.toContain("actionResult");
     const actionRecords = acted.content.map((block) => { try { return JSON.parse(block.text).lastAgentAction; } catch { return null; } }).filter(Boolean);
     expect(actionRecords).toHaveLength(1);
     expect(actionRecords.every((record) => record.action === "type_text" && record.outcome === "returned")).toBe(true);
-    expect(outputText).toContain("Changed element 12");
-    expect(outputText).toContain("No changes");
-    expect(outputText.indexOf("Changed element 12")).toBeLessThan(outputText.indexOf("No changes"));
+    expect(outputText.match(/12 text field/g)).toHaveLength(1);
     expect(JSON.parse(acted.content[0]!.text)).toMatchObject({ actionOutcome: "completed", observation: "completed", effectVerified: false });
     expect(f.call).toHaveBeenCalledWith("type_text", { app: "com.apple.TextEdit", text: "test" });
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: nativeActionTree }] });
+    const chained = await f.invoke("computer_action", { ...action, snapshotId: nextSnapshot }) as { content: { text: string }[] };
+    const chainedSnapshot = JSON.parse(chained.content[1]!.text).snapshotId;
+    expect(chainedSnapshot).toEqual(expect.any(String));
+    expect(chainedSnapshot).not.toBe(nextSnapshot);
+    expect(JSON.parse(chained.content[1]!.text)).toMatchObject({ observationReads: 0 });
+    expect(f.call.mock.calls.filter((args) => (args as unknown[])[0] === "get_app_state")).toHaveLength(1);
     f.enable(false);
     expect(await f.approve()).toBe(false);
     expect(await f.invoke("computer_apps", {})).toMatchObject({ isError: true });
@@ -215,16 +232,15 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(await f.approve()).toBe(false);
     f.local(true);
     expect(await f.invoke("computer_action", action)).toMatchObject({ isError: true });
-    expect(f.call).toHaveBeenCalledTimes(4);
-    expect(f.call.mock.calls.filter((args) => (args as unknown[])[0] === "type_text")).toHaveLength(1);
-    expect(JSON.parse(acted.content[4]!.text)).toMatchObject({ observationReads: 2 });
+    expect(f.call).toHaveBeenCalledTimes(3);
+    expect(f.call.mock.calls.filter((args) => (args as unknown[])[0] === "type_text")).toHaveLength(2);
+    expect(JSON.parse(acted.content[1]!.text)).toMatchObject({ observationReads: 0 });
     expect(f.stop).not.toHaveBeenCalled();
-    f.call.mockImplementationOnce(async () => ({ content: [{ type: "text", text: "applied" }] }));
     f.call.mockRejectedValueOnce(new Error("computer_use_timeout_outcome_unknown"));
-    const failedObservation = await f.invoke("computer_action", { ...action, snapshotId: nextSnapshot }) as { content: { text: string }[]; isError: boolean };
+    const failedObservation = await f.invoke("computer_action", { ...action, snapshotId: chainedSnapshot }) as { content: { text: string }[]; isError: boolean };
     expect(failedObservation.isError).toBe(true);
-    expect(JSON.parse(failedObservation.content[0]!.text)).toMatchObject({ actionOutcome: "completed", observation: "failed" });
-    expect(f.call).toHaveBeenCalledTimes(6);
+    expect(JSON.parse(failedObservation.content[0]!.text)).toMatchObject({ actionOutcome: "unknown", observation: "failed" });
+    expect(f.call).toHaveBeenCalledTimes(4);
     expect(f.stop).toHaveBeenCalledTimes(1);
   });
 
@@ -241,9 +257,21 @@ describe("Computer Use authorization and lifecycle", () => {
     const controls = await f.invoke("computer_action", { ...action, action: "type_text", arguments: { text: "abc\r\n\t" } }) as ComputerUseResult;
     expect(JSON.parse(controls.content[0]!.text as string)).toMatchObject({ error: "computer_use_control_characters_require_explicit_action", actionOutcome: "not_started" });
     expect(f.call).toHaveBeenCalledTimes(1);
-    await f.invoke("computer_action", { ...action, action: "set_value", arguments: { element_index: "1", value: "한글abcㅋ 가나다" } });
+    const replaced = await f.invoke("computer_action", { ...action, action: "set_value", arguments: { element_index: "1", value: "한글abcㅋ 가나다" } }) as ComputerUseResult;
     expect(f.call).toHaveBeenCalledWith("set_value", { app: "com.apple.TextEdit", element_index: "1", value: "한글abcㅋ 가나다" });
     expect(f.diagnostic).toHaveBeenCalledWith(expect.objectContaining({ tool: "set_value", phase: "end", imageCount: 1, imageBytes: 5 }));
+    const paste = { ...action, snapshotId: JSON.parse(replaced.content[1]!.text as string).snapshotId, text: "한글\n**서식**", format: "md" };
+    expect(await f.invoke("computer_paste", { ...paste, format: "invalid" })).toMatchObject({ isError: true });
+    expect(f.call).toHaveBeenCalledTimes(2);
+    f.enable(false);
+    expect(await f.invoke("computer_paste", paste)).toMatchObject({ isError: true });
+    f.enable(true);
+    const pasted = await f.invoke("computer_paste", paste) as ComputerUseResult;
+    expect(f.call).toHaveBeenCalledWith("paste", { app: action.app, text: paste.text, format: "md" });
+    expect(JSON.parse(pasted.content[1]!.text as string)).toMatchObject({ observationReads: 0, imageDelivered: false, snapshotId: expect.any(String) });
+    expect(pasted.content.some((block) => block.type === "image")).toBe(false);
+    expect(await f.invoke("computer_paste", paste)).toMatchObject({ isError: true });
+    expect(f.call).toHaveBeenCalledTimes(3);
     expect(JSON.stringify(f.diagnostic.mock.calls)).not.toContain("한글");
     expect(JSON.stringify(f.diagnostic.mock.calls)).not.toContain("aW1hZ2U=");
   });
@@ -261,7 +289,7 @@ describe("Computer Use authorization and lifecycle", () => {
     const failure = await f.invoke("computer_action", { app: "com.apple.TextEdit", snapshotId: JSON.parse(state.content[0]!.text as string).snapshotId, action: "click", arguments: { x: 325, y: 599 }, reason: "Test fixture target" }) as ComputerUseResult;
     expect(JSON.parse(failure.content[0]!.text as string)).toMatchObject({ error: "computer_use_coordinate_target_unavailable" });
     expect(f.service.status()).toMatchObject({ state: "ready", error: "computer_use_coordinate_target_unavailable", lastCall: { tool: "click", outcome: "error" } });
-    expect(f.call).toHaveBeenCalledTimes(5);
+    expect(f.call).toHaveBeenCalledTimes(4);
     expect(f.stop).not.toHaveBeenCalled();
     state = await f.invoke("computer_state", { app: "com.apple.TextEdit" }) as ComputerUseResult;
     f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "Computer Use server error: noWindowsAvailable" }] });
@@ -269,7 +297,7 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(JSON.parse(missingWindow.content[0]!.text as string)).toMatchObject({ error: "computer_use_no_action_window", observation: "unavailable" });
     expect(f.service.status()).toMatchObject({ state: "ready", error: "computer_use_no_action_window", lastCall: { tool: "click", outcome: "error", error: "computer_use_no_action_window" } });
     expect(f.diagnostic).toHaveBeenCalledWith(expect.objectContaining({ scope: "native_output", outcome: "error", error: "computer_use_no_action_window" }));
-    expect(f.call).toHaveBeenCalledTimes(7);
+    expect(f.call).toHaveBeenCalledTimes(6);
     expect(f.stop).not.toHaveBeenCalled();
     state = await f.invoke("computer_state", { app: "com.apple.TextEdit", includeActionSchemas: true }) as ComputerUseResult;
     expect(JSON.parse(state.content[0]!.text as string)).toHaveProperty("actionSchemas.press_key");
@@ -290,7 +318,7 @@ describe("Computer Use authorization and lifecycle", () => {
     const empty = await f.invoke("computer_action", { ...base, action: "set_value", arguments: { element_index: "1", value: "" } }) as ComputerUseResult;
     expect(JSON.parse(empty.content[0]!.text as string)).toMatchObject({ error: "computer_use_empty_value_unsupported", actionOutcome: "not_started" });
     expect(f.call).toHaveBeenCalledTimes(2);
-    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "Pay special attention to the content selected by the user" }] });
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>Pay special attention to the content selected by the user</app_state>" }] });
     const selected = await f.invoke("computer_action", { ...base, action: "select_text", arguments: { element_index: "1", text: "sample" } }) as ComputerUseResult;
     expect(selected.isError).toBe(false);
     const texts = selected.content.filter((block) => block.type === "text").map((block) => String(block.text));
@@ -300,7 +328,7 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(followUpMeta).toMatchObject({ snapshotScope: "broker_session", selectionSource: "not_established", lastAgentAction: { action: "select_text", outcome: "returned" } });
     expect(f.stop).not.toHaveBeenCalled();
     const nextMeta = selected.content.filter((block) => block.type === "text").map((block) => { try { return JSON.parse(String(block.text)); } catch { return {}; } }).find((value) => value.snapshotId);
-    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "Pay special attention to the content selected by the user" }] });
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>Pay special attention to the content selected by the user</app_state>" }] });
     const keyboard = await f.invoke("computer_action", { ...base, snapshotId: nextMeta.snapshotId, action: "press_key", arguments: { key: "super+a" } }) as ComputerUseResult;
     const keyboardTexts = keyboard.content.filter((block) => block.type === "text").map((block) => String(block.text));
     const provenance = keyboardTexts.findIndex((text) => text.includes('"observationSource":"agent_action_response"'));
@@ -348,24 +376,29 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(JSON.parse(String(hidden.content[0]!.text)).error).toBe("computer_use_screenshot_required");
   });
 
-  it("projects images out of error/recovery results while retaining ordered native diffs", async () => {
+  it("projects images out of errors and preserves the action diff without implicit recovery reads", async () => {
     const f = setup(null);
     const app = "com.apple.TextEdit";
     const initial = await f.invoke("computer_state", { app }) as ComputerUseResult;
-    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "Changed element 12: 한글" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>Changed element 12: 한글</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
     f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
     const acted = await f.invoke("computer_action", { app, snapshotId: metadata(initial).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Synthetic diff" }) as ComputerUseResult;
     const text = acted.content.filter((block) => block.type === "text").map((block) => String(block.text)).join("\n");
-    expect(text.indexOf("Changed element 12")).toBeLessThan(text.indexOf("No changes"));
+    expect(text).not.toContain("No changes");
+    expect(f.call).toHaveBeenCalledTimes(2);
     expect(text).toContain("한글");
     expect(acted.content.some((block) => block.type === "image")).toBe(false);
+    const explicitRead = await f.invoke("computer_state", { app }) as ComputerUseResult;
     f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "noWindowsAvailable" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
-    const failed = await f.invoke("computer_action", { app, snapshotId: metadata(acted).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Synthetic error" }) as ComputerUseResult;
+    const failed = await f.invoke("computer_action", { app, snapshotId: metadata(explicitRead).snapshotId, action: "press_key", arguments: { key: "Tab" }, reason: "Synthetic error" }) as ComputerUseResult;
     expect(failed.isError).toBe(true);
     expect(failed.content.some((block) => block.type === "image")).toBe(false);
     f.call.mockResolvedValueOnce({ isError: true, content: [{ type: "text", text: "cgWindowNotFound" }] });
+    const unavailable = await f.invoke("computer_state", { app }) as ComputerUseResult;
+    expect(unavailable.isError).toBe(true);
+    expect(f.call).toHaveBeenCalledTimes(5);
     const recovered = await f.invoke("computer_state", { app }) as ComputerUseResult;
-    expect(metadata(recovered)).toMatchObject({ observationReads: 2, imageAvailable: true, imageDelivered: false });
+    expect(metadata(recovered)).toMatchObject({ observationReads: 1, imageAvailable: true, imageDelivered: false });
     expect(recovered.content.some((block) => block.type === "image")).toBe(false);
   });
 

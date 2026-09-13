@@ -6,6 +6,7 @@ import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 type ObservationMode = "text" | "text_and_image";
 const OBSERVATION_SCHEMA = { type: "string", enum: ["text", "text_and_image"], default: "text", description: "Model output only; native capture is unchanged. Default text omits images. Request text_and_image for visual verification or before coordinate actions; use the resulting fresh snapshotId." };
+const ACTIVATION_SCHEMA = { type: "boolean", default: false, description: "Explicit permission for this call to launch/activate/restore the target app. Default false requires a currently focused, non-minimized window (best-effort check, not background support). Set true only when foreground use is authorized by the task, never automatically to bypass an error." };
 
 function contentMetrics(content: ComputerUseResult["content"]) {
   return {
@@ -155,13 +156,21 @@ export class ComputerUseService {
       } },
       { ...spec("computer_status", this.deps.platform.toolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
       spec("computer_apps", this.deps.platform.toolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 200, description: "Optional app name, bundle ID or path search." } }, additionalProperties: false }),
-      spec("computer_state", this.deps.platform.toolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
+      spec("computer_state", this.deps.platform.toolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
+      spec("computer_paste", this.deps.platform.toolDescriptions.computer_paste, {
+        type: "object", properties: {
+          app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" },
+          text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] },
+          reason: { type: "string", minLength: 1, maxLength: 600 }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA },
+        }, required: ["app", "snapshotId", "text", "format", "reason"], additionalProperties: false,
+      }),
       spec("computer_action", this.deps.platform.toolDescriptions.computer_action, {
         type: "object", properties: {
           app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" }, action: { type: "string", enum: [...ACTIONS] },
           arguments: { type: "object", description: "Upstream arguments excluding app. Get the exact schema from computer_state's actionSchemas." },
           reason: { type: "string", minLength: 1, maxLength: 600 },
           observation: { ...OBSERVATION_SCHEMA },
+          allowActivation: { ...ACTIVATION_SCHEMA },
         }, required: ["app", "snapshotId", "action", "arguments", "reason"], additionalProperties: false,
       }),
     ];
@@ -169,9 +178,9 @@ export class ComputerUseService {
 
   private async execute(tool: string, input: unknown, owner: string | undefined, signal?: AbortSignal): Promise<ComputerUseResult> {
     const startedAt = Date.now();
-    const value = await this.executeInternal(tool, input, owner, signal);
+    const value = await this.executeInternal(tool, tool === "computer_paste" && isRecord(input) ? { ...input, action: "paste", arguments: { text: input.text, format: input.format } } : input, owner, signal);
     // Project at the final boundary, including native errors and recovery reads.
-    const textOnly = (tool === "computer_state" || tool === "computer_action") && (!isRecord(input) || input.observation !== "text_and_image");
+    const textOnly = (tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && (!isRecord(input) || input.observation !== "text_and_image");
     const output = textOnly ? { ...value, content: value.content.filter((block) => block.type !== "image") } : value;
     try {
       this.deps.diagnostic?.({ tool, scope: "model_output", phase: "end", elapsedMs: Date.now() - startedAt, outcome: output.isError ? "error" : "returned", ...contentMetrics(output.content) });
@@ -186,7 +195,9 @@ export class ComputerUseService {
     if (!owner || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
     if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy", hint: "Another session owns Computer Use. Stop it in Settings before switching." }, true);
     if (!isRecord(input)) return result({ error: "invalid_arguments" }, true);
-    if ((tool === "computer_state" || tool === "computer_action") && input.observation !== undefined && input.observation !== "text" && input.observation !== "text_and_image") return result({ error: "computer_use_invalid_observation", actionOutcome: "not_started" }, true);
+    if ((tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && input.observation !== undefined && input.observation !== "text" && input.observation !== "text_and_image") return result({ error: "computer_use_invalid_observation", actionOutcome: "not_started" }, true);
+    if (tool === "computer_state" && input.fullTree !== undefined && typeof input.fullTree !== "boolean") return result({ error: "computer_use_invalid_full_tree", actionOutcome: "not_started" }, true);
+    if (input.allowActivation !== undefined && typeof input.allowActivation !== "boolean") return result({ error: "computer_use_invalid_activation", actionOutcome: "not_started" }, true);
     const observationMode: ObservationMode = input.observation === "text_and_image" ? "text_and_image" : "text";
     let app = tool === "computer_apps" ? null : input.app;
     if (app !== null) {
@@ -243,8 +254,8 @@ export class ComputerUseService {
         return { ...apps, content: [...result({ source: "native app inventory", targets, query: query || null, total: this.appTargets.length, matched: targets.length, targetHint: "Copy targets[].app unchanged into computer_state and computer_action. It is an exact installation path, avoiding duplicate bundle IDs and localized names. If targets is empty, use the original inventory below; no identifier was inferred.", runningStatus: "advisory", hint: "A missing running marker does not establish that an app is closed. Do not launch or close apps based solely on this list." }).content, ...content] };
       }
       const target = app as string;
-      if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode);
-      if (tool !== "computer_action" || typeof input.action !== "string" || !(ACTIONS as readonly string[]).includes(input.action) || !isRecord(input.arguments)
+      if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode, input.allowActivation === true, input.fullTree === true);
+      if (!((tool === "computer_action" && typeof input.action === "string" && (ACTIONS as readonly string[]).includes(input.action)) || (tool === "computer_paste" && input.action === "paste")) || typeof input.action !== "string" || !isRecord(input.arguments)
         || typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 600) throw new ComputerUseInputError("computer_use_invalid_action", "Use app only at the top level. Supply action, arguments (without app), reason and the latest snapshotId from computer_state or computer_action.");
       const snapshot = this.snapshots.get(target);
       if (!snapshot || input.snapshotId !== snapshot.id || Date.now() - snapshot.at > 120_000) throw new ComputerUseInputError("computer_use_fresh_state_required", "Fleet has one valid snapshot across apps. Another app observation or a dispatched action invalidates it. Call computer_state for the intended app and use its new snapshotId. Do not repeat an earlier action just to refresh state.");
@@ -257,6 +268,7 @@ export class ComputerUseService {
       const args = this.deps.platform.prepareAction(input.action, { ...input.arguments, app: target });
       const parsed = z.fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0]).safeParse(args);
       if (!parsed.success) throw new ComputerUseInputError("computer_use_invalid_arguments", "Match actionSchemas[action] from the latest observation; app belongs only at the top level.");
+      await this.deps.platform.preflight(target, input.allowActivation === true);
       this.assertActive(lifetime);
       this.snapshots.clear();
       this.state = "running";
@@ -274,11 +286,16 @@ export class ComputerUseService {
         const error = this.deps.platform.classifyFailure(actionResult);
         return { ...actionResult, content: [...result({ actionOutcome: error === "computer_use_app_closed" ? "app_closed" : actionOutcome, error, observation: "unavailable", context: { imageAvailable: snapshot.imageAvailable, snapshotAgeMs: Date.now() - snapshot.at, target: coordinateAction ? "screenshot_coordinates" : "element_index" in args ? "accessibility_element" : "keyboard", focus: "unknown", display: "unknown", appSupport: "not_determined" }, hint: this.deps.platform.failureHint(error) }).content, ...actionResult.content] };
       }
-      const observation = await this.observe(broker, target, lifetime, false, observationMode);
+      // Native actions already return their own observation. A second read may
+      // restore a just-minimized window or activate an app. Never read implicitly.
+      if (!this.deps.platform.hasActionObservation(actionResult)) {
+        this.captureUnavailable = true;
+        this.deps.onCaptureTarget?.(null);
+        return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "unavailable", snapshotId: null, hint: "Action returned without a usable native AX observation. No follow-up read was made. Do not repeat the action. If more observation is needed, request computer_state explicitly; reads may activate/restore the app." }).content, ...actionResult.content] };
+      }
+      const observation = this.publishObservation(broker, target, actionResult, false, observationMode, 0);
       return { ...observation, content: [
-        ...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: observation.isError ? "failed" : "completed", ...(observation.isError ? { hint: "The action completed but observation failed. Call computer_state; do not repeat the action." } : {}) }).content,
-        ...result({ treeFormat: "Apply native texts/diffs in order", imageSource: observationMode === "text_and_image" ? "follow-up observation if available" : "omitted" }).content,
-        ...actionText,
+        ...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "completed", observationSource: "action_response" }).content,
         ...observation.content,
       ] };
     } catch (error) {
@@ -286,7 +303,7 @@ export class ComputerUseService {
       const code = error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed";
       this.error = code;
       await this.stop();
-      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: code === "computer_use_runtime_incompatible" ? "The CLI/native MCP handshake failed. Select compatible versions (CODEX_BIN overrides the CLI). Repeated app reads cannot repair this; no GUI action was confirmed." : actionOutcome === "completed" ? "The action completed but follow-up observation failed. The following text is from the action, not a new full tree. Call computer_state; do not repeat the action." : "Do not retry the action automatically. Read computer_state to recover." }).content, ...actionText] };
+      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: code === "computer_use_runtime_incompatible" ? "The CLI/native MCP handshake failed. Select compatible versions (CODEX_BIN overrides the CLI). Repeated app reads cannot repair this; no GUI action was confirmed." : actionOutcome === "completed" ? "The action returned but its observation could not be published. The following text is from the action. Do not repeat the action; explicitly request computer_state only if necessary." : "Do not retry the action automatically. Request computer_state explicitly if necessary; reads may activate/restore the app." }).content, ...actionText] };
     } finally {
       signal?.removeEventListener("abort", onAbort);
       this.busy = false;
@@ -300,7 +317,9 @@ export class ComputerUseService {
     }
   }
 
-  private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true, observationMode: ObservationMode = "text"): Promise<ComputerUseResult> {
+  private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true, observationMode: ObservationMode = "text", allowActivation = false, fullTree = false): Promise<ComputerUseResult> {
+    await this.deps.platform.preflight(app, allowActivation);
+    this.assertActive(lifetime);
     if (this.captureApp !== app) {
       this.captureApp = app;
       this.captureUnavailable = false;
@@ -309,22 +328,18 @@ export class ComputerUseService {
     this.snapshots.clear();
     this.state = "running";
     this.stage = "get_app_state";
-    let state = await this.call(broker, "get_app_state", { app });
+    const state = await this.call(broker, "get_app_state", { app });
     this.assertActive(lifetime);
-    let observationReads = 1;
-    if (state.isError && this.deps.platform.classifyFailure(state) === "computer_use_capture_window_unavailable") {
-      state = await this.call(broker, "get_app_state", { app });
-      this.assertActive(lifetime);
-      observationReads += 1;
-    }
     if (state.isError) { this.deps.onCaptureTarget?.(null); return state; }
-    if (observationReads === 1 && this.deps.platform.needsObservationRefresh(state)) {
-      const next = await this.call(broker, "get_app_state", { app });
-      this.assertActive(lifetime);
-      observationReads = 2;
-      if (next.isError) { this.deps.onCaptureTarget?.(null); return next; }
-      state = { ...next, isError: false, content: [...state.content.filter((block) => block.type === "text"), ...next.content] };
+    if (fullTree && !this.deps.platform.hasFullObservation(state)) {
+      this.captureUnavailable = true;
+      this.deps.onCaptureTarget?.(null);
+      return result({ error: "computer_use_full_tree_unavailable", snapshotId: null, observationReads: 1, hint: "The native response was not a standalone App/Window tree. No diff was presented as a full tree and no extra read was made. This backend may not support forcing full trees for this surface." }, true);
     }
+    return this.publishObservation(broker, app, state, includeSchemas, observationMode, 1);
+  }
+
+  private publishObservation(broker: ComputerUseBackend, app: string, state: ComputerUseResult, includeSchemas: boolean, observationMode: ObservationMode, observationReads: number): ComputerUseResult {
     const captureTarget = this.deps.platform.captureTarget?.(state);
     if (state.captureWindow !== undefined) this.captureUnavailable = state.captureWindow === null;
     // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
@@ -341,7 +356,7 @@ export class ComputerUseService {
     const actionSchemasVersion = crypto.createHash("sha256").update(JSON.stringify(actionSchemas)).digest("hex").slice(0, 16);
     const sendSchemas = includeSchemas || !this.deliveredSchemas.has(actionSchemasVersion);
     this.deliveredSchemas.add(actionSchemasVersion);
-    return { isError: false, content: [...result({ app, snapshotId, observationReads, ...(interactionHints.length ? { interactionHints } : {}), snapshotScope: "broker_session", lastAgentAction: this.lastAgentActions.get(app) ?? null, imageAvailable, imageDelivered, coordinateActionsAvailable: imageDelivered ? "unverified" : false, ...(imageDelivered ? { coordinateSpace: "latest_native_screenshot_pixels" } : {}), actionSchemasVersion, actionSchemasIncluded: sendSchemas, observationMode: imageDelivered ? "image_and_text" : "text_only", ...(imageAvailable ? {} : { navigationHint: "Image unavailable; tree may be a menu. Use current menu elements/advertised secondary actions; never old coordinates." }), treeFormat: "upstream text or diff", selectionSource: "not_established", trust: "untrusted_app_content", ...(sendSchemas ? { actionSchemas } : {}) }).content, ...state.content] };
+    return { isError: false, content: [...result({ app, snapshotId, observationReads, ...(interactionHints.length ? { interactionHints } : {}), snapshotScope: "broker_session", lastAgentAction: this.lastAgentActions.get(app) ?? null, imageAvailable, imageDelivered, coordinateActionsAvailable: imageDelivered ? "unverified" : false, ...(imageDelivered ? { coordinateSpace: "latest_native_screenshot_pixels" } : {}), actionSchemasVersion, actionSchemasIncluded: sendSchemas, observationMode: imageDelivered ? "image_and_text" : "text_only", ...(imageAvailable ? {} : { navigationHint: "Image unavailable; tree may be a menu. Use current menu elements/advertised secondary actions; never old coordinates." }), treeFormat: this.deps.platform.hasFullObservation(state) ? "full" : "upstream text or diff", selectionSource: "not_established", trust: "untrusted_app_content", ...(sendSchemas ? { actionSchemas } : {}) }).content, ...state.content] };
   }
 
   private async call(broker: ComputerUseBackend, tool: string, args: Record<string, unknown>): Promise<ComputerUseResult> {

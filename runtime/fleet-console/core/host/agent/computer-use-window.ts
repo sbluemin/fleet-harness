@@ -1,6 +1,38 @@
 import { execFile } from "node:child_process";
 import type { ComputerUseWindowIdentity } from "./computer-use-platform.js";
 
+// Read only: no AX writes, app activation, window raising, or process launch.
+const INTERACTION_READINESS = `
+ObjC.import('AppKit'); ObjC.import('ApplicationServices');
+function run(args) {
+  var target=args[0], apps=$.NSWorkspace.sharedWorkspace.runningApplications, matches=[];
+  for (var i=0;i<apps.count;i++) {
+    var item=apps.objectAtIndex(i);
+    if (ObjC.unwrap(item.bundleIdentifier)===target || ObjC.unwrap(item.bundleURL.path)===target.replace(/\\/$/,'') || ObjC.unwrap(item.localizedName)===target) matches.push(item);
+  }
+  if (!matches.length) return 'not_running';
+  if (matches.length!==1) return 'ambiguous';
+  var running=matches[0];
+  if (running.hidden) return 'hidden';
+  if (!running.active) return 'not_frontmost';
+  var app=$.AXUIElementCreateApplication(Number(running.processIdentifier)), focused=Ref();
+  if ($.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused)!==0) return 'window_unavailable';
+  var minimized=Ref();
+  if ($.AXUIElementCopyAttributeValue(ObjC.castRefToObject(focused[0]),$('AXMinimized'),minimized)!==0) return 'window_unavailable';
+  return ObjC.unwrap(ObjC.castRefToObject(minimized[0])) ? 'minimized' : 'ready';
+}`;
+
+export type MacInteractionReadiness = "ready" | "not_running" | "ambiguous" | "hidden" | "not_frontmost" | "window_unavailable" | "minimized" | "unavailable";
+
+export function readMacInteractionReadiness(app: string): Promise<MacInteractionReadiness> {
+  return new Promise((resolve) => {
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", INTERACTION_READINESS, app], { timeout: 3000, maxBuffer: 4096 }, (error, stdout) => {
+      const state = stdout.trim();
+      resolve(!error && ["ready", "not_running", "ambiguous", "hidden", "not_frontmost", "window_unavailable", "minimized"].includes(state) ? state as MacInteractionReadiness : "unavailable");
+    });
+  });
+}
+
 // 제목·창 순서 대신 해당 프로세스의 AX 선택 창을 CGWindowID로 연결한다.
 // 비공개 AX 브리지가 없는 OS에서는 추측하지 않고 식별 불가로 반환한다.
 const WINDOW_IDENTITY = `

@@ -6,6 +6,7 @@ import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { readMacWindowIdentity } from "./computer-use-window.js";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "./computer-use-macos-transport.js";
+import { prepareMacPaste } from "./computer-use-macos-paste.js";
 import { isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
 
 export interface ComputerUseInstallation {
@@ -105,7 +106,10 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
           cursor = status.nextCursor ?? null;
           if (++pages > 20) throw new Error("computer_use_invalid_inventory");
         } while (cursor);
-        if (this.tools.has("list_apps") && this.tools.has("get_app_state")) return;
+        if (this.tools.has("list_apps") && this.tools.has("get_app_state")) {
+          if (this.tools.has("press_key")) this.tools.set("paste", { name: "paste", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] } }, required: ["app", "text", "format"], additionalProperties: false } });
+          return;
+        }
         await new Promise((resolve) => setTimeout(resolve, 250));
       } while (!this.closed && Date.now() < deadline);
       throw new Error("computer_use_tools_unavailable");
@@ -114,7 +118,16 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
 
   async call(tool: string, args: Record<string, unknown>): Promise<ComputerUseResult> {
     if (!this.threadId || !this.tools.has(tool)) throw new Error("computer_use_tool_unavailable");
-    const app = tool === "get_app_state" && typeof args.app === "string" ? args.app : null;
+    if (tool === "paste") {
+      const clipboard = await prepareMacPaste(args.text as string, args.format as "text" | "md" | "html");
+      let value: ComputerUseResult;
+      let clipboardRestoration;
+      try { value = await this.call("press_key", { app: args.app, key: "super+v" }); }
+      catch { value = { isError: true, content: [{ type: "text", text: "computer_use_paste_outcome_unknown: Do not repeat the paste automatically." }] }; }
+      finally { clipboardRestoration = await clipboard.finish(); }
+      return { ...value, content: [...value.content, { type: "text", text: JSON.stringify({ clipboardRestoration, ...(clipboardRestoration === "failed" ? { warning: "Previous clipboard could not be restored; do not repeat the paste." } : {}) }) }] };
+    }
+    const app = typeof args.app === "string" ? args.app : null;
     const before = app ? await readMacWindowIdentity(app) : null;
     const value = await this.request("mcpServer/tool/call", { threadId: this.threadId, server: "computer-use", tool, arguments: args });
     if (!isRecord(value) || !Array.isArray(value.content) || value.content.some((block) => !isRecord(block))) throw new Error("computer_use_invalid_result");
