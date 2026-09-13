@@ -37,6 +37,7 @@ const cleanups: Array<() => void | Promise<void>> = [];
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   delete (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory;
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -236,6 +237,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
 
   const sdkConfigDir = mkdtempSync(path.join(os.tmpdir(), "fleet-chat-sdk-"));
   temporaryDirectories.push(sdkConfigDir);
+  // Chat 런치는 PTY 런치와 같은 바이너리 해석을 거친다. 그 해석을 그대로 두면 이 테스트가
+  // 실행 머신에 Claude Code가 깔려 있는지에 따라 갈리므로, env 오버라이드로 하네스가 만든
+  // 실행 파일을 가리켜 해석 경로는 살리고 결과만 고정한다.
+  const claudeBin = path.join(fleetDataDir, "claude");
+  writeFileSync(claudeBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  vi.stubEnv("CLAUDE_BIN", claudeBin);
   const sends: string[] = [];
   const closeChat = vi.fn();
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
