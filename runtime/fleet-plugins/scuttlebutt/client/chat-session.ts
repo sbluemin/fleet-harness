@@ -96,6 +96,8 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
   let chatId: string | null = null;
   /** 지금 세션을 띄울 때의 모델·강도·언어. 어느 하나라도 바뀌면 다음 질문은 새 세션으로 간다. */
   let launched: { readonly choice: ChatLaunchChoice | null; readonly locale: ConsoleLocale | undefined } | null = null;
+  /** 서버가 마지막으로 받은 허용. 시작 요청이 도는 사이에 바뀐 허용은 세션이 서자마자 다시 보낸다. */
+  let sentGrants: AideGrants | null = null;
   let closed = false;
   const name = () => getT(deps.locale?.())(`bird.${deps.admiral}`);
 
@@ -155,7 +157,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
   async function start(): Promise<string> {
     const launch = deps.launch?.() ?? null;
     const locale = deps.locale?.();
-    const grants = deps.grants?.();
+    const grants = deps.grants?.() ?? null;
     const payload = await request("chat/start", {
       admiral: deps.admiral,
       ...(launch ? { model: launch.model, effort: launch.effort } : {}),
@@ -164,6 +166,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     }) as { readonly chatId?: unknown } | null;
     if (!payload || typeof payload.chatId !== "string") throw new ChatRequestError("generic");
     launched = { choice: launch, locale };
+    sentGrants = grants;
     return payload.chatId;
   }
 
@@ -175,6 +178,10 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     chatId = started;
     stream = connect(started, receive);
     await stream.connected;
+    // 시작 요청이 도는 동안 허용이 바뀌었으면 첫 질문이 가기 전에 지금 값을 보낸다 — 시작 본문에 실린
+    // 옛 허용으로 첫 호출이 통하면 안 된다(거둔 컴퓨터 사용이 화면과 달리 살아 있는 것이 그 경우다).
+    const current = deps.grants?.() ?? null;
+    if (current && !sameGrants(current, sentGrants)) await pushGrants(started, current);
     return started;
   }
 
@@ -209,6 +216,16 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
           error: { code, message: code },
         }, name(), deps.locale?.()),
       });
+    }
+  }
+
+  async function pushGrants(id: string, grants: AideGrants): Promise<void> {
+    try {
+      await request(`chat/${encodeURIComponent(id)}/grants`, grants);
+      sentGrants = grants;
+    } catch (error) {
+      // 세션이 이미 거둬졌으면 다음 질문이 새 세션을 열며 지금 값을 싣는다.
+      if (error instanceof ChatRequestError && SESSION_GONE.has(error.code)) forgetSession();
     }
   }
 
@@ -252,13 +269,10 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     async syncGrants() {
       const id = chatId;
       const grants = deps.grants?.();
+      // 세션이 아직 없거나 시작 중이면 보낼 곳이 없다 — 시작이 끝나는 자리(ensureSession)가 지금 값과
+      // 시작 본문의 값을 견주어 다시 보낸다.
       if (closed || id === null || !grants) return;
-      try {
-        await request(`chat/${encodeURIComponent(id)}/grants`, grants);
-      } catch (error) {
-        // 세션이 이미 거둬졌으면 다음 질문이 새 세션을 열며 지금 값을 싣는다.
-        if (error instanceof ChatRequestError && SESSION_GONE.has(error.code)) forgetSession();
-      }
+      await pushGrants(id, grants);
     },
     close() {
       closed = true;
@@ -267,6 +281,10 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
       listeners.clear();
     },
   };
+}
+
+function sameGrants(left: AideGrants, right: AideGrants | null): boolean {
+  return right !== null && left.consoleUse === right.consoleUse && left.computerUse === right.computerUse;
 }
 
 class ChatRequestError extends Error {

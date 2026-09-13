@@ -68,10 +68,10 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     if (match[2] === "stream") return handleStream(ctx, req, res, chatId, registry);
     if (match[2] === "cancel") return handleCancel(ctx, req, res, chatId, registry);
     if (match[2] === "grants") return handleGrants(ctx, req, res, chatId, registry, grants);
-    snapshots.delete(chatId);
-    grants.delete(chatId);
-    const handled = await handleStop(ctx, req, res, chatId, registry);
-    return handled;
+    return handleStop(ctx, req, res, chatId, registry, () => {
+      snapshots.delete(chatId);
+      grants.delete(chatId);
+    });
   }, [
     { method: "POST", path: "/start", summary: "Start a Quaker aide chat session.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
     { method: "POST", path: "/:chatId/message", summary: "Send a message to a Quaker aide.", category: API_CATEGORY, gate: "origin-write", transport: "http" },
@@ -257,6 +257,8 @@ async function handleStop(
   res: http.ServerResponse,
   chatId: string,
   registry: SessionRegistry,
+  /** 세션 밖의 부속 상태(스냅샷·허용)는 멈춤이 실제로 받아들여진 뒤에만 걷는다 — 거절된 요청이 산 세션의 허용을 지우면 안 된다. */
+  forget: () => void,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -266,6 +268,7 @@ async function handleStop(
     return true;
   }
   await registry.stop(chatId);
+  forget();
   ctx.host.http.writeJson(res, 200, { stopped: true });
   return true;
 }
