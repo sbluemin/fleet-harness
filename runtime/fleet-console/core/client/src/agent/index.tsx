@@ -19,7 +19,7 @@ import {
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExecutionProvider, ClientExperimentsCapability, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews } from "./experiments-api.js";
+import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -579,14 +579,87 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     </CaptionActionButton>
   );
 
+  // 세션 관찰의 결과 말풍선 — 스위치는 ··· 메뉴로 갔지만 결과는 여전히 여기서 알린다. 선반 끝에
+  // 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다. 산 이벤트에만 뜬다(지난 결과는 다시 튀어나오지 않는다).
+  const experiments = useExperimentsSnapshot();
+  const watchEnabled = readWatchEnabled(context.operation.payload);
+  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
+  const watchBubble = experiments?.sessionWatch === true && watchEnabled
+    ? <span className="session-watch-host" aria-hidden={liveReview === null ? true : undefined}><SessionWatchBubble context={context} review={liveReview} /></span>
+    : null;
+
   return (
     <>
       {analyst}
       {viewSwitch}
       {readingWidthAction}
+      {watchBubble}
     </>
   );
 }
+
+/**
+ * 세션 관찰(실험)의 결과 말풍선 — 캡션 동작 선반 끝(··· 버튼 왼쪽) 아래에 선다. 검토가 시작되거나 끝날 때 뜨고,
+ * 사용자가 무엇이든 누르거나 입력하면 사라진다: 결과는 알려야 하지만 화면을 차지해서는 안 된다.
+ * 새 결과가 오면 다시 뜬다. 마지막 결과 자체는 ··· 메뉴의 관찰 행 툴팁과 칩 마크가 계속 갖고 있다.
+ */
+function SessionWatchBubble({ context, review }: { readonly context: OperationRenderContext; readonly review: SessionWatchReview | null }) {
+  const t = getT(context.language ?? "en");
+  const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const key = review ? `${review.phase}:${review.at}` : null;
+  const keyRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (key === null || key === keyRef.current) return;
+    keyRef.current = key;
+    setVisibleFor(review?.at ?? null);
+    setExpanded(false);
+  }, [key, review]);
+  React.useEffect(() => {
+    if (visibleFor === null) return;
+    // 이 말풍선 안의 클릭(자세히)은 닫지 않는다 — 그 밖의 어떤 누름·입력이든 닫는다.
+    const dismiss = (event: Event) => {
+      if (event.target instanceof Node && bubbleRef.current?.contains(event.target)) return;
+      setVisibleFor(null);
+    };
+    // 뜬 직후의 같은 프레임에 들어온 이벤트(검토를 시작시킨 Enter 등)가 곧바로 닫지 않게 한 박자 뒤에 듣는다.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", dismiss, true);
+      document.addEventListener("keydown", dismiss, true);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("keydown", dismiss, true);
+    };
+  }, [visibleFor]);
+  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  if (visibleFor === null || !review) return null;
+  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const tone = review.phase === "alert" ? "is-alert" : review.phase === "failed" ? "is-failed" : review.phase === "started" ? "is-reviewing" : "";
+  const summary = review.phase === "started"
+    ? t("terminal.experiments.barReviewing")
+    : review.phase === "alert"
+      ? t("terminal.experiments.barAlert", { time: time(review.at), title: review.title ?? "" })
+      : review.phase === "failed"
+        ? t(review.reason === "transcript_missing" ? "terminal.experiments.barNoTranscript" : "terminal.experiments.barFailed", { time: time(review.at) })
+        : t("terminal.experiments.barClear", { time: time(review.at) });
+  return (
+    <div ref={bubbleRef} className={`session-watch-bubble ${tone}`} role="status" aria-live="polite">
+      <span className="session-watch-bubble__text">{summary}</span>
+      {review.phase === "alert" && review.body ? (
+        <>
+          <button type="button" className="session-watch-bubble__toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+            {t(expanded ? "terminal.experiments.barLess" : "terminal.experiments.barMore")}
+          </button>
+          {expanded ? <p className="session-watch-bubble__body">{review.body}</p> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+
 
 /** 채팅 → 터미널. 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살린다(서버 ticket 가드). */
 async function openTerminalForOperation(context: OperationRenderContext): Promise<void> {
