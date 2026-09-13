@@ -35,6 +35,25 @@ export function visibleWorkspace(workspace: OperationWorkspace | null | undefine
   return workspace && (workspace.branch || workspace.folder) ? workspace : null;
 }
 
+/**
+ * 사이드바 칩이 그리는 몫 — 브랜치만. 폴더는 칩에서 내려가고 hover 상세 카드가 진다.
+ * 목록을 훑는 자리에 잘린 경로를 두 겹으로 쌓지 않기 위한 분리이며, 접근성 이름은
+ * {@link describeWorkspace}가 계속 폴더까지 싣는다. ⌘K 팔레트는 폭이 넓고 목록 스캔이
+ * 아니므로 원래의 브랜치·폴더 문법을 그대로 쓴다.
+ */
+export function chipWorkspace(workspace: OperationWorkspace | null): OperationWorkspace | null {
+  return workspace && workspace.branch ? { branch: workspace.branch, folder: null, outside: false } : null;
+}
+
+/**
+ * 상세 카드의 "위치" 한 줄 — 지금 어디인지만 말한다. 글리프도, Theater 루트·밖 같은 해설도 붙이지
+ * 않는다. 그 판단은 카드를 여는 사람이 이미 하고 있고, 여기서 필요한 것은 사실뿐이다.
+ */
+export function locationLine(workspace: OperationWorkspace | null): string | null {
+  if (!workspace) return null;
+  return [workspace.branch, workspace.folder].filter(Boolean).join(" · ") || null;
+}
+
 export function describeWorkspace(t: ReturnType<typeof useT>, workspace: OperationWorkspace): string {
   return (workspace.branch ? t("sidebar.chip.onBranch", { branch: workspace.branch }) : "")
     + (workspace.folder ? (workspace.outside ? t("sidebar.chip.outsideFolder", { folder: workspace.folder }) : t("sidebar.chip.inFolder", { folder: workspace.folder })) : "");

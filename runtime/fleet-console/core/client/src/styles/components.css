@@ -6228,6 +6228,52 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--ink-muted);
 }
 
+/* 칩을 겨눴을 때 뜨는 상세 — 칩이 줄인 사실만 라벨·값 세 줄로 말한다. 제목도 조작 안내도 얹지
+   않는다: 겨눈 사람은 어느 칩인지 이미 알고, 여기서 필요한 것은 칩에 없던 값뿐이다.
+   읽기 전용이라 포인터를 받지 않으며(pointer-events: none) 팝업 판독성은 theater-menu 계약을 따른다. */
+.operation-detail-card {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 3px;
+  min-width: 168px;
+  max-width: 300px;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
+    ),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
+}
+
+.operation-detail-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.operation-detail-key {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.operation-detail-value {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .side-bar-chip-rename-input {
   flex: none;
   width: 100%;
