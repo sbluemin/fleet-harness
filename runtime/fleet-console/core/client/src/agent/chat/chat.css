@@ -29,12 +29,13 @@
   cursor: auto;
   user-select: text;
   -webkit-user-select: text;
-  /* 채팅 로그의 권위 서체 = 터미널 글꼴. 같은 Operation을 CLI로 보다 Chat으로 넘어와도 서체가
-     그대로라야 두 화면이 한 몸으로 읽힌다. 실제 값은 chat-view가 터미널 설정을 구독해 인라인
-     커스텀 프로퍼티로 얹고, 아래 선언은 그 값이 아직 없을 때(테스트·초기 프레임)의 기본값이다.
-     예외는 마크다운 본문 하나뿐이다 — 아래 .markdown-body에서 읽기 서체로 되돌린다. */
+  /* 터미널 글꼴은 토큰에만 흐른다 — 시스템 줄·셸 명령·도구 이름·인자·경로·출력처럼 CLI 화면과
+     글자 단위로 대응해야 하는 자리다. 실제 값은 chat-view가 터미널 설정을 구독해 인라인 커스텀
+     프로퍼티로 얹고, 아래 선언은 그 값이 아직 없을 때(테스트·초기 프레임)의 기본값이다.
+     크롬(동사·집계 문장·머리줄·힌트·버튼)과 마크다운 본문은 인터페이스 서체를 따른다: 등폭
+     체인의 한글 폴백은 코딩체라 한글 UI 라벨이 본문과 다른 물건으로 읽혔다. */
   --agent-chat-font: var(--font-mono);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
 }
 
 /* 읽기 폭 프리셋 — 사용자 선호가 measure 변수 하나만 갈아끼운다. 로그 컬럼·하단 스트립·
@@ -224,7 +225,7 @@
 .agent-chat-dispatch-meta {
   display: flex;
   gap: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -263,7 +264,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
@@ -366,7 +367,7 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: 2px var(--space-1);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -547,6 +548,16 @@
   to { background-position: 0% 0; }
 }
 
+/* 도구 이름·인자는 토큰이라 터미널 글꼴로 남는다. 나머지 크롬(동사·집계 문장·힌트·머리줄)은
+   UI 라벨이므로 인터페이스 서체(--font-body)를 따른다 — 등폭 체인의 한글 폴백(Nanum Gothic
+   Coding)이 한글 라벨까지 코딩체로 그리던 것을 여기서 끊는다. 시스템 줄·셸 명령·경로·출력은
+   여전히 --agent-chat-font다. */
+.agent-chat-tally-name,
+.agent-chat-step-object,
+.agent-chat-step-out {
+  font-family: var(--agent-chat-font);
+}
+
 /* 도구 이름은 이 줄에서 유일하게 훑히는 토큰이다. 나머지 문구와 같은 잉크를 쓰면 줄 전체가
    한 덩어리 회색이 되어, 무엇을 했는지 읽으려면 멈춰서 읽어야 한다. 접히지 않은 스텝 줄의
    동사(.agent-chat-step-verb)가 이미 이 잉크를 쓰므로, 여기서 맞추는 것이 두 줄을 하나의
@@ -608,7 +619,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
@@ -756,7 +767,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -781,7 +792,7 @@
 
 .agent-chat-ask-counter {
   margin-left: auto;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -914,7 +925,7 @@
 }
 
 .agent-chat-ask-mini {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.05em;
   padding: 5px var(--space-3);
@@ -935,7 +946,7 @@
 
 .agent-chat-ask-hint {
   margin-left: auto;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -966,7 +977,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
@@ -1038,7 +1049,7 @@
 
 .agent-chat-completion-answer {
   flex: none;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1069,7 +1080,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
@@ -1143,7 +1154,7 @@
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1197,10 +1208,9 @@
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 .agent-chat .markdown-body {
   --font-size-body: 14.5px;
-  /* 유일한 예외 — 로그 크롬은 터미널 글꼴을 따르지만 마크다운 본문만은 읽기 서체로 되돌린다.
-     .markdown-body 루트는 스스로 font-family를 걸지 않고 상속하므로(헤딩·코드만 자기 서체를
-     못박는다), 이 선언이 없으면 산문 문단·리스트가 조상 .agent-chat의 터미널 등폭을 물려받아
-     읽기 면이 로그 크롬으로 읽힌다. 코드·인라인 코드는 마크다운 문법이 계속 등폭으로 진다. */
+  /* .markdown-body 루트는 스스로 font-family를 걸지 않고 상속한다(헤딩·코드만 자기 서체를
+     못박는다). 루트 .agent-chat도 이제 인터페이스 서체라 상속만으로 같지만, 본문이 크롬의
+     서체 결정에 끌려가지 않도록 여기서 명시한다. 코드·인라인 코드는 마크다운 문법이 계속 등폭으로 진다. */
   font-family: var(--font-body);
   max-inline-size: 100%;
   margin-inline: 0;
@@ -1383,7 +1393,7 @@
 
 .agent-chat-composer-queue-title {
   margin: 0 0 var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1414,7 +1424,7 @@
   flex: none;
   width: 14px;
   text-align: center;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
@@ -1440,7 +1450,7 @@
   padding: 3px var(--space-2);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   cursor: pointer;
   transition: color var(--duration-fast), background var(--duration-fast);
@@ -1689,7 +1699,7 @@
   margin: 0;
   padding: var(--space-2) var(--space-2) 4px;
   color: var(--brass);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1763,7 +1773,7 @@
   width: 18px;
   height: 18px;
   color: var(--brass);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
   line-height: 1;
 }
@@ -1807,7 +1817,7 @@
   border: 1px solid var(--hairline);
   border-radius: 4px;
   color: var(--text-tertiary);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
 }
 
@@ -2013,7 +2023,7 @@
 }
 
 .agent-chat-hero-title {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-weight: var(--weight-medium);
   font-size: var(--t-xl);
   line-height: 1.25;
@@ -2047,7 +2057,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   padding: 5px var(--space-3);
@@ -2305,7 +2315,7 @@
   transform: translateX(-50%);
   bottom: var(--space-6);
   z-index: 2;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   padding: 5px var(--space-3);
@@ -2449,7 +2459,7 @@
   /* 눌린다는 사실은 파선 밑줄 하나가 진다 — 집계 줄의 꺾쇠와 같은 급의 조용한 어포던스다. */
   border-bottom: 1px dashed var(--hairline-strong);
   color: var(--text-tertiary);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
   transition: border-color var(--duration-fast), color var(--duration-fast);
 }
@@ -2497,7 +2507,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   transition: border-color var(--duration-fast);
 }
 
@@ -2632,7 +2642,7 @@
   margin-inline: auto;
   padding: 0 var(--space-3) 0 clamp(var(--space-4), 4vw, var(--space-8));
   border-top: 1px solid var(--hairline);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   /* measure의 ch가 composer frame과 같은 14px 문맥에서 계산되게 하고, 보이는 선반 글자는
      아래 자식 규칙에서 기존 t-xs를 유지한다. */
   font-size: var(--font-body-size);
@@ -2738,7 +2748,7 @@
   gap: var(--space-2);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--hairline);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2766,7 +2776,7 @@
 }
 
 .agent-chat-work-sec {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2777,7 +2787,7 @@
 .agent-chat-work-sec:first-child { margin-top: 0; }
 
 .agent-chat-work-empty {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   line-height: 1.6;
   color: var(--text-tertiary);
@@ -2789,7 +2799,7 @@
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
 }
 
 .agent-chat-detail-back {
@@ -2799,7 +2809,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   padding: 2px 9px;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -2828,7 +2838,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   padding: 2px 9px;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -2851,7 +2861,7 @@
 }
 
 .agent-chat-detail-stop-error {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   color: var(--coral);
 }
@@ -2866,7 +2876,7 @@
 }
 
 .agent-chat-detail-meta {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   color: var(--text-tertiary);
@@ -2890,7 +2900,7 @@
 
 .agent-chat-detail-note {
   margin: 0;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -2900,7 +2910,7 @@
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2920,7 +2930,7 @@
 
 .agent-chat-detail-loading,
 .agent-chat-detail-cut {
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -2941,7 +2951,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
   background: var(--glass-tint-panel);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   line-height: 1.55;
   color: var(--text-secondary);
@@ -2963,7 +2973,7 @@
   gap: var(--space-2);
   padding: 5px var(--space-3);
   background: var(--surface-panel-raised);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   color: var(--text-primary);
 }
@@ -2981,7 +2991,7 @@
    192px에서 scrollWidth 224px). 행 폭은 모두 같으므로 스크롤이 서도 열은 어긋나지 않는다. */
 .agent-chat-stage-rows {
   overflow-x: auto;
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
 }
 
@@ -3122,7 +3132,7 @@
   border-radius: var(--radius-md);
   background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
 }
 

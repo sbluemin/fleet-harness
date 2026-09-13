@@ -526,7 +526,7 @@
 
 .scuttlebutt-notice-label {
   color: var(--scuttlebutt-notice-ink, var(--text-secondary));
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
@@ -651,7 +651,7 @@
   gap: var(--space-2);
   padding-right: 28px;
   color: var(--brass);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -866,7 +866,7 @@
   backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   font-weight: var(--weight-regular);
   letter-spacing: normal;
@@ -918,7 +918,7 @@
 
 .scuttlebutt-status-row {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-xs);
   font-weight: var(--weight-regular);
 }
@@ -1078,7 +1078,7 @@
 
 .scuttlebutt-sources-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1142,7 +1142,7 @@
 .scuttlebutt-usage {
   margin-left: auto;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
 }
@@ -1438,7 +1438,7 @@
   border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
   border-radius: var(--radius-xs);
   color: var(--brass);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -1572,7 +1572,7 @@
 
 .scuttlebutt-grants-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1662,7 +1662,7 @@
 .scuttlebutt-menu-label {
   padding: 6px 10px 4px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;

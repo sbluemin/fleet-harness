@@ -13,7 +13,7 @@
   .session-analyst__chip { padding: 5px 8px; }
   .session-analyst__chip-state { display: none; }
 }
-.session-analyst__chip { display: inline-flex; align-items: center; gap: var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); color: var(--text-secondary); padding: 5px 10px; font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1; letter-spacing: .06em; white-space: nowrap; transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast); }
+.session-analyst__chip { display: inline-flex; align-items: center; gap: var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); color: var(--text-secondary); padding: 5px 10px; font-family: var(--font-body); font-size: var(--t-xs); line-height: 1; letter-spacing: .06em; white-space: nowrap; transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast); }
 .session-analyst__chip-cluster { display: inline-flex; gap: var(--space-2); flex: none; }
 /* 정체성은 캡션 밴드의 이름줄이다 — 밴드 안에서 다시 상자를 두르면 머리 안에 머리가 하나 더 생긴다. */
 .session-analyst__chip--id { min-width: 0; overflow: hidden; border-color: transparent; background: transparent; padding: 0; color: var(--text-secondary); white-space: nowrap; text-overflow: ellipsis; }
@@ -28,7 +28,7 @@ button.session-analyst__chip { cursor: pointer; }
 button.session-analyst__chip:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-ink); box-shadow: 0 0 14px var(--brass-glow); }
 button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: default; }
 /* 모드 세그먼트 — [Chat | Artifacts·n]. 선택 표시는 brass(위치 채널)만 쓴다. */
-.session-analyst__modechip { display: inline-flex; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; }
+.session-analyst__modechip { display: inline-flex; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: .06em; }
 .session-analyst__modechip button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-tertiary); padding: 5px 9px; font: inherit; letter-spacing: inherit; line-height: 1; cursor: pointer; }
 .session-analyst__modechip button + button { border-left: 1px solid var(--hairline); }
 .session-analyst__modechip button[aria-pressed="true"] { background: var(--brass-glow); color: var(--brass-ink); }
@@ -67,13 +67,13 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 .session-analyst__queue { display: grid; gap: 6px; padding: 0 14px var(--space-2); }
 .session-analyst__queue-item { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border: 1px dashed color-mix(in oklch, var(--aurora) 40%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised)); padding: 7px 10px; color: var(--text-secondary); font-size: var(--t-sm); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
-.session-analyst__queue-tag { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent); border-radius: var(--radius-pill); color: var(--aurora-ink); padding: 3px 7px; font-weight: var(--weight-bold); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); letter-spacing: .12em; }
+.session-analyst__queue-tag { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent); border-radius: var(--radius-pill); color: var(--aurora-ink); padding: 3px 7px; font-weight: var(--weight-bold); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); letter-spacing: .12em; }
 .session-analyst__queue-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__queue-item button { flex: none; border: 0; background: transparent; color: var(--text-tertiary); padding: 2px; font-size: var(--t-md); line-height: 1; cursor: pointer; transition: color var(--duration-base) var(--ease-glide); }
 .session-analyst__queue-item button:hover { color: var(--coral-ink); }
 
 .session-analyst__followups { display: grid; gap: var(--space-2); padding: 0 14px var(--space-2); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
-.session-analyst__followups-label { color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); letter-spacing: .14em; }
+.session-analyst__followups-label { color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); letter-spacing: .14em; }
 .session-analyst__followups-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .session-analyst__followups-row button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); padding: 6px 12px; font-weight: var(--weight-medium); font-size: var(--t-sm); line-height: 1.2; font-family: var(--font-body); cursor: pointer; transition: border-color var(--duration-base) var(--ease-glide), color var(--duration-base) var(--ease-glide), transform var(--duration-base) var(--ease-glide); }
 .session-analyst__followups-row button:hover { border-color: color-mix(in oklch, var(--aurora) 45%, var(--hairline)); color: var(--text-primary); transform: translateY(-1px); }
@@ -87,17 +87,17 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 /* 사용자 질문 — 디스패치 버블 문법: 메타는 버블 밖 위, 정체성은 --id-cerulean 워시,
    우하단 radius를 조여 발화 원점(하단 컴포저)을 가리킨다. */
 .session-analyst__message--user { display: flex; flex-direction: column; align-items: flex-end; }
-.session-analyst__ask-meta { display: flex; gap: var(--space-2); margin: 0 var(--space-1) 4px 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: .08em; color: var(--text-tertiary); }
+.session-analyst__ask-meta { display: flex; gap: var(--space-2); margin: 0 var(--space-1) 4px 0; font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: .08em; color: var(--text-tertiary); }
 .session-analyst__ask-meta .session-analyst__ask-who { color: color-mix(in oklch, var(--id-cerulean) 75%, var(--text-tertiary)); }
 .session-analyst__ask-bubble { max-width: 64ch; background: color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised)); border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline)); border-radius: 14px 14px 5px 14px; padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--t-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* 분석가 턴 — 단일 열. 스파인·노드는 채팅 원장과 함께 퇴역했다: 상태는 시계·접힘 줄·결말 문구가 말한다. */
 .session-analyst__message--analyst { display: block; animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__turn-main { min-width: 0; }
-.session-analyst__turn-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.session-analyst__turn-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: .06em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 
 /* 진행 펄스 행 — 채팅 뷰의 agent-chat-pulse와 한 계열. 정직성 마이크로카피가 아래에 붙는다. */
-.session-analyst__pulse { margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); border: 1px solid color-mix(in oklab, var(--aurora) 24%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklab, var(--aurora) 4%, var(--surface-panel-raised)); padding: var(--space-2) var(--space-3); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
+.session-analyst__pulse { margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); border: 1px solid color-mix(in oklab, var(--aurora) 24%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklab, var(--aurora) 4%, var(--surface-panel-raised)); padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-secondary); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__pulse.is-error { border-color: color-mix(in oklch, var(--coral) 55%, var(--hairline)); background: var(--coral-glow); }
 .session-analyst__pulse-orbit { width: 10px; height: 10px; flex: none; border-radius: var(--radius-pill); border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-top-color: var(--aurora); animation: analyst-orbit 0.9s linear infinite; }
 .session-analyst__pulse.is-error .session-analyst__pulse-orbit { border-color: color-mix(in oklch, var(--coral) 35%, transparent); border-top-color: var(--coral); animation: none; }
@@ -121,14 +121,14 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
    면과 테두리를 두르면 이 줄이 문장이 아니라 카드로 읽힌다. 원장 쪽 주석이 말하는 그대로다:
    카드는 예외에게만 준다. 결말의 성패는 스파인 노드가 이미 지므로 ✓도 걷었다. */
 .session-analyst__receipt { margin-top: var(--space-2); }
-.session-analyst__receipt > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); transition: color var(--duration-fast); }
+.session-analyst__receipt > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); transition: color var(--duration-fast); }
 .session-analyst__receipt > summary:hover { color: var(--text-secondary); }
 .session-analyst__receipt > summary::-webkit-details-marker { display: none; }
 .session-analyst__receipt-chev { font-size: var(--t-xs); line-height: 1; color: var(--text-tertiary); transition: transform var(--duration-fast); }
 .session-analyst__receipt[open] .session-analyst__receipt-chev { transform: rotate(180deg); }
 .session-analyst__receipt-body { padding: var(--space-2) 0 0 var(--space-3); }
 /* fold 없이 서는 결말 한 줄(스텝 없는 완결 턴). */
-.session-analyst__receipt.is-flat { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.session-analyst__receipt.is-flat { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 
 /* ── 원장 — 구간(문장+스텝)이 도착한 순서대로 쌓인다. 진행 중에도, fold 안에서도 같은 문법. ── */
 .session-analyst__ledger { display: grid; gap: var(--space-3); margin-top: var(--space-2); }
@@ -142,11 +142,12 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__seg-text.markdown-body p { margin: 0 0 var(--space-1); }
 .session-analyst__seg-text.markdown-body > :last-child { margin-bottom: 0; }
 .session-analyst__steps { display: grid; gap: 5px; }
-.session-analyst__step { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); padding: 5px 10px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.session-analyst__step { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); padding: 5px 10px; font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-secondary); }
 .session-analyst__step-mark { flex: none; font-size: var(--t-2xs); line-height: 1; color: var(--positive-ink); }
 .session-analyst__step[data-tone="live"] .session-analyst__step-mark { color: var(--aurora-ink); animation: analyst-chip-dot-pulse 1.6s ease-in-out infinite; }
 .session-analyst__step[data-tone="fail"] .session-analyst__step-mark { color: var(--coral-ink); }
-.session-analyst__step strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+/* 도구 식별자만 등폭 토큰이다 — 행의 나머지(상태 문구)는 인터페이스 서체를 따른다. */
+.session-analyst__step strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-weight: var(--weight-medium); }
 .session-analyst__step small { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); white-space: nowrap; }
 
 /* 좌→우 명도 물결 — 채팅 원장의 `.agent-chat-live-text`와 한 벌이다. 값이 갈라지면 같은
@@ -178,7 +179,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 /* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
 .session-analyst__answer { margin-top: var(--space-2); }
-.session-analyst__answer-kicker { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); }
+.session-analyst__answer-kicker { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); }
 .session-analyst__answer-kicker::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
 /* 공유 .markdown-body를 채팅 뷰 Answer와 같은 밀도로 오버라이드한다 — measure는 드로어 전폭. */
 .session-analyst__response.markdown-body {
@@ -233,13 +234,13 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__panel-mark--artifact .agent-glyph,
 .session-analyst__artifact-list-mark .agent-glyph { width: 14px; height: 14px; }
 .session-analyst__author-title { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--text-primary); font-size: var(--t-md); line-height: 1.4; }
-.session-analyst__author-time { flex: none; color: var(--aurora-ink); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1.3; font-family: var(--font-mono); }
+.session-analyst__author-time { flex: none; color: var(--aurora-ink); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1.3; font-family: var(--font-body); }
 .session-analyst__author-sub { margin: var(--space-2) 0 0 21px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.4; }
 .session-analyst__author-track { height: 3px; margin: var(--space-3) 0 0 21px; overflow: hidden; border-radius: 2px; background: color-mix(in oklch, var(--aurora) 14%, var(--surface-panel-raised)); }
 .session-analyst__author-track span { display: block; width: 34%; height: 100%; border-radius: inherit; background: var(--aurora); animation: analyst-author-slide 1.5s var(--ease-glide) infinite; }
 .session-analyst__author-card.is-done { border-color: color-mix(in oklch, var(--positive) 35%, var(--hairline)); background: color-mix(in oklch, var(--positive) 5%, var(--surface-panel-raised)); }
 .session-analyst__author-card.is-done :is(.session-analyst__author-sigil, .session-analyst__author-time, .session-analyst__author-open) { color: var(--positive-ink); }
-.session-analyst__author-open { flex: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; padding: 5px 9px; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); white-space: nowrap; cursor: pointer; }
+.session-analyst__author-open { flex: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; padding: 5px 9px; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); white-space: nowrap; cursor: pointer; }
 .session-analyst__author-open:hover { background: color-mix(in oklch, var(--positive) 10%, transparent); }
 
 /* ── 컴포저 — 채팅뷰 조립: 한 면 안에 입력 위층 + 좌표 레일 아래층(radius-pill은 컨트롤
@@ -258,10 +259,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__composer textarea { scrollbar-width: none; }
 .session-analyst__composer textarea::-webkit-scrollbar { display: none; }
 /* 「/」 입구 — 슬래시 목록을 다시 만나는 유일한 길이라 placeholder 문구로 대신하지 않는다. */
-.session-analyst__slash-hint { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 1px; border: 1px dashed var(--hairline); border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); padding: 0; font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
+.session-analyst__slash-hint { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 1px; border: 1px dashed var(--hairline); border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); padding: 0; font-family: var(--font-body); font-size: var(--t-xs); line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
 .session-analyst__slash-hint:hover { border-color: var(--hairline-strong); color: var(--text-secondary); }
 /* 모델 표시줄 — 상자 밖 한 줄. 좌표는 Settings의 것이라 여기서는 보여 주고 바꾸는 길만 잇는다. */
-.session-analyst__composer-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: 0 2px 6px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; }
+.session-analyst__composer-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: 0 2px 6px; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.04em; }
 .session-analyst__composer-model { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .session-analyst__composer-model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; }
 .session-analyst__composer-model-mark svg { width: 10px; height: 10px; }
@@ -281,7 +282,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__stop:not(:disabled) { border-color: var(--hairline-strong); background: var(--ink-mid); color: var(--text-secondary); }
 .session-analyst__stop span { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
 .session-analyst__slash { position: absolute; z-index: 5; right: 14px; bottom: calc(100% - 4px); left: 14px; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); /* 팝업 판독성 계약: raised 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card) */ background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
-.session-analyst__slash-heading { display: block; border-bottom: 1px solid var(--hairline); padding: 8px 12px 6px; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
+.session-analyst__slash-heading { display: block; border-bottom: 1px solid var(--hairline); padding: 8px 12px 6px; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); letter-spacing: .14em; text-transform: uppercase; }
 .session-analyst__slash button { display: flex; align-items: baseline; gap: var(--space-3); width: 100%; border: 0; background: transparent; color: var(--text-secondary); padding: 9px 12px; text-align: left; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-sm); line-height: 1.3; font-family: var(--font-body); }
 .session-analyst__slash button > span { min-width: 76px; color: var(--aurora-ink); font-weight: var(--weight-bold); font-size: var(--t-xs); line-height: 1; font-family: var(--font-mono); }
 .session-analyst__slash button small { color: var(--text-tertiary); font-size: var(--t-2xs); }
@@ -300,7 +301,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__panel-copy strong { color: var(--text-primary); font-size: var(--t-sm); line-height: 1.25; letter-spacing: -.01em; }
 .session-analyst__panel-copy small { overflow: hidden; color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__artifact-list-shell { position: relative; margin-left: auto; }
-.session-analyst__artifact-count { display: inline-flex; align-items: baseline; gap: 4px; min-height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 9px 5px 11px; font-family: var(--font-mono); white-space: nowrap; cursor: pointer; transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide), color var(--duration-base) var(--ease-glide); }
+.session-analyst__artifact-count { display: inline-flex; align-items: baseline; gap: 4px; min-height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 9px 5px 11px; font-family: var(--font-body); white-space: nowrap; cursor: pointer; transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide), color var(--duration-base) var(--ease-glide); }
 .session-analyst__artifact-count strong { color: var(--text-primary); font-size: var(--t-md); line-height: 1; }
 .session-analyst__artifact-count span { font-size: var(--t-2xs); }
 .session-analyst__artifact-count i { width: 6px; height: 6px; margin: 0 2px 2px 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform var(--duration-base) var(--ease-glide); }
@@ -309,13 +310,13 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__artifact-count:hover:not(:disabled) { border-color: var(--hairline); background: var(--surface-panel-raised); color: var(--text-primary); }
 .session-analyst__artifact-count:disabled { opacity: .42; cursor: default; }
 .session-analyst__export-shell { position: relative; }
-.session-analyst__export { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 10px; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); }
+.session-analyst__export { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 10px; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); }
 .session-analyst__export:hover:not(:disabled) { background: var(--surface-panel-raised); }
 .session-analyst__export:disabled { opacity: .4; cursor: default; }
 .session-analyst__export-menu { position: absolute; z-index: 4; top: calc(100% + 8px); right: 0; display: grid; gap: 5px; width: max-content; min-width: 150px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); /* 팝업 판독성 계약: raised 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card) */ background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); padding: 6px; box-shadow: var(--shadow-floating); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__export-menu button { width: 100%; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 8px; text-align: left; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-xs); line-height: 1.3; font-family: var(--font-body); }
 .session-analyst__export-menu button:hover { background: var(--surface-glass); color: var(--text-primary); }
-.session-analyst__clear { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 10px; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-mono); }
+.session-analyst__clear { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 5px 10px; cursor: pointer; font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1; font-family: var(--font-body); }
 .session-analyst__clear:hover:not(:disabled) { background: var(--surface-panel-raised); }
 .session-analyst__clear:disabled { opacity: .4; cursor: default; }
 .session-analyst__artifacts-empty { display: grid; place-items: center; align-content: center; color: var(--text-tertiary); padding: var(--space-5); text-align: center; font-size: var(--t-sm); line-height: 1.55; }
@@ -327,7 +328,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__artifact-menu button.is-active { border-color: color-mix(in oklab, var(--brass) 38%, var(--hairline)); background: color-mix(in oklch, var(--brass) 7%, transparent); }
 .session-analyst__artifact-list-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--brass-bright); font-size: var(--t-sm); }
 .session-analyst__artifact-menu button strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); }
-.session-analyst__artifact-menu time, .session-analyst__artifacts article time { color: var(--text-tertiary); font-weight: var(--weight-regular); font-size: var(--t-2xs); line-height: 1.3; font-family: var(--font-mono); white-space: nowrap; }
+.session-analyst__artifact-menu time, .session-analyst__artifacts article time { color: var(--text-tertiary); font-weight: var(--weight-regular); font-size: var(--t-2xs); line-height: 1.3; font-family: var(--font-body); white-space: nowrap; }
 .session-analyst__artifacts article { min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel-raised); }
 .session-analyst__artifacts article header { display: flex; align-items: center; gap: var(--space-2); min-height: 34px; border-bottom: 1px solid var(--hairline); padding: 0 11px; background: var(--canvas-sea-core); }
 .session-analyst__artifact-title { overflow: hidden; color: var(--text-secondary); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
@@ -380,7 +381,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 /* 세션 관찰 결과 말풍선 — 캡션 선반 끝의 폭 없는 앵커에 걸되, 오른쪽 변과 꼬리는 그 옆 ··· 버튼(6px 간격 + 24px)에 맞춘다: 스위치가 있는 곳을 가리켜야 한다. */
 .session-watch-host { position: relative; display: inline-flex; }
-.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: -30px; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
+.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: -30px; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
 .session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 8px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
 .session-watch-bubble__text { min-width: 0; }
 .session-watch-bubble.is-reviewing { color: var(--text-tertiary); }
