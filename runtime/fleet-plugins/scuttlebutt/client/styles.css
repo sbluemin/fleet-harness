@@ -613,6 +613,16 @@
   line-height: 1.5;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    box-shadow var(--duration-fast) var(--ease-glide);
+}
+
+/* 포커스가 말풍선 안에 있는 동안 은은하게 밝아진다 — 답이 정착해 포커스가 여기로 왔음을 상자 링 없이
+   알린다(brass = 지금 서 있는 자리). 벗어나면 평소의 테두리로 가라앉는다. */
+.scuttlebutt-answer-bubble:focus-within {
+  border-color: color-mix(in oklab, var(--brass) 70%, var(--hairline));
+  box-shadow: var(--shadow-floating), 0 0 0 4px var(--brass-glow);
 }
 
 /* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
