@@ -12,6 +12,8 @@ export interface DesktopShellHome {
   readonly origin: string | null;
   /** 아직 답을 받지 못했는가. */
   readonly pending: boolean;
+  /** 창을 든 Desktop 앱의 버전. 셸이 없거나 옛 Desktop이면 null. */
+  readonly desktopVersion: string | null;
 }
 
 /**
@@ -19,24 +21,31 @@ export interface DesktopShellHome {
  * 손님 콘솔이 자기가 집인 것처럼 보인다 — 그 사이 사용자가 칩을 누르면 남의 목록이 펼쳐진다.
  */
 export function useDesktopHomeOrigin(): DesktopShellHome {
-  const [home, setHome] = useState<DesktopShellHome>({ origin: null, pending: true });
+  const [home, setHome] = useState<DesktopShellHome>({ origin: null, pending: true, desktopVersion: null });
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchDesktopHomeOrigin(controller.signal)
-      .then((origin) => setHome({ origin, pending: false }))
+    void fetchDesktopShell(controller.signal)
+      .then((shell) => setHome({ ...shell, pending: false }))
       // 끊긴 요청은 답이 아니다 — 이 화면은 이미 사라졌거나 곧 다시 묻는다.
-      .catch(() => { if (!controller.signal.aborted) setHome({ origin: null, pending: false }); });
+      .catch(() => { if (!controller.signal.aborted) setHome({ origin: null, pending: false, desktopVersion: null }); });
     return () => controller.abort();
   }, []);
 
   return home;
 }
 
-async function fetchDesktopHomeOrigin(signal?: AbortSignal): Promise<string | null> {
+async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion">> {
   const response = await fetch("/api/v1/desktop/shell", { signal });
-  if (!response.ok) return null;
-  return readHomeOrigin(await response.json());
+  if (!response.ok) return { origin: null, desktopVersion: null };
+  const body: unknown = await response.json();
+  return { origin: readHomeOrigin(body), desktopVersion: readDesktopVersion(body) };
+}
+
+function readDesktopVersion(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entry = (value as Record<string, unknown>).version;
+  return typeof entry === "string" && entry.length > 0 ? entry : null;
 }
 
 function readHomeOrigin(value: unknown): string | null {

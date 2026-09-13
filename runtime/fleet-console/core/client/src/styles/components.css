@@ -14515,38 +14515,41 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .command-band-system-menu svg { width: 13px; height: 13px; }
 .command-band-system-menu-divider { height: 1px; margin: 4px 6px; background: var(--surface-rim); }
 
-/* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */
-.command-band-update {
-  padding: 3px 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-}
-
-/* 확인을 기다리는 한 순간만 신호 채널로 발화한다 — 사용자가 답해야 진행되는 상태이기 때문이다. */
-.command-band-update--warn { border-color: color-mix(in oklch, var(--warn) 55%, transparent); background: color-mix(in oklch, var(--warn) 14%, transparent); color: var(--warn-ink); }
-.command-band-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn-ink); }
-.command-band-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--text-tertiary); }
-.command-band-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
-.command-band-update:disabled { cursor: default; opacity: 0.75; }
-.command-band-system-menu .command-band-update { width: calc(100% - 12px); margin: 2px 6px; text-align: left; }
-/* 최신 버전은 툴팁이 아니라 행이 말한다 — 호버는 읽기의 조건이 될 수 없다.
-   버전 델타는 짧아 한 줄 알약에 들어가지만, 확인을 묻는 문장은 그렇지 않다. 한 줄을
-   강요하면 메뉴 밖으로 흘러나가 잘린다 — 그래서 묻는 행만 두 줄로 선다. */
-.command-band-update { flex-wrap: wrap; }
-.command-band-update-detail { margin-left: auto; padding-left: 10px; font-weight: var(--weight-regular); color: var(--text-tertiary); white-space: nowrap; }
-
-.command-band-update--warn {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+/* 실행 중인 버전 행 — 글리프 · 이름 · v버전 · (칩). 다른 메뉴 행과 같은 높이·글꼴이고, 칩이 곧 상태다:
+   비어 있으면 최신, positive 번호면 새 버전. 칩이 있을 때만 행이 버튼(Console)이나 링크(Desktop)이며
+   hover가 켜진다. 정적 행은 div라 hover 규칙에 걸리지 않는다. */
+.command-band-system-menu .command-band-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
   border-radius: var(--radius-xs);
-  white-space: normal;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
 }
-.command-band-update--warn .command-band-update-detail { margin-left: 0; padding-left: 0; white-space: normal; }
+.command-band-system-menu a.command-band-version-row:hover,
+.command-band-system-menu a.command-band-version-row:focus-visible { background: var(--surface-pillar); color: var(--text-primary); }
+.command-band-version-row--static { cursor: default; }
+.command-band-version-row-version { color: var(--text-primary); }
+.command-band-version-row-chip { margin-left: auto; padding-left: 10px; font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: 0.02em; color: var(--positive); font-variant-numeric: tabular-nums; }
+/* 신호 채널은 진행(live)·차단(blocked)·실패(error)만 — 대기 중 새 버전은 positive 번호 하나로 충분하다. */
+.command-band-version-row--live .command-band-version-row-chip { color: var(--warn-ink); }
+.command-band-version-row--blocked .command-band-version-row-chip { color: var(--text-tertiary); font-weight: var(--weight-regular); }
+.command-band-version-row--error .command-band-version-row-chip { color: var(--coral-ink); }
+.command-band-system-menu .command-band-version-row:disabled { cursor: default; }
+.command-band-system-menu .command-band-version-row:disabled:hover { background: transparent; color: var(--text-secondary); }
+
+/* 확인을 기다리는 한 순간만 신호 채널로 발화한다. 묻는 문장은 한 줄 칩에 들어가지 않으므로
+   이 상태만 질문이 이름·버전 자리에 서고, 답 문장이 아래로 내려선다. */
+.command-band-system-menu .command-band-version-row--warn { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 2px; white-space: normal; color: var(--warn-ink); }
+.command-band-version-row--warn svg { align-self: start; margin-top: 2px; }
+.command-band-version-row-detail { grid-column: 2; font-size: var(--t-2xs); font-weight: var(--weight-regular); color: var(--text-tertiary); }
 
 .command-band-github { display: flex; align-items: center; padding: 2px 6px; }
 
@@ -14582,8 +14585,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background: var(--surface-glass);
   color: var(--text-secondary);
 }
-
-.command-band-github-version { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
 .keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); outline: none; }
