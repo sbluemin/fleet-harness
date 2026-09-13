@@ -54,12 +54,16 @@ export function chipWorkspace(workspace: OperationWorkspace | null): OperationWo
 }
 
 /**
- * 상세 카드의 "위치" 한 줄 — 지금 어디인지만 말한다. 글리프도, Theater 루트·밖 같은 해설도 붙이지
- * 않는다. 그 판단은 카드를 여는 사람이 이미 하고 있고, 여기서 필요한 것은 사실뿐이다.
+ * 상세 카드의 "위치" 한 줄 — 세션이 지금 서 있는 자리다. 브랜치는 칩이 이미 싣고 있으므로 여기서는
+ * 말하지 않는다. Theater 이름을 뿌리로 삼아 그 아래 경로를 잇고, 루트면 Theater 이름만 남는다.
+ * Theater 밖으로 나간 세션은 상대 경로가 없으므로 마지막 마디만 `…/`에 달아 그 사실을 형태로 남긴다.
+ * 글리프도 해설 문구도 붙이지 않으며, 절대 경로는 여기까지 오지 않는다.
  */
-export function locationLine(workspace: OperationWorkspace | null): string | null {
+export function locationLine(workspace: OperationWorkspace | null, theaterLabel: string | null): string | null {
   if (!workspace) return null;
-  return [workspace.branch, workspace.folder].filter(Boolean).join(" · ") || null;
+  if (workspace.outside) return workspace.folder ? `…/${workspace.folder}` : null;
+  if (!workspace.folder) return theaterLabel;
+  return theaterLabel ? `${theaterLabel}/${workspace.folder}` : workspace.folder;
 }
 
 export function describeWorkspace(t: ReturnType<typeof useT>, workspace: OperationWorkspace): string {

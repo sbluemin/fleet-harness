@@ -8,6 +8,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
 import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../components/operation-workspace-context.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
+import { useTheaterLabel } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
@@ -126,6 +127,8 @@ export function OperationsSideBarChip({
   const [detailAnchor, setDetailAnchor] = useState<DOMRect | null>(null);
   const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailId = useId();
+  // 카드의 「위치」는 Theater 이름을 뿌리로 삼는다 — 전역 선별 목록이 넘겨 주는 pill 이름이 없어도 스스로 찾는다.
+  const detailTheaterLabel = useTheaterLabel(operation.theaterId);
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
@@ -406,7 +409,10 @@ export function OperationsSideBarChip({
           id={detailId}
           anchor={detailAnchor}
           activity={markVisual}
-          workspace={context}
+          /* 칩 줄과 달리 카드는 걸러지지 않은 투영을 받는다 — git이 아닌 Theater의 루트는 브랜치도
+             폴더도 없어 칩에는 낼 것이 없지만, 세션이 선 자리는 여전히 그 Theater다. */
+          workspace={session?.workspace ?? null}
+          theaterLabel={detailTheaterLabel}
           createdAt={session?.createdAt ?? operation.ts.createdAt}
         />
       ) : null}
