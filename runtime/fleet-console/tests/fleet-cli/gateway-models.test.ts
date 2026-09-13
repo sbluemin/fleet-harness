@@ -73,11 +73,6 @@ describe("fleet-console-use gateway roster", () => {
       await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
       expect(executions).toBe(1);
       expect((await call("console_send", args)).id).toBe(receipt.id);
-      const conflicting = control.request({ kind: "operation", operationId: "op-a" }, "request-b", { kind: "send", operationId: "op-a", text: "Check build" });
-      activity = "running";
-      await vi.waitFor(() => expect(control.getAction(conflicting.id)?.error).toBe("conflict"));
-      expect(executions).toBe(1);
-      activity = "idle";
       const policy = control.automation({ kind: "operation", operationId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       time += 300_001;
       await control.tick();

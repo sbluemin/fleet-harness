@@ -1173,10 +1173,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const deliveredText = composeLaunchPromptWithAttachments(sanitized, attachmentPaths) as string;
     if (onSettled) {
-      const info = observability.getTerminalSessionInfo(sessionId);
-      if (consoleTerminal.busy(sessionId) || info?.attentionPending || info?.turnState === "running" || info?.modelActivity === "working" || info?.backgroundPending) throw new ConsoleControlError("session_busy");
+      // 실행 중이어도 사람 경로와 같이 큐잉한다. 막는 것은 권한 프롬프트 대기 하나뿐이다 — 본문 끝의
+      // Enter가 대기 중인 선택지를 확정해 버린다. 이미 귀속 대기 중인 console 턴이 있으면 이 요청의
+      // Stop을 가려낼 수 없으므로 전달은 하되 결과는 unknown으로 정산한다.
+      if (observability.getTerminalSessionInfo(sessionId)?.attentionPending) throw new ConsoleControlError("session_awaiting_input");
       terminalTurnReserved = consoleTerminal.begin(sessionId, deliveredText, false, onSettled);
-      if (!terminalTurnReserved) throw new ConsoleControlError("session_busy");
+      if (!terminalTurnReserved) onSettled("unknown");
     }
     const deliver = (leadChunks: readonly PtyInputChunk[] = []) => {
       const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
@@ -1196,6 +1198,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // awaiting 재검사: 덱은 pick 시점만 가드한다 — 작성하는 사이 CLI가 권한 프롬프트로 전환하면
       // 전달 끝의 줄 종결자가 대기 중인 선택지를 그대로 확정해 버린다. 직접 POST 호출도 여기서 닫힌다.
       if (observability.getTerminalSessionInfo(sessionId)?.attentionPending === true) {
+        if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
         settleAttachments(false);
         reply(409, { error: "session_awaiting_input" });
         return true;

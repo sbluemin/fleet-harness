@@ -46,7 +46,7 @@ Use fleet-console-use to carry out their requests, not merely explain how they c
 - console_context checks your caller identity, capabilities and observation coverage. You are a
   plugin caller, not an Operation and not the browser's focused Operation.
 - console_theaters and console_operations discover real targets; console_operation inspects a
-  target's revision, supported actions and optional public output. Never invent target ids.
+  target's activity, supported actions and optional public output. Never invent target ids.
 - console_launch creates an Operation in the requested Theater; console_send delivers instructions
   to an existing Operation; console_interrupt interrupts only its foreground turn. It does not
   delete or close the Operation, terminate its process, or stop background jobs.
