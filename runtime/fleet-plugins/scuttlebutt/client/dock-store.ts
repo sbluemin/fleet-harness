@@ -19,9 +19,15 @@ export interface DockSnapshot {
   readonly busy: readonly AdmiralId[];
   /** 새를 밴드로 끌고 오는 중 — 글리프 옆에 내려놓을 자리를 보인다. */
   readonly dropArmed: boolean;
+  /**
+   * 글리프가 설 커맨드 밴드 슬롯이 마운트돼 있는가. 모바일 배치는 밴드를 그리지 않으므로 거기서는
+   * 저장된 「상단 바에 두기」가 있어도 새를 캔버스에 둔다 — 글리프도 떼어내기도 없는 곳에 부관을
+   * 숨기면 되찾을 길이 없다.
+   */
+  readonly host: boolean;
 }
 
-const EMPTY: DockSnapshot = { open: null, unread: [], busy: [], dropArmed: false };
+const EMPTY: DockSnapshot = { open: null, unread: [], busy: [], dropArmed: false, host: false };
 let snapshot: DockSnapshot = EMPTY;
 const listeners = new Set<() => void>();
 const glyphs = new Map<AdmiralId, HTMLButtonElement>();
@@ -75,6 +81,7 @@ export function activateDock(admiral: AdmiralId): void {
 function sameSnapshot(left: DockSnapshot, right: DockSnapshot): boolean {
   return left.open === right.open
     && left.dropArmed === right.dropArmed
+    && left.host === right.host
     && sameList(left.unread, right.unread)
     && sameList(left.busy, right.busy);
 }

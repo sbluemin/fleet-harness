@@ -2,7 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
-import { activateDock, readDockSnapshot, registerDockGlyph, subscribeDock } from "./dock-store.js";
+import { activateDock, readDockSnapshot, registerDockGlyph, subscribeDock, writeDock } from "./dock-store.js";
 import { QUAKER_HEAD_VIEW_BOX, QuakerFigure } from "./quaker-figure.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { getScuttlebuttSettings, subscribeScuttlebuttSettings } from "./settings-store.js";
@@ -23,6 +23,11 @@ export function DockGlyphs({ locale }: { readonly locale?: ConsoleLocale }) {
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const dock = useStoreSnapshot(subscribeDock, readDockSnapshot);
   const t = getT(locale);
+  // 이 컴포넌트가 서 있다는 것이 곧 슬롯이 있다는 뜻이다 — 아무것도 그리지 않는 동안에도.
+  React.useEffect(() => {
+    writeDock({ host: true });
+    return () => writeDock({ host: false });
+  }, []);
   const docked = MORPHS.filter((morph) => settings[morph] && settings.docked[morph]);
   if (docked.length === 0 && !dock.dropArmed) return null;
   return (

@@ -18,6 +18,7 @@ export function ChatCard({
   mascot,
   moored,
   docked,
+  canDock,
   onDock,
   onUndock,
   onAsk,
@@ -42,6 +43,8 @@ export function ChatCard({
    * 우측 정렬 480px — 새의 위치와 무관하게 늘 같은 자리에 답이 선다.
    */
   readonly docked: boolean;
+  /** 글리프가 설 밴드 슬롯이 있는가. 없으면(모바일 배치) 「상단 바에 두기」를 내지 않는다. */
+  readonly canDock: boolean;
   readonly onDock: () => void;
   readonly onUndock: () => void;
   readonly onAsk: (text: string) => void;
@@ -214,13 +217,15 @@ export function ChatCard({
               pressed={moored}
               onClick={onToggleMoored}
             />
-            <HeadAction
-              id={`scuttlebutt-dock-${admiral}`}
-              label={t("chat.dock")}
-              hint={t("chat.dock.hint")}
-              icon={<DockIcon />}
-              onClick={onDock}
-            />
+            {canDock ? (
+              <HeadAction
+                id={`scuttlebutt-dock-${admiral}`}
+                label={t("chat.dock")}
+                hint={t("chat.dock.hint")}
+                icon={<DockIcon />}
+                onClick={onDock}
+              />
+            ) : null}
           </>
         )}
         {state.entries.length > 0 ? (
