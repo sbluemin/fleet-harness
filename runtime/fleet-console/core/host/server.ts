@@ -71,7 +71,7 @@ import { TheaterRegistry } from "./theaters/theater-domain.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theaters/theater-domain.js";
 import { createConsoleUpdateApplyService, isManagedRuntimePackageRoot, type ConsoleUpdateApplyService } from "./update-apply.js";
 import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
-import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
+import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService, type ConsoleUpdateStatus } from "./update-check.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -251,6 +251,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "POST",
     path: "/api/v1/updates/apply",
     summary: "Request console update application.",
+    category: "Update",
+    gate: "origin-strict",
+    transport: "http",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/updates/check",
+    summary: "Re-check the registry for a newer console version now, bypassing the cached result.",
     category: "Update",
     gate: "origin-strict",
     transport: "http",
@@ -1137,6 +1145,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/updates/apply") {
       runAsyncHandler(handleUpdateApply(req, res), res);
+      return;
+    }
+    if (pathname === "/api/v1/updates/check") {
+      runAsyncHandler(handleUpdateCheck(req, res), res);
       return;
     }
     res.writeHead(404);
@@ -2034,6 +2046,31 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       progress = IDLE_CONSOLE_UPDATE_PROGRESS;
     }
     writeJson(res, 200, progress);
+  }
+
+  /**
+   * 사용자가 "지금 확인"을 눌렀다. 캐시 TTL을 기다리게 하지 않고 레지스트리를 한 번 다시 묻는다.
+   * 결과가 달라지면 기존 변경 리스너가 관찰자들에게 알리고, 같으면 이 응답만이 답이다 —
+   * 그래서 응답에 상태를 그대로 싣는다.
+   */
+  async function handleUpdateCheck(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    // 조회 실패를 "최신"으로 답하면 안 된다 — 사용자는 방금 확인을 눌렀고, 답은 셋 중 하나다: 새 버전, 최신, 모름.
+    let status: ConsoleUpdateStatus;
+    try {
+      status = updateCheck.check ? await updateCheck.check() : await updateCheck.refresh({ force: true });
+    } catch {
+      writeJson(res, 503, { error: "registry_unreachable" });
+      return;
+    }
+    writeJson(res, 200, { updateAvailable: status.updateAvailable, ...(status.latestVersion ? { latestVersion: status.latestVersion } : {}) });
   }
 
   async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

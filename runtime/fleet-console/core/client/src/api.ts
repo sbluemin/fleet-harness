@@ -114,6 +114,17 @@ export interface ApplyConsoleUpdateOptions {
   readonly signal?: AbortSignal;
 }
 
+/** 캐시를 건너뛰고 레지스트리를 지금 다시 묻는다. 응답이 곧 최신 상태다. */
+export async function checkConsoleUpdate(signal?: AbortSignal): Promise<{ readonly updateAvailable: boolean; readonly latestVersion: string | null }> {
+  const response = await fetch("/api/v1/updates/check", { method: "POST", ...(signal ? { signal } : {}) });
+  await assertOk(response);
+  const payload = await response.json() as { readonly updateAvailable?: unknown; readonly latestVersion?: unknown };
+  return {
+    updateAvailable: payload.updateAvailable === true,
+    latestVersion: typeof payload.latestVersion === "string" ? payload.latestVersion : null,
+  };
+}
+
 export async function applyConsoleUpdate(options: ApplyConsoleUpdateOptions = {}): Promise<ConsoleUpdateApplyAcceptedResponse> {
   const body = options.acknowledgeHostRestart === true ? JSON.stringify({ acknowledgeHostRestart: true }) : undefined;
   const response = await fetch("/api/v1/updates/apply", {
