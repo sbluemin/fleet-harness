@@ -250,11 +250,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     onConfirmBack: () => { confirmAction = null; renderDock(); },
     onApplyConfirm: () => { void apply(); },
     onDiscardConfirm: () => { void discard(); },
-    onSuggest: (text) => {
-      promptText = text;
-      renderDock();
-      dockZone.querySelector<HTMLTextAreaElement>(".cowork-composer-input")?.focus();
-    },
     onRetry: () => {
       if (!lastInstruction) return;
       promptText = lastInstruction.text;

@@ -2900,7 +2900,7 @@ button.chip:focus-visible {
 .cowork-x { border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer; font-size: var(--t-base); line-height: 1; padding: 0 var(--space-1); }
 .cowork-x:hover { color: var(--text-primary); }
 .cowork-pill:focus-visible, .cowork-ghost:focus-visible, .cowork-solid:focus-visible, .cowork-x:focus-visible, .cowork-chip:focus-visible,
-.cowork-send:focus-visible, .cowork-composer-settings:focus-visible, .cowork-hero-suggestion:focus-visible, .cowork-segments button:focus-visible,
+.cowork-send:focus-visible, .cowork-composer-settings:focus-visible, .cowork-segments button:focus-visible,
 .cowork-sys-action:focus-visible, .cowork-sys-dismiss:focus-visible, .cowork-fold-summary:focus-visible,
 .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible {
   outline: 2px solid var(--brass);
@@ -3062,23 +3062,6 @@ button.chip:focus-visible {
 .cowork-thread-scroll.is-folded { display: none; }
 
 /* 빈 상태 — Analyst hero와 같은 짜임. */
-.cowork-hero { display: grid; gap: var(--space-1); padding: var(--space-2) 0 var(--space-1); }
-.cowork-hero-sigil { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
-.cowork-hero-title { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-primary); letter-spacing: -0.01em; }
-.cowork-hero-body { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; max-width: 60ch; }
-.cowork-hero-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-1); }
-.cowork-hero-suggestion {
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  padding: 4px 10px;
-  transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
-}
-.cowork-hero-suggestion:hover { border-color: var(--brass); color: var(--text-primary); }
 
 /* ── 스레드 — 단일 열 턴. 스파인·노드는 agent-chat과 함께 퇴역했다: 상태는 접힘 줄·결말 문구가 말한다. ── */
 .cowork-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
@@ -3246,15 +3229,12 @@ button.chip:focus-visible {
 .cowork-composer-frame:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
 /* 상자 전체가 입력의 클릭 표적이다 — 빈 상태의 히어로 위를 눌러도 텍스트 커서로 읽힌다. */
 .cowork-composer-frame { cursor: text; }
-.cowork-composer-frame button, .cowork-composer-frame .cowork-hero-suggestion { cursor: pointer; }
+.cowork-composer-frame button { cursor: pointer; }
 .cowork-composer-frame.is-working { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)); }
 /* 한 줄 컴포저 — 앞 슬롯(댓글 칩) · 입력 · 뒤 동작(전송/중지)이 한 면 안에 앉는다. 입력이 자라도
    슬롯과 동작은 아래 변에 남는다. 휴지 높이 44px(패딩 6 + 버튼 32 + 6). */
 .cowork-composer-field { display: flex; align-items: flex-end; gap: var(--space-2); min-height: 44px; padding: 6px 6px 6px var(--space-3); }
 .cowork-composer-lead { flex: none; margin-bottom: 3px; }
-/* 빈 상태 히어로는 입력 위에 선다 — 겹치지 않으므로 입력은 한 줄 높이를 그대로 지킨다. */
-.cowork-composer-frame.is-onboarding .cowork-hero { padding: var(--space-3) var(--space-4) 0; }
-.cowork-composer-frame.is-onboarding .cowork-hero-sigil { display: none; }
 .cowork-composer-input { height: 100% !important; max-height: none; }
 .cowork-composer-input {
   width: 100%;
@@ -3345,7 +3325,7 @@ button.chip:focus-visible {
   .cowork-pill, .cowork-composer, .cowork-dock-zone.is-open, .cowork-orbit, .cowork-thinking-dots > span, .cowork-answer-body::after { animation: none !important; }
   .cowork-live-text { background-image: none; color: var(--text-secondary); animation: none; }
   .cowork-thinking-dots > span { opacity: 1; }
-  .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-card, .cowork-composer-frame, .cowork-fold-chev, .cowork-hero-suggestion { transition: none; }
+  .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-card, .cowork-composer-frame, .cowork-fold-chev { transition: none; }
   .cowork-host .is-cowork-running { transition: none; }
   .cowork-send.is-armed:hover { transform: none; }
 }

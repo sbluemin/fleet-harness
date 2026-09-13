@@ -80,7 +80,6 @@ export interface CoworkThreadActions {
   readonly onConfirmBack: () => void;
   readonly onApplyConfirm: () => void;
   readonly onDiscardConfirm: () => void;
-  readonly onSuggest: (text: string) => void;
   readonly onRetry: () => void;
   readonly onDismissNotice: () => void;
 }
@@ -182,27 +181,6 @@ export function CoworkThread({ state, actions }: { readonly state: CoworkThreadS
 
 // ── 빈 상태 ─────────────────────────────────────────────────────────────────
 
-function EmptyHero({ onSuggest }: { readonly onSuggest: (text: string) => void }) {
-  const t = useT();
-  const suggestions = [
-    t("codex.cowork.suggestStale"),
-    t("codex.cowork.suggestLinks"),
-    t("codex.cowork.suggestCode"),
-    t("codex.cowork.suggestSummary"),
-  ];
-  return (
-    <div className="cowork-hero">
-      <span className="cowork-hero-sigil" aria-hidden="true">✳</span>
-      <h2 className="cowork-hero-title">{t("codex.cowork.emptyTitle")}</h2>
-      <p className="cowork-hero-body">{t("codex.cowork.emptyBody")}</p>
-      <div className="cowork-hero-suggestions">
-        {suggestions.map((text) => (
-          <button key={text} type="button" className="cowork-hero-suggestion" onClick={() => onSuggest(text)}>{text}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ── 턴 ──────────────────────────────────────────────────────────────────────
 
@@ -367,8 +345,6 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
   const t = useT();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingComments = state.annotations.filter((card) => card.status !== "done").length;
-  const showOnboarding = state.promptText.length === 0 && state.turns.length === 0
-    && state.annotations.length === 0 && !state.running && !state.dirty;
   // 도는 동안에도 입력은 열려 있다 — Esc 중지의 초점 자리이고, 다음 지시를 미리 써 둘 수 있다.
   // 전송만 canSend가 막는다.
   const placeholder = state.running
@@ -407,10 +383,9 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
         </span>
         <button type="button" className="cowork-composer-settings" onClick={actions.onOpenSettings}>{t("codex.cowork.changeInSettings")}</button>
       </div>
-      {/* 빈 상태에서는 히어로가 상자 위쪽을 차지한다 — 상자 어디를 눌러도(버튼·제안 칩 제외) 입력이 초점을 받아야
-         "여기에 쓰세요"라는 안내와 실제 초점 자리가 어긋나지 않는다. */}
+      {/* 상자 어디를 눌러도(버튼 제외) 입력이 초점을 받는다 — 상자 자체가 입력의 표적이다. */}
       <div
-        className={`cowork-composer-frame${state.running ? " is-working" : ""}${showOnboarding ? " is-onboarding" : ""}`}
+        className={`cowork-composer-frame${state.running ? " is-working" : ""}`}
         onMouseDown={(event) => {
           const target = event.target as HTMLElement;
           if (target.closest("button, textarea, a")) return;
@@ -418,7 +393,6 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
           inputRef.current?.focus();
         }}
       >
-        {showOnboarding ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
         {/* 한 줄 컴포저 — 앞 슬롯(댓글 칩, 있을 때만) · 입력 · 뒤 동작(전송/중지)이 한 면 안에 앉는다.
            입력이 여러 줄로 자라도 슬롯과 동작은 아래 변에 남는다(align-items: flex-end). */}
         <ComposerField className="cowork-composer-field">
