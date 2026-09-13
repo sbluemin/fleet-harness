@@ -19,7 +19,6 @@ import { UpdateCurtain } from "./components/update-curtain.js";
 import { claimTheaterBootMinimization } from "./boot-minimization-session.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
-import { LiquidGlassWelcome } from "./components/liquid-glass-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { PersistentPluginComponents } from "./persistent-components.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
@@ -507,7 +506,6 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
-        <LiquidGlassWelcome state={state} />
         <CommissioningOverlay state={state} />
         <FeatureTourOverlay />
         <ControlCurtain />

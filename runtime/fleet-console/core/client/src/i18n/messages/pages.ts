@@ -402,12 +402,6 @@ export const pagesEn = {
   "shortcuts.map.clearFocus": "Clear panel focus on the empty canvas",
 
   // whatsnew tabs (catalog labels owned by pages; chrome owns modal chrome)
-  "glassWelcome.title": "A new liquid glass finish",
-  "glassWelcome.body": "Floating menus, popups, and the console chrome now carry a translucent, blurred glass material on the dark themes.",
-  "glassWelcome.revert": "Prefer the classic solid look? Open Settings \u2192 Theme and uncheck \u201cLiquid glass\u201d anytime. The light theme always stays solid.",
-  "glassWelcome.confirm": "Got it",
-  "glassWelcome.dismiss": "Dismiss the liquid glass introduction",
-  "glassWelcome.aria": "Liquid glass introduction",
   "whatsnew.tab.overview": "Overview",
   "whatsnew.tab.allUpdates": "All updates",
   "whatsnew.tab.otherUpdates": "Other updates",
@@ -873,12 +867,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "shortcuts.map.doubleClick": "제목 표시줄에서 Operation 포커스, 이름에서 이름 변경",
   "shortcuts.map.clearFocus": "빈 캔버스에서 패널 포커스 해제",
 
-  "glassWelcome.title": "새로운 리퀴드 글래스 마감",
-  "glassWelcome.body": "떠 있는 메뉴·팝업과 콘솔 크롬에 다크 테마에서 반투명 블러 유리 질감이 적용됩니다.",
-  "glassWelcome.revert": "기존의 불투명한 모습이 좋다면 언제든 설정 \u2192 테마에서 \u201c리퀴드 글래스\u201d 체크를 해제하세요. 라이트 테마는 늘 불투명합니다.",
-  "glassWelcome.confirm": "확인",
-  "glassWelcome.dismiss": "리퀴드 글래스 소개 닫기",
-  "glassWelcome.aria": "리퀴드 글래스 소개",
   "whatsnew.tab.overview": "개요",
   "whatsnew.tab.allUpdates": "전체 업데이트",
   "whatsnew.tab.otherUpdates": "기타 업데이트",
