@@ -493,7 +493,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.computerUse.progressLabel": "{seconds}초 경과",
   "settings.computerUse.details": "상세 정보",
   "settings.computerUse.missingLabel": "런타임 미설치",
-  "settings.computerUse.missing": "macOS용 ChatGPT/Codex 앱에서 Computer Use 설정을 완료하세요. 단독 CLI만으로는 사용할 수 없습니다.",
+  "settings.computerUse.missing": "macOS용 ChatGPT/Codex 앱을 설치하고 Computer Use 설정을 완료하세요. 단독 CLI만으로는 사용할 수 없습니다.",
   "settings.computerUse.cleanupWarning": "Fleet broker는 종료됐지만 native 캡처 정리는 확인되지 않았습니다. macOS에 공유 표시가 남으면 시스템 공유 제어에서 중단하세요. 옵트인이 켜져 있으면 다음 사용 시 다시 연결됩니다.",
   "settings.computerUse.help": "에이전트가 Mac 앱을 사용합니다. 로컬 ChatGPT/Codex의 Computer Use 설정과 Operation별 허용이 필요합니다.",
   "settings.computerUse.notice": "앱 접근은 Fleet의 추가 확인 없이 실행되며, 앱 목록·텍스트·스크린샷이 모델 제공자에게 전달될 수 있습니다.",
