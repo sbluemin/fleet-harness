@@ -407,7 +407,17 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
         </span>
         <button type="button" className="cowork-composer-settings" onClick={actions.onOpenSettings}>{t("codex.cowork.changeInSettings")}</button>
       </div>
-      <div className={`cowork-composer-frame${state.running ? " is-working" : ""}${showOnboarding ? " is-onboarding" : ""}`}>
+      {/* 빈 상태에서는 히어로가 상자 위쪽을 차지한다 — 상자 어디를 눌러도(버튼·제안 칩 제외) 입력이 초점을 받아야
+         "여기에 쓰세요"라는 안내와 실제 초점 자리가 어긋나지 않는다. */}
+      <div
+        className={`cowork-composer-frame${state.running ? " is-working" : ""}${showOnboarding ? " is-onboarding" : ""}`}
+        onMouseDown={(event) => {
+          const target = event.target as HTMLElement;
+          if (target.closest("button, textarea, a")) return;
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
         {showOnboarding ? <EmptyHero onSuggest={actions.onSuggest} /> : null}
         {/* 한 줄 컴포저 — 앞 슬롯(댓글 칩, 있을 때만) · 입력 · 뒤 동작(전송/중지)이 한 면 안에 앉는다.
            입력이 여러 줄로 자라도 슬롯과 동작은 아래 변에 남는다(align-items: flex-end). */}
@@ -430,7 +440,7 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
             name="prompt"
             rows={1}
             value={state.promptText}
-            placeholder={showOnboarding ? undefined : placeholder}
+            placeholder={placeholder}
             aria-label={t("codex.cowork.instructionAria")}
             onChange={(event) => actions.onPromptChange(event.target.value)}
             onKeyDown={onKeyDown}

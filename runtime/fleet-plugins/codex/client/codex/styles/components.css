@@ -3244,6 +3244,9 @@ button.chip:focus-visible {
   transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
 }
 .cowork-composer-frame:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
+/* 상자 전체가 입력의 클릭 표적이다 — 빈 상태의 히어로 위를 눌러도 텍스트 커서로 읽힌다. */
+.cowork-composer-frame { cursor: text; }
+.cowork-composer-frame button, .cowork-composer-frame .cowork-hero-suggestion { cursor: pointer; }
 .cowork-composer-frame.is-working { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)); }
 /* 한 줄 컴포저 — 앞 슬롯(댓글 칩) · 입력 · 뒤 동작(전송/중지)이 한 면 안에 앉는다. 입력이 자라도
    슬롯과 동작은 아래 변에 남는다. 휴지 높이 44px(패딩 6 + 버튼 32 + 6). */
