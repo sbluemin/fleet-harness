@@ -16,6 +16,16 @@ export type DockedMap = Record<ScuttlebuttAideId, boolean>;
 /** 부관별 렌더 폭(px). 범위와 격자는 roaming.ts 가 소유한다. */
 export type SizeMap = Record<ScuttlebuttAideId, number>;
 
+/**
+ * 부관별 AI 확장 허용. Operation의 콘솔 사용·컴퓨터 사용 스위치와 같은 정책이다 — 기본은 전부 꺼짐,
+ * 켜고 끄는 것은 부관 자신의 ··· 메뉴에서 하고, 서버는 호출마다 이 값을 다시 읽는다.
+ */
+export interface AideGrants {
+  readonly consoleUse: boolean;
+  readonly computerUse: boolean;
+}
+export type GrantMap = Record<ScuttlebuttAideId, AideGrants>;
+
 export type AideEffort = "low" | "medium" | "high";
 export const AIDE_EFFORTS: readonly AideEffort[] = ["low", "medium", "high"];
 export const DEFAULT_AIDE_MODEL = "sonnet";
@@ -35,6 +45,7 @@ export interface ScuttlebuttSettings {
    */
   readonly docked: DockedMap;
   readonly sizes: SizeMap;
+  readonly grants: GrantMap;
   /** 부관단 공통 모델·강도. 실험 설정의 모델 좌석과 같은 id 규약이다. */
   readonly model: string;
   readonly effort: AideEffort;
@@ -54,6 +65,8 @@ const DEFAULT_SIZES: SizeMap = Object.freeze({
   bori: DEFAULT_BIRD_WIDTH,
   dori: DEFAULT_BIRD_WIDTH,
 });
+export const NO_GRANTS: AideGrants = Object.freeze({ consoleUse: false, computerUse: false });
+const DEFAULT_GRANTS: GrantMap = Object.freeze({ tori: NO_GRANTS, bori: NO_GRANTS, dori: NO_GRANTS });
 
 // 실험 기능이라 아무것도 켜지 않은 채로 출발한다 — 상주하는 마스코트는 스스로 골라 들이는 것이다.
 const DEFAULT_SETTINGS: ScuttlebuttSettings = {
@@ -64,6 +77,7 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   stayPut: DEFAULT_STAY_PUT,
   docked: DEFAULT_DOCKED,
   sizes: DEFAULT_SIZES,
+  grants: DEFAULT_GRANTS,
   model: DEFAULT_AIDE_MODEL,
   effort: DEFAULT_AIDE_EFFORT,
   introduced: false,
@@ -151,6 +165,12 @@ export async function writeAideStayPut(
   }));
 }
 
+export async function writeAideGrants(admiral: ScuttlebuttAideId, patch: Partial<AideGrants>): Promise<void> {
+  await writeScuttlebuttSettings((current) => ({
+    grants: { ...current.grants, [admiral]: { ...current.grants[admiral], ...patch } },
+  }));
+}
+
 export async function writeAideDocked(admiral: ScuttlebuttAideId, docked: boolean): Promise<void> {
   await writeScuttlebuttSettings((current) => ({
     docked: { ...current.docked, [admiral]: docked },
@@ -167,6 +187,7 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     stayPut: parseStayPutMap(value.stayPut),
     docked: parseDockedMap(value.docked),
     sizes: parseSizeMap(value.sizes),
+    grants: parseGrantMap(value.grants),
     model: typeof value.model === "string" && MODEL_ID.test(value.model) ? value.model : DEFAULT_AIDE_MODEL,
     effort: AIDE_EFFORTS.includes(value.effort as AideEffort) ? value.effort as AideEffort : DEFAULT_AIDE_EFFORT,
     introduced: value.introduced === true,
@@ -186,6 +207,18 @@ function parseSizeMap(value: unknown): SizeMap {
     bori: clampBirdWidth(rec.bori),
     dori: clampBirdWidth(rec.dori),
   };
+}
+
+/** 허용은 명시적 `true`만 켜짐이다 — 손으로 고친 파일의 다른 값은 전부 꺼짐으로 읽는다. */
+function parseGrantMap(value: unknown): GrantMap {
+  if (!value || typeof value !== "object") return DEFAULT_GRANTS;
+  const rec = value as Record<string, unknown>;
+  const one = (entry: unknown): AideGrants => {
+    if (!entry || typeof entry !== "object") return NO_GRANTS;
+    const grant = entry as Record<string, unknown>;
+    return { consoleUse: grant.consoleUse === true, computerUse: grant.computerUse === true };
+  };
+  return { tori: one(rec.tori), bori: one(rec.bori), dori: one(rec.dori) };
 }
 
 function parseDockedMap(value: unknown): DockedMap {

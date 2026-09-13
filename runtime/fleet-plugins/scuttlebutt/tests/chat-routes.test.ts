@@ -51,9 +51,9 @@ describe("session controls", () => {
   it("passes the chosen model, effort and locale to the session and rejects an unsafe model id", async () => {
     // 모델 id는 `--model`에 그대로 들어간다 — 모양이 어긋난 값은 자식에게 닿기 전에 거절한다.
     const created: unknown[] = [];
-    const harness = createHarness(true, { admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
+    const harness = createHarness(true, { admiral: "tori", model: "haiku", effort: "high", locale: "ko", grants: { consoleUse: true, computerUse: true } });
     let consoleUse = true;
-    Object.assign(harness.ctx.host, { experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, consoleControl: consoleUse }) } });
+    Object.assign(harness.ctx.host, { experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, consoleControl: consoleUse, computerUse: true }) } });
     registerChatRoutes(harness.ctx, {
       createSession: (options) => {
         created.push(options);
@@ -73,6 +73,18 @@ describe("session controls", () => {
     expect(injected.tools).toEqual(CONSOLE_CONTROL_TOOLS);
     expect(injected).toHaveProperty("allowControl", true);
     expect(injected.enabled()).toBe(true);
+    const computer = (created[0] as { computerUse: { computerUse: { enabled: () => boolean } } }).computerUse.computerUse;
+    expect(computer.enabled()).toBe(true);
+    // 부관 자신의 허용을 거두면 실험이 켜져 있어도 다음 호출부터 거부된다 — 세션을 다시 열지 않는다.
+    // 컴퓨터 사용은 거두는 순간 진행 중 기기 호출까지 끊는다.
+    const session = harness.ctx.host.http.readJsonBody;
+    Object.assign(harness.ctx.host.http, { readJsonBody: async () => ({ consoleUse: false, computerUse: false }) });
+    await harness.handler()({ req: request("POST", { "content-type": "application/json" }) as never, res: response() as never, pathname: "/plugins/scuttlebutt/chat/chat-0/grants" });
+    expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
+    expect(injected.enabled()).toBe(false);
+    expect(computer.enabled()).toBe(false);
+    expect(FakeSession.revoked).toBe(1);
+    Object.assign(harness.ctx.host.http, { readJsonBody: session });
     consoleUse = false;
     expect(injected.enabled()).toBe(false);
     await harness.handler()({ req: request("POST", { "content-type": "application/json" }) as never, res: response() as never, pathname: "/plugins/scuttlebutt/chat/start" });
@@ -193,6 +205,8 @@ function response(): {
 }
 
 class FakeSession implements ChatSessionLike {
+  static revoked = 0;
+  revokeComputerUse(): void { FakeSession.revoked += 1; }
   onEvent?: (event: ChatEvent) => void;
   cancelled = 0;
   async start(): Promise<void> {}

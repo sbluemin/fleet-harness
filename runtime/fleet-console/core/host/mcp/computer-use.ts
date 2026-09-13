@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createMcpToolRegistry, createMcpToolSnapshotStore, createServedMcpEndpoint, type McpHttpTransport } from "@dotobokuri/core-agent";
+import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@dotobokuri/core-agent/claude";
 import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import type { OperationNode } from "@fleet-console/sdk/operations";
@@ -34,17 +35,19 @@ export function operationIdFromSessionLabel(label: string | undefined): string {
   return value.startsWith("chat:") ? value.slice(5) : value;
 }
 
-type ComputerUseRefusal = "experiment_disabled" | "operation_not_authorized" | "caller_unresolved";
+type ComputerUseRefusal = "experiment_disabled" | "operation_not_authorized" | "plugin_not_authorized" | "caller_unresolved";
 
 const REFUSAL_REMEDY = {
   experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Computer Use"] },
   operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Computer Use"] },
+  plugin_not_authorized: { actor: "user", surface: "caller_menu", path: ["Caller menu", "Computer Use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
 } as const satisfies Record<ComputerUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ComputerUseRefusal, string> = {
   experiment_disabled: "Computer Use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Settings > Experiments > Computer Use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   operation_not_authorized: "This Operation has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  plugin_not_authorized: "You have not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in your own ··· menu, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Operation, so Computer Use can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the computer.",
 };
 
@@ -56,6 +59,10 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
   operation_not_authorized: {
     en: "This Operation is not allowed to use the computer. Turn on Computer Use in this Operation's ··· menu — it applies immediately, with no restart.",
     ko: "이 Operation에 컴퓨터 사용이 허용되지 않았습니다. 이 Operation의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
+  },
+  plugin_not_authorized: {
+    en: "Computer Use is not allowed here. Turn on Computer Use in the ··· menu of the one you are talking to — it applies immediately, with no restart.",
+    ko: "여기에는 컴퓨터 사용이 허용되지 않았습니다. 대화 상대의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   caller_unresolved: {
     en: "This session is not bound to a Console Operation, so Computer Use is unavailable to it.",
@@ -95,9 +102,24 @@ export interface ComputerUseMcpConnection extends AdmiralMcpSession {
   dispose(): Promise<void>;
 }
 
+/** 플러그인 에이전트 세션 하나에 묻어 들어가는 기기 조작 서버 — Operation 신원이 없는 호출자용. */
+export interface ComputerUsePluginConnection {
+  readonly embeddedServer: ClaudeGatewayMcpServer;
+  readonly toolNames: readonly string[];
+  /** 허용을 거둔 순간 — 진행 중 호출을 끊고 잡고 있던 기기를 놓는다. 다음 호출은 `enabled()`가 거부한다. */
+  revoke(): void;
+  dispose(): Promise<void>;
+}
+
+export interface ComputerUsePluginOptions {
+  readonly enabled: () => boolean;
+  readonly language?: () => "en" | "ko" | null;
+}
+
 /** Console 조회 MCP와 도구·토큰·소유권을 공유하지 않는 기기 조작 서버. */
 export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   const connections = new Set<ComputerUseMcpConnection>();
+  const pluginConnections = new Set<ComputerUsePluginConnection>();
   // 진행 중인 도구 호출을 호출자 Operation별로 기억한다 — 허용을 거둘 때 아직 기기를 잡기 전
   // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
   const inFlight = new Map<string, Set<AbortController>>();
@@ -165,6 +187,61 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       return connection;
     },
     /**
+     * Operation이 아닌 호출자(플러그인 에이전트 세션)에게 붙는 서버. HTTP 세션 토큰 대신 세션에
+     * 묻어 들어가는 임베디드 서버이고, 허용은 호출마다 `enabled()`와 실험 스위치를 함께 묻는다 —
+     * 콘솔 사용의 플러그인 연결과 같은 정책이다. 소유자 라벨은 연결마다 유일해 `revoke()`가 자기
+     * 것만 놓는다.
+     */
+    connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection {
+      if (disposed) throw new Error("Computer Use MCP host is disposed");
+      const owner = `${randomUUID()}:plugin`;
+      const controller = new AbortController();
+      const calls = new Set<AbortController>();
+      let closed = false;
+      const language = () => options.language?.() ?? deps.language?.() ?? "en";
+      const tools = deps.service.specs().map((spec) => {
+        const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
+        return defineTool(spec.id, spec.description, schema.shape, async (args) => {
+          if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
+          // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
+          if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
+          if (!options.enabled()) return refuse("plugin_not_authorized", null, language());
+          const parsed = schema.safeParse(args);
+          if (!parsed.success) return { content: [{ type: "text", text: "Computer Use arguments invalid" }], isError: true };
+          const call = new AbortController();
+          calls.add(call);
+          try {
+            const result = await spec.execute(parsed.data, { cwd: "", sessionLabel: owner, signal: AbortSignal.any([call.signal, controller.signal]) });
+            // 호출 중에 허용이 걷혔으면 이미 모은 결과도 내보내지 않는다 — 거부의 의미가 시간에 따라 새면 안 된다.
+            if (!options.enabled()) return refuse("plugin_not_authorized", null, language());
+            return result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean };
+          } finally {
+            calls.delete(call);
+          }
+        });
+      });
+      const embeddedServer = createEmbeddedMcpServer({ name: FLEET_COMPUTER_USE_MCP_SERVER, tools });
+      const revoke = () => {
+        for (const call of calls) call.abort();
+        calls.clear();
+        deps.service.release(owner);
+      };
+      const connection: ComputerUsePluginConnection = {
+        embeddedServer,
+        toolNames: deps.service.specs().map((spec) => spec.id),
+        revoke,
+        dispose: async () => {
+          if (closed) return;
+          closed = true;
+          controller.abort();
+          revoke();
+          pluginConnections.delete(connection);
+        },
+      };
+      pluginConnections.add(connection);
+      return connection;
+    },
+    /**
      * 한 Operation의 허용을 거둘 때 부른다. 그 Operation(터미널·Chat 세션 어느 쪽이든)의 진행 중
      * 호출을 끊고, 기기를 잡고 있으면 즉시 놓는다 — 다음 호출이 거부되는 것만으로는 이미 인가를
      * 통과해 대상을 풀고 있는 호출이나 진행 중인 조작이 멈추지 않는다.
@@ -176,6 +253,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
     async dispose(): Promise<void> {
       disposed = true;
       await Promise.all([...connections].map((connection) => connection.dispose()));
+      await Promise.all([...pluginConnections].map((connection) => connection.dispose()));
       await deps.service.stop();
     },
   };

@@ -107,8 +107,10 @@ ${bearing}
   memory alone.
 - You have no direct filesystem or shell tools. Do not claim you can inspect or edit local
   files yourself. When Console use tools are provided, you can launch and direct Operations
-  for that work and inspect their public results. Without those tools, explain that Console
-  use must be enabled in Experiments and a new aide conversation started.
+  for that work and inspect their public results. If a Console or computer tool refuses a call
+  because you are not allowed, ask the Admiral to allow it in your own ··· menu and wait; do not
+  retry on your own. If no such tools are provided at all, explain that the feature must be
+  turned on in Settings › Experiments and a new aide conversation started.
 - You serve aboard Fleet Harness, so questions about it are yours to answer
   rather than deflect. Its source is public at
   https://github.com/sbluemin/fleet-harness — a multi-LLM orchestration kit whose
@@ -199,6 +201,14 @@ export interface ChatSessionOptions {
     readonly consoleUse: NonNullable<AgentSessionOptions["tools"]>["consoleUse"];
     readonly promptAddendum: string;
   };
+  /**
+   * 컴퓨터 사용을 켠 세션에는 기기 조작 도구가 선다. 허용은 호출마다 `enabled()`가 다시 답한다 —
+   * 이 부관의 ··· 메뉴 스위치와 실험 스위치를 함께 본다.
+   */
+  readonly computerUse?: {
+    readonly computerUse: NonNullable<NonNullable<AgentSessionOptions["tools"]>["computerUse"]>;
+    readonly promptAddendum: string;
+  };
 }
 
 export interface ChatSessionLike {
@@ -206,6 +216,8 @@ export interface ChatSessionLike {
   send(text: string): Promise<void>;
   /** 진행 중인 턴만 멈춘다. 세션은 살아 있어 다음 질문을 이어 받는다. */
   cancel(): void;
+  /** 컴퓨터 사용 허용을 거둔 순간 — 진행 중 기기 호출을 끊고 기기를 놓는다. */
+  revokeComputerUse?(): void;
   dispose(): Promise<void>;
 }
 
@@ -224,13 +236,18 @@ export class ChatSession implements ChatSessionLike {
 
   private async open(): Promise<void> {
     const consoleUse = this.options.consoleUse;
+    const computerUse = this.options.computerUse;
     const session = await this.options.agent.createSession({
       model: this.options.model ?? SCUTTLEBUTT_AGENT.model,
       effort: this.options.effort ?? SCUTTLEBUTT_AGENT.effort,
-      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : [])].join("\n\n"),
+      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : []), ...(computerUse ? [computerUse.promptAddendum] : [])].join("\n\n"),
       continuation: "conversation",
       settlement: "result",
-      tools: { builtins: PET_TOOLS, ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse, aiGateway: true } : {}) },
+      tools: {
+        builtins: PET_TOOLS,
+        ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse, aiGateway: true } : {}),
+        ...(computerUse ? { computerUse: computerUse.computerUse } : {}),
+      },
       onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
     });
     if (this.disposed) { await session.dispose(); return; }
@@ -238,6 +255,8 @@ export class ChatSession implements ChatSessionLike {
   }
 
   cancel(): void { this.session?.cancel(); }
+
+  revokeComputerUse(): void { this.session?.revokeComputerUse?.(); }
 
   send(text: string): Promise<void> {
     if (!this.session || this.disposed) return Promise.reject(new Error(this.disposed ? "Session disposed" : "Session not started"));
@@ -309,7 +328,7 @@ function toolUrl(input: unknown): string | null {
 }
 
 function toolTitle(name: string, input: unknown): string {
-  if (name.startsWith("mcp__fleet-console-use__")) return name;
+  if (name.startsWith("mcp__fleet-console-use__") || name.startsWith("mcp__fleet-computer-use__")) return name;
   const detail = record(input);
   for (const key of ["query", "url", "prompt", "uri"]) {
     const value = detail[key];

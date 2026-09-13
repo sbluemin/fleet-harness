@@ -144,6 +144,18 @@
       "import": "./components/caption-actions.tsx",
       "default": "./components/caption-actions.tsx"
     },
+    "./components/live-line": {
+      "types": "./components/live-line.tsx",
+      "browser": "./components/live-line.tsx",
+      "import": "./components/live-line.tsx",
+      "default": "./components/live-line.tsx"
+    },
+    "./components/history-band": {
+      "types": "./components/history-band.tsx",
+      "browser": "./components/history-band.tsx",
+      "import": "./components/history-band.tsx",
+      "default": "./components/history-band.tsx"
+    },
     "./components/launch-provider-glyphs": {
       "types": "./components/launch-provider-glyphs.tsx",
       "browser": "./components/launch-provider-glyphs.tsx",

@@ -81,6 +81,13 @@ export class SessionRegistry {
     return "accepted";
   }
 
+  /** 컴퓨터 사용 허용을 거둔 순간 — 그 세션의 진행 중 기기 호출을 끊고 기기를 놓는다. */
+  revokeComputerUse(chatId: string): void {
+    const entry = this.entries.get(chatId);
+    if (!entry || entry.status === "stopped") return;
+    entry.session.revokeComputerUse?.();
+  }
+
   subscribe(chatId: string, subscriber: Subscriber): (() => void) | null {
     const entry = this.entries.get(chatId);
     if (!entry || entry.status === "stopped") return null;

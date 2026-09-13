@@ -657,11 +657,11 @@
   text-transform: uppercase;
 }
 
-/* 능력 문구는 상태가 아니다 — 신호 토큰을 쓰지 않고 3티어 텍스트로 물러선다(덱의 행 배지와 같다). */
+/* 권한 칩 줄의 자리 — 문구가 아니라 칩이 선다(아래 .scuttlebutt-grants). */
 .scuttlebutt-answer-capability {
   margin-left: auto;
-  color: var(--text-tertiary);
-  letter-spacing: 0.06em;
+  min-width: 0;
+  letter-spacing: normal;
   text-transform: none;
 }
 
@@ -696,13 +696,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
-}
-
-.scuttlebutt-answer-working {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
 }
 
 /* 본문 액션은 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 밑줄로만 누를 곳임을 알린다
@@ -745,30 +738,6 @@
 .scuttlebutt-answer-dismiss:hover {
   background: var(--ink-veil);
   color: var(--text-primary);
-}
-
-/* 진행 중 신호 — 무한 애니메이션이 허용되는 유일한 자리다(응답이 실제로 도는 동안만 산다).
-   Operation 캡션 레일(is-running--turn)과 같은 왕복 트래블이다: 한 방향 순환은 끝에서 되감기며
-   튀지만, 왕복은 양 끝에서 감속해 되돌아온다. 같은 제품의 "일하는 중"은 같은 운동으로 읽혀야 한다. */
-.scuttlebutt-answer-wait {
-  grid-column: 1 / -1;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in oklch, var(--brass) 70%, transparent) 30%,
-    color-mix(in oklch, var(--brass) 70%, transparent) 70%,
-    transparent 100%
-  );
-  background-size: 55% 100%;
-  background-repeat: no-repeat;
-  animation: scuttlebutt-answer-wait 3.8s ease-in-out infinite;
-}
-
-@keyframes scuttlebutt-answer-wait {
-  0% { background-position: -60% 0; }
-  50% { background-position: 160% 0; }
-  100% { background-position: -60% 0; }
 }
 
 /* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
@@ -878,8 +847,9 @@
 
 .scuttlebutt-head-tip {
   position: fixed;
-  /* 부유 레이어(--z-floating) 위에 서야 한다 — 문서 끝으로 포털된 잠깐의 설명이라 overlay 단을 쓴다. */
-  z-index: var(--z-overlay);
+  /* 부유 레이어(--z-floating) 위에 서야 한다 — 문서 끝으로 포털된 잠깐의 설명이라 overlay 단을 쓴다.
+     같은 단의 ··· 메뉴(나중에 포털됨) 위에도 서야 하므로 한 단 더 올린다 — 메뉴 행의 설명이 메뉴에 가리면 안 된다. */
+  z-index: calc(var(--z-overlay) + 1);
   pointer-events: none;
   display: grid;
   gap: 2px;
@@ -946,28 +916,6 @@
   font-weight: var(--weight-regular);
 }
 
-.scuttlebutt-markdown-body p {
-  margin: 0 0 var(--space-2);
-}
-
-.scuttlebutt-markdown-body ul,
-.scuttlebutt-markdown-body ol {
-  margin: 0 0 var(--space-2) var(--space-4);
-}
-
-/* 마지막 블록의 아래 여백은 봉투의 gap과 겹친다 — 말풍선에서는 버튼 행이 멀어 보인다. */
-.scuttlebutt-markdown-body > :last-child {
-  margin-bottom: 0;
-}
-
-.scuttlebutt-markdown-body code {
-  padding: 0 var(--space-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  background: var(--ink-mid);
-  color: var(--text-primary);
-}
-
 .scuttlebutt-status-row {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -981,33 +929,6 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
   color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
-}
-
-.scuttlebutt-thinking {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) var(--space-3);
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-regular);
-}
-
-.scuttlebutt-thinking i {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--aurora);
-  animation: scuttlebutt-pulse var(--duration-slow) var(--ease-glide) infinite;
-}
-
-.scuttlebutt-thinking i:nth-child(2) {
-  animation-delay: calc(var(--duration-fast) * 1);
-}
-
-.scuttlebutt-thinking i:nth-child(3) {
-  animation-delay: calc(var(--duration-fast) * 2);
 }
 
 .scuttlebutt-composer {
@@ -1387,12 +1308,6 @@
   }
 }
 
-@keyframes scuttlebutt-pulse {
-  0%,
-  100% { opacity: 0.25; }
-  50% { opacity: 1; }
-}
-
 /* 상단 바에 둔 부관의 시트 — 닻이 새가 아니라 밴드의 글리프라 항상 같은 자리(우측 정렬)에
    선다. 새 옆 카드보다 넓고(480px) 높이는 화면의 80%까지 쓴다: 읽으려고 고정한 자리다. */
 .scuttlebutt-chat-card.is-docked {
@@ -1507,8 +1422,6 @@
   .scuttlebutt-qk *,
   .scuttlebutt-notice-bubble,
   .scuttlebutt-answer-bubble,
-  .scuttlebutt-answer-wait,
-  .scuttlebutt-thinking i,
   .scuttlebutt-dock-glyph .scuttlebutt-qk-head,
   .scuttlebutt-dock-glyph .scuttlebutt-qk-eyes,
   .scuttlebutt-chat-card {
@@ -1529,5 +1442,262 @@
 
   .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
     opacity: 1;
+  }
+}
+
+/* ── 마크다운 조판 — core 공유 .markdown-body 를 카드 밀도로 ─────────────────
+   렌더러는 이미 core 공유였다. 조판도 공유 규칙(제목 위계·표·인용·코드 툴바·brass 인라인 코드)을
+   들이고, 읽기 스케일(17px·78ch 중앙)만 봉투 밀도로 되돌린다 — 채팅뷰가 하는 오버라이드와 같다.
+   말풍선과 카드가 같은 클래스를 쓰므로 「이어 묻기」 전이에서 조판이 바뀌지 않는다. */
+.scuttlebutt-chat-log .markdown-body,
+.scuttlebutt-answer-text.markdown-body {
+  --font-size-body: var(--t-md);
+  max-inline-size: 100%;
+  margin-inline: 0;
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.scuttlebutt-chat-log .markdown-body > * + *,
+.scuttlebutt-answer-text.markdown-body > * + * {
+  margin-top: var(--space-2);
+}
+
+.scuttlebutt-chat-log .markdown-body h1,
+.scuttlebutt-chat-log .markdown-body h2,
+.scuttlebutt-chat-log .markdown-body h3,
+.scuttlebutt-answer-text.markdown-body h1,
+.scuttlebutt-answer-text.markdown-body h2,
+.scuttlebutt-answer-text.markdown-body h3 {
+  font-size: var(--t-md);
+  margin-top: var(--space-3);
+}
+
+/* 흐르는 글의 표식 — 채팅뷰의 스트림 캐럿과 같은 문법(secondary 잉크, 어느 채널의 색도 아니다). */
+.scuttlebutt-chat-log .markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+.scuttlebutt-chat-log .markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+.scuttlebutt-answer-text.markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+.scuttlebutt-answer-text.markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--text-secondary);
+  animation: scuttlebutt-caret 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes scuttlebutt-caret {
+  to { opacity: 0; }
+}
+
+/* ── 문답·역사 ────────────────────────────────────────────────────────────── */
+.scuttlebutt-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 접힌 역사는 표시만 거둔다 — 펼치면 로그의 세로 리듬을 그대로 잇는다. */
+.scuttlebutt-history:not([hidden]) {
+  display: contents;
+}
+
+.scuttlebutt-greeting {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ── 권한 칩 ──────────────────────────────────────────────────────────────
+   기능 이름 대신 권한. 항상 서는 「웹 읽기」·「파일·셸 없음」 사이에 허용된 확장이 brass 림으로 선다 —
+   brass는 이 부관이 지금 쥔 것(위치)이지 상태 신호가 아니다. */
+.scuttlebutt-grants {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.scuttlebutt-grants.is-compact {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.scuttlebutt-grants-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-grant {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px var(--space-2) 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.scuttlebutt-grant.is-granted {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-grant:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-grant-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+.scuttlebutt-grant-glyph svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* 헤더 이름 옆 12px 글리프 pill — Operation 사이드바 칩의 표식과 같은 문법. */
+.scuttlebutt-grant-marks {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-mid);
+  color: var(--text-tertiary);
+  vertical-align: middle;
+}
+
+.scuttlebutt-grant-mark {
+  display: inline-flex;
+}
+
+.scuttlebutt-grant-mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── ··· 메뉴 — AI 확장 ────────────────────────────────────────────────────
+   Operation 메뉴의 「AI 확장」 섹션과 같은 28px 체크 행. 카드 헤더 아래 오른쪽에 선다. */
+.scuttlebutt-menu {
+  position: fixed;
+  /* 문서 끝으로 포털된 잠깐의 메뉴 — 헤더 도움말 말풍선과 같은 overlay 단. 행은 한 줄이고,
+     상태 문구는 행에 머무를 때 말풍선으로만 선다. */
+  z-index: var(--z-overlay);
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - var(--space-4)));
+  padding: 6px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+.scuttlebutt-menu-label {
+  padding: 6px 10px 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-menu-row {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+
+.scuttlebutt-menu-row:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-menu-row:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.scuttlebutt-menu-row.is-on {
+  color: var(--text-primary);
+}
+
+.scuttlebutt-menu-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+.scuttlebutt-menu-glyph svg {
+  width: 12px;
+  height: 12px;
+}
+
+.scuttlebutt-menu-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.scuttlebutt-menu-check {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--brass);
+  opacity: 0;
+}
+
+.scuttlebutt-menu-row.is-on .scuttlebutt-menu-check {
+  opacity: 1;
+}
+
+/* 실험이 하나도 켜져 있지 않을 때 설정으로 가는 길 한 줄. */
+.scuttlebutt-menu-hint {
+  padding: 2px 10px 8px 10px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scuttlebutt-chat-log .markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+  .scuttlebutt-chat-log .markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+  .scuttlebutt-answer-text.markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+  .scuttlebutt-answer-text.markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after {
+    animation: none;
   }
 }

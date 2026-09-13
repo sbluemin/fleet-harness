@@ -40,6 +40,16 @@ export interface AgentSessionOptions {
      * 읽기뿐이므로 호스트가 MCP 리소스 읽기 내장 도구를 함께 연다. 위임 실행 능력은 주지 않는다.
      */
     readonly aiGateway?: boolean;
+    /**
+     * 컴퓨터 사용(실험). 도구는 세션이 열릴 때 실리고 허용은 호출마다 `enabled()`로 다시 묻는다 —
+     * 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 허용을 거둔 순간 진행 중 호출까지 끊으려면
+     * {@link AgentSession.revokeComputerUse}를 부른다. 실험 스위치 자체는 호스트가 따로 본다.
+     */
+    readonly computerUse?: {
+      readonly enabled: () => boolean;
+      /** 거부 문구의 언어. 없으면 호스트의 Console 언어를 따른다. */
+      readonly language?: () => "en" | "ko" | null;
+    };
   };
   readonly onEvent?: (event: AgentEvent) => void;
 }
@@ -49,6 +59,11 @@ export interface AgentSession {
   send(text: string): Promise<void>;
   /** 현재 턴만 취소한다. 대기 턴과 다음 메시지는 유지한다. */
   cancel(): void;
+  /**
+   * 컴퓨터 사용 허용을 거둔 순간 부른다 — 이 세션의 진행 중 기기 호출을 끊고 잡고 있던 기기를 놓는다.
+   * 다음 호출은 `enabled()`가 거부한다. 컴퓨터 사용을 싣지 않은 세션에서는 아무 일도 하지 않는다.
+   */
+  revokeComputerUse?(): void;
   /** 생성 중·실행 중·종료 후 언제나 멱등이며 실행 자원 정리를 기다린다. */
   dispose(): Promise<void>;
 }

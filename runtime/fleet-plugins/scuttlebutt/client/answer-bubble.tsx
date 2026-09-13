@@ -1,14 +1,17 @@
-import { renderMarkdown } from "@fleet-console/markdown/core";
+import { LiveLine } from "@fleet-console/sdk/components/live-line";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { AdmiralId } from "./chat-session.js";
 import { sourceLabel } from "./chat-card.js";
-import { currentExchange, type ChatState } from "./chat-store.js";
+import { currentExchange, type ChatEntry, type ChatState } from "./chat-store.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
-import { diagramHydratorLabels, getT, markdownRenderOptions } from "./scuttlebutt-catalog.js";
-import { isConsoleReadEnabled } from "./console-read.js";
+import { GrantLine } from "./grant-chips.js";
+import { liveStatus } from "./live-status.js";
+import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
+import type { AideGrants } from "./settings-store.js";
+import { useStreamedHtml } from "./streamed-html.js";
 
 /**
  * Quick Launch에서 물은 답이 서는 자리.
@@ -34,6 +37,7 @@ export function AnswerBubble({
   locale,
   positionRevision,
   docked = false,
+  grants,
   onExpand,
   onDismiss,
 }: {
@@ -48,6 +52,8 @@ export function AnswerBubble({
    * 첫 답 아래 화면 밖으로 밀린다.
    */
   readonly docked?: boolean;
+  /** 이 부관의 AI 확장 허용 — 머리의 권한 칩이 말한다. */
+  readonly grants: AideGrants;
   readonly onExpand: () => void;
   /** 닫힘은 포커스를 옮기지 않는다 — 말풍선은 포커스를 가져간 적이 없으므로 돌려줄 곳도 없다. */
   readonly onDismiss: () => void;
@@ -167,6 +173,10 @@ export function AnswerBubble({
   const answer = readAnswer(state);
   const sources = readAnswerSources(state);
   const working = state.phase === "starting" || state.phase === "thinking";
+  const exchange = currentExchange(state);
+  const now = useNow(working);
+  const status = working ? liveStatus(exchange, locale, now) : null;
+  const answerHtml = useStreamedHtml(answer?.kind === "assistant" ? answer.text : "", working, locale);
 
   // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
   // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
@@ -240,19 +250,21 @@ export function AnswerBubble({
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
           {name}
-          <span className="scuttlebutt-answer-capability">{t(isConsoleReadEnabled() ? "mention.capabilityConsole" : "mention.capability")}</span>
+          <span className="scuttlebutt-answer-capability"><GrantLine grants={grants} locale={locale} compact /></span>
         </span>
+        {/* 도는 동안의 진행은 Live line 한 줄이다 — 지금 하는 것과 경과가 제자리에서 갱신된다(카드와 같은 줄). */}
+        {status ? <LiveLine label={status.label} thinking={status.thinking} meta={status.meta} /> : null}
         {answer === null
-          ? <span className="scuttlebutt-answer-working">{t("answer.working")}</span>
+          ? null
           : answer.kind === "error"
             ? <div ref={textRef} tabIndex={-1} className="scuttlebutt-answer-text is-error">{answer.text}</div>
             : (
               <div
                 ref={textRef}
                 tabIndex={-1}
-                className="scuttlebutt-answer-text scuttlebutt-markdown-body"
+                className={`scuttlebutt-answer-text markdown-body${working ? " is-streaming" : ""}`}
                 onClick={(event) => copyCodeBlock(event, t("action.copied"))}
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(answer.text, markdownRenderOptions(locale)).html }}
+                dangerouslySetInnerHTML={{ __html: answerHtml }}
               />
             )}
         {!working && sources.length > 0 ? (
@@ -283,9 +295,20 @@ export function AnswerBubble({
       >
         ✕
       </button>
-      {working ? <span className="scuttlebutt-answer-wait" aria-hidden="true" /> : null}
     </div>
   );
+}
+
+/** 도는 동안만 1초 시계 — 경과가 Live line의 오른쪽 끝에 선다. */
+function useNow(live: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
+  return now;
 }
 
 /** 답 말풍선들이 공유하는 "원래 자리" — 마지막으로 말풍선 밖에서 포커스를 가져온 요소. */
@@ -305,7 +328,7 @@ function readAnswer(state: ChatState): { readonly kind: "assistant" | "error"; r
   const entries = currentExchange(state);
   const last = entries.at(-1);
   if (last?.kind === "error" && last.text.length > 0) return { kind: "error", text: last.text };
-  const fragments = entries.filter((entry) => entry.kind === "assistant" && entry.text.length > 0).map((entry) => entry.text);
+  const fragments = entries.filter((entry): entry is Extract<ChatEntry, { kind: "assistant" }> => entry.kind === "assistant" && entry.text.length > 0).map((entry) => entry.text);
   if (fragments.length === 0) return null;
   return { kind: "assistant", text: fragments.join("\n\n") };
 }
