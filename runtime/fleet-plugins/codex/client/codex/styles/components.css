@@ -2900,7 +2900,7 @@ button.chip:focus-visible {
 .cowork-x { border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer; font-size: var(--t-base); line-height: 1; padding: 0 var(--space-1); }
 .cowork-x:hover { color: var(--text-primary); }
 .cowork-pill:focus-visible, .cowork-ghost:focus-visible, .cowork-solid:focus-visible, .cowork-x:focus-visible, .cowork-chip:focus-visible,
-.cowork-send:focus-visible, .cowork-model-chip:focus-visible, .cowork-hero-suggestion:focus-visible, .cowork-segments button:focus-visible,
+.cowork-send:focus-visible, .cowork-composer-settings:focus-visible, .cowork-segments button:focus-visible,
 .cowork-sys-action:focus-visible, .cowork-sys-dismiss:focus-visible, .cowork-fold-summary:focus-visible,
 .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible {
   outline: 2px solid var(--brass);
@@ -3062,23 +3062,6 @@ button.chip:focus-visible {
 .cowork-thread-scroll.is-folded { display: none; }
 
 /* 빈 상태 — Analyst hero와 같은 짜임. */
-.cowork-hero { display: grid; gap: var(--space-1); padding: var(--space-2) 0 var(--space-1); }
-.cowork-hero-sigil { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
-.cowork-hero-title { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-primary); letter-spacing: -0.01em; }
-.cowork-hero-body { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; max-width: 60ch; }
-.cowork-hero-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-1); }
-.cowork-hero-suggestion {
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  padding: 4px 10px;
-  transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
-}
-.cowork-hero-suggestion:hover { border-color: var(--brass); color: var(--text-primary); }
 
 /* ── 스레드 — 단일 열 턴. 스파인·노드는 agent-chat과 함께 퇴역했다: 상태는 접힘 줄·결말 문구가 말한다. ── */
 .cowork-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
@@ -3244,13 +3227,15 @@ button.chip:focus-visible {
   transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
 }
 .cowork-composer-frame:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
+/* 상자 전체가 입력의 클릭 표적이다 — 빈 상태의 히어로 위를 눌러도 텍스트 커서로 읽힌다. */
+.cowork-composer-frame { cursor: text; }
+.cowork-composer-frame button { cursor: pointer; }
 .cowork-composer-frame.is-working { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)); }
-.cowork-composer-field { display: grid; padding: var(--space-3) var(--space-4) var(--space-2); }
-.cowork-composer-field.is-onboarding > * { grid-area: 1 / 1; }
-.cowork-composer-field.is-onboarding .cowork-hero { z-index: 1; pointer-events: none; padding: 0 0 var(--space-3); }
-.cowork-composer-field.is-onboarding .cowork-hero-sigil { display: none; }
-.cowork-composer-field.is-onboarding .cowork-hero-suggestions { pointer-events: auto; }
-.cowork-composer-field.is-onboarding .cowork-composer-input { height: 100% !important; max-height: none; }
+/* 한 줄 컴포저 — 앞 슬롯(댓글 칩) · 입력 · 뒤 동작(전송/중지)이 한 면 안에 앉는다. 입력이 자라도
+   슬롯과 동작은 아래 변에 남는다. 휴지 높이 44px(패딩 6 + 버튼 32 + 6). */
+.cowork-composer-field { display: flex; align-items: flex-end; gap: var(--space-2); min-height: 44px; padding: 6px 6px 6px var(--space-3); }
+.cowork-composer-lead { flex: none; margin-bottom: 3px; }
+.cowork-composer-input { height: 100% !important; max-height: none; }
 .cowork-composer-input {
   width: 100%;
   min-width: 0;
@@ -3263,16 +3248,32 @@ button.chip:focus-visible {
   font-family: var(--font-body);
   font-size: var(--t-md);
   line-height: 1.5;
-  padding: 0;
+  padding: 5px 0;
   overflow-y: auto;
 }
+/* 빈 입력의 placeholder가 한 줄을 넘쳐도 스크롤바를 세우지 않는다 — 자동 높이는 문면(scrollHeight)만 재므로
+   placeholder의 줄바꿈은 높이에 잡히지 않고 overflow로만 남는다. */
+/* 입력박스에는 스크롤바를 세우지 않는다 — 여섯 줄을 넘으면 caret·휠로 안에서 스크롤되지만 막대는 그리지 않는다.
+   소수점 줄높이(19.5px)로 내용이 꼭 맞을 때도 막대가 깜빡이던 자리다. */
+.cowork-composer-input { scrollbar-width: none; }
+.cowork-composer-input::-webkit-scrollbar { display: none; }
+.cowork-composer-input:placeholder-shown { overflow-y: hidden; }
 .cowork-composer-input::placeholder { color: var(--text-tertiary); }
 .cowork-composer-input:focus { outline: none; }
 .cowork-composer-input:disabled { color: var(--text-secondary); }
-.cowork-composer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) var(--space-2) var(--space-3); }
-/* 도는 동안 좌표는 물러나되 중단은 물러나지 않는다 — 중단이 이 순간의 주 동작이다. */
-.cowork-composer-frame.is-working .cowork-composer-bar > :not(.cowork-send) { opacity: 0.4; }
-.cowork-composer-hint { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.08em; color: var(--text-tertiary); white-space: nowrap; }
+/* 모델 표시줄 — 상자 밖 한 줄. 좌표는 Settings의 것이라 여기서는 보여 주고, 바꾸는 길만 잇는다. */
+.cowork-composer-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: 0 2px 6px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
+.cowork-composer-model { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cowork-composer-model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; }
+.cowork-composer-model-mark svg { width: 10px; height: 10px; }
+.cowork-composer-model-label { color: var(--text-secondary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cowork-composer-model-effort::before { content: "·"; margin-right: 6px; }
+.cowork-composer-model-fallback { color: var(--coral-ink, var(--text-tertiary)); }
+.cowork-composer-model-fallback::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); }
+.cowork-composer-settings { flex: none; border: 0; border-bottom: 1px dashed var(--hairline); background: transparent; color: var(--text-tertiary); padding: 0; font: inherit; cursor: pointer; }
+.cowork-composer-settings:hover { color: var(--text-primary); border-bottom-color: var(--hairline-strong); }
+/* 도는 동안 입력은 물러나되 중단은 물러나지 않는다 — 중단이 이 순간의 주 동작이다. */
+.cowork-composer-frame.is-working .cowork-composer-lead { opacity: 0.4; }
 
 .cowork-chip {
   display: inline-flex;
@@ -3293,54 +3294,12 @@ button.chip:focus-visible {
 .cowork-chip:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
 .cowork-chip.is-active { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
 
-/* 모델 칩 — Quick Launch·Analyst와 같은 알약: 공급자 글리프 + 라벨 + ▾. */
-.cowork-model-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  min-height: 27px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
-  color: var(--text-secondary);
-  padding: 4px 10px;
-  font-family: inherit;
-  font-size: var(--t-md);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-.cowork-model-chip:hover:not(:disabled) { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
-.cowork-model-chip[aria-expanded="true"] { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
-.cowork-model-chip:disabled { cursor: default; }
-.cowork-model-chip.is-claude { --launch-provider-tone: var(--provider-claude); }
-.cowork-model-chip.is-codex { --launch-provider-tone: var(--provider-codex); }
-.cowork-model-chip.is-xai { --launch-provider-tone: var(--provider-xai); }
-.cowork-model-chip.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.cowork-model-chip.is-opencode { --launch-provider-tone: var(--provider-opencode); }
-.cowork-model-chip.is-kimi { --launch-provider-tone: var(--provider-kimi); }
-.cowork-model-chip.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.cowork-model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; color: var(--launch-provider-tone, var(--brass-ink)); }
-.cowork-model-chip .operation-launch-provider-glyph { width: 14px; height: 14px; }
-.cowork-model-mark svg { width: 10px; height: 10px; }
-.cowork-model-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: var(--weight-bold); }
-.cowork-model-chip[aria-expanded="true"] .cowork-model-chip-label { color: var(--brass); }
-.cowork-model-chip-caret { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.cowork-model-menu { right: auto; width: 216px; max-width: calc(100vw - 16px); }
-/* 모델 행은 캔버스 실행 메뉴의 .operation-launch-variant-row다. 표식이 없으므로 캡션
-   글리프(16px)+간격(6px)만큼 들여 글자 열을 머리글과 맞춘다. */
-.cowork-model-menu .operation-launch-variant-row { padding-left: calc(var(--space-2) + 16px + 6px); }
-.cowork-model-menu .operation-launch-variant-row[aria-checked="true"] { color: var(--text-primary); }
-.cowork-model-check { color: var(--brass); font-size: var(--t-xs); }
-.cowork-effort { display: inline-flex; min-width: 0; }
-.cowork-effort[inert] { opacity: 0.42; }
-
 /* 전송·중단 — 원형 brass(전송), 중단은 진행 신호라 위치 채널을 빌리지 않는다. */
 .cowork-send {
   flex: none;
   width: 32px;
   height: 32px;
+  margin-bottom: 0;
   display: grid;
   place-items: center;
   border: 1px solid var(--surface-rim);
@@ -3367,14 +3326,13 @@ button.chip:focus-visible {
 @media (max-width: 720px) {
   .cowork-composer { width: min(300px, 92%); }
   .cowork-thread-root { padding-inline: var(--space-3); }
-  .cowork-composer-hint { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cowork-pill, .cowork-composer, .cowork-dock-zone.is-open, .cowork-orbit, .cowork-thinking-dots > span, .cowork-answer-body::after { animation: none !important; }
   .cowork-live-text { background-image: none; color: var(--text-secondary); animation: none; }
   .cowork-thinking-dots > span { opacity: 1; }
-  .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-model-chip, .cowork-card, .cowork-composer-frame, .cowork-fold-chev, .cowork-hero-suggestion { transition: none; }
+  .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-card, .cowork-composer-frame, .cowork-fold-chev { transition: none; }
   .cowork-host .is-cowork-running { transition: none; }
   .cowork-send.is-armed:hover { transform: none; }
 }

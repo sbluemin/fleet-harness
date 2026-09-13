@@ -406,7 +406,8 @@ export function ChatCard({
           </div>
         ) : null}
       </div>
-      <form className="scuttlebutt-composer" onSubmit={(event) => {
+      {/* 한 줄 컴포저 — 입력과 동작(보내기/중지)이 한 면 안에 앉는다. 도는 동안은 같은 자리가 중지가 된다. */}
+      <form className={`scuttlebutt-composer${busy ? " is-working" : ""}`} onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}>
@@ -426,7 +427,15 @@ export function ChatCard({
             }
           }}
         />
-        <button type="submit" className="scuttlebutt-send" disabled={!canSend}>{t("chat.send")}</button>
+        {busy ? (
+          <button type="button" className="scuttlebutt-send scuttlebutt-stop" aria-label={t("action.stop")} title={t("action.stop")} onClick={onStop}>
+            <span aria-hidden="true" />
+          </button>
+        ) : (
+          <button type="submit" className={`scuttlebutt-send${canSend ? " is-armed" : ""}`} disabled={!canSend} aria-label={t("chat.send")} title={t("chat.send")}>
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
+          </button>
+        )}
       </form>
     </div>
   );

@@ -30,17 +30,25 @@ export interface SettingsSectionDescriptor {
 
 export type {
   ConsoleExperimentSettings,
+  ExperimentAideId,
+  ExperimentAideSelection,
+  ExperimentEffort,
   ExperimentFeatureId,
   ExperimentModelFeatureId,
   ExperimentModelOption,
 } from "./experiments.js";
 export {
   CLAUDE_EXPERIMENT_MODEL_OPTIONS,
+  DEFAULT_EXPERIMENT_AIDE_SELECTION,
   DEFAULT_EXPERIMENT_MODELS,
   DEFAULT_EXPERIMENT_SETTINGS,
+  EXPERIMENT_AIDES,
+  EXPERIMENT_EFFORTS,
   EXPERIMENT_FEATURES,
   EXPERIMENT_MODEL_FEATURES,
+  experimentAideSelection,
   experimentFeatureModel,
+  isExperimentEffort,
   isExperimentModelId,
   resolveExperimentSettings,
 } from "./experiments.js";

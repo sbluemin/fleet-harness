@@ -17,9 +17,9 @@ import {
   CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
-import type { ClientExecutionProvider, ClientExperimentsCapability, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setSessionWatch, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
@@ -294,12 +294,10 @@ export const operationKinds = [agentOperationKind] as const;
 let installedNotifications: PluginInstallContext["notifications"] | null = null;
 
 let installedApi: PluginInstallContext["api"] | null = null;
-let installedExperiments: ClientExperimentsCapability | null = null;
-
 function installAgentExecution(ctx: PluginInstallContext): () => void {
   installedNotifications = ctx.notifications;
   installedApi = ctx.api;
-  installedExperiments = ctx.experiments;
+  setInstalledExperiments(ctx.experiments);
   // 세션 관찰 알림 — 서버가 코어 SSE에 실어 보낸 조언을 알림 층에 올린다. 관찰이 꺼진 Operation은
   // 서버가 애초에 검토하지 않으므로 여기서 거를 것이 없다.
   const disposeWatch = ctx.consoleEvents.subscribe(SESSION_WATCH_EVENT_CHANNEL, (payload) => {
@@ -324,7 +322,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
   return () => {
     installedNotifications = null;
     installedApi = null;
-    installedExperiments = null;
+    setInstalledExperiments(null);
     disposeWatch();
     disposeConnection();
   };
@@ -332,11 +330,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
 
 /** 실험 설정 구독 — 설정에서 껐다 켜는 즉시 캡션 버튼이 따라간다. */
 function useExperimentsSnapshot() {
-  return React.useSyncExternalStore(
-    (listener) => installedExperiments?.subscribe(listener) ?? (() => undefined),
-    () => installedExperiments?.read() ?? null,
-    () => null,
-  );
+  return React.useSyncExternalStore(subscribeInstalledExperiments, readInstalledExperiments, () => null);
 }
 
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.

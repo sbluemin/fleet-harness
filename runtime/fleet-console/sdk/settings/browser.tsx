@@ -9,11 +9,16 @@ import type { SettingsSectionDescriptor } from "./types.js";
 // 실험 설정의 순수 도우미 — 브라우저 번들은 이 진입점만 공유 shim으로 노출되므로 여기서도 낸다.
 export {
   CLAUDE_EXPERIMENT_MODEL_OPTIONS,
+  DEFAULT_EXPERIMENT_AIDE_SELECTION,
   DEFAULT_EXPERIMENT_MODELS,
   DEFAULT_EXPERIMENT_SETTINGS,
+  EXPERIMENT_AIDES,
+  EXPERIMENT_EFFORTS,
   EXPERIMENT_FEATURES,
   EXPERIMENT_MODEL_FEATURES,
+  experimentAideSelection,
   experimentFeatureModel,
+  isExperimentEffort,
   isExperimentModelId,
   resolveExperimentSettings,
 } from "./experiments.js";

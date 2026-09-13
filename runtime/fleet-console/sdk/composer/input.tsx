@@ -23,6 +23,9 @@ export const ComposerInput = forwardRef<HTMLTextAreaElement, ComposerInputProps>
     const element = innerRef.current;
     if (!element) return;
     element.style.height = "auto";
+    // 숨은 채 마운트되면(패널 전환 중) scrollHeight가 0이다 — 0px를 박아 두면 다음 값 변경까지 CSS
+    // 하한만으로 서므로, 잴 수 없는 프레임은 건너뛴다.
+    if (element.scrollHeight === 0) return;
     element.style.height = `${element.scrollHeight}px`;
   }, [value]);
 

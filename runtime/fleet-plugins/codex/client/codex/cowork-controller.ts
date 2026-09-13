@@ -9,9 +9,10 @@ import {
   fetchCoworkOptions, peekCoworkEntrySession, promptCowork, subscribeCoworkEvents,
   updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
-import type { CoworkAnnotationDto, CoworkModelRow, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
+import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftBlocks, diffDraftLines } from "@fleet-console/markdown/diff";
 import type { DraftLine } from "@fleet-console/markdown/diff";
+import { hostCapabilities } from "../host.js";
 import { CoworkThread } from "./cowork-thread.js";
 import type { CoworkNotice, CoworkStep, CoworkThreadActions, CoworkThreadState, CoworkTurn } from "./cowork-thread.js";
 import { entryPath, escapeAttribute, escapeHtml } from "./utils.js";
@@ -44,7 +45,6 @@ interface Settings { model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
 interface PromptAttempt { cancelled: boolean; submitted: boolean; }
 
-const SETTINGS_KEY = "fleet.codex.cowork.settings";
 const STREAM_RENDER_DELAY_MS = 32;
 /** 도는 턴의 경과 티커 — 스레드의 "N초" 표시가 이 주기로 갱신된다. */
 const TICK_MS = 1000;
@@ -88,7 +88,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let unsubscribe: (() => void) | null = null;
   let lastEventId = 0;
   let optionsDto: CoworkOptionsResponse = { models: [], efforts: [] };
-  let settings = readSettings();
+  // 좌표는 Settings › 실험 기능 › AI 확장 › Cowork에서 온다 — options 조회가 채우고, 여기서는 고르지 않는다.
+  let settings: Settings = { model: "", effort: "" };
   let annotations: AnnotationCard[] = [];
   let turns: CoworkTurn[] = [];
   let reply = "";
@@ -214,9 +215,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       locale: resolveActiveLocale() === "ko" ? "ko" : "en",
       turns,
       running,
-      models: optionsDto.rows ?? optionsDto.models.map((id): CoworkModelRow => ({ id, label: id, provider: "claude" })),
-      efforts: optionsDto.efforts,
       model: settings.model,
+      modelLabel: optionsDto.rows?.find((row) => row.id === settings.model)?.label ?? settings.model,
+      modelFallback: optionsDto.fallback === true,
       effort: settings.effort,
       annotations,
       panelOpen,
@@ -235,8 +236,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     onPromptChange: (value) => { promptText = value; renderDock(); },
     onSend: () => { void send(); },
     onStop: () => stop(),
-    onSelectModel: (model) => handleSelect(model, settings.effort),
-    onSelectEffort: (effort) => handleSelect(settings.model, effort),
+    onOpenSettings: () => hostCapabilities.bound()?.rail.open("settings"),
     onTogglePanel: () => { panelOpen = !panelOpen; renderDock(); },
     onDeleteAnnotation: (id) => { void deleteAnnotation(id); },
     onCommentChange: (id, comment) => {
@@ -250,11 +250,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     onConfirmBack: () => { confirmAction = null; renderDock(); },
     onApplyConfirm: () => { void apply(); },
     onDiscardConfirm: () => { void discard(); },
-    onSuggest: (text) => {
-      promptText = text;
-      renderDock();
-      dockZone.querySelector<HTMLTextAreaElement>(".cowork-composer-input")?.focus();
-    },
     onRetry: () => {
       if (!lastInstruction) return;
       promptText = lastInstruction.text;
@@ -422,34 +417,20 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     })();
   };
 
-  const handleSelect = (model: string, effort: string) => {
-    const modelChanged = model !== settings.model;
-    settings = { model, effort };
-    saveSettings(settings);
-    renderDock();
-    if (modelChanged) {
-      // 모델이 바뀌면 강도 사다리가 달라질 수 있다 — 재조회가 강도를 정규화한 뒤 도크를 다시 세운다.
-      void updateOptions()
-        .then(() => { syncSessionSettings(); renderDock(); })
-        .catch((cause) => { notice = noticeFrom(cause); renderDock(); });
-      return;
-    }
-    syncSessionSettings();
-  };
-
+  /** options 조회 — 서버가 Settings의 Cowork 좌표를 목록과 대조해 돌려준 값을 그대로 좌표로 삼는다. */
   const updateOptions = async () => {
-    optionsDto = await fetchCoworkOptions(options.theaterId, settings.model || undefined);
-    // 저장값이 무효하면 제품 기본값(sonnet/low)을 우선 채택한다.
-    const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
-    const fallbackEffort = optionsDto.defaultEffort && optionsDto.efforts.includes(optionsDto.defaultEffort) ? optionsDto.defaultEffort : optionsDto.efforts[0] ?? "";
+    optionsDto = await fetchCoworkOptions(options.theaterId);
     settings = {
-      model: optionsDto.models.includes(settings.model) ? settings.model : fallbackModel,
-      effort: optionsDto.efforts.includes(settings.effort) ? settings.effort : fallbackEffort,
+      model: optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "",
+      effort: optionsDto.defaultEffort && optionsDto.efforts.includes(optionsDto.defaultEffort) ? optionsDto.defaultEffort : optionsDto.efforts[0] ?? "",
     };
-    saveSettings(settings);
     if (optionsDto.models.length === 0) notice = { kind: "noModel", message: consoleT()("codex.cowork.noModel") };
     else if (notice?.kind === "noModel") notice = null;
   };
+  // Settings가 바뀌면 표시줄과 다음 턴의 좌표가 함께 따라간다 — 도크를 다시 열 필요가 없다.
+  const unsubscribeExperiments = hostCapabilities.bound()?.experiments.subscribe(() => {
+    void updateOptions().then(() => { if (!disposed) renderDock(); }).catch(() => undefined);
+  });
 
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
@@ -459,14 +440,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const restored: AnnotationCard[] = next.annotations.map(annotationFromDto);
     const known = new Set(restored.map(card => card.id));
     annotations = [...restored, ...annotations.filter(card => !known.has(card.id))];
-    if (next.cli || next.model || next.effort) {
-      settings = { model: next.model ?? settings.model, effort: next.effort ?? settings.effort };
-      saveSettings(settings);
-    }
-    try { await updateOptions(); } catch { /* 모델 메뉴가 비어 보일 뿐, 편집은 계속 가능하다. */ }
+    try { await updateOptions(); } catch { /* 표시줄이 비어 보일 뿐, 편집은 계속 가능하다. */ }
     if (disposed) return;
-    // 세션에 저장된 모델이 레지스트리에서 사라져 정규화로 바뀌었으면, 첫 실행이
-    // 무효 모델로 접속하지 않도록 서버 세션 설정을 즉시 동기화한다.
+    // 세션에 저장된 좌표가 지금 Settings와 다르면(설정이 바뀌었거나 모델이 사라짐), 첫 실행이
+    // 옛 좌표로 접속하지 않도록 서버 세션 설정을 즉시 동기화한다.
     if (session && (session.model !== settings.model || session.effort !== settings.effort)) {
       try { session = await updateCoworkSettings(options.theaterId, session.id, settings); } catch { /* 전송 시 오류로 표면화된다. */ }
     }
@@ -633,6 +610,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       // 도크 상시 표시: 세션이 아직 없으면 첫 전송 시점에 만든다.
       await ensureSession();
       if (attempt.cancelled || promptAttempt !== attempt) return;
+      // 좌표는 Settings의 것이다 — 보내기 직전에 다시 읽어, 도크를 연 뒤 바뀐 설정이 이 턴부터 적용되게 한다.
+      try { await updateOptions(); } catch { /* 조회 실패면 세션의 현재 좌표로 보낸다. */ }
+      if (attempt.cancelled || promptAttempt !== attempt) return;
+      if (session && (session.model !== settings.model || session.effort !== settings.effort)) syncSessionSettings();
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
       if (attempt.cancelled || promptAttempt !== attempt) return;
       // 설정 쓰기 큐가 빌 때까지 기다린다 — 드래그 직후 곧장 보낸 프롬프트가 큐에 남은 최신
@@ -856,6 +837,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       clearSettle();
       syncTick(false);
       unsubscribe?.();
+      unsubscribeExperiments?.();
       document.removeEventListener("scroll", positionAnchor, true);
       window.removeEventListener("resize", positionAnchor);
       options.article.removeEventListener("mouseup", onMouseUp);
@@ -942,13 +924,3 @@ function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard { return { 
 function stripFrontmatter(markdown: string): string { return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ""); }
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
-// 저장돼 있던 `cli`는 읽지 않는다 — Cowork가 Agent CLI를 고르지 않게 되면서 의미가 사라졌다.
-// 목록에서 빠진 모델(fable 계열 등)의 옛 저장값도 마이그레이션이 필요 없다 — 옵션 재조회가
-// 목록 밖 값을 기본값으로 되돌린다.
-function readSettings(): Settings {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
-    return { model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
-  } catch { return { model: "", effort: "low" }; }
-}
-function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }

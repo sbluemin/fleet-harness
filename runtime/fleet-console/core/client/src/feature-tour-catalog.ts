@@ -164,11 +164,6 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     spotlight: null,
     walkthrough: [
       {
-        anchor: '[data-chat-tour="log"]',
-        titleKey: "featureTour.chatMode.step1Title",
-        bodyKey: "featureTour.chatMode.step1Body",
-      },
-      {
         anchor: '[data-chat-tour="composer"]',
         titleKey: "featureTour.chatMode.step2Title",
         bodyKey: "featureTour.chatMode.step2Body",

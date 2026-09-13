@@ -1,45 +1,46 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
+import { toClaudeGatewayModelId, type GatewayModel } from "@dotobokuri/core-ai-gateway";
+import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "./index.js";
 import { encodeSseData } from "../contracts.js";
 import { withSecurityHeaders } from "../contracts.js";
-import type { CoworkModelRow } from "../contracts.js";
+import type { CoworkModelRow, CoworkOptionsResponse } from "../contracts.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
 
-// Cowork는 문서 위 경량 코워크다 — 모델은 상용 축(opus[1m]/sonnet/haiku)과 Codex의 Luna 한
-// 좌표만 싣고 fable은 내리지 않으며, 강도도 게이트웨이 5단 중 상위 두 단(xhigh/max)을 내리지
-// 않는다. 목록을 좁히는 곳은 이 하나다: 클라이언트는 받은 목록만 그리고, 목록 밖 저장값은 옵션
-// 재조회가 기본값으로 정규화한다. Luna는 Gateway 카탈로그 표기(claude-gateway--codex--…)로
-// 싣는다 — SDK가 그 표기만 카탈로그 모델로 인정한다.
-const COWORK_LUNA_MODEL = "claude-gateway--codex--gpt-5.6-luna";
-const COWORK_MODELS = ["opus[1m]", "sonnet", "haiku", COWORK_LUNA_MODEL] as const;
+// Cowork는 문서 위 경량 코워크다 — 강도는 게이트웨이 5단 중 상위 두 단(xhigh/max)을 내리지
+// 않는다. 모델은 컴포저가 고르지 않는다: Settings › 실험 기능 › AI 확장 › Cowork 행이 유일한 좌표이고,
+// 이 라우트는 그 값을 받을 수 있는 목록(Claude 별칭 + 켜진 Gateway 모델)과 대조해 실행 좌표를 정한다.
 const COWORK_EFFORTS = ["low", "medium", "high"] as const;
-/** Claude 별칭은 카탈로그에 없으므로 라벨을 여기서 든다 — Quick Launch 메뉴와 같은 평문 이름이다. */
-const NATIVE_LABELS: Readonly<Record<string, string>> = { "opus[1m]": "Opus", sonnet: "Sonnet", haiku: "Haiku" };
 
 /**
- * 메뉴가 그릴 행 — 공급자 밴드와 짧은 라벨은 서버가 정한다. 클라이언트는 id를 해석하지 않는다.
- * Gateway 카탈로그 모델은 사용자가 Settings › AI Gateway에서 켠 것만 싣는다 — 라우터가 켜지지
- * 않은 모델을 403으로 거절하므로, 목록에 두면 고를 수는 있어도 돌지 않는 좌표가 된다.
+ * 받을 수 있는 모델 행 — 공급자 밴드와 짧은 라벨은 서버가 정한다. 클라이언트는 id를 해석하지 않는다.
+ * 목록은 설정 선택기와 같은 얼굴(Claude 별칭 + Settings › AI Gateway에서 켠 모델)이다 — 라우터가
+ * 켜지지 않은 모델을 403으로 거절하므로, 켜지지 않은 좌표는 여기서 걸러 Sonnet으로 내려보낸다.
  */
-function coworkModelRows(enabledGatewayModelIds: ReadonlySet<string>): readonly CoworkModelRow[] {
-  return COWORK_MODELS.flatMap((id): CoworkModelRow[] => {
-    const catalog = findGatewayModel(id);
-    if (catalog) {
-      if (!enabledGatewayModelIds.has(catalog.id)) return [];
-      // 카탈로그 displayName은 "Codex-GPT-5.6-Luna"처럼 공급자 접두를 단다 — 밴드가 공급자를
-      // 말하므로 행에는 모델 이름만 남긴다.
-      const prefix = `${catalog.provider}-`;
-      const label = catalog.displayName.toLowerCase().startsWith(prefix) ? catalog.displayName.slice(prefix.length) : catalog.displayName;
-      return [{ id, label, provider: catalog.provider }];
-    }
-    return [{ id, label: NATIVE_LABELS[id] ?? id, provider: "claude" }];
+function coworkModelRows(enabledGatewayModels: readonly GatewayModel[]): readonly CoworkModelRow[] {
+  const native = CLAUDE_EXPERIMENT_MODEL_OPTIONS.map((option): CoworkModelRow => ({ id: option.id, label: option.label, provider: "claude" }));
+  const gateway = enabledGatewayModels.map((model): CoworkModelRow => {
+    // 카탈로그 displayName은 "Codex-GPT-5.6-Luna"처럼 공급자 접두를 단다 — 밴드가 공급자를
+    // 말하므로 행에는 모델 이름만 남긴다.
+    const prefix = `${model.provider}-`;
+    const label = model.displayName.toLowerCase().startsWith(prefix) ? model.displayName.slice(prefix.length) : model.displayName;
+    return { id: toClaudeGatewayModelId(model), label, provider: model.provider };
   });
+  return [...native, ...gateway];
 }
 
-export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean; enabledGatewayModelIds?: ReadonlySet<string> }): Promise<boolean> {
+/** Settings의 Cowork 좌표를 목록과 대조한다 — 목록 밖 모델은 Sonnet(없으면 첫 행)으로 내려간다. */
+export function resolveCoworkSelection(settings: ConsoleExperimentSettings, rows: readonly CoworkModelRow[]): { readonly model: string; readonly effort: string; readonly fallback: boolean } {
+  const wanted = experimentAideSelection(settings, "cowork");
+  const ids = rows.map((row) => row.id);
+  if (ids.includes(wanted.model)) return { model: wanted.model, effort: wanted.effort, fallback: false };
+  const fallbackModel = ids.includes(DEFAULT_EXPERIMENT_AIDE_SELECTION.model) ? DEFAULT_EXPERIMENT_AIDE_SELECTION.model : ids[0] ?? "";
+  return { model: fallbackModel, effort: wanted.effort, fallback: true };
+}
+
+export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean; enabledGatewayModels?: readonly GatewayModel[]; readExperiments?: () => ConsoleExperimentSettings }): Promise<boolean> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/cowork")) return false;
   // Read gate: an admitted listener always; when a browser supplies Origin it must be an allowed one.
@@ -50,18 +51,16 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
   const service = context.coworkService;
   const parts = url.pathname.split("/").filter(Boolean);
   try {
-    // Cowork는 더 이상 Agent CLI를 고르지 않는다 — 모델 하나만 고르고, 전송은 Console의 AI
-    // Gateway가 담당한다. 저장돼 있던 모델이 목록에서 사라졌어도 500이 아니라 기본값으로 복구한다.
+    // Cowork는 Agent CLI도 모델도 고르지 않는다 — 좌표는 Settings › 실험 기능 › AI 확장 › Cowork 한 곳이고,
+    // 전송은 Console의 AI Gateway가 담당한다. 요청마다 설정을 읽으므로 바꾼 직후의 조회부터 새 값을 본다.
     if (request.method === "GET" && parts.length === 3 && parts[2] === "options") {
-      const rows = coworkModelRows(context.enabledGatewayModelIds ?? new Set());
+      const rows = coworkModelRows(context.enabledGatewayModels ?? []);
       const models = rows.map((row) => row.id);
-      const efforts = [...COWORK_EFFORTS];
-      // cowork 제품 기본은 경량 모델이다.
-      const defaultModel = models.includes("sonnet") ? "sonnet" : models[0] ?? "";
-      const defaultEffort = efforts.includes("low") ? "low" : efforts[0] ?? "";
-      const requested = url.searchParams.get("model");
-      const model = requested && models.includes(requested) ? requested : defaultModel;
-      return json(response, 200, { models, efforts, defaultModel: model, defaultEffort, rows });
+      const efforts: readonly string[] = [...COWORK_EFFORTS];
+      const selection = resolveCoworkSelection(context.readExperiments?.() ?? DEFAULT_EXPERIMENT_SETTINGS, rows);
+      const effort = efforts.includes(selection.effort) ? selection.effort : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
+      const payload: CoworkOptionsResponse = { models, efforts, defaultModel: selection.model, defaultEffort: effort, rows, fallback: selection.fallback };
+      return json(response, 200, payload);
     }
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
     // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.

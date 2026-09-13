@@ -1,6 +1,7 @@
 import { AI_GATEWAY_ROUTE_SEGMENT, toClaudeGatewayModelId, type GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 import type { AnalystSession as AnalystSessionInstance } from "@dotobokuri/fleet-analyst";
+import { DEFAULT_EXPERIMENT_AIDE_SELECTION, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 export const ANALYSIS_ERROR_CODES = {
   captureMissing: "analysis_capture_missing",
@@ -13,7 +14,13 @@ export const ANALYSIS_ERROR_CODES = {
 
 export type AnalysisErrorCode = (typeof ANALYSIS_ERROR_CODES)[keyof typeof ANALYSIS_ERROR_CODES];
 export type AnalysisError = { readonly error: { readonly code: AnalysisErrorCode; readonly message: string } };
-export type AnalysisCatalog = { readonly clis: readonly AnalysisCatalogCli[] };
+/**
+ * 분석가가 실제로 도는 좌표. Settings › 실험 기능 › AI 확장 › Session Analyst의 값을 카탈로그와 대조한
+ * 결과다 — 목록 밖 모델이면 Sonnet(없으면 첫 모델)으로 내려가고 `fallback`이 참이 된다. 패널은 이 값을
+ * 고르지 않고 보여 주기만 하며, 시작 요청은 이 값으로 돈다.
+ */
+export type AnalysisSelection = { readonly cliId: AnalystCliId; readonly model: string; readonly effort: string; readonly fallback: boolean };
+export type AnalysisCatalog = { readonly clis: readonly AnalysisCatalogCli[]; readonly selection?: AnalysisSelection };
 export type AnalysisCatalogCli = {
   readonly cliId: AnalystCliId;
   readonly label: string;
@@ -157,14 +164,36 @@ export function analysisError(code: AnalysisErrorCode, message: string): Analysi
   return { error: { code, message } };
 }
 
-export function isAnalysisSelection(catalog: AnalysisCatalog, value: unknown): value is { readonly cliId: AnalystCliId; readonly model: string; readonly effort?: string; readonly language?: "en" | "ko" } {
-  if (!isRecord(value) || !hasExactKeys(value, ["cliId", "model", "effort", "language"]) || typeof value.cliId !== "string" || typeof value.model !== "string" || (value.effort !== undefined && typeof value.effort !== "string") || (value.language !== undefined && value.language !== "en" && value.language !== "ko")) return false;
-  const cli = catalog.clis.find((candidate) => candidate.cliId === value.cliId);
-  if (!cli?.available) return false;
-  const model = cli.models.find((candidate) => candidate.id === value.model);
-  if (!model) return false;
-  if (model.effortLevels.length === 0) return value.effort === undefined || value.effort === "";
-  return typeof value.effort === "string" && value.effort.length > 0 && model.effortLevels.includes(value.effort);
+/**
+ * Settings의 Session Analyst 좌표를 카탈로그와 대조해 실행 좌표를 정한다. 강도는 모델의 사다리 안에서만
+ * 유효하고, 사다리가 비면(강도 없는 Gateway 모델) 빈 값으로 돈다.
+ */
+export function resolveAnalystSelection(catalog: AnalysisCatalog, settings: ConsoleExperimentSettings): AnalysisSelection | undefined {
+  const cli = catalog.clis.find((candidate) => candidate.cliId === ANALYST_GATEWAY_CLI_ID) ?? catalog.clis[0];
+  if (!cli) return undefined;
+  const wanted = experimentAideSelection(settings, "analyst");
+  const configured = cli.models.find((candidate) => candidate.id === wanted.model);
+  const model = configured
+    ?? cli.models.find((candidate) => candidate.id === DEFAULT_EXPERIMENT_AIDE_SELECTION.model)
+    ?? cli.models.find((candidate) => candidate.id === cli.defaultModel)
+    ?? cli.models[0];
+  if (!model) return undefined;
+  const effort = model.effortLevels.length === 0
+    ? ""
+    : model.effortLevels.includes(wanted.effort)
+      ? wanted.effort
+      : clampAnalystDefaultEffort(model.effortLevels, model.defaultEffort) ?? "";
+  return { cliId: cli.cliId, model: model.id, effort, fallback: configured === undefined };
+}
+
+export function withAnalystSelection(catalog: AnalysisCatalog, settings: ConsoleExperimentSettings): AnalysisCatalog {
+  const selection = resolveAnalystSelection(catalog, settings);
+  return selection ? { ...catalog, selection } : catalog;
+}
+
+/** 시작 요청 본문 — 좌표는 서버가 Settings에서 정하므로 출력 언어만 받는다. */
+export function isAnalysisStartBody(value: unknown): value is { readonly language?: "en" | "ko" } {
+  return isRecord(value) && hasExactKeys(value, ["language"]) && (value.language === undefined || value.language === "en" || value.language === "ko");
 }
 
 export function isMessageBody(value: unknown): value is { readonly text: string } {
