@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -16,7 +16,7 @@ import {
   subscribeSideBarOperationAction,
   type SideBarOperationMenuAction,
 } from "./interaction.js";
-import { OperationDetailCard, type OperationDetail } from "./operation-detail-card.js";
+import { OperationDetailCard } from "./operation-detail-card.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
 const DETAIL_HOVER_DELAY_MS = 400;
@@ -120,9 +120,12 @@ export function OperationsSideBarChip({
   const chipContext = chipWorkspace(context);
   const workspaceContext = context ? describeWorkspace(t, context) : "";
   // 상세 카드는 위치 축과 같은 실험 아래에서만 뜬다 — 칩이 폴더를 내려놓는 것과 같은 스위치다.
+  // 상태에 담는 것은 칩의 자리뿐이다: 내용을 스냅샷으로 얼려 두면 열어 둔 채 활동이나 작업 폴더가
+  // 바뀌었을 때 카드가 지난 사실을 계속 말한다.
   const detailEnabled = useGlobalSettingsStore().state?.experiments.operationContext === true;
-  const [detail, setDetail] = useState<OperationDetail | null>(null);
+  const [detailAnchor, setDetailAnchor] = useState<DOMRect | null>(null);
   const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailId = useId();
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
@@ -161,29 +164,24 @@ export function OperationsSideBarChip({
   };
   // 상세 카드 — 포인터는 잠깐 머문 뒤에, 키보드 포커스는 곧바로 연다. 이름을 고치는 중이거나
   // 끌고 있거나 닫기가 armed면 열지 않는다: 그 순간의 칩은 읽는 자리가 아니라 조작하는 자리다.
-  const detailBlocked = () => preview || !detailEnabled || rename.renaming || dragging || isCloseArmed;
+  const detailBlocked = preview || !detailEnabled || rename.renaming || dragging || isCloseArmed;
+  // 지연 타이머는 걸릴 때의 렌더를 붙들고 있다 — 기다리는 사이에 바뀐 차단 상태를 ref로 다시 본다.
+  const detailBlockedRef = useRef(detailBlocked);
+  detailBlockedRef.current = detailBlocked;
   const closeDetail = () => {
     if (detailTimerRef.current) {
       clearTimeout(detailTimerRef.current);
       detailTimerRef.current = null;
     }
-    setDetail(null);
-  };
-  const openDetail = (element: HTMLElement) => {
-    setDetail({
-      anchor: element.getBoundingClientRect(),
-      activity: markVisual,
-      workspace: context,
-      createdAt: session?.createdAt ?? operation.ts.createdAt,
-    });
+    setDetailAnchor(null);
   };
   const armDetail = (event: ReactPointerEvent<HTMLLIElement>) => {
-    if (detailBlocked() || event.pointerType !== "mouse") return;
+    if (detailBlocked || event.pointerType !== "mouse") return;
     const element = event.currentTarget;
     if (detailTimerRef.current) clearTimeout(detailTimerRef.current);
     detailTimerRef.current = setTimeout(() => {
       detailTimerRef.current = null;
-      if (!detailBlocked()) openDetail(element);
+      if (!detailBlockedRef.current) setDetailAnchor(element.getBoundingClientRect());
     }, DETAIL_HOVER_DELAY_MS);
   };
   const close = (event: SyntheticEvent<HTMLButtonElement>) => {
@@ -206,15 +204,26 @@ export function OperationsSideBarChip({
   // 카드는 열릴 때 잰 칩 자리를 들고 있다 — 목록이 스크롤되거나 창이 바뀌면 그 자리는 이미 거짓이다.
   // 따라 옮기는 대신 닫는다: 읽던 사람이 손을 움직인 것이고, 다시 겨누면 다시 열린다.
   useEffect(() => {
-    if (!detail) return;
-    const dismiss = () => setDetail(null);
+    if (!detailAnchor) return;
+    const dismiss = () => setDetailAnchor(null);
     window.addEventListener("scroll", dismiss, true);
     window.addEventListener("resize", dismiss);
     return () => {
       window.removeEventListener("scroll", dismiss, true);
       window.removeEventListener("resize", dismiss);
     };
-  }, [detail]);
+  }, [detailAnchor]);
+
+  // 조작이 시작되면 이미 열려 있던 카드도 물러난다. 닫기 버튼은 포인터 이벤트를 삼키므로 칩의
+  // 이탈 처리가 닿지 않는다 — 열지 않는 조건과 닫는 조건을 같은 값 하나로 묶어야 어긋나지 않는다.
+  useEffect(() => {
+    if (!detailBlocked) return;
+    if (detailTimerRef.current) {
+      clearTimeout(detailTimerRef.current);
+      detailTimerRef.current = null;
+    }
+    setDetailAnchor(null);
+  }, [detailBlocked]);
 
   useEffect(() => () => {
     if (detailTimerRef.current) clearTimeout(detailTimerRef.current);
@@ -259,6 +268,7 @@ export function OperationsSideBarChip({
       aria-haspopup={preview || !menuEnabled ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
+      aria-describedby={detailAnchor ? detailId : undefined}
       /* 상세 카드가 뜨는 동안에는 네이티브 툴팁을 내려놓는다 — 두 개가 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
       title={detailEnabled && !preview
         ? undefined
@@ -276,7 +286,7 @@ export function OperationsSideBarChip({
       onPointerLeave={closeDetail}
       onFocus={(event) => {
         if (!isCloseArmed) onDisarmClose();
-        if (event.target === event.currentTarget && !detailBlocked()) openDetail(event.currentTarget);
+        if (event.target === event.currentTarget && !detailBlocked) setDetailAnchor(event.currentTarget.getBoundingClientRect());
       }}
       onBlur={closeDetail}
       onPointerDown={(event) => {
@@ -287,7 +297,7 @@ export function OperationsSideBarChip({
         if (dragging) suppressClickRef.current = true;
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && detail) {
+        if (event.key === "Escape" && detailAnchor) {
           event.preventDefault();
           closeDetail();
           return;
@@ -389,7 +399,15 @@ export function OperationsSideBarChip({
           {isCloseArmed ? t("sidebar.chip.closeArmed") : <SideBarCloseIcon />}
         </button>
       )}
-      {detail ? <OperationDetailCard detail={detail} /> : null}
+      {detailAnchor ? (
+        <OperationDetailCard
+          id={detailId}
+          anchor={detailAnchor}
+          activity={markVisual}
+          workspace={context}
+          createdAt={session?.createdAt ?? operation.ts.createdAt}
+        />
+      ) : null}
     </li>
   );
 }

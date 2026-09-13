@@ -9,11 +9,15 @@ import type { OperationMarkVisual } from "../operation-activity.js";
 const GAP_PX = 10;
 const EDGE_PX = 8;
 
-export interface OperationDetail {
+export interface OperationDetailProps {
+  /** 카드를 띄운 칩의 자리. 열 때 한 번 재고, 목록이 움직이면 카드를 닫는 쪽이 소유한다. */
   readonly anchor: DOMRect;
+  /** 열려 있는 동안에도 살아 있는 값을 그대로 받는다 — 카드는 스냅샷을 들고 있지 않는다. */
   readonly activity: OperationMarkVisual | undefined;
   readonly workspace: OperationWorkspace | null;
   readonly createdAt: number;
+  /** 칩이 `aria-describedby`로 가리키는 id — 포털로 나간 요소는 자동으로 연결되지 않는다. */
+  readonly id: string;
 }
 
 /**
@@ -21,36 +25,37 @@ export interface OperationDetail {
  * 카드를 연 사람은 어느 칩을 겨눴는지 알고 있으므로 제목을 다시 얹지 않는다. 읽기 전용이라
  * 초점을 가져가지 않고, 포인터가 지나가도 반응하지 않는다(pointer-events: none).
  */
-export function OperationDetailCard({ detail }: { readonly detail: OperationDetail }) {
+export function OperationDetailCard({ anchor, activity, workspace, createdAt, id }: OperationDetailProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<CSSProperties | null>(null);
-  const location = locationLine(detail.workspace);
+  const location = locationLine(workspace);
 
   // 자리는 카드 크기를 알아야 정해진다 — 그리기 전 프레임에 재고 나서 한 번에 앉힌다.
+  // 열린 채로 내용이 바뀌면 높이도 바뀌므로 그때마다 다시 잰다.
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
     const { width, height } = card.getBoundingClientRect();
-    const anchor = detail.anchor;
     const spillRight = anchor.right + GAP_PX + width > window.innerWidth - EDGE_PX;
     const left = spillRight ? Math.max(EDGE_PX, anchor.left - GAP_PX - width) : anchor.right + GAP_PX;
     const wanted = anchor.top + anchor.height / 2 - height / 2;
     const top = Math.min(Math.max(EDGE_PX, wanted), Math.max(EDGE_PX, window.innerHeight - EDGE_PX - height));
     setPlaced({ left, top });
-  }, [detail.anchor]);
+  }, [anchor, activity, location]);
 
   return createPortal(
     <div
       ref={cardRef}
+      id={id}
       className="operation-detail-card"
       role="tooltip"
       style={placed ?? { left: 0, top: 0, visibility: "hidden" }}
     >
       <div className="operation-detail-row">
         <span className="operation-detail-key">{t("sidebar.chip.detail.status")}</span>
-        <span className="operation-detail-value">{activityLabel(t, detail.activity)}</span>
+        <span className="operation-detail-value">{activityLabel(t, activity)}</span>
       </div>
       {location ? (
         <div className="operation-detail-row">
@@ -60,7 +65,7 @@ export function OperationDetailCard({ detail }: { readonly detail: OperationDeta
       ) : null}
       <div className="operation-detail-row">
         <span className="operation-detail-key">{t("sidebar.chip.detail.started")}</span>
-        <span className="operation-detail-value">{formatRelativeTime(detail.createdAt, locale)}</span>
+        <span className="operation-detail-value">{formatRelativeTime(createdAt, locale)}</span>
       </div>
     </div>,
     document.body,
