@@ -164,7 +164,9 @@ export function OperationsSideBarChip({
   };
   // 상세 카드 — 포인터는 잠깐 머문 뒤에, 키보드 포커스는 곧바로 연다. 이름을 고치는 중이거나
   // 끌고 있거나 닫기가 armed면 열지 않는다: 그 순간의 칩은 읽는 자리가 아니라 조작하는 자리다.
-  const detailBlocked = preview || !detailEnabled || rename.renaming || dragging || isCloseArmed;
+  // preview 칩이 내려놓는 것은 close·rename·accent 같은 조작 어포던스이지 읽을 거리가 아니다.
+  // 폴더를 칩에서 내린 뒤로는 카드가 그 자리를 지므로, 여기서 막으면 미리보기만 위치를 잃는다.
+  const detailBlocked = !detailEnabled || rename.renaming || dragging || isCloseArmed;
   // 지연 타이머는 걸릴 때의 렌더를 붙들고 있다 — 기다리는 사이에 바뀐 차단 상태를 ref로 다시 본다.
   const detailBlockedRef = useRef(detailBlocked);
   detailBlockedRef.current = detailBlocked;
@@ -270,7 +272,7 @@ export function OperationsSideBarChip({
       aria-current={active ? "true" : undefined}
       aria-describedby={detailAnchor ? detailId : undefined}
       /* 상세 카드가 뜨는 동안에는 네이티브 툴팁을 내려놓는다 — 두 개가 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
-      title={detailEnabled && !preview
+      title={detailEnabled
         ? undefined
         : resumeOnActivate
           ? t("sidebar.chip.resumeTitle")
