@@ -155,7 +155,8 @@ export class ComputerUseService {
         return result({ ended: true, cleanupStatus: this.cleanupStatus, threadReleaseStatus: this.threadReleaseStatus, cleanupFailure: this.cleanupFailure, captureStopped: "unverified", reconnect: "on_next_use", warning: this.warning, hint: this.deps.platform.endHint });
       } },
       { ...spec("computer_status", this.deps.platform.toolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
-      spec("computer_apps", this.deps.platform.toolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 200, description: "Optional app name, bundle ID or path search." } }, additionalProperties: false }),
+      spec("computer_apps", this.deps.platform.toolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 4096, description: "Optional app name, bundle ID or path search." }, includeWindowState: { type: "boolean", description: "Read window state without capture or activation. Requires query; inspects at most 20 matched installations and reports truncation." } }, additionalProperties: false }),
+      spec("computer_open", this.deps.platform.toolDescriptions.computer_open, { type: "object", properties: { app: { type: "string", minLength: 1, maxLength: 4096, description: "Exact absolute .app installation path observed in computer_apps or supplied by the user. No bundle IDs or name lookup." }, reason: { type: "string", minLength: 1, maxLength: 600 }, activate: { type: "boolean", default: false, description: "Default false requests background launch/reopen. The app may still activate itself; not a focus guarantee. Set true only when foreground opening is authorized." } }, required: ["app", "reason"], additionalProperties: false }),
       spec("computer_state", this.deps.platform.toolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
       spec("computer_paste", this.deps.platform.toolDescriptions.computer_paste, {
         type: "object", properties: {
@@ -195,6 +196,8 @@ export class ComputerUseService {
     if (!owner || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
     if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy", hint: "Another session owns Computer Use. Stop it in Settings before switching." }, true);
     if (!isRecord(input)) return result({ error: "invalid_arguments" }, true);
+    if (tool === "computer_apps" && ((input.query !== undefined && (typeof input.query !== "string" || input.query.length > 4096)) || (input.includeWindowState !== undefined && typeof input.includeWindowState !== "boolean") || (input.includeWindowState === true && (typeof input.query !== "string" || !input.query.trim())))) return result({ error: "computer_use_invalid_window_query", hint: "Window inspection requires a nonempty query. Use an exact installation path to limit the read." }, true);
+    if (tool === "computer_open" && ((input.activate !== undefined && typeof input.activate !== "boolean") || typeof input.app !== "string" || !input.app.startsWith("/") || !input.app.endsWith(".app") || typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 600)) return result({ error: "computer_use_invalid_open", actionOutcome: "not_started", hint: "Use the exact absolute .app path and a reason authorizing foreground launch/reopen." }, true);
     if ((tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && input.observation !== undefined && input.observation !== "text" && input.observation !== "text_and_image") return result({ error: "computer_use_invalid_observation", actionOutcome: "not_started" }, true);
     if (tool === "computer_state" && input.fullTree !== undefined && typeof input.fullTree !== "boolean") return result({ error: "computer_use_invalid_full_tree", actionOutcome: "not_started" }, true);
     if (input.allowActivation !== undefined && typeof input.allowActivation !== "boolean") return result({ error: "computer_use_invalid_activation", actionOutcome: "not_started" }, true);
@@ -224,6 +227,20 @@ export class ComputerUseService {
     let actionText: readonly Record<string, unknown>[] = [];
     let actionOutcome: "not_started" | "unknown" | "completed" | "error" = "not_started";
     try {
+      if (tool === "computer_open") {
+        this.assertActive(lifetime);
+        this.snapshots.clear();
+        this.captureApp = null;
+        this.captureUnavailable = false;
+        this.deps.onCaptureTarget?.(null);
+        this.state = "running";
+        this.stage = "open_app";
+        actionOutcome = "unknown";
+        const opened = await this.deps.platform.openApp(app as string, lifetime.signal, input.activate === true);
+        actionOutcome = opened.requestDispatched ? "completed" : "not_started";
+        this.assertActive(lifetime);
+        return result({ ...opened, activateRequested: input.activate === true, focusGuaranteed: false, actionOutcome, snapshotId: null, retryPerformed: false, hint: opened.windowReady ? "A non-minimized window exists, not a captured observation or focus guarantee. computer_state may activate the app when allowActivation:true; do not capture when the task requires keeping focus elsewhere." : "No window matching the requested readiness was verified. Do not retry automatically, switch installations, force-quit, or replay input. The app may need the user to open a window or finish a dialog." }, Boolean(opened.error) || !opened.windowReady);
+      }
       if (!this.broker) {
         this.state = "starting";
         this.assertActive(lifetime);
@@ -250,8 +267,10 @@ export class ComputerUseService {
         this.appTargets = this.deps.platform.appTargets(apps);
         const query = typeof input.query === "string" ? input.query.normalize("NFC").trim().toLowerCase() : "";
         const targets = query ? this.appTargets.filter((target) => [target.name, target.app, target.bundleId ?? ""].some((value) => value.normalize("NFC").toLowerCase().includes(query))) : this.appTargets;
+        const windowStates = input.includeWindowState === true && !apps.isError ? await this.deps.platform.inspectWindows(targets.slice(0, 20).map((target) => target.app)) : undefined;
+        this.assertActive(lifetime);
         const content = query && !apps.isError ? apps.content.filter((block) => block.type === "text").map((block) => ({ ...block, text: String(block.text).split("\n").filter((line) => line.normalize("NFC").toLowerCase().includes(query)).join("\n") })) : apps.content;
-        return { ...apps, content: [...result({ source: "native app inventory", targets, query: query || null, total: this.appTargets.length, matched: targets.length, targetHint: "Copy targets[].app unchanged into computer_state and computer_action. It is an exact installation path, avoiding duplicate bundle IDs and localized names. If targets is empty, use the original inventory below; no identifier was inferred.", runningStatus: "advisory", hint: "A missing running marker does not establish that an app is closed. Do not launch or close apps based solely on this list." }).content, ...content] };
+        return { ...apps, content: [...result({ source: "native app inventory", targets, ...(windowStates ? { windowStates, windowStateTruncated: targets.length > windowStates.length } : {}), query: query || null, total: this.appTargets.length, matched: targets.length, targetHint: "Copy targets[].app unchanged into computer_state and computer_action. It is an exact installation path, avoiding duplicate bundle IDs and localized names. If targets is empty, use the original inventory below; no identifier was inferred.", runningStatus: "advisory", hint: "A missing running marker does not establish that an app is closed. Do not launch or close apps based solely on this list." }).content, ...content] };
       }
       const target = app as string;
       if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode, input.allowActivation === true, input.fullTree === true);
@@ -310,7 +329,7 @@ export class ComputerUseService {
       this.activeTool = null;
       this.startedAt = null;
       this.stage = null;
-      if (this.broker && !lifetime.signal.aborted) {
+      if (this.owner === owner && !lifetime.signal.aborted) {
         this.state = "ready";
         this.idleTimer = setTimeout(() => { void this.stop(); }, IDLE_TIMEOUT_MS);
       }

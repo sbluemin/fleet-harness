@@ -7,7 +7,7 @@ ObjC.import('AppKit'); ObjC.import('CoreGraphics');
 function run(args) {
   var pid=Number(args[0]), id=Number(args[1]), started=Number(args[2]);
   var app=$.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
-  if (!app || Number(app.launchDate.timeIntervalSince1970)!==started) return 'false';
+  if (!app || app.hidden || Number(app.launchDate.timeIntervalSince1970)!==started) return 'false';
   var rows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
   return JSON.stringify(rows.some(w=>w.kCGWindowOwnerPID===pid && w.kCGWindowNumber===id));
 }`;

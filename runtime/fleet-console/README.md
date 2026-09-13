@@ -41,6 +41,36 @@ Folder grants are one-use and in-memory. Browser-side cancellation stays local t
 
 ## Computer Use observation output
 
+`computer_apps({ query, includeWindowState: true })` inspects window state without
+activation or capture for up to 20 matched installations. It reports truncation;
+use an exact app path to narrow the read. `no_window` means a successful AXWindows
+read returned an empty list; `unknown` preserves permission and lookup failures.
+A running process alone is not evidence of an open window.
+
+`computer_open({ app, reason, activate: false })` explicitly launches/reopens one
+absolute `.app` installation through the macOS background open request (`open -g`).
+`activate` defaults to false; an app can still activate itself, so focus preservation
+is not guaranteed or restored. Use `activate: true` only for authorized foreground
+opening. Background readiness means a non-minimized AX window exists; it does not
+promise visibility or background capture. A later `computer_state` with
+`allowActivation: true` may take focus. Use it only when opening that app is
+within the user's task. It requires no snapshot, invalidates prior snapshots, and
+shares the local-control, opt-in, cancellation and session ownership gates. It does
+not capture, type, switch installations, force-quit, or retry. `requestDispatched`
+means the request process started, not that a window opened. Check `windowReady`,
+then request `computer_state` for a new observation. Apps can ignore reopen or show
+a chooser; an unready result requires user guidance rather than replaying input.
+Closing a window differs from minimizing it: even with `allowActivation: true`,
+a confirmed empty window list refuses capture/input with
+`computer_use_no_action_window`. Unknown window state is not guessed to be empty.
+A confirmed hidden app refuses capture/input with `computer_use_app_hidden`: native
+AX reads can succeed while the separate Desktop live preview is blank. When showing
+the app is authorized, request background reopen, verify `hidden: false`, and read
+fresh state. Window readiness requires the app to be unhidden, not necessarily
+foreground. Desktop also rejects hidden apps when validating a preview source.
+Native `-10005` is not a permission diagnosis: preserve its message and distinguish
+capture failure from timeout.
+
 `fleet-computer-use` uses the installed Codex native backend. `computer_state` and
 `computer_action` and `computer_paste` default to `observation: "text"`: native capture is unchanged,
 but screenshot blocks are omitted from model output,

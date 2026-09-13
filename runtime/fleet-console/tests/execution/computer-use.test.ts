@@ -21,6 +21,9 @@ describe("Computer Use authorization and lifecycle", () => {
     let local = true;
     const call = vi.fn(async (): Promise<ComputerUseResult> => ({ content: [{ type: "text", text: "<app_state>app state</app_state>" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }] }));
     const preflight = vi.fn(async (_app: string, _allowActivation: boolean) => {});
+    const inspectWindows = vi.fn<typeof macOSComputerUsePlatform.inspectWindows>(async (apps) => apps.map((app) => ({ app, status: "no_window", pid: 42, frontmost: false, hidden: false, windowCount: 0 })));
+    const openApp = vi.fn<typeof macOSComputerUsePlatform.openApp>(async (app) => ({ requestDispatched: true, windowReady: true, windowState: { app, status: "available", pid: 42, frontmost: true, hidden: false, windowCount: 1 } }));
+    const resolveTarget = vi.fn(macOSComputerUsePlatform.resolveTarget);
     const diagnostic = vi.fn();
     const onCaptureTarget = vi.fn();
     const start = vi.fn(async () => undefined);
@@ -37,13 +40,59 @@ describe("Computer Use authorization and lifecycle", () => {
     ]) } as unknown as ComputerUseBackend;
     const service = new ComputerUseService({
       directory: "unused", diagnostic, onCaptureTarget, enabled: () => enabled, localControl: () => local,
-      platform: { ...macOSComputerUsePlatform, preflight, supported: () => true, inspectInstallation: async () => true,
+      platform: { ...macOSComputerUsePlatform, preflight, inspectWindows, openApp, resolveTarget, supported: () => true, inspectInstallation: async () => true,
         createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
-    const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(observation && (tool === "computer_state" || tool === "computer_action") ? { observation, ...input as Record<string, unknown> } : input, { cwd: "", sessionLabel, signal });
-    return { service, invoke, call, preflight, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
+    const invoke = async (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => await service.specs().find((spec) => spec.id === tool)!.execute(observation && (tool === "computer_state" || tool === "computer_action") ? { observation, ...input as Record<string, unknown> } : input, { cwd: "", sessionLabel, signal }) as ComputerUseResult;
+    return { service, invoke, call, preflight, inspectWindows, openApp, resolveTarget, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
   }
+
+  it("keeps window recovery explicit, owned, and separate from capture and stale input", async () => {
+    const f = setup();
+    const app = "/Applications/Fixture.app";
+    f.resolveTarget.mockImplementation(async (value) => value);
+    const input = { app, reason: "Reopen the requested fixture" };
+    f.enable(false);
+    expect((await f.invoke("computer_open", input)).isError).toBe(true);
+    f.enable(true); f.local(false);
+    expect((await f.invoke("computer_open", input)).isError).toBe(true);
+    f.local(true);
+    expect((await f.invoke("computer_open", { ...input, app: "Fixture" })).isError).toBe(true);
+    expect(f.openApp).not.toHaveBeenCalled();
+    expect((await f.invoke("computer_apps", { includeWindowState: true })).isError).toBe(true);
+    f.call.mockResolvedValueOnce({ content: [{ type: "text", text: `Fixture — ${app} — test.fixture` }] });
+    const inventory = await f.invoke("computer_apps", { query: app, includeWindowState: true });
+    expect(JSON.parse(String(inventory.content[0]!.text)).windowStates).toEqual([expect.objectContaining({ status: "no_window", windowCount: 0 })]);
+    expect(f.openApp).not.toHaveBeenCalled();
+    const read = await f.invoke("computer_state", { app });
+    const snapshotId = JSON.parse(String(read.content[0]!.text)).snapshotId;
+    expect((await f.invoke("computer_open", input, "session-b")).isError).toBe(true);
+    const callsBefore = f.call.mock.calls.length;
+    const opened = await f.invoke("computer_open", input);
+    expect(JSON.parse(String(opened.content[0]!.text))).toMatchObject({ requestDispatched: true, windowReady: true, snapshotId: null, retryPerformed: false });
+    expect(f.openApp).toHaveBeenCalledTimes(1);
+    expect(f.openApp).toHaveBeenLastCalledWith(app, expect.any(AbortSignal), false);
+    expect(f.call).toHaveBeenCalledTimes(callsBefore);
+    expect((await f.invoke("computer_action", { app, snapshotId, action: "press_key", arguments: { key: "Return" }, reason: "stale" })).isError).toBe(true);
+    expect(f.call).toHaveBeenCalledTimes(callsBefore);
+    f.openApp.mockResolvedValueOnce({ requestDispatched: true, windowReady: false, windowState: { app, status: "unknown", pid: 42, frontmost: null, hidden: null, windowCount: null, reason: "window_lookup_failed" } });
+    const unavailable = await f.invoke("computer_open", input);
+    expect(unavailable.isError).toBe(true);
+    expect(JSON.parse(String(unavailable.content[0]!.text))).toMatchObject({ requestDispatched: true, windowReady: false, windowState: { status: "unknown" } });
+    expect(f.openApp).toHaveBeenCalledTimes(2);
+    await f.service.stop();
+    f.openApp.mockImplementationOnce(async (_app, signal) => {
+      await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+      return { requestDispatched: true, windowReady: false, windowState: { app, status: "unknown", pid: null, frontmost: null, hidden: null, windowCount: null } };
+    });
+    const controller = new AbortController();
+    const pending = f.invoke("computer_open", input, "session-a", controller.signal);
+    await vi.waitFor(() => expect(f.openApp).toHaveBeenCalledTimes(3));
+    controller.abort();
+    expect((await pending).isError).toBe(true);
+    expect(f.service.activeOwner()).toBeNull();
+  });
 
   it("serves a separate opt-in MCP and revokes device access with its token", async () => {
     const f = setup();
@@ -65,7 +114,7 @@ describe("Computer Use authorization and lifecycle", () => {
       f.enable(true);
       expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
       const on = connection.issueSessionToken({ label: "on", cwd: process.cwd() })[0]!;
-      expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_state", "computer_action", "computer_paste"]));
+      expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_open", "computer_state", "computer_action", "computer_paste"]));
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
       f.call.mockResolvedValueOnce({ captureWindow: { pid: 1, windowId: 42, processStartedAt: 123, title: "Fixture" }, content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window URL: localhost, Secondary Actions: Raise, Fixture - Chrome - Profile\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
       const partial = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", fullTree: true } });
