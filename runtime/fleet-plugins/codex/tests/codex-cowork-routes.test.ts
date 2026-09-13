@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "@dotobokuri/fleet-wiki";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { handleCoworkRequest } from "../server/codex/cowork/routes.js";
 import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "../server/codex/cowork/index.js";
 import { EventEmitter } from "node:events";
@@ -47,7 +47,7 @@ describe("Cowork options", () => {
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
     const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
-    let experiments = { ...DEFAULT_EXPERIMENT_SETTINGS, coworkModel: "claude-gateway--codex--gpt-5.6-luna", coworkEffort: "high" as const };
+    let experiments: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS, coworkModel: "claude-gateway--codex--gpt-5.6-luna", coworkEffort: "high" };
     const luna = { id: "codex--gpt-5.6-luna", provider: "codex", displayName: "Codex-GPT-5.6-Luna", contextWindow: 400_000, effort: { supported: true, levels: ["low", "medium", "high"] } };
     let enabled: readonly (typeof luna)[] = [luna];
     const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true, enabledGatewayModels: enabled as never, readExperiments: () => experiments }));
