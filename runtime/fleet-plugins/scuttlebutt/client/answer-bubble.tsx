@@ -80,8 +80,9 @@ export function AnswerBubble({
         text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
         const clipped = text.scrollHeight > text.clientHeight + 1;
         text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
-        if (clipped) text.setAttribute("tabindex", "0");
-        else text.removeAttribute("tabindex");
+        // 잘렸을 때만 Tab 순서에 든다(키보드로 굴리라고). 안 잘려도 -1은 남는다 — 답이 정착하면
+        // 본문이 포커스를 받아야 Escape 한 번으로 물었던 자리로 돌아간다.
+        text.setAttribute("tabindex", clipped ? "0" : "-1");
       }
       bubble.style.left = `${Math.max(margin, window.innerWidth - margin - width - slot * (width + gap))}px`;
       bubble.style.bottom = "";
@@ -128,8 +129,7 @@ export function AnswerBubble({
       // 넘치는 답은 아래 가장자리를 흐려 "더 있다"고 말하고, 키보드로도 굴릴 수 있게 포커스 자리를 준다.
       const clipped = text.scrollHeight > text.clientHeight + 1;
       text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
-      if (clipped) text.setAttribute("tabindex", "0");
-      else text.removeAttribute("tabindex");
+      text.setAttribute("tabindex", clipped ? "0" : "-1");
     }
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
     // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
