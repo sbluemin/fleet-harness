@@ -49,6 +49,25 @@ export function placeCard(
   };
 }
 
+/**
+ * 상단 바에 둔 부관의 시트 자리. 글리프 아래로 내려오고 글리프의 오른쪽 변에 맞춘다 —
+ * 새의 위치가 아니라 밴드가 닻이라 항상 같은 자리다. 높이는 화면의 80%까지만 쓴다: 그 이상은
+ * 답이 아니라 벽이다.
+ */
+export function placeDockedCard(
+  viewport: Size,
+  glyph: { readonly left: number; readonly top: number; readonly width: number; readonly height: number },
+  card: Size,
+): CardPlacement {
+  const top = glyph.top + glyph.height + GAP;
+  return {
+    side: "below",
+    left: clamp(glyph.left + glyph.width - card.width, EDGE, Math.max(EDGE, viewport.width - card.width - EDGE)),
+    top,
+    maxHeight: Math.max(0, Math.min(viewport.height * 0.8, viewport.height - top - EDGE)),
+  };
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }

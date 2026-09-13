@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
@@ -11,6 +11,7 @@ import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-g
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { usePluginRegistry } from "../plugin-registry.js";
 import { useUpdateProgress } from "../update-progress-store.js";
 import { toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
@@ -53,6 +54,7 @@ const TACTICAL_LAYOUTS: readonly {
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
+  const { commandBandEntries } = usePluginRegistry();
   const zenMode = useZenMode();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
@@ -413,6 +415,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div>
       </div>
       <div ref={bandRightRef} className="command-band-right">
+        {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
+            두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
+        {commandBandEntries.map((entry) => <Fragment key={entry.id}>{entry.render()}</Fragment>)}
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
