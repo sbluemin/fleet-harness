@@ -36,6 +36,7 @@ import { createDeferredDeletionCoordinator, DeferredDeletionError, type Deferred
 import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
 import { ComputerUseService } from "./agent/computer-use.js";
+import { macOSComputerUsePlatform } from "./agent/computer-use-macos.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -568,6 +569,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   const computerUse = new ComputerUseService({
+    platform: macOSComputerUsePlatform,
     directory: path.join(fleetDataDir, "computer-use"),
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,

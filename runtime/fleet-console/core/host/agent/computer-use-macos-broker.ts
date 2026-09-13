@@ -3,17 +3,8 @@ import { constants, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
+import { isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool } from "./computer-use-platform.js";
 
-export interface ComputerUseResult {
-  readonly content: readonly Record<string, unknown>[];
-  readonly structuredContent?: unknown;
-  readonly isError?: boolean;
-}
-export interface ComputerUseTool {
-  readonly name: string;
-  readonly description?: string;
-  readonly inputSchema: Record<string, unknown>;
-}
 export interface ComputerUseInstallation {
   readonly codex: string;
   readonly pluginRoot: string;
@@ -45,7 +36,7 @@ export async function findComputerUseInstallation(): Promise<ComputerUseInstalla
 }
 
 /** 모델 턴을 시작하지 않는다. 별도 CODEX_HOME에 ephemeral thread만 두고 native client 설치는 참조한다. */
-export class ComputerUseBroker {
+export class MacOSComputerUseBroker implements ComputerUseBackend {
   private process: ChildProcessWithoutNullStreams | null = null;
   private nextId = 0;
   private buffer = "";
@@ -59,12 +50,7 @@ export class ComputerUseBroker {
   threadReleaseStatus: "not_requested" | "not_needed" | "released" | "failed" = "not_requested";
   cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | null = null;
 
-  constructor(private readonly deps: {
-    readonly directory: string;
-    readonly installation: ComputerUseInstallation;
-    readonly onStage?: (stage: string) => void;
-    readonly approve: (request: Record<string, unknown>) => Promise<boolean>;
-  }) {}
+  constructor(private readonly deps: ComputerUseBackendOptions & { readonly installation: ComputerUseInstallation }) {}
 
   async start(): Promise<void> {
     await fs.mkdir(this.deps.directory, { recursive: true, mode: 0o700 });
@@ -256,8 +242,4 @@ export class ComputerUseBroker {
     this.directory = null;
     if (directory) await fs.rm(directory, { recursive: true, force: true });
   }
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

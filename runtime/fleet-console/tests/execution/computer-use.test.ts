@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComputerUseService } from "../../core/host/agent/computer-use.js";
-import type { ComputerUseResult, ComputerUseBroker } from "../../core/host/agent/computer-use-broker.js";
+import type { ComputerUseResult, ComputerUseBackend } from "../../core/host/agent/computer-use-platform.js";
+import { macOSComputerUsePlatform } from "../../core/host/agent/computer-use-macos.js";
 import { createComputerUseMcpHost } from "../../core/host/mcp/computer-use.js";
 
 // 기존 MCP 테스트는 읽기 전용 Console 목록뿐이다. 실제 기기 접근의 승인·소유권·회수 경계를 여기서 검증한다.
@@ -16,17 +17,18 @@ describe("Computer Use authorization and lifecycle", () => {
     const start = vi.fn(async () => undefined);
     const stop = vi.fn(async () => undefined);
     let approve: (() => Promise<boolean>) | undefined;
-    const broker = { start, stop, call, cleanupStatus: "failed", tools: new Map([
+    const broker = { start, stop, call, cleanupStatus: "failed", threadReleaseStatus: "not_needed", cleanupFailure: null, tools: new Map([
       ["get_app_state", { name: "get_app_state", inputSchema: { type: "object", properties: { app: { type: "string" } }, required: ["app"], additionalProperties: false } }],
       ["press_key", { name: "press_key", description: "Use xdotool key syntax", inputSchema: { type: "object", properties: { app: { type: "string" }, key: { type: "string" } }, required: ["app", "key"], additionalProperties: false } }],
       ["click", { name: "click", inputSchema: { type: "object", properties: { app: { type: "string" }, x: { type: "number" }, y: { type: "number" }, element_index: { type: "string" } }, required: ["app"], additionalProperties: false } }],
       ["select_text", { name: "select_text", inputSchema: { type: "object", properties: { app: { type: "string" }, element_index: { type: "string" }, text: { type: "string" } }, required: ["app", "element_index", "text"], additionalProperties: false } }],
       ["set_value", { name: "set_value", inputSchema: { type: "object", properties: { app: { type: "string" }, element_index: { type: "string" }, value: { type: "string" } }, required: ["app", "element_index", "value"], additionalProperties: false } }],
       ["type_text", { name: "type_text", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string" } }, required: ["app", "text"], additionalProperties: false } }],
-    ]) } as unknown as ComputerUseBroker;
+    ]) } as unknown as ComputerUseBackend;
     const service = new ComputerUseService({
-      directory: "unused", diagnostic, enabled: () => enabled, localControl: () => local, supported: () => true,
-      installation: async () => ({ codex: "unused", pluginRoot: "unused", clientHome: "unused" }), createBroker: (deps) => { approve = () => deps.approve({}); return broker; },
+      directory: "unused", diagnostic, enabled: () => enabled, localControl: () => local,
+      platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true,
+        createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
     const invoke = (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => service.specs().find((spec) => spec.id === tool)!.execute(input, { cwd: "", sessionLabel, signal });
