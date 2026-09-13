@@ -27,7 +27,7 @@ describe("Scuttlebutt Console Agent integration", () => {
     expect(dispose).toHaveBeenCalledOnce();
     const operational = new ChatSession({ agent, admiral: "bori", consoleUse: { custom: [], consoleUse: { tools: ["console_launch"], allowControl: true }, promptAddendum: "Console execution enabled" } });
     await operational.start();
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], consoleUse: { tools: ["console_launch"], allowControl: true } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], consoleUse: { tools: ["console_launch"], allowControl: true }, aiGateway: true });
     expect(toChatEvents({ kind: "tool-start", name: "mcp__fleet-console-use__console_launch", input: { prompt: "/private/project task", text: "/private/project task" } }, value => value)).toEqual([{ type: "tool", title: "mcp__fleet-console-use__console_launch", status: "running" }]);
     await operational.dispose();
   });

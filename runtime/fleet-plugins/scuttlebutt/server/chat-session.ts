@@ -230,7 +230,7 @@ export class ChatSession implements ChatSessionLike {
       systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : [])].join("\n\n"),
       continuation: "conversation",
       settlement: "result",
-      tools: { builtins: PET_TOOLS, ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse } : {}) },
+      tools: { builtins: PET_TOOLS, ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse, aiGateway: true } : {}) },
       onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
     });
     if (this.disposed) { await session.dispose(); return; }
@@ -311,7 +311,7 @@ function toolUrl(input: unknown): string | null {
 function toolTitle(name: string, input: unknown): string {
   if (name.startsWith("mcp__fleet-console-use__")) return name;
   const detail = record(input);
-  for (const key of ["query", "url", "prompt"]) {
+  for (const key of ["query", "url", "prompt", "uri"]) {
     const value = detail[key];
     if (typeof value === "string" && value.trim()) return `${name}: ${value.trim()}`;
   }
