@@ -181,7 +181,12 @@ export function AnswerBubble({
     if (!bubble || !text) return;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && !bubble.contains(active)) {
-      returnRef.current = active;
+      // 다른 부관의 말풍선이 포커스를 들고 있으면 그 말풍선이 아니라 그것이 기억한 원래 자리를 잇는다 —
+      // 둘이 함께 답할 때 먼저 온 답을 먼저 닫으면 그 본문은 사라지고, 나중 답을 닫는 순간 돌아갈
+      // 곳이 없어진다. 원래 자리(터미널·입력창)는 말풍선을 몇 개 거치든 하나다.
+      const viaBubble = active.closest(".scuttlebutt-answer-bubble") !== null;
+      returnRef.current = viaBubble ? sharedReturnTarget : active;
+      if (!viaBubble) sharedReturnTarget = active;
     }
     text.focus({ preventScroll: true });
   }, [working]);
@@ -277,6 +282,9 @@ export function AnswerBubble({
     </div>
   );
 }
+
+/** 답 말풍선들이 공유하는 "원래 자리" — 마지막으로 말풍선 밖에서 포커스를 가져온 요소. */
+let sharedReturnTarget: HTMLElement | null = null;
 
 /** 본문이 이보다 낮아지면 한두 줄도 못 담는다 — 새가 화면 가장자리에 붙어도 이만큼은 읽힌다. */
 const ANSWER_MIN_HEIGHT_PX = 72;
