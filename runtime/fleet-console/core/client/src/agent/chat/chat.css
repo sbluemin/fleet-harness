@@ -1300,6 +1300,10 @@
   max-height: calc(1.5em * 6 + 10px);
 }
 
+/* 빈 입력의 placeholder가 한 줄을 넘쳐도 스크롤바를 세우지 않는다 — 자동 높이는 문면(scrollHeight)만 재므로
+   placeholder의 줄바꿈은 높이에 잡히지 않고 overflow로만 남는다. */
+.agent-chat-composer-input:placeholder-shown { overflow-y: hidden; }
+
 .agent-chat-composer-input::placeholder {
   color: var(--text-tertiary);
 }

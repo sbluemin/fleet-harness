@@ -677,7 +677,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.analyst.followUp": "후속 질문",
   "terminal.analyst.commands": "분석 명령",
   "terminal.analyst.slashHint": "/ 명령",
-  "terminal.analyst.modelFrom": "모델과 강도는 Settings › 실험 기능 › AI 확장 › Session Analyst에서 정합니다.",
+  "terminal.analyst.modelFrom": "모델과 강도는 Settings › 실험 기능 › AI 확장 › 세션 분석가에서 정합니다.",
   "terminal.analyst.modelFallback": "꺼짐 · Sonnet으로 실행",
   "terminal.analyst.pinnedForSession": "이 세션에 고정",
   "terminal.analyst.changeInSettings": "Settings에서 변경",
