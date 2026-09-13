@@ -41,4 +41,21 @@ describe("console update check", () => {
     // 사용자가 누른 확인은 "모름"을 "최신"으로 바꿔 말하면 안 된다.
     await expect(service.check!()).rejects.toThrow("offline");
   });
+
+  it("keeps the last known update when a later lookup fails", async () => {
+    let online = true;
+    const service = createConsoleUpdateCheckService({
+      readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
+      fetchLatest: async () => {
+        if (!online) throw new Error("offline");
+        return "2.0.0";
+      },
+    });
+
+    await expect(service.refresh()).resolves.toEqual({ updateAvailable: true, latestVersion: "2.0.0" });
+    online = false;
+    await expect(service.check!()).rejects.toThrow("offline");
+    // 일시적 장애가 이미 알려진 업데이트를 지우면 안 된다.
+    expect(service.getStatus()).toEqual({ updateAvailable: true, latestVersion: "2.0.0" });
+  });
 });

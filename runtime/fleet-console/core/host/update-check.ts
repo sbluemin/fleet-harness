@@ -87,7 +87,9 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
         return status;
       })
       .catch((error: unknown) => {
-        cached = { status: NO_UPDATE_STATUS, checkedAt: now(), ttlMs: errorTtlMs };
+        // 조회 실패는 "모름"이지 "없음"이 아니다. 마지막으로 확인된 상태를 짧은 오류 TTL로 붙들어,
+        // 이미 알려진 업데이트가 일시적 장애로 사라졌다 돌아오지 않게 한다.
+        cached = { status: cached?.status ?? NO_UPDATE_STATUS, checkedAt: now(), ttlMs: errorTtlMs };
         throw error;
       })
       .finally(() => {
