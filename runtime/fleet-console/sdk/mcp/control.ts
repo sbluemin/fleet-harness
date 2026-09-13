@@ -1,5 +1,6 @@
 export type ConsoleActivity = "idle" | "running" | "awaiting" | "background" | "ended" | "unknown";
 export type ConsoleActionKind = "launch" | "send" | "interrupt";
+export type ConsoleCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 
 export interface ConsoleActionInput {
   readonly kind: ConsoleActionKind;
@@ -32,7 +33,7 @@ export interface ConsoleOperationObservation {
 export interface ConsoleActionReceipt {
   readonly id: string;
   readonly requestId: string;
-  readonly callerOperationId: string;
+  readonly caller: ConsoleCaller;
   readonly input: ConsoleActionInput;
   readonly status: "accepted" | "running" | "finished" | "rejected" | "failed" | "outcome_unknown";
   readonly createdAt: string;
@@ -57,7 +58,7 @@ export interface ConsoleAutomationInput {
 
 export interface ConsoleAutomation {
   readonly id: string;
-  readonly callerOperationId: string;
+  readonly caller: ConsoleCaller;
   readonly input: ConsoleAutomationInput;
   readonly status: "active" | "paused" | "expired" | "exhausted";
   readonly runs: number;

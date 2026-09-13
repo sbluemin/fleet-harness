@@ -1,4 +1,4 @@
-import type { ConsoleUseSnapshot, ConsoleUseToolId, PluginMcpTool } from "../mcp/types.js";
+import type { ConsoleUseMcpHost, PluginMcpTool } from "../mcp/types.js";
 
 export type AgentEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export interface AgentUsage {
@@ -34,11 +34,7 @@ export interface AgentSessionOptions {
   readonly tools?: {
     readonly builtins?: readonly ("WebSearch" | "WebFetch")[];
     readonly custom?: readonly AgentToolGroup[];
-    readonly consoleRead?: {
-      readonly tools: readonly ConsoleUseToolId[];
-      readonly snapshot?: () => ConsoleUseSnapshot | null;
-      readonly enabled?: () => boolean;
-    };
+    readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
   };
   readonly onEvent?: (event: AgentEvent) => void;
 }

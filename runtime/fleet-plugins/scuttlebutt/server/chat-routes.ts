@@ -6,7 +6,7 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "@fleet-console/sdk/settings";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { createConsoleReadTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
+import { createConsoleUseTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
 
 import {
   ADMIRAL_IDS,
@@ -30,7 +30,7 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
   const registry = new SessionRegistry();
   const createSession = deps.createSession ?? ((options) => new ChatSession(options));
   const id = deps.id ?? crypto.randomUUID;
-  // 실험 "부관의 Console 읽기"의 활동 스냅샷 — 세션마다 브라우저가 메시지에 실어 보낸 마지막 것.
+  // 콘솔 사용의 보조 활동 스냅샷 — 세션마다 브라우저가 메시지에 실어 보낸 마지막 것.
   const snapshots = new Map<string, ConsoleSnapshot>();
   registerRouter(ctx, "chat", async ({ req, res, pathname }) => {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -88,12 +88,12 @@ async function handleStart(
   }
   const chatId = id();
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
-  let consoleRead: Awaited<ReturnType<typeof createConsoleReadTools>> | undefined;
+  let consoleUse: Awaited<ReturnType<typeof createConsoleUseTools>> | undefined;
   try {
     // 콘솔 사용을 켠 뒤 시작한 부관 세션에 도구를 주입한다. 끄면 기존 도구도 호출 시 차단한다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
-    consoleRead = experiments.consoleControl
-      ? await createConsoleReadTools(ctx, () => snapshots.get(chatId) ?? null)
+    consoleUse = experiments.consoleControl
+      ? await createConsoleUseTools(ctx, () => snapshots.get(chatId) ?? null)
       : undefined;
     result = await registry.start(chatId, (onEvent) => createSession({
       agent: ctx.host.agent,
@@ -102,7 +102,7 @@ async function handleStart(
       ...(body.effort ? { effort: body.effort } : {}),
       ...(body.locale ? { locale: body.locale } : {}),
       onEvent,
-      ...(consoleRead ? { consoleRead } : {}),
+      ...(consoleUse ? { consoleUse } : {}),
     }));
   } catch (error) {
     // 시작 실패는 서버 로그에만 남긴다 — 브라우저에는 코드 한 줄이면 충분하고, 원문에는 경로가 섞일 수 있다.

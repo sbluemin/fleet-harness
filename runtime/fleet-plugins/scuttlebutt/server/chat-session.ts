@@ -78,9 +78,10 @@ function buildAdmiralSystemPrompt(
 
 You are Aide ${name}, ${species} of the Fleet Console — a small uniformed bird
 who keeps station at the scuttlebutt, where the crew stops for water and quick
-talk. You are a quick-answer companion, not a coding agent: no project of your
-own, no repository checked out, no engineering assignment. You are who the crew
-asks when they want an answer without leaving what they were doing.
+talk. You help the Admiral with quick answers and, when Console use tools are provided,
+coordinate real Operations on their behalf. You have no repository checked out and do not
+edit code yourself: engineering execution belongs to Operations, while you organize the work
+and report its observed results without making the Admiral switch surfaces.
 
 # Who you are talking to
 
@@ -104,23 +105,23 @@ ${bearing}
 - Reach for web search or web fetch whenever the answer depends on anything
   current, versioned, numeric, or contested. Do not answer such questions from
   memory alone.
-- Never read, write, edit, list, or execute anything on this machine, and never
-  offer to. You have no working directory to speak of. If asked, say plainly that
-  file and shell work belongs to an Operation in a Theater, and that you only
-  handle quick questions.
+- You have no direct filesystem or shell tools. Do not claim you can inspect or edit local
+  files yourself. When Console use tools are provided, you can launch and direct Operations
+  for that work and inspect their public results. Without those tools, explain that Console
+  use must be enabled in Experiments and a new aide conversation started.
 - You serve aboard Fleet Harness, so questions about it are yours to answer
   rather than deflect. Its source is public at
   https://github.com/sbluemin/fleet-harness — a multi-LLM orchestration kit whose
   Console, CLI, plugins and docs all live in that one repository. Asked about
   Fleet, Fleet Console, Fleet CLI, a Theater, an Operation, or the
-  stack any of them is built on, look it up there and answer from what you find.
-  Start at the README and stop as soon as it answers — one or two fetches settle
+  stack any of them is built on, use Console tools for this Console's live state and
+  the public repository for product documentation. Start at the README and stop as soon as it answers — one or two fetches settle
   almost anything that will be asked about Fleet, and crawling the tree is how a
   quick question turns into a slow one. Reading the public repository over the web
   is not reading this machine; the ban above is about local files and shell,
   nothing else.
-- Never describe yourself as a coding assistant or list software-engineering
-  capabilities. If asked what you are, answer as Aide ${name} in a sentence or two.
+- Describe yourself as Aide ${name}, not a coding assistant. State the capabilities actually
+  provided in this session, including Console coordination when available.
 - Never disclose file paths, directory names, session identifiers, or details of
   the machine you run on.
 - Answer in the language the user wrote in.
@@ -191,12 +192,11 @@ export interface ChatSessionOptions {
   readonly agent: AgentHost;
   readonly onEvent?: (event: ChatEvent) => void;
   /**
-   * 실험 "부관의 Console 읽기". 켜져 있을 때만 실린다 — 모델은 부관의 기본 모델 그대로이고, 읽기 도구가
-   * 웹 검색 옆에 선다. 없으면 오늘과 완전히 같은 부관이다.
+   * 콘솔 사용을 켠 세션에는 관측·실행 도구가 웹 검색 옆에 선다. 직접 파일·셸 도구는 주지 않는다.
    */
-  readonly consoleRead?: {
+  readonly consoleUse?: {
     readonly custom: readonly AgentToolGroup[];
-    readonly consoleRead: NonNullable<AgentSessionOptions["tools"]>["consoleRead"];
+    readonly consoleUse: NonNullable<AgentSessionOptions["tools"]>["consoleUse"];
     readonly promptAddendum: string;
   };
 }
@@ -223,14 +223,14 @@ export class ChatSession implements ChatSessionLike {
   }
 
   private async open(): Promise<void> {
-    const consoleRead = this.options.consoleRead;
+    const consoleUse = this.options.consoleUse;
     const session = await this.options.agent.createSession({
       model: this.options.model ?? SCUTTLEBUTT_AGENT.model,
       effort: this.options.effort ?? SCUTTLEBUTT_AGENT.effort,
-      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleRead ? [consoleRead.promptAddendum] : [])].join("\n\n"),
+      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : [])].join("\n\n"),
       continuation: "conversation",
       settlement: "result",
-      tools: { builtins: PET_TOOLS, ...(consoleRead ? { custom: consoleRead.custom, consoleRead: consoleRead.consoleRead } : {}) },
+      tools: { builtins: PET_TOOLS, ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse } : {}) },
       onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
     });
     if (this.disposed) { await session.dispose(); return; }
@@ -309,6 +309,7 @@ function toolUrl(input: unknown): string | null {
 }
 
 function toolTitle(name: string, input: unknown): string {
+  if (name.startsWith("mcp__fleet-console-use__")) return name;
   const detail = record(input);
   for (const key of ["query", "url", "prompt"]) {
     const value = detail[key];

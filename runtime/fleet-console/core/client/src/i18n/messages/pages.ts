@@ -1,6 +1,6 @@
 export const pagesEn = {
   "settings.experiments.consoleControl.title": "Console use",
-  "settings.experiments.consoleControl.help": "Give aides Console reading tools and authorize Console agents to launch, message, interrupt and run bounded automations without individual approval. This may spend quota. Turning this off blocks new execution, not work already started.",
+  "settings.experiments.consoleControl.help": "Authorize aides and Console agents to inspect Operations, launch work, deliver instructions, interrupt foreground turns and run bounded automations without individual approval. This may spend quota. Aides gain tools in new conversations. Turning this off blocks new execution, not work already started.",
 
   // settings
   "settings.title": "Settings",
@@ -447,7 +447,7 @@ export const pagesEn = {
 
 export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.experiments.consoleControl.title": "콘솔 사용",
-  "settings.experiments.consoleControl.help": "부관에게 콘솔 읽기 도구를 제공하고, Console 에이전트의 작업 시작·메시지 전달·중단과 제한된 자동 운영을 개별 확인 없이 포괄 승인합니다. 사용량이 소비될 수 있습니다. 끄면 새 실행을 차단하며, 이미 시작한 작업은 중단하지 않습니다.",
+  "settings.experiments.consoleControl.help": "부관과 Console 에이전트의 Operation 조회·작업 시작·지시 전달·진행 중인 턴 중단·제한된 자동 운영을 개별 확인 없이 포괄 승인합니다. 사용량이 소비될 수 있습니다. 부관 도구는 새 대화부터 적용됩니다. 끄면 새 실행을 차단하며, 이미 시작한 작업은 중단하지 않습니다.",
 
   "settings.title": "설정",
   "settings.saving": "저장 중…",
