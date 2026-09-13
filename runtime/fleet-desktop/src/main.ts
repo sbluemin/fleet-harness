@@ -169,11 +169,15 @@ async function boot(): Promise<void> {
     const home = localConsoleOrigin;
     if (!home) return;
     try {
-      const response = await consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
+      const put = (body: Record<string, unknown>) => consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Origin: origin },
-        body: JSON.stringify({ homeOrigin: home }),
+        body: JSON.stringify(body),
       });
+      let response = await put({ homeOrigin: home, version: app.getVersion() });
+      // 이 버전을 모르는 옛 Console은 낯선 키를 400으로 거절한다. 돌아갈 줄은 버전 표기보다 중요하므로
+      // 집만 적은 몸으로 한 번 더 보낸다.
+      if (response.status === 400) response = await put({ homeOrigin: home });
       // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
       if (!response.ok) logger.error(`shell home publish rejected status=${response.status}`);
     } catch (error) {

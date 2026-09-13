@@ -40,6 +40,15 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
+/**
+ * Desktop 설치 파일은 Console 릴리스의 자산으로 올라간다 — Desktop 전용 Release는 없고
+ * `desktop-v*` 태그는 빌드 마커일 뿐이다. 그래서 "최신 Desktop"은 릴리스 태그가 아니라
+ * latest 릴리스의 자산 이름(`Fleet.Console-0.7.5-mac-arm64.dmg`)에서 읽는다.
+ */
+const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness/releases/latest";
+const GITHUB_LATEST_RELEASE_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
+const DESKTOP_LATEST_CACHE_KEY = "fleet-console.desktop-latest";
+const DESKTOP_ASSET_VERSION_PATTERN = /^Fleet\.Console-(\d+\.\d+\.\d+)-/u;
 
 /**
  * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
@@ -597,6 +606,11 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const globalSettings = useGlobalSettingsStore();
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
+  const shell = useDesktopHomeOrigin();
+  const desktopLatest = useDesktopLatestVersion(shell.desktopVersion);
+  // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는
+  // 메뉴를 열면 칩이 말한다.
+  const updateReady = updateAvailable || desktopLatest !== null;
   // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
   // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
   // 있든 온보딩을 처음부터 다시 보게 한다.
@@ -615,37 +629,46 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
     {/* 표식은 실행 버튼 위에 있어야 한다. 설정에 붙어 있던 동안 그 점을 따라간 사람은
         업데이트가 없는 화면에 도착했다. 색·크기·위치는 그대로 옮겨 온 것이며, 커맨드 밴드에
         같은 뜻의 표식이 둘이 되지 않도록 설정 쪽은 함께 제거했다. */}
-    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateAvailable ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} title={updateAvailable ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
+    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} title={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
       <HelpGlyph />
-      {updateAvailable ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
+      {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
-      {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} version={version} onStarted={() => setOpen(false)} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
-      <GithubLinks version={version} />
+      <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} onStarted={() => setOpen(false)} />
+      {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} latestVersion={desktopLatest} /> : null}
+      <div className="command-band-system-menu-divider" role="separator" />
+      <GithubLinks />
     </div> : null}
     {shortcutsOpen ? <KeyboardShortcutsDialog onClose={() => { setShortcutsOpen(false); triggerRef.current?.focus(); }} /> : null}
   </span>;
 }
 
-function UpdateApplyControl({ latestVersion, version, onStarted }: {
-  readonly latestVersion: string | null;
+/**
+ * 지금 서빙 중인 Console. 이름·버전은 늘 서고, 오른쪽 칩은 "더 새로운 버전"이 있을 때만 선다.
+ * 칩이 서면 행 자체가 업데이트 버튼이다 — 상태 머신(idle → armed → applying / blocked / error)은
+ * 예전 업데이트 행의 것을 그대로 가져왔고, 두 번째 누름이 곧 호스트 재시작 동의라는 문법도 같다.
+ * 칩이 없으면(최신, 또는 확인 불가) 행은 정보만 말하는 정적 행이다.
+ */
+function ConsoleVersionRow({ version, latestVersion, onStarted }: {
   readonly version: string;
+  readonly latestVersion: string | null;
   readonly onStarted: () => void;
 }) {
   const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const copy = resolveUpdateApplyCopy(applyState, errorCode, latestVersion, t);
+  const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
+  if (latestVersion === null) {
+    return <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.console", { version })}>{body}</div>;
+  }
+  const copy = resolveUpdateApplyCopyFor(applyState, errorCode, latestVersion, t);
 
   const handleApply = async () => {
     if (copy.disabled) return;
-    // 두 번째 누름이 곧 동의다. 첫 누름에서 서버가 확인을 요구했고, 그 문장은 이 버튼이
-    // 이미 화면에 띄워 두었다 — 별도 대화 상자를 세우지 않는 것은 커맨드 밴드의 다른
-    // 두-번-누름 컨트롤과 같은 문법이다.
     const acknowledgeHostRestart = applyState === "armed";
     setApplyState("applying");
     setErrorCode(null);
@@ -667,35 +690,46 @@ function UpdateApplyControl({ latestVersion, version, onStarted }: {
     }
   };
 
+  if (copy.tone === "warn") {
+    // 묻는 문장은 한 줄 칩에 들어가지 않는다 — 이 상태만 이름·버전 대신 질문이 서고, 답 문장이 아래로 내려선다.
+    return (
+      <button type="button" role="menuitem" className="command-band-version-row command-band-version-row--warn" onClick={handleApply} title={copy.title} aria-live="polite">
+        <TerminalGlyph />
+        <span>{copy.label}</span>
+        {copy.detail ? <span className="command-band-version-row-detail">{copy.detail}</span> : null}
+      </button>
+    );
+  }
   return (
-    <button
-      type="button"
-      role="menuitem"
-      className={`command-band-update command-band-update--${copy.tone}`}
-      onClick={handleApply}
-      disabled={copy.disabled}
-      title={copy.title}
-      aria-live="polite"
-    >
-      <span>{copy.label}</span>
-      {copy.detail ? <span className="command-band-update-detail">{copy.detail}</span> : null}
+    <button type="button" role="menuitem" className={`command-band-version-row command-band-version-row--${copy.tone}`} onClick={handleApply} disabled={copy.disabled} title={copy.title} aria-label={t("chrome.system.version.consoleUpdate", { version, latest: latestVersion })} aria-live="polite">
+      {body}
+      <span className="command-band-version-row-chip">{copy.label}</span>
     </button>
   );
-
-  function resolveUpdateApplyCopy(
-    state: UpdateApplyState,
-    code: string | null,
-    latest: string | null,
-    translate: Translate<CoreMessageKey>,
-  ): UpdateApplyCopy {
-    const base = resolveUpdateApplyCopyFor(state, code, latest, translate);
-    if (base.detail !== undefined || state !== "idle" || latest === null) return base;
-    // 최신 버전이 툴팁 안에만 있으면 호버해야 읽힌다. 행 자체가 말하게 한다.
-    return { ...base, detail: translate("chrome.system.update.versionDelta", { from: version, to: latest }) };
-  }
 }
 
-function GithubLinks({ version }: { readonly version: string }) {
+/**
+ * 이 창을 든 Fleet Desktop. Desktop은 스스로 갈아 끼우지 못하므로, 새 버전이 있으면 행이
+ * GitHub Release로 가는 링크가 된다 — Desktop 창에서는 셸이 이 항해를 외부 브라우저로 넘긴다.
+ */
+function DesktopVersionRow({ version, latestVersion }: {
+  readonly version: string;
+  readonly latestVersion: string | null;
+}) {
+  const t = useT();
+  const body = <><MonitorGlyph /><span className="command-band-version-row-name">Desktop</span><span className="command-band-version-row-version">v{version}</span></>;
+  if (latestVersion === null) {
+    return <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.desktop", { version })}>{body}</div>;
+  }
+  return (
+    <a className="command-band-version-row command-band-version-row--info" href={GITHUB_LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t("chrome.system.version.desktopUpdate", { version, latest: latestVersion })} title={t("chrome.system.version.desktopUpdateTitle", { latest: latestVersion })}>
+      {body}
+      <span className="command-band-version-row-chip">v{latestVersion} ↗</span>
+    </a>
+  );
+}
+
+function GithubLinks() {
   const t = useT();
   const stars = useGithubStars();
   const hasCount = stars.count !== null;
@@ -708,7 +742,6 @@ function GithubLinks({ version }: { readonly version: string }) {
         <StarIcon />
         {hasCount ? <span className="command-band-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
       </a>
-      <span className="command-band-github-version">v{version}</span>
     </div>
   );
 }
@@ -734,8 +767,8 @@ export function resolveUpdateApplyCopyFor(
   }
   if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
   if (applyState === "error") return { label: t("common.retry"), title: t("chrome.system.update.retryTitle"), tone: "error", disabled: false };
-  // 대기 중 업데이트 안내는 정보다(중립 잉크). 신호 채널은 확인 대기(warn)·진행(live)·실패(error)만 쓴다.
-  return { label: t("chrome.system.update.update"), title: latest, tone: "info", disabled: false };
+  // 대기 중 업데이트 안내는 정보다. 칩은 목표 버전만 말하고, 신호 채널은 확인 대기(warn)·진행(live)·실패(error)만 쓴다.
+  return { label: latestVersion ? `v${latestVersion} ↑` : t("chrome.system.update.available"), title: latest, tone: "info", disabled: false };
 }
 
 function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<CoreMessageKey>): UpdateApplyCopy {
@@ -813,6 +846,79 @@ function writeCachedStars(count: number): void {
   }
 }
 
+/**
+ * Desktop의 최신 버전. 창을 든 Desktop이 버전을 알렸을 때만 묻고, 더 새로운 버전이 있을 때만
+ * 그 번호를 돌려준다. 비인증 GitHub API는 시간당 60회라 스타 수와 같은 캐시(6h)를 쓰고,
+ * 실패·한도 초과·자산명 불일치는 조용히 null이다 — 칩이 비는 것과 "최신"은 같은 모양이다.
+ */
+function useDesktopLatestVersion(desktopVersion: string | null): string | null {
+  const [latest, setLatest] = useState<string | null>(() => readCachedDesktopLatest()?.version ?? null);
+
+  useEffect(() => {
+    if (desktopVersion === null) return;
+    const cached = readCachedDesktopLatest();
+    if (cached && Date.now() - cached.at < GITHUB_STARS_TTL_MS) {
+      setLatest(cached.version);
+      return;
+    }
+    let cancelled = false;
+    fetch(GITHUB_LATEST_RELEASE_API_URL, { headers: { Accept: "application/vnd.github+json" } })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`status ${response.status}`))))
+      .then((data: { readonly assets?: unknown }) => {
+        if (cancelled) return;
+        const version = readDesktopVersionFromAssets(data.assets);
+        if (version === null) return;
+        writeCachedDesktopLatest(version);
+        setLatest(version);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [desktopVersion]);
+
+  return desktopVersion !== null && latest !== null && isNewerVersion(latest, desktopVersion) ? latest : null;
+}
+
+function readDesktopVersionFromAssets(assets: unknown): string | null {
+  if (!Array.isArray(assets)) return null;
+  for (const asset of assets) {
+    const name = (asset as { readonly name?: unknown })?.name;
+    const match = typeof name === "string" ? DESKTOP_ASSET_VERSION_PATTERN.exec(name) : null;
+    if (match) return match[1]!;
+  }
+  return null;
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+  const a = candidate.split(".").map(Number);
+  const b = current.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const left = a[index] ?? 0;
+    const right = b[index] ?? 0;
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+    if (left !== right) return left > right;
+  }
+  return false;
+}
+
+function readCachedDesktopLatest(): { readonly version: string; readonly at: number } | null {
+  try {
+    const raw = window.localStorage.getItem(DESKTOP_LATEST_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { readonly version?: unknown; readonly at?: unknown };
+    return typeof parsed.version === "string" && typeof parsed.at === "number" ? { version: parsed.version, at: parsed.at } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDesktopLatest(version: string): void {
+  try {
+    window.localStorage.setItem(DESKTOP_LATEST_CACHE_KEY, JSON.stringify({ version, at: Date.now() }));
+  } catch {
+    // Public GitHub metadata remains optional when browser storage is unavailable.
+  }
+}
+
 function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
@@ -825,6 +931,16 @@ function HelpGlyph() {
 
 function WhatsNewGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12v8H2zM2 5l2-2.5h8L14 5M8 5v8" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+// 콘솔 — 둥근 창 안의 프롬프트. "콘솔"이라는 이름을 그대로 그림으로 옮긴 보편 기호.
+function TerminalGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M4.5 6l2.2 2-2.2 2M8.2 10h3.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// 데스크톱 — 화면과 받침. 이 기계에 설치된 앱을 기기 실루엣으로 말한다.
+function MonitorGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.8" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8 11v2.5M5.5 13.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function KeyboardGlyph() {

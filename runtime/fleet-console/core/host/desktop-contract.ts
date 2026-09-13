@@ -75,14 +75,20 @@ export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
  */
 export interface DesktopShellSnapshot {
   readonly homeOrigin: string | null;
+  /** 창을 든 Desktop 앱의 버전. 도움말 메뉴가 "어느 Desktop이 이 창을 들고 있는가"를 적는 데 쓴다. 옛 Desktop은 보내지 않는다. */
+  readonly version?: string;
 }
 
 export const emptyDesktopShell = (): DesktopShellSnapshot => ({ homeOrigin: null });
 
+const DESKTOP_VERSION_SHAPE = /^[0-9A-Za-z.+-]{1,64}$/u;
+
 function isDesktopShellSnapshot(value: unknown): value is DesktopShellSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  if (Object.keys(entry).length !== 1) return false;
+  const keys = Object.keys(entry);
+  if (!keys.includes("homeOrigin") || keys.some((key) => key !== "homeOrigin" && key !== "version")) return false;
+  if ("version" in entry && (typeof entry.version !== "string" || !DESKTOP_VERSION_SHAPE.test(entry.version))) return false;
   return entry.homeOrigin === null || (typeof entry.homeOrigin === "string" && isConsoleOriginShape(entry.homeOrigin));
 }
 
