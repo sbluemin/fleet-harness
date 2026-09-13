@@ -20,7 +20,7 @@ export async function findComputerUseInstallation(): Promise<ComputerUseInstalla
   const clientHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   if (!path.isAbsolute(clientHome)) return null;
   const client = path.join(clientHome, "computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient");
-  for (const app of ["/Applications/ChatGPT.app", "/Applications/Codex.app", path.join(os.homedir(), "Applications/ChatGPT.app")]) {
+  for (const app of ["/Applications/ChatGPT.app", "/Applications/Codex.app", path.join(os.homedir(), "Applications/ChatGPT.app"), path.join(os.homedir(), "Applications/Codex.app")]) {
     const resources = path.join(app, "Contents/Resources");
     const codex = path.join(resources, "codex");
     const pluginRoot = path.join(resources, "plugins/openai-bundled/plugins/computer-use");
