@@ -68,6 +68,34 @@ describe("Computer Use authorization and lifecycle", () => {
     } finally { await host.dispose(); }
   });
 
+  it("revoking an Operation aborts a call that passed authorization but has not claimed the device yet", async () => {
+    // 인가는 통과했지만 대상을 풀고 있는(파일시스템 대기) 사이에 허용이 거둬지면, 그 호출은 기기에 닿지 않아야 한다.
+    const f = setup();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const operations = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const service = new ComputerUseService({
+      directory: "unused", enabled: () => true, localControl: () => true,
+      platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true, resolveTarget: async (app) => { await gate; return app; }, createBroker: async () => { throw new Error("device must not be claimed"); } },
+    });
+    services.push(service);
+    const host = createComputerUseMcpHost({ service, operations: () => operations, experimentEnabled: () => true });
+    const connection = host.connect();
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!.token;
+      const pending = fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_state", arguments: { app: "/Applications/TextEdit.app" } } }) });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      operations[0]!.payload = {};
+      host.revokeOperation("op-a");
+      release();
+      const result = (await (await pending).json()).result as { isError: boolean; content: { text: string }[] };
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: "computer_use_session_unavailable" });
+      expect(service.status().state).toBe("idle");
+    } finally { await host.dispose(); }
+  });
+
   it("refuses every device tool until the caller Operation is allowed, and revoking drops its device session", async () => {
     // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Operation의 토글이 둘 다 참일 때만 통과하고,
     // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.

@@ -98,6 +98,9 @@ export interface ComputerUseMcpConnection extends AdmiralMcpSession {
 /** Console 조회 MCP와 도구·토큰·소유권을 공유하지 않는 기기 조작 서버. */
 export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   const connections = new Set<ComputerUseMcpConnection>();
+  // 진행 중인 도구 호출을 호출자 Operation별로 기억한다 — 허용을 거둘 때 아직 기기를 잡기 전
+  // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
+  const inFlight = new Map<string, Set<AbortController>>();
   let disposed = false;
   return {
     connect(): ComputerUseMcpConnection {
@@ -118,7 +121,14 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           if (denied) return Promise.resolve(denied);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
-          return spec.execute(parsed.data, { ...context, sessionLabel, signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
+          const operationId = operationIdFromSessionLabel(context.sessionLabel);
+          const call = new AbortController();
+          const calls = inFlight.get(operationId) ?? new Set<AbortController>();
+          calls.add(call);
+          inFlight.set(operationId, calls);
+          const signals = [call.signal, controller.signal, ...(context.signal ? [context.signal] : [])];
+          return spec.execute(parsed.data, { ...context, sessionLabel, signal: AbortSignal.any(signals) })
+            .finally(() => { calls.delete(call); if (calls.size === 0) inFlight.delete(operationId); });
         } });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_COMPUTER_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
@@ -152,10 +162,12 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       return connection;
     },
     /**
-     * 한 Operation의 허용을 거둘 때 부른다. 그 Operation(터미널·Chat 세션 어느 쪽이든)이 지금
-     * 기기를 잡고 있으면 즉시 놓는다 — 다음 호출이 거부되는 것만으로는 진행 중인 조작이 멈추지 않는다.
+     * 한 Operation의 허용을 거둘 때 부른다. 그 Operation(터미널·Chat 세션 어느 쪽이든)의 진행 중
+     * 호출을 끊고, 기기를 잡고 있으면 즉시 놓는다 — 다음 호출이 거부되는 것만으로는 이미 인가를
+     * 통과해 대상을 풀고 있는 호출이나 진행 중인 조작이 멈추지 않는다.
      */
     revokeOperation(operationId: string): void {
+      for (const call of inFlight.get(operationId) ?? []) call.abort();
       deps.service.releaseWhere((label) => label.endsWith(`:${operationId}`) || label.endsWith(`:chat:${operationId}`));
     },
     async dispose(): Promise<void> {
