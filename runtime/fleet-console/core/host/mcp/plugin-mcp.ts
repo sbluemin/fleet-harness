@@ -13,7 +13,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport) {
     register(pluginId: string, tools: readonly PluginMcpTool[]): () => void {
       if (disposed) throw new Error("Plugin MCP host is disposed");
       const name = `fleet-${pluginId}`;
-      if (!/^[a-z0-9][a-z0-9-]*$/.test(pluginId) || name === "fleet-console-use" || name === "fleet-core" || name === "fleet-ai-gateway") throw new Error("Invalid plugin MCP name");
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(pluginId) || name === "fleet-console-use" || name === "fleet-core" || name === "fleet-ai-gateway" || name === "fleet-computer-use") throw new Error("Invalid plugin MCP name");
       if (registrations.has(name)) throw new Error(`Plugin MCP already registered: ${name}`);
       if (!tools.length || new Set(tools.map((tool) => tool.name)).size !== tools.length) throw new Error("Plugin MCP tools must be nonempty and unique");
       const registry = createMcpToolRegistry();

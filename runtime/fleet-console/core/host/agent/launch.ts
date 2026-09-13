@@ -452,8 +452,11 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
 }
 
 function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
+  const launchEnv = stripConsoleInternalEnv(env);
+  // Console Operation은 상위 Claude의 하위 세션이 아니라 독립 transcript를 갖는다.
+  delete launchEnv.CLAUDE_CODE_CHILD_SESSION;
   return withTerminalCapabilities({
-    ...stripConsoleInternalEnv(env),
+    ...launchEnv,
     ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
     // 배경을 질의하지 않는 agent CLI를 위한 고전적 테마 극성 힌트 — spawn 시점 값에 고정된다.
     ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),

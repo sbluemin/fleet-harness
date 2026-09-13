@@ -152,10 +152,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const consoleUse = ctx.host.consoleUse.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
   ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
+  const computerUseMcp = ctx.host.computerUseMcp?.connect();
+  if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const aiGatewayMcp = ctx.host.aiGatewayMcp.connect();
   ctx.host.lifecycle.registerCleanup(() => aiGatewayMcp.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect()],
+    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : [])],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
@@ -1616,6 +1618,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
+        cancelComputerUse: () => computerUseMcp?.cancelSession(mcpTokenLabel),
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.
         // 새로 태어나는 세션은 Operation id를 그대로 Claude 세션 id로 못박아, Operation의

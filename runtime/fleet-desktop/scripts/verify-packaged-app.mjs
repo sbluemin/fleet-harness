@@ -18,7 +18,8 @@ export default async function verifyAfterPack(context) {
   const platform = context?.electronPlatformName ?? process.platform;
   const outputDirectory = context?.appOutDir ?? join(desktopDirectory, "release");
   await applyRequiredFuses(outputDirectory, platform);
-  await verifyPackagedApplication(outputDirectory, platform);
+  // afterPack은 electron-builder 서명보다 먼저다. entitlement는 최종 verify:package에서 검사한다.
+  await verifyPackagedApplication(outputDirectory, platform, { beforeSigning: true });
 }
 
 if (invokedAsCli) {
@@ -31,15 +32,15 @@ if (invokedAsCli) {
   }
 }
 
-export async function verifyPackagedApplication(releaseDirectory, platform = process.platform) {
+export async function verifyPackagedApplication(releaseDirectory, platform = process.platform, options = {}) {
   await assertNoUpdaterArtifacts(releaseDirectory);
   const applications = await findApplications(releaseDirectory, platform);
   if (applications.length === 0) throw new Error(`No unpacked Fleet Console application found in ${releaseDirectory}`);
-  for (const application of applications) await verifyApplication(application, platform);
+  for (const application of applications) await verifyApplication(application, platform, options);
   console.log(`packaged application verification passed for ${applications.length} artifact(s)`);
 }
 
-async function verifyApplication(application, platform) {
+async function verifyApplication(application, platform, options) {
   await access(application.asar);
   if (existsSync(join(application.resourcesDirectory, "sidecar"))) throw new Error("Embedded sidecar directory is forbidden");
   await assertShellOnlyAsar(application.asar);
@@ -47,6 +48,7 @@ async function verifyApplication(application, platform) {
   await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
   await assertFuses(application.fuseBinary);
   await assertMacSignature(application, platform);
+  if (platform === "darwin") await assertMacAutomationPermission(application, options.beforeSigning !== true);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
 }
 
@@ -131,6 +133,16 @@ async function assertMacSignature(application, platform) {
   if (requiresReleaseSignature) {
     await execFileAsync("xcrun", ["stapler", "validate", application.appBundle]);
     await execFileAsync("spctl", ["--assess", "--type", "execute", "--verbose=4", application.appBundle]);
+  }
+}
+
+async function assertMacAutomationPermission(application, checkEntitlements) {
+  const { stdout: usage } = await execFileAsync("plutil", ["-extract", "NSAppleEventsUsageDescription", "raw", join(application.appBundle, "Contents", "Info.plist")]);
+  if (!usage.trim()) throw new Error("Computer Use requires a nonempty NSAppleEventsUsageDescription");
+  if (!checkEntitlements) return;
+  const { stdout } = await execFileAsync("codesign", ["-d", "--entitlements", ":-", application.appBundle]);
+  if (!/<key>com\.apple\.security\.automation\.apple-events<\/key>\s*<true\s*\/>/.test(stdout)) {
+    throw new Error("Computer Use requires the signed com.apple.security.automation.apple-events entitlement");
   }
 }
 

@@ -125,6 +125,7 @@ export interface AgentChatSessionSeed {
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
+  readonly cancelComputerUse?: () => void;
   readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
@@ -865,6 +866,7 @@ class AgentChatSession {
     if (this.disposed) return false;
     if (this.pendingTurns === 0 && !this.turnOpen) return false;
     this.stopEpoch += 1;
+    this.seed.cancelComputerUse?.();
     // 붙들린 권한 응답을 먼저 푼다. 남겨 두면 응답을 기다리는 promise 하나가 남아 자식이 그
     // 도구 호출에서 영영 멈춘다 — 턴 종료 경로가 비우는 그 맵을 여기서도 비워야 한다.
     this.abandonAsks("The turn was stopped before the question was answered.");

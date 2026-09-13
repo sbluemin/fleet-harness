@@ -9,9 +9,9 @@
  * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
  */
 
-export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "operationContext";
+export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "operationContext" | "computerUse";
 
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "operationContext"];
+export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "operationContext", "computerUse"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
@@ -32,6 +32,8 @@ export interface ConsoleExperimentSettings {
    * 읽고 HEAD를 감시한다 — 꺼진 Console은 이 축을 계산하지도 내보내지도 않는다.
    */
   readonly operationContext: boolean;
+  /** 로컬 macOS의 Codex Computer Use broker. 옵트인이 앱 읽기·조작 권한을 승인한다. */
+  readonly computerUse: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   consoleControl: false,
   operationContext: false,
+  computerUse: false,
 };
 
 /**
@@ -101,6 +104,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     sessionWatchModel: model("sessionWatch"),
     consoleControl: record.consoleControl === true,
     operationContext: record.operationContext === true,
+    computerUse: record.computerUse === true,
   };
 }
 

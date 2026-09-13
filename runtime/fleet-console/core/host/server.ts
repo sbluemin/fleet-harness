@@ -35,6 +35,9 @@ import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-c
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
 import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
+import { ComputerUseService } from "./agent/computer-use.js";
+import { macOSComputerUsePlatform } from "./agent/computer-use-macos.js";
+import { createComputerUseMcpHost } from "./mcp/computer-use.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -372,6 +375,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
     transport: "http",
   },
+  { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
@@ -563,6 +568,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const computerUse = new ComputerUseService({
+    platform: macOSComputerUsePlatform,
+    directory: path.join(fleetDataDir, "computer-use"),
+    diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
+    enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
+  });
+  const computerUseMcp = createComputerUseMcpHost({ transport: mcpHttp.transport, service: computerUse });
   const consoleUse = createConsoleUseMcpHost({
     control: consoleControl,
     transport: mcpHttp.transport,
@@ -788,6 +801,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let consoleResourcesDisposed = false;
   let updateApplyInFlight = false;
   const globalSettingsRouter = createGlobalSettingsRouter({
+    computerUseAvailability: () => computerUse.inspectInstallation(),
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     isRemoteAccessOwner: isLoopbackListener,
@@ -795,6 +809,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
     onExperimentsChanged: (next) => {
+      if (!next.computerUse) void computerUse.stop();
       for (const listener of experimentListeners) listener(next);
     },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
@@ -927,6 +942,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await pluginSettingsRouter(ctx)) return true;
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
+  });
+  routeRegistry.register("/api/v1/computer-use", async ({ req, res, pathname }) => {
+    if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/computer-use") {
+      writeJson(res, 200, await computerUse.readStatus());
+      return true;
+    }
+    if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    if (req.method === "POST" && pathname === "/api/v1/computer-use/stop") {
+      await computerUse.stop();
+      writeJson(res, 200, await computerUse.readStatus());
+      return true;
+    }
+    writeJson(res, 404, { error: "not_found" });
+    return true;
   });
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopShellRouter(context)) return true;
@@ -2194,7 +2224,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
     consoleControl.dispose();
-    try { await Promise.all([consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([computerUseMcp.dispose(), consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
@@ -2332,6 +2362,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 서버는 아무것도 바뀌지 않았는데 화면만 틀린 것을 그리고 있는 자리에만 쓴다.
    */
   function broadcastControlChanged(resend = false): void {
+    if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) void computerUse.stop();
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.
      *
@@ -2460,7 +2491,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         await rehydrateDurableState();
         coreLaunchKinds = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
-          host: { ...pluginHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+          host: { ...pluginHostCapabilities, computerUseMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,

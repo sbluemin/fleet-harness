@@ -412,6 +412,7 @@ interface GlobalSettingsRouteDeps {
   readonly isRemoteAccessOwner?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
+  readonly computerUseAvailability?: () => Promise<"unchecked" | "available" | "missing" | "unsupported">;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
   /**
    * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
@@ -554,6 +555,20 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_experiments" });
     return;
   }
+  if (body.experiments !== undefined
+    && resolveExperimentSettings(body.experiments).computerUse !== readExperimentSettings(deps.consoleSettingsStore).computerUse
+    && deps.isRemoteAccessOwner?.(req) === false) {
+    deps.writeJson(res, 403, { error: "computer_use_local_only" });
+    return;
+  }
+  if (body.experiments !== undefined && resolveExperimentSettings(body.experiments).computerUse
+    && !readExperimentSettings(deps.consoleSettingsStore).computerUse && deps.computerUseAvailability) {
+    const availability = await deps.computerUseAvailability();
+    if (availability !== "available") {
+      deps.writeJson(res, 409, { error: availability === "unsupported" ? "computer_use_macos_only" : "computer_use_install_required" });
+      return;
+    }
+  }
   if (body.shortcuts !== undefined && !isShortcutBindingsInput(body.shortcuts)) {
     deps.writeJson(res, 400, { error: "invalid_shortcuts" });
     return;
@@ -666,7 +681,7 @@ export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsDa
  */
 function isExperimentSettingsInput(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  for (const key of ["promptRefine", "sessionWatch", "consoleControl", "operationContext"]) {
+  for (const key of ["promptRefine", "sessionWatch", "consoleControl", "operationContext", "computerUse"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
   for (const key of ["promptRefineModel", "sessionWatchModel"]) {
