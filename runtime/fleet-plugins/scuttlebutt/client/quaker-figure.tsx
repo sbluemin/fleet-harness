@@ -10,9 +10,13 @@ export function QuakerFigure({ morph, viewBox }: {
   readonly morph: QuakerMorph;
   readonly viewBox?: string;
 }) {
+  // 머리 창으로 그리는 자리(멘션 덱 행, 멘션 칩, 상단 바 글리프)는 창 밖의 날개·꼬리를 잘라 낸다 —
+  // 전신 새는 흔들리는 날개가 상자 밖으로 나가야 하지만, 작은 마크에서 그것이 새면 슬롯보다
+  // 두 배 커 보인다.
+  const cropped = viewBox !== undefined && viewBox !== "0 0 260 300";
   return (
     <svg
-      className="scuttlebutt-qk"
+      className={`scuttlebutt-qk${cropped ? " is-cropped" : ""}`}
       data-morph={morph}
       viewBox={viewBox ?? "0 0 260 300"}
       aria-hidden="true"

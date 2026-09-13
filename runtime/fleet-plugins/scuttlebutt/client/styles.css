@@ -165,6 +165,11 @@
   overflow: visible;
 }
 
+/* 머리 창(QUAKER_HEAD_VIEW_BOX)으로 그린 마크. 창 밖의 날개·꼬리를 잘라 내야 슬롯 크기 그대로 선다. */
+.scuttlebutt-qk.is-cropped {
+  overflow: hidden;
+}
+
 .scuttlebutt-qk[data-morph="dori"] {
   --qk-tone: var(--scuttlebutt-qk-id-cerulean);
 }
@@ -1412,12 +1417,10 @@
     border-color var(--duration-fast) var(--ease-spring);
 }
 
-/* 밴드의 다른 글리프(16px)와 같은 크기다. 머리 viewBox 밖의 날개·꼬리는 잘라 낸다 — 그것이
-   새어 나오면 이웃보다 커 보인다. */
+/* 밴드의 다른 글리프(16px)와 같은 크기다. 잘라 내기는 머리 창 마크의 공통 규칙이 진다. */
 .scuttlebutt-dock-glyph svg {
   width: 16px;
   height: 16px;
-  overflow: hidden;
 }
 
 .scuttlebutt-dock-glyph:hover,
