@@ -41,7 +41,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
-    <section className="global-settings-card" aria-label={t("settings.experiments.aiCard")}>
+    <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
