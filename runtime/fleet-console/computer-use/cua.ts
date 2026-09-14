@@ -13,7 +13,7 @@ import { assertMacInteractionReadiness } from "./macos-window.js";
 
 const execute = promisify(execFile);
 const ACTIONS = ["click", "type_text", "set_value", "press_key", "scroll", "drag"] as const;
-const PRIVATE_ARGUMENTS = new Set(["pid", "window_id", "snapshot_id", "element_token", "session", "target", "scope", "from_zoom", "debug_image_out", "screenshot_out_file", "delivery_mode"]);
+const PRIVATE_ARGUMENTS = new Set(["pid", "window_id", "snapshot_id", "session", "target", "scope", "from_zoom", "debug_image_out", "screenshot_out_file", "delivery_mode"]);
 type Target = ComputerUseWindowIdentity & { readonly app: string; readonly name: string };
 
 export function cuaData(result: ComputerUseResult): Record<string, unknown> {
@@ -36,7 +36,7 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
   private directory: string | null = null;
   private readonly session = `fleet-${crypto.randomUUID()}`;
   private readonly targets = new Map<string, Target>();
-  private readonly snapshots = new Map<string, { id: string; target: Target }>();
+  private readonly snapshots = new Map<string, { id: string; target: Target; tokens: ReadonlySet<string>; indices: ReadonlySet<number> }>();
   private stopping: Promise<void> | null = null;
   private closed = false;
 
@@ -91,14 +91,21 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
   async call(tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult> {
     if (tool === "list_apps") return this.apps();
     const app = String(args.app);
-    if (tool === "get_app_state") return this.observe(app);
+    if (tool === "get_app_state") return this.observe(app, args);
+    if (tool === "verify_state") {
+      this.snapshots.clear();
+      const target = await this.resolve(app);
+      return this.native("verify_state", { pid: target.pid, window_id: target.windowId, expect: args.expect, include_screenshot: args.includeScreenshot === true, timeout_ms: args.timeoutMs ?? 0, stable_samples: args.stableSamples ?? 1 });
+    }
     const snapshot = this.snapshots.get(app);
     if (!snapshot) throw new ComputerUseInputError("computer_use_fresh_state_required", "Request computer_state for the intended window.");
     await this.verifyTarget(snapshot.target);
     const { app: _app, ...input } = args;
     for (const key of Object.keys(input)) if (PRIVATE_ARGUMENTS.has(key)) throw new ComputerUseInputError("computer_use_invalid_arguments", "Target, snapshot and delivery fields are Fleet-owned.");
+    if (typeof input.element_token === "string" && !snapshot.tokens.has(input.element_token) || "element_index" in input && !snapshot.indices.has(Number(input.element_index))) throw new ComputerUseInputError("computer_use_stale_snapshot", "Use an element delivered in this app's current observation.");
     if (!await this.options.approve({})) throw new Error("computer_use_stopped");
-    this.snapshots.clear();
+    const reusable = tool !== "paste" && ("element_index" in input || "element_token" in input) && !("x" in input || "y" in input) && tool !== "drag";
+    if (!reusable) this.snapshots.clear();
     const target = { pid: snapshot.target.pid, window_id: snapshot.target.windowId };
     if (tool === "paste") {
       await assertMacInteractionReadiness(snapshot.target.app, options?.allowActivation === true);
@@ -113,7 +120,11 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
       return { ...response, content: [{ type: "text", text: JSON.stringify({ clipboardRestoration: restoration }) }, ...response.content] };
     }
     if (!this.tools.has(tool)) throw new ComputerUseInputError("computer_use_invalid_action", "This backend does not advertise this action. Use actionSchemas from computer_state.");
-    return this.native(tool, { ...input, ...target, ...(tool !== "set_value" ? { delivery_mode: "background" } : {}), ...("element_index" in input ? { snapshot_id: snapshot.id } : {}) });
+    try {
+      const response = await this.native(tool, { ...input, ...target, ...(tool !== "set_value" ? { delivery_mode: "background" } : {}), ...("element_index" in input ? { snapshot_id: snapshot.id } : {}) });
+      if (response.isError) this.snapshots.clear();
+      return response;
+    } catch (error) { this.snapshots.clear(); throw error; }
   }
 
   private async apps(): Promise<ComputerUseResult> {
@@ -170,16 +181,22 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
     return target;
   }
 
-  private async observe(app: string): Promise<ComputerUseResult> {
+  private async observe(app: string, options: Record<string, unknown>): Promise<ComputerUseResult> {
     this.snapshots.clear();
     const target = await this.resolve(app);
-    const response = await this.native("get_window_state", { pid: target.pid, window_id: target.windowId, include_accessibility_tree: true, include_screenshot: true });
+    const response = await this.native("get_window_state", { pid: target.pid, window_id: target.windowId, include_accessibility_tree: true, include_screenshot: options.includeScreenshot !== false,
+      max_depth: options.maxDepth ?? 8, max_elements: options.maxElements ?? 300,
+      ...(options.query === undefined ? {} : { query: options.query }) });
     if (response.isError) return { ...response, captureWindow: null };
     const data = cuaData(response);
     if (typeof data.snapshot_id !== "string" || !data.snapshot_id) throw new Error("computer_use_invalid_snapshot");
-    this.snapshots.set(app, { id: data.snapshot_id, target });
-    const elements = Array.isArray(data.elements) ? data.elements.filter(isRecord).map(e => ({ element_index: e.element_index, role: e.role, label: e.label, value: e.value, actions: e.actions, parent_index: e.parent_index, depth: e.depth })) : [];
-    const observation = { cuaObservation: true, elements, tree: data.tree_markdown, truncated: data.elements_complete === false, degradedReason: data.degraded_reason };
+    const elements = Array.isArray(data.elements) ? data.elements.filter(isRecord).map(e => ({ element_index: e.element_index, element_token: e.element_token, role: e.role, label: e.label, value: e.value, actions: e.actions, parent_index: e.parent_index, depth: e.depth })) : [];
+    const menuRoots = new Set(elements.filter(e => /^(AX)?MenuBar$/.test(String(e.role))).map(e => e.element_index));
+    const menuElements = new Set(menuRoots);
+    for (const element of elements) if (menuElements.has(element.parent_index)) menuElements.add(element.element_index);
+    const visible = options.includeMenus === true ? elements : elements.filter(e => !menuElements.has(e.element_index));
+    this.snapshots.set(app, { id: data.snapshot_id, target, tokens: new Set(visible.map(e => String(e.element_token))), indices: new Set(visible.map(e => Number(e.element_index))) });
+    const observation = { cuaObservation: true, elements: visible, ...(elements.length ? {} : { tree: data.tree_markdown }), truncated: data.elements_complete === false, filtered: options.query !== undefined, menusIncluded: options.includeMenus === true, limits: { maxDepth: options.maxDepth ?? 8, maxElements: options.maxElements ?? 300 }, degradedReason: data.degraded_reason };
     return { content: [{ type: "text", text: JSON.stringify(observation) }, ...response.content.filter(b => b.type === "image")], captureWindow: { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: String(data.window_title ?? target.title) } };
   }
 
@@ -215,7 +232,10 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
     const response = await this.client.callTool({ name, arguments: { ...args, ...(session ? { session: this.session } : {}) } }, undefined, { timeout: 30_000 });
     const content = Array.isArray(response.content) ? response.content.filter(isRecord) : [];
     const data = response.structuredContent;
-    if (isRecord(data) && !["get_window_state", "list_apps", "list_windows"].includes(name)) content.unshift({ type: "text", text: JSON.stringify(data) });
+    if (isRecord(data) && !["get_window_state", "list_apps", "list_windows"].includes(name)) {
+      const images = content.filter(block => block.type === "image");
+      content.splice(0, content.length, { type: "text", text: JSON.stringify(data) }, ...images);
+    }
     return { content, structuredContent: data, isError: response.isError === true || (isRecord(data) && data.effect === "refused") };
   }
 
