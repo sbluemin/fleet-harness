@@ -231,12 +231,19 @@ export function CommitRow({ entry, checkouts, selected, picked = false, previewe
   const t = getT(locale);
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
   const activateRow = onRowActivate ?? ((selectedEntry: LogCommitEntry) => onSelect?.(selectedEntry));
+  // macOS의 Ctrl+클릭은 contextmenu만, 다른 환경은 click도 낸다. 한 포인터 조작은 한 번만 선택한다.
+  const controlGestureHandled = useRef(false);
+  const activateControlClick = () => {
+    if (controlGestureHandled.current) return;
+    controlGestureHandled.current = true;
+    activateRow(entry, true);
+  };
   const compareLabel = !pin ? t("repository.compare.pinRow", { short: entry.shortHash }) : pin.fullHash === entry.fullHash ? t("repository.compare.unpinRow", { short: entry.shortHash }) : t("repository.compare.completeRow", { short: entry.shortHash, base: pin.shortHash });
   // Fork 문법 — Conventional Commit 접두만 볼드로 올려 커밋 종류를 훑어 읽게 한다. 규약 밖 제목은 통째로 한 티어에 둔다.
   const subject = splitCommitSubject(entry.subject);
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
-  return <div className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}${picked ? " is-picked" : ""}${previewed ? " is-previewed" : ""}`} title={entry.onHead ? undefined : t("repository.history.offHead")}>
-    <button ref={rowRef} type="button" className="history-commit-row-main" onClick={(event) => activateRow(entry, event.shiftKey)}>
+  return <div className={`history-commit-row${selected ? " is-selected" : ""}${picked ? " is-picked" : ""}${previewed ? " is-previewed" : ""}`} >
+    <button ref={rowRef} type="button" className="history-commit-row-main" aria-pressed={selected || picked} onPointerDown={() => { controlGestureHandled.current = false; }} onClick={(event) => { if (event.ctrlKey) activateControlClick(); else activateRow(entry, event.shiftKey || event.metaKey); }} onContextMenu={(event) => { if (!event.ctrlKey) return; event.preventDefault(); activateControlClick(); }}>
       <ResponsiveBadgeGroup identity={`${entry.fullHash}:${badges.map((badge) => `${badge.kind}:${badge.label}:${badge.hasRemote ? "remote" : "local"}`).join("|")}:${detached ? "detached" : "attached"}`}>
         {badges.map((badge) => <RefBadgeChip
           key={`${badge.kind}:${badge.label}`}
@@ -479,7 +486,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   const t = getT(ctx.language);
   const [order, setOrder] = useState<LogOrder>(readHistoryOrder);
   // 정렬 축이 바뀌면 커밋 순서와 그래프 레이아웃이 통째로 달라지므로 캐시 슬롯도 분리한다.
-  const historyCacheKey = `${cacheScope}::${refFilter ?? ""}::${order}`;
+  const historyCacheKey = `${cacheScope}::::${order}`;
   const searchTarget = useRepositorySearchTarget();
   const pendingSearchTargetHash = searchTarget?.theaterId === ctx.theaterId && searchTarget.repoRel === repoRel ? searchTarget.fullHash : null;
   const [initialRestore] = useState(() => readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash));
@@ -523,6 +530,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   const scrollTopRef = useRef(initialRestore?.scrollTop ?? 0);
   const previousFilterTextRef = useRef(filterText);
   const previousRefFilterRef = useRef(refFilter);
+  const previousRepoRelRef = useRef(repoRel);
+  const selectedRefRequest = useRef<string | null>(null);
+  const checkoutSelectionPending = useRef(false);
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
@@ -581,19 +591,34 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       setDockCollapsed(false);
       return;
     }
+    if (comparePair) {
+      const remainingHash = entry.fullHash === comparePair.base ? comparePair.head : comparePair.base;
+      const remaining = state.kind === "ok" ? state.commits.find((item) => item.fullHash === remainingHash) : undefined;
+      if (entry.fullHash === comparePair.base || entry.fullHash === comparePair.head) {
+        setComparePair(null);
+        setTarget({ fullHash: remainingHash, ...(remaining ? { entry: remaining } : {}) });
+      } else {
+        runPair({ fullHash: remainingHash, shortHash: remaining?.shortHash ?? remainingHash.slice(0, 9) }, entry);
+      }
+      return;
+    }
+    if (target?.fullHash === entry.fullHash) {
+      setTarget(null);
+      return;
+    }
     if (target && target.fullHash !== entry.fullHash) {
       runPair({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) }, entry);
       return;
     }
     setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
-  }, [pin, runPair, setPinFrom, target, unpin]);
+  }, [comparePair, pin, runPair, setPinFrom, state, target, unpin]);
   const onCompareAction = useCallback((entry: LogCommitEntry) => {
     if (!pin) setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
     else if (pin.fullHash === entry.fullHash) unpin();
     else runPair(pin, entry);
   }, [pin, runPair, setPinFrom, unpin]);
   const wip = useMemo(() => aggregateWip(wipFiles), [wipFiles]);
-  const showWip = shouldShowWip(wip, filterText, refFilter);
+  const showWip = shouldShowWip(wip, filterText, null);
   const virtualWindow = calculateHistoryWindow(visible.length, commitViewport.scrollTop, commitViewport.height);
   const windowRows = state.kind === "ok" && layout ? getHistoryWindowRows(commitIndexes, visible, layout, virtualWindow) : [];
   const updateCommitViewport = useCallback(() => {
@@ -622,11 +647,6 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     setCommitViewport({ scrollTop: 0, height: list?.clientHeight ?? 0 });
   }, [filterText]);
   useEffect(() => {
-    if (previousRefFilterRef.current === refFilter) return;
-    previousRefFilterRef.current = refFilter;
-    setTarget(null);
-  }, [refFilter]);
-  useEffect(() => {
     if (!compareRequest || compareRequest.seq === handledCompareRequestSeqRef.current) return;
     handledCompareRequestSeqRef.current = compareRequest.seq;
     setPin(null);
@@ -642,7 +662,19 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     setComparePair(null);
     setStashTarget(null);
     setTarget({ fullHash: inspectRequest.fullHash });
+    setFilterText("");
   }, [inspectRequest]);
+  useEffect(() => {
+    if (!refFilter) { selectedRefRequest.current = null; return; }
+    if (selectedRefRequest.current === refFilter || state.kind !== "ok") return;
+    const entry = state.commits.find((commit) => commit.refs.some((ref) => ref === refFilter || ref === `HEAD -> ${refFilter}` || ref === `tag: ${refFilter}`));
+    if (!entry) return;
+    selectedRefRequest.current = refFilter;
+    setTarget({ fullHash: entry.fullHash, entry });
+    setComparePair(null);
+    setStashTarget(null);
+    setFilterText("");
+  }, [refFilter, state]);
   useEffect(() => {
     if (!stashRequest || stashRequest.seq === handledStashRequestSeqRef.current) return;
     handledStashRequestSeqRef.current = stashRequest.seq;
@@ -703,12 +735,17 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   useEffect(() => { if (active) setEverActive(true); }, [active]);
   useEffect(() => {
     if (!everActive) return;
+    const highlightChanged = previousRefFilterRef.current !== refFilter || previousRepoRelRef.current !== repoRel;
+    if (previousRepoRelRef.current !== repoRel) checkoutSelectionPending.current = true;
+    previousRepoRelRef.current = repoRel;
+    previousRefFilterRef.current = refFilter;
     const externalRefreshRequested = loadedExternalRefreshTokenRef.current !== externalRefreshToken;
     loadedExternalRefreshTokenRef.current = externalRefreshToken;
     const landingRequested = loadedLandingSeqRef.current !== landingSeq;
     loadedLandingSeqRef.current = landingSeq;
     if (
       !externalRefreshRequested
+      && !highlightChanged
       && !landingRequested
       && loadedCacheKeyRef.current === historyCacheKey
       && (!pendingSearchTargetHash || loadedCommitsRef.current?.some((commit) => commit.fullHash === pendingSearchTargetHash))
@@ -734,7 +771,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     // 따로 들지 않는다(들고 있으면 다음 스크롤 이벤트에서 옛 자리로 되돌려 튄다). 다른 슬롯(ref·정렬 전환)이나
     // 재착지는 새 목록이 오는 순간 맨 위로 간다.
     const sameSlot = lastFilledCacheKeyRef.current === historyCacheKey && !landingRequested;
-    const restored = externalRefreshRequested || landingRequested ? null : readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
+    const restored = externalRefreshRequested || landingRequested || highlightChanged ? null : readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
     if (restored) {
       loadedCacheKeyRef.current = historyCacheKey;
       lastFilledCacheKeyRef.current = historyCacheKey;
@@ -791,6 +828,11 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
           scrollTopRef.current = 0;
         }
         setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, hasMore: data.hasMore, truncated: data.truncated ?? false });
+        if (checkoutSelectionPending.current) {
+          checkoutSelectionPending.current = false;
+          const head = data.checkouts.find((checkout) => checkout.isCurrent)?.sha;
+          if (head) setTarget({ fullHash: head, entry: data.commits.find((entry) => entry.fullHash === head) });
+        }
       }
     }).catch((error: unknown) => {
       if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });

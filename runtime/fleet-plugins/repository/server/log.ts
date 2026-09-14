@@ -186,11 +186,11 @@ async function normalizeWorktreePath(worktreePath: string): Promise<string> {
   }
 }
 
-async function readHeadRevList(gitCwd: string, skip: number, limit: number): Promise<string> {
+async function readHeadRevList(gitCwd: string, skip: number, limit: number, ref = "HEAD"): Promise<string> {
   try {
     // 현재 페이지 끝보다 800개 더 읽되 최소 1000개를 유지해, 누적 표시 윈도 밖의
     // 분기 커밋까지 HEAD 도달성 판정에 충분한 여유를 둔다.
-    return (await runGit(["rev-list", "-n", String(Math.max(1000, skip + limit + 800)), "HEAD"], { cwd: gitCwd })).stdout;
+    return (await runGit(["rev-list", "-n", String(Math.max(1000, skip + limit + 800)), ref], { cwd: gitCwd })).stdout;
   } catch (error) {
     if (error instanceof GitExecutorError) return "";
     throw error;
@@ -247,9 +247,7 @@ export async function handleRepositoryLog(
   }
 
   try {
-    const resolvedRef = typeof requestedRef === "string"
-      ? (await runGit(["rev-parse", "--verify", "--end-of-options", `${requestedRef}^{commit}`], { cwd: gitCwd })).stdout.trim()
-      : null;
+    if (typeof requestedRef === "string") await runGit(["rev-parse", "--verify", "--end-of-options", `${requestedRef}^{commit}`], { cwd: gitCwd });
     const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
       readCurrentWorktreePath(gitCwd),
@@ -271,9 +269,7 @@ export async function handleRepositoryLog(
     const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
     const skipArg = skip > 0 ? [`--skip=${skip}`] : [];
     const orderArg = LOG_ORDER_ARGS[order];
-    const result = resolvedRef
-      ? await runGit(["log", resolvedRef, orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, "--", ...scopePathspec], { cwd: gitCwd })
-      : await runGit(
+    const result = await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
         ["log", "--branches", "--tags", "--remotes", orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },

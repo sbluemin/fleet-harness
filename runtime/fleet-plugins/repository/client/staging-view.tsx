@@ -114,6 +114,13 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const rootRef = useRef<HTMLDivElement>(null);
   const stagingWidth = useSeamContainerSize(rootRef, "width", selection !== null);
   const requestSeqRef = useRef(0);
+  const continuationRef = useRef<{ axis: Axis; paths: string[]; moved: string } | null>(null);
+  const restoreListFocusRef = useRef(false);
+  useEffect(() => {
+    if (!restoreListFocusRef.current || !selection) return;
+    restoreListFocusRef.current = false;
+    rootRef.current?.querySelector<HTMLButtonElement>(".repository-staging-row.is-cur .repository-staging-row-main")?.focus({ preventScroll: true });
+  }, [selection]);
 
   // 울타리를 읽지 못한 상태는 "울타리 없음"이 아니다 — 읽기 실패는 닫힌 쪽으로 넘어진다.
   const guardMessage = stateUnknown ? t("repository.guard.stateUnknown") : guardMessageOf(workstate, t);
@@ -153,6 +160,17 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       // 사실이 사라진다 — 사용자가 실제로 행동하는 표면이 여기이므로 잘림은 여기서 말해야 한다.
       setStatus({ kind: "ok", staged: result.staged, unstaged: result.unstaged, ...(result.truncated ? { truncated: true } : {}) });
       setSelection((current) => {
+        const continuation = continuationRef.current;
+        continuationRef.current = null;
+        if (continuation) {
+          restoreListFocusRef.current = !!document.activeElement?.closest(".repository-staging-lists") || document.activeElement === document.body;
+          const pool = continuation.axis === "staged" ? result.staged : result.unstaged;
+          const next = continuation.paths.map((path) => pool.find((entry) => entry.path === path)).find(Boolean);
+          if (next) return { axis: continuation.axis, entry: next };
+          const axis = continuation.axis === "staged" ? "unstaged" : "staged";
+          const moved = result[axis].find((entry) => entry.path === continuation.moved);
+          if (moved) return { axis, entry: moved };
+        }
         if (!current) return current;
         const pool = current.axis === "staged" ? result.staged : result.unstaged;
         const kept = pool.find((entry) => entry.path === current.entry.path);
@@ -187,6 +205,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
         reloadStatus();
         return null;
       }
+      if ((route === "stage" || route === "unstage") && selection && status.kind === "ok") {
+        const axis = route === "stage" ? "unstaged" : "staged";
+        const paths = body.paths as readonly string[] | undefined;
+        if (selection.axis === axis && (body.all || paths?.includes(selection.entry.path))) {
+          const pool = status[axis];
+          const index = pool.findIndex((entry) => entry.path === selection.entry.path);
+          continuationRef.current = { axis, moved: selection.entry.path, paths: [...pool.slice(index + 1), ...pool.slice(0, index).reverse()].map((entry) => entry.path) };
+        }
+      }
       reloadStatus();
       onMutated({ history: mutation === "history" });
       return payload;
@@ -197,7 +224,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     } finally {
       setBusy(false);
     }
-  }, [busy, ctx.theaterId, onMutated, reloadStatus, repoRel, showNotice, t]);
+  }, [busy, ctx.theaterId, onMutated, reloadStatus, repoRel, selection, showNotice, status, t]);
 
   const stagePaths = useCallback((paths: readonly string[]) => { void runVerb("stage", { paths }, "local"); }, [runVerb]);
   const stageAll = useCallback(() => { void runVerb("stage", { all: true }, "local"); }, [runVerb]);
@@ -316,7 +343,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const clean = status.kind === "ok" && !status.truncated && staged.length === 0 && unstaged.length === 0;
   const showComposer = !clean || amend || subject !== "" || bodyText !== "";
 
-  return <div className="repository-staging">
+  return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !stationedMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
     {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
     {(guardMessage || stationedMessage) && <div className={`repository-staging-guard${guardMessage ? " is-locked" : ""}`} role="status">
       {guardMessage ?? stationedMessage}
@@ -331,7 +358,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       <p>{t("repository.staging.cleanHint")}</p>
       <button type="button" className="repository-refresh-btn" onClick={onReturnToHistory}>{t("repository.staging.viewHistory")}</button>
       {workstate?.headSha && <button type="button" className="repository-staging-amend-entry" disabled={busy || writeLocked} onClick={toggleAmend}>{t("repository.staging.editLastCommit")}</button>}
-    </div> : <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
+    </div> : <div className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
       <div className="repository-list-pane repository-staging-lists">
         {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
         {status.kind === "error" && <div className="repository-sections-error"><span>{readErrorSentence(t, status.message)}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
