@@ -15,9 +15,8 @@ import { fuzzyMatch, shortRefName } from "./repository-parsers.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repository-parsers.js";
 import { clearSelectedFile } from "./repository-state.js";
-import { dropHistoryCacheForRepository } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
-import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
+import { readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
 import { StagingView, guardMessageOf } from "./staging-view.js";
 import { WORKSPACE_TREE_MIN_WIDTH, buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth, workspaceTreeMaxWidth } from "./workspace-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
@@ -216,6 +215,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const setScanDepth = useCallback((next: number) => { setScanDepthState(next); saveScanDepth(next); }, []);
   const [reposLoaded, setReposLoaded] = useState(false);
   const [worktrees, setWorktrees] = useState<readonly WorktreeCandidate[]>([]);
+  const worktreesRef = useRef(worktrees);
+  worktreesRef.current = worktrees;
   const [worktreesError, setWorktreesError] = useState(false);
   const [worktreesRetry, setWorktreesRetry] = useState(0);
   const [worktreesForRepoRel, setWorktreesForRepoRel] = useState<string | null>(null);
@@ -303,7 +304,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 — 착지 순번을
   // 건네 패널이 제자리에서 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 되돌린다. 리마운트로
   // 풀면 목록이 비었다 다시 차며 깜빡이고, 새 목록이 올 때까지 옛 목록을 그대로 두는 재조회 문법과 어긋난다.
-  const [historyLandingSeq, setHistoryLandingSeq] = useState(0);
+  const [historyLandingSeq] = useState(0);
+  const [graphScope, setGraphScope] = useState(repoRel);
   const searchTarget = useRepositorySearchTarget();
   const setSource = useCallback((next: Source) => {
     setSourceState(next);
@@ -375,6 +377,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       changesCacheFrameRef.current = null;
     }
     flushChangesCache();
+    if (!worktreesRef.current.some((worktree) => worktree.relPath === nextRepoRel)) setGraphScope(nextRepoRel);
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
     syncRequestIdRef.current += 1;
@@ -805,25 +808,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
-    // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널에 착지
-    // 순번을 올려 전환 착지와 동일한 초기 상태로 되돌린다(스코프된 로그·WIP 숨김 잔존 방지).
+    setRefFilter(null);
     if (!decision.transition) {
-      dropHistoryCacheForRepository(`${ctx.theaterId ?? ""}:${next.relPath}`);
-      if (ctx.theaterId) {
-        dropRepoViewState(ctx.theaterId, next.relPath);
-        setHydratedRepoViewCacheKey("");
-      }
-      setRefFilter(null);
-      // 잔존 one-shot 요청을 함께 비워야 착지가 옛 비교·검사·스태시 카드를 다시 세우지 않는다.
-      setCompareRequest(null);
-      setInspectRequest(null);
-      setStashRequest(null);
-      setHistoryLandingSeq((value) => value + 1);
-      setSource(decision.landing);
+      setSource("history");
       return;
     }
-    transitionRepository(next.relPath, true, decision.landing);
-  }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
+    // 같은 저장소의 워크트리는 그래프를 공유하지만 쓰기 컨텍스트는 실제 선택 경로로 전환한다.
+    transitionRepository(next.relPath, true, "history");
+  }, [ctx.theaterId, repoRel, setSource, transitionRepository, worktrees]);
   const openCompare = useCallback((base: string, head: string) => {
     setSource("history");
     setCompareRequest((prev) => ({
@@ -871,6 +863,20 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const workspaceMainVisible = source === "changes";
   const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
   const picker = <RepositoryPicker t={t} repos={repos} selectedRel={repoRel} selectedRepo={selectedRepo} reposError={reposError} truncated={reposTruncated} scanDepth={scanDepth} onScanDepth={setScanDepth} onReload={refreshRepositoryData} onRetryRepos={() => setReposRetry((value) => value + 1)} onRepository={handleSelectRepository} disabled={verbBusy !== null || stagingBusy} />;
+  const sourceNavigation = <div className="repository-source-tabs repository-source-navigation" role="tablist" aria-orientation="vertical" aria-label={t("repository.source.aria")} onKeyDown={(event) => {
+              if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const next = event.key === "Home" ? "history" : event.key === "End" ? "changes" : source === "history" ? "changes" : "history";
+              setSource(next);
+              event.currentTarget.querySelector<HTMLButtonElement>(`[data-source="${next}"]`)?.focus();
+            }}>
+              {(["history", "changes"] as const).map((item) => <button key={item} type="button" role="tab" data-source={item} id={`${sourceTabsId}-${item}`} aria-controls={`${sourceTabsId}-panel`} aria-selected={source === item} tabIndex={source === item ? 0 : -1} onClick={() => setSource(item)}>
+                <Icon name={item === "history" ? "history" : "changes"} size={13} />
+                <span className="repository-source-tab-label">{t(item === "history" ? "repository.source.history" : "repository.source.changes")}</span>
+                {item === "changes" && <span className={`repository-source-count${wipFiles.length > 0 ? " is-hot" : ""}`}>{changedFiles.kind === "ok" ? wipFiles.length : "—"}</span>}
+              </button>)}
+            </div>;
   const verbDisabled = verbBusy !== null || writeLocked;
   const pullCount = workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null;
   const pushCount = workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null;
@@ -884,27 +890,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{syncNoticeMessage ?? ""}</span>
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={picker} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
-          {/* 작업 줄 하나가 소스 세그먼트 · 기록 도구(포털) · 원격 동사를 함께 진다. 컨테이너 폭에 따라
-              동사 라벨 → 아이콘 → 더 보기 메뉴로 접히므로 어느 폭에서도 빈 띠가 남지 않는다. */}
+          {/* 탐색은 소스 트리, Git 실행은 도구막대, 기록 필터는 목록 머리에 둔다. */}
           <div className="repository-workbar">
-            <div className="repository-source-tabs repository-segmented" role="tablist" aria-label={t("repository.source.aria")} onKeyDown={(event) => {
-              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-              event.preventDefault();
-              event.stopPropagation();
-              const next = event.key === "Home" ? "history" : event.key === "End" ? "changes" : source === "history" ? "changes" : "history";
-              setSource(next);
-              event.currentTarget.querySelector<HTMLButtonElement>(`[data-source="${next}"]`)?.focus();
-            }}>
-              {(["history", "changes"] as const).map((item) => <button key={item} type="button" role="tab" data-source={item} id={`${sourceTabsId}-${item}`} aria-controls={`${sourceTabsId}-panel`} aria-selected={source === item} tabIndex={source === item ? 0 : -1} onClick={() => setSource(item)}>
-                <Icon name={item === "history" ? "history" : "changes"} size={13} />
-                <span className="repository-source-tab-label">{t(item === "history" ? "repository.source.history" : "repository.source.changes")}</span>
-                {item === "changes" && <span className={`repository-source-count${wipFiles.length > 0 ? " is-hot" : ""}`}>{changedFiles.kind === "ok" ? wipFiles.length : "—"}</span>}
-              </button>)}
-            </div>
-            <div ref={setHistoryToolbarHost} className="repository-workbar-tools" hidden={source !== "history"} />
             <span ref={verbClusterRef} className="repository-verb-cluster" onKeyDown={(event) => {
               // 메뉴가 열린 채의 Escape는 메뉴만 닫는다 — 전파되면 표면 전체가 닫힌다.
               if (event.key !== "Escape" || !verbMenuOpen) return;
@@ -934,8 +924,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
               {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
             </span>
           </div>
+          <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} landingSeq={historyLandingSeq} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${graphScope}`} cacheScope={`${ctx.theaterId ?? ""}:${graphScope}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} landingSeq={historyLandingSeq} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
           </div>
         </div>
       </div>
