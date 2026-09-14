@@ -6424,25 +6424,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: color-mix(in oklch, var(--group-mark) 13%, transparent);
 }
 
-/* 전역 선별 사이드바의 소속 Theater pill — 그룹 pill과 같은 자리 문법이되, 식별 색이 아닌
-   중립 톤이다(Theater는 --id-* 채널을 갖지 않고, 이름 전체를 축약 없이 싣는 것이 목적). */
-.side-bar-chip-theater-pill {
-  flex: none;
-  max-width: 112px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.04em;
-  padding: 2px 7px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--surface-glass) 70%, transparent);
-}
-
 .side-bar-chip--status-landed {
   animation: side-bar-status-land 0.5s ease-out;
 }

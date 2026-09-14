@@ -45,7 +45,10 @@ interface SideBarChipProps {
   readonly isCloseArmed: boolean;
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
-  /** 전역 선별 사이드바에서 소속 Theater를 축약 없이 보여주는 중립 pill — Theater 이름 전체를 넣는다. */
+  /**
+   * 전역 선별 사이드바에서 소속 Theater를 접근성 이름에 싣는 값 — 눈으로 읽는 자리는 War Room 지도가
+   * 이미 Theater로 갈라 놓았으므로 칩은 배지를 그리지 않는다. 화면을 보지 않는 쪽에는 그 구분이 없다.
+   */
   readonly theaterName?: string | null;
   readonly statusAxis?: boolean;
   readonly statusLanded?: boolean;
@@ -111,8 +114,9 @@ export function OperationsSideBarChip({
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
   const title = displayTitle(operation);
-  // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
-  // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
+  // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — 눈으로는 War Room 지도가 그 구분을
+  // 지므로 칩에 배지를 세우지 않고, 접근성 이름에만 소속 Theater를 싣는다. 기존 aria 키의
+  // groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
   // "지금 어디" 축 — 실험 기능이 켜진 동안 서버가 세션 DTO에 실어 보내는 투영이다. 칩이 그리는 것은
   // 브랜치 한 조각뿐이고, 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
@@ -352,11 +356,6 @@ export function OperationsSideBarChip({
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={!detailEnabled} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
-      {theaterName ? (
-        <span className="side-bar-chip-theater-pill" title={theaterName} aria-hidden="true">
-          {theaterName}
-        </span>
-      ) : null}
       {groupMark && statusAxis && !preview ? (
         <span
           className="side-bar-chip-group-pill"
