@@ -736,7 +736,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   useEffect(() => {
     if (!everActive) return;
     const highlightChanged = previousRefFilterRef.current !== refFilter || previousRepoRelRef.current !== repoRel;
-    if (previousRepoRelRef.current !== repoRel) checkoutSelectionPending.current = true;
+    if (previousRepoRelRef.current !== repoRel) checkoutSelectionPending.current = pendingSearchTargetHash === null;
+    if (pendingSearchTargetHash) checkoutSelectionPending.current = false;
     previousRepoRelRef.current = repoRel;
     previousRefFilterRef.current = refFilter;
     const externalRefreshRequested = loadedExternalRefreshTokenRef.current !== externalRefreshToken;

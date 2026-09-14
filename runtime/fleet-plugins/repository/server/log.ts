@@ -88,7 +88,7 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
     // 완결 신호는 필드 수다: 본문은 절단되어 언제나 마지막 한 칸을 채우므로 온전한 레코드는 항상 LOG_FIELD_COUNT개다.
     if (fields.length < LOG_FIELD_COUNT || !FULL_HASH_RE.test(fullHash)) continue;
 
-    const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
+    const refs = refsRaw.split(", ").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
     // 본문 필드는 8칸으로 절단되어 한 줄에 들어오므로 첫 줄의 9번째 조각만 보면 된다.
     // 빈 본문은 공백으로 채워져 오고, 내용이 있으면 잘린 앞부분이 온다 — 존재 여부만 남기고 내용은 버린다.
