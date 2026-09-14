@@ -215,6 +215,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const setScanDepth = useCallback((next: number) => { setScanDepthState(next); saveScanDepth(next); }, []);
   const [reposLoaded, setReposLoaded] = useState(false);
   const [worktrees, setWorktrees] = useState<readonly WorktreeCandidate[]>([]);
+  const worktreesRef = useRef(worktrees);
+  worktreesRef.current = worktrees;
   const [worktreesError, setWorktreesError] = useState(false);
   const [worktreesRetry, setWorktreesRetry] = useState(0);
   const [worktreesForRepoRel, setWorktreesForRepoRel] = useState<string | null>(null);
@@ -375,7 +377,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       changesCacheFrameRef.current = null;
     }
     flushChangesCache();
-    if (!worktrees.some((worktree) => worktree.relPath === nextRepoRel)) setGraphScope(nextRepoRel);
+    if (!worktreesRef.current.some((worktree) => worktree.relPath === nextRepoRel)) setGraphScope(nextRepoRel);
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
     syncRequestIdRef.current += 1;
@@ -420,7 +422,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
     setSource(landing);
-  }, [ctx.theaterId, flushChangesCache, setSource, worktrees]);
+  }, [ctx.theaterId, flushChangesCache, setSource]);
   useEffect(() => {
     if (!searchTarget || searchTarget.theaterId !== ctx.theaterId) return;
     setRefFilter(null);

@@ -821,7 +821,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       let data = firstPage;
       // 선택한 ref의 팁까지 순서대로 페이지를 잇는다. 팁만 끼워 넣으면 계보와 skip이 어긋난다.
       const containsRequestedRef = (commits: readonly LogCommitEntry[]) => !refFilter || commits.some((commit) => commit.refs.some((ref) => ref === refFilter || ref === `HEAD -> ${refFilter}` || ref === `tag: ${refFilter}`));
-      while (!cancelled && data.hasMore && !data.truncated && !containsRequestedRef(data.commits)) {
+      while (!cancelled && data.hasMore && data.commits.length > 0 && !containsRequestedRef(data.commits)) {
         const response = await ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: data.commits.length, order, ref: refFilter }) });
         if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
         const page = await response.json() as LogResult;
