@@ -375,6 +375,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       changesCacheFrameRef.current = null;
     }
     flushChangesCache();
+    if (!worktrees.some((worktree) => worktree.relPath === nextRepoRel)) setGraphScope(nextRepoRel);
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
     syncRequestIdRef.current += 1;
@@ -419,7 +420,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
     setSource(landing);
-  }, [ctx.theaterId, flushChangesCache, setSource]);
+  }, [ctx.theaterId, flushChangesCache, setSource, worktrees]);
   useEffect(() => {
     if (!searchTarget || searchTarget.theaterId !== ctx.theaterId) return;
     setRefFilter(null);
@@ -811,7 +812,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       return;
     }
     // 같은 저장소의 워크트리는 그래프를 공유하지만 쓰기 컨텍스트는 실제 선택 경로로 전환한다.
-    if (!worktrees.some((worktree) => worktree.relPath === next.relPath)) setGraphScope(next.relPath);
     transitionRepository(next.relPath, true, "history");
   }, [ctx.theaterId, repoRel, setSource, transitionRepository, worktrees]);
   const openCompare = useCallback((base: string, head: string) => {
