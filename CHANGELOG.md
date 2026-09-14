@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.94.0] - 2026-09-14
+
+### fleet-console
+
+#### Changed
+- Refine Repository into a continuous review workspace with separate navigation and Git tools, persistent commit context, and next-file selection after staging.
+- War Room's sidebar rows no longer carry a Theater badge, because the deck already groups Operations by Theater, so long Operation titles get that space back.
+
 ## [1.93.0] - 2026-09-13
 
 ### fleet-console

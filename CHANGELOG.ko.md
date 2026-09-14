@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.94.0] - 2026-09-14
+
+### fleet-console
+
+#### Changed
+- Repository의 탐색과 Git 도구를 분리하고 커밋 문맥과 스테이지 후 다음 파일 선택을 유지해 변경 검토를 이어가기 쉽게 다듬었습니다.
+- War Room 사이드바 줄에서 Theater 배지를 내렸습니다. 덱이 이미 Theater별로 Operation을 묶어 보여 주므로, 그 자리는 긴 Operation 제목이 가져갑니다.
+
 ## [1.93.0] - 2026-09-13
 
 ### fleet-console
