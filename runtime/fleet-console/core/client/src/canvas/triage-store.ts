@@ -17,6 +17,7 @@ import {
   getTheaterFocusLayerSnapshot,
   registerBeforeFormationViewActivation,
   setTheaterFocusLayerSnapshot,
+  setTheaterOperationMinimized,
   type FocusLayerState,
 } from "./canvas-store.js";
 
@@ -350,7 +351,11 @@ export function pickTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
   const operation = getState().operations.find((candidate) => candidate.id === operationId) ?? null;
   // 전 Theater가 마운트되므로 지목은 Theater를 전환하지 않는다 — 무대가 소속 무관하게 선다.
-  if (operation) operationTheater.set(operationId, operation.theaterId);
+  if (operation) {
+    operationTheater.set(operationId, operation.theaterId);
+    // 명시적으로 지목한 패널은 최소화도 풀어야 덱과 무대 후보에 다시 들어온다.
+    setTheaterOperationMinimized(operation.theaterId, operationId, false);
+  }
   dismissed.delete(operationId);
   const wasDeferred = deferredAt.delete(operationId);
   const claimDropped = activeAwaitingClaimId !== null && activeAwaitingClaimId !== operationId;
