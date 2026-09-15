@@ -431,7 +431,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               aria-label={t(mode.titleKey)}
               title={t(mode.titleKey)}
               onMouseDown={(event) => event.preventDefault()}
-              onPointerEnter={() => { if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
+              // hover는 마우스만의 것이다 — 터치·펜은 접촉과 함께 pointerenter를 내므로 여기서 열면
+              // 뒤따르는 click 토글이 곧바로 닫아 버린다. 터치는 click 경로만 쓴다.
+              onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
               onFocus={() => {
                 if (suppressNextFocusOpenRef.current) { suppressNextFocusOpenRef.current = false; return; }
                 if (mode.id === canvasMode) openModeTools();

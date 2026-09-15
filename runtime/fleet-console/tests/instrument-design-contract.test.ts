@@ -2253,7 +2253,7 @@ describe("Instrument core design contract", () => {
     // inert로 포커스에서 빠지되 DOM에 남아 안내(feature tour)가 앵커를 찾는다.
     expect(commandBand).toContain('className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}');
     expect(commandBand).toContain("inert={modeToolsOpen ? undefined : true}");
-    expect(commandBand).toContain("onPointerEnter={() => { if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}");
+    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(commandBand).toContain('{canvasMode === "cruise" ? <>');
     expect(commandBand).toContain('{canvasMode === "warRoom" ? <>');
     expect(commandBand).toContain('{canvasMode === "tactical" ? TACTICAL_LAYOUTS.map((layout) => (');
