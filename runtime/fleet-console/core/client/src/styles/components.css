@@ -7673,6 +7673,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   opacity: 0.42;
 }
 
+/* 닫힌 문의 이름표는 까닭을 말한다 — 한 줄 이름이 아니라 문장이라 접어 쓴다. 겨눔은 슬롯이 받으므로
+   버튼이 disabled 여도 풍선은 선다. */
+.fleet-caption-slot:has(.fleet-caption-action:disabled) .fleet-caption-tip {
+  white-space: normal;
+  width: max-content;
+  max-width: min(34ch, 70vw);
+}
+
 /* 에이전트가 쓰는 중 — 별도 배지 대신 그 기능의 버튼이 표식이 된다. 채움은 agent-control 채널, 링은 바깥으로
    퍼져 사라진다. 위치(brass, aria-pressed)보다 뒤에 서서 이긴다: 사람이 열어 둔 채 에이전트가 쓰는 순간이 더 급하다. */
 .fleet-caption-action.is-agent,

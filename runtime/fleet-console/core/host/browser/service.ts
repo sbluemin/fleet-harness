@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { launchChromium, locateChromium, type CdpClient, type CdpEvent } from "./cdp.js";
+import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
 import { isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
 import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 
@@ -87,6 +87,16 @@ interface OperationBrowser {
   agentCalls: Set<AbortController>;
 }
 
+/** 엔진이 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 무엇을 설치할지 말한다. */
+export function missingChromiumMessage(reason: ChromiumMissingReason | null): string {
+  switch (reason) {
+    case "env_invalid": return "FLEET_BROWSER_CHROMIUM points at a file that does not exist or is not executable.";
+    case "wsl_missing": return "No Chrome was found in WSL or on Windows. Install Google Chrome on Windows (WSL uses it) or inside WSL.";
+    case "wsl_windows_node_missing": return "Windows Chrome was found, but driving it from WSL needs Node.js installed on Windows.";
+    default: return "No local Chromium was found. Install Google Chrome, Chromium, or Microsoft Edge, or set FLEET_BROWSER_CHROMIUM.";
+  }
+}
+
 export interface BrowserServiceDeps {
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
@@ -97,8 +107,14 @@ export interface BrowserServiceDeps {
 
 export interface BrowserServiceStatus {
   readonly enabled: boolean;
+  /** 이 기기에서 브라우저를 띄울 수 있는가 — 실행 파일을 찾았다는 뜻이지 이미 떠 있다는 뜻은 아니다. */
+  readonly available: boolean;
+  /** 못 찾았을 때 그 까닭. 클라이언트가 안내 문장을 고른다. */
+  readonly missingReason: ChromiumMissingReason | null;
   readonly executable: string | null;
   readonly executableSource: "env" | "playwright" | "system" | null;
+  /** WSL 에서 Windows Chrome 을 중계로 쓰는 중이면 "wsl". */
+  readonly bridge: "wsl" | null;
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
   readonly operations: readonly string[];
@@ -158,9 +174,11 @@ export class BrowserService {
 
   constructor(private readonly deps: BrowserServiceDeps) {}
 
+  private lookup(): ChromiumLookup { return lookupChromium({ env: this.deps.env, dataDir: this.deps.dataDir }); }
+
   status(): BrowserServiceStatus {
-    const located = locateChromium(this.deps.env);
-    return { enabled: this.deps.enabled(), executable: located?.executable ?? null, executableSource: located?.source ?? null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
+    const { candidate, reason } = this.lookup();
+    return { enabled: this.deps.enabled(), available: candidate !== null, missingReason: reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
   }
 
   available(): boolean { return this.deps.enabled() && this.deps.localControl(); }
@@ -170,10 +188,10 @@ export class BrowserService {
   private async engineClient(): Promise<CdpClient> {
     if (this.client) return this.client;
     if (this.starting) return this.starting;
-    const located = locateChromium(this.deps.env);
-    if (!located) { this.engine = "failed"; this.engineError = "browser_engine_missing"; throw new BrowserPolicyError("browser_engine_missing", "No local Chromium was found. Install Google Chrome or a Playwright Chromium, or set FLEET_BROWSER_CHROMIUM."); }
+    const { candidate: located, reason } = this.lookup();
+    if (!located) { this.engine = "failed"; this.engineError = "browser_engine_missing"; throw new BrowserPolicyError("browser_engine_missing", missingChromiumMessage(reason)); }
     this.engine = "starting";
-    this.starting = launchChromium({ executable: located.executable, userDataDir: path.join(this.deps.dataDir, "profile"), windowSize: BROWSER_DEFAULT_VIEWPORT, deviceScaleFactor: BROWSER_SURFACE_SCALE, env: this.deps.env, log: this.deps.log })
+    this.starting = launchChromium({ executable: located.executable, userDataDir: path.join(this.deps.dataDir, "profile"), windowSize: BROWSER_DEFAULT_VIEWPORT, deviceScaleFactor: BROWSER_SURFACE_SCALE, env: this.deps.env, log: this.deps.log, ...(located.bridge ? { bridge: located.bridge } : {}) })
       .then(async (client) => {
         // 띄우는 사이 dispose 가 지나갔으면 방금 뜬 Chromium 을 바로 닫는다 — 서버가 내려간 뒤 자식이 남지 않게.
         if (this.disposed) { await client.close(); throw new Error("browser_engine_disposed"); }
@@ -183,7 +201,7 @@ export class BrowserService {
         this.engineError = null;
         this.unsubscribeEvents = client.on((event) => this.onEvent(event));
         void client.closed.then(() => this.onEngineClosed());
-        this.deps.log(`browser engine ready (${located.source}: ${located.executable})`);
+        this.deps.log(`browser engine ready (${located.source}${located.bridge ? " via wsl bridge" : ""}: ${located.executable})`);
         return client;
       })
       .catch((error: unknown) => { this.engine = "failed"; this.engineError = error instanceof Error ? error.message : "browser_engine_start_failed"; throw error; })
@@ -512,16 +530,16 @@ export class BrowserService {
 
   /** 가져올 수 있는 원본 — 엔진이 Google Chrome 일 때만, 그 Chrome 의 프로필들. */
   importSources(): { available: boolean; reason: "chrome_required" | "no_profiles" | null; profiles: ChromeProfile[] } {
-    const located = locateChromium(this.deps.env);
-    if (!isGoogleChrome(located?.executable ?? null)) return { available: false, reason: "chrome_required", profiles: [] };
+    const located = this.lookup().candidate;
+    if (!isGoogleChrome(located?.executable ?? null) || located?.bridge) return { available: false, reason: "chrome_required", profiles: [] };
     const profiles = listChromeProfiles();
     return { available: profiles.length > 0, reason: profiles.length > 0 ? null : "no_profiles", profiles };
   }
 
   /** 프로필의 쿠키를 이 Operation 의 브라우저 컨텍스트에 넣는다. 열린 탭은 다음 항해부터 로그인 상태를 본다. */
   async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
-    const located = locateChromium(this.deps.env);
-    if (!isGoogleChrome(located?.executable ?? null) || !located) throw new BrowserPolicyError("chrome_required", "Importing needs Google Chrome as the browser engine.");
+    const located = this.lookup().candidate;
+    if (!isGoogleChrome(located?.executable ?? null) || !located || located.bridge) throw new BrowserPolicyError("chrome_required", "Importing needs Google Chrome as the browser engine.");
     const op = this.operation(operationId);
     const { client, contextId } = await this.context(op);
     let cookies: Awaited<ReturnType<typeof readChromeCookies>>;
