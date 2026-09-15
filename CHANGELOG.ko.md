@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.94.1] - 2026-09-15
+
+### fleet-console
+
+#### Changed
+- War Room 사이드바 줄에서 그룹 배지를 내렸습니다. 무대에 선 패널의 캡션이 이미 그룹을 말해 주므로, 그 자리는 긴 Operation 제목이 가져갑니다.
+
 ## [1.94.0] - 2026-09-14
 
 ### fleet-console

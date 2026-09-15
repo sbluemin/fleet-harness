@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.94.1] - 2026-09-15
+
+### fleet-console
+
+#### Changed
+- War Room's sidebar rows no longer carry a group badge, because the staged panel's caption already names the group, so long Operation titles get that space back.
+
 ## [1.94.0] - 2026-09-14
 
 ### fleet-console
