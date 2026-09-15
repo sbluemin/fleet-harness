@@ -23,6 +23,7 @@ import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
 import { BrowserCaption, BrowserPanel } from "../browser/browser-panel.js";
+import { useBrowserEngine } from "../browser/browser-panel-store.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -553,14 +554,21 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   // Operation Browser 문 — 실험이 켜진 Console에서만 선다. 허용은 패널 안에서 켠다.
   const using = useOperationUse(context.operationId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
-  // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 기본 탑재라 문은 늘 선다.
+  // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 기본 탑재라 문은 늘 서되,
+  // 이 기기에 Chrome 이 없으면 닫힌 채로 서서 말풍선이 무엇을 설치할지 말한다(투어도 그때는 이 문을 짚지 않는다).
+  const engine = useBrowserEngine();
+  const engineMissing = engine !== null && !engine.available;
+  const browserLabel = engineMissing
+    ? t(engine.reason === "wsl_missing" ? "terminal.browser.unavailableWsl" : engine.reason === "wsl_windows_node_missing" ? "terminal.browser.unavailableWslNode" : engine.reason === "env_invalid" ? "terminal.browser.unavailableEnv" : "terminal.browser.unavailable")
+    : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
   const browser = context.onRequestCompanions === undefined ? null : (
     <CaptionActionButton
       actionId="browser"
-      label={using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open")}
+      label={browserLabel}
       pressed={browserOpen}
+      disabled={engineMissing}
       agent={using.browser}
-      tourAnchor="browser"
+      {...(engineMissing ? {} : { tourAnchor: "browser" })}
       onClick={() => { toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
     >
       <CaptionBrowserUseGlyph />

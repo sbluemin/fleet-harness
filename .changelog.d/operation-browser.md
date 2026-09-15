@@ -14,5 +14,5 @@ branch: operation-browser
   ko: Console Use와 Computer Use도 같은 방식으로 보입니다. 에이전트가 쓰는 동안 Operation 창의 바깥선을 그 채널 색의 빛이 돌고, 캡션이 물들며, 캡션 배지가 맥동합니다. War Room 카드를 포함한 모든 배치에서 같습니다. Computer Use는 턴이 끝나면 기기를 놓습니다.
 - The companion caption is the tab strip: favicons, a new-tab button, cookie import from a Google Chrome profile, and a viewport glyph with a tooltip.
   ko: companion 캡션이 곧 탭 스트립입니다. 파비콘, 새 탭, Google Chrome 프로필의 쿠키 가져오기, 툴팁이 있는 뷰포트 글리프가 한 줄에 있습니다.
-- Requires a local Chromium (Google Chrome or a Playwright Chromium).
-  ko: 로컬 Chromium(Google Chrome 또는 Playwright Chromium)이 필요합니다.
+- Requires a local Chromium (Google Chrome, Chromium, Microsoft Edge, or a Playwright Chromium). In WSL, Chrome installed on Windows is used when none is installed inside WSL (this needs Node.js on Windows; Fleet Desktop's runtime counts). When no Chrome is found, the browser button is dimmed and its tooltip says what to install.
+  ko: 로컬 Chromium(Google Chrome·Chromium·Microsoft Edge 또는 Playwright Chromium)이 필요합니다. WSL에서는 WSL 안에 Chrome이 없으면 Windows에 설치된 Chrome을 씁니다(Windows에 Node.js가 필요하며 Fleet Desktop의 런타임도 됩니다). Chrome을 찾지 못하면 브라우저 버튼이 흐려지고 툴팁이 무엇을 설치할지 알려 줍니다.

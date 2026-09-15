@@ -38,3 +38,47 @@ export function useBrowserPanel(operationId: string): BrowserPanelSnapshot | nul
   }, [operationId]);
   return React.useSyncExternalStore(subscribe, () => snapshots.get(operationId) ?? null, () => null);
 }
+
+// ---------- 엔진 유무 ----------
+
+export type BrowserEngineMissingReason = "env_invalid" | "wsl_windows_node_missing" | "wsl_missing" | "missing";
+/** 아직 묻지 않았거나 답을 못 받았으면 null — 그때는 문을 닫지 않는다(모르는 것을 못 쓰는 것으로 보이지 않게). */
+export type BrowserEngineState = { readonly available: true } | { readonly available: false; readonly reason: BrowserEngineMissingReason } | null;
+
+let engineState: BrowserEngineState = null;
+let engineAskedAt = 0;
+let engineInflight: Promise<void> | null = null;
+const engineListeners = new Set<() => void>();
+const ENGINE_RECHECK_MS = 30_000;
+
+function askEngine(): void {
+  if (engineInflight || typeof fetch !== "function") return;
+  engineAskedAt = Date.now();
+  engineInflight = fetch("/api/v1/browser")
+    .then(async (response) => {
+      if (!response.ok) return;
+      const body = await response.json() as { readonly available?: unknown; readonly missingReason?: unknown };
+      if (typeof body.available !== "boolean") return;
+      const reason = typeof body.missingReason === "string" ? body.missingReason as BrowserEngineMissingReason : "missing";
+      const next: BrowserEngineState = body.available ? { available: true } : { available: false, reason };
+      if (engineState?.available === next.available && (next.available || (engineState && !engineState.available && engineState.reason === reason))) return;
+      engineState = next;
+      for (const listener of engineListeners) listener();
+    })
+    .catch(() => undefined)
+    .finally(() => { engineInflight = null; });
+}
+
+function subscribeEngine(listener: () => void): () => void {
+  engineListeners.add(listener);
+  if (engineListeners.size === 1) askEngine();
+  // 설치하고 돌아온 사람에게 다시 묻는다 — 탭이 눈에 들어올 때, 30초에 한 번.
+  const onVisible = () => { if (document.visibilityState === "visible" && Date.now() - engineAskedAt > ENGINE_RECHECK_MS) askEngine(); };
+  document.addEventListener("visibilitychange", onVisible);
+  return () => { engineListeners.delete(listener); document.removeEventListener("visibilitychange", onVisible); };
+}
+
+/** 이 Console 이 브라우저 엔진을 띄울 수 있는지. 캡션의 지구본 문은 이것으로 닫히고 열린다. */
+export function useBrowserEngine(): BrowserEngineState {
+  return React.useSyncExternalStore(subscribeEngine, () => engineState, () => null);
+}
