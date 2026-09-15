@@ -2232,7 +2232,7 @@
 .repository-verb-menu-item .repository-verb-count { margin-left: auto; }
 .repository-verb-cluster .repository-stash-popover { top: calc(100% + 6px); }
 
-/* 점진적 접힘 — 라벨 → 아이콘 → 더 보기. 어느 폭에서도 줄이 넘치거나 빈 띠가 남지 않는다. */
+/* 점진적 접힘 — 라벨 → 아이콘 → 더 보기. 기록 필터·칩과 한 줄을 나눠 쓰므로 중간 폭에서 라벨을 되살리지 않는다. */
 @container repository-work (max-width: 880px) {
   .repository-verb-inline .repository-verb-label { display: none; }
   .repository-verb-inline .repository-sync-button { width: 28px; padding: 0; justify-content: center; }
@@ -2620,10 +2620,6 @@
 .repository-staging.is-reviewing:has(> .repository-staging-guard) > .repository-staging-root, .repository-staging.is-reviewing:has(> .repository-sync-toast) > .repository-staging-root { display: grid; }
 .repository-staging-bulk { border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); border-color: var(--surface-rim); }
 .repository-staging-row.is-cur .repository-stage-actions { opacity: 1; }
-@container repository-work (min-width: 440px) {
-  .repository-workbar .repository-verb-inline .repository-verb-label { display: inline; }
-  .repository-workbar .repository-verb-inline .repository-sync-button { width: auto; padding: 0 8px; }
-}
 @container repository-work (max-width: 560px) {
   .repository-staging.is-reviewing { display: flex; }
   .repository-staging.is-reviewing > .repository-staging-root { display: grid; }
