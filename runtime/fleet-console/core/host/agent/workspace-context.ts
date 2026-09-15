@@ -11,9 +11,8 @@ import type { AgentSessionWorkspace } from "./types.js";
  * Theater 밖이면 basename 하나와 `outside` 표식, 그리고 브랜치 이름뿐이다. git은 셸 없이
  * 고정 인자로만 부르고 사용자 입력은 인자에 오르지 않는다.
  *
- * 옵트인 실험이다: `setEnabled(false)`인 동안은 git을 읽지도 HEAD를 감시하지도 않으며, 켜는 순간
- * 살아 있는 세션 전부를 한 번 계산하고 감시를 붙인다. 폴링은 없다 — 체크아웃이 `.git/HEAD`를
- * 바꿀 때만 다시 읽는다.
+ * 폴링은 없다 — 세션이 cwd를 알릴 때 한 번 계산하고, 그 뒤로는 체크아웃이 `.git/HEAD`를 바꿀
+ * 때만 브랜치를 다시 읽는다.
  */
 
 export interface WorkspaceContextTrackerDeps {
@@ -25,7 +24,6 @@ export interface WorkspaceContextTrackerDeps {
 }
 
 export interface WorkspaceContextTracker {
-  setEnabled(enabled: boolean): void;
   /** 세션의 현재 cwd를 알린다. 같은 cwd면 아무 일도 하지 않는다. */
   observe(sessionId: string, theaterId: string, cwd: string): void;
   forget(sessionId: string): void;
@@ -47,19 +45,6 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
   const readGit = deps.readGit ?? defaultReadGit;
   const watch = deps.watch ?? defaultWatch;
   const sessions = new Map<string, TrackedSession>();
-  let enabled = false;
-
-  function setEnabled(next: boolean): void {
-    if (enabled === next) return;
-    enabled = next;
-    for (const [sessionId, tracked] of sessions) {
-      if (next) void refresh(sessionId, tracked);
-      else {
-        stopWatching(tracked);
-        deps.onChange(sessionId, null);
-      }
-    }
-  }
 
   function observe(sessionId: string, theaterId: string, cwd: string): void {
     const existing = sessions.get(sessionId);
@@ -67,12 +52,12 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
       if (existing.cwd === cwd && existing.theaterId === theaterId) return;
       stopWatching(existing);
       existing.cwd = cwd;
-      if (enabled) void refresh(sessionId, existing);
+      void refresh(sessionId, existing);
       return;
     }
     const tracked: TrackedSession = { theaterId, cwd, generation: 0, unwatch: null, debounce: null };
     sessions.set(sessionId, tracked);
-    if (enabled) void refresh(sessionId, tracked);
+    void refresh(sessionId, tracked);
   }
 
   function forget(sessionId: string): void {
@@ -93,7 +78,7 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
     const root = deps.resolveTheaterPath(tracked.theaterId);
     const [branch, headPath] = await Promise.all([readBranch(cwd), readGit(["rev-parse", "--git-path", "HEAD"], cwd)]);
     // 계산 중에 cwd가 바뀌었거나 세션이 사라졌으면 낡은 결과다.
-    if (!enabled || tracked.generation !== generation || sessions.get(sessionId) !== tracked) return;
+    if (tracked.generation !== generation || sessions.get(sessionId) !== tracked) return;
     deps.onChange(sessionId, projectWorkspace({ cwd, theaterRoot: root, branch }));
     if (headPath && tracked.unwatch === null) {
       const absoluteHead = path.isAbsolute(headPath) ? headPath : path.join(cwd, headPath);
@@ -106,7 +91,7 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
           const readCwd = tracked.cwd;
           const readGeneration = tracked.generation;
           void readBranch(readCwd).then((next) => {
-            if (!enabled || sessions.get(sessionId) !== tracked || tracked.generation !== readGeneration) return;
+            if (sessions.get(sessionId) !== tracked || tracked.generation !== readGeneration) return;
             deps.onChange(sessionId, projectWorkspace({ cwd: readCwd, theaterRoot: deps.resolveTheaterPath(tracked.theaterId), branch: next }));
           });
         }, HEAD_DEBOUNCE_MS);
@@ -131,7 +116,7 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
     tracked.unwatch = null;
   }
 
-  return { setEnabled, observe, forget, dispose };
+  return { observe, forget, dispose };
 }
 
 /** 브라우저에 내보낼 수 있는 모양으로 접는다 — 절대 경로는 이 함수를 통과하지 못한다. */

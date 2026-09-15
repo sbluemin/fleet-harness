@@ -165,8 +165,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
   });
-  // "지금 어디" 축 — 옵트인 실험이다. 설정 변경은 호스트 구독으로 즉시 따라가고, 세션 생성·재개·
-  // 턴 경계가 cwd를 알리며, 휴면·삭제가 감시를 거둔다.
+  // "지금 어디" 축 — 세션 생성·재개·턴 경계가 cwd를 알리고, 휴면·삭제가 감시를 거둔다.
   const workspaceContext = createWorkspaceContextTracker({
     resolveTheaterPath: (theaterId) => ctx.host.paths.resolveTheaterPath(theaterId),
     onChange: (sessionId, workspace) => {
@@ -178,8 +177,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const operation = ctx.host.operations.get(operationId);
     if (operation) workspaceContext.observe(operationId, operation.theaterId, cwd);
   });
-  workspaceContext.setEnabled(ctx.host.experiments?.read().operationContext === true);
-  const unsubscribeExperiments = ctx.host.experiments?.subscribe?.((settings) => workspaceContext.setEnabled(settings.operationContext === true)) ?? (() => undefined);
   // __fleetTerminalLaunch/__fleetTerminalStartShell와 같은 자리의 테스트 훅이다. 플러그인 번들은
   // 호스트와 별개 모듈 인스턴스라 호스트가 만든 detector가 여기로 오지 않으므로, 설치 여부를
   // 고정하려면 이 훅을 거쳐야 한다. 이것이 없으면 세션 생성 테스트가 실행 기계에 Claude Code가
@@ -1928,7 +1925,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
-    unsubscribeExperiments();
     workspaceHooks.dispose();
     workspaceContext.dispose();
     launchAttachments.cleanup();
