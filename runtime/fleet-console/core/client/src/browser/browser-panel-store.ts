@@ -50,6 +50,8 @@ let engineInflight: Promise<void> | null = null;
 const engineListeners = new Set<() => void>();
 const ENGINE_RECHECK_MS = 30_000;
 
+export function refreshBrowserEngine(): void { void (engineInflight ?? Promise.resolve()).then(() => askEngine()); }
+
 function askEngine(): void {
   if (engineInflight || typeof fetch !== "function") return;
   engineAskedAt = Date.now();

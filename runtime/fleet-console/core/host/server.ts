@@ -392,6 +392,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/engine", summary: "Inspect the local browser executable in Settings.", category: "Settings", gate: "origin-strict", transport: "http" },
+  { method: "PUT", path: "/api/v1/browser/engine", summary: "Validate and save the local browser executable.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read local Operation Browser status.", category: "Settings", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/stream", summary: "Stream an Operation's browser state and screencast frames.", category: "Console Execution", gate: "loopback", transport: "sse" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
@@ -634,6 +636,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const browserService = new BrowserService({
     dataDir: path.join(fleetDataDir, "browser"),
     env: stripConsoleInternalEnv(process.env),
+    executablePath: () => consoleSettingsStore.load().general?.browserExecutable,
     enabled: () => true,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
@@ -1055,7 +1058,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/browser", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
-    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
+    if (pathname === "/api/v1/browser/engine") {
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable" }); return true; }
+      if (req.method === "POST") { writeJson(res, 200, browserService.engineSettings()); return true; }
+      if (req.method !== "PUT") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req);
+      if (!body || typeof body.path !== "string" || body.path.length > 4096 || body.path.includes("\0") || (body.path.trim() && !path.isAbsolute(body.path.trim()))) { writeJson(res, 400, { error: "browser_engine_invalid" }); return true; }
+      const executable = body.path.trim();
+      try {
+        await browserService.configureEngine(executable, body.restart === true, () => {
+          consoleSettingsStore.update(current => ({ ...current, general: { ...current.general, browserExecutable: executable } }));
+        });
+        writeJson(res, 200, browserService.engineSettings());
+      } catch (error) { writeJson(res, error instanceof BrowserPolicyError ? 400 : 500, { error: error instanceof BrowserPolicyError ? error.code : "browser_engine_save_failed" }); }
+      return true;
+    }
+    if (req.method === "GET" && pathname === "/api/v1/browser") { const { executable: _executable, ...status } = browserService.status(); writeJson(res, 200, status); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") { writeJson(res, 200, browserService.importSources()); return true; }
     const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|input|viewport|interrupt|inspect|paste|favicon|import)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }

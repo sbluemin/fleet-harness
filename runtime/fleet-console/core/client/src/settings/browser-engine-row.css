@@ -1,0 +1,15 @@
+.browser-engine-settings {
+  min-width: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+.browser-engine-settings__form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.browser-engine-settings__form .global-settings-input {
+  flex: 1 1 260px; min-width: 0; width: 100%; min-height: 36px;
+  padding: 7px var(--space-3); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent); color: var(--text-primary); font-family: var(--font-mono);
+}
+.browser-engine-settings__form input:hover:not(:disabled), .browser-engine-settings__form input:focus-visible { border-color: var(--control-hover-rim); }
+.browser-engine-settings__form input:disabled { opacity: var(--control-disabled-opacity); }
+.browser-engine-settings__confirmation { margin-top: 8px; }
+.browser-engine-settings__confirmation .fc-settings-reset + .fc-settings-reset { margin-left: 8px; }

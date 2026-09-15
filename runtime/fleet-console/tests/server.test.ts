@@ -121,6 +121,18 @@ describe("console terminal observability", () => {
       lockFile: fixture.lockFile,
     });
     expect((await fetch(url)).status).toBe(200);
+
+    const engineUrl = new URL("api/v1/browser/engine", fixture.endpoint);
+    expect(await requestWithHost(engineUrl, origin, "localhost:1", "POST")).toBe(403);
+    expect((await fetch(engineUrl, { method: "POST" })).status).toBe(403);
+    expect((await fetch(engineUrl, { method: "PUT", headers: { Origin: "http://evil.example", "Content-Type": "application/json" }, body: JSON.stringify({ path: "/bin/sh" }) })).status).toBe(403);
+    const engine = await fetch(engineUrl, { method: "POST", headers: { Origin: origin } });
+    expect(engine.status).toBe(200);
+    expect(await engine.json()).toHaveProperty("configuredPath", "");
+    const invalid = await fetch(engineUrl, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ path: "relative/chrome" }) });
+    expect(invalid.status).toBe(400);
+    const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
+    expect(await status.json()).not.toHaveProperty("executable");
   });
 
   it("injects dormant durable operations without exposing server-only provider data", () => {

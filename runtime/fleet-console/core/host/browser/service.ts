@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
 import { isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
 import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
@@ -100,6 +101,7 @@ export function missingChromiumMessage(reason: ChromiumMissingReason | null): st
 export interface BrowserServiceDeps {
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly executablePath?: () => string | undefined;
   readonly enabled: () => boolean;
   readonly localControl: () => boolean;
   readonly log: (message: string) => void;
@@ -112,7 +114,7 @@ export interface BrowserServiceStatus {
   /** 못 찾았을 때 그 까닭. 클라이언트가 안내 문장을 고른다. */
   readonly missingReason: ChromiumMissingReason | null;
   readonly executable: string | null;
-  readonly executableSource: "env" | "playwright" | "system" | null;
+  readonly executableSource: "env" | "settings" | "playwright" | "system" | null;
   /** WSL 에서 Windows Chrome 을 중계로 쓰는 중이면 "wsl". */
   readonly bridge: "wsl" | null;
   readonly engine: "idle" | "starting" | "ready" | "failed";
@@ -174,7 +176,53 @@ export class BrowserService {
 
   constructor(private readonly deps: BrowserServiceDeps) {}
 
-  private lookup(): ChromiumLookup { return lookupChromium({ env: this.deps.env, dataDir: this.deps.dataDir }); }
+  private configuring = false;
+
+  private lookup(executablePath = this.deps.executablePath?.()): ChromiumLookup { return lookupChromium({ env: this.deps.env, dataDir: this.deps.dataDir, executablePath }); }
+
+  engineSettings() {
+    return { ...this.status(), configuredPath: this.deps.executablePath?.() ?? "", environmentOverride: Boolean(this.deps.env.FLEET_BROWSER_CHROMIUM) };
+  }
+
+  async configureEngine(executablePath: string, restart: boolean, save: () => void): Promise<void> {
+    if (this.configuring || this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
+    if (this.deps.env.FLEET_BROWSER_CHROMIUM) throw new BrowserPolicyError("browser_engine_env", "FLEET_BROWSER_CHROMIUM overrides Settings.");
+    if ((this.client || this.starting) && !restart) throw new BrowserPolicyError("browser_engine_restart_required", "Changing the engine closes all browser tabs.");
+    this.configuring = true;
+    let probe: CdpClient | null = null;
+    let directory: string | null = null;
+    try {
+      const { candidate } = this.lookup(executablePath);
+      if (executablePath && !candidate) throw new BrowserPolicyError("browser_engine_invalid", "Browser executable is unavailable.");
+      if (candidate) {
+        await fs.mkdir(this.deps.dataDir, { recursive: true });
+        directory = await fs.mkdtemp(path.join(this.deps.dataDir, "engine-check-"));
+        const bridge = candidate.bridge ? { ...candidate.bridge, userDataDir: candidate.bridge.toWindowsPath(directory) } : undefined;
+        try {
+          probe = await launchChromium({ executable: candidate.executable, userDataDir: directory, windowSize: BROWSER_DEFAULT_VIEWPORT, env: this.deps.env, log: () => {}, ...(bridge ? { bridge } : {}) });
+          await probe.send("Browser.getVersion");
+          const context = await probe.send<{ browserContextId: string }>("Target.createBrowserContext");
+          await probe.send("Target.createTarget", { url: "about:blank", browserContextId: context.browserContextId });
+          await probe.send("Target.disposeBrowserContext", { browserContextId: context.browserContextId });
+        } catch { throw new BrowserPolicyError("browser_engine_check_failed", "Could not connect to the Chromium engine."); }
+      }
+      if (this.disposed || !this.available()) throw new BrowserPolicyError("browser_unavailable", "Local browser control is unavailable.");
+      if (this.starting) await this.starting.catch(() => undefined);
+      save();
+      for (const op of this.operations.values()) this.interrupt(op.operationId);
+      await this.stopEngine();
+      this.windowChrome = null;
+      this.identity = null;
+      this.engine = "idle";
+      this.engineError = null;
+    } finally {
+      try { if (probe) await probe.close(); }
+      finally {
+        if (directory) await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+        this.configuring = false;
+      }
+    }
+  }
 
   status(): BrowserServiceStatus {
     const { candidate, reason } = this.lookup();
@@ -186,6 +234,7 @@ export class BrowserService {
   // ---------- 엔진 ----------
 
   private async engineClient(): Promise<CdpClient> {
+    if (this.configuring || this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
     if (this.client) return this.client;
     if (this.starting) return this.starting;
     const { candidate: located, reason } = this.lookup();

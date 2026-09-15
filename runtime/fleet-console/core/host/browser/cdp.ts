@@ -15,7 +15,7 @@ import path from "node:path";
 
 export interface ChromiumCandidate {
   readonly executable: string;
-  readonly source: "env" | "playwright" | "system";
+  readonly source: "env" | "settings" | "playwright" | "system";
   /** WSL 안에서 Windows 쪽 Chrome 을 쓰는 경우 — 실행은 Windows Node.js 중계를 거친다. */
   readonly bridge?: WslBridge;
 }
@@ -160,6 +160,7 @@ function resolveWslBridge(root: string, dataDir: string): WslBridge | null {
 
 export interface LookupChromiumOptions {
   readonly env?: NodeJS.ProcessEnv;
+  readonly executablePath?: string;
   readonly platform?: NodeJS.Platform;
   readonly home?: string;
   /** WSL 중계의 프로필 자리를 정하는 Console 데이터 디렉터리. */
@@ -177,10 +178,15 @@ export function lookupChromium(options: LookupChromiumOptions = {}): ChromiumLoo
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;
   const home = options.home ?? os.homedir();
-  const explicit = env.FLEET_BROWSER_CHROMIUM;
+  const explicit = env.FLEET_BROWSER_CHROMIUM || options.executablePath;
   if (explicit) {
-    if (path.isAbsolute(explicit) && executable(explicit)) return { candidate: { executable: explicit, source: "env" }, reason: null };
-    return { candidate: null, reason: "env_invalid" };
+    const source = env.FLEET_BROWSER_CHROMIUM ? "env" : "settings";
+    if (!path.isAbsolute(explicit) || !executable(explicit)) return { candidate: null, reason: "env_invalid" };
+    if (isWsl(env, platform) && /\.exe$/i.test(explicit)) {
+      const bridge = resolveWslBridge(options.windowsRoot ?? WSL_ROOT, options.dataDir ?? path.join(home, ".fleet", "console"));
+      return bridge ? { candidate: { executable: explicit, source, bridge }, reason: null } : { candidate: null, reason: "wsl_windows_node_missing" };
+    }
+    return { candidate: { executable: explicit, source }, reason: null };
   }
   // 시스템 Chrome 을 Playwright 의 Chrome for Testing 보다 먼저 쓴다 — 사용자가 늘 쓰는 브라우저와 같은
   // 빌드·코덱·브랜드라 사이트가 평범한 방문으로 본다.
