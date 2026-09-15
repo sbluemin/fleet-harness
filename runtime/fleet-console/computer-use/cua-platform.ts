@@ -5,13 +5,11 @@ import { ComputerUseInputError, isRecord, type ComputerUseAppTarget, type Comput
 
 function appTargets(result: ComputerUseResult): ComputerUseAppTarget[] {
   if (result.isError) return [];
-  return result.content.flatMap(block => {
-    if (block.type !== "text" || typeof block.text !== "string") return [];
-    return block.text.split("\n").flatMap(line => {
-      const [name, app, bundleId] = line.split(" — ");
-      return name && app ? [{ name, app, bundleId: bundleId || null }] : [];
-    });
-  });
+  const targets = cuaData(result).targets;
+  return Array.isArray(targets) ? targets.filter(isRecord).flatMap(target =>
+    typeof target.name === "string" && typeof target.app === "string" && target.app
+      ? [{ name: target.name, app: target.app, bundleId: typeof target.bundleId === "string" ? target.bundleId : null }]
+      : []) : [];
 }
 
 export function createCuaComputerUsePlatform(directory: string, runtime: ComputerUseRuntimeDependencies): ComputerUsePlatform {

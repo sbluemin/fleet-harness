@@ -6,7 +6,7 @@ import os from "node:os";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ComputerUseInputError, isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool, type ComputerUseWindowIdentity, type ComputerUseRuntimeDependencies } from "./platform.js";
+import { ComputerUseInputError, isRecord, type ComputerUseBackend, type ComputerUseBackendOptions, type ComputerUseResult, type ComputerUseTool, type ComputerUseWindowIdentity, type ComputerUseRuntimeDependencies, type ComputerUseAppTarget } from "./platform.js";
 import { resolveCuaDriver } from "./cua-install.js";
 import { prepareMacPaste } from "./macos-paste.js";
 import { assertMacInteractionReadiness } from "./macos-window.js";
@@ -133,12 +133,12 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
     if (listed.isError || windows.isError) return { content: [...listed.content, ...windows.content], isError: true };
     const apps = cuaData(listed).apps;
     const rows = cuaData(windows).windows;
-    const lines: string[] = [];
+    const targets: ComputerUseAppTarget[] = [];
     for (const app of Array.isArray(apps) ? apps.filter(isRecord) : []) {
       const name = String(app.name ?? "");
       const identifier = String(app.launch_path ?? app.bundle_id ?? app.name ?? "");
       if (!identifier) continue;
-      lines.push(`${name} — ${identifier} — ${String(app.bundle_id ?? "")}`);
+      targets.push({ name, app: identifier, bundleId: typeof app.bundle_id === "string" ? app.bundle_id : null });
       const matching = Array.isArray(rows) ? rows.filter(isRecord).filter(w => w.pid === app.pid) : [];
       const started = matching.length && Number.isSafeInteger(app.pid) && Number(app.pid) > 0 ? await this.processStart(Number(app.pid)).catch(() => null) : null;
       if (started === null) continue;
@@ -146,10 +146,10 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
         if (!Number.isSafeInteger(window.window_id)) continue;
         const value: Target = { pid: Number(app.pid), windowId: Number(window.window_id), processStartedAt: started, app: identifier, name, title: String(window.title ?? "") };
         const id = this.remember(value);
-        lines.push(`${name} (${value.title}) — ${id} — ${String(app.bundle_id ?? "")}`);
+        targets.push({ name: `${name} (${value.title})`, app: id, bundleId: typeof app.bundle_id === "string" ? app.bundle_id : null });
       }
     }
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: targets.map(target => `${target.name} — ${target.app} — ${target.bundleId ?? ""}`).join("\n") }], structuredContent: { targets } };
   }
 
   private remember(target: Target): string {
