@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.95.0] - 2026-09-15
+
+### fleet-console
+
+#### Added
+- View the automatically detected browser engine or enter a Chrome or Chromium executable path in Settings > Experimental features > AI extensions.
+- Choose Cua Driver or SkyComputerUse in Computer Use settings, with SkyComputerUse remaining the default. Changing backends stops current use and requires enabling the feature again.
+- Reduce repeated app observations with Cua Driver by limiting the returned tree, reusing element handles on unchanged screens, and checking specific conditions without a full tree.
+- Operation Browser: each agent Operation can open its own browser panel beside the session, and the agent gets Fleet browser tools (navigate, read the page, click, type, screenshots, console and network logs) on the same tabs you see.
+- Annotate the page in the browser panel: click an element to leave a numbered comment on it, or draw with the pen, arrow and rectangle, then attach. The marked screenshot goes to the clipboard and is pasted into that Operation's own input - the chat composer or the terminal's CLI - and you press Enter to send.
+- While the agent is using the browser, the Operation's browser button and the companion panel show it - the button turns the agent-control color with a spreading ring, the panel gets a moving outline and a tinted caption - from the first browser call until the turn ends.
+- Console Use and Computer Use show the same way: while the agent uses them, the Operation's window outline carries a moving light in that channel's color, the caption is tinted, and the caption badge pulses - in every layout including War Room cards. Computer Use lets go of the device when the turn ends.
+- The companion caption is the tab strip: favicons, a new-tab button, cookie import from a Google Chrome profile, and a viewport glyph with a tooltip.
+- Requires a local Chromium (Google Chrome, Chromium, Microsoft Edge, or a Playwright Chromium). In WSL, Chrome installed on Windows is used when none is installed inside WSL (this needs Node.js on Windows; Fleet Desktop's runtime counts). When no Chrome is found, the browser button is dimmed and its tooltip says what to install.
+
+#### Changed
+- The Session Analyst panel now gives its whole height to the conversation and artifacts: the caption strip is gone, and reset, artifacts, back-to-chat, export, and clear live as icons in one row above the message box. Reset and clear ask for a second press before acting, and you can keep asking questions while viewing an artifact.
+- Grouped Operations now show their group as a colored chip in the panel caption, so you can tell which group a panel belongs to at a glance; the sidebar group header drops its color dot.
+- The Cruise, Tactical, and War Room switch at the top of the Console now uses a glyph for each mode, with search and Zen mode set apart on the right; a mode's own tools appear beneath the active glyph when you hover or press it, and a small dot on the glyph shows when one of those tools is switched away from its default.
+- Every Operation now shows its branch in the sidebar and opens a status, location, and start-time card on hover. Show Operation location left Experiments and needs no setting.
+- Right sidebar panels and expanded work surfaces no longer show a title bar; each panel's content now fills the surface, and expanded surfaces keep only a floating close button.
+
 ## [1.94.1] - 2026-09-15
 
 ### fleet-console
