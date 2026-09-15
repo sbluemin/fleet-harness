@@ -43,6 +43,8 @@ function fitMinimums(left: number, right: number, pair: number): readonly [numbe
 const DEFAULT_MIN_PANE_WIDTH = 280;
 /** 키보드로 분할선을 미는 한 걸음. */
 const KEYBOARD_STEP_PX = 24;
+/** 부유 조작 무리의 오른쪽 정박 여백(--space-2)과 본문 도구 사이의 숨. inset 변수에 더한다. */
+const FLOAT_INSET_GUTTER_PX = 16;
 
 /**
  * 확대 표면 레이어 — 캔버스 좌표 상자 안에 정박하는 비모달 작업면.
@@ -279,6 +281,25 @@ function SurfacePane({
 }) {
   const t = useT();
 
+  // 부유 조작이 본문 위에 떠 있으므로, 본문 첫 줄의 오른쪽 끝 도구가 그 밑에 깔릴 수 있다.
+  // 조작 무리의 실제 폭(tools 유무에 따라 다르다)을 CSS 변수로 페인에 싣고, 첫 줄을 갖는
+  // 표면은 그 변수만큼 오른쪽 여백을 둔다 — 레일 마운트에는 변수가 없어 fallback 0이 된다.
+  const paneRef = useRef<HTMLElement>(null);
+  const floatRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const pane = paneRef.current;
+    const float = floatRef.current;
+    if (!pane || !float || typeof ResizeObserver === "undefined") return;
+    const publish = () => {
+      const width = Math.ceil(float.getBoundingClientRect().width);
+      pane.style.setProperty("--expanded-surface-float-inset", `${width + FLOAT_INSET_GUTTER_PX}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(float);
+    return () => observer.disconnect();
+  }, []);
+
   const context = useMemo<ExpandedSurfaceContext>(() => ({
     surfaceId: instance.surfaceId,
     instanceId: instance.instanceId,
@@ -310,13 +331,15 @@ function SurfacePane({
   return (
     <>
       <section
+        ref={paneRef}
         className={`expanded-surface-pane${focused ? " is-focused" : ""}`}
         aria-label={title}
         onPointerDownCapture={() => focusExpandedSurface(instance.instanceId)}
         onFocusCapture={() => focusExpandedSurface(instance.instanceId)}
       >
-        <header className="expanded-surface-pane-head">
-          <span className="expanded-surface-pane-title">{title}</span>
+        {/* 머리 줄은 없다 — 본문이 페인 위 가장자리까지 채우고, 이름은 aria-label로만 남는다.
+            창 조작(닫기)과 표면이 내는 tools는 본문 위 오른쪽 모서리에 부유한다. */}
+        <div ref={floatRef} className="expanded-surface-pane-float">
           {descriptor?.tools ? (
             <div className="expanded-surface-pane-tools">
               <PluginErrorBoundary><SurfacePanePart render={descriptor.tools} context={context} /></PluginErrorBoundary>
@@ -326,11 +349,14 @@ function SurfacePane({
             className="expanded-surface-pane-close"
             type="button"
             aria-label={t("chrome.expandedSurface.closeAria")}
+            title={t("chrome.expandedSurface.closeAria")}
             onClick={() => closeExpandedSurface(instance.instanceId)}
           >
-            ✕
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+            </svg>
           </button>
-        </header>
+        </div>
         <div className="expanded-surface-pane-body">
           {descriptor?.aside ? (
             <aside className="expanded-surface-pane-aside">

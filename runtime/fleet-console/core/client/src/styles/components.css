@@ -13168,13 +13168,14 @@ body[data-codex-side="true"] .command-card {
   flex: none;
 }
 
-/* 슬롯 머리가 문서 이름과 닫기를 이미 말한다 — 리더의 옛 시트 머리는 그 아래에서
-   도구 줄로만 남는다(제목 중복 금지). */
+/* 페인에는 머리 줄이 없으므로 이 줄이 문서 이름(헤드라인)과 도구를 말하는 유일한 띠다.
+   오른쪽은 호스트의 부유 닫기가 앉는 자리만큼 비운다 — 아래 일반 규칙보다 이 규칙이 구체적이라
+   padding은 여기서 정해야 실제로 적용된다. */
 .codex-reading-body > .codex-reading-sheet-head {
   flex: 0 0 40px;
   height: 40px;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: 0 calc(var(--space-3) + var(--expanded-surface-float-inset, 0px)) 0 var(--space-3);
 }
 
 .codex-reading-sheet {
@@ -13978,6 +13979,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 }
 
 .expanded-surface-pane {
+  /* 부유 조작(닫기·tools)이 차지하는 오른쪽 폭. 레이어가 실측으로 덮어쓴다 — 여기 값은 첫 그림용.
+     본문 첫 줄에 도구를 두는 표면은 이 변수만큼 오른쪽 여백을 갖는다(레일 마운트에서는 0). */
+  --expanded-surface-float-inset: 42px;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -14024,47 +14029,46 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   box-shadow: none;
 }
 
-.expanded-surface-pane-head {
-  flex: 0 0 48px;
-  height: 48px;
-  display: flex;
+/* ── 부유 조작 ──────────────────────────────────────────────────────────
+   머리 줄이 없으므로 본문이 페인의 위 가장자리까지 채운다. 닫기(호스트 소유)와 표면의 tools는
+   본문 위 오른쪽 모서리에 떠 있다 — 본문과 같은 재질 위에서 읽히도록 유리 칩 한 장을 두른다.
+   포인터는 칩만 받고 나머지 띠는 본문으로 통과시킨다. */
+.expanded-surface-pane-float {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--surface-rim);
+  gap: var(--space-1);
+  pointer-events: none;
 }
 
-.expanded-surface-pane-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-  font-size: var(--font-size-md);
-  font-weight: var(--weight-medium);
+.expanded-surface-pane-float > * {
+  pointer-events: auto;
 }
 
 .expanded-surface-pane-tools {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
+  gap: var(--space-1);
 }
 
-/* 닫기는 호스트 소유다 — 표면이 tools를 안 내도 항상 오른쪽 끝에 선다.
-   tools가 있으면 auto 여백은 tools가 가져가고, 둘 사이는 head의 gap이 벌린다. */
 .expanded-surface-pane-close {
-  margin-left: auto;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid transparent;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: color-mix(in oklch, var(--glass-tint-strong) 82%, var(--ink-deep));
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   color: var(--text-tertiary);
+  box-shadow: 0 6px 18px -10px oklch(0% 0 0 / 70%);
   cursor: pointer;
   transition:
     border-color var(--duration-fast),
@@ -14072,8 +14076,9 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     color var(--duration-fast);
 }
 
-.expanded-surface-pane-tools ~ .expanded-surface-pane-close {
-  margin-left: 0;
+.expanded-surface-pane-close svg {
+  width: 14px;
+  height: 14px;
 }
 
 .expanded-surface-pane-close:hover,
@@ -14081,6 +14086,11 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
   color: var(--text-primary);
+}
+
+.expanded-surface-pane-close:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: -1px;
 }
 
 .expanded-surface-pane-body {
