@@ -1373,36 +1373,38 @@ describe("Instrument core design contract", () => {
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
-  it("pins the caption group label — dot carries the only group colour, the name rides a neutral tier", () => {
+  it("pins the caption group chip — the group colour lives inside the chip and never on the caption fill", () => {
     const frame = source("canvas/operation-frame.tsx");
     const components = source("styles/components.css");
-    const labelBlock = components.match(/\.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
-    const dotBlock = components.match(/\.canvas-operation-group-dot \{[^}]*\}/)?.[0] ?? "";
+    const chipBlock = components.match(/\.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
+    const activeBlock = components.match(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
 
     // 그룹 톤 주입은 --group-mark 하나다. --grp-color는 사이드바 존 표면 전용이라 캡션으로 넘어오지 않는다.
     expect(frame).toContain('{ "--group-mark": groupColor }');
     expect(frame).toContain('className="canvas-operation-group-label"');
+    expect(frame).not.toContain("canvas-operation-group-dot");
     expect(components).not.toMatch(/\.canvas-operation[^{}]*--grp-color/);
-    expect(dotBlock).toContain("background: var(--group-mark);");
-    expect(dotBlock).toContain("width: 7px;");
-    expect(dotBlock).toContain("height: 7px;");
 
-    // 색은 도트 하나만 진다 — 라벨에 테두리·채움·그룹색 글자를 얹으면 32px 캡션 안에서
-    // 아랫변 2px 상태 레일과 같은 굵기의 색선이 겹쳐 두 채널이 한 덩어리로 뭉친다(#699 실측).
-    expect(labelBlock).not.toMatch(/border|background/);
-    expect(labelBlock).toContain("color: var(--text-tertiary);");
-    expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-group-label {");
-    expect(components).toMatch(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-group-label \{\s*color: var\(--text-secondary\);/);
+    // 사이드바 칩(.side-bar-chip-group-pill)과 같은 알약 문법 — 테두리·워시·잉크 모두 --group-mark 믹스이고
+    // 원색은 어디에도 서지 않는다. 워시는 칩 안에만 머문다: 캡션 채움(titlebar)은 --group-mark를 모른다.
+    expect(chipBlock).toContain("border-radius: var(--radius-pill);");
+    expect(chipBlock).toMatch(/border: 1px solid color-mix\(in oklch, var\(--group-mark\) \d+%, transparent\);/);
+    expect(chipBlock).toMatch(/background: color-mix\(in oklch, var\(--group-mark\) \d+%, transparent\);/);
+    expect(chipBlock).toMatch(/color: color-mix\(in oklab, var\(--group-mark\) \d+%, var\(--text-tertiary\)\);/);
+    expect(activeBlock).toMatch(/color: color-mix\(in oklab, var\(--group-mark\) \d+%, var\(--text-primary\)\);/);
+    expect(chipBlock).not.toMatch(/(?:color|background|border[^:]*):\s*var\(--group-mark\)/);
+    const titlebarBlock = components.match(/\.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    expect(titlebarBlock).not.toContain("--group-mark");
 
-    // 라벨은 제목보다 먼저 양보한다 — 최소 폭(320px)에서 긴 그룹 이름이 Operation 제목을 밀어내면
+    // 칩은 제목보다 먼저 양보한다 — 최소 폭(320px)에서 긴 그룹 이름이 Operation 제목을 밀어내면
     // 캡션의 1순위 정보가 뒤집힌다.
-    expect(labelBlock).toContain("flex: 0 6 auto;");
-    expect(labelBlock).toContain("max-width: min(34%, 15ch);");
-    expect(labelBlock).toContain("min-width: 0;");
-    expect(components).toMatch(/\.canvas-operation-group-name \{[^}]*text-overflow: ellipsis;/);
+    expect(chipBlock).toContain("flex: 0 6 auto;");
+    expect(chipBlock).toContain("max-width: min(34%, 15ch);");
+    expect(chipBlock).toContain("min-width: 0;");
+    expect(chipBlock).toContain("text-overflow: ellipsis;");
 
     // 정체성 채널에는 애니메이션을 걸지 않는다. 포커스 색 전환만 두고, reduced-motion에서 단락한다.
-    expect(labelBlock).not.toMatch(/animation/);
+    expect(chipBlock).not.toMatch(/animation/);
     const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotion).toContain(".canvas-operation-group-label,");
   });
