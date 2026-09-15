@@ -769,6 +769,14 @@ export class BrowserService {
     await client.send("Input.insertText", { text }, tab.sessionId);
   }
 
+  /** IME 조합 중 글자 — 페이지의 입력 필드에 조합 상태로 보여 준다. 빈 문자열은 조합 취소. 확정은 insertText 가 한다. */
+  async imeComposition(operationId: string, text: string, tabId?: string | null): Promise<void> {
+    const op = this.operation(operationId);
+    const tab = this.tab(op, tabId);
+    const client = await this.engineClient();
+    await client.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length }, tab.sessionId);
+  }
+
   /** 에이전트의 `type` — 줄바꿈은 Enter 로, 나머지는 텍스트 삽입으로. */
   async typeText(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const parts = text.split("\n");

@@ -360,14 +360,17 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     return () => image.removeEventListener("wheel", handler);
   }, [shownFrame !== null]);
 
+  // IME 가 잡는 키(keyCode 229 · key "Process")는 손대지 않는다 — 여기서 preventDefault 하면 조합이 시작되지 못해
+  // 첫 자모가 조합 없이 그대로 들어간다.
+  const imeKey = (event: React.KeyboardEvent<HTMLInputElement>) => composing.current || event.nativeEvent.isComposing || event.key === "Process" || event.keyCode === 229;
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (composing.current || event.nativeEvent.isComposing) return;
+    if (imeKey(event)) return;
     // 프린터블 키는 input 이벤트가 텍스트를 나른다 — 여기서는 키만 알린다.
     event.preventDefault();
     send({ kind: "key", type: "down", key: event.key, code: event.code, repeat: event.repeat, ...mods(event) });
   };
   const onKeyUp = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (composing.current || event.nativeEvent.isComposing) return;
+    if (imeKey(event)) return;
     event.preventDefault();
     send({ kind: "key", type: "up", key: event.key, code: event.code, ...mods(event) });
   };
@@ -622,6 +625,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
               onKeyDown={onKeyDown}
               onKeyUp={onKeyUp}
               onCompositionStart={() => { composing.current = true; }}
+              // 조합 중 글자는 페이지에도 조합 상태로 보여 준다 — 확정 전까지 아무것도 안 보이면 조립이 안 되는 것처럼 느껴진다.
+              onCompositionUpdate={(event) => { send({ kind: "ime", text: event.data ?? "" }); }}
               onCompositionEnd={() => { composing.current = false; flushText(); }}
               onInput={() => { if (!composing.current) flushText(); }}
             />

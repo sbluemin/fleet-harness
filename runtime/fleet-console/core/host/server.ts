@@ -1113,6 +1113,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (body.kind === "mouse" && typeof body.type === "string") { await browserService.mouse(operationId, { type: body.type as "move", x: num(body.x), y: num(body.y), button: body.button as "left" | undefined, clickCount: typeof body.clickCount === "number" ? body.clickCount : undefined, deltaX: num(body.deltaX), deltaY: num(body.deltaY), modifiers: mods }, tabId); }
         else if (body.kind === "key" && (body.type === "down" || body.type === "up") && typeof body.key === "string") { await browserService.domKey(operationId, { type: body.type, key: body.key, code: typeof body.code === "string" ? body.code : "", modifiers: mods, repeat: body.repeat === true }, tabId); }
         else if (body.kind === "text" && typeof body.text === "string" && body.text.length <= 20_000) { await browserService.insertText(operationId, body.text, tabId); }
+        else if (body.kind === "ime" && typeof body.text === "string" && body.text.length <= 200) { await browserService.imeComposition(operationId, body.text, tabId); }
         else { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { ok: true }); return true;
       }
