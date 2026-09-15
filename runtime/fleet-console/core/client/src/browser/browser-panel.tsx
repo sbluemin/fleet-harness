@@ -192,7 +192,6 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
   return (
     <div className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
-      <span className="op-browser-cap__glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
       <div className="op-browser-cap__tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>
         {(panel?.tabs ?? []).map((tab) => (
           <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={tab.url}>

@@ -15,9 +15,6 @@
 
 /* ---- companion 캡션 = 탭 스트립 (호스트의 .canvas-companion-caption 안에 산다) ---- */
 .op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-primary); }
-.op-browser-cap__glyph { flex: none; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: var(--radius-xs); color: var(--text-secondary); transition: background 0.16s, color 0.16s; }
-.op-browser-cap__glyph svg { width: 14px; height: 14px; }
-.op-browser-cap.is-driving .op-browser-cap__glyph { background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
 .op-browser-cap__tabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 /* 호스트 캡션 밴드의 틴트 — 크로스 번들 클래스 계약(.canvas-companion-caption). 세션 중에만. */
 .canvas-companion-caption:has(> .op-browser-cap.is-driving) { background: linear-gradient(90deg, color-mix(in oklch, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
