@@ -587,7 +587,7 @@ export class BrowserService {
         return;
       }
       case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
-      case "Page.navigatedWithinDocument": tab.loading = false; this.emitState(op); return;
+      case "Page.navigatedWithinDocument": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = false; this.emitState(op); return;
       case "Page.loadEventFired": case "Page.frameStoppedLoading": {
         if (event.method === "Page.frameStoppedLoading" && tab.frameId && p.frameId !== tab.frameId) return;
         tab.loading = false;
