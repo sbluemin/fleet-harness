@@ -646,7 +646,7 @@ describe("Instrument core design contract", () => {
     expect(shelf).toContain('className="fleet-caption-tip"');
     expect(frame).toContain("<CaptionTipHost label={t(\"canvas.frame.openMenuTitle\")}>");
     expect(frame).not.toMatch(/canvas-operation-icon-button[\s\S]{0,400}?title=\{t\(/);
-    const tip = components.match(/\.fleet-caption-tip \{[^}]*\}/)?.[0] ?? "";
+    const tip = components.match(/^\.fleet-caption-tip \{[^}]*\}/m)?.[0] ?? "";
     expect(tip).toContain("right: 0;");
     expect(tip).toContain("pointer-events: none;");
 
