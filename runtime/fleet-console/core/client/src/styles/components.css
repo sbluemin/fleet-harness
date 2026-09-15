@@ -4970,6 +4970,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-top-style: none;
 }
 
+/* 캡션 없는 companion(hideCaption) — 위 모서리를 공급할 캡션이 없으므로 프레임이 네 모서리를 다 진다.
+   기하는 캡션 띠까지 되돌려 받으므로(canvas reclaimCaptionOutset) 꼭대기가 이웃 Operation의 캡션과 나란하다. */
+.canvas-companion-frame:not(:has(> .canvas-companion-caption)) {
+  border-radius: var(--radius-md);
+}
+
 .canvas-companion-caption-dot {
   width: 6px;
   height: 6px;

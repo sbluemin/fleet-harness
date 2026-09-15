@@ -1106,11 +1106,17 @@ export function OperationsCanvas({
             companion: operationCompanion,
             companions: operationCompanion ? visibleCompanionPanels : [],
             companionGeometries: operationCompanion
-              ? visibleCompanionPanels.map((_, index) => triageActive
-                  ? triageStageGeometryFor(modeArena, topPanelZIndex, index + 1, companionSlotCount)
-                  : formationView
-                    ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
-                    : companionGeometryFor(arena, index + 1, companionSlotCount, topPanelZIndex))
+              ? visibleCompanionPanels.map((panel, index) => {
+                  const slot = triageActive
+                    ? triageStageGeometryFor(modeArena, topPanelZIndex, index + 1, companionSlotCount)
+                    : formationView
+                      ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
+                      : companionGeometryFor(arena, index + 1, companionSlotCount, topPanelZIndex);
+                  // 세 배치 모두 캡션 높이만큼 아래에서 시작한다(캡션이 그 위 띠를 채운다는 전제).
+                  // 캡션 없는 companion은 그 띠가 빈 채 남으므로 본문에 돌려준다 — 프레임 꼭대기가
+                  // 이웃 Operation의 캡션 꼭대기와 나란히 선다.
+                  return panel.hideCaption ? reclaimCaptionOutset(slot) : slot;
+                })
               : [],
             hiddenCompanionPanelIds: operationCompanion ? hiddenCompanionPanelIds : [],
             formation: formationView || triageActive,
@@ -1371,6 +1377,11 @@ function companionGeometryFor(arena: { readonly x: number; readonly y: number; r
     height: Math.max(0, arena.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
+}
+
+/* 캡션 없는(hideCaption) companion — 슬롯이 비워 둔 캡션 띠를 본문 높이로 되돌린다. */
+function reclaimCaptionOutset(geometry: OperationGeometry): OperationGeometry {
+  return { ...geometry, y: geometry.y - TITLEBAR_OUTSET_PX, height: geometry.height + TITLEBAR_OUTSET_PX };
 }
 
 function maxOperationZIndex(operations: Record<string, OperationGeometry>): number {

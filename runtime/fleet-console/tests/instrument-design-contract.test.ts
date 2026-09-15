@@ -3202,9 +3202,11 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).not.toContain("surface-window");
     // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
     expect(terminalAnalysisCss).toContain("var(--surface-panel-raised)");
-    // 정체·상태·모드는 호스트 캡션 밴드가 진다 — 본문 위에 떠서 첫 문단을 가리지 않는다.
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__chips \{/);
-    expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__chips \{[^}]*position: absolute/);
+    // 정체·상태·모드는 컴포저 위 발판 줄이 진다 — 캡션 띠도, 본문 위에 뜨는 줄도 아니다.
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__footing \{/);
+    expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__footing \{[^}]*position: absolute/);
+    expect(terminalAnalysisCss).not.toContain(".session-analyst__chips");
+    expect(terminalAnalysisCss).not.toContain(".session-analyst__panel-head--artifacts");
     expect(terminalAnalysisCss).not.toContain(".session-analyst__turn-node");
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
     // 끝난 턴의 접힘은 채팅 원장의 `.agent-chat-fold`와 같은 문법이다 — 문장이지 카드가 아니다.
@@ -3252,10 +3254,11 @@ describe("Instrument core design contract", () => {
     expect(analystSeal).toContain("color: var(--text-secondary);");
     // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
     expect(terminalAnalysisCss).toContain("color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised))");
-    // 아티팩트는 드로어 안의 모드다 — 모드 세그먼트가 있고, 세로 핸들과 두 번째 컴패니언은 되살아나면 안 된다.
+    // 아티팩트는 드로어 안의 모드다 — 발판 줄의 글리프가 가르고, 세로 핸들과 두 번째 컴패니언은 되살아나면 안 된다.
     const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const terminalAgentEntry = externalSource(TERMINAL_AGENT_PATH);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__modechip \{/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__glyph \{/);
+    expect(terminalAnalysisCss).not.toContain(".session-analyst__modechip");
     expect(terminalAnalysisCss).not.toContain(".session-analyst-handle");
     // Analyst 진입은 캡션 동작 선반의 첫 버튼이다 — 전환·읽기 폭과 같은 줄·같은 문법.
     expect(terminalChatCss).not.toContain(".agent-view-chip-row");
@@ -3263,9 +3266,10 @@ describe("Instrument core design contract", () => {
     expect(terminalAgentEntry).toContain('actionId="analyst"');
     expect(terminalAgentEntry).toContain("<CaptionAnalystGlyph />");
     expect(terminalAgentEntry).toContain("captionActions: (context) => <AgentCaptionActions context={context} />");
-    // 캡션 밴드는 호스트가 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 프레임의 위 모서리가 각진다.
-    expect(terminalAgentEntry).toContain("caption: (context) => <AnalystCaption context={context} />");
-    expect(terminalAgentEntry).not.toContain("hideCaption");
+    // 분석가는 캡션 없는 companion이다 — 정체·상태·모드 컨트롤은 본문의 발판 줄이 지고, 호스트는
+    // 캡션 높이를 본문에 돌려준다(canvas reclaimCaptionOutset). 캡션 슬롯을 다시 채우면 두 머리가 선다.
+    expect(terminalAgentEntry).toContain("hideCaption: true");
+    expect(terminalAgentEntry).not.toContain("AnalystCaption");
     expect(terminalAgentEntry).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
   });
 

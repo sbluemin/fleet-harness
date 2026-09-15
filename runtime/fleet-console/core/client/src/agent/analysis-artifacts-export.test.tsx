@@ -17,7 +17,7 @@ vi.mock("./analysis-store.js", () => ({
   }),
 }));
 
-import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
+import { ArtifactExportGlyph } from "./analysis-artifacts-panel.js";
 
 describe("Session Analyst artifact export", () => {
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe("Session Analyst artifact export", () => {
     storeState = withArtifact({ title: "  Résumé / Q&A  ", html: "<main>author source</main>" });
     const { createObjectURL, revokeObjectURL, click, fetchDocument } = stubDownload();
     const mounted = mountPanel();
-    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
+    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export-shell button")!;
 
     act(() => exportButton.click());
     await clickMenuItem(mounted.container, "Download HTML");
@@ -57,7 +57,7 @@ describe("Session Analyst artifact export", () => {
     const { createObjectURL, click } = stubDownload(async () => { throw new Error("offline"); });
     const mounted = mountPanel();
 
-    act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!.click());
+    act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export-shell button")!.click());
     await clickMenuItem(mounted.container, "Download HTML");
 
     // 보호되지 않은 원본을 대신 저장하면 내려받은 사본이 오프라인 계약 밖으로 나간다.
@@ -72,7 +72,7 @@ describe("Session Analyst artifact export", () => {
     storeState = withArtifact();
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
     const mounted = mountPanel();
-    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
+    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export-shell button")!;
 
     act(() => exportButton.click());
     act(() => [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Open in new tab")!.click());
@@ -115,7 +115,8 @@ function mountPanel(): {
     api: {},
   } as unknown as OperationRenderContext;
   const render = () => {
-    act(() => root.render(createElement(AnalystArtifactsPanel, { context })));
+    // 내보내기는 발판 줄의 글리프다 — 보고 있는 아티팩트를 채팅 패널이 내려 준다.
+    act(() => root.render(createElement(ArtifactExportGlyph, { context, active: storeState.artifacts[0] ?? null })));
   };
   render();
   return {
