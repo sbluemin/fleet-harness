@@ -19,6 +19,7 @@ import { UpdateCurtain } from "./components/update-curtain.js";
 import { claimTheaterBootMinimization } from "./boot-minimization-session.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
+import { OperationBrowserWelcome } from "./components/operation-browser-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { PersistentPluginComponents } from "./persistent-components.js";
 import { ComputerScreenShareProvider } from "./agent/computer-screen-share.js";
@@ -508,6 +509,7 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
+        <OperationBrowserWelcome state={state} />
         <CommissioningOverlay state={state} />
         <FeatureTourOverlay />
         <ControlCurtain />

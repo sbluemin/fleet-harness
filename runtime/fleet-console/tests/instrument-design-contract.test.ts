@@ -2121,6 +2121,7 @@ describe("Instrument core design contract", () => {
     // directly on a popup is a regression: that surface would escape the gates.
     const componentsPopupSelectors = [
       ".whatsnew-card",
+      ".browser-welcome-card",
       ".commissioning-card",
       ".control-curtain-card",
       ".control-reclaimed-card",

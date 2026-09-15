@@ -14826,6 +14826,95 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* ── Reusable feature tour ──────────────────────────────────────────────── */
 
+/* Operation Browser 소개 카드 — What's New가 닫힌 뒤에만 뜨는 1회성. 이미지가 가운데, 문구가 하단,
+   확인이 유일한 포커스 정거장이다. 유리 채널을 그대로 입는다(.whatsnew-card 와 같은 계약). */
+.browser-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+}
+
+.browser-welcome-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  cursor: default;
+}
+
+.browser-welcome-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+  width: min(440px, 100%);
+  padding: var(--space-5);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
+  text-align: center;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.browser-welcome-art {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+}
+
+.browser-welcome-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.browser-welcome-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  text-wrap: balance;
+}
+
+.browser-welcome-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.browser-welcome-copy .browser-welcome-next {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.browser-welcome-confirm {
+  justify-self: center;
+  padding: 8px 22px;
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.browser-welcome-confirm:hover {
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
+}
+
 .feature-tour-layer {
   position: fixed;
   inset: 0;
@@ -14876,15 +14965,21 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   line-height: 1.55;
 }
 
-/* 예시 문장 — 본문 아래 brass 워시 상자에 또렷한 잉크로. 왼쪽 띠는 두지 않는다. */
+/* 예시 문장 — 상자 없이 본문과 같은 결로, 안내 한 줄 아래 프롬프트만 기울이고 굵게. */
 .feature-tour-card .feature-tour-example {
   margin: var(--space-2) 0 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
-  background: var(--brass-glow);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-size: var(--t-md);
-  font-weight: var(--weight-medium);
+}
+.feature-tour-card .feature-tour-example-lead {
+  display: block;
+}
+.feature-tour-card .feature-tour-example em {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-style: italic;
+  font-weight: var(--weight-bold);
 }
 
 .feature-tour-progress {

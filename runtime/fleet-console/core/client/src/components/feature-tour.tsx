@@ -178,7 +178,12 @@ export function FeatureTourOverlay() {
           : null}
         <h2 id="feature-tour-title">{t(currentStep.titleKey as CoreMessageKey)}</h2>
         <p>{t(currentStep.bodyKey as CoreMessageKey)}</p>
-        {currentStep.exampleKey ? <p className="feature-tour-example">{t(currentStep.exampleKey as CoreMessageKey)}</p> : null}
+        {currentStep.exampleKey ? (
+          <p className="feature-tour-example">
+            <span className="feature-tour-example-lead">{t("featureTour.exampleLead")}</span>
+            <em>{t(currentStep.exampleKey as CoreMessageKey)}</em>
+          </p>
+        ) : null}
         <div className="feature-tour-actions">
           <button className="feature-tour-skip" onClick={() => void finish()} type="button">
             {t("featureTour.skip")}
