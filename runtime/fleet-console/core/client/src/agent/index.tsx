@@ -560,6 +560,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
       label={using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open")}
       pressed={browserOpen}
       agent={using.browser}
+      tourAnchor="browser"
       onClick={() => { toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
     >
       <CaptionBrowserUseGlyph />

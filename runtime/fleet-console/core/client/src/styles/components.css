@@ -14876,6 +14876,17 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   line-height: 1.55;
 }
 
+/* 예시 문장 — 본문 아래 brass 워시 상자에 또렷한 잉크로. 왼쪽 띠는 두지 않는다. */
+.feature-tour-card .feature-tour-example {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--brass-glow);
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
 .feature-tour-progress {
   display: block;
   margin-bottom: var(--space-2);
