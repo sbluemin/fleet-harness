@@ -311,6 +311,9 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const point = (event: { clientX: number; clientY: number }) => pagePoint(event.clientX, event.clientY);
   const mods = (event: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => ({ alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey });
   const send = (body: Record<string, unknown>) => { void post(operationId, "input", body).catch(() => undefined); };
+  // 글자(조합 갱신·확정)는 순서가 곧 내용이다 — 앞 요청의 응답을 받은 뒤에만 다음을 보낸다.
+  const textChain = React.useRef<Promise<unknown>>(Promise.resolve());
+  const sendText = (body: Record<string, unknown>) => { textChain.current = textChain.current.then(() => post(operationId, "input", body)).catch(() => undefined); };
   const buttonName = (button: number) => button === 2 ? "right" : button === 1 ? "middle" : "left";
 
   // ---- 요소 조회 (주석의 댓글 도구가 쓴다) ----
@@ -401,7 +404,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const flushText = () => {
     const input = inputRef.current;
     if (!input || !input.value) return;
-    send({ kind: "text", text: input.value });
+    sendText({ kind: "text", text: input.value });
     input.value = "";
   };
 
@@ -651,9 +654,11 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
               onKeyUp={onKeyUp}
               onCompositionStart={() => { composing.current = true; }}
               // 조합 중 글자는 페이지에도 조합 상태로 보여 준다 — 확정 전까지 아무것도 안 보이면 조립이 안 되는 것처럼 느껴진다.
-              onCompositionUpdate={(event) => { send({ kind: "ime", text: event.data ?? "" }); }}
+              onCompositionUpdate={(event) => { sendText({ kind: "ime", text: event.data ?? "" }); }}
               onCompositionEnd={() => { composing.current = false; flushText(); }}
-              onInput={() => { if (!composing.current) flushText(); }}
+              // Chrome 은 compositionstart 보다 input 을 먼저 보내기도 한다 — 그때 값을 확정 텍스트로 보내면 IME 가 조합하던
+              // 첫 자모가 끊겨 따로 들어간다. InputEvent 자신의 조합 표식(isComposing·insertCompositionText)을 함께 본다.
+              onInput={(event) => { const native = event.nativeEvent as InputEvent; if (composing.current || native.isComposing || native.inputType === "insertCompositionText") return; flushText(); }}
             />
             {mode === "annotate" ? (
               <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />

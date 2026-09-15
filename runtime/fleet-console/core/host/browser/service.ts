@@ -55,6 +55,8 @@ interface Tab {
   title: string;
   /** 페이지가 선언한 아이콘 URL. 클라이언트는 서버 프록시로 받는다(CSP img-src 가 self 뿐이라). */
   favicon: string | null;
+  /** 메인 프레임 id — 로딩 표시는 이 프레임만 따른다(광고·위젯 iframe 이 끝없이 돌아도 새로고침 글리프가 돌지 않게). */
+  frameId: string | null;
   loading: boolean;
   history: { index: number; length: number; leadingBlank: boolean };
   console: ConsoleEntry[];
@@ -80,6 +82,8 @@ interface OperationBrowser {
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
   /** IME 조합 중 페이지에 넣어 둔 글자 — 다음 조합·확정이 이만큼 지우고 다시 넣는다. */
   composition: string | null;
+  /** 글자 넣기·조합 갱신의 직렬 사슬 — 요청이 겹쳐 와도 지우기와 넣기가 뒤섞이지 않게 한 줄로 세운다. */
+  textQueue: Promise<void>;
   agentCalls: Set<AbortController>;
 }
 
@@ -231,7 +235,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null, textQueue: Promise.resolve() };
       this.operations.set(operationId, op);
     }
     return op;
@@ -369,7 +373,7 @@ export class BrowserService {
     const { client, contextId } = await this.context(op);
     const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
     const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null };
+    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null };
     op.tabs.set(tab.id, tab);
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
@@ -569,6 +573,7 @@ export class BrowserService {
       }
       case "Page.frameNavigated": {
         if (p.frame?.parentId) return;
+        tab.frameId = typeof p.frame?.id === "string" ? p.frame.id : tab.frameId;
         tab.url = p.frame?.url ?? tab.url;
         tab.title = "";
         // 파비콘은 새 문서의 것이 도착할 때까지 이전 것을 둔다 — 탭이 점으로 깜빡이지 않게.
@@ -581,8 +586,10 @@ export class BrowserService {
         if (this.client) void this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
         return;
       }
-      case "Page.frameStartedLoading": tab.loading = true; this.emitState(op); return;
+      case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
+      case "Page.navigatedWithinDocument": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = false; this.emitState(op); return;
       case "Page.loadEventFired": case "Page.frameStoppedLoading": {
+        if (event.method === "Page.frameStoppedLoading" && tab.frameId && p.frameId !== tab.frameId) return;
         tab.loading = false;
         const client = this.client;
         if (client) void this.refreshTab(client, tab).then(() => this.emitState(op));
@@ -772,15 +779,40 @@ export class BrowserService {
 
   async insertText(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
-    const tab = this.tab(op, tabId);
-    const client = await this.engineClient();
-    // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
-    if (op.composition !== null) {
-      const pending = op.composition; op.composition = null;
-      if (pending === text) return;
-      await this.eraseChars(client, tab, pending.length);
+    return this.serialText(op, async () => {
+      const tab = this.tab(op, tabId);
+      const client = await this.engineClient();
+      // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
+      if (op.composition !== null) {
+        const pending = op.composition; op.composition = null;
+        if (pending === text) return;
+        await this.replaceChars(client, tab, [...pending].length, text);
+        return;
+      }
+      if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    });
+  }
+
+  /**
+   * 지우기와 넣기를 응답을 기다리지 않고 잇달아 보낸다 — 파이프는 순서를 지키고 렌더러는 입력 이벤트를 차례로 처리하므로,
+   * 빈 상태가 프레임에 찍히는 구간이 왕복 한 번에서 사실상 0 으로 줄어 조합 중 글자가 덜 깜빡인다.
+   */
+  private async replaceChars(client: CdpClient, tab: Tab, count: number, text: string): Promise<void> {
+    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
+    const sends: Promise<unknown>[] = [];
+    for (let i = 0; i < count; i += 1) {
+      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId));
+      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId));
     }
-    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    if (text) sends.push(client.send("Input.insertText", { text }, tab.sessionId));
+    await Promise.all(sends);
+  }
+
+  /** 글자 관련 호출을 Operation 단위로 한 줄로 세운다 — 앞 호출이 끝나기 전에는 다음이 시작하지 않는다. */
+  private serialText(op: OperationBrowser, run: () => Promise<void>): Promise<void> {
+    const next = op.textQueue.then(run, run);
+    op.textQueue = next.catch(() => undefined);
+    return next;
   }
 
   /**
@@ -789,19 +821,14 @@ export class BrowserService {
    */
   async imeComposition(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
-    const tab = this.tab(op, tabId);
-    const client = await this.engineClient();
-    if (op.composition) await this.eraseChars(client, tab, op.composition.length);
-    op.composition = text || null;
-    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
-  }
-
-  private async eraseChars(client: CdpClient, tab: Tab, count: number): Promise<void> {
-    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
-    for (let i = 0; i < count; i += 1) {
-      await client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId);
-      await client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId);
-    }
+    return this.serialText(op, async () => {
+      const tab = this.tab(op, tabId);
+      const client = await this.engineClient();
+      const previous = op.composition;
+      op.composition = text || null;
+      if (previous) await this.replaceChars(client, tab, [...previous].length, text);
+      else if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    });
   }
 
   /** 포인터 아래 요소의 CSS cursor — 패널이 입력란 위에서 I 자, 링크 위에서 손 모양을 보여 주기 위해 묻는다. */
