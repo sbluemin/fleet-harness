@@ -50,6 +50,12 @@ interface SideBarChipProps {
    * 이미 Theater로 갈라 놓았으므로 칩은 배지를 그리지 않는다. 화면을 보지 않는 쪽에는 그 구분이 없다.
    */
   readonly theaterName?: string | null;
+  /**
+   * 소속 그룹을 배지로 세울지 — War Room 사이드바는 false다. 무대에 선 패널의 캡션이 이미 그룹을
+   * 이름과 색으로 말하므로 칩이 같은 말을 한 번 더 하지 않고, 그 자리는 긴 제목이 가져간다.
+   * 접근성 이름은 이 값과 무관하게 소속 그룹을 싣는다 — 화면을 보지 않는 쪽에는 캡션이 없다.
+   */
+  readonly groupBadge?: boolean;
   readonly statusAxis?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
@@ -87,6 +93,7 @@ export function OperationsSideBarChip({
   accentValue,
   groupMark = null,
   theaterName = null,
+  groupBadge = true,
   statusAxis = false,
   statusLanded = false,
   reorderEnabled = true,
@@ -356,7 +363,7 @@ export function OperationsSideBarChip({
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={!detailEnabled} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
-      {groupMark && statusAxis && !preview ? (
+      {groupMark && statusAxis && groupBadge && !preview ? (
         <span
           className="side-bar-chip-group-pill"
           title={groupMark.name}
