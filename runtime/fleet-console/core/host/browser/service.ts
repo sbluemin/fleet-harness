@@ -82,6 +82,8 @@ interface OperationBrowser {
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
   /** IME 조합 중 페이지에 넣어 둔 글자 — 다음 조합·확정이 이만큼 지우고 다시 넣는다. */
   composition: string | null;
+  /** 글자 넣기·조합 갱신의 직렬 사슬 — 요청이 겹쳐 와도 지우기와 넣기가 뒤섞이지 않게 한 줄로 세운다. */
+  textQueue: Promise<void>;
   agentCalls: Set<AbortController>;
 }
 
@@ -233,7 +235,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null, textQueue: Promise.resolve() };
       this.operations.set(operationId, op);
     }
     return op;
@@ -777,15 +779,24 @@ export class BrowserService {
 
   async insertText(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
-    const tab = this.tab(op, tabId);
-    const client = await this.engineClient();
-    // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
-    if (op.composition !== null) {
-      const pending = op.composition; op.composition = null;
-      if (pending === text) return;
-      await this.eraseChars(client, tab, pending.length);
-    }
-    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    return this.serialText(op, async () => {
+      const tab = this.tab(op, tabId);
+      const client = await this.engineClient();
+      // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
+      if (op.composition !== null) {
+        const pending = op.composition; op.composition = null;
+        if (pending === text) return;
+        await this.eraseChars(client, tab, [...pending].length);
+      }
+      if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    });
+  }
+
+  /** 글자 관련 호출을 Operation 단위로 한 줄로 세운다 — 앞 호출이 끝나기 전에는 다음이 시작하지 않는다. */
+  private serialText(op: OperationBrowser, run: () => Promise<void>): Promise<void> {
+    const next = op.textQueue.then(run, run);
+    op.textQueue = next.catch(() => undefined);
+    return next;
   }
 
   /**
@@ -794,11 +805,13 @@ export class BrowserService {
    */
   async imeComposition(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
-    const tab = this.tab(op, tabId);
-    const client = await this.engineClient();
-    if (op.composition) await this.eraseChars(client, tab, op.composition.length);
-    op.composition = text || null;
-    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    return this.serialText(op, async () => {
+      const tab = this.tab(op, tabId);
+      const client = await this.engineClient();
+      if (op.composition) await this.eraseChars(client, tab, [...op.composition].length);
+      op.composition = text || null;
+      if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+    });
   }
 
   private async eraseChars(client: CdpClient, tab: Tab, count: number): Promise<void> {
