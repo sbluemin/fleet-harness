@@ -22,7 +22,7 @@ function text(value: unknown, isError = false): ToolResult {
 function failure(error: unknown): ToolResult {
   if (error instanceof BrowserPolicyError) return text({ error: error.code, message: error.message, ...error.detail }, true);
   const message = error instanceof Error ? error.message : "browser_tool_failed";
-  const aborted = /abort|browser_engine_closed/i.test(message);
+  const aborted = /abort|interrupted|browser_engine_closed/i.test(message);
   return text({ error: aborted ? "browser_call_interrupted" : "browser_tool_failed", message: aborted ? "The call was interrupted (the user stopped the agent or the tab closed). Do not retry automatically; read the page again if you continue." : message }, true);
 }
 
@@ -154,7 +154,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     execute: async (args, context) => {
       const actions = (args as { actions?: { name: string; input?: Record<string, unknown> }[] }).actions ?? [];
       const content: { type: string; [key: string]: unknown }[] = [];
+      // 스텝마다 새 호출이 열리므로 「중단」은 세대로 이어 본다 — 한 번 눌렸으면 남은 스텝은 시작하지 않는다.
+      const operationId = context.sessionLabel ?? "";
+      const serial = service.interruptSerial(operationId);
       for (const [index, action] of actions.entries()) {
+        if (service.interruptSerial(operationId) !== serial) { content.push({ type: "text", text: `Step ${index + 1}: batch stopped — the user interrupted the browser. Do not retry automatically; read the page again if you continue.` }); return { content, isError: true }; }
         const tool = byName.get(action.name);
         if (!tool || action.name === "browser_batch") { content.push({ type: "text", text: `Step ${index + 1}: unknown tool ${action.name}; batch stopped.` }); return { content, isError: true }; }
         const result = await tool.execute(action.input ?? {}, context) as ToolResult;

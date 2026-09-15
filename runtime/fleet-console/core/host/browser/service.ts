@@ -74,6 +74,10 @@ interface OperationBrowser {
   subscribers: Set<BrowserSubscriber>;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null } | null;
+  /** 「중단」이 눌린 횟수 — 배치처럼 여러 호출로 이어지는 실행이 중단을 건너뛰지 못하게 세대를 비교한다. */
+  interruptSerial: number;
+  /** 사람이 누르고 있는 포인터 버튼 — 드래그·선택 동안 mouseMoved 가 버튼을 실어야 한다. */
+  pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
   agentCalls: Set<AbortController>;
 }
 
@@ -101,6 +105,12 @@ function isLoopbackHost(host: string): boolean {
 
 /** 페이지가 선언한 아이콘, 없으면 /favicon.ico. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다. */
 const FAVICON_EXPRESSION = `(() => { const links = Array.from(document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')); const pick = links.find((l) => /icon/i.test(l.rel) && !/apple/i.test(l.rel)) || links[0]; try { return new URL(pick ? pick.getAttribute("href") : "/favicon.ico", document.baseURI).href; } catch { return null; } })()`;
+
+/** macOS 편집 단축키 → Chromium 편집 명령. cmd 단독 조합만 해당한다. */
+function editCommand(key: string, mods: Modifiers): string | undefined {
+  if (!mods.meta || mods.ctrl || mods.alt) return undefined;
+  return { a: "selectAll", c: "copy", v: "paste", x: "cut", z: mods.shift ? "redo" : "undo" }[key.toLowerCase()];
+}
 
 /** 마지막 도구 호출 뒤 이만큼 조용하면 세션을 닫는다 — computer-use 와 같은 값. */
 const AGENT_SESSION_IDLE_MS = 5 * 60_000;
@@ -213,7 +223,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
       this.operations.set(operationId, op);
     }
     return op;
@@ -273,11 +283,15 @@ export class BrowserService {
     this.scheduleIdle();
   }
 
+  /** 지금까지 「중단」이 눌린 횟수 — 여러 호출로 이어지는 실행(배치)이 시작 시점과 비교해 멈춘다. */
+  interruptSerial(operationId: string): number { return this.operations.get(operationId)?.interruptSerial ?? 0; }
+
   /** 사용자의 「중단」 — 허용은 남기고 지금 도는 에이전트 호출만 끊는다. */
   interrupt(operationId: string): number {
     const op = this.operations.get(operationId);
     if (!op) return 0;
     const count = op.agentCalls.size;
+    op.interruptSerial += 1;
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
     this.endAgentSession(operationId, "interrupt");
@@ -294,7 +308,12 @@ export class BrowserService {
     signal?.addEventListener("abort", onAbort, { once: true });
     op.agentCalls.add(call);
     this.touchAgentSession(op);
-    try { return await run(call.signal); }
+    try {
+      const result = await run(call.signal);
+      // 도중에 「중단」이 눌렸으면 끝난 결과도 내보내지 않는다 — 중단의 뜻이 호출 하나 안에서 새면 안 된다.
+      if (call.signal.aborted) throw new Error("browser_call_interrupted");
+      return result;
+    }
     finally {
       signal?.removeEventListener("abort", onAbort);
       op.agentCalls.delete(call);
@@ -686,10 +705,16 @@ export class BrowserService {
     const modifiers = modifierBits(input.modifiers ?? { alt: false, ctrl: false, meta: false, shift: false });
     const base = { x: input.x, y: input.y, modifiers };
     if (input.type === "wheel") { await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseWheel", deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 }, tab.sessionId); return; }
-    if (input.type === "move") { await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseMoved", button: "none" }, tab.sessionId); return; }
+    if (input.type === "move") {
+      // 누른 채 움직이면 드래그다 — Chromium 은 mouseMoved 에 실린 button/buttons 로 드래그·선택을 이어간다.
+      const held = op.pointer;
+      await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseMoved", button: held?.button ?? "none", ...(held ? { buttons: held.buttons } : {}) }, tab.sessionId);
+      return;
+    }
     const clickCount = input.clickCount ?? 1;
-    if (input.type === "down" || input.type === "click") await client.send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", button, clickCount }, tab.sessionId);
-    if (input.type === "up" || input.type === "click") await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", button, clickCount }, tab.sessionId);
+    const buttons = button === "left" ? 1 : button === "right" ? 2 : 4;
+    if (input.type === "down" || input.type === "click") { op.pointer = { button, buttons }; await client.send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", button, buttons, clickCount }, tab.sessionId); }
+    if (input.type === "up" || input.type === "click") { op.pointer = null; await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", button, clickCount }, tab.sessionId); }
   }
 
   async click(operationId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number } = {}, tabId?: string | null): Promise<void> {
@@ -717,7 +742,9 @@ export class BrowserService {
     const client = await this.engineClient();
     const descriptor = describeDomKey(input.key, input.code, input.modifiers);
     const modifiers = modifierBits(input.modifiers);
-    if (input.type === "down") await client.send("Input.dispatchKeyEvent", { type: descriptor.text ? "keyDown" : "rawKeyDown", key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers, autoRepeat: input.repeat === true, ...(descriptor.text ? { text: descriptor.text, unmodifiedText: descriptor.text } : {}) }, tab.sessionId);
+    // macOS 편집 단축키(cmd+a·c·v·x·z)는 에이전트 경로와 같이 commands 로 실어야 실제 편집이 일어난다.
+    const command = editCommand(descriptor.key, input.modifiers);
+    if (input.type === "down") await client.send("Input.dispatchKeyEvent", { type: descriptor.text ? "keyDown" : "rawKeyDown", key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers, autoRepeat: input.repeat === true, ...(command ? { commands: [command] } : {}), ...(descriptor.text ? { text: descriptor.text, unmodifiedText: descriptor.text } : {}) }, tab.sessionId);
     else await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers }, tab.sessionId);
   }
 
@@ -728,7 +755,7 @@ export class BrowserService {
     const modifiers = modifierBits(mods);
     const common = { key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers };
     // macOS 편집 단축키(cmd+a·c·v·x·z)는 Chromium이 commands 로 받아야 실제 편집이 일어난다.
-    const command = mods.meta && !mods.ctrl && !mods.alt ? { a: "selectAll", c: "copy", v: "paste", x: "cut", z: mods.shift ? "redo" : "undo" }[descriptor.key.toLowerCase()] : undefined;
+    const command = editCommand(descriptor.key, mods);
     await client.send("Input.dispatchKeyEvent", { ...common, type: descriptor.text ? "keyDown" : "rawKeyDown", ...(descriptor.text ? { text: descriptor.text, unmodifiedText: descriptor.text } : {}), ...(command ? { commands: [command] } : {}) }, tab.sessionId);
     await client.send("Input.dispatchKeyEvent", { ...common, type: "keyUp" }, tab.sessionId);
   }

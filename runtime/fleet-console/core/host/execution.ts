@@ -91,6 +91,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
     if (!isOperationDeletedEvent(payload) || payload.pluginId !== null) return;
     runtime.terminate(payload.operationId);
+    // 브라우저 컨텍스트(탭·쿠키)도 Operation 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
+    ctx.host.browserMcp?.revokeOperation(payload.operationId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
   /**
