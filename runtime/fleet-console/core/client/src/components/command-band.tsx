@@ -115,6 +115,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     }, MODE_TOOLS_CLOSE_DELAY_MS);
   };
   useEffect(() => cancelModeToolsClose, []);
+  // Operations를 떠나면 스위치가 내려가도 밴드는 마운트된 채라 열림 상태가 남는다 — 돌아왔을 때
+  // 캡슐이 새 진입 없이 열려 있지 않도록 뷰를 떠날 때 닫는다.
+  useEffect(() => {
+    if (!operationsViewVisible) closeModeTools();
+  }, [operationsViewVisible]);
   const focusFirstModeTool = () => {
     modeSwitchRef.current?.querySelector<HTMLButtonElement>(".command-band-mode-tray button:not(:disabled)")?.focus();
   };
