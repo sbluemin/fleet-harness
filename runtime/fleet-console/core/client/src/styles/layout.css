@@ -712,7 +712,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
 }
 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
-   모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
+   모드 전용 도구는 활성 세그먼트 아래 캡슐에 있으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
    C′ 문법: 상자를 걷고 워시+다텀이 선택을 말한다 — 그룹 경계는 간격이 진다. */
 .command-band-mode-switch {
   position: relative;
@@ -728,6 +728,8 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   width: 12px;
 }
 
+/* 세그먼트는 글리프 하나다 — 낱말은 title/aria-label이 진다. 24px 도구 버튼과 같은 16px 글리프에
+   좌우 6px이라 세그먼트 폭은 30px. */
 .command-band-mode-seg {
   position: relative;
   z-index: 1;
@@ -735,14 +737,28 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   flex: none;
   align-items: center;
   height: 24px;
-  padding: 0 9px;
+  padding: 0 6px;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
+}
+
+.command-band-mode-seg svg { display: block; width: 16px; height: 16px; }
+
+/* 상태 에코 — 캡슐에 숨은 도구가 기본값을 벗어나면(Station Keeping 켜짐, 스포트라이트 꺼짐,
+   밀도 ≠ 1.0×) 글리프 모서리에 brass 점을 둔다. brass는 위치/호버 채널이지만 이 점은 "여기
+   아래에 바뀐 것이 있다"는 위치 안내라 같은 채널이다. Tactical 레이아웃은 선택이지 이탈이
+   아니라 점을 두지 않는다. */
+.command-band-mode-seg[data-tool-echo="true"]::before {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--brass);
+  content: "";
 }
 
 /* hover는 같은 워시 계열의 약한 단으로 예고하고, focus는 전역 외곽 링을 보존한다.
@@ -793,22 +809,96 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   }
 }
 
-.command-band-mode-tray {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  /* 트레이는 모드마다 승객 수가 다르다(Cruise 3 · Tactical 3 · War Room 2+수치). 슬롯 폭을 고정해
-     모드를 오갈 때 중앙 묶음의 폭이 바뀌지 않게 한다 — 안 그러면 모드 스위치가 몇 px씩 떠다닌다. */
-  min-width: 116px;
-}
-
-.command-band-mode-tray-divider {
+/* 글리프 스위치와 전역 유틸리티(검색·Zen) 사이의 구분선. 클러스터 gap(8px)에 자기 여백 2px을
+   더해 좌우 10px씩 선다. */
+.command-band-center-divider {
   align-self: stretch;
   flex: none;
   width: 1px;
-  margin: 4px 6px 4px 4px;
+  margin: 4px 2px;
   background: var(--surface-rim);
+}
+
+/* 모드 도구 캡슐 — 활성 세그먼트의 가로 중심(--command-band-mode-tools-x) 아래 7px에 뜬다.
+   레이아웃 밖(absolute)이라 중앙 정렬 소요 폭에 들지 않고, 밴드에 앵커된 다른 떠 있는 면
+   (환경 팝오버·시스템 메뉴)과 같은 strong 유리·z-index를 쓴다. 닫힌 캡슐은 DOM에 남는다 —
+   안내(feature tour)가 활성 모드 도구를 앵커로 찾을 수 있어야 하고, inert가 포커스와
+   접근성 트리에서 걷어낸다. */
+.command-band-mode-tray {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 7px);
+  left: var(--command-band-mode-tools-x, 50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -5px) scale(0.96);
+  transform-origin: top center;
+  transition: transform 190ms var(--ease-spring), opacity 150ms ease;
+}
+
+/* 글리프와 캡슐 사이 7px 틈을 포인터가 건너는 동안 캡슐이 hover를 잃지 않도록 위로 잇는 다리. */
+.command-band-mode-tray::before {
+  position: absolute;
+  top: -8px;
+  right: 0;
+  left: 0;
+  height: 8px;
+  content: "";
+}
+
+.command-band-mode-tray > .command-band-mode-tool {
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 130ms ease, transform 170ms var(--ease-spring);
+  transition-delay: 50ms;
+}
+
+.command-band-mode-tray > .command-band-mode-tool:nth-child(2) { transition-delay: 80ms; }
+.command-band-mode-tray > .command-band-mode-tool:nth-child(3) { transition-delay: 110ms; }
+
+/* 열림 — 활성 세그먼트의 hover·포커스·클릭, 그리고 안내가 캡슐 또는 그 안의 도구를 짚는 동안. */
+.command-band-mode-tray.is-open,
+.command-band-mode-tray.is-feature-tour-anchor,
+.command-band-mode-tray:has(.is-feature-tour-anchor) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.command-band-mode-tray.is-open > .command-band-mode-tool,
+.command-band-mode-tray.is-feature-tour-anchor > .command-band-mode-tool,
+.command-band-mode-tray:has(.is-feature-tour-anchor) > .command-band-mode-tool {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-band-mode-tray,
+  .command-band-mode-tray > .command-band-mode-tool {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .command-band-mode-tray {
+    border-color: CanvasText;
+    background: Canvas;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
 }
 
 .command-band-mode-tool {
