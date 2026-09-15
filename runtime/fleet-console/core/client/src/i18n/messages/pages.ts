@@ -521,7 +521,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.computerUse.card": "AI 확장",
   "settings.computerUse.title": "컴퓨터 사용",
   "browserWelcome.title": "Operation마다 브라우저가 생겼습니다",
-  "browserWelcome.body": "에이전트 Operation 옆에 브라우저 companion이 섭니다. 에이전트가 사용자와 같은 탭을 조작하고, 지켜보거나 직접 이어받고, 페이지에 주석을 달아 스크린샷을 Operation에 붙여넣을 수 있습니다.",
+  "browserWelcome.body": "에이전트 Operation 옆에 브라우저 companion이 열립니다. 에이전트가 사용자와 같은 탭을 조작하고, 지켜보거나 직접 이어받고, 페이지에 주석을 달아 스크린샷을 Operation에 붙여넣을 수 있습니다.",
   "browserWelcome.next": "Operation을 열면 캡션의 지구본이 요청 방법을 이어서 안내합니다.",
   "browserWelcome.confirm": "확인",
   "browserWelcome.dismiss": "브라우저 소개 닫기",
