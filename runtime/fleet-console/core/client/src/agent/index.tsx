@@ -26,7 +26,7 @@ import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
 import { fontCjkScripts, type CjkScript } from "../terminal/shared/cjk-coverage.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
-import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import {
   ANALYST_CHAT_COMPANION_ID,
@@ -113,8 +113,8 @@ export const agentOperationKind = defineOperationKind({
   canOpenCompanions: () => true,
   companions: [
     // 아티팩트는 Analyst 드로어 안의 모드다 — 컴패니언은 하나만 등록한다.
-    // 캡션 밴드는 호스트가 이미 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 위 모서리도 각진다.
-    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, caption: (context) => <AnalystCaption context={context} />, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, // 캡션 없는 companion — 정체·상태·모드 컨트롤은 본문의 발판 줄(컴포저 위)이 진다. 호스트는 캡션 높이를 본문에 돌려준다.
+      hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
   ],
 });
 

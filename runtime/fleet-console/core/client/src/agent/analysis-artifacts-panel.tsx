@@ -13,53 +13,40 @@ import { analysisArtifactUrl, clearAnalysisArtifacts, type ArtifactThemeColors }
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { getT } from "./i18n/index.js";
 import { useAnalysisStore } from "./analysis-store.js";
+import { AnalystGlyphButton, useArmedAction } from "./analysis-glyph-button.js";
 
-export function AnalystArtifactsPanel({ context }: { readonly context: OperationRenderContext }) {
-  const { state, dispatch } = useAnalysisStore(context);
+/* 아티팩트 본문 — 보고 있는 문서 한 장. 헤더는 없다: 제목 피커·내보내기·지우기는 발판 줄
+   (컴포저 위)이 진다. 어느 것을 보는지는 채팅 패널이 정해 내려 준다 — 피커와 본문이 한 값을 본다. */
+export function AnalystArtifactsPanel({ context, artifact }: { readonly context: OperationRenderContext; readonly artifact: AnalysisArtifact | null }) {
+  const language = context.language ?? "en";
+  const t = getT(language);
+  return (
+    <section className="session-analyst__artifacts" aria-label={t("terminal.companion.artifacts")}>
+      {artifact === null ? (
+        <div className="session-analyst__artifacts-empty"><strong>{t("terminal.artifacts.emptyTitle")}</strong>{t("terminal.artifacts.emptyBody")}</div>
+      ) : (
+        <div className="session-analyst__artifact-content">
+          <ActiveArtifact key={artifact.id} artifact={artifact} theme={context.theme} language={language} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* 제목 피커 — 발판 줄 왼쪽. 보고 있는 아티팩트의 제목과 개수를 말하고, 누르면 발행 목록이 위로 열린다. */
+export function ArtifactPicker({ context, active, onSelect }: {
+  readonly context: OperationRenderContext;
+  readonly active: AnalysisArtifact | null;
+  readonly onSelect: (id: string) => void;
+}) {
+  const { state } = useAnalysisStore(context);
   const language = context.language ?? "en";
   const t = getT(language);
   const artifacts = React.useMemo(() => [...state.artifacts].reverse(), [state.artifacts]);
-  const newestId = state.artifacts[0]?.id ?? null;
-  const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [listOpen, setListOpen] = React.useState(false);
-  const [exportOpen, setExportOpen] = React.useState(false);
-  const [exportCopied, setExportCopied] = React.useState(false);
-  const [exportFailed, setExportFailed] = React.useState(false);
-  const listId = React.useId();
-  const exportId = React.useId();
-  const listShell = React.useRef<HTMLDivElement>(null);
-  const exportShell = React.useRef<HTMLDivElement>(null);
-  const exportTrigger = React.useRef<HTMLButtonElement>(null);
-  const exportMenu = React.useRef<HTMLDivElement>(null);
-  const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const failedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const disposed = React.useRef(false);
-  // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
-  // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
-  const exportGeneration = React.useRef(0);
-  React.useEffect(() => {
-    if (newestId) setActiveId(newestId);
-  }, [newestId]);
-  const active = artifacts.find((artifact) => artifact.id === activeId) ?? artifacts.at(-1) ?? null;
   const count = artifacts.length;
-  const clearExportFeedback = () => {
-    if (copiedTimer.current !== null) {
-      clearTimeout(copiedTimer.current);
-      copiedTimer.current = null;
-    }
-    if (failedTimer.current !== null) {
-      clearTimeout(failedTimer.current);
-      failedTimer.current = null;
-    }
-    setExportCopied(false);
-    setExportFailed(false);
-  };
-  const closeExport = (restoreFocus = false) => {
-    exportGeneration.current += 1;
-    setExportOpen(false);
-    clearExportFeedback();
-    if (restoreFocus) exportTrigger.current?.focus();
-  };
+  const [listOpen, setListOpen] = React.useState(false);
+  const listId = React.useId();
+  const listShell = React.useRef<HTMLSpanElement>(null);
   React.useEffect(() => {
     if (!listOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -78,6 +65,98 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   React.useEffect(() => {
     if (!count) setListOpen(false);
   }, [count]);
+  return (
+    <span className="session-analyst__artifact-list-shell" ref={listShell}>
+      <button
+        type="button"
+        className="session-analyst__artifact-count"
+        aria-expanded={listOpen}
+        aria-controls={listId}
+        aria-haspopup="listbox"
+        aria-label={t(listOpen ? (count === 1 ? "terminal.artifacts.hideCount_one" : "terminal.artifacts.hideCount_other") : (count === 1 ? "terminal.artifacts.showCount_one" : "terminal.artifacts.showCount_other"), { count })}
+        title={active?.title}
+        onClick={() => setListOpen((open) => !open)}
+        disabled={!count}
+      >
+        <span className="session-analyst__artifact-count-mark" aria-hidden="true"><AgentGlyph name="artifact" /></span>
+        <strong>{active?.title ?? t("terminal.companion.artifacts")}</strong>
+        <span>· {count}{language === "ko" ? "개" : ""}</span>
+        <i aria-hidden="true" />
+      </button>
+      {listOpen ? (
+        <div className="session-analyst__artifact-menu" id={listId} role="listbox" aria-label={t("terminal.artifacts.published")}>
+          {artifacts.map((artifact) => {
+            const selected = artifact.id === active?.id;
+            return (
+              <button type="button" role="option" key={artifact.id} aria-selected={selected} className={selected ? "is-active" : undefined} title={artifact.title} onClick={() => { onSelect(artifact.id); setListOpen(false); }}>
+                <span className="session-analyst__artifact-list-mark" aria-hidden="true"><AgentGlyph name="artifact" /></span>
+                <strong>{artifact.title}</strong>
+                <ArtifactTime createdAt={artifact.createdAt} language={language} />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+/* 모두 지우기 글리프 — 발판 줄 오른쪽 끝. 글자를 잃은 만큼 오클릭 비용이 올랐으므로 두 번 누름으로
+   지킨다: 첫 누름은 무장(brass 면, 이름표가 "한 번 더"로 바뀜), 1.5초 안의 두 번째 누름이 지운다. */
+export function ArtifactClearGlyph({ context }: { readonly context: OperationRenderContext }) {
+  const { state, dispatch } = useAnalysisStore(context);
+  const language = context.language ?? "en";
+  const t = getT(language);
+  const clearArm = useArmedAction(() => {
+    dispatch({ type: "clear-artifacts" });
+    void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {});
+  });
+  return (
+    <AnalystGlyphButton
+      label={clearArm.armed ? t("terminal.artifacts.clearConfirm") : t("terminal.artifacts.clearAria")}
+      pressed={clearArm.armed}
+      disabled={state.artifacts.length === 0}
+      className="session-analyst__glyph--clear"
+      onClick={clearArm.trigger}
+    ><AgentGlyph name="clear" /></AnalystGlyphButton>
+  );
+}
+
+/* 내보내기 글리프 — 발판 줄 오른쪽. 메뉴(다운로드·소스 복사·새 탭)는 위로 열린다. */
+export function ArtifactExportGlyph({ context, active }: { readonly context: OperationRenderContext; readonly active: AnalysisArtifact | null }) {
+  const language = context.language ?? "en";
+  const t = getT(language);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportCopied, setExportCopied] = React.useState(false);
+  const [exportFailed, setExportFailed] = React.useState(false);
+  const exportId = React.useId();
+  const exportShell = React.useRef<HTMLSpanElement>(null);
+  const exportMenu = React.useRef<HTMLDivElement>(null);
+  const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disposed = React.useRef(false);
+  // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
+  // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
+  const exportGeneration = React.useRef(0);
+  const clearExportFeedback = () => {
+    if (copiedTimer.current !== null) {
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = null;
+    }
+    if (failedTimer.current !== null) {
+      clearTimeout(failedTimer.current);
+      failedTimer.current = null;
+    }
+    setExportCopied(false);
+    setExportFailed(false);
+  };
+  const focusTrigger = () => exportShell.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  const closeExport = (restoreFocus = false) => {
+    exportGeneration.current += 1;
+    setExportOpen(false);
+    clearExportFeedback();
+    if (restoreFocus) focusTrigger();
+  };
   React.useEffect(() => {
     if (!exportOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -165,7 +244,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
         if (disposed.current) return;
         setExportCopied(false);
       }, 1_500);
-      exportTrigger.current?.focus();
+      focusTrigger();
     } catch {
       if (disposed.current || generation !== exportGeneration.current) return;
       closeExport(true);
@@ -201,49 +280,21 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   };
 
   return (
-    <section className="session-analyst__artifacts" aria-label={t("terminal.companion.artifacts")}>
-      <header className="session-analyst__panel-head--artifacts">
-        <span className="session-analyst__panel-mark--artifact" aria-hidden="true"><AgentGlyph name="artifact" /></span>
-        <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.artifacts")}</strong><small>{t("terminal.artifacts.subtitle")}</small></span>
-        <div className="session-analyst__artifact-list-shell" ref={listShell}>
-          <button type="button" className="session-analyst__artifact-count" aria-expanded={listOpen} aria-controls={listId} aria-haspopup="listbox" aria-label={t(listOpen ? (count === 1 ? "terminal.artifacts.hideCount_one" : "terminal.artifacts.hideCount_other") : (count === 1 ? "terminal.artifacts.showCount_one" : "terminal.artifacts.showCount_other"), { count })} onClick={() => setListOpen((open) => !open)} disabled={!count}>
-            <strong>{count}</strong>{" "}<span>{language === "ko" ? "개" : count === 1 ? "item" : "items"}</span><i aria-hidden="true" />
-          </button>
-          {listOpen ? (
-            <div className="session-analyst__artifact-menu" id={listId} role="listbox" aria-label={t("terminal.artifacts.published")}>
-              {artifacts.map((artifact) => {
-                const selected = artifact.id === active?.id;
-                return (
-                  <button type="button" role="option" key={artifact.id} aria-selected={selected} className={selected ? "is-active" : undefined} title={artifact.title} onClick={() => { setActiveId(artifact.id); setListOpen(false); }}>
-                    <span className="session-analyst__artifact-list-mark" aria-hidden="true"><AgentGlyph name="artifact" /></span>
-                    <strong>{artifact.title}</strong>
-                    <ArtifactTime createdAt={artifact.createdAt} language={language} />
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+    <span className="session-analyst__export-shell" ref={exportShell} data-expanded={exportOpen ? "true" : undefined}>
+      <AnalystGlyphButton
+        label={t("terminal.artifacts.export")}
+        pressed={exportOpen}
+        disabled={!active}
+        onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}
+      ><AgentGlyph name="export" /></AnalystGlyphButton>
+      {exportOpen ? (
+        <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
+          <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button>
+          <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
+          <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
         </div>
-        <div className="session-analyst__export-shell" ref={exportShell}>
-          <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}>{t("terminal.artifacts.export")}</button>
-          {exportOpen ? (
-            <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
-              <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button>
-              <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
-              <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
-            </div>
-          ) : null}
-        </div>
-        <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {}); }} disabled={!count}>{t("terminal.artifacts.clear")}</button>
-      </header>
-      {count === 0 ? (
-        <div className="session-analyst__artifacts-empty"><strong>{t("terminal.artifacts.emptyTitle")}</strong>{t("terminal.artifacts.emptyBody")}</div>
-      ) : (
-        <div className="session-analyst__artifact-content">
-          {active ? <ActiveArtifact key={active.id} artifact={active} theme={context.theme} language={language} /> : null}
-        </div>
-      )}
-    </section>
+      ) : null}
+    </span>
   );
 }
 

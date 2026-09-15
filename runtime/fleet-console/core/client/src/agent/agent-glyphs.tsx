@@ -15,7 +15,8 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  */
 export type AgentGlyphName =
   | "read" | "write" | "edit" | "run" | "inspect" | "search" | "fetch" | "delegate"
-  | "workflow" | "stop" | "plan" | "ask" | "propose" | "other" | "think" | "artifact";
+  | "workflow" | "stop" | "plan" | "ask" | "propose" | "other" | "think" | "artifact"
+  | "reset" | "close" | "export" | "clear";
 
 interface GlyphStroke {
   readonly d: string;
@@ -56,6 +57,11 @@ const GLYPHS: Readonly<Record<AgentGlyphName, readonly GlyphStroke[]>> = {
   other: [{ d: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4", fill: true }],
   think: [{ d: RING, dash: "4 3.6" }],
   artifact: [{ d: DOC }, { d: DOC_FOLD }, { d: "m9 15 2 2 4-4" }],
+  // 분석가 발판 줄의 동작 네 자 — 라벨 없는 24px 버튼에 서므로 원장 계열과 같은 무게로 그린다.
+  reset: [{ d: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3" }, { d: "M4 4v4.2h4.2" }],
+  close: [{ d: "M6 6l12 12" }, { d: "M18 6 6 18" }],
+  export: [{ d: "M12 3v11" }, { d: "m7.5 9.5 4.5 4.5 4.5-4.5" }, { d: "M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" }],
+  clear: [{ d: "M4 6.5h16" }, { d: "M9 6.5V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" }, { d: "M6 6.5 7 19a2 2 0 0 0 2 1.8h6A2 2 0 0 0 17 19l1-12.5" }],
 };
 
 /** 알려지지 않은 계열은 점 하나로 선다 — 이름을 가장하지 않는다. */

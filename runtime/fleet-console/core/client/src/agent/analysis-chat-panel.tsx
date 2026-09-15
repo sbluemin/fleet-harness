@@ -15,7 +15,9 @@ import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessa
 import { decorateEvidenceHtml } from "./analysis-evidence.js";
 import { useAnalysisStore } from "./analysis-store.js";
 import { closeAnalystCompanionPanels } from "./analysis-visibility.js";
-import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
+import { AnalystArtifactsPanel, ArtifactClearGlyph, ArtifactExportGlyph, ArtifactPicker } from "./analysis-artifacts-panel.js";
+import { AnalystGlyphButton, useArmedAction } from "./analysis-glyph-button.js";
+import type { AnalysisArtifact } from "./analysis-types.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 import { LiveLine } from "@fleet-console/sdk/components/live-line";
@@ -69,8 +71,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     setRailChromeExpanded(true);
   };
   const hasInteracted = state.entries.length > 0;
-  // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 캡션 세그먼트가 이 본문을 가른다.
+  // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 발판 줄의 글리프가 이 본문을 가른다.
+  // 컴포저는 두 모드에 남는다: 아티팩트를 보면서도 이어 물을 수 있고, 발판 줄이 늘 같은 자리에 선다.
   const mode = state.viewMode;
+  // 보고 있는 아티팩트 — 새 발행이 오면 그것으로 옮긴다. 발판 줄의 피커와 본문이 같은 값을 본다.
+  const newestArtifactId = state.artifacts[0]?.id ?? null;
+  const [activeArtifactId, setActiveArtifactId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (newestArtifactId) setActiveArtifactId(newestArtifactId);
+  }, [newestArtifactId]);
+  const activeArtifact: AnalysisArtifact | null = state.artifacts.find((artifact) => artifact.id === activeArtifactId) ?? state.artifacts[0] ?? null;
   const chatRef = React.useRef<HTMLElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const latestEntry = state.entries.at(-1);
@@ -198,9 +208,9 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     && (state.busy || state.phase === "error" || state.phase === "stopped");
 
   return (
-    <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
-      {mode === "artifacts" ? <AnalystArtifactsPanel context={context} /> : (
+    <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}${mode === "artifacts" ? " is-artifacts" : ""}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
       <div className="session-analyst__workspace">
+        {mode === "artifacts" ? <AnalystArtifactsPanel context={context} artifact={activeArtifact} /> : (
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy} onScroll={onChatScroll}>
           {hasInteracted ? (
             <>
@@ -288,7 +298,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             />
           ) : null}
         </section>
-        {state.queue.length > 0 ? (
+        )}
+        {mode === "chat" && state.queue.length > 0 ? (
           <div className="session-analyst__queue" aria-live="polite">
             {state.queue.map((text, index) => (
               <div className="session-analyst__queue-item" key={`${text}-${index}`}>
@@ -299,7 +310,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             ))}
           </div>
         ) : null}
-        {state.phase === "complete" && !state.busy && hasInteracted ? (
+        {mode === "chat" && state.phase === "complete" && !state.busy && hasInteracted ? (
           <div className="session-analyst__followups">
             <span className="session-analyst__followups-label">{t("terminal.analyst.followUp")}</span>
             <div className="session-analyst__followups-row">
@@ -333,20 +344,27 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               ))}
             </div>
           ) : null}
-          {/* 모델 표시줄 — 상자 밖 한 줄. 좌표는 Settings의 것이라 여기서는 보여 주고 바꾸는 길만 잇는다.
-             시작한 세션은 그 좌표로 잠기므로 「이 세션에 고정」이 그 계약을 말한다. */}
-          <div className="session-analyst__composer-meta">
-            <span className="session-analyst__composer-model" title={t("terminal.analyst.modelFrom")}>
-              <span className={`session-analyst__composer-model-mark operation-launch-provider-glyph${modelProvider ? ` is-${modelProvider}` : " operation-launch-provider-glyph--etc"}`} aria-hidden="true">
-                {modelProvider ? launchProviderGlyph(modelProvider) : launchEtcGlyph()}
-              </span>
-              <span className="session-analyst__composer-model-label">{model ? shortModelLabel(model.label, modelCaption) : state.model || "—"}</span>
-              {state.effort ? <span className="session-analyst__composer-model-effort">{state.effort.toUpperCase()}</span> : null}
-              {state.modelFallback ? <span className="session-analyst__composer-model-fallback">{t("terminal.analyst.modelFallback")}</span> : null}
-              {state.started ? <span className="session-analyst__composer-model-pinned">{t("terminal.analyst.pinnedForSession")}</span> : null}
-            </span>
-            <button type="button" className="session-analyst__composer-settings" onClick={openAnalystSettings}>{t("terminal.analyst.changeInSettings")}</button>
-          </div>
+          {/* 발판 줄 — 상자 밖 한 줄. 왼쪽은 정체·상태와 모델(대화) 또는 보고 있는 아티팩트(아티팩트),
+             오른쪽은 글자 없는 동작 글리프. 예전 캡션 밴드의 칩 줄이 여기로 내려왔다 — 캡션 띠를
+             본문에 돌려주고, 컨트롤은 손이 이미 가 있는 입력 상자 바로 위에 선다. */}
+          <AnalystFooting
+            context={context}
+            mode={mode}
+            activeArtifact={activeArtifact}
+            onSelectArtifact={setActiveArtifactId}
+            focusComposer={() => window.requestAnimationFrame(() => textareaRef.current?.focus())}
+            modelRow={(
+              <button type="button" className="session-analyst__composer-model" title={t("terminal.analyst.modelFrom")} aria-label={t("terminal.analyst.changeInSettings")} onClick={openAnalystSettings}>
+                <span className={`session-analyst__composer-model-mark operation-launch-provider-glyph${modelProvider ? ` is-${modelProvider}` : " operation-launch-provider-glyph--etc"}`} aria-hidden="true">
+                  {modelProvider ? launchProviderGlyph(modelProvider) : launchEtcGlyph()}
+                </span>
+                <span className="session-analyst__composer-model-label">{model ? shortModelLabel(model.label, modelCaption) : state.model || "—"}</span>
+                {state.effort ? <span className="session-analyst__composer-model-effort">{state.effort.toUpperCase()}</span> : null}
+                {state.modelFallback ? <span className="session-analyst__composer-model-fallback">{t("terminal.analyst.modelFallback")}</span> : null}
+                {state.started ? <span className="session-analyst__composer-model-pinned">{t("terminal.analyst.pinnedForSession")}</span> : null}
+              </button>
+            )}
+          />
           {/* 한 줄 컴포저 — 「/」 입구 · 입력 · 동작(중단·전송)이 한 면 안에 앉는다. 입력이 자라도 입구와 동작은 아래 변에 남는다. */}
           <div className="session-analyst__composer-surface">
             <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>{t("terminal.analyst.askAboutSession")}</label>
@@ -384,6 +402,9 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                     setSlashDismissed(true);
                   } else if (state.draft) {
                     dispatch({ type: "set-draft", draft: "" });
+                  } else if (mode === "artifacts") {
+                    // 아티팩트를 보는 중이면 Esc는 먼저 대화로 돌아온다 — 발판 줄의 닫기 글리프와 같은 동작.
+                    dispatch({ type: "view-mode", mode: "chat" });
                   } else {
                     closeAnalystCompanionPanels(context);
                   }
@@ -419,87 +440,102 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
            어떤 패널 높이에서도 같은 자리). */}
         <div className="session-analyst__settle" aria-hidden="true" />
       </div>
-      )}
     </section>
   );
 }
 
-/* 캡션 밴드의 내용 — 정체·상태가 왼쪽, 초기화와 모드 세그먼트가 오른쪽.
-   이 줄은 본문 위에 떠 있던 칩 줄을 대신한다: 떠 있는 줄은 첫 문단을 가리므로 본문이 그만큼의
-   상단 패딩을 늘 비워 둬야 했고, 그 예약분은 캡션 높이보다 컸다. 호스트가 이미 캡션 높이만큼의
-   자리를 비워 두므로, 여기로 옮기면 겹침도 예약분도 함께 사라진다. */
-export function AnalystCaption({ context }: { readonly context: OperationRenderContext }) {
+/* 발판 줄 — 컴포저 바로 위 한 줄. 왼쪽은 정체·상태와 모델(대화) 또는 보고 있는 아티팩트(아티팩트),
+   오른쪽은 글자 없는 동작 글리프: 대화에서는 [초기화][아티팩트·n], 아티팩트에서는
+   [초기화][대화로 돌아가기] │ [내보내기][모두 지우기]. 예전 캡션 밴드의 칩 줄과 아티팩트 헤더가
+   여기로 접혔다 — 캡션 띠(32px)와 헤더(44px)를 본문에 돌려주고, 컨트롤은 손이 이미 가 있는
+   입력 상자 위에 선다. 글리프 문법은 부관단 머리 동작과 같다: 24px 버튼, 접근 이름이 곧
+   말풍선 문장, 눌린 면은 brass(위치 채널). */
+function AnalystFooting({ context, mode, activeArtifact, onSelectArtifact, focusComposer, modelRow }: {
+  readonly context: OperationRenderContext;
+  readonly mode: "chat" | "artifacts";
+  readonly activeArtifact: AnalysisArtifact | null;
+  readonly onSelectArtifact: (id: string) => void;
+  readonly focusComposer: () => void;
+  readonly modelRow: React.ReactNode;
+}) {
   const { state, dispatch, reset } = useAnalysisStore(context);
   const language = context.language ?? "en";
   const t = getT(language);
   const artifactCount = state.artifacts.length;
   const artifactAuthoring = state.artifactAuthoring !== null && artifactCount === 0;
-  const mode = state.viewMode;
   const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   const previousArtifactCountRef = React.useRef(0);
   const [countPulseRevision, setCountPulseRevision] = React.useState(0);
-  const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
-  const returnFocusRef = React.useRef(false);
   React.useEffect(() => {
     const previousCount = previousArtifactCountRef.current;
     previousArtifactCountRef.current = artifactCount;
     if (artifactCount === 0) {
-      // 전량 삭제되면 볼 것이 없다 — 대화로 복귀하고, 포커스가 아티팩트 안이었다면 모드 칩으로 되돌린다.
+      // 전량 삭제되면 볼 것이 없다 — 대화로 복귀하고, 포커스가 아티팩트 안이었다면 컴포저로 되돌린다
+      // (컴포저는 두 모드에 남으므로 언제나 받을 자리가 있다).
       if (mode === "artifacts" && state.artifactAuthoring === null) {
-        returnFocusRef.current = true;
         dispatch({ type: "view-mode", mode: "chat" });
+        focusComposer();
       }
       return;
     }
     // 발행이 대화를 끌어내리지 않는다 — 인라인 발행 카드가 진입로, 배지 펄스가 신호를 진다.
     if (artifactCount > previousCount && mode === "chat") setCountPulseRevision((revision) => revision + 1);
-  }, [artifactCount, dispatch, mode, state.artifactAuthoring]);
-  // 비우기는 아티팩트 화면 안에서 일어난다 — 그 서브트리가 사라지며 포커스가 body로 떨어지고,
-  // 아티팩트 세그먼트도 비활성이 된다. 활성 세그먼트(Chat)로 되돌린다. 되돌리는 시점은 모드가
-  // 실제로 바뀐 렌더 이후여야 한다 — 같은 턴에서 프레임 콜백으로 넘기면 그 사이에 일어나는
-  // 재렌더가 방금 준 포커스를 도로 걷어간다.
-  React.useEffect(() => {
-    if (!returnFocusRef.current || mode !== "chat") return;
-    returnFocusRef.current = false;
-    artifactsChipRef.current?.closest(".session-analyst__modechip")
-      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }, [mode]);
+  }, [artifactCount, dispatch, focusComposer, mode, state.artifactAuthoring]);
+  // 초기화와 모두 지우기는 글자를 잃은 만큼 오클릭 비용이 올랐다 — 두 번 누름으로 지킨다:
+  // 첫 누름은 무장(brass 면, 말풍선이 "한 번 더"로 바뀜), 1.5초 안의 두 번째 누름이 실행한다.
+  const resetArm = useArmedAction(() => { void reset().catch(() => {}); });
+  const artifactsLabel = artifactAuthoring
+    ? t("terminal.analyst.authoringTooltip")
+    : artifactCount === 0
+      ? t("terminal.analyst.artifactsEmptyTooltip")
+      : t(artifactCount === 1 ? "terminal.artifacts.showCount_one" : "terminal.artifacts.showCount_other", { count: artifactCount });
   return (
-    <div className="session-analyst__chips" data-phase={state.phase}>
-      <span className="session-analyst__chip session-analyst__chip--id">
-        <i className="session-analyst__chip-dot" aria-hidden="true" />
-        <span aria-hidden="true">✳</span>
-        {t("terminal.analyst.chipTitle")}
-        <span className="session-analyst__chip-state">· {stateLabel(state, language)}</span>
+    <div className="session-analyst__footing" data-phase={state.phase}>
+      <span className="session-analyst__footing-lead">
+        {mode === "artifacts" ? (
+          <ArtifactPicker context={context} active={activeArtifact} onSelect={onSelectArtifact} />
+        ) : (
+          <>
+            <i className="session-analyst__chip-dot" aria-hidden="true" />
+            <span className="session-analyst__chip-state">{stateLabel(state, language)}</span>
+            {modelRow}
+          </>
+        )}
       </span>
-      <span className="session-analyst__chip-cluster">
-        <button
-          type="button"
-          className="session-analyst__chip"
-          aria-label={t("terminal.analyst.resetAria")}
-          onClick={() => { void reset().catch(() => {}); }}
+      <span className="session-analyst__footing-actions">
+        <AnalystGlyphButton
+          label={resetArm.armed ? t("terminal.analyst.resetConfirm") : t("terminal.analyst.resetAria")}
+          pressed={resetArm.armed}
           disabled={!canReset}
-        >{t("terminal.analyst.reset")}</button>
-        <span className="session-analyst__modechip" role="group" aria-label={t("terminal.analyst.viewMode")}>
-          <button type="button" aria-pressed={mode === "chat"} onClick={() => dispatch({ type: "view-mode", mode: "chat" })}>{t("terminal.analyst.mode.chat")}</button>
-          <button
-            ref={artifactsChipRef}
-            type="button"
-            className={artifactAuthoring ? "is-authoring" : undefined}
-            aria-pressed={mode === "artifacts"}
+          onClick={resetArm.trigger}
+        ><AgentGlyph name="reset" /></AnalystGlyphButton>
+        {mode === "artifacts" ? (
+          <>
+            <AnalystGlyphButton label={t("terminal.analyst.backToChat")} onClick={() => { dispatch({ type: "view-mode", mode: "chat" }); focusComposer(); }}>
+              <AgentGlyph name="close" />
+            </AnalystGlyphButton>
+            <i className="session-analyst__footing-sep" aria-hidden="true" />
+            <ArtifactExportGlyph context={context} active={activeArtifact} />
+            <ArtifactClearGlyph context={context} />
+          </>
+        ) : (
+          <AnalystGlyphButton
+            label={artifactsLabel}
+            pressed={false}
             disabled={artifactCount === 0 && !artifactAuthoring}
-            title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
+            className={artifactAuthoring ? "is-authoring" : undefined}
             onClick={() => dispatch({ type: "view-mode", mode: "artifacts" })}
           >
-            {t("terminal.analyst.artifactsHandle")}
+            <AgentGlyph name="artifact" />
             {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst__chip-count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
             {artifactAuthoring ? <span className="session-analyst__chip-count">…</span> : null}
-          </button>
-        </span>
+          </AnalystGlyphButton>
+        )}
       </span>
     </div>
   );
 }
+
 
 /* 분석가 턴 — 채팅뷰 원장 문법: 시계·접힘 줄·결말 문구가 상태를, 구간(문장+스텝)이 과정을,
    응답 seam 아래가 확정 답을 말한다. 끝난 턴의 과정은 fold 한 줄로 접힌다.
