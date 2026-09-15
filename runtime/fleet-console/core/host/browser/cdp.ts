@@ -308,16 +308,23 @@ export interface LaunchChromiumOptions {
 }
 
 /**
- * Windows 쪽 Node.js 가 실행하는 중계 — Chrome 을 fd 3·4 파이프로 띄우고 자기 stdin → fd 3, fd 4 → stdout 으로 잇는다.
+ * Windows 쪽 Node.js 가 실행하는 중계 — Chrome 을 fd 3·4 파이프로 띄우고 자기 fd 0 → fd 3, fd 4 → fd 1 로 잇는다.
  * 파일로 싣지 않고 `-e` 로 넘긴다: 호스트 번들 안에 따로 실어 나를 것이 없다.
+ *
+ * `process.stdin`·`process.stdout` 을 건드리지 않는다: WSL 이 건네준 파이프 핸들에 Node 가 소켓을 열려 하면
+ * `open EISDIR` 로 중계가 부팅 중에 죽는다. 같은 핸들도 fs 로 읽고 쓰면 멀쩡하다.
  */
 export const WSL_BRIDGE_RELAY = [
-  'const {spawn}=require("node:child_process");',
+  'const {spawn}=require("node:child_process");const fs=require("node:fs");',
   'const [exe,...args]=process.argv.slice(1);',
   'const c=spawn(exe,args,{stdio:["ignore","ignore","inherit","pipe","pipe"],windowsHide:true});',
-  'process.stdin.pipe(c.stdio[3]);c.stdio[4].pipe(process.stdout);',
+  // writeSync 는 조각만 쓰고 돌아올 수 있다 — 다 나갈 때까지 민다. CDP 메시지가 잘리면 응답이 영영 오지 않는다.
+  'const out=(b)=>{let o=0;while(o<b.length)o+=fs.writeSync(1,b,o,b.length-o);};',
+  'const inp=fs.createReadStream(null,{fd:0});',
+  'inp.on("data",(d)=>c.stdio[3].write(d));',
+  'c.stdio[4].on("data",(d)=>{try{out(d);}catch{}});',
   'c.on("exit",(code)=>process.exit(code==null?1:code));c.on("error",()=>process.exit(1));',
-  'const bye=()=>{try{c.kill();}catch{}};process.stdin.on("end",bye);process.stdin.on("close",bye);',
+  'const bye=()=>{try{c.kill();}catch{}};inp.on("end",bye);inp.on("close",bye);inp.on("error",bye);',
 ].join("");
 
 /** 헤드리스 Chromium 하나를 띄우고 파이프 CDP 클라이언트를 돌려준다. 포트는 열지 않는다. */

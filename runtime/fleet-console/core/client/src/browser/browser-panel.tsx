@@ -713,7 +713,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
         ) : (
           <div className="op-browser__empty">
             <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
-            <p className="op-browser__empty-title">{state?.engine === "failed" ? t("terminal.browser.engineMissing") : connection === "connecting" ? t("terminal.browser.connecting") : activeTab ? t("terminal.browser.loadingPage") : t("terminal.browser.emptyTitle")}</p>
+            {/* 못 찾은 것과 찾았는데 못 띄운 것은 사람이 할 일이 다르다 — 설치 안내로 뭉뚱그리지 않는다. */}
+            <p className="op-browser__empty-title">{state?.engine === "failed" ? t(state.engineError === "browser_engine_missing" ? "terminal.browser.engineMissing" : "terminal.browser.engineFailed") : connection === "connecting" ? t("terminal.browser.connecting") : activeTab ? t("terminal.browser.loadingPage") : t("terminal.browser.emptyTitle")}</p>
             {!activeTab && state?.engine !== "failed" ? <p className="op-browser__empty-body">{t("terminal.browser.emptyBody")}</p> : null}
             {state?.engine === "failed" && state.engineError ? <p className="op-browser__empty-body">{state.engineError}</p> : null}
           </div>
