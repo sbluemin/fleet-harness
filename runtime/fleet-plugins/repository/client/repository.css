@@ -2094,6 +2094,10 @@
 .history-order-toggle { width: auto; padding: 0 8px 0 6px; }
 .history-order-label { font-size: var(--t-sm); }
 .repository-ref-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: var(--radius-xs); font-size: var(--t-xs); cursor: pointer; }
+/* 기준·브랜치 칩이 동시에 서면 동사와 한 줄을 다툰다 — 칩 본문을 말줄임으로 양보시켜 어떤 조합에서도 겹치지 않는다. */
+.history-toolbar .repository-ref-chip { flex: 0 1 auto; min-width: 44px; }
+.history-toolbar .repository-ref-chip > .repository-icon { flex: none; }
+.repository-ref-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── 1층 · 동사 칩 ── */
 .repository-verb-cluster { position: relative; display: inline-flex; align-items: center; flex: none; margin-left: auto; overflow: visible; }
