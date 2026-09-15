@@ -78,6 +78,8 @@ interface OperationBrowser {
   interruptSerial: number;
   /** 사람이 누르고 있는 포인터 버튼 — 드래그·선택 동안 mouseMoved 가 버튼을 실어야 한다. */
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
+  /** IME 조합 중 페이지에 넣어 둔 글자 — 다음 조합·확정이 이만큼 지우고 다시 넣는다. */
+  composition: string | null;
   agentCalls: Set<AbortController>;
 }
 
@@ -139,6 +141,7 @@ const PRESETS: Record<Exclude<ViewportPreset, "responsive">, { width: number; he
 export class BrowserService {
   private client: CdpClient | null = null;
   private starting: Promise<CdpClient> | null = null;
+  private disposed = false;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
   private readonly operations = new Map<string, OperationBrowser>();
@@ -168,6 +171,8 @@ export class BrowserService {
     this.engine = "starting";
     this.starting = launchChromium({ executable: located.executable, userDataDir: path.join(this.deps.dataDir, "profile"), windowSize: BROWSER_DEFAULT_VIEWPORT, deviceScaleFactor: BROWSER_SURFACE_SCALE, env: this.deps.env, log: this.deps.log })
       .then(async (client) => {
+        // 띄우는 사이 dispose 가 지나갔으면 방금 뜬 Chromium 을 바로 닫는다 — 서버가 내려간 뒤 자식이 남지 않게.
+        if (this.disposed) { await client.close(); throw new Error("browser_engine_disposed"); }
         this.client = client;
         this.identity = await browserIdentity(client).catch(() => null);
         this.engine = "ready";
@@ -213,7 +218,10 @@ export class BrowserService {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
     for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.subscribers.clear(); }
+    // 아직 띄우는 중이면 그 결말을 기다린다 — 성공했으면 아래 stopEngine 이 닫고, 실패했으면 닫을 것이 없다.
+    if (this.starting) await this.starting.catch(() => undefined);
     await this.stopEngine();
     this.operations.clear();
   }
@@ -223,7 +231,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null };
       this.operations.set(operationId, op);
     }
     return op;
@@ -766,15 +774,45 @@ export class BrowserService {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
-    await client.send("Input.insertText", { text }, tab.sessionId);
+    // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
+    if (op.composition !== null) {
+      const pending = op.composition; op.composition = null;
+      if (pending === text) return;
+      await this.eraseChars(client, tab, pending.length);
+    }
+    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
   }
 
-  /** IME 조합 중 글자 — 페이지의 입력 필드에 조합 상태로 보여 준다. 빈 문자열은 조합 취소. 확정은 insertText 가 한다. */
+  /**
+   * IME 조합 중 글자 — Chromium 의 조합 마커(imeSetComposition)는 노란 강조로 그려져 실제 브라우저의 밑줄과 다르다.
+   * 대신 조합 글자를 보통 글자로 넣고, 다음 조합·확정이 그만큼 지운 뒤 다시 넣는다. 빈 문자열은 조합 취소.
+   */
   async imeComposition(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
-    await client.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length }, tab.sessionId);
+    if (op.composition) await this.eraseChars(client, tab, op.composition.length);
+    op.composition = text || null;
+    if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+  }
+
+  private async eraseChars(client: CdpClient, tab: Tab, count: number): Promise<void> {
+    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
+    for (let i = 0; i < count; i += 1) {
+      await client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId);
+      await client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId);
+    }
+  }
+
+  /** 포인터 아래 요소의 CSS cursor — 패널이 입력란 위에서 I 자, 링크 위에서 손 모양을 보여 주기 위해 묻는다. */
+  async cursorAt(operationId: string, x: number, y: number, tabId?: string | null): Promise<string> {
+    const op = this.operation(operationId);
+    const tab = this.tab(op, tabId);
+    const client = await this.engineClient();
+    try {
+      const result = await client.send<{ result: { value?: unknown } }>("Runtime.evaluate", { expression: `(() => { const e = document.elementFromPoint(${x}, ${y}); return e ? getComputedStyle(e).cursor : "auto"; })()`, returnByValue: true }, tab.sessionId);
+      return typeof result.result.value === "string" ? result.result.value : "auto";
+    } catch { return "auto"; }
   }
 
   /** 에이전트의 `type` — 줄바꿈은 Enter 로, 나머지는 텍스트 삽입으로. */

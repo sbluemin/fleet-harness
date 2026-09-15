@@ -1073,9 +1073,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.write(":connected\n\n");
       let closed = false;
       const write = (event: string, data: unknown) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(encodeSseData(event, data)); };
-      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), frame: (frame) => write("frame", frame) });
-      const keepalive = setInterval(() => { if (!closed) res.write(":keepalive\n\n"); }, 25_000);
-      req.on("close", () => { closed = true; clearInterval(keepalive); unsubscribe(); });
+      // 프레임은 소켓이 밀려 있으면 최신 한 장만 들고 있다가 drain 에 보낸다 — 느린 클라이언트가 응답 버퍼를 무한히 키우지 않게.
+      let pendingFrame: unknown = null;
+      res.on("drain", () => { if (pendingFrame !== null && !closed) { const frame = pendingFrame; pendingFrame = null; write("frame", frame); } });
+      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), frame: (frame) => { if (res.writableNeedDrain) pendingFrame = frame; else write("frame", frame); } });
+      const keepalive = setInterval(() => { if (!closed && !res.writableNeedDrain) res.write(":keepalive\n\n"); }, 25_000);
+      req.on("close", () => { closed = true; pendingFrame = null; clearInterval(keepalive); unsubscribe(); });
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
@@ -1110,7 +1113,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
         const mods = { alt: body.alt === true, ctrl: body.ctrl === true, meta: body.meta === true, shift: body.shift === true };
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
-        if (body.kind === "mouse" && typeof body.type === "string") { await browserService.mouse(operationId, { type: body.type as "move", x: num(body.x), y: num(body.y), button: body.button as "left" | undefined, clickCount: typeof body.clickCount === "number" ? body.clickCount : undefined, deltaX: num(body.deltaX), deltaY: num(body.deltaY), modifiers: mods }, tabId); }
+        if (body.kind === "mouse" && typeof body.type === "string") {
+          await browserService.mouse(operationId, { type: body.type as "move", x: num(body.x), y: num(body.y), button: body.button as "left" | undefined, clickCount: typeof body.clickCount === "number" ? body.clickCount : undefined, deltaX: num(body.deltaX), deltaY: num(body.deltaY), modifiers: mods }, tabId);
+          if (body.type === "move" && body.cursor === true) { writeJson(res, 200, { ok: true, cursor: await browserService.cursorAt(operationId, num(body.x), num(body.y), tabId) }); return true; }
+        }
         else if (body.kind === "key" && (body.type === "down" || body.type === "up") && typeof body.key === "string") { await browserService.domKey(operationId, { type: body.type, key: body.key, code: typeof body.code === "string" ? body.code : "", modifiers: mods, repeat: body.repeat === true }, tabId); }
         else if (body.kind === "text" && typeof body.text === "string" && body.text.length <= 20_000) { await browserService.insertText(operationId, body.text, tabId); }
         else if (body.kind === "ime" && typeof body.text === "string" && body.text.length <= 200) { await browserService.imeComposition(operationId, body.text, tabId); }
