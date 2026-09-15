@@ -653,7 +653,9 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
               // 조합 중 글자는 페이지에도 조합 상태로 보여 준다 — 확정 전까지 아무것도 안 보이면 조립이 안 되는 것처럼 느껴진다.
               onCompositionUpdate={(event) => { send({ kind: "ime", text: event.data ?? "" }); }}
               onCompositionEnd={() => { composing.current = false; flushText(); }}
-              onInput={() => { if (!composing.current) flushText(); }}
+              // Chrome 은 compositionstart 보다 input 을 먼저 보내기도 한다 — 그때 값을 확정 텍스트로 보내면 IME 가 조합하던
+              // 첫 자모가 끊겨 따로 들어간다. InputEvent 자신의 조합 표식(isComposing·insertCompositionText)을 함께 본다.
+              onInput={(event) => { const native = event.nativeEvent as InputEvent; if (composing.current || native.isComposing || native.inputType === "insertCompositionText") return; flushText(); }}
             />
             {mode === "annotate" ? (
               <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />

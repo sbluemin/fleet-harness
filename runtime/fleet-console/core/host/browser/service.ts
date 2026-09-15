@@ -55,6 +55,8 @@ interface Tab {
   title: string;
   /** 페이지가 선언한 아이콘 URL. 클라이언트는 서버 프록시로 받는다(CSP img-src 가 self 뿐이라). */
   favicon: string | null;
+  /** 메인 프레임 id — 로딩 표시는 이 프레임만 따른다(광고·위젯 iframe 이 끝없이 돌아도 새로고침 글리프가 돌지 않게). */
+  frameId: string | null;
   loading: boolean;
   history: { index: number; length: number; leadingBlank: boolean };
   console: ConsoleEntry[];
@@ -369,7 +371,7 @@ export class BrowserService {
     const { client, contextId } = await this.context(op);
     const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
     const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null };
+    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null };
     op.tabs.set(tab.id, tab);
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
@@ -569,6 +571,7 @@ export class BrowserService {
       }
       case "Page.frameNavigated": {
         if (p.frame?.parentId) return;
+        tab.frameId = typeof p.frame?.id === "string" ? p.frame.id : tab.frameId;
         tab.url = p.frame?.url ?? tab.url;
         tab.title = "";
         // 파비콘은 새 문서의 것이 도착할 때까지 이전 것을 둔다 — 탭이 점으로 깜빡이지 않게.
@@ -581,8 +584,10 @@ export class BrowserService {
         if (this.client) void this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
         return;
       }
-      case "Page.frameStartedLoading": tab.loading = true; this.emitState(op); return;
+      case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
+      case "Page.navigatedWithinDocument": tab.loading = false; this.emitState(op); return;
       case "Page.loadEventFired": case "Page.frameStoppedLoading": {
+        if (event.method === "Page.frameStoppedLoading" && tab.frameId && p.frameId !== tab.frameId) return;
         tab.loading = false;
         const client = this.client;
         if (client) void this.refreshTab(client, tab).then(() => this.emitState(op));
