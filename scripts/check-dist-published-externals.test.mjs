@@ -83,6 +83,9 @@ test('keeps every external the published console install must resolve', () => {
       '@vscode/ripgrep': '1.18.0',
       selfsigned: '^5.5.0',
       esbuild: '0.27.7',
+      '@modelcontextprotocol/sdk': '1.30.0',
+      tar: '7.5.22',
+      fflate: '0.8.2',
       react: '^19.0.0',
     },
   });
@@ -95,5 +98,8 @@ test('keeps every external the published console install must resolve', () => {
     '@vscode/ripgrep': '1.18.0',
     selfsigned: '^5.5.0',
     esbuild: '0.27.7',
+    '@modelcontextprotocol/sdk': '1.30.0',
+    tar: '7.5.22',
+    fflate: '0.8.2',
   });
 });

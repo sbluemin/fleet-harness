@@ -10,7 +10,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentEffort, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ShortcutBindings } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ComputerUseBackendId, type ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../paths.js";
 
@@ -412,7 +412,7 @@ interface GlobalSettingsRouteDeps {
   readonly isRemoteAccessOwner?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
-  readonly computerUseAvailability?: () => Promise<"unchecked" | "available" | "missing" | "unsupported">;
+  readonly computerUseAvailability?: (backend: ComputerUseBackendId) => Promise<"unchecked" | "available" | "missing" | "unsupported">;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
   /**
    * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
@@ -420,7 +420,7 @@ interface GlobalSettingsRouteDeps {
    */
   readonly onRemoteAccessChanged?: (change: RemoteAccessSettingsChange) => void | Promise<void>;
   /** 실험 설정이 저장된 직후 — 상주 작업이 옵트인 전환을 요청 없이도 따라가게 한다. */
-  readonly onExperimentsChanged?: (next: ConsoleExperimentSettings) => void;
+  readonly onExperimentsChanged?: (next: ConsoleExperimentSettings) => void | Promise<void>;
 }
 
 interface GlobalSettingsRouteContext {
@@ -555,17 +555,18 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_experiments" });
     return;
   }
-  if (body.experiments !== undefined
-    && resolveExperimentSettings(body.experiments).computerUse !== readExperimentSettings(deps.consoleSettingsStore).computerUse
-    && deps.isRemoteAccessOwner?.(req) === false) {
+  const previousExperiments = readExperimentSettings(deps.consoleSettingsStore);
+  const nextExperiments = body.experiments === undefined ? previousExperiments : resolveExperimentSettings(body.experiments);
+  const computerUseChanged = nextExperiments.computerUse !== previousExperiments.computerUse
+    || nextExperiments.computerUseBackend !== previousExperiments.computerUseBackend;
+  if (computerUseChanged && deps.isRemoteAccessOwner?.(req) === false) {
     deps.writeJson(res, 403, { error: "computer_use_local_only" });
     return;
   }
-  if (body.experiments !== undefined && resolveExperimentSettings(body.experiments).computerUse
-    && !readExperimentSettings(deps.consoleSettingsStore).computerUse && deps.computerUseAvailability) {
-    const availability = await deps.computerUseAvailability();
+  if (computerUseChanged && nextExperiments.computerUse && deps.computerUseAvailability) {
+    const availability = await deps.computerUseAvailability(nextExperiments.computerUseBackend);
     if (availability !== "available") {
-      deps.writeJson(res, 409, { error: availability === "unsupported" ? "computer_use_macos_only" : "computer_use_install_required" });
+      deps.writeJson(res, 409, { error: availability === "unsupported" ? "computer_use_platform_unsupported" : "computer_use_install_required" });
       return;
     }
   }
@@ -600,7 +601,7 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
-  if (body.experiments !== undefined) deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
+  if (body.experiments !== undefined) await deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
   /**
    * 응답은 조정이 끝난 뒤의 저장값으로 짓는다. Auto 대체 포트를 고르는 경로는 이 콜백 안에서
@@ -681,6 +682,7 @@ export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsDa
  */
 function isExperimentSettingsInput(value: unknown): boolean {
   if (!isRecord(value)) return false;
+  if ("computerUseBackend" in value && !isComputerUseBackendId(value.computerUseBackend)) return false;
   for (const key of ["promptRefine", "sessionWatch", "consoleControl", "computerUse"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }

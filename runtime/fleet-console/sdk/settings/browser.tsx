@@ -18,6 +18,7 @@ export {
   EXPERIMENT_MODEL_FEATURES,
   experimentAideSelection,
   experimentFeatureModel,
+  isComputerUseBackendId,
   isExperimentEffort,
   isExperimentModelId,
   resolveExperimentSettings,
@@ -338,11 +339,11 @@ const MODEL_PICKER_VIEWPORT_MARGIN_PX = 8;
  * useSelect는 트리거 폭으로 팝업을 놓는다. 여기서 최소 폭을 넓힌 뒤에는 뷰포트 안으로 다시
  * 잠가야 한다 — CSS min-width로만 넓히면 오른쪽 끝에 선 좁은 트리거의 팝업이 화면 밖으로 나간다.
  */
-function widenModelPickerPopup(style: React.CSSProperties): React.CSSProperties {
+export function widenModelPickerPopup(style: React.CSSProperties, minimumWidth = MODEL_PICKER_POPUP_MIN_WIDTH_PX): React.CSSProperties {
   if (typeof style.left !== "number" || typeof style.width !== "number") return style;
   const margin = MODEL_PICKER_VIEWPORT_MARGIN_PX;
   const viewportWidth = Math.max(0, window.innerWidth);
-  const width = Math.min(Math.max(style.width, MODEL_PICKER_POPUP_MIN_WIDTH_PX), Math.max(0, viewportWidth - 2 * margin));
+  const width = Math.min(Math.max(style.width, minimumWidth), Math.max(0, viewportWidth - 2 * margin));
   const left = Math.min(Math.max(style.left, margin), Math.max(margin, viewportWidth - width - margin));
   return { ...style, left, width };
 }

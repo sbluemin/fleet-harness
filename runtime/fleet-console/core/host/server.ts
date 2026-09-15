@@ -36,7 +36,7 @@ import { createDeferredDeletionCoordinator, DeferredDeletionError, type Deferred
 import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
 import { ComputerUseService } from "./agent/computer-use.js";
-import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
+import { createMacOSComputerUsePlatform, createCuaComputerUsePlatform, CuaDriverInstaller } from "@fleet-console/computer-use";
 import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
@@ -386,6 +386,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console or the computer.", category: "Observer", gate: "loopback", transport: "http" },
@@ -581,6 +582,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
+  const computerUseDirectory = path.join(fleetDataDir, "computer-use");
+  const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
+  const computerUseRuntime = {
+    resolveCodex: () => resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} }).resolved ?? null,
+    childEnv: () => stripConsoleInternalEnv(process.env),
+  };
+  const computerUsePlatforms = {
+    "sky-computer-use": createMacOSComputerUsePlatform(computerUseRuntime),
+    "cua-driver": createCuaComputerUsePlatform(computerUseDirectory, computerUseRuntime),
+  };
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
@@ -592,11 +603,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
     },
-    platform: createMacOSComputerUsePlatform({
-      resolveCodex: () => resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} }).resolved ?? null,
-      childEnv: () => stripConsoleInternalEnv(process.env),
-    }),
-    directory: path.join(fleetDataDir, "computer-use"),
+    platform: computerUsePlatforms[readExperimentSettings(consoleSettingsStore).computerUseBackend],
+    directory: computerUseDirectory,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
@@ -842,15 +850,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let consoleResourcesDisposed = false;
   let updateApplyInFlight = false;
   const globalSettingsRouter = createGlobalSettingsRouter({
-    computerUseAvailability: () => computerUse.inspectInstallation(),
+    computerUseAvailability: async (backend) => {
+      const platform = computerUsePlatforms[backend];
+      if (!platform.supported()) return "unsupported";
+      return await platform.inspectInstallation() ? "available" : "missing";
+    },
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     isRemoteAccessOwner: isLoopbackListener,
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
-    onExperimentsChanged: (next) => {
-      if (!next.computerUse) void computerUse.stop();
+    onExperimentsChanged: async (next) => {
+      await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
+      if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
     },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
@@ -1014,10 +1027,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/computer-use", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/computer-use") {
-      writeJson(res, 200, await computerUse.readStatus());
+      writeJson(res, 200, { ...await computerUse.readStatus(), backend: readExperimentSettings(consoleSettingsStore).computerUseBackend, installer: computerUseInstaller.status() });
       return true;
     }
     if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    if (req.method === "POST" && pathname === "/api/v1/computer-use/install") {
+      if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) { writeJson(res, 403, { error: "computer_use_local_only" }); return true; }
+      if (readExperimentSettings(consoleSettingsStore).computerUseBackend !== "cua-driver") { writeJson(res, 409, { error: "computer_use_backend_mismatch" }); return true; }
+      if (computerUse.activeOwner()) { writeJson(res, 409, { error: "computer_use_busy" }); return true; }
+      void computerUseInstaller.install().catch(() => undefined);
+      writeJson(res, 202, computerUseInstaller.status());
+      return true;
+    }
     if (req.method === "POST" && pathname === "/api/v1/computer-use/stop") {
       await computerUse.stop();
       writeJson(res, 200, await computerUse.readStatus());

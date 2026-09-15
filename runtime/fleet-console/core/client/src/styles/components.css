@@ -862,6 +862,7 @@
 /* 실험 기능 카드 — 행은 한 줄이다: 왼쪽 제목, 오른쪽에 모델 선택기와 스위치. 공유 fc-select만 쓰고
    새 색을 들이지 않는다. 좁은 컨테이너에서는 카드 규칙대로 세로로 접힌다. */
 .experiments-row { align-items: center; }
+.computer-use-controls { justify-content: flex-end; margin-inline-start: auto; }
 
 .experiments-row-controls {
   display: flex;
@@ -14652,6 +14653,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 /* 선택기는 24ch를 바라되 담긴 열(fc-settings-row의 컨트롤 열 등)이 좁으면 강도 세그먼트를
    남기고 자기 폭을 내준다 — 세그먼트가 먼저 접히면 "이 모델의 강도"가 다음 줄로 떨어진다. */
 .fc-model-picker__select { flex: 1 1 24ch; min-width: 120px; max-width: 280px; }
+/* 저장 중 입력 잠금은 유지하되 실험 카드 전체를 흐렸다 되돌리지 않는다. */
+.global-settings-card[data-saving] { --control-disabled-opacity: 1; }
 /* 트리거는 Quick Launch의 모델 칩과 같은 알약 — 런치에서 고른 모델을 설정에서 같은 물건으로 알아보게 한다. */
 .fc-model-picker__trigger {
   min-height: 34px;

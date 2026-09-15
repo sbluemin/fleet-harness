@@ -570,6 +570,27 @@ describe("Computer Use authorization and lifecycle", () => {
     }
   });
 
+  it("reuses element handles only until verification or a new observation and never reuses old image coordinates", async () => {
+    const f = setup();
+    await f.service.setPlatform({ ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true, boundedObservations: true, reusableElementSnapshots: true, verification: true,
+      preflight: f.preflight, createBroker: async () => ({ start: f.start, stop: f.stop, call: f.call, cleanupStatus: "not_needed", threadReleaseStatus: "not_needed", cleanupFailure: null, tools: new Map([["click", { name: "click", inputSchema: { type: "object", properties: { app: { type: "string" }, element_index: { type: "string" }, x: { type: "number" }, y: { type: "number" } }, required: ["app"], additionalProperties: false } }]]) }) });
+    const state = await f.invoke("computer_state", { app: "Fixture", maxDepth: 4, includeScreenshot: false });
+    expect(f.call).toHaveBeenLastCalledWith("get_app_state", { app: "Fixture", maxDepth: 4, includeScreenshot: false });
+    const snapshotId = metadata(state).snapshotId;
+    const action = { app: "Fixture", snapshotId, action: "click", arguments: { element_index: "1" }, reason: "Stable fixture button" };
+    const first = await f.invoke("computer_action", action);
+    expect(metadata(first)).toMatchObject({ snapshotId, snapshotReusable: "elements_only" });
+    expect((await f.invoke("computer_action", action)).isError).toBe(false);
+    const count = f.call.mock.calls.length;
+    expect((await f.invoke("computer_action", { ...action, arguments: { x: 1, y: 1 } })).isError).toBe(true);
+    expect(f.call).toHaveBeenCalledTimes(count);
+    await f.invoke("computer_verify", { app: "Fixture", expect: [{ window: { exists: true } }] });
+    expect((await f.invoke("computer_action", action)).isError).toBe(true);
+    const fresh = await f.invoke("computer_state", { app: "Fixture" });
+    expect(metadata(fresh).snapshotId).not.toBe(snapshotId);
+    expect((await f.invoke("computer_action", action)).isError).toBe(true);
+  });
+
   it("binds desktop ownership and discards a late result when its session ends", async () => {
     const f = setup();
     const controller = new AbortController();
@@ -587,5 +608,14 @@ describe("Computer Use authorization and lifecycle", () => {
     expect(f.service.status()).toMatchObject({ state: "idle", apps: [] });
     await f.invoke("computer_apps", {}, "session-b");
     expect(f.start).toHaveBeenCalledTimes(2);
+    let finish!: () => void;
+    f.call.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ content: [{ type: "text", text: "old backend" }] }); }));
+    const previous = f.invoke("computer_state", { app: "Fixture" }, "session-b");
+    await vi.waitFor(() => expect(f.service.status().activeTool).toBe("computer_state"));
+    await f.service.setPlatform({ ...macOSComputerUsePlatform, supported: () => false });
+    finish();
+    expect(await previous).toMatchObject({ isError: true });
+    expect(f.service.status()).toMatchObject({ supported: false, installation: "unchecked", apps: [] });
+    expect(f.service.activeOwner()).toBeNull();
   });
 });

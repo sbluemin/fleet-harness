@@ -12,6 +12,11 @@
  * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
  */
 
+export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
+export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
+  return value === "sky-computer-use" || value === "cua-driver";
+}
+
 export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "computerUse";
 
 export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "computerUse"];
@@ -44,8 +49,9 @@ export interface ConsoleExperimentSettings {
   readonly sessionWatchModel: string;
   /** 켜져 있는 동안 Console MCP 실행과 제한된 자동 운영을 포괄 승인한다. */
   readonly consoleControl: boolean;
-  /** 로컬 macOS의 Codex Computer Use broker. 옵트인이 앱 읽기·조작 권한을 승인한다. */
+  /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
+  readonly computerUseBackend: ComputerUseBackendId;
   /** Wiki 초안 Cowork 대화의 모델·강도. 다음 턴부터 적용된다. */
   readonly coworkModel: string;
   readonly coworkEffort: ExperimentEffort;
@@ -73,6 +79,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   consoleControl: false,
   computerUse: false,
+  computerUseBackend: "sky-computer-use",
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   coworkEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
@@ -140,6 +147,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     sessionWatchModel: model("sessionWatch"),
     consoleControl: record.consoleControl === true,
     computerUse: record.computerUse === true,
+    computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),
     coworkEffort: aideEffort("cowork"),
     analystModel: aideModel("analyst"),

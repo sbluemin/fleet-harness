@@ -4,6 +4,22 @@ import { z } from "zod";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "@fleet-console/computer-use";
 
+const STATE_OPTIONS = {
+  maxDepth: z.number().int().min(1).max(50).optional(),
+  maxElements: z.number().int().min(1).max(2000).optional(),
+  query: z.string().min(1).max(500).optional(),
+  includeScreenshot: z.boolean().optional(),
+  includeMenus: z.boolean().optional(),
+};
+const VERIFY_OPTIONS = z.object({
+  expect: z.array(z.object({
+    element: z.object({ selector: z.object({ role: z.string().min(1).max(100).optional(), label_contains: z.string().min(1).max(500).optional() }).strict(), exists: z.literal(true).optional(), value_equals: z.string().max(2000).optional(), enabled: z.boolean().optional(), selected: z.boolean().optional() }).strict().optional(),
+    window: z.object({ exists: z.boolean() }).strict().optional(),
+  }).strict().refine(value => Boolean(value.element) !== Boolean(value.window))).min(1).max(8),
+  includeScreenshot: z.boolean().optional(), timeoutMs: z.number().int().min(0).max(10000).optional(), stableSamples: z.number().int().min(1).max(5).optional(),
+});
+const STATE_OPTION_SCHEMA = z.toJSONSchema(z.object(STATE_OPTIONS)).properties;
+
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 type ObservationMode = "text" | "text_and_image";
 const OBSERVATION_SCHEMA = { type: "string", enum: ["text", "text_and_image"], default: "text", description: "Model output only; native capture is unchanged. Default text omits images. Request text_and_image for visual verification or before coordinate actions; use the resulting fresh snapshotId." };
@@ -65,15 +81,31 @@ export class ComputerUseService {
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
+  private platformRevision = 0;
+  private switchingPlatform = false;
 
   constructor(private readonly deps: {
     readonly directory: string;
     readonly enabled: () => boolean;
     readonly localControl: () => boolean;
-    readonly platform: ComputerUsePlatform;
+    platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
   }) {}
+
+  async setPlatform(platform: ComputerUsePlatform): Promise<void> {
+    const revision = ++this.platformRevision;
+    if (this.deps.platform === platform && !this.switchingPlatform) return;
+    this.switchingPlatform = true;
+    try {
+      await this.stop();
+      if (revision !== this.platformRevision) return;
+      this.deps.platform = platform;
+      this.installation = "unchecked";
+      this.error = null;
+      this.lastCall = null;
+    } finally { if (revision === this.platformRevision) this.switchingPlatform = false; }
+  }
 
   status(): ComputerUseStatus {
     const enabled = this.deps.enabled();
@@ -158,7 +190,8 @@ export class ComputerUseService {
       { ...spec("computer_status", computerUseToolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
       spec("computer_apps", computerUseToolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 4096, description: "Optional app name, bundle ID or path search." }, includeWindowState: { type: "boolean", description: "Read window state without capture or activation. Requires query; inspects at most 20 matched installations and reports truncation." } }, additionalProperties: false }),
       spec("computer_open", computerUseToolDescriptions.computer_open, { type: "object", properties: { app: { type: "string", minLength: 1, maxLength: 4096, description: "Exact absolute .app installation path observed in computer_apps or supplied by the user. No bundle IDs or name lookup." }, reason: { type: "string", minLength: 1, maxLength: 600 }, activate: { type: "boolean", default: false, description: "Default false requests background launch/reopen. The app may still activate itself; not a focus guarantee. Set true only when foreground opening is authorized." } }, required: ["app", "reason"], additionalProperties: false }),
-      spec("computer_state", computerUseToolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
+      spec("computer_state", computerUseToolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, ...STATE_OPTION_SCHEMA, fullTree: { type: "boolean", description: "Require a standalone full AX tree, e.g. after context loss. Makes one native read; returns an error without a snapshot if the backend returns only a diff. Does not request additional images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Request the full action schemas again, for example after context compaction. Otherwise returned once per schema version in this broker session." } }, required: ["app"], additionalProperties: false }),
+      spec("computer_verify", "Check bounded conditions on one exact window without returning its AX tree. Cua Driver only. satisfied is verified for the stated predicates; unknown is not success. Optional screenshot is visual evidence only. Invalidates prior action handles; use computer_state before further actions.", { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, ...z.toJSONSchema(VERIFY_OPTIONS).properties }, required: ["app", "expect"], additionalProperties: false }),
       spec("computer_paste", computerUseToolDescriptions.computer_paste, {
         type: "object", properties: {
           app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" },
@@ -191,6 +224,8 @@ export class ComputerUseService {
   }
 
   private async executeInternal(tool: string, input: unknown, owner: string | undefined, signal?: AbortSignal): Promise<ComputerUseResult> {
+    const platformRevision = this.platformRevision;
+    if (this.switchingPlatform) return result({ error: "computer_use_busy" }, true);
     if (!this.deps.enabled()) return result({ error: "computer_use_disabled" }, true);
     if (!this.status().supported) return result({ error: this.deps.platform.unavailableError }, true);
     if (!this.deps.localControl()) return result({ error: "computer_use_local_only" }, true);
@@ -202,6 +237,15 @@ export class ComputerUseService {
     if ((tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && input.observation !== undefined && input.observation !== "text" && input.observation !== "text_and_image") return result({ error: "computer_use_invalid_observation", actionOutcome: "not_started" }, true);
     if (tool === "computer_state" && input.fullTree !== undefined && typeof input.fullTree !== "boolean") return result({ error: "computer_use_invalid_full_tree", actionOutcome: "not_started" }, true);
     if (input.allowActivation !== undefined && typeof input.allowActivation !== "boolean") return result({ error: "computer_use_invalid_activation", actionOutcome: "not_started" }, true);
+    if (tool === "computer_state") {
+      const options = Object.fromEntries(Object.keys(STATE_OPTIONS).filter(key => key in input).map(key => [key, input[key]]));
+      if (!z.object(STATE_OPTIONS).safeParse(options).success) return result({ error: "computer_use_invalid_observation_options" }, true);
+      if (Object.keys(options).length && !this.deps.platform.boundedObservations) return result({ error: "computer_use_observation_options_unsupported", hint: "This backend cannot bound native observations. No read was dispatched." }, true);
+    }
+    if (tool === "computer_verify") {
+      if (!this.deps.platform.verification) return result({ error: "computer_use_verification_unsupported" }, true);
+      if (!VERIFY_OPTIONS.safeParse(input).success) return result({ error: "computer_use_invalid_verification" }, true);
+    }
     const observationMode: ObservationMode = input.observation === "text_and_image" ? "text_and_image" : "text";
     let app = tool === "computer_apps" ? null : input.app;
     if (app !== null) {
@@ -209,7 +253,7 @@ export class ComputerUseService {
       try { app = await this.deps.platform.resolveTarget(app); }
       catch (error) { if (error instanceof ComputerUseInputError) return result({ error: error.message }, true); throw error; }
     }
-    if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy" }, true);
+    if (this.switchingPlatform || platformRevision !== this.platformRevision || this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy" }, true);
     if (!this.deps.enabled() || !this.deps.localControl() || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
     this.busy = true;
     this.activeTool = tool;
@@ -274,12 +318,20 @@ export class ComputerUseService {
         return { ...apps, content: [...result({ source: "native app inventory", targets, ...(windowStates ? { windowStates, windowStateTruncated: targets.length > windowStates.length } : {}), query: query || null, total: this.appTargets.length, matched: targets.length, targetHint: "Copy targets[].app unchanged into computer_state and computer_action. It is an exact installation path, avoiding duplicate bundle IDs and localized names. If targets is empty, use the original inventory below; no identifier was inferred.", runningStatus: "advisory", hint: "A missing running marker does not establish that an app is closed. Do not launch or close apps based solely on this list." }).content, ...content] };
       }
       const target = app as string;
-      if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode, input.allowActivation === true, input.fullTree === true);
+      if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode, input.allowActivation === true, input.fullTree === true, Object.fromEntries(Object.keys(STATE_OPTIONS).filter(key => key in input).map(key => [key, input[key]])));
+      if (tool === "computer_verify") {
+        this.snapshots.clear();
+        this.state = "running";
+        this.stage = "verify_state";
+        const verified = await this.call(broker, "verify_state", { ...VERIFY_OPTIONS.parse(input), app: target });
+        this.assertActive(lifetime);
+        return verified;
+      }
       if (!((tool === "computer_action" && typeof input.action === "string" && (ACTIONS as readonly string[]).includes(input.action)) || (tool === "computer_paste" && input.action === "paste")) || typeof input.action !== "string" || !isRecord(input.arguments)
         || typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 600) throw new ComputerUseInputError("computer_use_invalid_action", "Use app only at the top level. Supply action, arguments (without app), reason and the latest snapshotId from computer_state or computer_action.");
       const snapshot = this.snapshots.get(target);
       if (!snapshot || input.snapshotId !== snapshot.id || Date.now() - snapshot.at > 120_000) throw new ComputerUseInputError("computer_use_fresh_state_required", "Fleet has one valid snapshot across apps. Another app observation or a dispatched action invalidates it. Call computer_state for the intended app and use its new snapshotId. Do not repeat an earlier action just to refresh state.");
-      const coordinateAction = input.action === "drag" || ((input.action === "click" || input.action === "scroll") && ("x" in input.arguments || "y" in input.arguments));
+      const coordinateAction = input.action === "drag" || "x" in input.arguments || "y" in input.arguments;
       if (coordinateAction && !snapshot.imageAvailable) throw new ComputerUseInputError("computer_use_screenshot_required", "This snapshot has no screenshot. Native menus can replace the window tree and suppress images. No action was sent. Use menu element_index and an advertised secondary action to dismiss/close the menu without selecting a command, or explicitly request Escape. Then read the window again. Never reuse pre-menu coordinates.");
       if (coordinateAction && !snapshot.imageDelivered) throw new ComputerUseInputError("computer_use_screenshot_required", "This snapshot's image was not delivered to the model. No action was sent. Call computer_state with observation:text_and_image, inspect its image and use its new snapshotId. Do not reuse coordinates from an older image.");
       if (input.action === "click" && "element_index" in input.arguments && ("x" in input.arguments || "y" in input.arguments)) throw new ComputerUseInputError("computer_use_ambiguous_target", "Choose either element_index or screenshot coordinates, not both. No action was sent.");
@@ -290,6 +342,7 @@ export class ComputerUseService {
       if (!parsed.success) throw new ComputerUseInputError("computer_use_invalid_arguments", "Match actionSchemas[action] from the latest observation; app belongs only at the top level.");
       await this.deps.platform.preflight(target, input.allowActivation === true);
       this.assertActive(lifetime);
+      const reusable = this.deps.platform.reusableElementSnapshots === true && !coordinateAction && input.action !== "paste" && ("element_index" in args || "element_token" in args);
       this.snapshots.clear();
       this.state = "running";
       this.stage = input.action;
@@ -305,6 +358,10 @@ export class ComputerUseService {
       if (actionResult.isError) {
         const error = this.deps.platform.classifyFailure(actionResult);
         return { ...actionResult, content: [...result({ actionOutcome: error === "computer_use_app_closed" ? "app_closed" : actionOutcome, error, observation: "unavailable", ...(actionResult.dispatchBlocked ? { snapshotId: null } : {}), context: { imageAvailable: snapshot.imageAvailable, snapshotAgeMs: Date.now() - snapshot.at, target: coordinateAction ? "screenshot_coordinates" : "element_index" in args ? "accessibility_element" : "keyboard", focus: "unknown", display: "unknown", appSupport: "not_determined" }, hint: this.deps.platform.failureHint(error) }).content, ...actionResult.content] };
+      }
+      if (reusable) {
+        this.snapshots.set(target, { ...snapshot, imageAvailable: false, imageDelivered: false });
+        return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, snapshotId: snapshot.id, snapshotReusable: "elements_only", observation: "not_refreshed", hint: "Reuse only while the intended UI structure is unchanged. Verify the task condition; re-observe after navigation, layout changes or uncertainty. Coordinates require a fresh image." }).content, ...actionResult.content] };
       }
       // Native actions already return their own observation. A second read may
       // restore a just-minimized window or activate an app. Never read implicitly.
@@ -337,7 +394,7 @@ export class ComputerUseService {
     }
   }
 
-  private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true, observationMode: ObservationMode = "text", allowActivation = false, fullTree = false): Promise<ComputerUseResult> {
+  private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true, observationMode: ObservationMode = "text", allowActivation = false, fullTree = false, options: Record<string, unknown> = {}): Promise<ComputerUseResult> {
     await this.deps.platform.preflight(app, allowActivation);
     this.assertActive(lifetime);
     if (this.captureApp !== app) {
@@ -348,7 +405,7 @@ export class ComputerUseService {
     this.snapshots.clear();
     this.state = "running";
     this.stage = "get_app_state";
-    const state = await this.call(broker, "get_app_state", { app });
+    const state = await this.call(broker, "get_app_state", { app, ...options });
     this.assertActive(lifetime);
     if (state.isError) { this.deps.onCaptureTarget?.(null); return state; }
     if (fullTree && !this.deps.platform.hasFullObservation(state)) {
@@ -386,14 +443,14 @@ export class ComputerUseService {
     try {
       const value = await (options ? broker.call(tool, args, options) : broker.call(tool, args));
       // 반환된 시점에 이력을 확정한 뒤 직렬화해야 액션과 후속 관찰의 값이 일치한다.
-      if (tool !== "get_app_state" && typeof args.app === "string") {
+      if (tool !== "get_app_state" && tool !== "verify_state" && typeof args.app === "string") {
         const lastAction = this.lastAgentActions.get(args.app);
         if (lastAction) lastAction.outcome = value.isError ? "error" : "returned";
       }
       const content = value.content.filter((block) => block.type === "text" || block.type === "image");
       if (tool !== "list_apps") content.unshift(...result({
         contentSource: "native_tool_output",
-        observationSource: tool === "get_app_state" ? "agent_requested_observation" : "agent_action_response",
+        observationSource: tool === "get_app_state" || tool === "verify_state" ? "agent_requested_observation" : "agent_action_response",
         selectionSource: tool === "select_text" && !value.isError && (!args.selection || args.selection === "text") ? "agent_requested_selection" : "not_established",
         cursorPlacement: tool === "select_text" && (args.selection === "cursor_before" || args.selection === "cursor_after") ? args.selection : null,
         trust: "untrusted_app_content",

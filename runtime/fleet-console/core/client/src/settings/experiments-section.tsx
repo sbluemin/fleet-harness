@@ -41,7 +41,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
-    <section className="global-settings-card" aria-label={t("settings.experiments.aiCard")}>
+    <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
@@ -121,7 +121,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
             onChange={(next) => save({ ...experiments, consoleControl: next })} />
         </div>
       </div>
-      <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} />
+      <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
     </section>
   );
 }

@@ -51,6 +51,9 @@ export interface ComputerUseBackendOptions {
   readonly approve: (request: Record<string, unknown>) => Promise<boolean>;
 }
 export interface ComputerUsePlatform {
+  readonly boundedObservations?: boolean;
+  readonly reusableElementSnapshots?: boolean;
+  readonly verification?: boolean;
   readonly supported: () => boolean;
   readonly appTargetSchema: Record<string, unknown>;
   readonly endHint: string;

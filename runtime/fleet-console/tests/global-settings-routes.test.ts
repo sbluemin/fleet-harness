@@ -113,6 +113,14 @@ describe("global settings routes", () => {
     const local = createRouterHarness({ body: { experiments: { computerUse: true } } });
     await local.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(local.currentGeneral()?.experiments?.computerUse).toBe(true);
+    expect(local.currentGeneral()?.experiments?.computerUseBackend).toBe("sky-computer-use");
+    const backend = createRouterHarness({ local: false, body: { experiments: { computerUseBackend: "cua-driver" } } });
+    await backend.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(backend.writes[0]?.status).toBe(403);
+    expect(backend.updateCalls).toBe(0);
+    const invalid = createRouterHarness({ body: { experiments: { computerUseBackend: "unknown" } } });
+    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(invalid.writes[0]?.status).toBe(400);
     const missing = createRouterHarness({ installation: "missing", body: { experiments: { computerUse: true } } });
     await missing.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(missing.writes[0]).toMatchObject({ status: 409, body: { error: "computer_use_install_required" } });
