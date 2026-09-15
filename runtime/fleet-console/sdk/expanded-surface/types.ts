@@ -37,7 +37,14 @@ export interface ExpandedSurfaceDescriptor {
    */
   readonly title: (ctx: ExpandedSurfaceContext) => LocalizedText;
   readonly render: (ctx: ExpandedSurfaceContext) => ReactNode;
-  /** 페인 머리 우측 도구 무리. 닫기 버튼은 호스트가 소유하므로 넣지 않는다. */
+  /**
+   * 페인 오른쪽 위에 닫기와 함께 부유하는 도구 무리. 닫기 버튼은 호스트가 소유하므로 넣지 않는다.
+   *
+   * 페인에는 머리 줄이 없다 — 본문이 위 가장자리까지 채우고, 이 무리와 닫기가 본문 위에 뜬다.
+   * 호스트는 그 무리의 폭을 CSS 변수 `--expanded-surface-float-inset`으로 페인에 싣는다. 본문
+   * 첫 줄의 오른쪽 끝에 도구를 두는 표면은 `padding-right: var(--expanded-surface-float-inset, 0px)`
+   * 처럼 그만큼 비워야 한다(레일 마운트에는 변수가 없어 0이 된다).
+   */
   readonly tools?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
    * 이 페인이 닫혔다는 통보. 닫기 버튼·Esc·다른 표면의 요청 등 **호스트가 닫는 모든 경로**에서

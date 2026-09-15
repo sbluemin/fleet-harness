@@ -425,40 +425,15 @@ interface RailSectionProps {
   readonly language: ConsoleLocale;
 }
 
-/** 카드의 독점 상주자 — 헤더(제목·닫기) + 본문. 패널은 하나만 상주하므로 접기는 없다:
- *  안 볼 패널은 접는 게 아니라 닫거나 다른 패널로 교체한다. */
+/** 카드의 독점 상주자 — 본문뿐이다. 무엇인지는 활성 레일 아이콘이 이미 말하고, 닫는 길도 그
+ *  아이콘(토글)과 접기 버튼이 갖고 있으므로 제목·닫기 줄을 따로 세우지 않는다. 그 30px은 플러그인
+ *  본문이 카드 위 가장자리까지 채운다. 패널은 하나만 상주하므로 접기도 없다: 안 볼 패널은 접는
+ *  게 아니라 닫거나 다른 패널로 교체한다. */
 function RailSection({ binding, baseCtx, connection, connectionLostAt, language }: RailSectionProps) {
-  const t = useT();
   const title = resolveLocalizedText(binding.entry.title, language);
   return (
-    <section className="right-rail-section">
-      <header className="right-rail-section-head">
-        <span className="right-rail-section-title">{title}</span>
-        <button
-          type="button"
-          className="right-rail-section-close"
-          aria-label={t("rail.chrome.closePanel", { title })}
-          title={t("rail.chrome.closePanel", { title })}
-          onClick={(event) => {
-            // 닫힘으로 사라질 버튼이 포커스를 쥔 채 언핀되면 포커스가 body로 떨어져 키보드
-            // 위치를 잃는다(Codex 리뷰). 같은 패널의 레일 아이콘은 언핀 후에도 남는 안정
-            // 좌표이므로 먼저 그리로 옮긴다.
-            if (event.currentTarget === document.activeElement) {
-              // 설정은 탭 목록에 서지 않는다 — 문(톱니)이 닫힌 뒤에도 남는 안정 좌표다.
-              const focusId = binding.entry.id === SETTINGS_RAIL_ENTRY_ID
-                ? "rail-settings-toggle"
-                : `rail-tab-${binding.entry.id}`;
-              document.getElementById(focusId)?.focus();
-            }
-            closeRailPanel(binding.entry.id);
-          }}
-        >
-          <CloseGlyph />
-        </button>
-      </header>
-      <div className="right-rail-section-body">
-        <RailPanelBody binding={binding} ctx={baseCtx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
-      </div>
+    <section className="right-rail-section" aria-label={title}>
+      <RailPanelBody binding={binding} ctx={baseCtx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
     </section>
   );
 }
@@ -591,10 +566,6 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       {icon}
     </button>
   );
-}
-
-function CloseGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
 
 // 접기 방향(우측 엣지)을 가리키는 단일 셰브런 — 엣지 독 트리거의 펼침 셰브런과 한 쌍이다.

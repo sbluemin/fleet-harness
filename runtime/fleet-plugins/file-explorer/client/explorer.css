@@ -1541,6 +1541,9 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   min-width: 0;
+  /* 확대 표면에서는 호스트의 부유 닫기가 오른쪽 위에 앉는다 — 넘침 메뉴 버튼이 그 밑에 깔리지
+     않게 그만큼 비운다. 레일에서는 변수가 없어 0이다. */
+  padding-right: var(--expanded-surface-float-inset, 0px);
   border-bottom: 1px solid var(--surface-rim);
 }
 

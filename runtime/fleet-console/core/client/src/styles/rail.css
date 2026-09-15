@@ -95,74 +95,18 @@
 }
 
 /* ── 독점 섹션 ─────────────────────────────────────────────────────
-   카드에는 패널이 하나만 상주한다 — 헤더(제목·닫기)와 본문이 슬롯 전체를 갖는다.
-   z-index 1은 슬롯 재질(::before, z 0) 위로 헤더까지 함께 띄운다(구 스택 래퍼의 몫 승계). */
+   카드에는 패널이 하나만 상주하고, 그 본문이 슬롯 전체를 갖는다. 제목·닫기 줄은 없다 —
+   정체는 활성 레일 아이콘이, 닫기는 그 아이콘의 토글이 맡는다. 플러그인 본문이 카드의
+   위 가장자리에 바로 닿으므로, 본문 첫 줄의 숨은 여백은 각 플러그인이 스스로 갖는다.
+   z-index 1은 슬롯 재질(::before, z 0) 위로 본문을 띄운다(구 스택 래퍼의 몫 승계). */
 .right-rail-section {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 240px;
   overflow: hidden;
-}
-
-.right-rail-section-head {
-  display: flex;
-  align-items: center;
-  flex: none;
-  gap: 2px;
-  padding: 3px 6px 3px 4px;
-}
-
-/* 제목은 더는 접기 버튼이 아니다 — 정적 라벨이 섹션의 정체만 말한다. */
-.right-rail-section-title {
-  flex: 1;
-  min-width: 0;
-  padding: 3px 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.right-rail-section-close {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.right-rail-section-close svg {
-  width: 11px;
-  height: 11px;
-  display: block;
-}
-
-.right-rail-section-close:hover,
-.right-rail-section-close:focus-visible {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-  outline: none;
-}
-
-.right-rail-section-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
 }
 
 .right-rail-panel-body {
