@@ -6,16 +6,16 @@ import "./computer-screen-share.css";
 type CaptureTarget = { id: string; operationId: string; title: string };
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void };
 const CaptureContext = createContext<Capture | null>(null);
-const OperationUseContext = createContext<{ console: string[]; computer: string[] }>({ console: [], computer: [] });
+const OperationUseContext = createContext<{ console: string[]; computer: string[]; browser: string[] }>({ console: [], computer: [], browser: [] });
 export function useOperationUse(operationId: string) {
   const activity = useContext(OperationUseContext);
-  return { console: activity.console.includes(operationId), computer: activity.computer.includes(operationId) };
+  return { console: activity.console.includes(operationId), computer: activity.computer.includes(operationId), browser: activity.browser.includes(operationId) };
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Operation이 소유한다. */
 export function ComputerScreenShareProvider({ children }: { children: ReactNode }) {
   const [capture, setCapture] = useState<Capture | null>(null);
-  const [activity, setActivity] = useState<{ console: string[]; computer: string[] }>({ console: [], computer: [] });
+  const [activity, setActivity] = useState<{ console: string[]; computer: string[]; browser: string[] }>({ console: [], computer: [], browser: [] });
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -23,9 +23,9 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       try {
         const response = await fetch("/api/v1/operation-use", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
         if (!response.ok) throw new Error("operation_use_unavailable");
-        const next = await response.json() as { console: string[]; computer: string[] };
-        if (!controller.signal.aborted) setActivity(next);
-      } catch { if (!controller.signal.aborted) setActivity({ console: [], computer: [] }); }
+        const next = await response.json() as { console: string[]; computer: string[]; browser?: string[] };
+        if (!controller.signal.aborted) setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [] });
+      } catch { if (!controller.signal.aborted) setActivity({ console: [], computer: [], browser: [] }); }
       finally { if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 400); }
     };
     void poll();

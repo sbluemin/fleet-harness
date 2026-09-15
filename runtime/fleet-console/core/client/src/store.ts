@@ -98,6 +98,7 @@ let state: ConsoleState = {
   quickLaunchFocusToggle: 0,
   quickLaunchExpandRequest: 0,
   quickLaunchMentionSeed: null,
+  quickLaunchMentionDraft: null,
   quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchDraftAttachments: null,
@@ -701,12 +702,13 @@ export function openQuickLaunch(): void {
  * 컴포저가 자기 규칙으로 내린다. 남은 초안은 이 회차의 주소가 아니다 — 컴포저가 시드를 읽는
  * 순간 버리고 행선지만 심는다. 시드와 열림은 한 번의 전이다.
  */
-export function openQuickLaunchForOperation(operationId: string): void {
+export function openQuickLaunchForOperation(operationId: string, draft: string | null = null): void {
   // 시드와 열림을 한 번에 올린다. 두 번 emit하면 시드만 있는 중간 렌더가 생기고, 이미 열린
   // 컴포저에서는 열림 전이가 없어 시드가 소비되지 않은 채 남을 수 있다.
   if (isQuickLaunchDocked()) {
     setState({
       quickLaunchMentionSeed: operationId,
+      quickLaunchMentionDraft: draft,
       quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
       quickLaunchError: null,
       quickLaunchErrorShortenBy: null,
@@ -715,6 +717,7 @@ export function openQuickLaunchForOperation(operationId: string): void {
   }
   setState({
     quickLaunchMentionSeed: operationId,
+    quickLaunchMentionDraft: draft,
     quickLaunchOpen: true,
     quickLaunchError: null,
     quickLaunchErrorShortenBy: null,
@@ -749,6 +752,13 @@ export function openQuickLaunchWithDraft(draft: string): void {
 export function consumeQuickLaunchMentionSeed(): void {
   if (state.quickLaunchMentionSeed === null) return;
   setState({ quickLaunchMentionSeed: null });
+}
+
+/** 시드에 실려 온 초안을 한 번 꺼낸다 — 시드가 주소를 잡은 자리에서만 부른다. */
+export function consumeQuickLaunchMentionDraft(): string | null {
+  const draft = state.quickLaunchMentionDraft;
+  if (draft !== null) setState({ quickLaunchMentionDraft: null });
+  return draft;
 }
 
 // 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.

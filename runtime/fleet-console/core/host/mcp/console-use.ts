@@ -188,6 +188,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
 export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost & { forPlugin(pluginId: string): ConsoleUseMcpHost; dispose(): Promise<void> } {
   const connections = new Set<ConsoleUseMcpConnection>();
   let disposed = false;
+  const operationEnders = new Set<(operationId: string) => void>();
   const connect = (options: Parameters<ConsoleUseMcpHost["connect"]>[0], pluginId?: string): ConsoleUseMcpConnection => {
       if (disposed) throw new Error("Console MCP host is disposed");
       const requested = new Set(options.tools);
@@ -208,6 +209,8 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
         if (use.operationId) deps.onOperationUse?.(use.operationId, false);
       };
       const endAll = () => { for (const label of uses.keys()) endUse(label); };
+      const endForOperation = (operationId: string) => { for (const [label, use] of uses) if (use.operationId === operationId) endUse(label); };
+      operationEnders.add(endForOperation);
       const authorizationTimer = setInterval(() => {
         for (const [label] of uses) {
           if (closed || options.enabled?.() === false || (options.operationCallers === true && denyConsoleUse(deps, { cwd: "", sessionLabel: label }))) endUse(label);
@@ -287,6 +290,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
           if (closing) return closing;
           closed = true;
           clearInterval(authorizationTimer);
+          operationEnders.delete(endForOperation);
           endAll();
           controller.abort();
           manager.cleanup();
@@ -301,6 +305,8 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   return {
     connect: (options) => connect(options),
     forPlugin: (pluginId) => ({ connect: (options) => connect(options, pluginId) }),
+    // 턴이 끝난 호출자의 세션을 모든 연결에서 닫는다 — 하위 Operation 은 그대로, 표식만 턴과 함께.
+    endOperationUse: (operationId) => { for (const end of operationEnders) end(operationId); },
     async dispose() {
       disposed = true;
       const results = await Promise.allSettled([...connections].map((connection) => connection.dispose()));

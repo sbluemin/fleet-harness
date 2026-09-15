@@ -9,6 +9,7 @@ import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provid
 import {
   CaptionActionButton,
   CaptionAnalystGlyph,
+  CaptionBrowserUseGlyph,
   CaptionChatGlyph,
   CaptionComputerUseGlyph,
   CaptionConsoleUseGlyph,
@@ -21,6 +22,7 @@ import type { ClientExecutionProvider, OperationMenuContext, OperationRenderCont
 import { fetchAnalysisCatalog } from "./analysis-api.js";
 import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
 import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
+import { BrowserCaption, BrowserPanel } from "../browser/browser-panel.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, terminalFontFallbackStack } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../terminal/shared/terminal-preferences.js";
@@ -40,6 +42,8 @@ import { disposeAnalysisStore, useAnalysisStore } from "./analysis-store.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 import "./analysis.css";
 import "./agent-cli.css";
+
+const BROWSER_COMPANION_ID = "browser";
 
 import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView, READING_WIDTH_LABEL_KEY } from "./chat/chat-view.js";
@@ -113,8 +117,11 @@ export const agentOperationKind = defineOperationKind({
   canOpenCompanions: () => true,
   companions: [
     // 아티팩트는 Analyst 드로어 안의 모드다 — 컴패니언은 하나만 등록한다.
+    // 캡션 밴드는 호스트가 이미 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 위 모서리도 각진다.
     { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, // 캡션 없는 companion — 정체·상태·모드 컨트롤은 본문의 발판 줄(컴포저 위)이 진다. 호스트는 캡션 높이를 본문에 돌려준다.
       hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
+    // Operation Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
+    { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, caption: (context) => <BrowserCaption context={context} />, render: (context) => <BrowserPanel context={context} /> },
   ],
 });
 
@@ -499,6 +506,11 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   React.useEffect(() => {
     if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
     // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
+    // 다만 브라우저 companion이 열려 있으면 레이어는 그 패널의 것이다 — 분석가 패널만 접고 레이어는 둔다.
+    if (isCompanionPanelVisible(context, BROWSER_COMPANION_ID)) {
+      for (const id of ANALYST_COMPANION_IDS) if (isCompanionPanelVisible(context, id)) context.onSetCompanionPanelVisible(id, false);
+      return;
+    }
     closeAnalystCompanionPanels(context);
   }, [
     analysisReadiness,
@@ -535,6 +547,22 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
       onClick={() => { if (analystReady) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
     >
       <CaptionAnalystGlyph />
+    </CaptionActionButton>
+  );
+
+  // Operation Browser 문 — 실험이 켜진 Console에서만 선다. 허용은 패널 안에서 켠다.
+  const using = useOperationUse(context.operationId);
+  const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
+  // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 기본 탑재라 문은 늘 선다.
+  const browser = context.onRequestCompanions === undefined ? null : (
+    <CaptionActionButton
+      actionId="browser"
+      label={using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open")}
+      pressed={browserOpen}
+      agent={using.browser}
+      onClick={() => { toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
+    >
+      <CaptionBrowserUseGlyph />
     </CaptionActionButton>
   );
 
@@ -583,7 +611,6 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     ? <span className="session-watch-host" aria-hidden={liveReview === null ? true : undefined}><SessionWatchBubble context={context} review={liveReview} /></span>
     : null;
 
-  const using = useOperationUse(context.operationId);
   return (
     <>
       <span className="agent-operation-marks">
@@ -591,6 +618,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
         <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
       </span>
       {analyst}
+      {browser}
       {viewSwitch}
       {readingWidthAction}
       {watchBubble}
@@ -603,7 +631,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
  * 사용자가 무엇이든 누르거나 입력하면 사라진다: 결과는 알려야 하지만 화면을 차지해서는 안 된다.
  * 새 결과가 오면 다시 뜬다. 마지막 결과 자체는 ··· 메뉴의 관찰 행 툴팁과 칩 마크가 계속 갖고 있다.
  */
-function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer"; label: string }) {
+function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer" | "browser"; label: string }) {
   const [present, setPresent] = React.useState(active);
   React.useEffect(() => {
     if (active) { setPresent(true); return; }
@@ -612,7 +640,7 @@ function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "co
   }, [active]);
   if (!present && !active) return null;
   return <span className={`agent-control-badge is-${kind}${active ? "" : " is-leaving"}`} role="img" aria-label={label} title={label}>
-    {kind === "console" ? <CaptionConsoleUseGlyph /> : <CaptionComputerUseGlyph />}
+    {kind === "console" ? <CaptionConsoleUseGlyph /> : kind === "browser" ? <CaptionBrowserUseGlyph /> : <CaptionComputerUseGlyph />}
   </span>;
 }
 
@@ -836,6 +864,7 @@ function AgentOperationMarks({ context }: { readonly context: OperationMenuConte
       {watch ? <span className="side-bar-chip-marks"><span className={`side-bar-chip-mark${review?.phase === "started" ? " is-busy" : ""}`} role="img" aria-label={t("terminal.experiments.menuWatch")} title={t("terminal.experiments.menuWatch")} data-operation-mark="session-watch"><CaptionWatchGlyph /></span></span> : null}
       <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
       <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+      <OperationUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />
     </span>
   );
 }

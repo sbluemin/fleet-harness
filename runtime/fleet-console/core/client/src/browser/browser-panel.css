@@ -1,0 +1,168 @@
+/* Operation Browser companion — 캡션 밴드는 호스트가 그리고, 여기서는 탭·탐색·화면·상태줄만 채운다.
+   색은 채널 규약대로: 에이전트 조작은 --agent-control-badge(배지 채널), 오류는 coral, 라이브는 aurora,
+   위치·포커스는 brass. */
+.op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-body); font-size: var(--t-sm); }
+/* 에이전트 세션 — 본문 위 한 줄 대신 패널 윤곽을 따라 도는 빛. agent-control 채널이며 캡션 틴트와 같은 사건이다. */
+@property --op-browser-sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.op-browser.is-driving::before { content: ""; position: absolute; inset: 0; z-index: 9; pointer-events: none; padding: 2px; border-radius: inherit;
+  background: conic-gradient(from var(--op-browser-sweep), var(--agent-control-badge) 0 18%, color-mix(in oklch, var(--agent-control-badge) 30%, transparent) 28% 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: op-browser-sweep 2.4s linear infinite; }
+@keyframes op-browser-sweep { to { --op-browser-sweep: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .op-browser.is-driving::before { animation: none; background: var(--agent-control-badge); } }
+
+@keyframes op-browser-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ---- companion 캡션 = 탭 스트립 (호스트의 .canvas-companion-caption 안에 산다) ---- */
+.op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-primary); }
+.op-browser-cap__glyph { flex: none; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: var(--radius-xs); color: var(--text-secondary); transition: background 0.16s, color 0.16s; }
+.op-browser-cap__glyph svg { width: 14px; height: 14px; }
+.op-browser-cap.is-driving .op-browser-cap__glyph { background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
+.op-browser-cap__tabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser-cap__stop { flex: none; margin-inline-start: auto; background: transparent; border: 1px solid var(--agent-control-badge); color: var(--agent-control-badge); border-radius: var(--radius-xs); font: inherit; font-size: var(--t-2xs); padding: 0 var(--space-2); line-height: 18px; cursor: pointer; }
+.op-browser-cap__stop:hover, .op-browser-cap__stop:focus-visible { background: var(--agent-control-badge); color: var(--agent-control-badge-ink); outline: none; }
+/* 호스트 캡션 밴드의 틴트 — 크로스 번들 클래스 계약(.canvas-companion-caption). 세션 중에만. */
+.canvas-companion-caption:has(> .op-browser-cap.is-driving) { background: linear-gradient(90deg, color-mix(in oklch, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
+.op-browser__tab { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 0; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
+.op-browser__tab:hover { background: var(--ink-veil); }
+.op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }
+.op-browser__tab-icon { flex: none; width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
+.op-browser__tab-icon.is-fallback { display: inline-flex; color: var(--text-tertiary); }
+.op-browser__tab-icon.is-fallback svg { width: 14px; height: 14px; }
+.op-browser__tab-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--text-tertiary); }
+.op-browser__tab-dot.is-loading { background: var(--aurora); box-shadow: 0 0 6px var(--aurora-glow); animation: op-browser-pulse 1s ease-in-out infinite; }
+.op-browser__tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
+.op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
+.op-browser__viewport-menu { position: relative; align-self: center; }
+.op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
+.op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
+.op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
+.op-browser__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; min-width: 120px; display: flex; flex-direction: column; background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); padding: var(--space-1); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
+.op-browser__menu--row { flex-direction: row; gap: 2px; min-width: 0; }
+.op-browser__icon.is-set { color: var(--brass-ink); }
+/* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
+.op-browser [data-tip], .op-browser-cap [data-tip] { position: relative; }
+.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser-cap [data-tip]:hover::after, .op-browser-cap [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
+.op-browser-cap .op-browser__viewport-menu [data-tip]:hover::after, .op-browser-cap > .op-browser__icon[data-tip]:hover::after { left: auto; right: 0; transform: none; }
+.op-browser [data-tip][aria-expanded="true"]::after, .op-browser-cap [data-tip][aria-expanded="true"]::after { display: none; }
+.op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
+.op-browser__menu-item[aria-checked="true"] { color: var(--brass-ink); }
+.op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--ink-veil); color: var(--text-primary); outline: none; }
+
+.op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--ink-deep); }
+.op-browser__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font: inherit; font-size: var(--t-md); text-decoration: none; cursor: pointer; }
+.op-browser__icon:hover:not(:disabled), .op-browser__icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
+.op-browser__icon:disabled { opacity: 0.35; cursor: default; }
+/* 주소창 — 필 하나에 주소와 「내 브라우저에서 열기」가 함께 산다. 쉬고 있을 때는 호스트만 또렷하게 가운데,
+   포커스하면 원문이 왼쪽 정렬로 드러난다. 바탕은 abyss 가 아니라 veil — 어두운 테마에서 검은 구멍처럼 보이지 않게. */
+.op-browser__url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 28px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.op-browser__url:hover { background: var(--ink-rim); }
+.op-browser__url:focus-within { background: var(--ink-mid); border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-body); font-size: var(--t-sm); }
+.op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
+.op-browser__url-input:focus { outline: none; }
+.op-browser__url-input::placeholder { color: var(--text-tertiary); }
+.op-browser__url-display { position: absolute; inset: 0 32px 0 var(--space-3); display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; }
+.op-browser__url-host { color: var(--text-primary); }
+.op-browser__url-rest { color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; }
+.op-browser__url-external { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--radius-pill); color: var(--text-secondary); }
+.op-browser__url-external:hover, .op-browser__url-external:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
+.op-browser__url-external svg { width: 14px; height: 14px; }
+.op-browser__url:has(.op-browser__url-external) .op-browser__url-input { padding-inline-end: 32px; }
+
+.op-browser__viewport { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--ink-deep); display: flex; justify-content: center; align-items: flex-start; }
+.op-browser__viewport.is-responsive { overflow: hidden; }
+.op-browser__stage { position: relative; width: 100%; }
+.op-browser__viewport.is-mobile .op-browser__stage, .op-browser__viewport.is-tablet .op-browser__stage { margin: var(--space-3) auto; box-shadow: 0 0 0 1px var(--hairline-strong); }
+.op-browser__frame { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; cursor: default; }
+.op-browser__keyboard { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; margin: 0; }
+
+.op-browser__empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6); text-align: center; color: var(--text-secondary); }
+.op-browser--empty .op-browser__empty { height: 100%; }
+.op-browser__empty-glyph { display: inline-flex; width: 28px; height: 28px; color: var(--text-tertiary); }
+.op-browser__empty-glyph svg { width: 28px; height: 28px; }
+.op-browser__empty-title { margin: 0; color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-medium); }
+.op-browser__empty-body { margin: 0; max-width: 40ch; font-size: var(--t-sm); color: var(--text-secondary); }
+.op-browser__button { background: transparent; border: 1px solid var(--hairline-strong); color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: var(--space-1) var(--space-3); border-radius: var(--radius-xs); cursor: pointer; }
+/* hover·active 는 Console 표준 토큰 — 보조는 brass 워시, 주는 brass-bright. 색 채널은 바뀌지 않는다. */
+.op-browser__button { transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s; }
+.op-browser__button:hover:not(:disabled) { background: var(--control-hover-fill); border-color: var(--control-hover-rim); }
+.op-browser__button:active:not(:disabled) { transform: translateY(0.5px); }
+.op-browser__button--primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); font-weight: var(--weight-medium); }
+.op-browser__button--primary:hover:not(:disabled) { background: var(--brass-bright); border-color: var(--brass-bright); }
+.op-browser__button--primary:active:not(:disabled) { filter: brightness(0.94); }
+.op-browser__button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .op-browser__button { transition: none; } }
+.op-browser__button:disabled { opacity: 0.5; cursor: default; }
+.op-browser__notice { margin: 0; font-size: var(--t-xs); color: var(--coral-ink); }
+
+
+/* 여는 중은 새로고침 글리프가 돈다 — 진짜 브라우저와 같은 자리. 탭은 언제나 파비콘이다. */
+.op-browser__reload.is-loading svg { animation: op-browser-spin 1s linear infinite; }
+@keyframes op-browser-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .op-browser__reload.is-loading svg { animation: none; opacity: 0.6; } }
+
+/* ---- 페이지 도구: 주석(요소 댓글 · 스케치) ---- */
+.op-browser__tool[aria-pressed="true"] { color: var(--brass-ink); background: var(--brass-glow); }
+.op-browser__overlay { position: absolute; inset: 0; }
+.op-browser__sketch { position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.op-browser__sketchbar { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 2px; padding: var(--space-1) var(--space-2); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); white-space: nowrap; max-width: calc(100% - 24px); overflow-x: auto; }
+.op-browser__sketchbar .op-browser__divider { width: 1px; height: 16px; background: var(--hairline); margin: 0 var(--space-1); flex: none; }
+.op-browser__swatch { width: 16px; height: 16px; flex: none; border-radius: var(--radius-pill); border: 2px solid transparent; cursor: pointer; padding: 0; }
+.op-browser__swatch[aria-pressed="true"] { border-color: var(--text-primary); }
+.op-browser__swatch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+/* 주석 잉크는 페이지 위에 그리는 마크의 색이지 Console 신호가 아니다 — 신택스 채널과 같은 이유로
+   정체성 8톤에서 톤만 빌리고, 스트로크는 스와치의 계산값을 읽어 캔버스에 그린다. */
+.op-browser__swatch--red { background: var(--id-crimson); }
+.op-browser__swatch--blue { background: var(--id-cerulean); }
+.op-browser__swatch--green { background: var(--id-moss); }
+.op-browser__swatch--black { background: var(--ink-abyss); }
+/* 가져오기 대화상자 — 뷰포트 위에 얹히는 시트. */
+.op-browser__scrim { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: oklch(0% 0 0 / 45%); padding: var(--space-4); }
+.op-browser__dialog { width: min(440px, 100%); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 16px 40px oklch(0% 0 0 / 45%); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.op-browser__dialog-head { display: flex; align-items: flex-start; gap: var(--space-2); }
+.op-browser__dialog-head > div { flex: 1; min-width: 0; }
+.op-browser__dialog h3 { margin: 0; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
+.op-browser__dialog p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--text-secondary); }
+.op-browser__dialog-row { display: flex; align-items: center; gap: var(--space-3); }
+.op-browser__dialog-brand { flex: none; display: inline-flex; }
+.op-browser__dialog-brand svg { width: 18px; height: 18px; }
+.op-browser__dialog-key { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
+/* 원본 선택은 SDK Select 그대로 — 여기서는 폭만 잡는다. 상자·테두리를 덧입히면 Select 의 자기 상자와 겹친다. */
+.op-browser__select { flex: 1; min-width: 0; }
+.op-browser__select .fc-select { width: 100%; }
+.op-browser__dialog-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ink-veil); border-radius: var(--radius-xs); font-size: var(--t-sm); color: var(--text-primary); }
+.op-browser__dialog-item strong { font-weight: var(--weight-medium); display: block; }
+.op-browser__dialog-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 2px; }
+.op-browser__dialog-glyph { flex: none; display: inline-flex; color: var(--text-secondary); }
+.op-browser__dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+/* 짧은 알림은 상태줄 대신 화면 아래에 떠 있다가 사라진다. */
+.op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--aurora-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.op-browser__toast.is-error { color: var(--coral-ink); }
+.op-browser__icon svg { width: 14px; height: 14px; }
+.op-browser__highlight { position: absolute; pointer-events: none; border: 2px solid var(--aurora); background: var(--aurora-glow); border-radius: 2px; box-sizing: border-box; }
+/* 요소 댓글 — 번호 핀은 페이지 위 마크라 주석 잉크(정체성 톤)를 쓰고, 말풍선은 Console 표면이다. */
+/* 댓글 도구의 커서는 말풍선 글리프 — 페이지를 조작하는 게 아니라 주석을 다는 중임이 보이게. 흑백이라 테마와 무관하다. */
+.op-browser__sketch.is-comment { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4a2 2 0 0 1-1-1.7z' fill='white' stroke='black' stroke-width='1.6' stroke-linejoin='round'/><path d='M8 7.5h8M8 11h5' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>") 5 20, pointer; }
+/* 요소 정보 카드 — 하이라이트 위에 떠서 태그·크기·색·글꼴을 읽어 준다. 포인터를 받지 않는다. */
+.op-browser__hovercard { position: absolute; z-index: 5; display: grid; grid-template-columns: auto auto; gap: 2px var(--space-4); max-width: min(360px, calc(100% - 8px)); padding: var(--space-2) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-secondary); pointer-events: none; white-space: nowrap; }
+.op-browser__hovercard-name { color: var(--text-primary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; }
+.op-browser__hovercard-key { color: var(--text-tertiary); }
+.op-browser__hovercard-value { display: inline-flex; align-items: center; gap: var(--space-1); justify-self: end; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.op-browser__hovercard-swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--hairline-strong); }
+.op-browser__pinwrap { position: absolute; z-index: 5; transform: translate(-50%, -50%); display: inline-flex; align-items: center; }
+/* 핀에 올리면 어떤 주석인지 라벨이 오른쪽으로 부드럽게 펼쳐진다. */
+.op-browser__pin-label { position: absolute; left: calc(100% + 6px); top: 50%; transform: translate(-6px, -50%) scale(0.96); transform-origin: left center; opacity: 0; max-width: 260px; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-body); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); transition: opacity 0.16s ease, transform 0.16s ease; }
+.op-browser__pinwrap:hover .op-browser__pin-label, .op-browser__pin:focus-visible + .op-browser__pin-label { opacity: 1; transform: translate(0, -50%) scale(1); }
+.op-browser__pin { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill); border: 2px solid var(--agent-control-badge-ink); background: var(--id-cerulean); color: var(--agent-control-badge-ink); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1; box-shadow: 0 2px 8px oklch(0% 0 0 / 35%); cursor: pointer; }
+.op-browser__pin:hover, .op-browser__pin:focus-visible { background: var(--coral); outline: none; }
+.op-browser__pin.is-anchor { position: absolute; z-index: 5; transform: translate(-50%, -50%); cursor: default; pointer-events: none; }
+.op-browser__comment { position: absolute; z-index: 6; display: flex; align-items: center; gap: var(--space-2); width: min(320px, calc(100% - 16px)); padding: 3px 3px 3px var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
+.op-browser__comment-input { flex: 1; min-width: 0; height: 26px; background: transparent; border: 0; color: var(--text-primary); font-family: var(--font-body); font-size: var(--t-sm); }
+.op-browser__comment-input:focus { outline: none; }
+.op-browser__comment-input::placeholder { color: var(--text-tertiary); }
+.op-browser__comment-ok { flex: none; width: 26px; height: 26px; border: 0; border-radius: var(--radius-pill); background: var(--brass); color: var(--text-on-brass); font: inherit; cursor: pointer; }
+.op-browser__comment-ok:disabled { opacity: 0.4; cursor: default; }
+.op-browser__comment-ok:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+

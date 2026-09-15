@@ -74,7 +74,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     composer: {
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;
-        if (mentionOperationId) openQuickLaunchForOperation(mentionOperationId);
+        if (mentionOperationId) openQuickLaunchForOperation(mentionOperationId, typeof options?.draft === "string" ? options.draft : null);
         else if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
         else openQuickLaunch();
       },

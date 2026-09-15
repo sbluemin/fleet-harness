@@ -40,6 +40,8 @@ import { createMacOSComputerUsePlatform, createCuaComputerUsePlatform, CuaDriver
 import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
+import { BrowserService, BrowserPolicyError } from "./browser/service.js";
+import { createBrowserMcpHost } from "./mcp/browser.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -389,7 +391,20 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console or the computer.", category: "Observer", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/browser", summary: "Read local Operation Browser status.", category: "Settings", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/stream", summary: "Stream an Operation's browser state and screencast frames.", category: "Console Execution", gate: "loopback", transport: "sse" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/tabs", summary: "Create, close or select a tab in an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/navigate", summary: "Navigate an Operation's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/input", summary: "Forward user pointer and keyboard input to an Operation's browser tab.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/viewport", summary: "Set the viewport preset or size of an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/interrupt", summary: "Interrupt the agent's in-flight browser calls for an Operation.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/import-sources", summary: "List Google Chrome profiles whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile into an Operation's browser context.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Press paste in a terminal Operation's CLI so it picks up the screenshot the panel placed on the clipboard.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
@@ -614,6 +629,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     service: computerUse,
     operations: () => operations.list(),
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
+  });
+  const browserService = new BrowserService({
+    dataDir: path.join(fleetDataDir, "browser"),
+    env: stripConsoleInternalEnv(process.env),
+    enabled: () => true,
+    localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
+    log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
+  });
+  const browserMcp = createBrowserMcpHost({
+    transport: mcpHttp.transport,
+    service: browserService,
+    operations: () => operations.list(),
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const consoleUseActivity = new Map<string, number>();
@@ -1021,7 +1049,98 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
-    writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [] });
+    const browserOperations = browserService.status().operations.filter((id) => current.some((operation) => operation.id === id) && browserService.state(id).driving);
+    writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [], browser: browserOperations });
+    return true;
+  });
+  routeRegistry.register("/api/v1/browser", async ({ req, res, pathname }) => {
+    if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") { writeJson(res, 200, browserService.importSources()); return true; }
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|input|viewport|interrupt|inspect|paste|favicon|import)$/u.exec(pathname);
+    if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
+    const operationId = decodeURIComponent(match[1] ?? "");
+    const action = match[2] ?? "";
+    if (!operations.list().some((operation) => operation.id === operationId)) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable" }); return true; }
+    const fail = (error: unknown) => {
+      if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
+      const message = error instanceof Error ? error.message : "browser_request_failed";
+      writeJson(res, 500, { error: message.startsWith("browser_") ? message : "browser_request_failed" });
+    };
+    if (req.method === "GET" && action === "stream") {
+      res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }));
+      res.write(":connected\n\n");
+      let closed = false;
+      const write = (event: string, data: unknown) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(encodeSseData(event, data)); };
+      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), frame: (frame) => write("frame", frame) });
+      const keepalive = setInterval(() => { if (!closed) res.write(":keepalive\n\n"); }, 25_000);
+      req.on("close", () => { closed = true; clearInterval(keepalive); unsubscribe(); });
+      return true;
+    }
+    if (req.method === "GET" && action === "favicon") {
+      const tabId = readUrl(req).searchParams.get("tabId") ?? "";
+      const icon = await browserService.favicon(operationId, tabId).catch(() => null);
+      if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
+      res.writeHead(200, withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "private, max-age=3600", "Content-Length": String(icon.body.byteLength) }));
+      res.end(icon.body);
+      return true;
+    }
+    if (req.method === "GET" && action === "screenshot") {
+      try { writeJson(res, 200, await browserService.screenshot(operationId, { format: "png" })); } catch (error) { fail(error); }
+      return true;
+    }
+    if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    const body = await readJsonBody<Record<string, unknown>>(req);
+    if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+    try {
+      if (action === "tabs") {
+        const tabId = typeof body.tabId === "string" ? body.tabId : null;
+        if (body.action === "create") { const tab = await browserService.createTab(operationId, typeof body.url === "string" ? body.url : null, "user"); writeJson(res, 200, { tab }); return true; }
+        if (body.action === "close" && tabId) { await browserService.closeTab(operationId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
+        if (body.action === "select" && tabId) { await browserService.selectTab(operationId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
+        writeJson(res, 400, { error: "invalid_request" }); return true;
+      }
+      if (action === "navigate") {
+        if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, await browserService.navigate(operationId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null)); return true;
+      }
+      if (action === "input") {
+        const tabId = typeof body.tabId === "string" ? body.tabId : null;
+        const mods = { alt: body.alt === true, ctrl: body.ctrl === true, meta: body.meta === true, shift: body.shift === true };
+        const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+        if (body.kind === "mouse" && typeof body.type === "string") { await browserService.mouse(operationId, { type: body.type as "move", x: num(body.x), y: num(body.y), button: body.button as "left" | undefined, clickCount: typeof body.clickCount === "number" ? body.clickCount : undefined, deltaX: num(body.deltaX), deltaY: num(body.deltaY), modifiers: mods }, tabId); }
+        else if (body.kind === "key" && (body.type === "down" || body.type === "up") && typeof body.key === "string") { await browserService.domKey(operationId, { type: body.type, key: body.key, code: typeof body.code === "string" ? body.code : "", modifiers: mods, repeat: body.repeat === true }, tabId); }
+        else if (body.kind === "text" && typeof body.text === "string" && body.text.length <= 20_000) { await browserService.insertText(operationId, body.text, tabId); }
+        else { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, { ok: true }); return true;
+      }
+      if (action === "viewport") {
+        const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;
+        const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
+        writeJson(res, 200, { viewport: await browserService.setViewport(operationId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, scale: typeof body.scale === "number" ? body.scale : undefined, colorScheme }, "user") }); return true;
+      }
+      if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptOperation(operationId) }); return true; }
+      if (action === "inspect") {
+        if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, { element: await browserService.inspectAt(operationId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
+      }
+      if (action === "import") {
+        if (typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        try { writeJson(res, 200, await browserService.importFromChrome(operationId, body.profileId)); } catch (error) { fail(error); }
+        return true;
+      }
+      if (action === "paste") {
+        // 사람이 패널에서 만든 스크린샷은 브라우저가 OS 클립보드에 올린다. 터미널 Operation 이면 서버가 그 CLI 에
+        // 붙여넣기(Ctrl+V)를 눌러 주는 것이 전부다 — CLI 가 클립보드의 이미지를 자기 첨부로 읽는다.
+        const node = operations.list().find((operation) => operation.id === operationId);
+        if (node?.payload.chatMode === true) { writeJson(res, 409, { error: "operation_in_chat_mode" }); return true; }
+        if (!browserMcp.pasteIntoTerminal(operationId)) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
+        writeJson(res, 200, { pasted: true }); return true;
+      }
+      writeJson(res, 404, { error: "not_found" });
+    } catch (error) { fail(error); }
     return true;
   });
   routeRegistry.register("/api/v1/computer-use", async ({ req, res, pathname }) => {
@@ -2342,7 +2461,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
     consoleControl.dispose();
-    try { await Promise.all([computerUseMcp.dispose(), consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
@@ -2592,9 +2711,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     deletionCoordinator.dispose();
     // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
     const stoppingComputerUse = computerUseMcp.dispose();
+    const stoppingBrowser = browserMcp.dispose();
     try {
       await Promise.all([
         stoppingComputerUse,
+        stoppingBrowser,
         closeHttpServer(current),
         closeHttpServer(currentLoopback),
       ]);
@@ -2612,7 +2733,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         await rehydrateDurableState();
         coreLaunchKinds = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
-          host: { ...pluginHostCapabilities, computerUseMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
