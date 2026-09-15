@@ -283,7 +283,7 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
     <span className="session-analyst__export-shell" ref={exportShell} data-expanded={exportOpen ? "true" : undefined}>
       <AnalystGlyphButton
         label={t("terminal.artifacts.export")}
-        pressed={exportOpen}
+        popup={{ kind: "menu", expanded: exportOpen, controls: exportId }}
         disabled={!active}
         onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}
       ><AgentGlyph name="export" /></AnalystGlyphButton>

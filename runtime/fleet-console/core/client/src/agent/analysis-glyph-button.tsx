@@ -5,13 +5,15 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  * 부관단 머리 동작과 같은 문법이다: 24px 격자, 글자 없는 마크, hover·키보드 포커스에만 뜨는 이름표,
  * 눌린 면은 brass(위치 채널). 채팅 패널과 아티팩트 패널이 같은 버튼을 쓰므로 둘 밖에 둔다.
  */
-export function AnalystGlyphButton({ label, pressed, disabled = false, className, onClick, children }: {
+export function AnalystGlyphButton({ label, pressed, disabled = false, className, onClick, children, popup }: {
   readonly label: string;
   readonly pressed?: boolean;
   readonly disabled?: boolean;
   readonly className?: string;
   readonly onClick: () => void;
   readonly children: React.ReactNode;
+  /** 메뉴를 여는 버튼 — 토글이 아니라 팝업의 손잡이로 읽히게 haspopup·expanded·controls를 싣는다. */
+  readonly popup?: { readonly kind: "menu" | "listbox"; readonly expanded: boolean; readonly controls: string };
 }) {
   return (
     <span className="session-analyst__glyph-slot">
@@ -19,7 +21,10 @@ export function AnalystGlyphButton({ label, pressed, disabled = false, className
         type="button"
         className={`session-analyst__glyph${className ? ` ${className}` : ""}`}
         aria-label={label}
-        aria-pressed={pressed}
+        aria-pressed={popup ? undefined : pressed}
+        aria-haspopup={popup?.kind}
+        aria-expanded={popup ? popup.expanded : undefined}
+        aria-controls={popup?.controls}
         disabled={disabled}
         onClick={onClick}
         // 키를 누르고 있는 것만으로 무장→확정이 이어지지 않게 한다 — Enter 반복은 click을 반복한다.

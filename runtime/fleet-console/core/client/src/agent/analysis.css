@@ -10,7 +10,8 @@
 /* ── 발판 줄 — 컴포저 상자 밖 위 한 줄. 왼쪽은 정체·상태·모델(대화) 또는 보고 있는 아티팩트(아티팩트),
    오른쪽은 글자 없는 동작 글리프. 예전 캡션 밴드의 칩 줄과 아티팩트 헤더가 여기로 접혔다. ── */
 .session-analyst__footing { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; min-height: 28px; padding: 0 2px 6px; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.04em; }
-.session-analyst__footing-lead { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* 왼쪽 자리는 overflow를 숨기지 않는다 — 피커의 목록이 이 자리 위로 뜨므로 숨기면 목록이 잘린다. 줄임은 라벨(strong)이 각자 진다. */
+.session-analyst__footing-lead { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
 .session-analyst__footing-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .session-analyst__footing-sep { width: 1px; height: 14px; margin: 0 4px; background: var(--hairline); }
 .session-analyst__chip-state { flex: none; }
@@ -25,10 +26,10 @@
 .session-analyst__glyph-slot { position: relative; display: inline-flex; flex: none; }
 .session-analyst__glyph { position: relative; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .session-analyst__glyph .agent-glyph { width: 15px; height: 15px; }
-.session-analyst__glyph:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--ink-veil); color: var(--text-primary); }
+.session-analyst__glyph:hover:not(:disabled):not([aria-pressed="true"]):not([aria-expanded="true"]) { background: var(--ink-veil); color: var(--text-primary); }
 .session-analyst__glyph:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .session-analyst__glyph:disabled { cursor: default; opacity: .4; }
-.session-analyst__glyph[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 45%, transparent); background: var(--brass-glow); color: var(--brass-ink); }
+.session-analyst__glyph[aria-pressed="true"], .session-analyst__glyph[aria-expanded="true"] { border-color: color-mix(in oklch, var(--brass) 45%, transparent); background: var(--brass-glow); color: var(--brass-ink); }
 /* 이름표 — 겨누는 동안만, 위로 뜬다(아래는 컴포저). 오른쪽 가장자리에 붙여 왼쪽으로 자란다: 이 줄의 글리프는 패널 오른쪽 끝에 있다. */
 .session-analyst__glyph-tip { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 12; padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.02em; line-height: 1.35; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-spring); }
 .session-analyst__glyph-slot:hover .session-analyst__glyph-tip,
