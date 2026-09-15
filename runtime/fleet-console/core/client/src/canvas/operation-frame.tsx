@@ -484,6 +484,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
+        {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,
+            「어느 그룹」은 --group-mark 잉크·워시와 이름이 진다. 워시는 칩 안에만 머문다. */}
         {groupLabelVisible ? (
           <span
             className="canvas-operation-group-label"
@@ -491,8 +493,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             title={t("canvas.frame.groupTitle", { name: groupName ?? "" })}
             aria-hidden="true"
           >
-            <span className="canvas-operation-group-dot" />
-            <span className="canvas-operation-group-name">{groupName}</span>
+            {groupName}
           </span>
         ) : null}
         {rename.renaming ? (

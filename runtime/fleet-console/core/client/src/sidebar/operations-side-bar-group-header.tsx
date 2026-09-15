@@ -80,7 +80,6 @@ export function OperationsSideBarGroupHeader({
       >
         <CollapseArrow collapsed={collapsed} />
       </button>
-      <span className="side-bar-group-header__dot" aria-hidden="true" />
       <span className="side-bar-group-header__name">{group.name}</span>
       <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
     </div>
