@@ -203,7 +203,6 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
         ))}
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!panel || panel.busy} onClick={() => panel?.actions.createTab()}>+</button>
       </div>
-      {driving ? <button type="button" className="op-browser-cap__stop" aria-label={`${t("terminal.browser.driving")} — ${t("terminal.browser.stop")}`} onClick={() => panel?.actions.interrupt()}>{t("terminal.browser.stop")}</button> : null}
       <button type="button" className="op-browser__icon" data-tip={t("terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!panel || panel.busy} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
       <div className="op-browser__viewport-menu">
         <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel} onClick={() => setViewportMenu((open) => !open)}>
@@ -544,7 +543,6 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       if (result) { setImportSources(null); setInfo(t("terminal.browser.import.done", { count: String(result.cookies) })); }
     } finally { setImporting(false); }
   };
-  const interrupt = () => { void run("interrupt", {}); };
   const toggleMode = (next: Mode) => setMode((current) => current === next ? "none" : next);
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
@@ -559,7 +557,6 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
         createTab: () => { void run("tabs", { action: "create" }); setEditingUrl(true); },
         openImport: () => { void openImport(); },
         setViewport,
-        interrupt,
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
