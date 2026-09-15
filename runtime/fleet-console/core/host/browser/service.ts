@@ -786,10 +786,26 @@ export class BrowserService {
       if (op.composition !== null) {
         const pending = op.composition; op.composition = null;
         if (pending === text) return;
-        await this.eraseChars(client, tab, [...pending].length);
+        await this.replaceChars(client, tab, [...pending].length, text);
+        return;
       }
       if (text) await client.send("Input.insertText", { text }, tab.sessionId);
     });
+  }
+
+  /**
+   * 지우기와 넣기를 응답을 기다리지 않고 잇달아 보낸다 — 파이프는 순서를 지키고 렌더러는 입력 이벤트를 차례로 처리하므로,
+   * 빈 상태가 프레임에 찍히는 구간이 왕복 한 번에서 사실상 0 으로 줄어 조합 중 글자가 덜 깜빡인다.
+   */
+  private async replaceChars(client: CdpClient, tab: Tab, count: number, text: string): Promise<void> {
+    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
+    const sends: Promise<unknown>[] = [];
+    for (let i = 0; i < count; i += 1) {
+      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId));
+      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId));
+    }
+    if (text) sends.push(client.send("Input.insertText", { text }, tab.sessionId));
+    await Promise.all(sends);
   }
 
   /** 글자 관련 호출을 Operation 단위로 한 줄로 세운다 — 앞 호출이 끝나기 전에는 다음이 시작하지 않는다. */
@@ -808,18 +824,11 @@ export class BrowserService {
     return this.serialText(op, async () => {
       const tab = this.tab(op, tabId);
       const client = await this.engineClient();
-      if (op.composition) await this.eraseChars(client, tab, [...op.composition].length);
+      const previous = op.composition;
       op.composition = text || null;
-      if (text) await client.send("Input.insertText", { text }, tab.sessionId);
+      if (previous) await this.replaceChars(client, tab, [...previous].length, text);
+      else if (text) await client.send("Input.insertText", { text }, tab.sessionId);
     });
-  }
-
-  private async eraseChars(client: CdpClient, tab: Tab, count: number): Promise<void> {
-    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
-    for (let i = 0; i < count; i += 1) {
-      await client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId);
-      await client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId);
-    }
   }
 
   /** 포인터 아래 요소의 CSS cursor — 패널이 입력란 위에서 I 자, 링크 위에서 손 모양을 보여 주기 위해 묻는다. */
