@@ -409,8 +409,13 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             event.stopPropagation();
             closeModeTools();
             // 되돌아오는 포커스는 진입이 아니다 — 세그먼트의 onFocus가 캡슐을 다시 열지 않게 한다.
-            suppressNextFocusOpenRef.current = true;
-            modeSwitchRef.current?.querySelector<HTMLButtonElement>('.command-band-mode-seg[aria-pressed="true"]')?.focus();
+            // 포커스가 이미 세그먼트에 있으면 focus()가 이벤트를 내지 않으므로 플래그를 세우지 않는다 —
+            // 세워 두면 다음에 Tab으로 진짜 돌아올 때 한 번 삼켜진다.
+            const activeSegment = modeSwitchRef.current?.querySelector<HTMLButtonElement>('.command-band-mode-seg[aria-pressed="true"]');
+            if (activeSegment && document.activeElement !== activeSegment) {
+              suppressNextFocusOpenRef.current = true;
+              activeSegment.focus();
+            }
           }}
         >
           <SegmentedThumb />
