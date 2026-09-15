@@ -139,6 +139,8 @@ export interface AgentChatSessionSeed {
    * (세션 관찰)은 이 자리로 같은 신호를 받는다.
    */
   readonly onTurnEnded?: () => void;
+  /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Console Use·Computer Use)이 여기서 내려간다. */
+  readonly onTurnSettled?: () => void;
   /**
    * 턴이 닫힐 때 transcript의 마지막 cwd로 위치 보고를 보정한다. 실행별 hook 바인딩이
    * 있으면 그 바인딩을 통해 보고하고, 없는 호출자는 이 콜백을 쓴다.
@@ -2047,6 +2049,7 @@ class AgentChatSession {
     if (session) this.requestContextSnapshot(session, "end");
     // 자식이 실제로 돈 턴만 알린다 — 자식에 닿기 전에 닫힌 턴은 transcript에 아무것도 더하지 않았다.
     if (reachedChild && end.stopped !== true) this.seed.onTurnEnded?.();
+    if (reachedChild) this.seed.onTurnSettled?.();
     // 자식에 닿은 턴은 중단됐어도 cwd를 옮겼을 수 있다 — 자식과 그 작업은 중단을 넘어 살아 있으므로
     // 위치 동기화는 턴의 결말과 무관하게 한다.
     if (reachedChild && this.seed.onCwdChanged) void this.reportTranscriptCwd();

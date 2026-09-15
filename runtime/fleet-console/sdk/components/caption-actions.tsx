@@ -73,12 +73,12 @@ export function CaptionComputerUseGlyph() {
 }
 
 /** 브라우저 사용 — 창 + 주소 표시줄 한 선. 탭·지구본 없이도 14px에서 브라우저로 읽힌다. */
+/** 브라우저는 지구본 — 「Use」 계열(창+포인터)과 갈라 놓아야 세 기능이 한눈에 구분된다. 포인터는 없다. */
 export function CaptionBrowserUseGlyph() {
   return (
     <CaptionGlyph>
-      <path d={USE_WINDOW} {...STROKE} />
-      <path d="M2.1 6.2h11.8" {...STROKE} />
-      <UsePointer />
+      <circle cx="8" cy="8" r="5.6" {...STROKE} />
+      <path d="M2.4 8h11.2M8 2.4c2 2 2 9.2 0 11.2M8 2.4c-2 2-2 9.2 0 11.2" {...STROKE} />
     </CaptionGlyph>
   );
 }
@@ -192,6 +192,8 @@ export interface CaptionActionButtonProps {
   readonly pending?: boolean;
   /** 크로스 번들 DOM 계약(`data-chat-tour`)을 이 버튼에 세운다. */
   readonly tourAnchor?: string;
+  /** 에이전트가 이 면을 쓰는 중 — 버튼 자체가 표식이 된다(agent-control 채널 채움 + 퍼지는 링). */
+  readonly agent?: boolean;
   /**
    * 이 동작이 무엇인지 밴드에게 알리는 이름(`data-caption-action`). 좁은 밴드에서 무엇이 먼저
    * 물러나는지는 폭을 아는 쪽 — 즉 밴드의 CSS — 가 정하고, 이 이름이 그 규칙의 손잡이다.
@@ -210,9 +212,10 @@ export function CaptionActionButton({
   pending = false,
   tourAnchor,
   actionId,
+  agent = false,
   onClick,
 }: CaptionActionButtonProps) {
-  const className = `fleet-caption-action${pending ? " is-pending" : ""}`;
+  const className = `fleet-caption-action${pending ? " is-pending" : ""}${agent ? " is-agent" : ""}`;
   return (
     <CaptionTipHost label={label}>
       <button

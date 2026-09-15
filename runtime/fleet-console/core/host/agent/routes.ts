@@ -62,6 +62,11 @@ interface AgentRouteDeps {
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
   readonly onTurnEnded?: (operationId: string) => void;
+  /**
+   * 턴이 어떤 결말로든 멈췄다 — 정상 종료·중단·PTY 의 작업 신호 소실 모두. 여러 경로에서 겹쳐 불릴 수 있으므로
+   * 받는 쪽은 멱등이어야 한다. 에이전트 사용 표식을 내리는 자리다.
+   */
+  readonly onTurnSettled?: (operationId: string) => void;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -156,10 +161,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
   const computerUseMcp = ctx.host.computerUseMcp?.connect();
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
+  const browserMcp = ctx.host.browserMcp?.connect();
+  if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
   const aiGatewayMcp = ctx.host.aiGatewayMcp.connect();
   ctx.host.lifecycle.registerCleanup(() => aiGatewayMcp.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : [])],
+    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
@@ -246,8 +253,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         cliId,
         cwdBasename: session.cwdLabel,
         onActivity: (modelActivity) => {
+          const before = observability.getTerminalSessionInfo(sessionId)?.modelActivity;
           const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
           if (updated) observability.notifySessionUpdated(updated);
+          // Stop hook 은 사람이 Esc 로 끊은 턴에는 오지 않는다 — PTY 의 작업 신호가 꺼지는 순간이 그 턴의 결말이다.
+          if (before === "working" && modelActivity !== "working") deps.onTurnSettled?.(sessionId);
         },
       });
       oscActivityTrackers.set(sessionId, tracker);
@@ -1620,7 +1630,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
-        cancelComputerUse: () => computerUseMcp?.cancelSession(mcpTokenLabel),
+        cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.
         // 새로 태어나는 세션은 Operation id를 그대로 Claude 세션 id로 못박아, Operation의
@@ -1644,6 +1654,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
         // 채팅 턴의 끝은 Stop hook 대신 세션이 직접 알린다 — 세션 관찰이 두 얼굴 모두에서 돈다.
         onTurnEnded: () => deps.onTurnEnded?.(node.id),
+        onTurnSettled: () => deps.onTurnSettled?.(node.id),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
         bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,
@@ -1699,6 +1710,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (turnState === "running") consoleTerminal.start(sessionId, body?.input);
       else {
         computerUseMcp?.cancelSession(sessionId);
+        browserMcp?.cancelSession(sessionId);
         void consoleTerminal.end(sessionId, body?.input).catch(() => consoleTerminal.cancel(sessionId));
       }
     }
@@ -1721,6 +1733,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (turnState === "ended") {
       scheduleIdentityRefresh(sessionId);
       deps.onTurnEnded?.(sessionId);
+      deps.onTurnSettled?.(sessionId);
     }
     return true;
   }

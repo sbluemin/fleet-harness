@@ -20,7 +20,7 @@ import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../shor
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
@@ -313,6 +313,9 @@ export function QuickLaunch() {
       mentionSeedRef.current = null;
       consumeQuickLaunchMentionSeed();
       discardComposerContents();
+      // 시드와 함께 온 초안은 새 회차의 첫 문장이다 — 폐기 뒤에 싣는다.
+      const seededDraft = consumeQuickLaunchMentionDraft();
+      if (seededDraft !== null) { promptRef.current = seededDraft; setPrompt(seededDraft); }
       return resolveMentionEntry(getState(), messageableTypesByPluginRef.current, seed);
     }
     if (input.addressFocused && shouldApplyFocusedMention({

@@ -5048,6 +5048,65 @@ body[data-side-bar-animating="true"] .canvas-operation {
   --focus-ring-top: -1px;
 }
 
+/* 에이전트가 Console Use·Computer Use 로 이 Operation 을 쓰는 동안 — 본문 안쪽 2px 를 채널 색의 빛이 한 바퀴씩 돌고
+   캡션 밴드가 같은 색으로 물든다. 브라우저 companion 의 표현과 한 벌이다. 표식은 캡션 배지(플러그인 소유)가
+   서 있는 동안이며, `:has()` 로 읽는다 — 크로스 번들 클래스 계약(.agent-control-badge.is-console / .is-computer).
+   프레임 rim 은 중립 그대로다: 빛은 본문(.canvas-operation-terminal) 안쪽에 두르므로 포커스 도착 링과 자리를
+   나누지 않는다. 덱 카드도 같은 본문 요소를 가지므로 한 규칙으로 통한다. */
+@property --agent-ring-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge.is-console:not(.is-leaving)),
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge.is-computer:not(.is-leaving)) {
+  --agent-ring-color: var(--agent-control-badge);
+}
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge.is-console:not(.is-leaving)) {
+  --agent-ring-color: var(--console-use-badge);
+}
+/* 브라우저 사용은 companion 이 열려 있으면 companion 이 빛을 지고(버튼은 aria-pressed=true), 닫혀 있으면 Operation 본문이
+   같은 빛으로 말한다. 덱 카드에는 companion 이 없으므로 언제나 카드 본문이 진다. */
+.canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])),
+.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) {
+  --agent-ring-color: var(--agent-control-badge);
+}
+.canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])) > .canvas-operation-terminal::before,
+.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) > .canvas-operation-terminal::before,
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-terminal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  padding: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(from var(--agent-ring-angle), var(--agent-ring-color) 0 18%, color-mix(in oklch, var(--agent-ring-color) 30%, transparent) 28% 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: agent-ring-sweep 2.4s linear infinite;
+}
+.canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])) > .canvas-operation-titlebar,
+.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) > .canvas-operation-titlebar,
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-titlebar {
+  background: linear-gradient(90deg, color-mix(in oklch, var(--agent-ring-color) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%);
+}
+@keyframes agent-ring-sweep { to { --agent-ring-angle: 360deg; } }
+/* 에이전트 사용 표현이 도는 동안 기존 상태 레일(turn 왕복·background 흐름·awaiting 맥동·unseen 잔광)은 쉰다 —
+   같은 캡션에 두 운동이 겹치면 어느 쪽도 읽히지 않는다. 표식이 내려가면 레일이 자기 전이(opacity)로 돌아온다. */
+.canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-titlebar::after,
+.canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])) > .canvas-operation-titlebar::after,
+.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) > .canvas-operation-titlebar::after {
+  animation: none;
+  opacity: 0;
+}
+/* companion 이 열려 있으면 Operation 은 자기 상태 레일을 그대로 말한다 — 빛은 companion 이 지고 버튼의 링만 남는다. */
+/* 덱 카드의 캡션 액션은 표식만 남긴다 — 에이전트 사용 배지와 「사용 중」인 브라우저 버튼. 나머지(열기·전환·관찰 말풍선)는
+   카드에서 누를 수 없으므로 그리지 않고, 남은 버튼도 포인터를 받지 않는다. */
+.canvas-operation.is-deck-tile .canvas-operation-caption-actions > :not(.agent-operation-marks):not(:has(.fleet-caption-action.is-agent)) { display: none; }
+.canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action:not(.is-agent) { display: none; }
+.canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action.is-agent { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-terminal::before { animation: none; background: var(--agent-ring-color); }
+}
+
 @keyframes panel-focus-arrive {
   0% {
     opacity: 0;
@@ -7613,6 +7672,31 @@ body[data-side-bar-animating="true"] .canvas-operation {
   cursor: default;
   opacity: 0.42;
 }
+
+/* 에이전트가 쓰는 중 — 별도 배지 대신 그 기능의 버튼이 표식이 된다. 채움은 agent-control 채널, 링은 바깥으로
+   퍼져 사라진다. 위치(brass, aria-pressed)보다 뒤에 서서 이긴다: 사람이 열어 둔 채 에이전트가 쓰는 순간이 더 급하다. */
+.fleet-caption-action.is-agent,
+.fleet-caption-action.is-agent[aria-pressed="true"] {
+  position: relative;
+  color: var(--agent-control-badge-ink);
+  background: var(--agent-control-badge);
+  border-color: var(--agent-control-badge);
+}
+.fleet-caption-action.is-agent::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: calc(var(--radius-xs) + 3px);
+  border: 2px solid var(--agent-control-badge);
+  opacity: 0;
+  pointer-events: none;
+  animation: fleet-caption-agent-halo 1.6s ease-out infinite;
+}
+@keyframes fleet-caption-agent-halo {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .fleet-caption-action.is-agent::before { animation: none; opacity: 0.35; } }
 
 /* 진행 표시는 aurora(상태 채널) 점 하나다 — brass(위치)와 겹치지 않으므로 열린 버튼 위에서도
    무엇이 도는지 따로 읽힌다. */
@@ -14742,6 +14826,95 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* ── Reusable feature tour ──────────────────────────────────────────────── */
 
+/* Operation Browser 소개 카드 — What's New가 닫힌 뒤에만 뜨는 1회성. 이미지가 가운데, 문구가 하단,
+   확인이 유일한 포커스 정거장이다. 유리 채널을 그대로 입는다(.whatsnew-card 와 같은 계약). */
+.browser-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+}
+
+.browser-welcome-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  cursor: default;
+}
+
+.browser-welcome-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+  width: min(440px, 100%);
+  padding: var(--space-5);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
+  text-align: center;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.browser-welcome-art {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+}
+
+.browser-welcome-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.browser-welcome-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  text-wrap: balance;
+}
+
+.browser-welcome-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.browser-welcome-copy .browser-welcome-next {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.browser-welcome-confirm {
+  justify-self: center;
+  padding: 8px 22px;
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.browser-welcome-confirm:hover {
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
+}
+
 .feature-tour-layer {
   position: fixed;
   inset: 0;
@@ -14790,6 +14963,23 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   color: var(--text-secondary);
   font-size: var(--t-md);
   line-height: 1.55;
+}
+
+/* 예시 문장 — 상자 없이 본문과 같은 결로, 안내 한 줄 아래 프롬프트만 기울이고 굵게. */
+.feature-tour-card .feature-tour-example {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+}
+.feature-tour-card .feature-tour-example-lead {
+  display: block;
+}
+.feature-tour-card .feature-tour-example em {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-style: italic;
+  font-weight: var(--weight-bold);
 }
 
 .feature-tour-progress {

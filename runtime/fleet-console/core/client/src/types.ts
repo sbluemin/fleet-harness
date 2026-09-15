@@ -559,6 +559,8 @@ export interface ConsoleState {
   // 전이(모달)·펼침(도킹)에서 한 번 읽고 비운다 — 남겨 두면 다음 열림이 지난 행선지를 되쓴다.
   // 시드가 있는 열림은 남은 초안을 복원하지 않는다. 닫힘의 미룸은 Mod+J 같은 일반 재오픈에만 산다.
   readonly quickLaunchMentionSeed: string | null;
+  /** 멘션 시드와 함께 실리는 초안 — 시드가 주소를 잡은 직후 문면으로 들어간다(브라우저 첨부 등 플러그인 인용). */
+  readonly quickLaunchMentionDraft: string | null;
   // 고정을 잠시 접어 두는 화면(설정처럼 실행이 할 일이 아닌 표면). 고정 자체는 유지되므로 화면을
   // 벗어나면 도킹이 그대로 돌아오고, 그동안 컴포저는 예전처럼 모달로만 열린다.
   readonly quickLaunchDockSuppressed: boolean;

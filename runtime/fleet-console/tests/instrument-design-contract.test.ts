@@ -2121,6 +2121,7 @@ describe("Instrument core design contract", () => {
     // directly on a popup is a regression: that surface would escape the gates.
     const componentsPopupSelectors = [
       ".whatsnew-card",
+      ".browser-welcome-card",
       ".commissioning-card",
       ".control-curtain-card",
       ".control-reclaimed-card",
@@ -4497,9 +4498,12 @@ describe("War Room deck panel grammar", () => {
     // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 컨트롤은 눌러도 동작하지 않는다.
     // 무대에 오른 패널은 is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다.
     const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
-    // 분석가·전환·읽기 폭은 캡션 선반으로 옮겨 갔고, 카드에서는 호스트가 그 선반을 아예 넘기지
-    // 않는다 — CSS로 감추는 것이 아니라 태어나지 않는다.
-    expect(canvas).toContain("descriptor.captionActions === undefined || options.deckSlot !== null ? null");
+    // 분석가·전환·읽기 폭은 캡션 선반으로 옮겨 갔다. 카드에도 선반은 넘기되(에이전트 사용 표식이 카드에서도
+    // 서야 한다) CSS가 표식이 아닌 컨트롤을 감춘다 — 카드의 캡션은 조작면이 아니라 표식면이다.
+    expect(canvas).toContain("captionActions={descriptor.captionActions === undefined ? null");
+    const componentsCss = fs.readFileSync(fileURLToPath(new URL("../core/client/src/styles/components.css", import.meta.url)), "utf8");
+    expect(componentsCss).toContain(".canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action:not(.is-agent) { display: none; }");
+    expect(componentsCss).toContain(".canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action.is-agent { pointer-events: none; }");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
     // 카드뷰에서는 컴포저가 스트립조차 서지 않는다 — 입력은 무대에 올라야 가능한 행동이다.

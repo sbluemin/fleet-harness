@@ -84,4 +84,9 @@ export interface ConsoleUseMcpHost {
      */
     readonly operationCallers?: boolean;
   }): ConsoleUseMcpConnection;
+  /**
+   * 한 Operation 이 호출자로서 열어 둔 Console Use 세션을 닫는다 — 그 Operation 의 턴이 끝났을 때 호스트가
+   * 부른다. 실행한 하위 Operation 은 그대로 살고, 「사용 중」 표식만 턴과 함께 내려간다.
+   */
+  endOperationUse?(operationId: string): void;
 }

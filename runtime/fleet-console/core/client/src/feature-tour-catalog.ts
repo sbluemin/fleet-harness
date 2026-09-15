@@ -7,6 +7,8 @@ export interface FeatureTourStep {
   readonly anchor: string | null;
   readonly titleKey: string;
   readonly bodyKey: string;
+  /** 사용법을 한 문장으로 보여 주는 예시(프롬프트 등). 본문 아래 강조 상자로 선다. */
+  readonly exampleKey?: string;
 }
 
 export interface FeatureTour {
@@ -150,6 +152,23 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         anchor: '[data-operation-launch-kind="claude"]',
         titleKey: "featureTour.claudeOperations.step3Title",
         bodyKey: "featureTour.claudeOperations.step3Body",
+      },
+    ],
+  },
+  {
+    id: "operation-browser",
+    // 앵커는 Operation 캡션의 브라우저 문 — 에이전트 Operation 이면 늘 있으므로 첫 캡션에서 뜬다.
+    // 덱 카드의 캡션은 그 버튼을 숨기고 최소화·숨김 패널의 캡션은 보이지 않으므로, 펼쳐진 무대의 캡션만 짚는다.
+    // 소개 카드(OperationBrowserWelcome)가 떠 있는 동안은 모달 규칙으로 기다렸다가, 닫히면 사용법을 이어받는다.
+    // 첫 방문의 모드 투어와 겹치지 않게 한 박자 미룬다.
+    spotlight: null,
+    deferAfterAnotherTour: true,
+    walkthrough: [
+      {
+        anchor: '.canvas-operation:not(.is-deck-tile):not(.is-minimized) [data-chat-tour="browser"]',
+        titleKey: "featureTour.operationBrowser.step1Title",
+        bodyKey: "featureTour.operationBrowser.step1Body",
+        exampleKey: "featureTour.operationBrowser.step1Example",
       },
     ],
   },

@@ -22,6 +22,7 @@ import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import type { ChatConsoleCommand } from "./composer-deck.js";
 import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
+import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
 
 /**
  * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 Quick Launch).
@@ -408,6 +409,18 @@ export function AgentChatComposer({
         });
     }
   }, []);
+
+  // 수신함 — Operation Browser 가 맡긴 스크린샷을 붙여넣기와 같은 길로 이 컴포저에 세운다. 보내지는 않는다.
+  React.useEffect(() => {
+    const take = () => {
+      const entries = drainComposerInbox(context.operationId);
+      if (entries.length === 0) return;
+      addFiles(entries.flatMap((entry) => entry.files));
+      inputRef.current?.focus();
+    };
+    take();
+    return subscribeComposerInbox(context.operationId, take);
+  }, [context.operationId, addFiles]);
 
   const removeAttachment = React.useCallback((key: string) => {
     const target = attachmentsRef.current.find((attachment) => attachment.key === key);

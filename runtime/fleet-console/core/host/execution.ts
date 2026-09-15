@@ -82,11 +82,17 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });
   const runtime = createTerminalRuntime(ctx);
+  // Operation Browser 의 스크린샷 첨부 — 패널이 OS 클립보드에 올린 이미지를 터미널 CLI 가 읽도록 Ctrl+V 한 번을
+  // PTY 에 넣는다. 줄 종결자는 없다(보내는 순간은 사람이 정한다).
+  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((operationId) => runtime.write(operationId, "\u0016"));
+  if (unbindBrowserPaste) ctx.host.lifecycle.registerCleanup(unbindBrowserPaste);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
   ctx.host.lifecycle.registerCleanup(() => runtime.stop());
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
     if (!isOperationDeletedEvent(payload) || payload.pluginId !== null) return;
     runtime.terminate(payload.operationId);
+    // 브라우저 컨텍스트(탭·쿠키)도 Operation 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
+    ctx.host.browserMcp?.revokeOperation(payload.operationId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
   /**
@@ -110,7 +116,11 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
       origin: () => ctx.host.server.origin(),
       compactHookToken: aiGatewayRuntime.compactHookToken,
     },
+    // 턴의 끝은 브라우저의 에이전트 사용 세션도 닫는다 — 호출 단위가 아니라 턴 단위로 「사용 중」이 켜져 있게.
     onTurnEnded: (operationId) => sessionWatch.onTurnEnded(operationId),
+    // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
+    // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
+    onTurnSettled: (operationId) => { ctx.host.browserMcp?.endAgentSession(operationId); ctx.host.computerUseMcp?.revokeOperation(operationId); ctx.host.consoleUse.endOperationUse?.(operationId); },
   });
   return agentLaunchKinds;
 }

@@ -1540,7 +1540,9 @@ function renderPluginOperation(operation: OperationNode, options: {
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}
-        captionActions={descriptor.captionActions === undefined || options.deckSlot !== null ? null : (
+        // 덱 카드에도 그린다 — 카드의 캡션은 조작면이 아니라 표식면이며, 무엇을 남길지는 CSS(.is-deck-tile)가
+        // 정한다: 에이전트 사용 배지와 「사용 중」인 브라우저 버튼만 남고 나머지 액션은 숨는다.
+        captionActions={descriptor.captionActions === undefined ? null : (
           // 본문과 같은 context로 그린다 — 캡션이 본문과 다른 사실을 말하는 프레임이 나오지 않게.
           // 실패해도 32px 밴드에 오류 상자를 세울 자리는 없으므로, 선반만 조용히 비운다.
           // (fallback을 생략하거나 null로 두면 `??`가 기본 오류 상자를 되살린다 — 빈 조각이라야 빈다.)
