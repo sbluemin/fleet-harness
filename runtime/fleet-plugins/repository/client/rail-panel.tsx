@@ -893,8 +893,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
-          {/* 탐색은 소스 트리, Git 실행은 도구막대, 기록 필터는 목록 머리에 둔다. */}
+          {/* 탐색은 소스 트리, Git 실행과 기록 필터는 한 도구막대에 둔다. */}
           <div className="repository-workbar">
+            {/* 기록 필터·정렬·새로고침은 도구막대 왼쪽에, 원격 동사는 오른쪽에 — 한 줄로 합쳐 세로 공간을 아낀다. */}
+            <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
             <span ref={verbClusterRef} className="repository-verb-cluster" onKeyDown={(event) => {
               // 메뉴가 열린 채의 Escape는 메뉴만 닫는다 — 전파되면 표면 전체가 닫힌다.
               if (event.key !== "Escape" || !verbMenuOpen) return;
@@ -924,7 +926,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
               {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
             </span>
           </div>
-          <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${graphScope}`} cacheScope={`${ctx.theaterId ?? ""}:${graphScope}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} landingSeq={historyLandingSeq} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
           </div>
