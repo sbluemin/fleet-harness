@@ -237,6 +237,7 @@ export function TriageSideBar({
         isCloseArmed={armedCloseId === entry.operation.id}
         accentValue={accentKey ? resolveAccentColor(accentKey) : null}
         groupMark={entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null}
+        groupBadge={false}
         theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
         statusAxis
         statusLanded={shelf === "none" && statusLandingIds.has(entry.operation.id)}
