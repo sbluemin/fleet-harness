@@ -41,7 +41,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
-    <>
     <section className="global-settings-card" aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
@@ -124,29 +123,5 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
       </div>
       <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} />
     </section>
-    {/* 사이드바 카드 — 모델이 없는 실험이라 스위치 하나만 선다. 켜야만 서버가 git을 읽는다. */}
-    <section className="global-settings-card" aria-label={t("settings.experiments.sidebarCard")}>
-      <h3 className="global-settings-card-title">
-        {t("settings.experiments.sidebarCard")}
-        <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
-      </h3>
-      <div className="global-settings-row experiments-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.experiments.operationContext.title")}
-            <SettingsHelp title={t("settings.experiments.operationContext.title")}>{t("settings.experiments.operationContext.help")}</SettingsHelp>
-          </p>
-        </div>
-        <div className="experiments-row-controls">
-          <SettingsToggle
-            checked={experiments.operationContext}
-            disabled={saving}
-            ariaLabel={t("settings.experiments.operationContext.title")}
-            onChange={(next) => save({ ...experiments, operationContext: next })}
-          />
-        </div>
-      </div>
-    </section>
-    </>
   );
 }

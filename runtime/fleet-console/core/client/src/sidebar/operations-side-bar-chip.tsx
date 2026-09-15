@@ -7,7 +7,6 @@ import { useConsoleLocale } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
 import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../components/operation-workspace-context.js";
-import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useTheaterLabel } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
@@ -125,16 +124,14 @@ export function OperationsSideBarChip({
   // 지므로 칩에 배지를 세우지 않고, 접근성 이름에만 소속 Theater를 싣는다. 기존 aria 키의
   // groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
-  // "지금 어디" 축 — 실험 기능이 켜진 동안 서버가 세션 DTO에 실어 보내는 투영이다. 칩이 그리는 것은
-  // 브랜치 한 조각뿐이고, 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
+  // "지금 어디" 축 — 서버가 세션 DTO에 실어 보내는 투영이다. 칩이 그리는 것은 브랜치 한 조각뿐이고,
+  // 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
   const session = useAgentState().sessions[operation.id];
   const context = visibleWorkspace(session?.workspace);
   const chipContext = chipWorkspace(context);
   const workspaceContext = context ? describeWorkspace(t, context) : "";
-  // 상세 카드는 위치 축과 같은 실험 아래에서만 뜬다 — 칩이 폴더를 내려놓는 것과 같은 스위치다.
   // 상태에 담는 것은 칩의 자리뿐이다: 내용을 스냅샷으로 얼려 두면 열어 둔 채 활동이나 작업 폴더가
   // 바뀌었을 때 카드가 지난 사실을 계속 말한다.
-  const detailEnabled = useGlobalSettingsStore().state?.experiments.operationContext === true;
   const [detailAnchor, setDetailAnchor] = useState<DOMRect | null>(null);
   const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailId = useId();
@@ -180,7 +177,7 @@ export function OperationsSideBarChip({
   // 끌고 있거나 닫기가 armed면 열지 않는다: 그 순간의 칩은 읽는 자리가 아니라 조작하는 자리다.
   // preview 칩이 내려놓는 것은 close·rename·accent 같은 조작 어포던스이지 읽을 거리가 아니다.
   // 폴더를 칩에서 내린 뒤로는 카드가 그 자리를 지므로, 여기서 막으면 미리보기만 위치를 잃는다.
-  const detailBlocked = !detailEnabled || rename.renaming || dragging || isCloseArmed;
+  const detailBlocked = rename.renaming || dragging || isCloseArmed;
   // 지연 타이머는 걸릴 때의 렌더를 붙들고 있다 — 기다리는 사이에 바뀐 차단 상태를 ref로 다시 본다.
   const detailBlockedRef = useRef(detailBlocked);
   detailBlockedRef.current = detailBlocked;
@@ -285,16 +282,7 @@ export function OperationsSideBarChip({
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
       aria-describedby={detailAnchor ? detailId : undefined}
-      /* 상세 카드가 뜨는 동안에는 네이티브 툴팁을 내려놓는다 — 두 개가 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
-      title={detailEnabled
-        ? undefined
-        : resumeOnActivate
-          ? t("sidebar.chip.resumeTitle")
-          : preview
-            ? t("sidebar.chip.previewTitle")
-            : active
-              ? t("sidebar.chip.activeTitle")
-              : t("sidebar.chip.idleTitle")}
+      /* 네이티브 툴팁은 세우지 않는다 — 겨누면 상세 카드가 뜨고, 둘이 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
       style={chipStyle}
       onClick={focus}
       onContextMenu={preview || !menuEnabled ? undefined : openAccent}
@@ -360,7 +348,7 @@ export function OperationsSideBarChip({
         ) : (
           <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
         )}
-        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={!detailEnabled} /> : null}
+        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {groupMark && statusAxis && groupBadge && !preview ? (

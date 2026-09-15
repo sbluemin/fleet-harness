@@ -12,9 +12,9 @@
  * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
  */
 
-export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "operationContext" | "computerUse";
+export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "computerUse";
 
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "operationContext", "computerUse"];
+export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "computerUse"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
@@ -44,11 +44,6 @@ export interface ConsoleExperimentSettings {
   readonly sessionWatchModel: string;
   /** 켜져 있는 동안 Console MCP 실행과 제한된 자동 운영을 포괄 승인한다. */
   readonly consoleControl: boolean;
-  /**
-   * 사이드바 Operation 칩이 브랜치와 Theater 기준 작업 폴더를 한 줄 더 싣는다. 켜야만 서버가 git을
-   * 읽고 HEAD를 감시한다 — 꺼진 Console은 이 축을 계산하지도 내보내지도 않는다.
-   */
-  readonly operationContext: boolean;
   /** 로컬 macOS의 Codex Computer Use broker. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   /** Wiki 초안 Cowork 대화의 모델·강도. 다음 턴부터 적용된다. */
@@ -77,7 +72,6 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   sessionWatch: false,
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   consoleControl: false,
-  operationContext: false,
   computerUse: false,
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   coworkEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
@@ -145,7 +139,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     sessionWatch: record.sessionWatch === true,
     sessionWatchModel: model("sessionWatch"),
     consoleControl: record.consoleControl === true,
-    operationContext: record.operationContext === true,
     computerUse: record.computerUse === true,
     coworkModel: aideModel("cowork"),
     coworkEffort: aideEffort("cowork"),
