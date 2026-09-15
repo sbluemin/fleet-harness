@@ -6,6 +6,7 @@ import { Select } from "@fleet-console/sdk/react/browser";
 import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
+import { themePolarity } from "../store.js";
 import "./browser-panel.css";
 
 /**
@@ -241,6 +242,18 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), 4000); return () => clearTimeout(timer); }, [info]);
 
+  // 페이지의 prefers-color-scheme 은 Console 테마 극성을 따른다 — 헤드리스 Chrome 이 OS 설정을 그대로 쓰면 라이트
+  // 테마에서도 사이트가 어둡게 뜬다. 에이전트가 resize_window 로 따로 정한 값은 테마가 바뀔 때까지 존중한다.
+  const polarity = themePolarity(context.theme);
+  const schemeSetBy = state?.viewport.setBy ?? null;
+  const schemeNow = state?.viewport.colorScheme ?? null;
+  React.useEffect(() => {
+    if (!state) return;
+    if (schemeNow === polarity) return;
+    if (schemeNow !== null && schemeSetBy === "agent") return;
+    void post(operationId, "viewport", { colorScheme: polarity, scale: deviceScale() });
+  }, [operationId, polarity, state !== null, schemeNow, schemeSetBy]);
+
   // 반응형 뷰포트 — 패널 크기가 곧 페이지 크기다. 프리셋이 잡혀 있으면 따라가지 않는다.
   React.useEffect(() => {
     const element = viewportRef.current;
@@ -310,13 +323,24 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     return body.element;
   };
 
+  const [pageCursor, setPageCursor] = React.useState("default");
+  const lastCursorProbe = React.useRef(0);
   const onMouseMove = (event: React.MouseEvent) => {
     const now = performance.now();
     if (mode !== "none") return;
     if (now - lastMove.current < 33) return;
     lastMove.current = now;
     const p = point(event);
-    if (p) send({ kind: "mouse", type: "move", ...p, ...mods(event) });
+    if (!p) return;
+    // 120ms 마다 한 번은 포인터 아래 요소의 커서를 물어 패널 커서에 비춘다 — 입력란 위에서 I 자, 링크 위에서 손.
+    const probe = now - lastCursorProbe.current > 120;
+    if (!probe) { send({ kind: "mouse", type: "move", ...p, ...mods(event) }); return; }
+    lastCursorProbe.current = now;
+    void post(operationId, "input", { kind: "mouse", type: "move", ...p, ...mods(event), cursor: true }).then(async (response) => {
+      if (!response.ok) return;
+      const body = await response.json() as { cursor?: string };
+      setPageCursor(body.cursor && body.cursor !== "auto" ? body.cursor : "default");
+    }).catch(() => undefined);
   };
   const onMouseDown = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -605,6 +629,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
             <img
               ref={imageRef}
               className="op-browser__frame"
+              style={mode === "none" ? { cursor: pageCursor } : undefined}
               src={`data:image/jpeg;base64,${shownFrame.data}`}
               alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
               draggable={false}

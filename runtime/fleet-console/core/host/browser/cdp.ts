@@ -62,7 +62,10 @@ export function locateChromium(env: NodeJS.ProcessEnv = process.env, platform: N
   // 빌드·코덱·브랜드라 사이트가 평범한 방문으로 본다.
   if (platform === "darwin") { for (const app of MAC_APPS) if (executable(app)) return { executable: app, source: "system" }; }
   else if (platform === "win32") {
-    const roots = [env["PROGRAMFILES"], env["PROGRAMFILES(X86)"], env.LOCALAPPDATA].filter((value): value is string => Boolean(value));
+    // Windows 의 env 키는 "ProgramFiles" 처럼 대소문자가 섞여 있고, 복사된 평범한 객체에서는 대소문자를 구분한다 —
+    // 이름을 대소문자 무시로 찾고, 없으면 관례 경로를 쓴다.
+    const envIgnoreCase = (name: string) => { const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name); return key ? env[key] : undefined; };
+    const roots = [envIgnoreCase("PROGRAMFILES") ?? "C:\\Program Files", envIgnoreCase("PROGRAMFILES(X86)") ?? "C:\\Program Files (x86)", envIgnoreCase("LOCALAPPDATA")].filter((value): value is string => Boolean(value));
     for (const root of roots) for (const app of WINDOWS_APPS) { const file = path.join(root, app); if (executable(file)) return { executable: file, source: "system" }; }
   } else {
     for (const dir of (env.PATH ?? "").split(path.delimiter)) for (const bin of LINUX_BINS) { const file = path.join(dir, bin); if (executable(file)) return { executable: file, source: "system" }; }
