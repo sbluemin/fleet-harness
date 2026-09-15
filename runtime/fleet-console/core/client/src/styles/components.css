@@ -13168,13 +13168,14 @@ body[data-codex-side="true"] .command-card {
   flex: none;
 }
 
-/* 슬롯 머리가 문서 이름과 닫기를 이미 말한다 — 리더의 옛 시트 머리는 그 아래에서
-   도구 줄로만 남는다(제목 중복 금지). */
+/* 페인에는 머리 줄이 없으므로 이 줄이 문서 이름(헤드라인)과 도구를 말하는 유일한 띠다.
+   오른쪽은 호스트의 부유 닫기가 앉는 자리만큼 비운다 — 아래 일반 규칙보다 이 규칙이 구체적이라
+   padding은 여기서 정해야 실제로 적용된다. */
 .codex-reading-body > .codex-reading-sheet-head {
   flex: 0 0 40px;
   height: 40px;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: 0 calc(var(--space-3) + var(--expanded-surface-float-inset, 0px)) 0 var(--space-3);
 }
 
 .codex-reading-sheet {
@@ -13218,8 +13219,7 @@ body[data-codex-side="true"] .command-card {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  /* 오른쪽은 호스트의 부유 닫기가 앉는 자리만큼 비운다. */
-  padding: 0 calc(var(--space-4) + var(--expanded-surface-float-inset, 0px)) 0 var(--space-4);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--surface-rim);
 }
 
