@@ -323,7 +323,22 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     if (mode !== "none") return;
     inputRef.current?.focus({ preventScroll: true });
     const p = point(event);
-    if (p) send({ kind: "mouse", type: "down", ...p, button: buttonName(event.button), clickCount: Math.max(1, event.detail), ...mods(event) });
+    if (!p) return;
+    send({ kind: "mouse", type: "down", ...p, button: buttonName(event.button), clickCount: Math.max(1, event.detail), ...mods(event) });
+    // 프레임 밖에서 손을 떼면 이미지의 onMouseUp 이 오지 않는다 — 창 단위로 한 번 받아 눌린 버튼을 풀어 준다.
+    const button = event.button;
+    const release = (up: MouseEvent) => {
+      if (up.button !== button) return;
+      window.removeEventListener("mouseup", release, true);
+      const image = imageRef.current;
+      if (!image || image.contains(up.target as Node)) return;
+      const factor = scale(); if (!factor) return;
+      const rect = image.getBoundingClientRect();
+      const x = Math.min(Math.max(up.clientX, rect.left), rect.right) - rect.left;
+      const y = Math.min(Math.max(up.clientY, rect.top), rect.bottom) - rect.top;
+      send({ kind: "mouse", type: "up", x: x * factor.x, y: y * factor.y, button: buttonName(button), clickCount: 1, ...mods(up) });
+    };
+    window.addEventListener("mouseup", release, true);
   };
   const onMouseUp = (event: React.MouseEvent) => {
     if (mode !== "none") return;

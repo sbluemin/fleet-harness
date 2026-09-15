@@ -317,7 +317,9 @@ export class BrowserService {
     finally {
       signal?.removeEventListener("abort", onAbort);
       op.agentCalls.delete(call);
-      this.touchAgentSession(op);
+      // 중단으로 끝난 호출은 세션을 다시 열지 않는다 — 「중단」이 지운 세션이 호출의 뒷정리로 되살아나면 안 된다.
+      if (!call.signal.aborted) this.touchAgentSession(op);
+      else this.emitState(op);
       this.scheduleIdle();
     }
   }
