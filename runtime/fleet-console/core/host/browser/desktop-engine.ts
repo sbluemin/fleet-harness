@@ -33,7 +33,7 @@ export class DesktopEngine implements CdpClient {
   private readonly views = new Map<string, ViewRecord>();
   private readonly placements = new Map<string, Placement>();
   private readonly pending = new Map<number, Pending>();
-  private readonly attachWaiters = new Map<string, { resolve: () => void; timer: ReturnType<typeof setTimeout> }>();
+  private readonly attachWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private readonly listeners = new Set<CdpListener>();
   private nextCommandId = 1;
   private generation = 0;
@@ -185,8 +185,8 @@ export class DesktopEngine implements CdpClient {
     this.views.set(id, { id, operationId: "", partition, url, attached: false, active: false, size: null });
     // Operation 은 컨텍스트 이름으로 안다 — 서비스가 컨텍스트를 Operation 마다 하나 만들기 때문이다.
     const attached = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => { this.attachWaiters.delete(id); this.dropView(id); this.publish(); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); }, ATTACH_TIMEOUT_MS);
-      this.attachWaiters.set(id, { resolve, timer });
+      const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
+      this.attachWaiters.set(id, { resolve, reject, timer });
     });
     this.publish();
     await attached;
@@ -203,8 +203,9 @@ export class DesktopEngine implements CdpClient {
 
   private dropView(id: string): void {
     if (!this.views.delete(id)) return;
+    // 부착을 기다리던 탭 생성도 여기서 끝난다 — 답 없이 남겨 두면 그 HTTP 요청이 영영 매달린다.
     const waiter = this.attachWaiters.get(id);
-    if (waiter) { clearTimeout(waiter.timer); this.attachWaiters.delete(id); }
+    if (waiter) { clearTimeout(waiter.timer); this.attachWaiters.delete(id); waiter.reject(new CdpError("Target.createTarget", -32000, "desktop_view_closed")); }
     this.failPendingFor(id, "desktop_view_closed");
   }
 

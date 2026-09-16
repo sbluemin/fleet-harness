@@ -69,9 +69,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
 
-  const scheduleFlush = (delay = RELAY_FLUSH_MS): void => {
+  const scheduleFlush = (): void => {
     if (flushTimer !== null) return;
-    flushTimer = setTimeout(() => { flushTimer = null; flush(); }, delay);
+    flushTimer = setTimeout(() => { flushTimer = null; flush(); }, RELAY_FLUSH_MS);
   };
 
   const flush = (): void => {
@@ -87,13 +87,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
     };
-    // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 그 배치를 맨 앞에 되돌려 놓고
-    // 잠시 뒤 다시 보낸다 — 부착 통지나 명령 응답 하나가 사라지면 콘솔은 시간 초과까지 기다리게 된다.
+    // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 같은 자리에서 잠시 뒤 다시
+    // 보낸다: 뒤에 줄 선 배치는 이 배치가 닿을 때까지 기다린다. 부착 통지나 명령 응답 하나가 사라지거나 순서가 뒤집히면
+    // 콘솔은 시간 초과까지 기다리거나 페이지 상태를 거꾸로 읽는다.
     flushing = flushing.then(async () => {
-      if (origin !== target) return;
-      if (await send(target, body)) return;
-      outbox = { attached: [...batch.attached, ...outbox.attached], detached: [...batch.detached, ...outbox.detached], sizes: [...batch.sizes, ...outbox.sizes], results: [...batch.results, ...outbox.results], events: [...batch.events, ...outbox.events] };
-      scheduleFlush(RELAY_RETRY_MS);
+      while (origin === target) {
+        if (await send(target, body)) return;
+        await new Promise((resolve) => setTimeout(resolve, RELAY_RETRY_MS));
+      }
     }).catch(() => undefined);
   };
 
