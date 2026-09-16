@@ -102,7 +102,15 @@ export interface ReadChromeCookiesOptions {
   readonly log?: (message: string) => void;
 }
 
-/** 프로필의 쿠키를 평문으로 읽는다. Chrome 이 실행 중이어도 파일 사본으로 읽으므로 방해하지 않는다. */
+/** 잠긴 파일과 없는 파일을 가른다 — Windows 는 실행 중인 Chrome 이 쿠키 DB 를 독점해 사본조차 만들지 못한다. */
+const LOCKED = new Set(["EBUSY", "EPERM", "EACCES", "ETXTBSY"]);
+
+/**
+ * 프로필의 쿠키를 평문으로 읽는다. 원본은 건드리지 않고 사본만 읽는다.
+ *
+ * macOS·Linux 는 Chrome 이 떠 있어도 사본을 뜰 수 있지만 Windows 는 아니다: 네트워크 서비스가 `Network/Cookies`
+ * 를 공유 없이 열어 두어 복사가 EBUSY 로 막힌다. 그때는 "DB 가 없다"가 아니라 "Chrome 을 닫아라"가 참이다.
+ */
 export async function readChromeCookies(options: ReadChromeCookiesOptions): Promise<ChromeCookie[]> {
   const chrome = options.executable ?? locateGoogleChrome();
   if (!chrome) throw new Error("chrome_required");
@@ -111,12 +119,18 @@ export async function readChromeCookies(options: ReadChromeCookiesOptions): Prom
   const temp = fs.mkdtempSync(path.join(options.tempRoot ?? os.tmpdir(), "fleet-browser-import-"));
   const log = options.log ?? (() => {});
   try {
-    fs.copyFileSync(path.join(source, "Local State"), path.join(temp, "Local State"));
+    // Windows 는 이 파일의 DPAPI 키로 쿠키를 푼다 — 없으면 헤드리스 Chrome 이 빈 값만 돌려준다.
+    try { fs.copyFileSync(path.join(source, "Local State"), path.join(temp, "Local State")); }
+    catch (error) { throw new Error(LOCKED.has((error as NodeJS.ErrnoException).code ?? "") ? "chrome_cookies_locked" : "chrome_cookies_missing"); }
     const target = path.join(temp, options.profileId);
     fs.mkdirSync(path.join(target, "Network"), { recursive: true });
     let copied = 0;
-    for (const file of COOKIE_FILES) { try { fs.copyFileSync(path.join(source, options.profileId, file), path.join(target, file)); copied += 1; } catch { /* 없는 파일 */ } }
-    if (copied === 0) throw new Error("chrome_cookies_missing");
+    let locked = false;
+    for (const file of COOKIE_FILES) {
+      try { fs.copyFileSync(path.join(source, options.profileId, file), path.join(target, file)); copied += 1; }
+      catch (error) { if (LOCKED.has((error as NodeJS.ErrnoException).code ?? "")) locked = true; /* 그 밖은 없는 파일 */ }
+    }
+    if (copied === 0) throw new Error(locked ? "chrome_cookies_locked" : "chrome_cookies_missing");
     const client = await launchHeadlessChrome({ executable: chrome, userDataDir: temp, profileId: options.profileId, env: options.env ?? process.env, log });
     try {
       const result = await client.send<{ cookies: ChromeCookie[] }>("Storage.getCookies", {});

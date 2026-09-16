@@ -284,6 +284,7 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
 export function BrowserCaption({ context }: { readonly context: OperationRenderContext }) {
   const t = getT(context.language ?? "en");
   const panel = useBrowserPanel(context.operationId);
+  const importUnavailable = document.documentElement.dataset.desktopPlatform === "win32";
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
@@ -303,7 +304,7 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
         ))}
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
       </div>
-      <button type="button" className="op-browser__icon" data-tip={t("terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!ready} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
+      <button type="button" className="op-browser__icon" title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined} data-tip={t(importUnavailable ? "terminal.browser.import.windowsPending" : "terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!ready || importUnavailable} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
       <div className="op-browser__viewport-menu">
         <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
           {presetGlyph(viewport?.preset ?? "responsive")}
@@ -579,6 +580,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
   // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Operation 의 세션에 넣는다 ----
   const openImport = async () => {
+    if (document.documentElement.dataset.desktopPlatform === "win32") return;
     try {
       const response = await fetch("/api/v1/browser/import-sources");
       if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }

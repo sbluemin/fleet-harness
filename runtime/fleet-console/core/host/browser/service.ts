@@ -67,6 +67,7 @@ const CHROME_IMPORT_FAILURES: Record<string, string> = {
   chrome_required: "Importing needs Google Chrome installed on the computer that shows this browser.",
   chrome_profile_not_found: "That Chrome profile no longer exists.",
   chrome_cookies_missing: "That Chrome profile has no cookie database.",
+  chrome_cookies_locked: "Google Chrome is holding its cookie database open. Quit Chrome on that computer, then import again.",
   chrome_import_invalid: "The Desktop shell rejected the import request.",
 };
 
