@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.96.1] - 2026-09-16
+
+### fleet-console
+
+#### Fixed
+- The Operation Browser preview no longer flickers while the page is idle, and its frames are sent at a higher quality so text and colors stay sharp at all times.
+- Import cookies from Google Chrome when Console runs in WSL and drives Windows Chrome, instead of being told Chrome is required.
+
 ## [1.96.0] - 2026-09-16
 
 ### fleet-console

@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.96.1] - 2026-09-16
+
+### fleet-console
+
+#### Fixed
+- Operation 브라우저 미리보기가 페이지가 멈춰 있을 때 깜빡이지 않고, 프레임을 더 높은 품질로 보내 글자와 색이 항상 선명합니다.
+- WSL에서 Windows Chrome을 엔진으로 쓸 때도 Google Chrome 쿠키를 가져올 수 있습니다. 이전에는 Chrome이 필요하다는 안내만 나왔습니다.
+
 ## [1.96.0] - 2026-09-16
 
 ### fleet-console
