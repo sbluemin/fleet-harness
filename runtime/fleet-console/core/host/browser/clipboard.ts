@@ -76,14 +76,25 @@ export async function writeImageToClipboard(png: Buffer, options: WriteImageClip
       await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(file)]);
       return;
     }
+    // WSL2 커널 위의 Linux 컨테이너도 /proc/version 에 microsoft 가 찍히지만 wslpath 도 상호운용도 없다 — Windows 길이
+    // 막히면 그 컨테이너가 갖춘 Linux 도구로 내려간다. 진짜 WSL 에서 PowerShell 이 실패한 까닭은 함께 남긴다.
+    let windowsFailure: string | null = null;
     if (isWsl(platform, env)) {
-      const windowsPath = (await run("wslpath", ["-w", file])).trim();
-      if (!windowsPath) throw new Error("wslpath returned no Windows path");
-      await run(wslPowershell(env), ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(windowsPath)]);
-      return;
+      try {
+        const windowsPath = (await run("wslpath", ["-w", file])).trim();
+        if (!windowsPath) throw new Error("wslpath returned no Windows path");
+        await run(wslPowershell(env), ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(windowsPath)]);
+        return;
+      } catch (error) { windowsFailure = error instanceof Error ? error.message : "wsl clipboard failed"; }
     }
     try { await run("xclip", ["-selection", "clipboard", "-t", "image/png", "-i", file]); }
-    catch { await run("wl-copy", ["--type", "image/png"], png); }
+    catch (xclipError) {
+      try { await run("wl-copy", ["--type", "image/png"], png); }
+      catch (wlError) {
+        const linux = `${xclipError instanceof Error ? xclipError.message : "xclip failed"}; ${wlError instanceof Error ? wlError.message : "wl-copy failed"}`;
+        throw new Error(windowsFailure ? `${windowsFailure}; ${linux}` : linux);
+      }
+    }
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
