@@ -1,6 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { Select } from "@fleet-console/sdk/react/browser";
 
 import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
@@ -18,8 +19,11 @@ import "./browser-panel.css";
  * 보인다. 브라우저 탭·모바일로 연 Console 에는 뷰가 없으므로 문이 닫혀 있다.
  *
  * 주석 도구 하나가 요소 댓글·펜·화살표·사각형을 품는다. 주석 모드에 들어가면 한 장을 찍어 그 위에 그리고 그동안 뷰는 감춘다.
- * 첨부는 스크린샷 한 장이고 붙여넣기로 간다: 이미지를 OS 클립보드에 올린 뒤, 채팅 Operation 이면 그 컴포저에 붙여넣은
- * 것처럼 칩을 세우고, 터미널 Operation 이면 서버가 CLI 에 Ctrl+V 를 눌러 준다. 보내는 것은 언제나 사람이다.
+ * 첨부는 스크린샷 한 장이고 붙여넣기로 간다: 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
+ * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다. 보내는 것은 언제나 사람이다.
+ *
+ * 로그인 상태는 창을 든 기계의 Google Chrome 프로필에서 쿠키로 가져올 수 있다 — Desktop 셸이 읽어 그 Operation 의
+ * 세션에만 넣는다.
  */
 
 interface TabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
@@ -30,6 +34,7 @@ interface BrowserState {
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
   readonly available: boolean; readonly reason: UnavailableReason | null;
 }
+interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
 interface ElementInfo { readonly ref?: string; readonly selector: string; readonly tag: string; readonly id: string | null; readonly classes: readonly string[]; readonly text: string; readonly role: string | null; readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly component: string | null; readonly source: string | null; readonly styles: Record<string, string> }
 
@@ -45,6 +50,16 @@ const base = (operationId: string) => `/api/v1/browser/operations/${encodeURICom
 
 async function post(operationId: string, action: string, body: Record<string, unknown>): Promise<Response> {
   return fetch(`${base(operationId)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+/** Blob → base64 본문. 데이터 URL 의 머리(`data:…;base64,`)를 뗀다. */
+function base64Of(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("read_failed"));
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.readAsDataURL(blob);
+  });
 }
 
 function useBrowserStream(operationId: string, enabled: boolean) {
@@ -161,6 +176,17 @@ const MonitorGlyph = () => glyph('<rect x="1.5" y="2.5" width="13" height="8.5" 
 const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.2h2"/>');
 const TabletGlyph = () => glyph('<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M7 12.4h2"/>');
 const ReloadGlyph = () => glyph('<path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 1v3M6.5 2.5 8 4l1.5-1.5"/>');
+const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d="M2.5 10.5V12A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5v-1.5"/>');
+/** Google Chrome 로고 — 브랜드 색은 브랜드의 것이라 토큰이 아닌 고정값이다. */
+const ChromeGlyph = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+    <circle cx="12" cy="12" r="11" fill="#ffffff" />
+    <path d="M12 1a11 11 0 0 1 9.53 5.5H12a5.5 5.5 0 0 0-4.76 2.75L3.47 4.7A11 11 0 0 1 12 1Z" fill="#db4437" />
+    <path d="M3.47 4.7 7.24 9.25a5.5 5.5 0 0 0 .96 6.3L4.1 20.1A11 11 0 0 1 3.47 4.7Z" fill="#0f9d58" />
+    <path d="M21.94 6.5a11 11 0 0 1-9.98 16.47 11 11 0 0 1-7.86-2.87l4.1-4.55a5.5 5.5 0 0 0 9.3-3.05h4.44Z" fill="#f4b400" />
+    <circle cx="12" cy="12" r="4.2" fill="#4285f4" stroke="#ffffff" strokeWidth="1.3" />
+  </svg>
+);
 const GlobeGlyph = () => glyph('<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>');
 
 /** 탭 아이콘 — 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
@@ -253,6 +279,7 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
         ))}
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
       </div>
+      <button type="button" className="op-browser__icon" data-tip={t("terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!ready} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
       <div className="op-browser__viewport-menu">
         <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
           {presetGlyph(viewport?.preset ?? "responsive")}
@@ -282,6 +309,9 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const [notice, setNotice] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<Mode>("none");
+  const [importSources, setImportSources] = React.useState<ImportSources | null>(null);
+  const [importProfile, setImportProfile] = React.useState("");
+  const [importing, setImporting] = React.useState(false);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const nativeRef = React.useRef<HTMLDivElement | null>(null);
   const imageRef = React.useRef<HTMLImageElement | null>(null);
@@ -329,7 +359,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     document.addEventListener("visibilitychange", measure);
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
-  }, [available, operationId, activeTab !== null, mode, context.bodyLive]);
+  // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
+  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
 
@@ -404,26 +435,23 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   // ---- 첨부 → 이 Operation 의 입력창 ----
   const chatMode = context.operation.payload.chatMode === true;
   /**
-   * 스크린샷을 OS 클립보드에 올리고 붙여넣는다. 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고,
-   * 터미널 Operation 이면 서버가 CLI 에 Ctrl+V 를 눌러 준다(CLI 가 클립보드의 이미지를 읽는다). 보내지는 않는다.
-   * 클립보드 쓰기는 사용자 제스처 직후여야 하므로 첫 await 가 이 호출이다.
+   * 스크린샷을 이 Operation 의 입력에 붙여넣는다. 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
+   * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 이미지를 올린 뒤 Ctrl+V 를 눌러 준다 — 렌더러의 클립보드는
+   * 창을 든 기계의 것이라 원격 콘솔이면 엉뚱하고, 같은 기계여도 키보다 늦게 실려 CLI 가 빈 클립보드를 읽었다. 보내지는 않는다.
    */
   const deliver = async (kind: "annotation" | "screenshot", blob: Blob): Promise<boolean> => {
     setBusy(true); setNotice(null);
     try {
-      let onClipboard = false;
-      try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); onClipboard = true; } catch { onClipboard = false; }
       if (chatMode) {
         pushComposerInbox(operationId, { files: [new File([blob], `browser-${kind}-${Date.now()}.png`, { type: "image/png" })] });
         setInfo(t("terminal.browser.deliveredChat"));
         return true;
       }
-      if (!onClipboard) { setNotice(t("terminal.browser.clipboardFailed")); return false; }
-      const response = await post(operationId, "paste", {});
+      const response = await post(operationId, "paste", { data: await base64Of(blob) });
       if (!response.ok) {
         let code: string | null = null;
         try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
-        setNotice(code === "terminal_not_running" ? t("terminal.browser.terminalNotRunning") : t("terminal.browser.requestFailed"));
+        setNotice(code === "terminal_not_running" ? t("terminal.browser.terminalNotRunning") : code === "clipboard_failed" ? t("terminal.browser.clipboardFailed") : t("terminal.browser.requestFailed"));
         return false;
       }
       setInfo(t("terminal.browser.deliveredTerminal"));
@@ -525,6 +553,25 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); const width = imageRef.current?.clientWidth ?? 0; return { left: Math.max(8, Math.min(at.left - 14, width - 328)), top: at.top + 18 }; };
 
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
+  // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Operation 의 세션에 넣는다 ----
+  const openImport = async () => {
+    try {
+      const response = await fetch("/api/v1/browser/import-sources");
+      if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
+      const sources = await response.json() as ImportSources;
+      if (!sources.available) { setNotice(sources.reason === "no_profiles" ? t("terminal.browser.import.noProfiles") : t("terminal.browser.import.chromeRequired")); return; }
+      setImportProfile(sources.profiles[0]?.id ?? "");
+      setImportSources(sources);
+    } catch { setNotice(t("terminal.browser.requestFailed")); }
+  };
+  const runImport = async () => {
+    if (!importProfile) return;
+    setImporting(true);
+    try {
+      const result = await run<{ cookies: number }>("import", { profileId: importProfile });
+      if (result) { setImportSources(null); setInfo(t("terminal.browser.import.done", { count: String(result.cookies) })); }
+    } finally { setImporting(false); }
+  };
   const toggleMode = (next: Mode) => setMode((current) => current === next ? "none" : next);
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
@@ -538,6 +585,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
         selectTab: (tabId) => { void run("tabs", { action: "select", tabId }); },
         closeTab: (tabId) => { void run("tabs", { action: "close", tabId }); },
         createTab: () => { void run("tabs", { action: "create" }); setEditingUrl(true); },
+        openImport: () => { void openImport(); },
         setViewport,
       },
     });
@@ -585,6 +633,29 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       </div>
       <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
         {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? <div className="op-browser__toast" role="status">{info}</div> : null}
+        {importSources ? (
+          <div className="op-browser__scrim" onClick={() => { if (!importing) setImportSources(null); }}>
+            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.import.title")} onClick={(event) => event.stopPropagation()}>
+              <div className="op-browser__dialog-head">
+                <div><h3>{t("terminal.browser.import.title")}</h3><p>{t("terminal.browser.import.body")}</p></div>
+                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} disabled={importing} onClick={() => setImportSources(null)}>×</button>
+              </div>
+              <label className="op-browser__dialog-row">
+                <span className="op-browser__dialog-key">{t("terminal.browser.import.source")}</span>
+                <span className="op-browser__dialog-brand" aria-hidden="true"><ChromeGlyph /></span>
+                <span className="op-browser__select"><Select label="Google Chrome" value={importProfile} disabled={importing} onChange={(value) => setImportProfile(value)} options={importSources.profiles.map((profile) => ({ value: profile.id, label: `${profile.name}${profile.account ? ` · ${profile.account}` : ""}` }))} /></span>
+              </label>
+              <div className="op-browser__dialog-item">
+                <span className="op-browser__dialog-glyph" aria-hidden="true"><GlobeGlyph /></span>
+                <span><strong>{t("terminal.browser.import.cookies")}</strong><span className="op-browser__help">{t("terminal.browser.import.cookiesHelp")}</span></span>
+              </div>
+              <div className="op-browser__dialog-actions">
+                <button type="button" className="op-browser__button" disabled={importing} onClick={() => setImportSources(null)}>{t("terminal.browser.import.cancel")}</button>
+                <button type="button" className="op-browser__button op-browser__button--primary" disabled={importing || !importProfile} onClick={() => void runImport()}>{importing ? t("terminal.browser.import.busy") : t("terminal.browser.import.run")}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {mode === "annotate" && shownFrame ? (
           // 찍은 한 장을 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면 줄인다.
           <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>

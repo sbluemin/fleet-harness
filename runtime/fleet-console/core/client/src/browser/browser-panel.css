@@ -116,8 +116,25 @@
 .op-browser__swatch--blue { background: var(--id-cerulean); }
 .op-browser__swatch--green { background: var(--id-moss); }
 .op-browser__swatch--black { background: var(--ink-abyss); }
-/* 가져오기 대화상자 — 뷰포트 위에 얹히는 시트. */
+/* 가져오기 대화상자 — 뷰포트 위에 얹히는 시트. 네이티브 뷰는 이 위에 그려지므로 패널이 그동안 뷰를 물러서게 한다. */
+.op-browser__scrim { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: oklch(0% 0 0 / 45%); padding: var(--space-4); }
+.op-browser__dialog { width: min(440px, 100%); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 16px 40px oklch(0% 0 0 / 45%); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.op-browser__dialog-head { display: flex; align-items: flex-start; gap: var(--space-2); }
+.op-browser__dialog-head > div { flex: 1; min-width: 0; }
+.op-browser__dialog h3 { margin: 0; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
+.op-browser__dialog p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--text-secondary); }
+.op-browser__dialog-row { display: flex; align-items: center; gap: var(--space-3); }
+.op-browser__dialog-brand { flex: none; display: inline-flex; }
+.op-browser__dialog-brand svg { width: 18px; height: 18px; }
+.op-browser__dialog-key { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
 /* 원본 선택은 SDK Select 그대로 — 여기서는 폭만 잡는다. 상자·테두리를 덧입히면 Select 의 자기 상자와 겹친다. */
+.op-browser__select { flex: 1; min-width: 0; }
+.op-browser__select .fc-select { width: 100%; }
+.op-browser__dialog-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ink-veil); border-radius: var(--radius-xs); font-size: var(--t-sm); color: var(--text-primary); }
+.op-browser__dialog-item strong { font-weight: var(--weight-medium); display: block; }
+.op-browser__dialog-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 2px; }
+.op-browser__dialog-glyph { flex: none; display: inline-flex; color: var(--text-secondary); }
+.op-browser__dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 /* 짧은 알림은 상태줄 대신 화면 아래에 떠 있다가 사라진다. */
 .op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--aurora-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .op-browser__toast.is-error { color: var(--coral-ink); }

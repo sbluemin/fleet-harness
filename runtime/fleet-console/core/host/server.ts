@@ -43,6 +43,7 @@ import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
 import { BrowserService, BrowserPolicyError, type BrowserAvailability } from "./browser/service.js";
+import { writeImageToClipboard } from "./browser/clipboard.js";
 import { createBrowserMcpHost } from "./mcp/browser.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -160,6 +161,8 @@ const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 /** Desktop 네이티브 뷰의 relay 는 스크린샷(base64)을 나른다 — 2배 표면의 PNG 도 넉넉히 들어간다. */
 const DESKTOP_BROWSER_RELAY_MAX_BYTES = 64 * 1024 * 1024;
+/** 패널이 붙여넣기로 보내는 스크린샷 PNG(base64). 뷰포트 최대 3840×2400 의 고엔트로피 PNG 는 base64 로 약 36 MiB 다. */
+const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
 /** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
@@ -417,7 +420,9 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the hosting Desktop shell must apply; other shells read an empty set.", category: "Desktop", gate: "origin-strict", transport: "http" },
   { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the attached Desktop shells; only the hosting shell receives views.", category: "Desktop", gate: "origin-strict", transport: "sse" },
   { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the hosting Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Press paste in a terminal Operation's CLI so it picks up the screenshot the panel placed on the clipboard.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Operation's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Operation's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
@@ -1128,7 +1133,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/browser", async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
-    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place)$/u.exec(pathname);
+    if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
+      if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
+      try { writeJson(res, 200, await browserService.importSources()); }
+      catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
+      return true;
+    }
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -1164,9 +1175,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    const body = await readJsonBody<Record<string, unknown>>(req);
+    const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : undefined);
     if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
+      if (action === "import") {
+        if (typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, await browserService.importFromChrome(operationId, body.profileId)); return true;
+      }
       if (action === "tabs") {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
         if (body.action === "create") { const tab = await browserService.createTab(operationId, typeof body.url === "string" ? body.url : null, "user"); writeJson(res, 200, { tab }); return true; }
@@ -1197,10 +1212,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         writeJson(res, 200, { element: await browserService.inspectAt(operationId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
       }
       if (action === "paste") {
-        // 사람이 패널에서 만든 스크린샷은 브라우저가 OS 클립보드에 올린다. 터미널 Operation 이면 서버가 그 CLI 에
-        // 붙여넣기(Ctrl+V)를 눌러 주는 것이 전부다 — CLI 가 클립보드의 이미지를 자기 첨부로 읽는다.
+        // 사람이 패널에서 만든 스크린샷을 이 기계의 OS 클립보드에 올린 뒤 터미널 Operation 의 CLI 에 붙여넣기(Ctrl+V)를
+        // 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽으므로, 서버가 올리고 나서야 키를 보내야 순서가 맞는다.
         const node = operations.list().find((operation) => operation.id === operationId);
         if (node?.payload.chatMode === true) { writeJson(res, 409, { error: "operation_in_chat_mode" }); return true; }
+        if (typeof body.data !== "string" || body.data.length === 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        const png = Buffer.from(body.data, "base64");
+        if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        try { await writeImageToClipboard(png); }
+        catch (error) { process.stdout.write(`[fleet-browser] paste: clipboard write failed: ${error instanceof Error ? error.message : "unknown"}\n`); writeJson(res, 500, { error: "clipboard_failed" }); return true; }
         if (!browserMcp.pasteIntoTerminal(operationId)) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
         writeJson(res, 200, { pasted: true }); return true;
       }

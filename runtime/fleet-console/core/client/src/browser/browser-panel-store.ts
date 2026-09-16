@@ -18,6 +18,7 @@ export interface BrowserPanelSnapshot {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
     readonly createTab: () => void;
+    readonly openImport: () => void;
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
   };
 }

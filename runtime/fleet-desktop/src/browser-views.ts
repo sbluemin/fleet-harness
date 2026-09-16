@@ -4,6 +4,7 @@ import {
   DESKTOP_BROWSER_EVENTS_PATH,
   DESKTOP_BROWSER_PATH,
   DESKTOP_BROWSER_RELAY_PATH,
+  DESKTOP_BROWSER_SHELL_VIEW,
   isDesktopBrowserSnapshot,
   type DesktopBrowserRelay,
   type DesktopBrowserSnapshot,
@@ -40,6 +41,11 @@ export interface DesktopBrowserViewsDeps {
   readonly userAgent: () => string;
   readonly fetch?: typeof fetch;
   readonly log?: (message: string) => void;
+  /**
+   * 뷰가 아니라 셸에게 묻는 명령(`Fleet.*`) — 이 기계의 Chrome 프로필을 세고 그 쿠키를 세션 파티션에 넣는 일처럼
+   * 창을 든 기계에서만 답할 수 있는 것. 없으면 그런 명령은 `desktop_shell_unsupported` 로 거절된다.
+   */
+  readonly shellCommand?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
 }
 
 export interface DesktopBrowserViews {
@@ -191,6 +197,17 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     executed.add(command.id);
     // 기억은 유한하다 — 오래된 id 는 잊는다(콘솔은 결과를 받은 명령을 스냅샷에서 뺀다).
     if (executed.size > 10_000) for (const id of [...executed].slice(0, 5_000)) executed.delete(id);
+    if (command.viewId === DESKTOP_BROWSER_SHELL_VIEW) {
+      const handler = deps.shellCommand;
+      if (!handler) { push({ results: [{ id: command.id, error: "desktop_shell_unsupported" }] }); return; }
+      // 셸 명령은 몇 초가 걸린다(헤드리스 Chrome). 그 사이 창이 다른 콘솔로 건너가면 이 답은 옛 콘솔의 것이라 버린다 —
+      // 명령 id 는 콘솔마다 따로 매기므로 새 콘솔의 다른 명령을 엉뚱한 답으로 풀어 버릴 수 있다.
+      const token = session;
+      handler(command.method, command.params)
+        .then((result) => { if (session === token) push({ results: [{ id: command.id, result }] }); })
+        .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
+      return;
+    }
     const entry = live.get(command.viewId);
     if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
