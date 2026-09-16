@@ -321,6 +321,23 @@ describe("Operations boot minimization", () => {
     });
     expect(resumeOperation).toHaveBeenCalledTimes(4);
     expect(resumeOperation).toHaveBeenLastCalledWith("stowed");
+
+    // 스트림이 끊긴 구간(degraded)의 축은 마지막으로 알던 값일 뿐이다 — 그 위에서 프로세스를
+    // 되살리지 않는다. 사용자가 누른 것은 "재개"가 아니라 "열기"이고, 프레임의 Resume 는 그대로 있다.
+    await act(async () => {
+      setOperationRuntimeHydration("degraded", "stream lost");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      setOperationRuntimeHydration("ready");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {

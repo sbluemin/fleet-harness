@@ -126,14 +126,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // focus layer 승격(최대화·companion)은 꺼내는 방식이 서로 다르고, 이미 떠 있던 패널 사이의
   // 포커스 이동은 어느 쪽에서도 재개가 아니다.
   //
-  // 런타임 축이 아직 권위를 얻기 전(hydration "pending")이면 그 자리에서 재개하지 않는다 — 그 구간의
-  // 휴면 표시는 관측이 아니라 보수적 폭백이다. 대신 여는 제스처를 붙들어 두었다가 축이 자리잡은 뒤
-  // 관측된 사실로 다시 판정한다. 부팅 직후가 곧 모든 패널이 최소화된 순간이라, 여기서 버리면
-  // 이 기능이 가장 필요한 구간에서 조용히 사라진다.
+  // 자동 재개는 관측된 런타임 축 위에서만 한다. 축이 권위를 갖지 못한 구간의 휴면 표시는 사실이
+  // 아니라 보수적 폭백이고(pluginRuntimeState 가 degraded 를 플러그인에 넘기지 않는 것과 같은 이유),
+  // 사용자가 누른 것은 "재개"가 아니라 "열기"라 그 위에서 프로세스를 되살리면 안 된다.
+  //
+  // 두 미관측 구간은 갈 길이 다르다. pending 은 곧 권위가 도착하므로 여는 제스처를 붙들었다가 그때
+  // 다시 판정한다 — 부팅 직후가 곧 모든 패널이 최소화된 순간이라 여기서 버리면 이 기능이 가장
+  // 필요한 구간에서 사라진다. degraded 는 언제 회복될지 모르는 구간이라 붙들지 않는다. 어느 쪽이든
+  // 프레임의 Resume 는 그대로 있어 사용자가 직접 누를 수 있다.
   const deferredOpenResumeRef = useRef<Set<string>>(new Set());
   const resumeIfDormant = useCallback((operationId: string) => {
-    if (getState().operationRuntimeHydration === "pending") {
-      deferredOpenResumeRef.current.add(operationId);
+    const hydration = getState().operationRuntimeHydration;
+    if (hydration !== "ready") {
+      if (hydration === "pending") deferredOpenResumeRef.current.add(operationId);
       return;
     }
     resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
@@ -149,9 +154,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const deferred = [...deferredOpenResumeRef.current];
     deferredOpenResumeRef.current.clear();
     for (const operationId of deferred) {
-      // 기다리는 사이 사용자가 패널을 도로 치웠으면 그 제스처는 더 이상 유효하지 않다.
+      // 기다리는 사이 사용자가 패널을 도로 치웠으면 그 제스처는 더 이상 유효하지 않다. 최소화는
+      // Theater 별 축이므로 그 Operation 의 Theater 것을 봐야 한다 — 지금 로드된 캔버스를 보면
+      // 기다리는 사이 Theater 를 옮긴 경우 남의 목록에 대고 묻게 된다.
       // 닫혔거나 사실은 살아 있었던 경우는 resumeDormantOnOpen 의 판정이 거른다.
-      if (getCanvasSnapshot().minimized.includes(operationId)) continue;
+      const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
+      if (!operation || getTheaterCanvasSnapshot(operation.theaterId).minimized.includes(operationId)) continue;
       resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
     }
   }, [registry.providers, state.operationRuntimeHydration]);
