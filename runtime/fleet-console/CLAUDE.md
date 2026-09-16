@@ -34,11 +34,12 @@
 - Console owns which other consoles this one can reach, and that list is reachable only from the loopback listener — a remote session must not enumerate or edit the addresses and certificate pins of third machines. A saved host stores where to go and what certificate to trust, never a credential; a link's single-use grant lives in memory until the shell takes it, and is handed over exactly once.
 - Terminal WebSocket is the sole ticketed browser transport: an Origin-authorized HTTP route issues a short-lived one-use ticket consumed by the upgrade. Do not generalize that ticket into browser bearer authentication.
 - Provider session identities, transcripts, and raw filesystem paths may remain in sensitive server-side state but must not enter ordinary core or built-in browser DTOs, browser-visible logs, streams, or static assets.
-- Local-channel environment diagnostics invoked only by an explicit user action may return the Console's own data-root and runtime-lock paths, and the Agent CLI executable paths a user configured together with the PATH entries searched to resolve them. The local-only browser-engine Settings API may return the configured and resolved browser executable paths; ordinary status, streams, and remote responses must not carry them.
+- Local-channel environment diagnostics invoked only by an explicit user action may return the Console's own data-root and runtime-lock paths, and the Agent CLI executable paths a user configured together with the PATH entries searched to resolve them.
 - Filesystem access requires lexical validation followed by containment checks on resolved real paths. Git revision input must reject option-like arguments even when no shell is used.
 - Shared markdown and Mermaid output must remain sanitized before DOM insertion; Mermaid stays strict with HTML labels disabled, and renderer-supplied bind functions are never executed.
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored Operations are dormant until explicitly relaunched.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
+- The Operation Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
 
 ## Design invariants
 

@@ -3,15 +3,17 @@ import type { DesktopBrowserBounds, DesktopBrowserCommand, DesktopBrowserRelay, 
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
- * Operation Browser 의 두 번째 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰.
+ * Operation Browser 의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰.
  *
- * 헤드리스 엔진과 같은 `CdpClient` 얼굴을 하고 있어 BrowserService 는 어느 쪽인지 거의 모른다. 차이는 전송뿐이다:
- * 명령은 스냅샷(SSE)에 실려 셸로 내려가고, 응답과 이벤트는 relay(POST)로 올라온다. 브라우저 수준의 명령
- * (`Target.*`, `Browser.*`)은 셸에 CDP 브라우저 세션이 없으므로 여기서 뷰 목록으로 풀어 낸다 — 탭 하나가 뷰 하나,
- * 세션 id 가 곧 뷰 id 다.
+ * `CdpClient` 얼굴을 하고 있어 BrowserService 는 전송을 모른다. 명령은 스냅샷(SSE)에 실려 셸로 내려가고, 응답과
+ * 이벤트는 relay(POST)로 올라온다. 브라우저 수준의 명령(`Target.*`, `Browser.*`)은 셸에 CDP 브라우저 세션이 없으므로
+ * 여기서 뷰 목록으로 풀어 낸다 — 탭 하나가 뷰 하나, 세션 id 가 곧 뷰 id 다.
  *
- * 셸이 스냅샷을 구독하고 있는 동안만 산다. 구독이 끊기면(창 종료·재시작) `closed` 가 풀리고 서비스는 헤드리스 엔진이
- * 죽었을 때와 같은 길로 탭을 정리한다.
+ * 셸은 여럿 붙을 수 있다(이 기계의 Desktop, 원격에서 건너온 Desktop). 뷰는 그중 **호스트** 하나의 창에만 산다 —
+ * 어느 셸이 호스트인지는 서버가 제어 보유자로 정해 `setHost` 로 알린다. 호스트가 아닌 셸은 빈 스냅샷만 받고 그 relay 는
+ * 무시된다. 호스트가 바뀌면 옛 창의 뷰는 옮길 수 없으므로 모두 닫힌다.
+ *
+ * 호스트의 구독이 끊기면(창 종료·재시작) 유예 뒤 `closed` 가 풀리고 서비스는 탭을 정리한다.
  */
 
 const ATTACH_TIMEOUT_MS = 10_000;
@@ -24,8 +26,8 @@ interface ViewRecord { id: string; operationId: string; partition: string; url: 
 interface Placement { bounds: DesktopBrowserBounds; visible: boolean }
 
 export interface DesktopEngineDeps {
-  /** 스냅샷이 바뀌었다 — 구독 중인 셸에 새 스냅샷을 보낸다. */
-  readonly publish: (snapshot: DesktopBrowserSnapshot) => void;
+  /** 스냅샷이 바뀌었다 — 호스트 셸에는 전체를, 다른 셸에는 빈 스냅샷을 보낸다. */
+  readonly publish: (snapshot: DesktopBrowserSnapshot, host: string | null) => void;
   readonly log: (message: string) => void;
 }
 
@@ -35,10 +37,11 @@ export class DesktopEngine implements CdpClient {
   private readonly pending = new Map<number, Pending>();
   private readonly attachWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private readonly listeners = new Set<CdpListener>();
+  private readonly subscribers = new Map<string, number>();
+  private readonly identities = new Map<string, { product: string; userAgent: string }>();
   private nextCommandId = 1;
   private generation = 0;
-  private identity: { product: string; userAgent: string } | null = null;
-  private subscribers = 0;
+  private host: string | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private closedResolve: (() => void) | null = null;
   private closedPromise: Promise<void>;
@@ -47,23 +50,47 @@ export class DesktopEngine implements CdpClient {
     this.closedPromise = new Promise((resolve) => { this.closedResolve = resolve; });
   }
 
-  /** 지금 열려 있는 수명이 끝날 때 풀린다. 셸이 다시 붙으면 새 수명이 시작된다. */
+  /** 지금 열려 있는 수명이 끝날 때 풀린다. 호스트 셸이 다시 붙으면 새 수명이 시작된다. */
   get closed(): Promise<void> { return this.closedPromise; }
 
-  /** 셸이 스냅샷을 구독 중인가 — 그래야 뷰를 띄울 상대가 있다. */
-  get connected(): boolean { return this.subscribers > 0 || this.graceTimer !== null; }
+  /** 호스트 셸이 스냅샷을 구독 중인가 — 그래야 뷰를 띄울 창이 있다. */
+  get connected(): boolean { return this.host !== null && ((this.subscribers.get(this.host) ?? 0) > 0 || this.graceTimer !== null); }
 
-  /** 셸의 SSE 구독 하나가 열리고 닫힐 때. 마지막 구독이 닫히면 엔진도 닫힌다. */
-  subscriberOpened(): void {
+  /** 지금 뷰를 그리는 셸. `"local"` 은 이 기계의 창, 그 밖은 원격 세션의 공개 이름. */
+  get currentHost(): string | null { return this.host; }
+
+  hasSubscriber(owner: string): boolean { return (this.subscribers.get(owner) ?? 0) > 0; }
+
+  /**
+   * 뷰를 그릴 셸을 정한다. 바뀌면 옛 창에 살던 뷰는 모두 닫힌다 — 다른 기계의 창으로 옮길 수 없기 때문이다.
+   * 서비스는 `closed` 로 그 사실을 듣고 탭을 정리한다.
+   */
+  setHost(next: string | null): boolean {
+    if (next === this.host) return false;
+    const previous = this.host;
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
-    if (this.subscribers === 0 && this.closedResolve === null) this.closedPromise = new Promise((resolve) => { this.closedResolve = resolve; });
-    this.subscribers += 1;
+    this.host = next;
+    this.deps.log(`browser view host ${previous ?? "none"} → ${next ?? "none"}`);
+    // 옛 호스트의 세션은 끝난다 — 뷰·명령이 없어도 서비스의 엔진 바인딩은 옛 셸을 가리키고 있으므로 닫아 다시 집게 한다.
+    if (previous !== null) { void this.close(); return true; }
+    if (next !== null && this.hasSubscriber(next) && this.closedResolve === null) this.closedPromise = new Promise((resolve) => { this.closedResolve = resolve; });
+    this.publish();
+    return true;
   }
-  subscriberClosed(): void {
-    this.subscribers = Math.max(0, this.subscribers - 1);
-    if (this.subscribers > 0 || this.graceTimer) return;
+
+  /** 셸의 SSE 구독 하나가 열리고 닫힐 때. 호스트의 마지막 구독이 닫히면 유예 뒤 엔진도 닫힌다. */
+  subscriberOpened(owner: string): void {
+    this.subscribers.set(owner, (this.subscribers.get(owner) ?? 0) + 1);
+    if (owner !== this.host) return;
+    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
+    if (this.closedResolve === null) this.closedPromise = new Promise((resolve) => { this.closedResolve = resolve; });
+  }
+  subscriberClosed(owner: string): void {
+    const remaining = Math.max(0, (this.subscribers.get(owner) ?? 0) - 1);
+    if (remaining === 0) this.subscribers.delete(owner); else this.subscribers.set(owner, remaining);
+    if (owner !== this.host || remaining > 0 || this.graceTimer) return;
     // 셸의 스트림은 끊기면 1초 뒤 다시 붙는다 — 그 사이를 닫힘으로 읽으면 열린 페이지가 전부 사라진다.
-    this.graceTimer = setTimeout(() => { this.graceTimer = null; if (this.subscribers === 0) void this.close(); }, RECONNECT_GRACE_MS);
+    this.graceTimer = setTimeout(() => { this.graceTimer = null; if (!this.hasSubscriber(owner) && this.host === owner) void this.close(); }, RECONNECT_GRACE_MS);
   }
 
   snapshot(): DesktopBrowserSnapshot {
@@ -75,6 +102,9 @@ export class DesktopEngine implements CdpClient {
     return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command) };
   }
 
+  /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
+  emptySnapshot(): DesktopBrowserSnapshot { return { generation: this.generation, views: [], commands: [] }; }
+
   /** 패널이 알려 준 자기 자리. Operation 의 활성 탭 뷰가 이 자리에 놓인다. */
   place(operationId: string, placement: Placement | null): void {
     if (placement) this.placements.set(operationId, placement); else this.placements.delete(operationId);
@@ -85,9 +115,10 @@ export class DesktopEngine implements CdpClient {
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
   viewOperation(viewId: string): string | null { return this.views.get(viewId)?.operationId ?? null; }
 
-  /** 셸이 되돌려 보낸 것들. */
-  relay(body: DesktopBrowserRelay): void {
-    if (body.hello) this.identity = body.hello;
+  /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
+  relay(owner: string, body: DesktopBrowserRelay): void {
+    if (body.hello) this.identities.set(owner, body.hello);
+    if (owner !== this.host) return;
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
       if (!view) continue;
@@ -127,7 +158,7 @@ export class DesktopEngine implements CdpClient {
     if (!this.connected) throw new CdpError("desktop", -32000, "desktop_browser_disconnected");
     switch (method) {
       case "Browser.getVersion": {
-        const identity = this.identity ?? { product: "Chrome/0", userAgent: "" };
+        const identity = (this.host ? this.identities.get(this.host) : undefined) ?? { product: "Chrome/0", userAgent: "" };
         return { product: identity.product, userAgent: identity.userAgent, protocolVersion: "1.3" } as T;
       }
       case "Target.createBrowserContext": return { browserContextId: `fleet-browser-${crypto.randomUUID().slice(0, 8)}` } as T;
@@ -178,8 +209,8 @@ export class DesktopEngine implements CdpClient {
     this.publish();
     const resolve = this.closedResolve;
     this.closedResolve = null;
-    // 구독이 살아 있으면 다음 세션을 위해 새 수명을 건다 — 서비스는 엔진을 다시 집을 때 이 약속을 새로 기다린다.
-    if (this.subscribers > 0) this.closedPromise = new Promise((next) => { this.closedResolve = next; });
+    // 호스트의 구독이 살아 있으면 다음 세션을 위해 새 수명을 건다 — 서비스는 엔진을 다시 집을 때 이 약속을 새로 기다린다.
+    if (this.host !== null && this.hasSubscriber(this.host)) this.closedPromise = new Promise((next) => { this.closedResolve = next; });
     resolve?.();
   }
 
@@ -236,6 +267,6 @@ export class DesktopEngine implements CdpClient {
 
   private publish(): void {
     this.generation += 1;
-    this.deps.publish(this.snapshot());
+    this.deps.publish(this.snapshot(), this.host);
   }
 }

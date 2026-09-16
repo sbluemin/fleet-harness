@@ -83,7 +83,6 @@ export interface ConsoleGeneralSettings {
    * 문법과 정제기는 SDK가 소유한다 — 브라우저의 기록기와 서버의 검증이 같은 규칙을 읽는다.
    */
   readonly shortcuts?: ShortcutBindings;
-  readonly browserExecutable?: string;
 }
 
 /** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
@@ -288,9 +287,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
-  const browserExecutable = typeof value.browserExecutable === "string" && value.browserExecutable.length <= 4096 && !value.browserExecutable.includes("\0") ? value.browserExecutable.trim() : undefined;
   return {
-    ...(browserExecutable ? { browserExecutable } : {}),
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),

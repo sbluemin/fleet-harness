@@ -42,7 +42,7 @@ import { createMacOSComputerUsePlatform, createCuaComputerUsePlatform, CuaDriver
 import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
-import { BrowserService, BrowserPolicyError, type BrowserFrame } from "./browser/service.js";
+import { BrowserService, BrowserPolicyError, type BrowserAvailability } from "./browser/service.js";
 import { createBrowserMcpHost } from "./mcp/browser.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -132,6 +132,14 @@ interface OperationSseSubscriber {
   readonly audience: AccessAudience;
   /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
   readonly sessionHandle: string | null;
+  /** 이 화면을 든 것이 Fleet Desktop 창인가, 일반 브라우저·모바일인가. Operation 브라우저는 Desktop 창에서만 열린다. */
+  readonly client: "desktop" | "browser";
+}
+
+/** 화면을 든 클라이언트의 종류 — Desktop 창은 Electron 표기를 단 UA 로 온다(클라이언트의 셸 표식과 같은 판정). */
+function clientKindOf(req: http.IncomingMessage): OperationSseSubscriber["client"] {
+  const agent = req.headers["user-agent"];
+  return typeof agent === "string" && /\bElectron\//u.test(agent) ? "desktop" : "browser";
 }
 
 interface ConsolePortListenResult {
@@ -396,24 +404,19 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/engine", summary: "Inspect the local browser executable in Settings.", category: "Settings", gate: "origin-strict", transport: "http" },
-  { method: "PUT", path: "/api/v1/browser/engine", summary: "Validate and save the local browser executable.", category: "Settings", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: "/api/v1/browser", summary: "Read local Operation Browser status.", category: "Settings", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/stream", summary: "Stream an Operation's browser state and screencast frames.", category: "Console Execution", gate: "loopback", transport: "sse" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Operation Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/stream", summary: "Stream an Operation's browser tab state.", category: "Console Execution", gate: "origin-write", transport: "sse" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/tabs", summary: "Create, close or select a tab in an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/navigate", summary: "Navigate an Operation's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/input", summary: "Forward user pointer and keyboard input to an Operation's browser tab.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/viewport", summary: "Set the viewport preset or size of an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/interrupt", summary: "Interrupt the agent's in-flight browser calls for an Operation.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/import-sources", summary: "List Google Chrome profiles whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "loopback", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile into an Operation's browser context.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/place", summary: "Tell the Desktop shell where an Operation's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the owning Desktop shell must apply.", category: "Desktop", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the owning Desktop shell.", category: "Desktop", gate: "origin-strict", transport: "sse" },
-  { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the hosting Desktop shell must apply; other shells read an empty set.", category: "Desktop", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the attached Desktop shells; only the hosting shell receives views.", category: "Desktop", gate: "origin-strict", transport: "sse" },
+  { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the hosting Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Press paste in a terminal Operation's CLI so it picks up the screenshot the panel placed on the clipboard.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
@@ -526,14 +529,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
-  const desktopBrowserSseSubscribers = new Set<http.ServerResponse>();
-  // 창을 든 Desktop 만 네이티브 뷰를 그릴 수 있다 — CLI 가 띄운 콘솔에는 그 엔진이 없다.
-  const desktopEngine = desktop !== null
-    ? new DesktopEngine({
-      publish: (snapshot) => { if (desktopBrowserSseSubscribers.size === 0) return; const data = encodeSseData(DESKTOP_BROWSER_EVENT, snapshot); for (const res of desktopBrowserSseSubscribers) res.write(data); },
-      log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
-    })
-    : null;
+  /** 셸의 브라우저 스냅샷 구독 — 응답마다 그 셸의 주인(루프백은 "local", 원격은 세션 공개 이름). */
+  const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
+  /**
+   * Operation 브라우저의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰. 어느 Desktop 이 이 콘솔을 보든(이 기계의
+   * 창이든, 원격에서 건너온 창이든) 붙을 수 있고, 뷰는 그중 호스트 하나의 창에만 산다. 호스트가 아닌 셸은 빈 스냅샷을
+   * 받는다 — 그 창에는 뷰가 없어야 한다.
+   */
+  const desktopEngine = new DesktopEngine({
+    publish: (snapshot, host) => {
+      if (desktopBrowserSseSubscribers.size === 0) return;
+      const full = encodeSseData(DESKTOP_BROWSER_EVENT, snapshot);
+      const empty = encodeSseData(DESKTOP_BROWSER_EVENT, { generation: snapshot.generation, views: [], commands: [] });
+      for (const [res, owner] of desktopBrowserSseSubscribers) res.write(owner === host ? full : empty);
+    },
+    log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
+  });
   /**
    * 대기 중인 위임 요청. 리스너와 수명을 같이하는 휘발 상태다 — 셸이 앱을 재시작하면
    * 이 콘솔도 함께 내려가므로, 재기동 후까지 살아남아야 할 사실이 아니다.
@@ -650,11 +661,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const browserService = new BrowserService({
-    dataDir: path.join(fleetDataDir, "browser"),
-    env: stripConsoleInternalEnv(process.env),
-    executablePath: () => consoleSettingsStore.load().general?.browserExecutable,
     enabled: () => true,
-    localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
+    availability: browserAvailability,
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
     desktop: desktopEngine,
   });
@@ -959,24 +967,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopBrowserRouter = async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
     if (pathname !== DESKTOP_BROWSER_PATH && pathname !== DESKTOP_BROWSER_EVENTS_PATH && pathname !== DESKTOP_BROWSER_RELAY_PATH) return false;
     if (!isExactConsoleOrigin(req)) { writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!desktopEngine) { writeJson(res, 404, { error: "desktop_browser_unavailable" }); return true; }
+    const owner = shellOwnerOf(req);
+    if (owner === null) { writeJson(res, 401, { error: "unauthorized" }); return true; }
     if (pathname === DESKTOP_BROWSER_RELAY_PATH) {
       if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return true; }
       const body = await readJsonBody<unknown>(req, DESKTOP_BROWSER_RELAY_MAX_BYTES);
       if (!isDesktopBrowserRelay(body)) { writeJson(res, 400, { error: "invalid_desktop_browser_relay" }); return true; }
-      desktopEngine.relay(body);
+      desktopEngine.relay(owner, body);
       writeNoContent(res);
       return true;
     }
     if (req.method !== "GET") { writeJson(res, 405, { error: "Method not allowed" }); return true; }
-    if (pathname === DESKTOP_BROWSER_PATH) { writeJson(res, 200, desktopEngine.snapshot()); return true; }
+    const snapshotFor = () => owner === desktopEngine.currentHost ? desktopEngine.snapshot() : desktopEngine.emptySnapshot();
+    if (pathname === DESKTOP_BROWSER_PATH) { writeJson(res, 200, snapshotFor()); return true; }
     res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }));
     res.write(":connected\n\n");
-    desktopEngine.subscriberOpened();
-    desktopBrowserSseSubscribers.add(res);
-    res.write(encodeSseData(DESKTOP_BROWSER_EVENT, desktopEngine.snapshot()));
+    desktopEngine.subscriberOpened(owner);
+    desktopBrowserSseSubscribers.set(res, owner);
+    browserService.reconcile();
+    res.write(encodeSseData(DESKTOP_BROWSER_EVENT, snapshotFor()));
     const keepalive = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(":keepalive\n\n"); }, 25_000);
-    res.on("close", () => { clearInterval(keepalive); desktopBrowserSseSubscribers.delete(res); desktopEngine.subscriberClosed(); });
+    res.on("close", () => { clearInterval(keepalive); desktopBrowserSseSubscribers.delete(res); desktopEngine.subscriberClosed(owner); browserService.reconcile(); });
     return true;
   };
   const desktopShellRouter = createDesktopShellRouter({
@@ -1051,10 +1062,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
       // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
-      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle };
+      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: clientKindOf(req) };
       operationSseSubscribers.add(subscriber);
+      // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
+      browserService.reconcile();
       startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(subscriber);
+        browserService.reconcile();
       });
     },
   });
@@ -1100,32 +1114,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [], browser: browserOperations });
     return true;
   });
+  /**
+   * Operation 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
+   * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
+   */
   routeRegistry.register("/api/v1/browser", async ({ req, res, pathname }) => {
-    if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
-    if (pathname === "/api/v1/browser/engine") {
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-      if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable" }); return true; }
-      if (req.method === "POST") { writeJson(res, 200, browserService.engineSettings()); return true; }
-      if (req.method !== "PUT") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      const body = await readJsonBody<Record<string, unknown>>(req);
-      if (!body || typeof body.path !== "string" || body.path.length > 4096 || body.path.includes("\0") || (body.path.trim() && !path.isAbsolute(body.path.trim()))) { writeJson(res, 400, { error: "browser_engine_invalid" }); return true; }
-      const executable = body.path.trim();
-      try {
-        await browserService.configureEngine(executable, body.restart === true, () => {
-          consoleSettingsStore.update(current => ({ ...current, general: { ...current.general, browserExecutable: executable } }));
-        });
-        writeJson(res, 200, browserService.engineSettings());
-      } catch (error) { writeJson(res, error instanceof BrowserPolicyError ? 400 : 500, { error: error instanceof BrowserPolicyError ? error.code : "browser_engine_save_failed" }); }
-      return true;
-    }
-    if (req.method === "GET" && pathname === "/api/v1/browser") { const { executable: _executable, ...status } = browserService.status(); writeJson(res, 200, status); return true; }
-    if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") { writeJson(res, 200, browserService.importSources()); return true; }
-    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|input|viewport|interrupt|inspect|paste|favicon|import|place)$/u.exec(pathname);
+    if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
     if (!operations.list().some((operation) => operation.id === operationId)) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
-    if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable" }); return true; }
+    // 상태 스트림은 쓸 수 없을 때도 열린다 — 패널이 왜 닫혀 있는지 그 스트림으로 듣는다.
+    if (action !== "stream" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
       if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
       const message = error instanceof Error ? error.message : "browser_request_failed";
@@ -1136,14 +1138,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.write(":connected\n\n");
       let closed = false;
       const write = (event: string, data: unknown) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(encodeSseData(event, data)); };
-      // 프레임은 소켓이 밀려 있으면 최신 한 장만 들고 있다가 drain 에 보낸다 — 느린 클라이언트가 응답 버퍼를 무한히 키우지 않게.
-      let pendingFrame: unknown = null;
-      res.on("drain", () => { if (pendingFrame !== null && !closed) { const frame = pendingFrame; pendingFrame = null; write("frame", frame); } });
-      // 네이티브 뷰를 보는 패널은 픽셀이 필요 없다(`frames=0`) — 그 구독에는 스크린캐스트를 돌리지 않는다.
-      const wantsFrames = readUrl(req).searchParams.get("frames") !== "0";
-      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), ...(wantsFrames ? { frame: (frame: BrowserFrame) => { if (res.writableNeedDrain) pendingFrame = frame; else write("frame", frame); } } : {}) });
+      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state) });
       const keepalive = setInterval(() => { if (!closed && !res.writableNeedDrain) res.write(":keepalive\n\n"); }, 25_000);
-      req.on("close", () => { closed = true; pendingFrame = null; clearInterval(keepalive); unsubscribe(); });
+      req.on("close", () => { closed = true; clearInterval(keepalive); unsubscribe(); });
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
@@ -1174,24 +1171,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, await browserService.navigate(operationId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null)); return true;
       }
-      if (action === "input") {
-        const tabId = typeof body.tabId === "string" ? body.tabId : null;
-        const mods = { alt: body.alt === true, ctrl: body.ctrl === true, meta: body.meta === true, shift: body.shift === true };
-        const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
-        if (body.kind === "mouse" && typeof body.type === "string") {
-          await browserService.mouse(operationId, { type: body.type as "move", x: num(body.x), y: num(body.y), button: body.button as "left" | undefined, clickCount: typeof body.clickCount === "number" ? body.clickCount : undefined, deltaX: num(body.deltaX), deltaY: num(body.deltaY), modifiers: mods }, tabId);
-          if (body.type === "move" && body.cursor === true) { writeJson(res, 200, { ok: true, cursor: await browserService.cursorAt(operationId, num(body.x), num(body.y), tabId) }); return true; }
-        }
-        else if (body.kind === "key" && (body.type === "down" || body.type === "up") && typeof body.key === "string") { await browserService.domKey(operationId, { type: body.type, key: body.key, code: typeof body.code === "string" ? body.code : "", modifiers: mods, repeat: body.repeat === true }, tabId); }
-        else if (body.kind === "text" && typeof body.text === "string" && body.text.length <= 20_000) { await browserService.insertText(operationId, body.text, tabId); }
-        else if (body.kind === "ime" && typeof body.text === "string" && body.text.length <= 200) { await browserService.imeComposition(operationId, body.text, tabId); }
-        else { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        writeJson(res, 200, { ok: true }); return true;
-      }
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
-        writeJson(res, 200, { viewport: await browserService.setViewport(operationId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, scale: typeof body.scale === "number" ? body.scale : undefined, colorScheme }, "user") }); return true;
+        writeJson(res, 200, { viewport: await browserService.setViewport(operationId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
       }
       if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptOperation(operationId) }); return true; }
       if (action === "place") {
@@ -1205,11 +1188,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (action === "inspect") {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { element: await browserService.inspectAt(operationId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
-      }
-      if (action === "import") {
-        if (typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        try { writeJson(res, 200, await browserService.importFromChrome(operationId, body.profileId)); } catch (error) { fail(error); }
-        return true;
       }
       if (action === "paste") {
         // 사람이 패널에서 만든 스크린샷은 브라우저가 OS 클립보드에 올린다. 터미널 Operation 이면 서버가 그 CLI 에
@@ -2681,6 +2659,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function broadcastControlChanged(resend = false): void {
     if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) void computerUse.stop();
+    // 제어 보유자가 곧 브라우저 뷰를 그릴 창이다 — 바뀌면 옛 창의 탭은 닫히고 새 창이 이어받는다.
+    browserService.reconcile();
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.
      *
@@ -2735,6 +2715,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (data !== null) subscriber.res.write(data);
       subscriber.res.end();
     }
+    browserService.reconcile();
+  }
+
+  /**
+   * Operation 브라우저를 열 수 있는가. 브라우저 탭·모바일 화면이 하나라도 붙어 있으면 멈춘다 — 그 화면에는 뷰가 없어
+   * 에이전트의 조작을 사람이 볼 수 없다. 뷰를 그릴 셸은 제어를 쥔 쪽이다: 원격 full 세션이 있으면 그 창, 아니면 이 기계의 창.
+   */
+  function browserAvailability(): BrowserAvailability {
+    const holder = currentControlHolder();
+    const host = holder ? holder.handle : "local";
+    for (const subscriber of operationSseSubscribers) if (subscriber.client === "browser") return { available: false, reason: "shared", host };
+    return { available: true, reason: null, host };
   }
 
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {

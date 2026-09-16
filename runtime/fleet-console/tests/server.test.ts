@@ -122,17 +122,9 @@ describe("console terminal observability", () => {
     });
     expect((await fetch(url)).status).toBe(200);
 
-    const engineUrl = new URL("api/v1/browser/engine", fixture.endpoint);
-    expect(await requestWithHost(engineUrl, origin, "localhost:1", "POST")).toBe(403);
-    expect((await fetch(engineUrl, { method: "POST" })).status).toBe(403);
-    expect((await fetch(engineUrl, { method: "PUT", headers: { Origin: "http://evil.example", "Content-Type": "application/json" }, body: JSON.stringify({ path: "/bin/sh" }) })).status).toBe(403);
-    const engine = await fetch(engineUrl, { method: "POST", headers: { Origin: origin } });
-    expect(engine.status).toBe(200);
-    expect(await engine.json()).toHaveProperty("configuredPath", "");
-    const invalid = await fetch(engineUrl, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ path: "relative/chrome" }) });
-    expect(invalid.status).toBe(400);
+    // Operation 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
-    expect(await status.json()).not.toHaveProperty("executable");
+    expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required" });
   });
 
   it("injects dormant durable operations without exposing server-only provider data", () => {
