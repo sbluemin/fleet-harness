@@ -73,7 +73,7 @@ interface Tab {
   refs: Map<string, number>;
   screencasting: boolean;
   lastFrame: BrowserFrame | null;
-  /** 뷰포트가 바뀔 때마다 오른다 — 옛 뷰포트로 찍기 시작한 한 장이 새 크기의 이름표를 달고 나가지 않게 가린다. */
+  /** 뷰포트가 바뀌거나 스크린캐스트 프레임이 올 때마다 오른다 — 뷰포트 변경으로 찍은 한 장은 그 사이 아무것도 바뀌지 않았을 때만 나간다. */
   frameSerial: number;
 }
 
