@@ -16,13 +16,7 @@ interface JsonWrite {
   readonly payload: unknown;
 }
 
-interface StubOperation {
-  readonly id: string;
-  readonly title: string;
-  readonly payload: { readonly cwd?: string } | null;
-}
-
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[], operations: readonly StubOperation[] = []): FleetPluginServerContext {
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
   return {
     host: {
       http: {
@@ -31,7 +25,6 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       },
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
-      operations: { list: () => operations },
     },
   } as unknown as FleetPluginServerContext;
 }

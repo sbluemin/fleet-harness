@@ -151,6 +151,4 @@ export interface WorkstateResult {
   readonly upstream: string | null;
   readonly ahead: number | null;
   readonly behind: number | null;
-  /** 이 컨텍스트(체크아웃) 안에 배치된 Console Operation — 경로는 싣지 않는다. */
-  readonly stationedOperations: readonly { readonly id: string; readonly title: string }[];
 }
