@@ -62,6 +62,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const live = new Map<string, LiveView>();
   const executed = new Set<number>();
   let origin: string | null = null;
+  /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
+  let session = 0;
   let generation = -1;
   let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,6 +78,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   const flush = (): void => {
     const target = origin;
+    const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
     if (outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
     const batch = outbox;
@@ -91,7 +94,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // 보낸다: 뒤에 줄 선 배치는 이 배치가 닿을 때까지 기다린다. 부착 통지나 명령 응답 하나가 사라지거나 순서가 뒤집히면
     // 콘솔은 시간 초과까지 기다리거나 페이지 상태를 거꾸로 읽는다.
     flushing = flushing.then(async () => {
-      while (origin === target) {
+      while (session === token) {
         if (await send(target, body)) return;
         await new Promise((resolve) => setTimeout(resolve, RELAY_RETRY_MS));
       }
@@ -223,6 +226,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   return {
     async start(target: string): Promise<void> {
       stop();
+      session += 1;
       origin = normalizeAnyConsoleOrigin(target, "desktop_browser_origin_invalid");
       // 누구인지 먼저 알린다 — 콘솔이 UA 를 이 Chromium 의 것으로 맞춘다.
       await send(origin, { hello: { product: deps.product(), userAgent: deps.userAgent() } });
@@ -233,6 +237,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   function stop(): void {
+    session += 1;
     stream.stop();
     for (const id of [...live.keys()]) drop(id, false);
     executed.clear();

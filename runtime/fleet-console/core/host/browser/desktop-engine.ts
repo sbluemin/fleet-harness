@@ -96,10 +96,9 @@ export class DesktopEngine implements CdpClient {
       if (waiter) { clearTimeout(waiter.timer); this.attachWaiters.delete(id); waiter.resolve(); }
     }
     for (const id of body.detached ?? []) {
-      const view = this.views.get(id);
-      if (!view) continue;
-      this.views.delete(id);
-      this.failPendingFor(id, "desktop_view_detached");
+      if (!this.views.has(id)) continue;
+      // 셸이 뷰를 잃었다(디버거 부착 실패·렌더러 사망) — 부착을 기다리던 탭 생성도 지금 실패한다.
+      this.dropView(id);
       this.emit({ method: "Target.detachedFromTarget", params: { sessionId: id, targetId: id }, sessionId: id });
     }
     for (const size of body.sizes ?? []) {
@@ -166,16 +165,22 @@ export class DesktopEngine implements CdpClient {
 
   on(listener: CdpListener): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
 
+  /**
+   * 브라우저 세션을 닫는다 — 뷰·자리·기다리던 명령을 전부 거둔다. 셸의 구독(전송)은 건드리지 않는다: 서비스가 유휴로
+   * 엔진을 내렸다가 다시 올릴 때 그 스트림은 그대로 열려 있으므로, 여기서 끊긴 것으로 세면 다시는 붙지 못한다.
+   */
   async close(): Promise<void> {
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     for (const view of [...this.views.keys()]) this.dropView(view);
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }
     this.pending.clear();
     this.placements.clear();
-    this.subscribers = 0;
     this.publish();
-    this.closedResolve?.();
+    const resolve = this.closedResolve;
     this.closedResolve = null;
+    // 구독이 살아 있으면 다음 세션을 위해 새 수명을 건다 — 서비스는 엔진을 다시 집을 때 이 약속을 새로 기다린다.
+    if (this.subscribers > 0) this.closedPromise = new Promise((next) => { this.closedResolve = next; });
+    resolve?.();
   }
 
   // ---------- 내부 ----------
