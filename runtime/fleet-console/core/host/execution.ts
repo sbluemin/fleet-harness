@@ -82,9 +82,9 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });
   const runtime = createTerminalRuntime(ctx);
-  // Operation Browser 의 스크린샷 첨부 — 패널이 OS 클립보드에 올린 이미지를 터미널 CLI 가 읽도록 Ctrl+V 한 번을
+  // Operation Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
   // PTY 에 넣는다. 줄 종결자는 없다(보내는 순간은 사람이 정한다).
-  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((operationId) => runtime.write(operationId, "\u0016"));
+  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((operationId) => runtime.write(operationId, process.platform === "win32" ? "\x1bv" : "\u0016"));
   if (unbindBrowserPaste) ctx.host.lifecycle.registerCleanup(unbindBrowserPaste);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
   ctx.host.lifecycle.registerCleanup(() => runtime.stop());
