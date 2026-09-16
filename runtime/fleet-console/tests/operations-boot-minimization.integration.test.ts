@@ -279,6 +279,28 @@ describe("Operations boot minimization", () => {
     expect(getState().activeOperationId).toBe("stowed");
     expect(resumeOperation).toHaveBeenCalledTimes(1);
     expect(resumeOperation).toHaveBeenCalledWith("stowed");
+
+    // 패널을 꺼내는 방식은 분기마다 다르다 — formation은 캔버스 복원으로, 최대화는 focus layer
+    // 승계로 최소화 목록에서 꺼낸다. 어느 쪽이든 사용자에게는 같은 "패널 열기"이므로 같은 재개를 받는다.
+    await act(async () => {
+      minimizeOperation("stowed");
+      toggleFormationView();
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      clearFormationView();
+      setMaximizedOperationId("visible");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getMaximizedOperationId()).toBe("stowed");
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(3);
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {

@@ -122,13 +122,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const warRoomSessionRestoredRef = useRef(false);
   stateRef.current = state;
 
-  // formation 뷰의 열기 경로. 복원 비행·복원·활성화를 한 동기 실행으로 끝내고, 최소화 선반에서
-  // 꺼낸 경우에만 휴면 재개를 얹는다 — 이미 떠 있던 패널 사이의 포커스 이동은 재개가 아니다.
-  const openInFormation = useCallback((operationId: string) => {
-    const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
-    if (wasMinimized) playRestoreFlight(operationId);
-    restoreOperation(operationId);
-    setActiveOperation(operationId);
+  // 최소화 선반에서 꺼낸 패널의 휴면 재개. 최소화 판정은 호출 분기가 진다 — 캔버스 복원과
+  // focus layer 승격(최대화·companion)은 꺼내는 방식이 서로 다르고, 이미 떠 있던 패널 사이의
+  // 포커스 이동은 어느 쪽에서도 재개가 아니다.
+  const resumeIfDormant = useCallback((operationId: string) => {
+    resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
   }, [registry.providers]);
 
   const refreshCatalog = useCallback(() => {
@@ -314,11 +312,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
-      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId), openInFormation);
+      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId), resumeIfDormant);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [companionOperationId, formationView, maximizedOperationId, openInFormation, registry.operationKinds, viewMode.effective]);
+  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, resumeIfDormant, viewMode.effective]);
 
   // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
   // 칩·브레드크럼·패널은 가드가 유지하고, 빈 바다 해제는 캔버스 onClick이 맡는다.
@@ -392,8 +390,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     setActiveOperation(operationId);
     const viewportSize = viewportSizeFor(bodyRef.current);
     if (viewportSize) focusCanvasOperation(operationId, viewportSize);
-    if (wasMinimized) resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
-  }, [registry.providers]);
+    if (wasMinimized) resumeIfDormant(operationId);
+  }, [registry.providers, resumeIfDormant]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {
@@ -413,9 +411,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       return;
     }
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), openInFormation);
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
     consumeOperationFocus();
-  }, [focusMapOperation, openInFormation, registry.operationKinds, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
+  }, [focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -498,7 +496,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // 선별 중에는 전 Theater가 마운트이므로 focusOperation의 Theater 전환을 타지 않고 바로 지목한다 —
     // 전환을 타면 loadForTheater가 목적지의 저장된 focus layer를 선별 위로 부활시킨다.
     if (isTriageActive()) {
-      void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), openInFormation);
+      void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
       return;
     }
     if (operation.theaterId !== stateRef.current.activeTheaterId) {
@@ -506,8 +504,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       focusOperation(operationId);
       return;
     }
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), openInFormation);
-  }, [focusMapOperation, openInFormation, registry.operationKinds]);
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
+  }, [focusMapOperation, registry.operationKinds, resumeIfDormant]);
 
   // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 Tactical로 정렬해 스택 대신 그리드에 착지시킨다.
   // 목록 순서(updatedAt 내림차순)의 첫 항목을 활성으로 둔다. 비행 연출은 N개분이라 생략하고
@@ -882,7 +880,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 }
 
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
-async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void, openInFormation: (operationId: string) => void): Promise<void> {
+async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void, resumeIfDormant: (operationId: string) => void): Promise<void> {
   const requestEpoch = ++requestEpochRef.current;
   const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
   if (triageOperation && isTriageActive()) {
@@ -924,7 +922,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     if (operation && (!descriptor || descriptorCompanions.length === 0 || !canOpenCompanions)) {
       forceDropCompanionOperationId();
       if (getFormationView()) {
-        openInFormation(operationId);
+        openInFormation(operationId, resumeIfDormant);
         requestOperationKeyboardFocus(operationId);
         return;
       }
@@ -933,23 +931,38 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       return;
     }
     setActiveOperation(operationId);
+    // companion 레이어 승격은 대상을 최소화 목록에서 꺼낸다(setFocusLayer) — 캔버스 복원과 다른
+    // 경로일 뿐 사용자에게는 같은 "패널 열기"다. 그러므로 같은 자동 재개를 받는다.
     setCompanionOperationId(operationId);
     requestOperationKeyboardFocus(operationId);
+    if (operationWasMinimized) resumeIfDormant(operationId);
     return;
   }
   if (getMaximizedOperationId() !== null) {
+    const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     setActiveOperation(operationId);
     setMaximizedOperationId(operationId);
     requestOperationKeyboardFocus(operationId);
+    if (wasMinimized) resumeIfDormant(operationId);
     return;
   }
   if (getFormationView()) {
-    openInFormation(operationId);
+    openInFormation(operationId, resumeIfDormant);
     requestOperationKeyboardFocus(operationId);
     return;
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
+}
+
+// formation 뷰의 열기 경로. 복원 비행·복원·활성화를 한 동기 실행으로 끝내고, 최소화 선반에서
+// 꺼낸 경우에만 휴면 재개를 얹는다.
+function openInFormation(operationId: string, resumeIfDormant: (operationId: string) => void): void {
+  const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
+  if (wasMinimized) playRestoreFlight(operationId);
+  restoreOperation(operationId);
+  setActiveOperation(operationId);
+  if (wasMinimized) resumeIfDormant(operationId);
 }
 
 function settleReorderPatches(patches: readonly Promise<unknown>[]): Promise<void> {
