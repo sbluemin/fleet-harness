@@ -1,6 +1,7 @@
 import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
+import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
@@ -109,6 +110,18 @@ export function connectOperationsSse(): void {
   source.addEventListener("update:available", () => {
     if (!isCurrentSource()) return;
     refreshObserverStatus();
+  });
+
+  // 셸이 게시한 집. 붙는 순간과 게시가 도착하는 순간 모두 이 길로 온다 — 화면의 한 번뿐인 물음이
+  // 빈손으로 끝났어도 창은 돌아갈 곳을 되찾는다.
+  source.addEventListener("desktop:shell", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      applyDesktopShellSnapshot(JSON.parse(msg.data));
+    } catch {
+      // 잘못된 프레임은 아는 것을 지우지 않는다.
+    }
   });
 
   source.addEventListener("desktop:fullscreen", (e) => {

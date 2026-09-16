@@ -8,14 +8,14 @@ import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell,
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
-import { handOffWindowToConsole } from "./console-handoff.js";
+import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
-import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
+import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { installRemoteCertificatePins } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -186,9 +186,9 @@ async function boot(): Promise<void> {
    * 화면은 자기가 떠나온 곳을 알 수 없으므로 — 원격이든 이 기계의 다른 콘솔이든 — 이것이 없으면
    * 돌아갈 길이 사라진다. 이 값이 창보다 먼저 도착해야 하는 이유는 console-handoff.ts에 있다.
    */
-  const publishShellHome = async (origin: string): Promise<void> => {
+  const publishShellHome = async (origin: string): Promise<ShellHomePublication> => {
     const home = localConsoleOrigin;
-    if (!home) return;
+    if (!home) return "rejected";
     try {
       const put = (body: Record<string, unknown>) => consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
         method: "PUT",
@@ -198,16 +198,20 @@ async function boot(): Promise<void> {
       // 돌아갈 줄이 버전 표기보다 중요하다. 게시 전체는 창을 띄우는 마감(console-handoff.ts)과 경주하므로,
       // 어느 Console이든 받는 집만 적은 몸을 먼저 보내 마감이 이겨도 집은 남게 한다.
       const response = await put({ homeOrigin: home });
+      // 세션이 아직 없는 원격 콘솔은 401로 답한다 — 재기동 직후라면 화면이 곧 되살리므로 오류가 아니다.
+      if (response.status === 401) return "unauthorized";
       // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
       if (!response.ok) {
         logger.error(`shell home publish rejected status=${response.status}`);
-        return;
+        return "rejected";
       }
       // 버전은 그 위에 덧쓴다. 이 키를 모르는 옛 Console은 400으로 거절하고, 그때는 이미 게시된 집이 그대로 선다.
       const versioned = await put({ homeOrigin: home, version: app.getVersion() });
       if (!versioned.ok && versioned.status !== 400) logger.error(`shell version publish rejected status=${versioned.status}`);
+      return "accepted";
     } catch (error) {
       logger.error(`shell home publish failed: ${describeError(error)}`);
+      return "failed";
     }
   };
   const bridge: RemoteBridge = createRemoteBridge({
@@ -217,7 +221,7 @@ async function boot(): Promise<void> {
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
     loadConsole: (url) => handOffWindowToConsole({
-      publishShellHome,
+      publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
@@ -273,8 +277,21 @@ async function boot(): Promise<void> {
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
         installComputerCapture(createdWindow.webContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         bridge.attach(createdWindow.webContents);
-        // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
-        createdWindow.webContents.on("did-navigate", () => picker.close());
+        createdWindow.webContents.on("did-navigate", (_event, url) => {
+          // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
+          picker.close();
+          // 셸이 넘긴 항해는 도착 전에 게시했다. 그 밖의 도착 — 새로고침, 재기동한 콘솔로 화면이 스스로
+          // 되돌아온 경우 — 는 여기서 게시한다. 재기동한 콘솔은 앞선 게시를 잊었기 때문이다.
+          let origin: string;
+          try { origin = new URL(url).origin; } catch { return; }
+          if (!isConsoleOrigin(origin) || policy?.currentConsoleOrigin() !== origin) return;
+          void republishShellHomeOnArrival({
+            publish: publishShellHome,
+            stillAt: (at) => !createdWindow.isDestroyed() && policy?.currentConsoleOrigin() === at,
+          }, origin).then((outcome) => {
+            if (outcome !== "accepted") logger.error(`shell home republish after arrival ended outcome=${outcome} origin=${origin}`);
+          });
+        });
         createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.webContents, zoomDirection);
           overlayRefresher?.refresh();

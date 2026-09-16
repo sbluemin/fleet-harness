@@ -28,7 +28,7 @@ import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.j
 import { listRemoteInterfaces, probeRemoteIdentity } from "./remote-discovery.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
-import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
@@ -1003,6 +1003,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // homeOrigin이 비면 그 창은 더 이상 집을 주장하지 않는다 — 빈 스냅샷을 남기는 대신 지운다.
       if (snapshot.homeOrigin === null) desktopShellsByOwner.delete(owner);
       else desktopShellsByOwner.set(owner, snapshot);
+      // 이 게시는 화면이 이미 물어본 뒤에 도착했을 수 있다(재기동·새로고침). 그 창에만 실어 보낸다.
+      broadcastDesktopShellChanged(owner, snapshot);
     },
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
@@ -1056,6 +1058,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const sessionHandle = listener === null || listener.audience === "local"
         ? null
         : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
+      // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
+      // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
+      const shellOwner = audience === "local" ? "local" : sessionHandle;
+      const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
+      if (publishedShell !== undefined) res.write(encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
       // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
       // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
       if (audience === "local") {
@@ -2628,6 +2635,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData("update:available", {});
     for (const subscriber of operationSseSubscribers) {
       subscriber.res.write(data);
+    }
+  }
+
+  /** 집 주소는 게시한 창에만 돌아간다 — 다른 사람의 화면에서는 그 사람의 기계를 가리키기 때문이다. */
+  function broadcastDesktopShellChanged(owner: string | "local", snapshot: DesktopShellSnapshot): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_SHELL_EVENT, snapshot.homeOrigin === null ? emptyDesktopShell() : snapshot);
+    for (const subscriber of operationSseSubscribers) {
+      const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
+      if (subscriberOwner === owner) subscriber.res.write(data);
     }
   }
 

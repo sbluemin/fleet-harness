@@ -65,6 +65,12 @@ export function createDesktopFullscreenRouter(deps: DesktopFullscreenRouteDeps):
 }
 
 export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
+/**
+ * 게시가 도착할 때마다 그 창의 Operation 스트림에 실리는 이벤트. 화면은 뜨자마자 한 번 묻지만,
+ * 콘솔이 재기동한 뒤 셸이 다시 게시하는 순간은 그 물음보다 늦을 수 있다 — 그 뒤늦은 답을
+ * 화면까지 나르는 길이 이것이다.
+ */
+export const DESKTOP_SHELL_EVENT = "desktop:shell";
 
 /**
  * 창을 들고 있는 셸이 자기에 대해 알려 주는 한 가지 사실: 이 앱이 처음 띄운 콘솔이 어디인가.

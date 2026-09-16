@@ -9,6 +9,7 @@ import { acknowledgeIdleArrival } from "./operation-marks.js";
 import { noteOperationFocused } from "./palette-recent.js";
 import { closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "./expanded-surface/store.js";
 import { uiFontFamily } from "./ui-font.js";
+import { observeConsoleVersion } from "./console-version.js";
 import type {
   CodexReaderRequest,
   ConnectionState,
@@ -220,6 +221,8 @@ export function setActiveUiFont(uiFont: UiFontSettings): void {
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
+  // 서버가 이 문서와 다른 버전이 됐다면 화면은 옛 번들이다 — 상태를 옛 화면에 그리는 대신 새로 받는다.
+  if (observeConsoleVersion(status.version)) return;
   setState({
     consoleName: status.name,
     channel: status.channel,

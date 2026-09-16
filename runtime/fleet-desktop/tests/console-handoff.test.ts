@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { handOffWindowToConsole, type ConsoleHandoffDeps } from "../src/console-handoff.js";
+import { handOffWindowToConsole, republishShellHomeOnArrival, type ConsoleHandoffDeps, type ShellHomePublication } from "../src/console-handoff.js";
 
 const TARGET = "http://127.0.0.1:2253";
 
@@ -91,5 +91,40 @@ describe("console handoff", () => {
       `theme:${TARGET}`,
       `fullscreen:${TARGET}`,
     ]);
+  });
+});
+
+/**
+ * 창이 셸의 손을 거치지 않고 다시 도착하는 경우 — 재기동한 콘솔로 화면이 스스로 되돌아올 때.
+ * 그 콘솔은 게시도 세션도 잊었고, 세션은 화면이 되살린다. 게시는 그 뒤에야 받아들여진다.
+ */
+describe("shell home republish on arrival", () => {
+  it("keeps publishing until the page's revived session accepts it, then stops", async () => {
+    const answers: ShellHomePublication[] = ["unauthorized", "unauthorized", "accepted", "accepted"];
+    const trace: string[] = [];
+
+    const outcome = await republishShellHomeOnArrival({
+      publish: async (origin) => { trace.push(`publish:${origin}`); return answers.shift() ?? "failed"; },
+      stillAt: () => true,
+      wait: async (ms) => { trace.push(`wait:${ms}`); },
+    }, TARGET);
+
+    expect(outcome).toBe("accepted");
+    expect(trace).toEqual([`publish:${TARGET}`, "wait:1000", `publish:${TARGET}`, "wait:2000", `publish:${TARGET}`]);
+  });
+
+  /** 기다리는 사이 창이 다른 콘솔로 옮겨 갔으면 거기에 집을 게시하지 않는다 — 남의 콘솔 목록에 이 기계가 서면 안 된다. */
+  it("does not publish to a console the window has already left", async () => {
+    let publishes = 0;
+    let at: string | null = TARGET;
+
+    const outcome = await republishShellHomeOnArrival({
+      publish: async () => { publishes += 1; return "unauthorized"; },
+      stillAt: (origin) => origin === at,
+      wait: async () => { at = "http://127.0.0.1:2254"; },
+    }, TARGET);
+
+    expect(outcome).toBe("unauthorized");
+    expect(publishes).toBe(1);
   });
 });

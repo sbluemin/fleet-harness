@@ -152,6 +152,28 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       .resolves.toEqual(["first"]);
   });
 
+  /**
+   * 창은 뜨자마자 "돌아갈 곳"을 한 번 묻는다. 재기동한 콘솔은 앞선 게시를 잊었으므로 셸이 다시
+   * 게시하는데, 그 순간이 물음보다 늦으면 첫 답은 빈손이다 — 그 뒤늦은 게시는 이미 붙어 있는
+   * 그 창의 스트림으로 가야 하고, 그 뒤 다시 붙는 창은 붙는 순간 그 집을 받아야 한다.
+   */
+  it("carries a home published after the window attached to that window's stream, and to its next attach", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "desktop");
+    const origin = `https://${BIND_HOST}:${fixture.remotePort}`;
+    const home = "http://127.0.0.1:50692";
+    const attached = await openRemoteEvents(fixture, cookie);
+
+    const published = await remoteRequest(fixture, "PUT", "/api/v1/desktop/shell", JSON.stringify({ homeOrigin: home }), cookie, { origin });
+    expect(published.status).toBe(204);
+    await expect(attached.waitFor("desktop:shell", (data) => data.homeOrigin === home)).resolves.toEqual({ homeOrigin: home });
+    attached.close();
+
+    const reattached = await openRemoteEvents(fixture, cookie);
+    await expect(reattached.waitFor("desktop:shell", (data) => data.homeOrigin === home)).resolves.toEqual({ homeOrigin: home });
+    reattached.close();
+  });
+
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
   it("writes no pairing secret to disk", async () => {
     const fixture = await startFixture({ remote: true });

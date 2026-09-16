@@ -45,3 +45,37 @@ function sleep(ms: number): Promise<void> {
     timer.unref?.();
   });
 }
+
+/** 게시 한 번의 결과. 401은 실패가 아니라 "세션이 아직 없다"이며, 그 구분이 아래 재시도의 근거다. */
+export type ShellHomePublication = "accepted" | "unauthorized" | "rejected" | "failed";
+
+export interface ShellHomeArrivalDeps {
+  readonly publish: (origin: string) => Promise<ShellHomePublication>;
+  /** 창이 아직 그 콘솔에 있는가. 다른 곳으로 옮겨 갔으면 남의 콘솔에 집을 게시하지 않는다. */
+  readonly stillAt: (origin: string) => boolean;
+  readonly wait?: (ms: number) => Promise<void>;
+}
+
+/** 화면이 페어링으로 세션을 되살리는 데 드는 시간을 넉넉히 덮고, 그 뒤로는 두드리지 않는다. */
+const ARRIVAL_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000];
+
+/**
+ * 창이 셸의 손을 거치지 않고 다시 도착했을 때의 게시 — 새로고침, 그리고 재기동한 콘솔에 화면이
+ * 스스로 되돌아온 경우.
+ *
+ * 위의 handoff는 도착 *전에* 게시하지만, 재기동한 콘솔은 그 게시를 잊었고 세션도 잊었다.
+ * 세션은 화면이 자기 페어링으로 되살리므로, 그보다 먼저 보낸 게시는 401로 돌아온다. 그래서
+ * 받아들여지거나 분명히 거절될 때까지 정해진 횟수만 다시 보낸다. 게시가 끝내 서지 않으면
+ * 원격 콘솔이 이 기계의 집 행세를 한다 — 그 창의 호스트 목록에서 돌아갈 줄이 사라지므로.
+ */
+export async function republishShellHomeOnArrival(deps: ShellHomeArrivalDeps, origin: string): Promise<ShellHomePublication> {
+  const wait = deps.wait ?? sleep;
+  let outcome = await deps.publish(origin);
+  for (const delay of ARRIVAL_RETRY_DELAYS_MS) {
+    if (outcome === "accepted" || outcome === "rejected") return outcome;
+    await wait(delay);
+    if (!deps.stillAt(origin)) return outcome;
+    outcome = await deps.publish(origin);
+  }
+  return outcome;
+}
