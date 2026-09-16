@@ -50,7 +50,12 @@ export interface BrowserOperationState {
   readonly available: boolean;
   readonly reason: BrowserUnavailableReason | null;
 }
-export type BrowserSubscriber = { state?: (state: BrowserOperationState) => void };
+/**
+ * 상태를 듣는 쪽. 구독은 Operation 마다가 아니라 서비스 하나에 걸린다 — 화면으로 나가는 길이 이미 열려 있는 Operation
+ * 스트림 하나이기 때문이다. 브라우저 상태만을 위해 화면이 스트림을 하나 더 열면 그 연결이 origin 당 여섯 개뿐인
+ * 예산을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 큐에 갇힌다.
+ */
+export type BrowserStateListener = (state: BrowserOperationState) => void;
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
@@ -93,7 +98,6 @@ interface OperationBrowser {
   tabs: Map<string, Tab>;
   activeTabId: string | null;
   viewport: BrowserViewport;
-  subscribers: Set<BrowserSubscriber>;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null } | null;
   /** 「중단」이 눌린 횟수 — 배치처럼 여러 호출로 이어지는 실행이 중단을 건너뛰지 못하게 세대를 비교한다. */
@@ -168,6 +172,7 @@ export class BrowserService {
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
   private readonly operations = new Map<string, OperationBrowser>();
+  private readonly stateListeners = new Set<BrowserStateListener>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   /** 셸의 Chromium 이 보고한 일반 Chrome UA 와 브랜드 메타데이터 — 엔진을 집을 때 만든다. */
   private identity: { userAgent: string; metadata: Record<string, unknown> } | null = null;
@@ -248,7 +253,7 @@ export class BrowserService {
   private scheduleIdle(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      const busy = [...this.operations.values()].some((op) => op.tabs.size > 0 || op.subscribers.size > 0 || op.agentCalls.size > 0);
+      const busy = [...this.operations.values()].some((op) => op.tabs.size > 0 || op.agentCalls.size > 0);
       if (!busy) void this.stopEngine();
     }, IDLE_SHUTDOWN_MS);
   }
@@ -263,7 +268,8 @@ export class BrowserService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.subscribers.clear(); }
+    for (const op of this.operations.values()) for (const call of op.agentCalls) call.abort();
+    this.stateListeners.clear();
     await this.stopEngine();
     this.operations.clear();
   }
@@ -273,7 +279,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
       this.operations.set(operationId, op);
     }
     return op;
@@ -311,16 +317,15 @@ export class BrowserService {
     };
   }
 
-  subscribe(operationId: string, subscriber: BrowserSubscriber): () => void {
-    const op = this.operation(operationId);
-    op.subscribers.add(subscriber);
-    subscriber.state?.(this.state(operationId));
-    return () => { op.subscribers.delete(subscriber); this.scheduleIdle(); };
+  /** 어느 Operation 의 것이든 상태가 바뀌면 듣는다 — 프레임은 자기 `operationId` 를 싣고 간다. */
+  onState(listener: BrowserStateListener): () => void {
+    this.stateListeners.add(listener);
+    return () => { this.stateListeners.delete(listener); };
   }
 
   private emitState(op: OperationBrowser): void {
     const state = this.state(op.operationId);
-    for (const subscriber of op.subscribers) { try { subscriber.state?.(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
+    for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
   /** 허용 회수·Operation 종료 — 진행 중 에이전트 호출을 끊고 탭과 컨텍스트를 닫는다. */
@@ -336,7 +341,7 @@ export class BrowserService {
     op.contextId = "";
     this.endAgentSession(operationId, "revoke");
     this.emitState(op);
-    if (op.subscribers.size === 0) this.operations.delete(operationId);
+    this.operations.delete(operationId);
     this.scheduleIdle();
   }
 

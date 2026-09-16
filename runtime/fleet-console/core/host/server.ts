@@ -123,6 +123,9 @@ interface ConsolePortListenPlan {
   readonly allowFallback: boolean;
 }
 
+/** Operation 스트림에 실리는 브라우저 상태 프레임의 이름. 화면은 이 채널로 탭·주소·조작 여부를 듣는다. */
+const BROWSER_STATE_EVENT = "browser:state";
+
 /**
  * SSE 구독자는 이제 자기가 어느 리스너에서 왔는지를 들고 다닌다. 제어권 이벤트의 수신자가
  * 구독자마다 다르기 때문이다 — 보유자 정보는 루프백만, 회수 통지는 끊긴 세션 하나만 받는다.
@@ -408,7 +411,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the Operation Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/stream", summary: "Stream an Operation's browser tab state.", category: "Console Execution", gate: "origin-write", transport: "sse" },
+  { method: "GET", path: "/api/v1/browser/operations/:operationId/state", summary: "Read an Operation's browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/tabs", summary: "Create, close or select a tab in an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/navigate", summary: "Navigate an Operation's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -670,6 +673,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     availability: browserAvailability,
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
     desktop: desktopEngine,
+  });
+  /**
+   * 브라우저 상태는 Operation 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
+   * (origin 당 여섯)을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다.
+   * 뷰를 가진 Desktop 창에만 보낸다: 브라우저는 그 창에서만 열리고, 다른 화면에는 그릴 자리가 없다.
+   */
+  browserService.onState((state) => {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(BROWSER_STATE_EVENT, state);
+    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
   });
   const browserMcp = createBrowserMcpHost({
     transport: mcpHttp.transport,
@@ -1078,6 +1091,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operationSseSubscribers.add(subscriber);
       // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
       browserService.reconcile();
+      // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
+      // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
+      if (subscriber.client === "desktop") {
+        for (const browsing of browserService.status().operations) res.write(encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
+      }
       startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(subscriber);
         browserService.reconcile();
@@ -1139,26 +1157,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
       return true;
     }
-    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
     if (!operations.list().some((operation) => operation.id === operationId)) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
-    // 상태 스트림은 쓸 수 없을 때도 열린다 — 패널이 왜 닫혀 있는지 그 스트림으로 듣는다.
-    if (action !== "stream" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
+    // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
+    if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
       if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
       const message = error instanceof Error ? error.message : "browser_request_failed";
       writeJson(res, 500, { error: message.startsWith("browser_") ? message : "browser_request_failed" });
     };
-    if (req.method === "GET" && action === "stream") {
-      res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }));
-      res.write(":connected\n\n");
-      let closed = false;
-      const write = (event: string, data: unknown) => { if (!closed && !res.writableEnded && !res.destroyed) res.write(encodeSseData(event, data)); };
-      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state) });
-      const keepalive = setInterval(() => { if (!closed && !res.writableNeedDrain) res.write(":keepalive\n\n"); }, 25_000);
-      req.on("close", () => { closed = true; clearInterval(keepalive); unsubscribe(); });
+    if (req.method === "GET" && action === "state") {
+      // 뒤따르는 변화는 Operation 스트림의 browser:state 로 간다 — 이 답은 그 스트림에 붙는 화면의 출발점이다.
+      writeJson(res, 200, browserService.state(operationId));
       return true;
     }
     if (req.method === "GET" && action === "favicon") {

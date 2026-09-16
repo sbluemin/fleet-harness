@@ -16,8 +16,8 @@ import { createLaunchController, type RuntimeEntryState } from "./launch-control
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
-import { installRemoteCertificatePins } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
+import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
@@ -115,16 +115,18 @@ async function boot(): Promise<void> {
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
-  // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로
-  // 그 origin으로 가는 메인 프로세스 요청은 창이 쓰는 바로 그 세션을 타야 한다.
+  // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로 그 origin으로 가는
+  // 메인 프로세스 요청은 인증서 핀과 세션 쿠키를 갖춘 세션을 타야 한다 — 다만 창의 것이어서는 안 된다(shell-network.ts).
   const consoleSession = session.defaultSession;
-  const remotePins = installRemoteCertificatePins(consoleSession, (message) => logger.error(message));
-  const consoleFetch: typeof fetch = (input, init) => {
-    // 동기화기는 문자열 URL만 넘긴다. Request가 오면 조용히 다른 경로로 보내지 않고 기존 경로를 쓴다.
-    if (typeof input !== "string" && !(input instanceof URL)) return globalThis.fetch(input, init);
-    const url = typeof input === "string" ? input : input.href;
-    return isRemoteConsoleOrigin(new URL(url).origin) ? consoleSession.fetch(url, init) : globalThis.fetch(url, init);
-  };
+  const shellNetwork = createShellNetwork({
+    windowSession: consoleSession,
+    // 이름 앞에 `persist:`를 두지 않아 메모리에만 산다 — 베껴 온 자격이 디스크에 두 번째 사본으로 남지 않는다.
+    shellSession: session.fromPartition("fleet-shell"),
+    isRemote: isRemoteConsoleOrigin,
+    log: (message) => logger.error(message),
+  });
+  const remotePins = shellNetwork.pins;
+  const consoleFetch = shellNetwork.fetch;
   let overlayRefresher: TitleBarOverlayRefresher | null = null;
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
