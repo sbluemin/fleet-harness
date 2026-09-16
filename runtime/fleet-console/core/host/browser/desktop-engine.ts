@@ -15,6 +15,8 @@ import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp
  */
 
 const ATTACH_TIMEOUT_MS = 10_000;
+/** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
+const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
@@ -37,6 +39,7 @@ export class DesktopEngine implements CdpClient {
   private generation = 0;
   private identity: { product: string; userAgent: string } | null = null;
   private subscribers = 0;
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private closedResolve: (() => void) | null = null;
   private closedPromise: Promise<void>;
 
@@ -48,16 +51,19 @@ export class DesktopEngine implements CdpClient {
   get closed(): Promise<void> { return this.closedPromise; }
 
   /** 셸이 스냅샷을 구독 중인가 — 그래야 뷰를 띄울 상대가 있다. */
-  get connected(): boolean { return this.subscribers > 0; }
+  get connected(): boolean { return this.subscribers > 0 || this.graceTimer !== null; }
 
   /** 셸의 SSE 구독 하나가 열리고 닫힐 때. 마지막 구독이 닫히면 엔진도 닫힌다. */
   subscriberOpened(): void {
+    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     if (this.subscribers === 0 && this.closedResolve === null) this.closedPromise = new Promise((resolve) => { this.closedResolve = resolve; });
     this.subscribers += 1;
   }
   subscriberClosed(): void {
     this.subscribers = Math.max(0, this.subscribers - 1);
-    if (this.subscribers === 0) void this.close();
+    if (this.subscribers > 0 || this.graceTimer) return;
+    // 셸의 스트림은 끊기면 1초 뒤 다시 붙는다 — 그 사이를 닫힘으로 읽으면 열린 페이지가 전부 사라진다.
+    this.graceTimer = setTimeout(() => { this.graceTimer = null; if (this.subscribers === 0) void this.close(); }, RECONNECT_GRACE_MS);
   }
 
   snapshot(): DesktopBrowserSnapshot {
@@ -161,6 +167,7 @@ export class DesktopEngine implements CdpClient {
   on(listener: CdpListener): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
 
   async close(): Promise<void> {
+    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     for (const view of [...this.views.keys()]) this.dropView(view);
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }
     this.pending.clear();

@@ -24,6 +24,8 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
 
 export const MAX_DESKTOP_BROWSER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
 const RELAY_FLUSH_MS = 8;
+/** relay 가 닿지 않으면 같은 배치를 이만큼 뒤에 다시 보낸다 — 순서는 지킨다. */
+const RELAY_RETRY_MS = 500;
 /** Chromium 이 순서를 지켜 주는 이벤트지만, 한 번에 너무 많이 쌓이면 relay 하나가 콘솔의 한도를 넘는다. */
 const RELAY_MAX_EVENTS = 400;
 
@@ -67,9 +69,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
 
-  const scheduleFlush = (): void => {
+  const scheduleFlush = (delay = RELAY_FLUSH_MS): void => {
     if (flushTimer !== null) return;
-    flushTimer = setTimeout(() => { flushTimer = null; flush(); }, RELAY_FLUSH_MS);
+    flushTimer = setTimeout(() => { flushTimer = null; flush(); }, delay);
   };
 
   const flush = (): void => {
@@ -85,16 +87,26 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
     };
-    // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다.
-    flushing = flushing.then(() => send(target, body)).catch(() => undefined);
+    // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 그 배치를 맨 앞에 되돌려 놓고
+    // 잠시 뒤 다시 보낸다 — 부착 통지나 명령 응답 하나가 사라지면 콘솔은 시간 초과까지 기다리게 된다.
+    flushing = flushing.then(async () => {
+      if (origin !== target) return;
+      if (await send(target, body)) return;
+      outbox = { attached: [...batch.attached, ...outbox.attached], detached: [...batch.detached, ...outbox.detached], sizes: [...batch.sizes, ...outbox.sizes], results: [...batch.results, ...outbox.results], events: [...batch.events, ...outbox.events] };
+      scheduleFlush(RELAY_RETRY_MS);
+    }).catch(() => undefined);
   };
 
-  const send = async (target: string, body: DesktopBrowserRelay): Promise<void> => {
+  const send = async (target: string, body: DesktopBrowserRelay): Promise<boolean> => {
     try {
       const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: target }, body: JSON.stringify(body) });
-      if (!response.ok) log(`browser relay rejected status=${response.status}`);
+      if (response.ok) return true;
+      log(`browser relay rejected status=${response.status}`);
+      // 콘솔이 몸을 거절한 것(400)은 다시 보내도 같다 — 버린다. 나머지는 잠시 뒤 다시.
+      return response.status === 400;
     } catch (error) {
       log(`browser relay failed: ${error instanceof Error ? error.message : "unknown"}`);
+      return false;
     }
   };
 

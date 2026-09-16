@@ -248,7 +248,9 @@ export class BrowserService {
 
   status(): BrowserServiceStatus {
     const { candidate, reason } = this.lookup();
-    return { enabled: this.deps.enabled(), available: candidate !== null, missingReason: reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
+    // 창을 든 Desktop 이 붙어 있으면 그 Chromium 이 엔진이다 — 따로 설치한 Chrome 이 없어도 브라우저를 열 수 있다.
+    const desktop = this.deps.desktop?.connected === true;
+    return { enabled: this.deps.enabled(), available: candidate !== null || desktop, missingReason: candidate !== null || desktop ? null : reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
   }
 
   available(): boolean { return this.deps.enabled() && this.deps.localControl(); }

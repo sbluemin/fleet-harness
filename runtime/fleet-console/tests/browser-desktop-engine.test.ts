@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DesktopBrowserSnapshot } from "@fleet-console/desktop-protocol";
 
 import { DesktopEngine } from "../core/host/browser/desktop-engine.js";
@@ -45,15 +45,25 @@ describe("desktop native browser engine", () => {
     engine.relay({ events: [{ viewId: targetId, method: "Page.frameNavigated", params: { frame: { id: "f" } } }] });
     expect(events).toEqual([`${targetId}:Page.frameNavigated`]);
 
-    // 셸이 떠나면 기다리던 명령은 실패하고 엔진은 닫힌다 — 서비스가 탭을 접는 신호다.
-    const orphaned = engine.send("Runtime.evaluate", { expression: "2" }, sessionId);
-    let closed = false;
-    void engine.closed.then(() => { closed = true; });
-    engine.subscriberClosed();
-    await expect(orphaned).rejects.toThrow(/desktop_browser_disconnected|desktop_view_closed/);
-    await Promise.resolve();
-    expect(closed).toBe(true);
-    expect(engine.connected).toBe(false);
-    await expect(engine.send("Runtime.evaluate", {}, sessionId)).rejects.toThrow(/desktop_browser_disconnected/);
+    // 스트림이 잠깐 끊겼다 돌아오면 뷰와 명령은 그대로다 — 절전·순단은 창이 닫힌 것이 아니다.
+    vi.useFakeTimers();
+    try {
+      const orphaned = engine.send("Runtime.evaluate", { expression: "2" }, sessionId);
+      engine.subscriberClosed();
+      expect(engine.connected).toBe(true);
+      vi.advanceTimersByTime(1_000);
+      engine.subscriberOpened();
+      expect(published.at(-1)?.views).toHaveLength(1);
+      // 셸이 정말 떠나면(유예 경과) 기다리던 명령은 실패하고 엔진은 닫힌다 — 서비스가 탭을 접는 신호다.
+      let closed = false;
+      void engine.closed.then(() => { closed = true; });
+      engine.subscriberClosed();
+      vi.advanceTimersByTime(6_000);
+      await expect(orphaned).rejects.toThrow(/desktop_browser_disconnected|desktop_view_closed/);
+      await Promise.resolve();
+      expect(closed).toBe(true);
+      expect(engine.connected).toBe(false);
+      await expect(engine.send("Runtime.evaluate", {}, sessionId)).rejects.toThrow(/desktop_browser_disconnected/);
+    } finally { vi.useRealTimers(); }
   });
 });
