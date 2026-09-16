@@ -161,8 +161,8 @@ const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 /** Desktop 네이티브 뷰의 relay 는 스크린샷(base64)을 나른다 — 2배 표면의 PNG 도 넉넉히 들어간다. */
 const DESKTOP_BROWSER_RELAY_MAX_BYTES = 64 * 1024 * 1024;
-/** 패널이 붙여넣기로 보내는 스크린샷 PNG(base64) — 레티나 한 장이 몇 MB 다. */
-const BROWSER_PASTE_MAX_BYTES = 32 * 1024 * 1024;
+/** 패널이 붙여넣기로 보내는 스크린샷 PNG(base64). 뷰포트 최대 3840×2400 의 고엔트로피 PNG 는 base64 로 약 36 MiB 다. */
+const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
 /** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);

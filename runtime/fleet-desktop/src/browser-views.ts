@@ -200,9 +200,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (command.viewId === DESKTOP_BROWSER_SHELL_VIEW) {
       const handler = deps.shellCommand;
       if (!handler) { push({ results: [{ id: command.id, error: "desktop_shell_unsupported" }] }); return; }
+      // 셸 명령은 몇 초가 걸린다(헤드리스 Chrome). 그 사이 창이 다른 콘솔로 건너가면 이 답은 옛 콘솔의 것이라 버린다 —
+      // 명령 id 는 콘솔마다 따로 매기므로 새 콘솔의 다른 명령을 엉뚱한 답으로 풀어 버릴 수 있다.
+      const token = session;
       handler(command.method, command.params)
-        .then((result) => push({ results: [{ id: command.id, result }] }))
-        .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
+        .then((result) => { if (session === token) push({ results: [{ id: command.id, result }] }); })
+        .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
       return;
     }
     const entry = live.get(command.viewId);
