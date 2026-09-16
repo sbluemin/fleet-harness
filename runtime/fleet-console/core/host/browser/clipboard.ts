@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,22 +12,65 @@ import path from "node:path";
  * 실어 CLI 가 빈 클립보드를 읽었다. 여기서 올리고 나서야 Ctrl+V 를 누르므로 순서가 보장된다.
  *
  * 각 플랫폼에서 CLI 가 읽는 것과 같은 도구로 쓴다: macOS 는 `osascript`, Windows 는 PowerShell 의 Forms 클립보드,
- * Linux 는 `xclip` 또는 `wl-copy`. 도구가 없으면 CLI 도 읽지 못했을 것이다.
+ * Linux 는 `xclip` 또는 `wl-copy`. WSL 은 Linux 가 아니라 Windows 다 — 클립보드는 Windows 의 것이고 CLI 도
+ * Windows 상호운용의 `powershell.exe` 로 읽으므로, 사본을 WSL 경로 그대로 두고 `wslpath -w` 로 옮긴 UNC 경로
+ * (`\\wsl.localhost\<distro>\…`)를 PowerShell 에 건넨다. 도구가 없으면 CLI 도 읽지 못했을 것이다.
  */
 
 export interface WriteImageClipboardOptions {
   readonly platform?: NodeJS.Platform;
+  readonly env?: NodeJS.ProcessEnv;
   readonly tempDir?: string;
-  readonly run?: (file: string, args: readonly string[], input?: Buffer) => Promise<void>;
+  /** 명령을 실행하고 표준 출력을 돌려준다. 시험에서 바꾼다. */
+  readonly run?: (file: string, args: readonly string[], input?: Buffer) => Promise<string>;
 }
 
-const defaultRun = (file: string, args: readonly string[], input?: Buffer): Promise<void> => new Promise((resolve, reject) => {
-  const child = execFile(file, [...args], { timeout: 10_000, windowsHide: true }, (error) => { if (error) reject(error); else resolve(); });
-  if (input) { child.stdin?.end(input); } else { child.stdin?.end(); }
+const COMMAND_TIMEOUT_MS = 20_000;
+const WSL_POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+/** 명령 실패. `code` 는 spawn 오류 코드(`ENOENT` = 도구가 없다)이고, 도구가 돌다가 실패했으면 비어 있다. */
+export class ClipboardCommandError extends Error {
+  constructor(file: string, detail: string, readonly code: string | null) { super(`${path.basename(file)} failed: ${detail}`); this.name = "ClipboardCommandError"; }
+}
+
+const defaultRun = (file: string, args: readonly string[], input?: Buffer): Promise<string> => new Promise((resolve, reject) => {
+  const child = execFile(file, [...args], { timeout: COMMAND_TIMEOUT_MS, windowsHide: true, encoding: "utf8" }, (error, stdout, stderr) => {
+    if (error) reject(new ClipboardCommandError(file, (stderr || error.message).trim().slice(0, 300), typeof (error as { code?: unknown }).code === "string" ? String((error as { code?: unknown }).code) : null)); else resolve(String(stdout));
+  });
+  if (input) child.stdin?.end(input); else child.stdin?.end();
 });
+
+export function isWsl(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, readProcVersion: () => string = () => fsSync.readFileSync("/proc/version", "utf8")): boolean {
+  if (platform !== "linux") return false;
+  if (env.WSL_DISTRO_NAME || env.WSL_INTEROP) return true;
+  try { return /microsoft/i.test(readProcVersion()); } catch { return false; }
+}
+
+/** WSL 에서 보이는 Windows PowerShell — PATH 의 `powershell.exe`(상호운용) 가 먼저, 없으면 관례 경로. CLI 와 같은 순서다. */
+export function wslPowershell(env: NodeJS.ProcessEnv = process.env, exists: (file: string) => boolean = (file) => { try { return fsSync.statSync(file).isFile(); } catch { return false; } }): string {
+  for (const dir of (env.PATH ?? "").split(":")) { if (dir && exists(path.join(dir, "powershell.exe"))) return path.join(dir, "powershell.exe"); }
+  return WSL_POWERSHELL;
+}
+
+/** PowerShell 이 클립보드에 PNG 를 올리는 스크립트. 파일은 바이트로 읽어 스트림에서 연다 — UNC 경로도, 파일 잠금도 걱정이 없다. */
+export function powershellSetImageScript(windowsPath: string): string {
+  // 클립보드를 다른 프로세스가 쥐고 있어 SetImage 가 던지면 종료 코드로 알려야 한다 — 0 으로 끝나면 서버가 옛 클립보드
+  // 위에 Ctrl+V 를 누른다. 오류는 멈추게 하고, 잡아서 stderr 에 적은 뒤 1 로 나간다.
+  const body = [
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "Add-Type -AssemblyName System.Drawing",
+    `$bytes = [System.IO.File]::ReadAllBytes(${powershellString(windowsPath)})`,
+    "$stream = New-Object System.IO.MemoryStream(,$bytes)",
+    "$img = [System.Drawing.Image]::FromStream($stream)",
+    "[System.Windows.Forms.Clipboard]::SetImage($img)",
+    "$img.Dispose(); $stream.Dispose()",
+  ].join("; ");
+  return `$ErrorActionPreference = 'Stop'; try { ${body} } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
+}
 
 export async function writeImageToClipboard(png: Buffer, options: WriteImageClipboardOptions = {}): Promise<void> {
   const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
   const run = options.run ?? defaultRun;
   const tempDir = await fs.mkdtemp(path.join(options.tempDir ?? os.tmpdir(), "fleet-browser-clip-"));
   const file = path.join(tempDir, "screenshot.png");
@@ -37,15 +81,39 @@ export async function writeImageToClipboard(png: Buffer, options: WriteImageClip
       return;
     }
     if (platform === "win32") {
-      const script = `Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile(${powershellString(file)}); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()`;
-      await run("powershell", ["-NoProfile", "-NonInteractive", "-STA", "-Command", script]);
+      await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(file)]);
       return;
     }
+    // WSL2 커널 위의 Linux 컨테이너도 /proc/version 에 microsoft 가 찍히지만 wslpath 도 상호운용도 없다 — 도구 자체가
+    // 없어(ENOENT) Windows 길이 막힐 때만 그 컨테이너가 갖춘 Linux 도구로 내려간다. 진짜 WSL 에서 PowerShell 이 돌다가
+    // 실패한 것(다른 프로세스가 클립보드를 쥠)은 그대로 실패다 — Linux 도구가 다른 X 클립보드에 써 봐야 CLI 는 Windows 것을 읽는다.
+    let windowsFailure: string | null = null;
+    if (isWsl(platform, env)) {
+      try {
+        const windowsPath = (await run("wslpath", ["-w", file])).trim();
+        if (!windowsPath) throw new Error("wslpath returned no Windows path");
+        await run(wslPowershell(env), ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(windowsPath)]);
+        return;
+      } catch (error) {
+        if (!(error instanceof ClipboardCommandError) || error.code !== "ENOENT") throw error;
+        windowsFailure = error.message;
+      }
+    }
     try { await run("xclip", ["-selection", "clipboard", "-t", "image/png", "-i", file]); }
-    catch { await run("wl-copy", ["--type", "image/png"], png); }
+    catch (xclipError) {
+      try { await run("wl-copy", ["--type", "image/png"], png); }
+      catch (wlError) {
+        const linux = `${xclipError instanceof Error ? xclipError.message : "xclip failed"}; ${wlError instanceof Error ? wlError.message : "wl-copy failed"}`;
+        throw new Error(windowsFailure ? `${windowsFailure}; ${linux}` : linux);
+      }
+    }
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
-function powershellString(value: string): string { return `'${value.replace(/'/g, "''")}'`; }
+/** PowerShell 홑따옴표 문자열. 홑따옴표는 두 번 써서 이스케이프한다. 굽은 따옴표(U+2018..201F)도 PowerShell 은 따옴표로 읽으므로 거른다. */
+function powershellString(value: string): string {
+  if (/[‘-‟]/u.test(value)) throw new Error("path contains a PowerShell quote-variant character");
+  return `'${value.replace(/'/g, "''")}'`;
+}
