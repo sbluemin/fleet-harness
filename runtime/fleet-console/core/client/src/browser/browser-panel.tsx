@@ -26,7 +26,7 @@ interface BrowserState {
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
 }
 interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
-interface Frame { readonly tabId: string; readonly data: string; readonly width: number; readonly height: number }
+interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
 interface ElementInfo { readonly ref?: string; readonly selector: string; readonly tag: string; readonly id: string | null; readonly classes: readonly string[]; readonly text: string; readonly role: string | null; readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly component: string | null; readonly source: string | null; readonly styles: Record<string, string> }
 
 type Connection = "connecting" | "open" | "closed" | "disabled";
@@ -66,7 +66,13 @@ function useBrowserStream(operationId: string, enabled: boolean) {
   return { state, frame, connection };
 }
 
-const deviceScale = () => Math.min(2, Math.max(1, Math.round((window.devicePixelRatio || 1) * 4) / 4));
+/**
+ * 프레임을 찍을 물리 배율 — devicePixelRatio 에 화면 확대 배율(조상 transform · 핀치)을 곱해 ¼ 단위로 맺는다.
+ * 확대된 만큼 더 찍지 않으면 확대한 만큼 흐려진다. 표면 상한(2)은 서버와 같다.
+ */
+const deviceScale = (zoom: number) => Math.min(2, Math.max(1, Math.round((window.devicePixelRatio || 1) * (zoom > 0 ? zoom : 1) * 4) / 4));
+/** 캔버스 줌은 보간 중 매 프레임 바뀐다 — 멈춘 뒤 이만큼 지나야 그 값으로 다시 찍는다. */
+const ZOOM_SETTLE_MS = 300;
 
 /** 주소 표시 — 호스트는 또렷하게, 스킴은 감추고 경로·쿼리는 흐리게. 편집 중에는 원문 input 이 보인다. */
 function UrlParts({ url }: { url: string }) {
@@ -245,31 +251,67 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const polarity = themePolarity(context.theme);
   const schemeSetBy = state?.viewport.setBy ?? null;
   const schemeNow = state?.viewport.colorScheme ?? null;
+  // 캔버스 줌이 멈춘 값 — 보간 중에는 따라가지 않는다. 배율 자체는 아래에서 이미지로 직접 잰다; 이 값은 다시 잴 때를 알린다.
+  const zoom = context.zoom > 0 ? context.zoom : 1;
+  const [zoomSettled, setZoomSettled] = React.useState(zoom);
+  React.useEffect(() => {
+    if (zoom === zoomSettled) return;
+    const timer = setTimeout(() => setZoomSettled(zoom), ZOOM_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [zoom, zoomSettled]);
+  /**
+   * 이미지의 CSS px 하나가 화면에서 실제로 몇 픽셀인가 — devicePixelRatio(페이지 줌 포함) × 조상의 transform 배율
+   * (화면 rect ÷ 레이아웃 폭) × 핀치 줌. 어느 경로로 확대되었든 그 배율로 찍어야 확대한 만큼 흐려지지 않는다.
+   */
+  const measureScale = () => {
+    const image = imageRef.current;
+    const transform = image && image.clientWidth > 0 ? image.getBoundingClientRect().width / image.clientWidth : 1;
+    const pinch = window.visualViewport?.scale ?? 1;
+    return deviceScale((transform > 0 ? transform : 1) * (pinch > 0 ? pinch : 1));
+  };
+
   React.useEffect(() => {
     if (!state) return;
     if (schemeNow === polarity) return;
     if (schemeNow !== null && schemeSetBy === "agent") return;
-    void post(operationId, "viewport", { colorScheme: polarity, scale: deviceScale() });
+    void post(operationId, "viewport", { colorScheme: polarity, scale: measureScale() });
   }, [operationId, polarity, state !== null, schemeNow, schemeSetBy]);
 
-  // 반응형 뷰포트 — 패널 크기가 곧 페이지 크기다. 프리셋이 잡혀 있으면 따라가지 않는다.
+  // 뷰포트 동기화 — 반응형이면 패널 크기가 곧 페이지 크기이고, 프리셋이면 크기는 두고 배율만 따른다.
+  // 크기는 1px 이라도 다르면 다시 잰다: 프레임은 패널과 같은 CSS 크기로 1:1 로 놓이므로, 허용 오차만큼 늘리거나
+  // 줄여 보여 주면 모든 픽셀이 다시 표본화되어 글자가 뿌옇게 된다. 배율은 표시 배율이 바뀔 때(레티나 ↔ 외부 모니터,
+  // 페이지 줌, 캔버스 확대, 핀치) 다시 찍는다.
   React.useEffect(() => {
     const element = viewportRef.current;
-    if (!element || !state || state.viewport.preset !== "responsive") return;
+    if (!element || !state) return;
+    const sync = () => {
+      const scale = measureScale();
+      if (state.viewport.preset !== "responsive") {
+        if (Math.abs(scale - state.viewport.scale) >= 0.01) void post(operationId, "viewport", { scale });
+        return;
+      }
+      const width = Math.round(element.clientWidth);
+      const height = Math.round(element.clientHeight);
+      if (width < 320 || height < 240) return;
+      if (width === state.viewport.width && height === state.viewport.height && Math.abs(scale - state.viewport.scale) < 0.01) return;
+      void post(operationId, "viewport", { preset: "responsive", width, height, scale });
+    };
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver(() => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const width = Math.round(element.clientWidth);
-        const height = Math.round(element.clientHeight);
-        if (width < 320 || height < 240) return;
-        if (Math.abs(width - state.viewport.width) < 8 && Math.abs(height - state.viewport.height) < 8 && Math.abs(deviceScale() - state.viewport.scale) < 0.01) return;
-        void post(operationId, "viewport", { preset: "responsive", width, height, scale: deviceScale() });
-      }, 250);
-    });
+    const later = () => { if (timer) clearTimeout(timer); timer = setTimeout(sync, 250); };
+    const observer = new ResizeObserver(later);
     observer.observe(element);
-    return () => { observer.disconnect(); if (timer) clearTimeout(timer); };
-  }, [operationId, state?.viewport.preset, state?.viewport.width, state?.viewport.height, state?.viewport.scale, state?.tabs.length]);
+    window.visualViewport?.addEventListener("resize", later);
+    // 배율이 다른 모니터로 창을 옮기면 CSS 크기는 그대로라 위 둘은 울리지 않는다 — 지금 배율에 맞춘 미디어 쿼리가 깨질 때 다시 잰다.
+    let dprQuery: MediaQueryList | null = null;
+    const armDpr = () => {
+      dprQuery?.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener("change", onDpr);
+    };
+    const onDpr = () => { armDpr(); later(); };
+    armDpr();
+    return () => { observer.disconnect(); window.visualViewport?.removeEventListener("resize", later); dprQuery?.removeEventListener("change", onDpr); if (timer) clearTimeout(timer); };
+  }, [operationId, state?.viewport.preset, state?.viewport.width, state?.viewport.height, state?.viewport.scale, state?.tabs.length, zoomSettled]);
 
   const fail = async (response: Response) => {
     let message = t("terminal.browser.requestFailed");
@@ -291,20 +333,27 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     void run("navigate", { url: value });
   };
 
-  // ---- 좌표 변환: 화면의 이미지 픽셀 → 페이지 CSS 픽셀 ----
-  // 프레임은 자신의 크기를 CSS px 로 선언한다(JPEG 픽셀은 그 배율만큼 크다 — 레티나에서 선명하게 보이기
-  // 위해). 상태의 뷰포트 값은 다음 프레임이 오기 전까지 앞서갈 수 있으므로 프레임 자신의 선언을 쓴다.
-  const scale = () => {
+  // ---- 좌표 변환 ----
+  // 프레임은 자신의 크기를 CSS px 로 선언한다(픽셀은 그 배율만큼 크다 — 레티나에서 선명하게 보이기 위해). 상태의
+  // 뷰포트 값은 다음 프레임이 오기 전까지 앞서갈 수 있으므로 프레임 자신의 선언을 쓴다.
+  // 이미지에는 좌표계가 둘이다. 레이아웃 px(clientWidth)는 스테이지 안의 오버레이·핀·스케치 캔버스가 사는 곳이고,
+  // 화면 px(getBoundingClientRect · 이벤트의 clientX)는 캔버스가 패널에 scale(zoom) 을 건 만큼 그 zoom 배다.
+  // 포인터는 화면에서 오고 오버레이는 레이아웃에 앉으므로, 둘을 섞으면 zoom≠1 에서 클릭이 zoom 배만큼 어긋난다.
+  /** 페이지 CSS px 하나가 레이아웃 px 몇 개인가의 역수 — 오버레이를 앉힐 때 쓴다. */
+  const layoutScale = () => {
     const image = imageRef.current;
     if (!image || !shownFrame || image.clientWidth === 0 || shownFrame.width === 0) return null;
     return { x: shownFrame.width / image.clientWidth, y: shownFrame.height / image.clientHeight };
   };
-  const pagePoint = (clientX: number, clientY: number) => {
+  /** 화면 px → 페이지 CSS px. `clamp` 면 이미지 밖의 점을 가장자리로 당긴다(프레임 밖에서 손을 뗄 때). */
+  const pagePoint = (clientX: number, clientY: number, clamp = false) => {
     const image = imageRef.current;
-    const factor = scale();
-    if (!image || !factor) return null;
+    if (!image || !shownFrame || shownFrame.width === 0) return null;
     const rect = image.getBoundingClientRect();
-    return { x: (clientX - rect.left) * factor.x, y: (clientY - rect.top) * factor.y };
+    if (rect.width === 0 || rect.height === 0) return null;
+    const dx = clamp ? Math.min(Math.max(clientX, rect.left), rect.right) - rect.left : clientX - rect.left;
+    const dy = clamp ? Math.min(Math.max(clientY, rect.top), rect.bottom) - rect.top : clientY - rect.top;
+    return { x: dx * (shownFrame.width / rect.width), y: dy * (shownFrame.height / rect.height) };
   };
   const point = (event: { clientX: number; clientY: number }) => pagePoint(event.clientX, event.clientY);
   const mods = (event: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => ({ alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey });
@@ -357,11 +406,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       window.removeEventListener("mouseup", release, true);
       const image = imageRef.current;
       if (!image || image.contains(up.target as Node)) return;
-      const factor = scale(); if (!factor) return;
-      const rect = image.getBoundingClientRect();
-      const x = Math.min(Math.max(up.clientX, rect.left), rect.right) - rect.left;
-      const y = Math.min(Math.max(up.clientY, rect.top), rect.bottom) - rect.top;
-      send({ kind: "mouse", type: "up", x: x * factor.x, y: y * factor.y, button: buttonName(button), clickCount: 1, ...mods(up) });
+      const p = pagePoint(up.clientX, up.clientY, true); if (!p) return;
+      send({ kind: "mouse", type: "up", ...p, button: buttonName(button), clickCount: 1, ...mods(up) });
     };
     window.addEventListener("mouseup", release, true);
   };
@@ -514,12 +560,12 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     if (!blob) return;
     if (await deliver("annotation", blob)) setMode("none");
   };
-  /** 페이지 CSS px → 화면 px. 핀과 댓글 말풍선을 이미지 위 같은 자리에 앉힌다. */
-  const stagePoint = (p: { x: number; y: number }) => { const factor = scale(); return factor ? { left: p.x / factor.x, top: p.y / factor.y } : { left: 0, top: 0 }; };
+  /** 페이지 CSS px → 레이아웃 px. 핀과 댓글 말풍선을 이미지 위 같은 자리에 앉힌다. */
+  const stagePoint = (p: { x: number; y: number }) => { const factor = layoutScale(); return factor ? { left: p.x / factor.x, top: p.y / factor.y } : { left: 0, top: 0 }; };
   // 말풍선은 핀 아래에 선다 — 좁은 패널에서 오른쪽으로 밀리면 핀을 덮기 때문이다.
   const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); const width = imageRef.current?.clientWidth ?? 0; return { left: Math.max(8, Math.min(at.left - 14, width - 328)), top: at.top + 18 }; };
 
-  const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset, scale: deviceScale() }); };
+  const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset, scale: measureScale() }); };
   // ---- Chrome 에서 가져오기 ----
   const [importSources, setImportSources] = React.useState<ImportSources | null>(null);
   const [importProfile, setImportProfile] = React.useState("");
@@ -563,7 +609,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   React.useEffect(() => () => publishBrowserPanel(operationId, null), [operationId]);
 
   const highlightBox = (element: ElementInfo | null) => {
-    const factor = scale();
+    const factor = layoutScale();
     if (!element || !factor) return null;
     return { left: element.box.x / factor.x, top: element.box.y / factor.y, width: element.box.width / factor.x, height: element.box.height / factor.y };
   };
@@ -623,13 +669,15 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
             </div>
           </div>
         ) : null}
+        {/* 프레임이 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면(크기가 바뀌는 사이) 줄인다.
+            폭을 100% 로 늘리면 몇 px 차이에도 이미지 전체가 다시 표본화되어 흐려진다. */}
         {shownFrame ? (
-          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, maxWidth: state?.viewport.preset === "responsive" ? "100%" : `${shownFrame.width}px` }}>
+          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>
             <img
               ref={imageRef}
               className="op-browser__frame"
               style={mode === "none" ? { cursor: pageCursor } : undefined}
-              src={`data:image/jpeg;base64,${shownFrame.data}`}
+              src={`data:${shownFrame.mime};base64,${shownFrame.data}`}
               alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
               draggable={false}
               onMouseMove={onMouseMove}
