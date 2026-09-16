@@ -173,7 +173,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       try { return text(await run(schema.parse(args), ctx)); }
       catch (error) {
         const code = error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "console_unavailable";
-        return { ...text({ error: code, retryable: false, nextAction: code === "nothing_to_interrupt" ? "No foreground turn is running. Do not wait or retry. Interrupt does not close or delete the Operation; use the Console close control for that." : code === "cursor_expired" ? "Read a new snapshot and restart without a cursor." : code === "permission_required" ? "Use a host-authorized Console connection; reading never grants control." : code === "capability_unavailable" ? "This Console does not provide that capability right now. Do not retry." : code === "not_launched_by_caller" ? "Only Operations this caller launched can be answered. Ask the person instead." : code === "unsupported_ask" ? "Plan approvals and permission prompts are for the person. Do not answer them." : code === "target_busy" ? "The Operation is working and was not launched by you. Do not close it; ask the person." : "Inspect current state. Do not repeat a write with a new requestId." }), isError: true };
+        return { ...text({ error: code, retryable: false, nextAction: code === "nothing_to_interrupt" ? "No foreground turn is running. Do not wait or retry. Interrupt does not close or delete the Operation; use the Console close control for that." : code === "cursor_expired" ? "Read a new snapshot and restart without a cursor." : code === "permission_required" ? "Use a host-authorized Console connection; reading never grants control." : code === "capability_unavailable" ? "This Console does not provide that capability right now. Do not retry." : code === "not_launched_by_caller" ? "Only Operations this caller launched can be answered. Ask the person instead." : code === "unsupported_ask" ? "Plan approvals and permission prompts are for the person. Do not answer them." : code === "target_busy" ? "The Operation is working and was not launched by you. Do not close it; ask the person." : code === "not_dormant" ? "Only a dormant Operation can be resumed; this one is live. Use console_send instead." : "Inspect current state. Do not repeat a write with a new requestId." }), isError: true };
       }
     },
   });
@@ -276,6 +276,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   // 운용: Operation 수명.
   specs.push(define("console_resume", "Resume a dormant Operation in place with its own session identity (same as the Console resume button). Returns the new status, not a completed turn.", z.object({ operationId: ids }).strict(), async (args, ctx) => {
     requireCaller(ctx); node(args.operationId);
+    // 휴면 대상만 재개한다 — 살아 있는 채팅·터미널에 재개 경로를 태우면 진행 중 턴을 접고 표면을 갈아 끼운다.
+    if (control?.observe(args.operationId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
     const result = await need("resume")(args.operationId);
     if (!result.ok) throw new ConsoleControlError(result.error);
     return { operationId: args.operationId, status: result.status };

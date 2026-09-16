@@ -401,7 +401,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         let text = buffer.subarray(0, bytesRead).toString("utf8");
         let consumed = bytesRead;
         // 페이지 끝의 미완성 줄은 다음 페이지에 맡긴다 — 잘린 JSON 을 절반만 읽지 않는다.
-        if (offset + bytesRead < stat.size) { const cut = text.lastIndexOf("\n"); if (cut < 0) return { error: "transcript_unavailable" }; consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut); }
+        if (offset + bytesRead < stat.size) {
+          const cut = text.lastIndexOf("\n");
+          if (cut < 0) {
+            // 한 레코드가 페이지보다 크다(거대한 도구 결과). 다음 줄바꿈까지 건너뛰어 커서를 그 뒤에 두고, 건너뛴 사실을 항목으로 남긴다.
+            let skipTo = offset + bytesRead;
+            const probe = Buffer.alloc(TRANSCRIPT_PAGE_BYTES);
+            while (skipTo < stat.size) {
+              const chunk = await handle.read(probe, 0, probe.length, skipTo);
+              const nl = probe.subarray(0, chunk.bytesRead).indexOf(0x0a);
+              if (nl >= 0) { skipTo += nl + 1; break; }
+              skipTo += chunk.bytesRead;
+              if (chunk.bytesRead === 0) break;
+            }
+            return { source: "terminal", entries: [{ kind: "skipped", bytes: skipTo - offset, reason: "record_exceeds_page" }], nextCursor: skipTo < stat.size ? String(skipTo) : null, truncated: true };
+          }
+          consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut);
+        }
         const entries: Record<string, unknown>[] = [];
         // 커서는 마지막으로 처리한 줄의 끝이다 — limit 에 걸려 멈추면 청크의 나머지 줄은 다음 페이지가 다시 읽는다.
         let processed = 0;

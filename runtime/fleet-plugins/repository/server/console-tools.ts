@@ -104,9 +104,12 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         }
         let diff = result.stdout;
         if (!diff) {
-          // 추적되지 않은 새 파일은 HEAD 와의 diff 가 비어 있다 — 내용 자체를 추가로 보여 준다.
-          const untracked = await runGit(["diff", ...quiet, "--no-index", "--", "/dev/null", relative], { cwd: gitCwd, allowExitCodes: [1] }).catch(() => null);
-          diff = untracked?.stdout ?? "";
+          // 추적되지 않은 새 파일만 /dev/null 과 비교한다 — 변경 없는 추적 파일의 빈 diff 를 통째 추가로 꾸미지 않게.
+          const tracked = await runGit(["ls-files", "--", literalPathspec(relative)], { cwd: gitCwd }).then((r) => r.stdout.trim().length > 0).catch(() => true);
+          if (!tracked) {
+            const untracked = await runGit(["diff", ...quiet, "--no-index", "--", "/dev/null", relative], { cwd: gitCwd, allowExitCodes: [1] }).catch(() => null);
+            diff = untracked?.stdout ?? "";
+          }
         }
         const cut = diff.length > DIFF_TEXT_CAP;
         return { path: relative, diff: cut ? diff.slice(0, DIFF_TEXT_CAP) : diff, truncated: cut || result.truncated };
