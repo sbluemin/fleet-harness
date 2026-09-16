@@ -476,6 +476,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       });
       const connection: ConsoleUseMcpConnection = {
         embeddedServer,
+        toolNames: () => [...schemas.keys()],
         getEndpoint: async () => {
           if (closed) throw new Error("Console MCP connection is disposed");
           return manager.getEndpoint();

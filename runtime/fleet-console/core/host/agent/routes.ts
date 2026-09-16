@@ -36,7 +36,7 @@ import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./o
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
-import { chatShellTailFromOutput } from "./chat-events.js";
+import { maskChatText } from "./chat-events.js";
 import type { ConsoleSurface } from "../mcp/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./analysis-types.js";
@@ -323,7 +323,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   ctx.host.lifecycle.registerCleanup(unsubscribeConsoleObservation);
   // Console Use 확장면의 실행층 묶음 — 재개·뷰·대화·질문 답. 서버가 만든 같은 객체에 채운다.
   const TRANSCRIPT_PAGE_BYTES = 512 * 1024;
-  const safeText = (operationId: string, raw: string) => { const payload = ctx.host.operations.get(operationId)?.payload; return chatShellTailFromOutput(raw, { cwd: payload ? readPayloadString(payload, "cwd") ?? undefined : undefined }).tail; };
+  // 정화만 한다(경로·비밀). 본문이 상한을 넘으면 앞부분을 남기고 항목에 `truncated` 를 싣는다 — 꼬리 helper 처럼
+  // 조용히 앞을 버리면 호출자가 부분 메시지를 전체로 오해한다.
+  const safeText = (operationId: string, raw: string) => { const payload = ctx.host.operations.get(operationId)?.payload; return maskChatText(raw, { cwd: payload ? readPayloadString(payload, "cwd") ?? undefined : undefined }); };
+  const textEntry = (base: Record<string, unknown>, kind: string, operationId: string, raw: string) => { const masked = safeText(operationId, raw); return { ...base, kind, text: masked.text, ...(masked.truncated ? { truncated: true } : {}) }; };
   if (ctx.consoleSurface) Object.assign(ctx.consoleSurface, {
     resume: async (operationId) => {
       const result = await resumeOperation(operationId, false);
@@ -366,10 +369,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const entries = page.entries.map(({ seq, at, event }) => {
           const base = { seq, at: at ? new Date(at).toISOString() : undefined };
           switch (event.kind) {
-            case "dispatch": return { ...base, kind: "user", text: safeText(operationId, event.text) };
-            case "text": return { ...base, kind: "assistant", text: safeText(operationId, event.text) };
+            case "dispatch": return textEntry(base, "user", operationId, event.text);
+            case "text": return textEntry(base, "assistant", operationId, event.text);
             case "tool": return { ...base, kind: "tool", name: event.name, detail: event.detail, ...(event.outside ? { outside: true } : {}) };
-            case "ask": return { ...base, kind: "ask", id: event.id, form: event.form, ...(event.questions ? { questions: event.questions } : {}), ...(event.plan ? { plan: safeText(operationId, event.plan) } : {}) };
+            case "ask": return { ...base, kind: "ask", id: event.id, form: event.form, ...(event.questions ? { questions: event.questions } : {}), ...(event.plan ? { plan: safeText(operationId, event.plan).text } : {}) };
             case "ask-settled": return { ...base, kind: "ask-settled", id: event.id, outcome: event.outcome };
             case "turn-end": return { ...base, kind: "turn-end", ok: event.ok, ...(event.stopped ? { stopped: true } : {}) };
             case "command": return { ...base, kind: "command", name: event.name };
@@ -400,7 +403,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 페이지 끝의 미완성 줄은 다음 페이지에 맡긴다 — 잘린 JSON 을 절반만 읽지 않는다.
         if (offset + bytesRead < stat.size) { const cut = text.lastIndexOf("\n"); if (cut < 0) return { error: "transcript_unavailable" }; consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut); }
         const entries: Record<string, unknown>[] = [];
+        // 커서는 마지막으로 처리한 줄의 끝이다 — limit 에 걸려 멈추면 청크의 나머지 줄은 다음 페이지가 다시 읽는다.
+        let processed = 0;
         for (const line of text.split("\n")) {
+          processed += Buffer.byteLength(line, "utf8") + 1;
           if (!line.trim()) continue;
           try {
             const record = JSON.parse(line);
@@ -409,15 +415,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             const at = typeof record.timestamp === "string" ? record.timestamp : undefined;
             if (record.type === "user") {
               const parts = typeof content === "string" ? [content] : Array.isArray(content) ? content.flatMap((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string" ? [part.text] : []) : [];
-              if (parts.length) entries.push({ kind: "user", at, text: safeText(operationId, parts.join("\n\n")) });
+              if (parts.length) entries.push(textEntry({ at }, "user", operationId, parts.join("\n\n")));
             } else if (record.type === "assistant" && Array.isArray(content)) {
               for (const part of content) {
-                if (part.type === "text" && typeof part.text === "string") entries.push({ kind: "assistant", at, text: safeText(operationId, part.text) });
+                if (part.type === "text" && typeof part.text === "string") entries.push(textEntry({ at }, "assistant", operationId, part.text));
                 else if (part.type === "tool_use" && typeof part.name === "string") entries.push({ kind: "tool", at, name: part.name });
               }
             }
           } catch { /* 깨진 줄은 건너뛴다. */ }
-          if (entries.length >= limit) break;
+          if (entries.length >= limit) { consumed = Math.min(consumed, processed); break; }
         }
         const next = offset + consumed;
         return { source: "terminal", entries, nextCursor: next < stat.size ? String(next) : null, truncated: false };

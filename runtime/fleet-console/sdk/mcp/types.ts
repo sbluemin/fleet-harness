@@ -55,6 +55,8 @@ export interface AdmiralMcpSession {
 export interface ConsoleUseMcpConnection extends AdmiralMcpSession {
   /** 실행 어댑터가 사용하는 불투명 Embedded MCP 핸들. SDK는 vendor 타입에 의존하지 않는다. */
   readonly embeddedServer: unknown;
+  /** 이 연결에 실린 도구 이름 전부 — 요청한 호스트 도구와 플러그인이 기여한 도구. allowlist 를 짜는 쪽이 읽는다. */
+  toolNames?(): readonly string[];
   dispose(): Promise<void>;
 }
 
