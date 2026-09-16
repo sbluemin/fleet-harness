@@ -82,17 +82,25 @@ function useBrowserStream(operationId: string, enabled: boolean) {
   React.useEffect(() => {
     if (!enabled) { setConnection("disabled"); setState(null); return; }
     let disposed = false;
+    // 스트림이 먼저 말을 걸었는가. 출발점을 읽는 동안 도착한 프레임을 뒤늦은 응답이 되돌리지 않게 한다 —
+    // 그 응답은 이미 낡았고, 바뀌지 않은 사실은 다시 오지 않으므로 한 번 뒤집히면 그대로 남는다.
+    let streamed = false;
     setConnection("connecting");
     const receive = (payload: unknown) => {
       const next = payload as BrowserState | null;
       // 한 스트림에 모든 Operation 의 상태가 흐른다 — 내 것만 받는다.
       if (disposed || !next || next.operationId !== operationId) return;
+      streamed = true;
       setState(next);
       setConnection("open");
     };
     const unsubscribe = subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
     void fetch(`${base(operationId)}/state`)
-      .then(async (response) => { if (response.ok) receive(await response.json()); else if (!disposed) setConnection("closed"); })
+      .then(async (response) => {
+        if (!response.ok) { if (!disposed) setConnection("closed"); return; }
+        const body = await response.json() as BrowserState;
+        if (!streamed) receive(body);
+      })
       .catch(() => { if (!disposed) setConnection("closed"); });
     return () => { disposed = true; unsubscribe(); };
   }, [operationId, enabled]);

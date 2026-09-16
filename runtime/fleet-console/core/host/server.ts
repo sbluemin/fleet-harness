@@ -1091,6 +1091,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operationSseSubscribers.add(subscriber);
       // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
       browserService.reconcile();
+      // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
+      // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
+      if (subscriber.client === "desktop") {
+        for (const browsing of browserService.status().operations) res.write(encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
+      }
       startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(subscriber);
         browserService.reconcile();
