@@ -32,6 +32,8 @@ import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-c
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, isDesktopBrowserRelay } from "@fleet-console/desktop-protocol";
+import { DesktopEngine } from "./browser/desktop-engine.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
 import { backupDurableStateV4, backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter, readExperimentSettings } from "./settings/settings-domain.js";
@@ -40,7 +42,7 @@ import { createMacOSComputerUsePlatform, createCuaComputerUsePlatform, CuaDriver
 import { resolveAgentCliBinary } from "./agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
-import { BrowserService, BrowserPolicyError } from "./browser/service.js";
+import { BrowserService, BrowserPolicyError, type BrowserFrame } from "./browser/service.js";
 import { createBrowserMcpHost } from "./mcp/browser.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -148,6 +150,8 @@ const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
+/** Desktop 네이티브 뷰의 relay 는 스크린샷(base64)을 나른다 — 2배 표면의 PNG 도 넉넉히 들어간다. */
+const DESKTOP_BROWSER_RELAY_MAX_BYTES = 64 * 1024 * 1024;
 /** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
@@ -406,6 +410,10 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/browser/import-sources", summary: "List Google Chrome profiles whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile into an Operation's browser context.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/place", summary: "Tell the Desktop shell where an Operation's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the owning Desktop shell must apply.", category: "Desktop", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the owning Desktop shell.", category: "Desktop", gate: "origin-strict", transport: "sse" },
+  { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Press paste in a terminal Operation's CLI so it picks up the screenshot the panel placed on the clipboard.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
@@ -518,6 +526,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
+  const desktopBrowserSseSubscribers = new Set<http.ServerResponse>();
+  // 창을 든 Desktop 만 네이티브 뷰를 그릴 수 있다 — CLI 가 띄운 콘솔에는 그 엔진이 없다.
+  const desktopEngine = desktop !== null
+    ? new DesktopEngine({
+      publish: (snapshot) => { if (desktopBrowserSseSubscribers.size === 0) return; const data = encodeSseData(DESKTOP_BROWSER_EVENT, snapshot); for (const res of desktopBrowserSseSubscribers) res.write(data); },
+      log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
+    })
+    : null;
   /**
    * 대기 중인 위임 요청. 리스너와 수명을 같이하는 휘발 상태다 — 셸이 앱을 재시작하면
    * 이 콘솔도 함께 내려가므로, 재기동 후까지 살아남아야 할 사실이 아니다.
@@ -640,6 +656,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     enabled: () => true,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
+    desktop: desktopEngine,
   });
   const browserMcp = createBrowserMcpHost({
     transport: mcpHttp.transport,
@@ -935,6 +952,33 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
+  /**
+   * 네이티브 브라우저 뷰 — 창을 든 셸이 스냅샷을 구독하고 결과를 relay 로 되돌린다. 테마·업데이트 동기화와 같은 방향이다.
+   * 스크린샷이 relay 에 실리므로 그 몸은 일반 JSON 한도보다 크게 받는다.
+   */
+  const desktopBrowserRouter = async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
+    if (pathname !== DESKTOP_BROWSER_PATH && pathname !== DESKTOP_BROWSER_EVENTS_PATH && pathname !== DESKTOP_BROWSER_RELAY_PATH) return false;
+    if (!isExactConsoleOrigin(req)) { writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!desktopEngine) { writeJson(res, 404, { error: "desktop_browser_unavailable" }); return true; }
+    if (pathname === DESKTOP_BROWSER_RELAY_PATH) {
+      if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return true; }
+      const body = await readJsonBody<unknown>(req, DESKTOP_BROWSER_RELAY_MAX_BYTES);
+      if (!isDesktopBrowserRelay(body)) { writeJson(res, 400, { error: "invalid_desktop_browser_relay" }); return true; }
+      desktopEngine.relay(body);
+      writeNoContent(res);
+      return true;
+    }
+    if (req.method !== "GET") { writeJson(res, 405, { error: "Method not allowed" }); return true; }
+    if (pathname === DESKTOP_BROWSER_PATH) { writeJson(res, 200, desktopEngine.snapshot()); return true; }
+    res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }));
+    res.write(":connected\n\n");
+    desktopEngine.subscriberOpened();
+    desktopBrowserSseSubscribers.add(res);
+    res.write(encodeSseData(DESKTOP_BROWSER_EVENT, desktopEngine.snapshot()));
+    const keepalive = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(":keepalive\n\n"); }, 25_000);
+    res.on("close", () => { clearInterval(keepalive); desktopBrowserSseSubscribers.delete(res); desktopEngine.subscriberClosed(); });
+    return true;
+  };
   const desktopShellRouter = createDesktopShellRouter({
     getShell: (req) => {
       const owner = shellOwnerOf(req);
@@ -1076,7 +1120,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (req.method === "GET" && pathname === "/api/v1/browser") { const { executable: _executable, ...status } = browserService.status(); writeJson(res, 200, status); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") { writeJson(res, 200, browserService.importSources()); return true; }
-    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|input|viewport|interrupt|inspect|paste|favicon|import)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(stream|screenshot|tabs|navigate|input|viewport|interrupt|inspect|paste|favicon|import|place)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -1095,7 +1139,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 프레임은 소켓이 밀려 있으면 최신 한 장만 들고 있다가 drain 에 보낸다 — 느린 클라이언트가 응답 버퍼를 무한히 키우지 않게.
       let pendingFrame: unknown = null;
       res.on("drain", () => { if (pendingFrame !== null && !closed) { const frame = pendingFrame; pendingFrame = null; write("frame", frame); } });
-      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), frame: (frame) => { if (res.writableNeedDrain) pendingFrame = frame; else write("frame", frame); } });
+      // 네이티브 뷰를 보는 패널은 픽셀이 필요 없다(`frames=0`) — 그 구독에는 스크린캐스트를 돌리지 않는다.
+      const wantsFrames = readUrl(req).searchParams.get("frames") !== "0";
+      const unsubscribe = browserService.subscribe(operationId, { state: (state) => write("state", state), ...(wantsFrames ? { frame: (frame: BrowserFrame) => { if (res.writableNeedDrain) pendingFrame = frame; else write("frame", frame); } } : {}) });
       const keepalive = setInterval(() => { if (!closed && !res.writableNeedDrain) res.write(":keepalive\n\n"); }, 25_000);
       req.on("close", () => { closed = true; pendingFrame = null; clearInterval(keepalive); unsubscribe(); });
       return true;
@@ -1148,6 +1194,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         writeJson(res, 200, { viewport: await browserService.setViewport(operationId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, scale: typeof body.scale === "number" ? body.scale : undefined, colorScheme }, "user") }); return true;
       }
       if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptOperation(operationId) }); return true; }
+      if (action === "place") {
+        const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+        const x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
+        if (body.visible === false && x === null) { browserService.place(operationId, null); writeJson(res, 200, { ok: true }); return true; }
+        if (x === null || y === null || width === null || height === null || width < 0 || height < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.place(operationId, { bounds: { x, y, width, height }, visible: body.visible !== false });
+        writeJson(res, 200, { ok: true }); return true;
+      }
       if (action === "inspect") {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { element: await browserService.inspectAt(operationId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
@@ -1193,6 +1247,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return true;
   });
   routeRegistry.register("/api/v1/desktop", async (context) => {
+    if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
     if (await desktopFullscreenRouter(context)) return true;
     if (desktopUpdateRouter(context)) return true;
@@ -3409,13 +3464,13 @@ function requestHasBody(req: http.IncomingMessage): boolean {
   return req.headers["transfer-encoding"] !== undefined;
 }
 
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
+async function readJsonBody<T>(req: http.IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<T | null> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
-    if (total > MAX_BODY_BYTES) return null;
+    if (total > maxBytes) return null;
     chunks.push(buffer);
   }
   if (chunks.length === 0) return null;

@@ -4,6 +4,8 @@ import fs from "node:fs/promises";
 import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumCandidate, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
 import { bridgedChromeUserDataDir, chromeUserDataDir, isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
 import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
+import type { DesktopEngine } from "./desktop-engine.js";
+import type { DesktopBrowserBounds } from "@fleet-console/desktop-protocol";
 
 /**
  * Operation Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -43,6 +45,8 @@ export interface BrowserOperationState {
   readonly consoleErrors: number;
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
+  /** 탭이 창을 든 Desktop 안의 실제 뷰로 그려지는가 — 그러면 패널은 픽셀 대신 자리를 알린다. */
+  readonly native: boolean;
 }
 /** 패널에 보내는 한 장. `width`·`height` 는 CSS px 이고 픽셀은 뷰포트 배율만큼 크다. */
 export interface BrowserFrame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number; readonly scrollX: number; readonly scrollY: number }
@@ -114,6 +118,8 @@ export interface BrowserServiceDeps {
   readonly enabled: () => boolean;
   readonly localControl: () => boolean;
   readonly log: (message: string) => void;
+  /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진. 셸이 붙어 있으면 헤드리스 Chromium 대신 이것을 쓴다. */
+  readonly desktop?: DesktopEngine | null;
 }
 
 export interface BrowserServiceStatus {
@@ -242,7 +248,9 @@ export class BrowserService {
 
   status(): BrowserServiceStatus {
     const { candidate, reason } = this.lookup();
-    return { enabled: this.deps.enabled(), available: candidate !== null, missingReason: reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
+    // 창을 든 Desktop 이 붙어 있으면 그 Chromium 이 엔진이다 — 따로 설치한 Chrome 이 없어도 브라우저를 열 수 있다.
+    const desktop = this.deps.desktop?.connected === true;
+    return { enabled: this.deps.enabled(), available: candidate !== null || desktop, missingReason: candidate !== null || desktop ? null : reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
   }
 
   available(): boolean { return this.deps.enabled() && this.deps.localControl(); }
@@ -253,6 +261,17 @@ export class BrowserService {
     if (this.configuring || this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
     if (this.client) return this.client;
     if (this.starting) return this.starting;
+    const desktop = this.deps.desktop ?? null;
+    if (desktop?.connected) {
+      this.client = desktop;
+      this.engine = "ready";
+      this.engineError = null;
+      this.identity = await browserIdentity(desktop).catch(() => null);
+      this.unsubscribeEvents = desktop.on((event) => this.onEvent(event));
+      void desktop.closed.then(() => { if (this.client === desktop) this.onEngineClosed(); });
+      this.deps.log("browser engine ready (desktop native view)");
+      return desktop;
+    }
     const { candidate: located, reason } = this.lookup();
     if (!located) { this.engine = "failed"; this.engineError = "browser_engine_missing"; throw new BrowserPolicyError("browser_engine_missing", missingChromiumMessage(reason)); }
     this.engine = "starting";
@@ -333,10 +352,23 @@ export class BrowserService {
     return { client, contextId: op.contextId };
   }
 
+  /** 지금 엔진이 Desktop 의 네이티브 뷰인가. 엔진이 아직 없으면 셸이 붙어 있는지로 답한다 — 패널이 첫 탭 전에 모드를 정하기 때문이다. */
+  get native(): boolean {
+    const desktop = this.deps.desktop ?? null;
+    return desktop !== null && (this.client === desktop || (this.client === null && desktop.connected));
+  }
+
+  /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
+  place(operationId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
+    this.operation(operationId);
+    this.deps.desktop?.place(operationId, placement);
+  }
+
   state(operationId: string): BrowserOperationState {
     const op = this.operation(operationId);
     return {
       operationId,
+      native: this.native,
       tabs: [...op.tabs.values()].map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 })),
       activeTabId: op.activeTabId,
       viewport: op.viewport,
@@ -467,7 +499,8 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    if (this.windowChrome === null) this.windowChrome = await this.measureWindowChrome(client);
+    if (this.native) this.deps.desktop?.bindView(created.targetId, op.operationId);
+    else if (this.windowChrome === null) this.windowChrome = await this.measureWindowChrome(client);
     await this.applyViewport(client, tab, op.viewport);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
@@ -663,6 +696,22 @@ export class BrowserService {
         if (op.activeTabId === tab.id) for (const subscriber of op.subscribers) subscriber.frame?.(frame);
         return;
       }
+      case "Fleet.viewResized": {
+        // 셸이 놓은 뷰의 실제 크기가 곧 뷰포트다(반응형일 때). 좌표·스크린샷 클립이 이 값을 기준으로 한다.
+        if (op.viewport.preset !== "responsive") return;
+        const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
+        if (width === op.viewport.width && height === op.viewport.height && scale === op.viewport.scale) return;
+        op.viewport = { ...op.viewport, width, height, scale };
+        this.emitState(op);
+        return;
+      }
+      case "Target.detachedFromTarget": {
+        // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접는다.
+        op.tabs.delete(tab.id);
+        if (op.activeTabId === tab.id) op.activeTabId = [...op.tabs.keys()].pop() ?? null;
+        this.emitState(op);
+        return;
+      }
       case "Page.frameNavigated": {
         if (p.frame?.parentId) return;
         tab.frameId = typeof p.frame?.id === "string" ? p.frame.id : tab.frameId;
@@ -724,8 +773,10 @@ export class BrowserService {
 
   // ---------- 스크린캐스트 ----------
 
+  private wantsFrames(op: OperationBrowser): boolean { for (const subscriber of op.subscribers) if (subscriber.frame) return true; return false; }
+
   private async ensureScreencast(op: OperationBrowser, tab: Tab): Promise<void> {
-    if (op.subscribers.size === 0 || tab.screencasting || !this.client) return;
+    if (!this.wantsFrames(op) || tab.screencasting || !this.client) return;
     tab.screencasting = true;
     try { await this.client.send("Page.startScreencast", { format: "jpeg", quality: SCREENCAST_QUALITY, maxWidth: Math.round(op.viewport.width * op.viewport.scale), maxHeight: Math.round(op.viewport.height * op.viewport.scale), everyNthFrame: 1 }, tab.sessionId); }
     catch { tab.screencasting = false; }
@@ -740,7 +791,7 @@ export class BrowserService {
   }
 
   private async reconcileScreencast(op: OperationBrowser): Promise<void> {
-    if (op.subscribers.size > 0) return;
+    if (this.wantsFrames(op)) return;
     for (const tab of op.tabs.values()) await this.stopScreencast(tab);
   }
 
@@ -769,6 +820,14 @@ export class BrowserService {
 
   private async applyViewport(client: CdpClient, tab: Tab, viewport: BrowserViewport): Promise<void> {
     const preset = viewport.preset === "responsive" ? null : PRESETS[viewport.preset];
+    if (this.native) {
+      // 네이티브 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋만 뷰 안에서 흉내 낸다.
+      if (preset) await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile: preset.mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
+      else await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
+      await client.send("Emulation.setEmulatedMedia", { features: viewport.colorScheme ? [{ name: "prefers-color-scheme", value: viewport.colorScheme }] : [] }, tab.sessionId);
+      if (tab.screencasting) { await this.stopScreencast(tab); const op = [...this.operations.values()].find((entry) => entry.tabs.has(tab.id)); if (op) await this.ensureScreencast(op, tab); }
+      return;
+    }
     // 창 표면을 뷰포트와 같게 둔다 — 에뮬레이션이 잠시 풀리는 순간(렌더러 교체)에도 프레임이 창 크기로
     // 되돌아가 뷰포트와 어긋나지 않게. 창 높이에는 헤드리스의 가상 크롬만큼을 더한다.
     try {

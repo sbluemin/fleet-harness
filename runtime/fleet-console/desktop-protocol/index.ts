@@ -109,3 +109,84 @@ export function formatDesktopResourceRootMarker(): string {
 export function isDesktopResourceRootMarkerValid(content: string): boolean {
   return content.trim() === String(DESKTOP_PROTOCOL_VERSION);
 }
+
+// ---------- Operation Browser 네이티브 뷰 ----------
+//
+// 창을 든 셸이 Operation 브라우저의 탭을 자기 창 안의 실제 Chromium 뷰로 그린다. 사람은 그 뷰를 직접 보고
+// 만지며, 픽셀을 찍어 보내는 일이 없다. 방향은 셸의 다른 동기화와 같다 — 셸이 콘솔의 스냅샷을 구독하고,
+// 그 결과(CDP 응답·이벤트·뷰 크기)를 relay 로 되돌려 보낸다. 브라우저 정책·탭 상태·도구는 콘솔이 소유한다.
+
+export const DESKTOP_BROWSER_PATH = "/api/v1/desktop/browser";
+export const DESKTOP_BROWSER_EVENTS_PATH = "/api/v1/desktop/browser/events";
+export const DESKTOP_BROWSER_RELAY_PATH = "/api/v1/desktop/browser/relay";
+export const DESKTOP_BROWSER_EVENT = "desktop:browser";
+
+export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+
+/** 셸이 띄워야 하는 뷰 하나. `bounds` 가 없거나 `visible` 이 false 면 만들어 두되 보이지 않는다. */
+export interface DesktopBrowserView {
+  readonly id: string;
+  readonly operationId: string;
+  /** Electron 세션 파티션 — Operation 마다 다르며 앱 수명 동안만 산다. */
+  readonly partition: string;
+  readonly visible: boolean;
+  /** 콘솔 창의 CSS px 좌표. 셸이 창의 줌 배율을 곱해 DIP 로 놓는다. */
+  readonly bounds: DesktopBrowserBounds | null;
+  /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
+  readonly url: string;
+}
+
+/** 콘솔이 어떤 뷰의 디버거로 보내려는 CDP 명령. 결과는 relay 의 `results` 로 돌아온다. */
+export interface DesktopBrowserCommand { readonly id: number; readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }
+
+export interface DesktopBrowserSnapshot {
+  /** 스냅샷마다 오른다 — 셸이 옛 스냅샷을 새 것 위에 덮어쓰지 않게. */
+  readonly generation: number;
+  readonly views: readonly DesktopBrowserView[];
+  /** 아직 결과를 받지 못한 명령 전부. 셸은 이미 실행한 id 를 건너뛴다. */
+  readonly commands: readonly DesktopBrowserCommand[];
+}
+
+/** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
+export interface DesktopBrowserRelay {
+  /** 셸이 처음 붙을 때 한 번 — 이 셸의 Chromium 이 누구인지. */
+  readonly hello?: { readonly product: string; readonly userAgent: string };
+  readonly attached?: readonly string[];
+  readonly detached?: readonly string[];
+  /** 뷰의 실제 크기(DIP)와 화면 배율. bounds 를 놓을 때마다 알린다. */
+  readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
+  readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
+  readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isSafeId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/u.test(value);
+
+export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserBounds {
+  return isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y) && isFiniteNumber(value.width) && isFiniteNumber(value.height) && value.width >= 0 && value.height >= 0;
+}
+
+export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
+  return isRecord(value) && isSafeId(value.id) && typeof value.operationId === "string" && isSafeId(value.partition)
+    && typeof value.visible === "boolean" && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
+}
+
+export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {
+  return isRecord(value) && isFiniteNumber(value.id) && isSafeId(value.viewId) && typeof value.method === "string" && /^[A-Za-z]+\.[A-Za-z]+$/u.test(value.method) && isRecord(value.params);
+}
+
+export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowserSnapshot {
+  return isRecord(value) && isFiniteNumber(value.generation) && Array.isArray(value.views) && value.views.every(isDesktopBrowserView)
+    && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand);
+}
+
+export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {
+  if (!isRecord(value)) return false;
+  if (value.hello !== undefined && !(isRecord(value.hello) && typeof value.hello.product === "string" && typeof value.hello.userAgent === "string")) return false;
+  for (const key of ["attached", "detached"] as const) if (value[key] !== undefined && !(Array.isArray(value[key]) && (value[key] as unknown[]).every(isSafeId))) return false;
+  if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
+  if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
+  if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
+  return true;
+}
