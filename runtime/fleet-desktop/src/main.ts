@@ -33,6 +33,7 @@ import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture } from "./computer-capture.js";
+import { createDesktopBrowserViews } from "./browser-views.js";
 import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -153,6 +154,25 @@ async function boot(): Promise<void> {
     await updateSynchronizer.start(origin);
   };
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
+  /**
+   * Operation 브라우저의 네이티브 뷰. 이 셸이 띄운 콘솔(집)에서만 그린다 — 남의 콘솔 탭을 이 창에 띄우면
+   * 그 콘솔의 정책이 이 기계의 Chromium 을 움직이게 된다. 원격으로 건너가면 걷는다.
+   */
+  const browserViews = createDesktopBrowserViews({
+    window: () => window,
+    createView: (partition) => new WebContentsView({ webPreferences: { partition, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } }),
+    zoomFactor: () => window?.webContents.getZoomFactor() ?? 1,
+    scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
+    product: () => `Chrome/${process.versions.chrome}`,
+    // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
+    userAgent: () => (window?.webContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
+    fetch: consoleFetch,
+    log: (message) => logger.info(message),
+  });
+  const synchronizeBrowserViews = async (origin: string): Promise<void> => {
+    if (origin !== localConsoleOrigin) { browserViews.stop(); return; }
+    try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
+  };
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
@@ -199,7 +219,7 @@ async function boot(): Promise<void> {
     loadConsole: (url) => handOffWindowToConsole({
       publishShellHome,
       loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
@@ -241,6 +261,7 @@ async function boot(): Promise<void> {
         createdWindow.once("closed", () => {
           themeSynchronizer?.stop();
           updateSynchronizer.stop();
+          browserViews.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
           overlayRefresher?.stop();
@@ -257,7 +278,10 @@ async function boot(): Promise<void> {
         createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.webContents, zoomDirection);
           overlayRefresher?.refresh();
+          browserViews.refresh();
         });
+        // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
+        createdWindow.on("resize", () => browserViews.refresh());
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 보정 높이를 재확인한다.
         createdWindow.webContents.on("did-finish-load", () => overlayRefresher?.refresh());
         // 스냅·최대화 전환(Win+Shift+화살표 등)은 moved 없이 모니터를 건널 수 있다 — 게이트가
@@ -276,7 +300,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => controls.onConsoleLoaded(),
       onFirstRunFailure: async () => showFirstRunFailure(),

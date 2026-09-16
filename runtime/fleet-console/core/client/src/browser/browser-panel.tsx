@@ -7,6 +7,7 @@ import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
 import { themePolarity } from "../store.js";
+import { isDesktopShell } from "../desktop-shell.js";
 import "./browser-panel.css";
 
 /**
@@ -24,6 +25,8 @@ interface Viewport { readonly width: number; readonly height: number; readonly s
 interface BrowserState {
   readonly tabs: readonly TabState[]; readonly activeTabId: string | null; readonly viewport: Viewport; readonly driving: boolean;
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
+  /** 탭이 창을 든 Desktop 안의 실제 뷰로 그려지는가. 옛 서버는 보내지 않는다. */
+  readonly native?: boolean;
 }
 interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
@@ -43,7 +46,8 @@ async function post(operationId: string, action: string, body: Record<string, un
   return fetch(`${base(operationId)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
-function useBrowserStream(operationId: string, enabled: boolean) {
+/** `frames` 가 false 면 픽셀 없이 상태만 받는다 — 네이티브 뷰를 보는 패널은 스크린캐스트가 필요 없다. */
+function useBrowserStream(operationId: string, enabled: boolean, frames: boolean) {
   const [state, setState] = React.useState<BrowserState | null>(null);
   const [frame, setFrame] = React.useState<Frame | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
@@ -55,16 +59,19 @@ function useBrowserStream(operationId: string, enabled: boolean) {
     const connect = () => {
       if (disposed) return;
       setConnection("connecting");
-      source = new EventSource(`${base(operationId)}/stream`);
+      source = new EventSource(`${base(operationId)}/stream${frames ? "" : "?frames=0"}`);
       source.addEventListener("state", (event) => { try { setState(JSON.parse((event as MessageEvent).data) as BrowserState); setConnection("open"); } catch { /* 무시 */ } });
       source.addEventListener("frame", (event) => { try { setFrame(JSON.parse((event as MessageEvent).data) as Frame); } catch { /* 무시 */ } });
       source.onerror = () => { source?.close(); source = null; if (!disposed) { setConnection("closed"); retry = setTimeout(connect, 1500); } };
     };
     connect();
-    return () => { disposed = true; source?.close(); if (retry) clearTimeout(retry); };
-  }, [operationId, enabled]);
+    return () => { disposed = true; source?.close(); if (retry) clearTimeout(retry); setFrame(null); };
+  }, [operationId, enabled, frames]);
   return { state, frame, connection };
 }
+
+/** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동은 오지 않는다. */
+const NATIVE_PLACE_POLL_MS = 200;
 
 /**
  * 프레임을 찍을 물리 배율 — devicePixelRatio 에 화면 확대 배율(조상 transform · 핀치)을 곱해 ¼ 단위로 맺는다.
@@ -228,7 +235,11 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
 export function BrowserPanel({ context }: { readonly context: OperationRenderContext }) {
   const t = getT(context.language ?? "en");
   const operationId = context.operationId;
-  const { state, frame, connection } = useBrowserStream(operationId, true);
+  // Desktop 창이면 픽셀 없이 시작한다 — 서버가 네이티브가 아니라고 답하면(브라우저 탭·옛 Desktop) 프레임을 켜 다시 잇는다.
+  const [wantFrames, setWantFrames] = React.useState(() => !isDesktopShell());
+  const { state, frame: streamedFrame, connection } = useBrowserStream(operationId, true, wantFrames);
+  const native = isDesktopShell() && state?.native === true;
+  React.useEffect(() => { if (state && !wantFrames && state.native !== true) setWantFrames(true); }, [state, wantFrames]);
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -241,7 +252,47 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const composing = React.useRef(false);
   const lastMove = React.useRef(0);
   const activeTab = state?.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
+  // 네이티브 뷰는 주석을 얹을 표면이 없다 — 주석 모드에 들어갈 때 한 장을 찍어 그 위에 그리고, 그동안 뷰는 감춘다.
+  const [stillFrame, setStillFrame] = React.useState<Frame | null>(null);
+  React.useEffect(() => {
+    if (!native || mode !== "annotate" || !activeTab) { setStillFrame(null); return; }
+    let disposed = false;
+    void fetch(`${base(operationId)}/screenshot`).then(async (response) => {
+      if (!response.ok || disposed) return;
+      const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
+      if (!disposed) setStillFrame({ tabId: activeTab.id, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height });
+    }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [native, mode, activeTab?.id, operationId]);
+  const frame = native ? stillFrame : streamedFrame;
   const shownFrame = frame && activeTab && frame.tabId === activeTab.id ? frame : null;
+
+  // ---- 네이티브 뷰의 자리 ----
+  // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리를 서버에 알리고, 셸은 서버의 스냅샷을 보고 뷰를 놓는다.
+  // 가려질 때(주석·대화상자·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
+  const [importOpen, setImportOpen] = React.useState(false);
+  const placeRef = React.useRef<string>("");
+  React.useEffect(() => {
+    if (!native) return;
+    const element = viewportRef.current;
+    if (!element) return;
+    const post_ = (body: Record<string, unknown>) => { const key = JSON.stringify(body); if (placeRef.current === key) return; placeRef.current = key; void post(operationId, "place", body).catch(() => undefined); };
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      const covered = document.querySelector('[aria-modal="true"]') !== null;
+      const visible = activeTab !== null && mode === "none" && !importOpen && !covered && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
+      post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    window.addEventListener("resize", measure);
+    document.addEventListener("visibilitychange", measure);
+    const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
+  }, [native, operationId, activeTab !== null, mode, importOpen, context.bodyLive]);
+  // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
+  React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
 
   React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), 4000); return () => clearTimeout(timer); }, [info]);
@@ -283,7 +334,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   // 페이지 줌, 캔버스 확대, 핀치) 다시 찍는다.
   React.useEffect(() => {
     const element = viewportRef.current;
-    if (!element || !state) return;
+    if (!element || !state || native) return;
     const sync = () => {
       const scale = measureScale();
       if (state.viewport.preset !== "responsive") {
@@ -311,7 +362,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const onDpr = () => { armDpr(); later(); };
     armDpr();
     return () => { observer.disconnect(); window.visualViewport?.removeEventListener("resize", later); dprQuery?.removeEventListener("change", onDpr); if (timer) clearTimeout(timer); };
-  }, [operationId, state?.viewport.preset, state?.viewport.width, state?.viewport.height, state?.viewport.scale, state?.tabs.length, zoomSettled]);
+  }, [operationId, state?.viewport.preset, state?.viewport.width, state?.viewport.height, state?.viewport.scale, state?.tabs.length, zoomSettled, native]);
 
   const fail = async (response: Response) => {
     let message = t("terminal.browser.requestFailed");
@@ -493,7 +544,18 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const dataUrl = canvas.toDataURL("image/png").split(",")[1] ?? "";
     return new Blob([Uint8Array.from(atob(dataUrl), (char) => char.charCodeAt(0))], { type: "image/png" });
   };
-  const attachScreenshot = () => { const blob = composeFrame(); if (blob) void deliver("screenshot", blob); };
+  const attachScreenshot = () => {
+    if (!native) { const blob = composeFrame(); if (blob) void deliver("screenshot", blob); return; }
+    // 네이티브 뷰에는 이미지가 없다 — 서버가 한 장을 찍어 준다(CSS px 크기의 PNG).
+    void fetch(`${base(operationId)}/screenshot`).then(async (response) => {
+      if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
+      const shot = await response.json() as { data: string };
+      const bytes = Uint8Array.from(atob(shot.data), (char) => char.charCodeAt(0));
+      await deliver("screenshot", new Blob([bytes], { type: "image/png" }));
+    }).catch(() => setNotice(t("terminal.browser.requestFailed")));
+  };
+  /** 주석·첨부는 보이는 화면이 있어야 한다 — 네이티브 뷰는 탭이 열려 있으면 그 자리에서 한 장을 찍을 수 있다. */
+  const captureReady = native ? activeTab !== null : shownFrame !== null;
 
   // ---- 주석: 요소 댓글 + 스케치 ----
   const sketchRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -568,6 +630,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset, scale: measureScale() }); };
   // ---- Chrome 에서 가져오기 ----
   const [importSources, setImportSources] = React.useState<ImportSources | null>(null);
+  React.useEffect(() => { setImportOpen(importSources !== null); }, [importSources]);
   const [importProfile, setImportProfile] = React.useState("");
   const [importing, setImporting] = React.useState(false);
   const openImport = async () => {
@@ -641,8 +704,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
           />
           {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
         </form>
-        {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !shownFrame} onClick={attachScreenshot}><CameraGlyph /></button> : null}
-        <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!shownFrame} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+        {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
+        <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
       </div>
       <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
         {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? <div className="op-browser__toast" role="status">{info}</div> : null}
@@ -757,6 +820,9 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
               </div>
             ) : null}
           </div>
+        ) : native && activeTab && mode === "none" ? (
+          // 네이티브 뷰가 이 자리 위에 그려진다 — 여기에는 아무것도 두지 않는다(가려질 때 배경만 보인다).
+          <div className="op-browser__native" aria-hidden="true" />
         ) : (
           <div className="op-browser__empty">
             <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
