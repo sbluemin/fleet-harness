@@ -818,7 +818,13 @@ export class BrowserService {
       ? { width: clamp(request.width ?? op.viewport.width, 320, 3840), height: clamp(request.height ?? op.viewport.height, 240, 2400) }
       : PRESETS[preset];
     const scale = typeof request.scale === "number" && Number.isFinite(request.scale) ? Math.min(BROWSER_SURFACE_SCALE, Math.max(1, Math.round(request.scale * 4) / 4)) : op.viewport.scale;
-    op.viewport = { width: size.width, height: size.height, scale, preset, setBy: actor, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
+    // 배율만 맞추는 요청(레티나·줌 따라 다시 찍기)은 표시 동기화지 뷰포트 결정이 아니다 — 에이전트가 정한 프리셋·색 구성의 소유권을 지운다면
+    // 다음 상태에서 「에이전트가 정함」이 사라지고 패널이 색 구성까지 되돌린다.
+    const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined && request.colorScheme === undefined;
+    const setBy = displayOnly ? op.viewport.setBy : actor;
+    // 뷰포트를 바꾸기 전에 진행 중인 정지 촬영부터 버린다 — 촬영이 끝날 때 새 크기를 읽어 옛 픽셀에 새 이름표를 달지 않게.
+    for (const tab of op.tabs.values()) this.cancelSettle(tab);
+    op.viewport = { width: size.width, height: size.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
     if (this.client) for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
     this.emitState(op);
     // 정적인 페이지는 크기가 바뀌어도 새 프레임을 그리지 않을 수 있다 — 한 장을 직접 찍어 즉시 보낸다.
