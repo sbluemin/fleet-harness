@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
-import { isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
+import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumCandidate, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
+import { bridgedChromeUserDataDir, chromeUserDataDir, isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
 import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 
 /**
@@ -169,6 +169,13 @@ function parseUrl(input: string): URL | null {
 const PRESETS: Record<Exclude<ViewportPreset, "responsive">, { width: number; height: number; mobile: boolean }> = {
   mobile: { width: 375, height: 812, mobile: true },
   tablet: { width: 768, height: 1024, mobile: true },
+};
+
+/** Chrome 에서 가져오기가 실패한 까닭별 안내 문장. 여기 없는 까닭은 "사본을 열지 못했다"로 묶인다. */
+const CHROME_IMPORT_FAILURES: Record<string, string> = {
+  chrome_profile_not_found: "That Chrome profile no longer exists.",
+  chrome_cookies_missing: "That Chrome profile has no cookie database.",
+  chrome_bridge_unavailable: "Windows did not report a temporary folder for WSL to stage the copied profile in.",
 };
 
 export class BrowserService {
@@ -590,23 +597,30 @@ export class BrowserService {
 
   // ---------- Chrome 에서 가져오기 ----------
 
+  /** 엔진 Chrome 의 프로필들이 놓인 User Data 디렉터리. WSL 중계면 Windows 쪽 Chrome 의 것을 짚는다. */
+  private chromeUserData(located: ChromiumCandidate): string | null {
+    return located.bridge ? bridgedChromeUserDataDir(located.executable, located.bridge) : chromeUserDataDir();
+  }
+
   /** 가져올 수 있는 원본 — 엔진이 Google Chrome 일 때만, 그 Chrome 의 프로필들. */
   importSources(): { available: boolean; reason: "chrome_required" | "no_profiles" | null; profiles: ChromeProfile[] } {
     const located = this.lookup().candidate;
-    if (!isGoogleChrome(located?.executable ?? null) || located?.bridge) return { available: false, reason: "chrome_required", profiles: [] };
-    const profiles = listChromeProfiles();
+    if (!located || !isGoogleChrome(located.executable)) return { available: false, reason: "chrome_required", profiles: [] };
+    const source = this.chromeUserData(located);
+    const profiles = source ? listChromeProfiles(source) : [];
     return { available: profiles.length > 0, reason: profiles.length > 0 ? null : "no_profiles", profiles };
   }
 
   /** 프로필의 쿠키를 이 Operation 의 브라우저 컨텍스트에 넣는다. 열린 탭은 다음 항해부터 로그인 상태를 본다. */
   async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
     const located = this.lookup().candidate;
-    if (!isGoogleChrome(located?.executable ?? null) || !located || located.bridge) throw new BrowserPolicyError("chrome_required", "Importing needs Google Chrome as the browser engine.");
+    if (!located || !isGoogleChrome(located.executable)) throw new BrowserPolicyError("chrome_required", "Importing needs Google Chrome as the browser engine.");
+    const source = this.chromeUserData(located);
     const op = this.operation(operationId);
     const { client, contextId } = await this.context(op);
     let cookies: Awaited<ReturnType<typeof readChromeCookies>>;
-    try { cookies = await readChromeCookies({ executable: located.executable, profileId, env: this.deps.env, log: this.deps.log }); }
-    catch (error) { const code = error instanceof Error && error.message.startsWith("chrome_") ? error.message : "chrome_import_failed"; throw new BrowserPolicyError(code, code === "chrome_profile_not_found" ? "That Chrome profile no longer exists." : code === "chrome_cookies_missing" ? "That Chrome profile has no cookie database." : "Chrome could not open the copied profile."); }
+    try { cookies = await readChromeCookies({ executable: located.executable, profileId, env: this.deps.env, log: this.deps.log, ...(source ? { userDataDir: source } : {}), ...(located.bridge ? { bridge: located.bridge } : {}) }); }
+    catch (error) { const code = error instanceof Error && error.message.startsWith("chrome_") ? error.message : "chrome_import_failed"; throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile."); }
     const params = cookies.map((cookie) => ({ name: cookie.name, value: cookie.value, domain: cookie.domain, path: cookie.path, secure: cookie.secure, httpOnly: cookie.httpOnly, ...(cookie.sameSite ? { sameSite: cookie.sameSite } : {}), ...(cookie.expires > 0 ? { expires: cookie.expires } : {}), ...(cookie.priority ? { priority: cookie.priority } : {}), ...(cookie.sourceScheme ? { sourceScheme: cookie.sourceScheme } : {}), ...(typeof cookie.sourcePort === "number" ? { sourcePort: cookie.sourcePort } : {}) }));
     let imported = 0;
     for (let index = 0; index < params.length; index += 200) {

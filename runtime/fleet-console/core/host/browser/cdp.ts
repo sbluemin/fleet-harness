@@ -38,8 +38,12 @@ export interface WslBridge {
   readonly node: string;
   /** Windows 쪽에서 쓸 Chrome 프로필 디렉터리(Windows 경로). Chrome 이 WSL 파일계를 UNC 로 쓰는 일을 피한다. */
   readonly userDataDir: string;
+  /** Windows 쪽 `%LOCALAPPDATA%`(Windows 경로). 사용자 프로필과 임시 자리를 여기서 짚는다 — 못 읽었으면 null. */
+  readonly localAppData: string | null;
   /** WSL 경로를 Windows 경로로 옮긴다(`wslpath -w`). */
   readonly toWindowsPath: (file: string) => string;
+  /** Windows 경로를 WSL 경로로 되돌린다(`wslpath -u`). 못 옮기면 null. */
+  readonly toLinuxPath: (file: string) => string | null;
 }
 
 const MAC_APPS = [
@@ -149,10 +153,11 @@ function resolveWslBridge(root: string, dataDir: string): WslBridge | null {
   const node = candidates.find(windowsFile) ?? null;
   let bridge: WslBridge | null = null;
   if (node) {
-    const localAppData = windowsCommand(root, path.join(root, "Windows", "System32", "cmd.exe"), ["/d", "/c", "echo %LOCALAPPDATA%"]);
+    const echoed = windowsCommand(root, path.join(root, "Windows", "System32", "cmd.exe"), ["/d", "/c", "echo %LOCALAPPDATA%"]);
+    const localAppData = echoed && !echoed.includes("%") ? echoed : null;
     const stamp = crypto.createHash("sha1").update(dataDir).digest("hex").slice(0, 10);
-    const userDataDir = localAppData && !localAppData.includes("%") ? `${localAppData}\\fleet-console\\browser-${stamp}` : wslToWindowsPath(path.join(dataDir, "profile"));
-    bridge = { node, userDataDir, toWindowsPath: wslToWindowsPath };
+    const userDataDir = localAppData ? `${localAppData}\\fleet-console\\browser-${stamp}` : wslToWindowsPath(path.join(dataDir, "profile"));
+    bridge = { node, userDataDir, localAppData, toWindowsPath: wslToWindowsPath, toLinuxPath: (file) => wslToLinuxPath(root, file) };
   }
   bridgeCache = { at: now, root, bridge };
   return bridge;
