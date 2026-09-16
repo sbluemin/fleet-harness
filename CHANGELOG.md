@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.96.0] - 2026-09-16
+
+### fleet-console
+
+#### Changed
+- The Operation Browser preview is now sharp when the page is still: text and colors are shown losslessly once scrolling or animation stops, and the frame is drawn pixel-for-pixel instead of being stretched to the panel.
+- Opening a stowed panel whose session has ended now resumes it right away, instead of leaving you to press Resume again.
+
+#### Fixed
+- Clicks, hovers, and annotations in the Operation Browser land on the right spot when the canvas is zoomed in or out, and the preview is captured at the zoomed sharpness.
+
 ## [1.95.0] - 2026-09-15
 
 ### fleet-console
