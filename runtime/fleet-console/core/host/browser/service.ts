@@ -747,7 +747,9 @@ export class BrowserService {
     }, SETTLE_MS);
   }
 
+  /** 대기 중인 촬영을 거두고, 이미 찍고 있던 한 장도 버린다 — 뷰포트가 바뀐 뒤 옛 크기의 픽셀이 새 크기로 이름표를 달면 좌표가 어긋난다. */
   private cancelSettle(tab: Tab): void {
+    tab.frameSerial += 1;
     if (tab.settleTimer) { clearTimeout(tab.settleTimer); tab.settleTimer = null; }
   }
 
@@ -822,8 +824,10 @@ export class BrowserService {
     // 정적인 페이지는 크기가 바뀌어도 새 프레임을 그리지 않을 수 있다 — 한 장을 직접 찍어 즉시 보낸다.
     const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
     if (active && op.subscribers.size > 0) {
+      // 찍는 사이 뷰포트가 또 바뀌었으면(applyViewport 가 serial 을 올린다) 이 한 장은 옛 크기다 — 버리고 다음 변경의 촬영에 맡긴다.
+      const serial = active.frameSerial;
       const frame = await this.captureStillFrame(op, active);
-      if (frame) { active.lastFrame = frame; for (const subscriber of op.subscribers) subscriber.frame?.(frame); }
+      if (frame && active.frameSerial === serial && op.activeTabId === active.id) { active.lastFrame = frame; for (const subscriber of op.subscribers) subscriber.frame?.(frame); }
     }
     return op.viewport;
   }
