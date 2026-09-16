@@ -6,6 +6,7 @@ import { Select } from "@fleet-console/sdk/react/browser";
 import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserEngine, publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
+import { subscribeConsoleChannel } from "../operations-sse.js";
 import { themePolarity } from "../store.js";
 import { isDesktopShell } from "../desktop-shell.js";
 import "./browser-panel.css";
@@ -30,6 +31,8 @@ interface TabState { readonly id: string; readonly url: string; readonly title: 
 interface Viewport { readonly width: number; readonly height: number; readonly scale: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
+  /** 한 스트림에 모든 Operation 의 상태가 흐르므로 프레임이 자기 주인을 싣는다. */
+  readonly operationId: string;
   readonly tabs: readonly TabState[]; readonly activeTabId: string | null; readonly viewport: Viewport; readonly driving: boolean;
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
   readonly available: boolean; readonly reason: UnavailableReason | null;
@@ -45,6 +48,9 @@ type Stroke = { tool: "pen"; color: string; points: { x: number; y: number }[] }
 interface Pin { readonly x: number; readonly y: number; readonly text: string; readonly element: ElementInfo | null }
 /** 주석 하나 — 요소에 단 댓글(번호 핀)이거나 손으로 그린 표시. 순서가 곧 번호다. */
 type Mark = { readonly kind: "stroke"; readonly stroke: Stroke } | { readonly kind: "pin"; readonly pin: Pin };
+
+/** Operation 스트림에 실려 오는 브라우저 상태 프레임 (호스트의 같은 이름). */
+const BROWSER_STATE_EVENT = "browser:state";
 
 const base = (operationId: string) => `/api/v1/browser/operations/${encodeURIComponent(operationId)}`;
 
@@ -62,23 +68,33 @@ function base64Of(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * 이 패널은 자기 스트림을 열지 않는다. 브라우저 상태는 이미 열려 있는 Operation 스트림의 `browser:state` 로 오고,
+ * 여기서는 붙는 순간의 출발점만 한 번 읽는다.
+ *
+ * 스트림을 하나 더 여는 일이 공짜가 아니기 때문이다 — 브라우저는 origin 하나에 연결을 여섯 개까지만 열고, 그 예산이
+ * 다 차면 이 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다(눌러도 아무 일이 없고, 스트림 하나가 닫혀야 그제야 밀린
+ * 요청이 나간다). 원격 콘솔에서는 창을 든 셸의 배관도 같은 예산을 쓰므로 그 여섯이 훨씬 빨리 찬다.
+ */
 function useBrowserStream(operationId: string, enabled: boolean) {
   const [state, setState] = React.useState<BrowserState | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
   React.useEffect(() => {
     if (!enabled) { setConnection("disabled"); setState(null); return; }
     let disposed = false;
-    let source: EventSource | null = null;
-    let retry: ReturnType<typeof setTimeout> | null = null;
-    const connect = () => {
-      if (disposed) return;
-      setConnection("connecting");
-      source = new EventSource(`${base(operationId)}/stream`);
-      source.addEventListener("state", (event) => { try { setState(JSON.parse((event as MessageEvent).data) as BrowserState); setConnection("open"); } catch { /* 무시 */ } });
-      source.onerror = () => { source?.close(); source = null; if (!disposed) { setConnection("closed"); retry = setTimeout(connect, 1500); } };
+    setConnection("connecting");
+    const receive = (payload: unknown) => {
+      const next = payload as BrowserState | null;
+      // 한 스트림에 모든 Operation 의 상태가 흐른다 — 내 것만 받는다.
+      if (disposed || !next || next.operationId !== operationId) return;
+      setState(next);
+      setConnection("open");
     };
-    connect();
-    return () => { disposed = true; source?.close(); if (retry) clearTimeout(retry); };
+    const unsubscribe = subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
+    void fetch(`${base(operationId)}/state`)
+      .then(async (response) => { if (response.ok) receive(await response.json()); else if (!disposed) setConnection("closed"); })
+      .catch(() => { if (!disposed) setConnection("closed"); });
+    return () => { disposed = true; unsubscribe(); };
   }, [operationId, enabled]);
   return { state, connection };
 }
