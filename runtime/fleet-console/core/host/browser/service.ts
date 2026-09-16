@@ -734,6 +734,8 @@ export class BrowserService {
   private async stopScreencast(tab: Tab): Promise<void> {
     if (!tab.screencasting || !this.client) return;
     tab.screencasting = false;
+    // 스트림이 끊기는 전환(항해·탭 전환·뷰포트 적용)이다 — 그 전에 찍기 시작한 한 장은 이미 옛 화면이다.
+    tab.frameSerial += 1;
     try { await this.client.send("Page.stopScreencast", {}, tab.sessionId); } catch { /* 탭이 사라졌다 */ }
   }
 
