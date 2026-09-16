@@ -125,9 +125,36 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 최소화 선반에서 꺼낸 패널의 휴면 재개. 최소화 판정은 호출 분기가 진다 — 캔버스 복원과
   // focus layer 승격(최대화·companion)은 꺼내는 방식이 서로 다르고, 이미 떠 있던 패널 사이의
   // 포커스 이동은 어느 쪽에서도 재개가 아니다.
+  //
+  // 런타임 축이 아직 권위를 얻기 전(hydration "pending")이면 그 자리에서 재개하지 않는다 — 그 구간의
+  // 휴면 표시는 관측이 아니라 보수적 폭백이다. 대신 여는 제스처를 붙들어 두었다가 축이 자리잡은 뒤
+  // 관측된 사실로 다시 판정한다. 부팅 직후가 곧 모든 패널이 최소화된 순간이라, 여기서 버리면
+  // 이 기능이 가장 필요한 구간에서 조용히 사라진다.
+  const deferredOpenResumeRef = useRef<Set<string>>(new Set());
   const resumeIfDormant = useCallback((operationId: string) => {
+    if (getState().operationRuntimeHydration === "pending") {
+      deferredOpenResumeRef.current.add(operationId);
+      return;
+    }
     resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
   }, [registry.providers]);
+
+  useEffect(() => {
+    // degraded 는 "모른다"는 뜻이다 — 붙들어 둔 제스처를 사실로 승격하지 않고 버린다.
+    if (state.operationRuntimeHydration === "degraded") {
+      deferredOpenResumeRef.current.clear();
+      return;
+    }
+    if (state.operationRuntimeHydration !== "ready" || deferredOpenResumeRef.current.size === 0) return;
+    const deferred = [...deferredOpenResumeRef.current];
+    deferredOpenResumeRef.current.clear();
+    for (const operationId of deferred) {
+      // 기다리는 사이 사용자가 패널을 도로 치웠으면 그 제스처는 더 이상 유효하지 않다.
+      // 닫혔거나 사실은 살아 있었던 경우는 resumeDormantOnOpen 의 판정이 거른다.
+      if (getCanvasSnapshot().minimized.includes(operationId)) continue;
+      resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
+    }
+  }, [registry.providers, state.operationRuntimeHydration]);
 
   const refreshCatalog = useCallback(() => {
     const epoch = ++catalogRequestEpochRef.current;

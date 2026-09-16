@@ -12,7 +12,7 @@ import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationI
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
 import { CANVAS_MODE_STORAGE_KEY } from "../core/client/src/canvas/canvas-mode-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
-import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
+import { focusOperation, getState, hydrateOperations, setActiveOperation, setOperationRuntimeHydration, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -301,6 +301,26 @@ describe("Operations boot minimization", () => {
     expect(getMaximizedOperationId()).toBe("stowed");
     expect(getSnapshot().minimized).toEqual([]);
     expect(resumeOperation).toHaveBeenCalledTimes(3);
+
+    // 런타임 축이 권위를 얻기 전의 휴면 표시는 관측이 아니라 폭백이다 — 그 위에서 재개하지 않지만,
+    // 여는 제스처를 버리지도 않는다. 축이 자리잡으면 관측된 사실로 다시 판정해 그때 재개한다.
+    // (부팅 직후가 곧 모든 패널이 최소화된 순간이라, 여기서 버리면 기능이 조용히 사라진다.)
+    await act(async () => {
+      clearMaximizedOperationId();
+      setOperationRuntimeHydration("pending");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      setOperationRuntimeHydration("ready");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
+    expect(resumeOperation).toHaveBeenLastCalledWith("stowed");
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
