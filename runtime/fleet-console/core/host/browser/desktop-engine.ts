@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { DesktopBrowserBounds, DesktopBrowserCommand, DesktopBrowserRelay, DesktopBrowserSnapshot, DesktopBrowserView } from "@fleet-console/desktop-protocol";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView } from "@fleet-console/desktop-protocol";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -188,6 +188,8 @@ export class DesktopEngine implements CdpClient {
       case "Browser.setWindowBounds": return {} as T;
       default: break;
     }
+    // 셸 자신에게 묻는 명령 — 뷰가 없어도 창을 든 기계가 답한다(이 기계의 Chrome 프로필·쿠키 가져오기).
+    if (method.startsWith("Fleet.")) return this.dispatch<T>(DESKTOP_BROWSER_SHELL_VIEW, method, params);
     if (!sessionId || !this.views.has(sessionId)) throw new CdpError(method, -32601, "desktop_engine_unsupported");
     // 뷰 세션에는 브라우저 컨텍스트가 없다 — 컨텍스트를 짚는 인자는 뷰 자신을 뜻하므로 뗀다.
     const { browserContextId: _context, ...rest } = params;

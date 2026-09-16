@@ -136,8 +136,17 @@ export interface DesktopBrowserView {
   readonly url: string;
 }
 
-/** 콘솔이 어떤 뷰의 디버거로 보내려는 CDP 명령. 결과는 relay 의 `results` 로 돌아온다. */
+/**
+ * 콘솔이 어떤 뷰의 디버거로 보내려는 CDP 명령. 결과는 relay 의 `results` 로 돌아온다.
+ * `viewId` 가 `DESKTOP_BROWSER_SHELL_VIEW` 면 뷰가 아니라 셸 자신에게 묻는 명령이다(`Fleet.*`) — 이 기계의 Chrome
+ * 프로필을 세고 그 쿠키를 세션 파티션에 넣는 일처럼, 창을 든 기계에서만 답할 수 있는 것.
+ */
 export interface DesktopBrowserCommand { readonly id: number; readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }
+export const DESKTOP_BROWSER_SHELL_VIEW = "shell";
+/** 셸이 이 기계의 Google Chrome 프로필을 센다. 결과: `{ available, reason, profiles }`. */
+export const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
+/** 셸이 Chrome 프로필의 쿠키를 `partition` 세션에 넣는다. 인자: `{ partition, profileId }`, 결과: `{ cookies }`. */
+export const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 
 export interface DesktopBrowserSnapshot {
   /** 스냅샷마다 오른다 — 셸이 옛 스냅샷을 새 것 위에 덮어쓰지 않게. */

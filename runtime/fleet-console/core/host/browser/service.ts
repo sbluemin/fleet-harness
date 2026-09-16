@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import type { CdpClient, CdpEvent } from "./cdp.js";
+import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import type { DesktopBrowserBounds } from "@fleet-console/desktop-protocol";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/desktop-protocol";
 
 /**
  * Operation Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -54,6 +54,16 @@ export type BrowserSubscriber = { state?: (state: BrowserOperationState) => void
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
+
+export interface ChromeImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
+
+/** Chrome 에서 가져오기가 실패한 까닭별 안내 문장. 여기 없는 까닭은 "사본을 열지 못했다"로 묶인다. */
+const CHROME_IMPORT_FAILURES: Record<string, string> = {
+  chrome_required: "Importing needs Google Chrome installed on the computer that shows this browser.",
+  chrome_profile_not_found: "That Chrome profile no longer exists.",
+  chrome_cookies_missing: "That Chrome profile has no cookie database.",
+  chrome_import_invalid: "The Desktop shell rejected the import request.",
+};
 
 export class BrowserPolicyError extends Error {
   constructor(readonly code: string, message: string, readonly detail: Record<string, unknown> = {}) { super(message); this.name = "BrowserPolicyError"; }
@@ -517,6 +527,34 @@ export class BrowserService {
       }
     } catch { /* 탭이 닫히는 중 */ }
     tab.refs.clear();
+  }
+
+  // ---------- Chrome 에서 가져오기 ----------
+
+  /**
+   * 가져올 수 있는 원본 — 창을 든 Desktop 기계의 Google Chrome 프로필들. 콘솔이 아니라 셸에 묻는다: 뷰가 그 기계에
+   * 살고, 사람이 늘 쓰는 Chrome 도 그 기계에 있다(원격 콘솔이어도 마찬가지).
+   */
+  async importSources(): Promise<ChromeImportSources> {
+    const client = await this.engineClient();
+    return client.send<ChromeImportSources>(DESKTOP_BROWSER_CHROME_PROFILES, {});
+  }
+
+  /** Chrome 프로필의 쿠키를 이 Operation 의 세션 파티션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다. */
+  async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
+    if (!/^[A-Za-z0-9 ._-]+$/.test(profileId)) throw new BrowserPolicyError("chrome_profile_not_found", CHROME_IMPORT_FAILURES.chrome_profile_not_found!);
+    const op = this.operation(operationId);
+    const { client, contextId } = await this.context(op);
+    try {
+      const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId });
+      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${operationId}`);
+      return result;
+    } catch (error) {
+      // 셸의 까닭은 CdpError 메시지(`Fleet.importChromeCookies: chrome_…`)에 실려 온다.
+      const raw = error instanceof CdpError ? error.message.slice(error.method.length + 2) : "";
+      const code = /^(chrome_[a-z_]+)/.exec(raw)?.[1] ?? "chrome_import_failed";
+      throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile.");
+    }
   }
 
   // ---------- 파비콘 프록시 ----------

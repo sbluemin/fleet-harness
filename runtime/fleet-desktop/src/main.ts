@@ -34,6 +34,7 @@ import { createNoopUpdateController, createUpdateController, resolveActiveWindow
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
+import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -42,6 +43,10 @@ type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: nu
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
+const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
+const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
+/** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
+const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const desktopResources = resolveDesktopResourcePaths(isPackaged);
@@ -169,6 +174,25 @@ async function boot(): Promise<void> {
     userAgent: () => (window?.webContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
     fetch: consoleFetch,
     log: (message) => logger.info(message),
+    /**
+     * 창을 든 기계에서만 답할 수 있는 명령 — 이 기계의 Google Chrome 프로필과 그 쿠키. 뷰는 파티션에 격리되어
+     * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.
+     */
+    shellCommand: async (method, params) => {
+      if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
+      if (method === DESKTOP_BROWSER_IMPORT_COOKIES) {
+        const partition = typeof params.partition === "string" && BROWSER_PARTITION.test(params.partition) ? params.partition : null;
+        const profileId = typeof params.profileId === "string" ? params.profileId : null;
+        if (!partition || !profileId) throw new Error("chrome_import_invalid");
+        const cookies = await readChromeCookies({ profileId, tempRoot: app.getPath("temp"), log: (message) => logger.info(message) });
+        const jar = session.fromPartition(partition).cookies;
+        let imported = 0;
+        for (const cookie of cookies) { try { await jar.set(toElectronCookie(cookie)); imported += 1; } catch { /* 이 쿠키는 못 넣는다 */ } }
+        logger.info(`imported ${imported}/${cookies.length} cookies from Chrome profile ${profileId} into ${partition}`);
+        return { cookies: imported };
+      }
+      throw new Error("desktop_shell_unsupported");
+    },
   });
   const synchronizeBrowserViews = async (origin: string): Promise<void> => {
     try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
