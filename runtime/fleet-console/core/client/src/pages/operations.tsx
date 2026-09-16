@@ -9,7 +9,7 @@ import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescrip
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../shortcuts.js";
-import { closeOperationCompletely, minimizeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
+import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../theater.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
@@ -121,6 +121,48 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const resumeBootProtectionRef = useRef<{ readonly theaterId: string; readonly operationId: string } | null>(null);
   const warRoomSessionRestoredRef = useRef(false);
   stateRef.current = state;
+
+  // 최소화 선반에서 꺼낸 패널의 휴면 재개. 최소화 판정은 호출 분기가 진다 — 캔버스 복원과
+  // focus layer 승격(최대화·companion)은 꺼내는 방식이 서로 다르고, 이미 떠 있던 패널 사이의
+  // 포커스 이동은 어느 쪽에서도 재개가 아니다.
+  //
+  // 자동 재개는 관측된 런타임 축 위에서만 한다. 축이 권위를 갖지 못한 구간의 휴면 표시는 사실이
+  // 아니라 보수적 폭백이고(pluginRuntimeState 가 degraded 를 플러그인에 넘기지 않는 것과 같은 이유),
+  // 사용자가 누른 것은 "재개"가 아니라 "열기"라 그 위에서 프로세스를 되살리면 안 된다.
+  //
+  // 두 미관측 구간은 갈 길이 다르다. pending 은 곧 권위가 도착하므로 여는 제스처를 붙들었다가 그때
+  // 다시 판정한다 — 부팅 직후가 곧 모든 패널이 최소화된 순간이라 여기서 버리면 이 기능이 가장
+  // 필요한 구간에서 사라진다. degraded 는 언제 회복될지 모르는 구간이라 붙들지 않는다. 어느 쪽이든
+  // 프레임의 Resume 는 그대로 있어 사용자가 직접 누를 수 있다.
+  const deferredOpenResumeRef = useRef<Set<string>>(new Set());
+  const resumeIfDormant = useCallback((operationId: string) => {
+    const hydration = getState().operationRuntimeHydration;
+    if (hydration !== "ready") {
+      if (hydration === "pending") deferredOpenResumeRef.current.add(operationId);
+      return;
+    }
+    resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
+  }, [registry.providers]);
+
+  useEffect(() => {
+    // degraded 는 "모른다"는 뜻이다 — 붙들어 둔 제스처를 사실로 승격하지 않고 버린다.
+    if (state.operationRuntimeHydration === "degraded") {
+      deferredOpenResumeRef.current.clear();
+      return;
+    }
+    if (state.operationRuntimeHydration !== "ready" || deferredOpenResumeRef.current.size === 0) return;
+    const deferred = [...deferredOpenResumeRef.current];
+    deferredOpenResumeRef.current.clear();
+    for (const operationId of deferred) {
+      // 기다리는 사이 사용자가 패널을 도로 치웠으면 그 제스처는 더 이상 유효하지 않다. 최소화는
+      // Theater 별 축이므로 그 Operation 의 Theater 것을 봐야 한다 — 지금 로드된 캔버스를 보면
+      // 기다리는 사이 Theater 를 옮긴 경우 남의 목록에 대고 묻게 된다.
+      // 닫혔거나 사실은 살아 있었던 경우는 resumeDormantOnOpen 의 판정이 거른다.
+      const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
+      if (!operation || getTheaterCanvasSnapshot(operation.theaterId).minimized.includes(operationId)) continue;
+      resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
+    }
+  }, [registry.providers, state.operationRuntimeHydration]);
 
   const refreshCatalog = useCallback(() => {
     const epoch = ++catalogRequestEpochRef.current;
@@ -305,11 +347,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
-      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId));
+      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId), resumeIfDormant);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
+  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, resumeIfDormant, viewMode.effective]);
 
   // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
   // 칩·브레드크럼·패널은 가드가 유지하고, 빈 바다 해제는 캔버스 onClick이 맡는다.
@@ -383,7 +425,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     setActiveOperation(operationId);
     const viewportSize = viewportSizeFor(bodyRef.current);
     if (viewportSize) focusCanvasOperation(operationId, viewportSize);
-  }, []);
+    if (wasMinimized) resumeIfDormant(operationId);
+  }, [registry.providers, resumeIfDormant]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {
@@ -403,9 +446,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       return;
     }
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
     consumeOperationFocus();
-  }, [focusMapOperation, registry.operationKinds, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
+  }, [focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -488,7 +531,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // 선별 중에는 전 Theater가 마운트이므로 focusOperation의 Theater 전환을 타지 않고 바로 지목한다 —
     // 전환을 타면 loadForTheater가 목적지의 저장된 focus layer를 선별 위로 부활시킨다.
     if (isTriageActive()) {
-      void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
+      void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
       return;
     }
     if (operation.theaterId !== stateRef.current.activeTheaterId) {
@@ -496,8 +539,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       focusOperation(operationId);
       return;
     }
-    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
-  }, [focusMapOperation, registry.operationKinds]);
+    void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
+  }, [focusMapOperation, registry.operationKinds, resumeIfDormant]);
 
   // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 Tactical로 정렬해 스택 대신 그리드에 착지시킨다.
   // 목록 순서(updatedAt 내림차순)의 첫 항목을 활성으로 둔다. 비행 연출은 N개분이라 생략하고
@@ -872,7 +915,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 }
 
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
-async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void): Promise<void> {
+async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void, resumeIfDormant: (operationId: string) => void): Promise<void> {
   const requestEpoch = ++requestEpochRef.current;
   const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
   if (triageOperation && isTriageActive()) {
@@ -914,9 +957,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     if (operation && (!descriptor || descriptorCompanions.length === 0 || !canOpenCompanions)) {
       forceDropCompanionOperationId();
       if (getFormationView()) {
-        if (getCanvasSnapshot().minimized.includes(operationId)) playRestoreFlight(operationId);
-        restoreOperation(operationId);
-        setActiveOperation(operationId);
+        openInFormation(operationId, resumeIfDormant);
         requestOperationKeyboardFocus(operationId);
         return;
       }
@@ -925,25 +966,38 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       return;
     }
     setActiveOperation(operationId);
+    // companion 레이어 승격은 대상을 최소화 목록에서 꺼낸다(setFocusLayer) — 캔버스 복원과 다른
+    // 경로일 뿐 사용자에게는 같은 "패널 열기"다. 그러므로 같은 자동 재개를 받는다.
     setCompanionOperationId(operationId);
     requestOperationKeyboardFocus(operationId);
+    if (operationWasMinimized) resumeIfDormant(operationId);
     return;
   }
   if (getMaximizedOperationId() !== null) {
+    const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     setActiveOperation(operationId);
     setMaximizedOperationId(operationId);
     requestOperationKeyboardFocus(operationId);
+    if (wasMinimized) resumeIfDormant(operationId);
     return;
   }
   if (getFormationView()) {
-    if (getCanvasSnapshot().minimized.includes(operationId)) playRestoreFlight(operationId);
-    restoreOperation(operationId);
-    setActiveOperation(operationId);
+    openInFormation(operationId, resumeIfDormant);
     requestOperationKeyboardFocus(operationId);
     return;
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
+}
+
+// formation 뷰의 열기 경로. 복원 비행·복원·활성화를 한 동기 실행으로 끝내고, 최소화 선반에서
+// 꺼낸 경우에만 휴면 재개를 얹는다.
+function openInFormation(operationId: string, resumeIfDormant: (operationId: string) => void): void {
+  const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
+  if (wasMinimized) playRestoreFlight(operationId);
+  restoreOperation(operationId);
+  setActiveOperation(operationId);
+  if (wasMinimized) resumeIfDormant(operationId);
 }
 
 function settleReorderPatches(patches: readonly Promise<unknown>[]): Promise<void> {

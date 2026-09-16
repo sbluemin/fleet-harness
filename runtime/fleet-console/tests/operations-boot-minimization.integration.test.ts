@@ -12,7 +12,7 @@ import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationI
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
 import { CANVAS_MODE_STORAGE_KEY } from "../core/client/src/canvas/canvas-mode-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
-import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
+import { focusOperation, getState, hydrateOperations, setActiveOperation, setOperationRuntimeHydration, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -248,6 +248,96 @@ describe("Operations boot minimization", () => {
     expect(getState().pendingOperationFocus).toBeNull();
     expect(getSnapshot()).toBe(canvasSnapshot);
     expect(bodyPoolMocks.renderedOperationIds).toHaveLength(bodyPoolRenderCount);
+  });
+
+  // 최소화 선반에서 패널을 꺼내는 것은 "이 Operation을 다시 쓰겠다"는 제스처다 — 꺼낸 자리에서
+  // Resume를 한 번 더 누르게 하지 않는다. 반대로 이미 캔버스에 떠 있던 휴면 패널로의 포커스 이동은
+  // 재개가 아니다(휴면 선반의 resume 계약을 여는 동작이 가로채면 안 된다).
+  it("resumes a dormant Operation when its minimized panel is opened, but not on focus alone", async () => {
+    const resumeOperation = vi.fn();
+    registryMocks.providers = [{ id: "terminal", resumeOperation }];
+    await bootApp([
+      { ...operation("visible", BOOT_FRESH_CREATED_AT(), "theater-a"), payload: { resumeAvailable: true } },
+      { ...operation("stowed", 1, "theater-a"), payload: { resumeAvailable: true } },
+    ]);
+    await navigateTo("/operations");
+    expect(getSnapshot().minimized).toEqual(["stowed"]);
+
+    // 이미 떠 있는 휴면 패널 — 여는 제스처가 아니므로 프로세스를 되살리지 않는다.
+    await act(async () => {
+      sideBarMocks.onFocus?.("visible");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getState().activeOperationId).toBe("stowed");
+    expect(resumeOperation).toHaveBeenCalledTimes(1);
+    expect(resumeOperation).toHaveBeenCalledWith("stowed");
+
+    // 패널을 꺼내는 방식은 분기마다 다르다 — formation은 캔버스 복원으로, 최대화는 focus layer
+    // 승계로 최소화 목록에서 꺼낸다. 어느 쪽이든 사용자에게는 같은 "패널 열기"이므로 같은 재개를 받는다.
+    await act(async () => {
+      minimizeOperation("stowed");
+      toggleFormationView();
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      clearFormationView();
+      setMaximizedOperationId("visible");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getMaximizedOperationId()).toBe("stowed");
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(3);
+
+    // 런타임 축이 권위를 얻기 전의 휴면 표시는 관측이 아니라 폭백이다 — 그 위에서 재개하지 않지만,
+    // 여는 제스처를 버리지도 않는다. 축이 자리잡으면 관측된 사실로 다시 판정해 그때 재개한다.
+    // (부팅 직후가 곧 모든 패널이 최소화된 순간이라, 여기서 버리면 기능이 조용히 사라진다.)
+    await act(async () => {
+      clearMaximizedOperationId();
+      setOperationRuntimeHydration("pending");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      setOperationRuntimeHydration("ready");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
+    expect(resumeOperation).toHaveBeenLastCalledWith("stowed");
+
+    // 스트림이 끊긴 구간(degraded)의 축은 마지막으로 알던 값일 뿐이다 — 그 위에서 프로세스를
+    // 되살리지 않는다. 사용자가 누른 것은 "재개"가 아니라 "열기"이고, 프레임의 Resume 는 그대로 있다.
+    await act(async () => {
+      setOperationRuntimeHydration("degraded", "stream lost");
+      minimizeOperation("stowed");
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      setOperationRuntimeHydration("ready");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).toHaveBeenCalledTimes(4);
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
