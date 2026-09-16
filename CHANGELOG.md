@@ -5,6 +5,37 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.97.0] - 2026-09-16
+
+### fleet-console
+
+#### Added
+- Console Use now covers more of what you can do in Console: agents with Console use can resume, close (with the usual undo window), rename and switch the view of Operations, group them and set accents, read a whole conversation, its background jobs and command catalog, answer an input question of an Operation they launched, ask the Session Analyst about an Operation, and see who is using the Console, the computer or the browser.
+- Agents can bring one Operation to the front of your Console with a one-line reason under its caption when your judgment is needed.
+- Agents with Console use can read the Repository and File Explorer of any Theater (status, changes and diffs, log, search, worktrees, folder tree, files); writing still happens through an Operation in that Theater.
+
+#### Changed
+- The Operation Browser is now a Fleet Desktop feature: tabs render as real browser views inside the Desktop window, whether that window shows your own Console or a remote one you joined. Console no longer looks for a Chrome installation, so the browser engine path setting is gone; importing cookies from Google Chrome still works and now reads the Chrome profiles on the computer running Fleet Desktop.
+- Opening a Console in a regular browser tab or on a phone shows the browser button disabled with a note that it needs Fleet Desktop, and agents get the same answer from their browser tools. While such a screen is connected, the Desktop browser pauses and closes its tabs; it resumes once only Desktop windows remain.
+- While an agent uses Console Use, Computer Use, or the Operation Browser, the Operation shows it the same way it shows its own work: the caption's activity line runs in that feature's color instead of a light circling the window. The browser pane's caption runs the same line, so both panels read as one event, and the tinted caption and pulsing badge stay as before.
+
+#### Fixed
+- Gateway models no longer fail with "Unsupported Anthropic content block type: tool_addition" and retry endlessly when Claude Code adds an MCP tool mid-conversation.
+- Closing one of several browser tabs now shows the remaining tab instead of a blank pane.
+- Panels that open above the browser, such as the right-rail extension surface, now stay in front of it, and the outline shown while the agent is driving is no longer hidden behind the page.
+- After a Console updates and comes back on a new version, the screen you had open now reloads onto that version instead of keeping the old one. This includes a remote Console you updated from your own window.
+
+#### Removed
+- The repository panel no longer warns that other Operations are working in the same checkout.
+
+### fleet-desktop
+
+#### Added
+- The Operation Browser now renders as a real browser view inside the Desktop window: pages are crisp at native resolution, scrolling and typing are direct, and agents keep driving the same tab through their browser tools. Opening the Console in a regular browser tab still shows the streamed preview.
+
+#### Fixed
+- The host list keeps its "Managed console" line after the Console you are viewing restarts, so a remote Console no longer appears as if it were your own and the way back home stays available.
+
 ## [1.96.1] - 2026-09-16
 
 ### fleet-console

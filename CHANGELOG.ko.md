@@ -5,6 +5,37 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.97.0] - 2026-09-16
+
+### fleet-console
+
+#### Added
+- 콘솔 사용이 Console에서 할 수 있는 일을 더 많이 다룹니다. 콘솔 사용이 허용된 에이전트는 Operation을 재개·닫기(되돌리기 창 유지)·이름 변경·뷰 전환하고, 그룹과 액센트를 정하고, 전체 대화·백그라운드 잡·명령 카탈로그를 읽고, 자기가 시작한 Operation의 입력 질문에 답하고, 세션 분석가에게 물어보고, 누가 Console·컴퓨터·브라우저를 쓰는지 볼 수 있습니다.
+- 에이전트가 판단이 필요할 때 Operation 하나를 화면 앞에 세우고 그 이유를 캡션 아래 한 줄로 보여 줍니다.
+- 콘솔 사용이 허용된 에이전트는 모든 Theater의 저장소와 파일을 읽을 수 있습니다(상태·변경과 diff·로그·검색·worktree·폴더 트리·파일). 쓰기는 여전히 그 Theater의 Operation이 합니다.
+
+#### Changed
+- Operation 브라우저가 Fleet Desktop 전용 기능이 됩니다. 탭은 Desktop 창 안의 실제 브라우저 뷰로 그려지며, 그 창이 내 Console을 보든 원격으로 접속한 Console을 보든 같습니다. Console이 더 이상 Chrome 설치를 찾지 않으므로 브라우저 엔진 경로 설정은 사라지지만, Google Chrome 쿠키 가져오기는 그대로 쓸 수 있고 이제 Fleet Desktop이 실행 중인 컴퓨터의 Chrome 프로필을 읽습니다.
+- 일반 브라우저 탭이나 휴대폰에서 Console을 열면 브라우저 버튼이 비활성화되고 Fleet Desktop이 필요하다는 안내가 보이며, 에이전트의 브라우저 도구도 같은 답을 받습니다. 그런 화면이 연결되어 있는 동안 Desktop의 브라우저는 탭을 닫고 멈추며, Desktop 창만 남으면 다시 열립니다.
+- 에이전트가 Console Use·Computer Use·Operation 브라우저를 사용하는 동안, Operation은 자기 작업을 알리는 방식 그대로 이를 보여줍니다. 창을 도는 빛 대신 캡션의 작업 줄이 그 기능의 색으로 흐르고, 브라우저 패널의 캡션에도 같은 줄이 흘러 두 패널이 한 사건으로 읽힙니다. 물든 캡션과 맥동하는 배지는 그대로입니다.
+
+#### Fixed
+- Claude Code가 대화 도중 MCP 도구를 추가할 때 게이트웨이 모델이 "Unsupported Anthropic content block type: tool_addition" 오류로 무한 재시도하던 문제를 수정했습니다.
+- 브라우저 탭이 여러 개일 때 하나를 닫으면 남은 탭이 빈 화면 대신 바로 보입니다.
+- 우측 레일의 확장 표면처럼 브라우저 위에 열리는 패널이 이제 브라우저에 가려지지 않고 앞에 보이며, 에이전트가 조작 중일 때의 테두리도 페이지 뒤로 숨지 않습니다.
+- Console이 업데이트되어 새 버전으로 돌아오면 열어 두었던 화면이 옛 버전에 머무르지 않고 새 버전으로 다시 불러와집니다. 내 창에서 업데이트한 원격 Console도 마찬가지입니다.
+
+#### Removed
+- 저장소 패널이 같은 체크아웃에서 다른 Operation이 작업 중이라는 경고를 더 이상 표시하지 않습니다.
+
+### fleet-desktop
+
+#### Added
+- Operation 브라우저가 Desktop 창 안의 실제 브라우저 뷰로 그려집니다. 페이지가 화면 해상도 그대로 선명하고 스크롤·입력이 즉각 반응하며, 에이전트는 같은 탭을 브라우저 도구로 계속 조작합니다. 일반 브라우저 탭으로 Console을 열면 예전처럼 스트리밍 미리보기가 보입니다.
+
+#### Fixed
+- 보고 있던 Console이 재시작한 뒤에도 호스트 목록에 "관리형 콘솔" 줄이 남아, 원격 Console이 내 Console처럼 보이거나 돌아갈 길이 사라지는 일이 없습니다.
+
 ## [1.96.1] - 2026-09-16
 
 ### fleet-console
