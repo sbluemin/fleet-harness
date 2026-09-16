@@ -301,7 +301,16 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const observer = new ResizeObserver(later);
     observer.observe(element);
     window.visualViewport?.addEventListener("resize", later);
-    return () => { observer.disconnect(); window.visualViewport?.removeEventListener("resize", later); if (timer) clearTimeout(timer); };
+    // 배율이 다른 모니터로 창을 옮기면 CSS 크기는 그대로라 위 둘은 울리지 않는다 — 지금 배율에 맞춘 미디어 쿼리가 깨질 때 다시 잰다.
+    let dprQuery: MediaQueryList | null = null;
+    const armDpr = () => {
+      dprQuery?.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener("change", onDpr);
+    };
+    const onDpr = () => { armDpr(); later(); };
+    armDpr();
+    return () => { observer.disconnect(); window.visualViewport?.removeEventListener("resize", later); dprQuery?.removeEventListener("change", onDpr); if (timer) clearTimeout(timer); };
   }, [operationId, state?.viewport.preset, state?.viewport.width, state?.viewport.height, state?.viewport.scale, state?.tabs.length, zoomSettled]);
 
   const fail = async (response: Response) => {
