@@ -28,9 +28,14 @@ export interface WriteImageClipboardOptions {
 const COMMAND_TIMEOUT_MS = 20_000;
 const WSL_POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 
+/** 명령 실패. `code` 는 spawn 오류 코드(`ENOENT` = 도구가 없다)이고, 도구가 돌다가 실패했으면 비어 있다. */
+export class ClipboardCommandError extends Error {
+  constructor(file: string, detail: string, readonly code: string | null) { super(`${path.basename(file)} failed: ${detail}`); this.name = "ClipboardCommandError"; }
+}
+
 const defaultRun = (file: string, args: readonly string[], input?: Buffer): Promise<string> => new Promise((resolve, reject) => {
   const child = execFile(file, [...args], { timeout: COMMAND_TIMEOUT_MS, windowsHide: true, encoding: "utf8" }, (error, stdout, stderr) => {
-    if (error) reject(new Error(`${path.basename(file)} failed: ${(stderr || error.message).trim().slice(0, 300)}`)); else resolve(String(stdout));
+    if (error) reject(new ClipboardCommandError(file, (stderr || error.message).trim().slice(0, 300), typeof (error as { code?: unknown }).code === "string" ? String((error as { code?: unknown }).code) : null)); else resolve(String(stdout));
   });
   if (input) child.stdin?.end(input); else child.stdin?.end();
 });
@@ -79,8 +84,9 @@ export async function writeImageToClipboard(png: Buffer, options: WriteImageClip
       await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(file)]);
       return;
     }
-    // WSL2 커널 위의 Linux 컨테이너도 /proc/version 에 microsoft 가 찍히지만 wslpath 도 상호운용도 없다 — Windows 길이
-    // 막히면 그 컨테이너가 갖춘 Linux 도구로 내려간다. 진짜 WSL 에서 PowerShell 이 실패한 까닭은 함께 남긴다.
+    // WSL2 커널 위의 Linux 컨테이너도 /proc/version 에 microsoft 가 찍히지만 wslpath 도 상호운용도 없다 — 도구 자체가
+    // 없어(ENOENT) Windows 길이 막힐 때만 그 컨테이너가 갖춘 Linux 도구로 내려간다. 진짜 WSL 에서 PowerShell 이 돌다가
+    // 실패한 것(다른 프로세스가 클립보드를 쥠)은 그대로 실패다 — Linux 도구가 다른 X 클립보드에 써 봐야 CLI 는 Windows 것을 읽는다.
     let windowsFailure: string | null = null;
     if (isWsl(platform, env)) {
       try {
@@ -88,7 +94,10 @@ export async function writeImageToClipboard(png: Buffer, options: WriteImageClip
         if (!windowsPath) throw new Error("wslpath returned no Windows path");
         await run(wslPowershell(env), ["-NoProfile", "-NonInteractive", "-Sta", "-Command", powershellSetImageScript(windowsPath)]);
         return;
-      } catch (error) { windowsFailure = error instanceof Error ? error.message : "wsl clipboard failed"; }
+      } catch (error) {
+        if (!(error instanceof ClipboardCommandError) || error.code !== "ENOENT") throw error;
+        windowsFailure = error.message;
+      }
     }
     try { await run("xclip", ["-selection", "clipboard", "-t", "image/png", "-i", file]); }
     catch (xclipError) {
