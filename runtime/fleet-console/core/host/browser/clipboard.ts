@@ -51,9 +51,7 @@ export function wslPowershell(env: NodeJS.ProcessEnv = process.env, exists: (fil
 export function powershellSetImageScript(windowsPath: string): string {
   // 클립보드를 다른 프로세스가 쥐고 있어 SetImage 가 던지면 종료 코드로 알려야 한다 — 0 으로 끝나면 서버가 옛 클립보드
   // 위에 Ctrl+V 를 누른다. 오류는 멈추게 하고, 잡아서 stderr 에 적은 뒤 1 로 나간다.
-  return [
-    "$ErrorActionPreference = 'Stop'",
-    "try {",
+  const body = [
     "Add-Type -AssemblyName System.Windows.Forms",
     "Add-Type -AssemblyName System.Drawing",
     `$bytes = [System.IO.File]::ReadAllBytes(${powershellString(windowsPath)})`,
@@ -61,8 +59,8 @@ export function powershellSetImageScript(windowsPath: string): string {
     "$img = [System.Drawing.Image]::FromStream($stream)",
     "[System.Windows.Forms.Clipboard]::SetImage($img)",
     "$img.Dispose(); $stream.Dispose()",
-    "} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }",
   ].join("; ");
+  return `$ErrorActionPreference = 'Stop'; try { ${body} } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
 }
 
 export async function writeImageToClipboard(png: Buffer, options: WriteImageClipboardOptions = {}): Promise<void> {
