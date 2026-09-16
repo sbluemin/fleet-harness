@@ -15,16 +15,18 @@ export interface BrowserMcpDeps extends BrowserToolDeps {
   readonly language?: () => "en" | "ko" | null;
 }
 
-type BrowserRefusal = "caller_unresolved" | "remote_session";
+type BrowserRefusal = "caller_unresolved" | "desktop_required" | "shared";
 
 const REFUSAL_INSTRUCTION: Record<BrowserRefusal, string> = {
   caller_unresolved: "This session is not bound to a Console Operation, so the Browser can never answer it. Do not retry and do not ask the user to change a setting. Continue without the browser.",
-  remote_session: "A remote session is attached to this Console, so the local Browser is paused. Do not retry until the user says the remote session has ended.",
+  desktop_required: "The Operation Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console right now. Do not retry until the user says they opened this Console in Fleet Desktop.",
+  shared: "The Operation Browser is paused because this Console is also open in a regular browser tab or on a phone. Do not retry until the user says only Fleet Desktop windows remain.",
 };
 
 const REFUSAL_MESSAGE: Record<BrowserRefusal, Record<"en" | "ko", string>> = {
   caller_unresolved: { en: "This session is not bound to a Console Operation, so the Browser is unavailable to it.", ko: "이 세션은 Console Operation에 묶여 있지 않아 브라우저를 쓸 수 없습니다." },
-  remote_session: { en: "A remote session is attached, so the local Browser is paused.", ko: "원격 세션이 연결되어 있어 로컬 브라우저가 멈춰 있습니다." },
+  desktop_required: { en: "The Operation Browser needs a Fleet Desktop window showing this Console.", ko: "Operation 브라우저는 Fleet Desktop 창에서만 열립니다. 지금 이 Console 을 보는 Desktop 창이 없습니다." },
+  shared: { en: "The Operation Browser is paused while this Console is also open in a browser or on a phone.", ko: "이 Console 이 브라우저·모바일에서도 열려 있어 Operation 브라우저가 멈춰 있습니다." },
 };
 
 function refuse(reason: BrowserRefusal, operationId: string | null, language: "en" | "ko") {
@@ -41,8 +43,9 @@ function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const fallback = deps.language?.() ?? "en";
   const operation = deps.operations().find((op) => op.id === id);
   if (!operation) return { denied: refuse("caller_unresolved", null, fallback), operationId: null };
-  // 브라우저는 기본 탑재다 — 호출자가 Operation 이고 로컬 세션이면 언제나 열린다.
-  if (!deps.service.available()) return { denied: refuse("remote_session", operation.id, fallback), operationId: operation.id };
+  // 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 있고 브라우저·모바일 화면이 없을 때만 열린다.
+  const availability = deps.service.availability();
+  if (!availability.available) return { denied: refuse(availability.reason === "shared" ? "shared" : "desktop_required", operation.id, fallback), operationId: operation.id };
   return { denied: null, operationId: operation.id };
 }
 

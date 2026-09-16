@@ -1,9 +1,6 @@
 import crypto from "node:crypto";
-import path from "node:path";
-import fs from "node:fs/promises";
-import { launchChromium, lookupChromium, type CdpClient, type CdpEvent, type ChromiumCandidate, type ChromiumLookup, type ChromiumMissingReason } from "./cdp.js";
-import { bridgedChromeUserDataDir, chromeUserDataDir, isGoogleChrome, listChromeProfiles, readChromeCookies, type ChromeProfile } from "./chrome-import.js";
-import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
+import type { CdpClient, CdpEvent } from "./cdp.js";
+import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
 import type { DesktopBrowserBounds } from "@fleet-console/desktop-protocol";
 
@@ -11,21 +8,16 @@ import type { DesktopBrowserBounds } from "@fleet-console/desktop-protocol";
  * Operation Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
  * Console 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 본다.
  *
- * 정책 두 줄:
- * - 사람은 어디든 갈 수 있다. 에이전트는 루프백과 **이 Operation에서 사람이 이미 연 호스트**에만
- *   갈 수 있다 — 사용자가 사이트를 여는 행위가 곧 그 사이트에 대한 조작 허용이다.
- * - 원격 세션이 열려 있으면 서비스는 쓰이지 않는다(로컬 전용). 컴퓨터 사용과 같은 경계.
+ * 정책 세 줄:
+ * - 브라우저는 Fleet Desktop 앱의 기능이다. 탭은 창을 든 Desktop 안의 실제 Chromium 뷰로 그려지며, Console 은
+ *   Chrome 을 찾거나 띄우지 않는다. 브라우저 탭·모바일로 연 Console 에서는 열리지 않는다.
+ * - Desktop 이 아닌 클라이언트(브라우저 탭·모바일)가 이 Console 에 붙어 있는 동안은 멈춘다 — 붙는 순간 열린 탭을
+ *   모두 닫는다. 그 화면에는 뷰가 없으므로 에이전트가 무엇을 하는지 사람이 볼 수 없기 때문이다.
+ * - 뷰를 그리는 창은 제어를 쥔 쪽이다. 원격 Desktop 이 제어를 쥐면 그 창이, 아니면 이 기계의 창이 그린다.
+ *   사람은 어디든 갈 수 있고 에이전트도 http(s) 어디든 간다.
  */
 
 export const BROWSER_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
-/** 헤드리스 창 표면의 물리 배율 — 스크린캐스트 픽셀 수의 상한이다. 패널의 devicePixelRatio 는 이 안에서 에뮬레이션된다. */
-const BROWSER_SURFACE_SCALE = 2;
-/**
- * 스크린캐스트 JPEG 품질. 인코딩은 이 하나뿐이다 — 멈춘 화면만 다른 인코딩으로 덮으면 커서 깜빡임·호버 같은 작은
- * 변화마다 두 화질이 번갈아 그려져 글자가 깜빡인다. 70 은 글자 가장자리와 색 경계가 번지고, 90 은 2배 표면에서
- * 무손실과 육안 차이가 거의 없다(프레임당 약 1.5배 커진다).
- */
-const SCREENCAST_QUALITY = 90;
 const MAX_TABS = 8;
 const IDLE_SHUTDOWN_MS = 5 * 60_000;
 const CONSOLE_RING = 500;
@@ -33,8 +25,17 @@ const NETWORK_RING = 400;
 const BODY_LIMIT = 64 * 1024;
 const TEXT_LIMIT = 200_000;
 
+/** 브라우저를 쓸 수 없는 까닭. 도구·패널·글리프가 같은 낱말로 안내한다. */
+export type BrowserUnavailableReason = "desktop_required" | "shared";
+export interface BrowserAvailability {
+  readonly available: boolean;
+  readonly reason: BrowserUnavailableReason | null;
+  /** 뷰를 그릴 셸 — `"local"` 은 이 기계의 창, 그 밖은 원격 세션의 공개 이름. 붙어 있지 않아도 정책상의 답이다. */
+  readonly host: string | null;
+}
+
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
-export interface BrowserViewport { readonly width: number; readonly height: number; /** 패널이 보고한 devicePixelRatio — 프레임은 이 배율로 찍고 좌표·크기는 CSS px 로 말한다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
+export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
 export interface BrowserOperationState {
   readonly operationId: string;
@@ -45,12 +46,11 @@ export interface BrowserOperationState {
   readonly consoleErrors: number;
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
-  /** 탭이 창을 든 Desktop 안의 실제 뷰로 그려지는가 — 그러면 패널은 픽셀 대신 자리를 알린다. */
-  readonly native: boolean;
+  /** 지금 브라우저를 열 수 있는가. 아니면 `reason` 이 왜인지 말한다 — 패널은 그 문장을 보이고 탭은 이미 닫혀 있다. */
+  readonly available: boolean;
+  readonly reason: BrowserUnavailableReason | null;
 }
-/** 패널에 보내는 한 장. `width`·`height` 는 CSS px 이고 픽셀은 뷰포트 배율만큼 크다. */
-export interface BrowserFrame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number; readonly scrollX: number; readonly scrollY: number }
-export type BrowserSubscriber = { state?: (state: BrowserOperationState) => void; frame?: (frame: BrowserFrame) => void };
+export type BrowserSubscriber = { state?: (state: BrowserOperationState) => void };
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
@@ -75,10 +75,6 @@ interface Tab {
   consoleErrors: number;
   network: Map<string, NetworkEntry>;
   refs: Map<string, number>;
-  screencasting: boolean;
-  lastFrame: BrowserFrame | null;
-  /** 뷰포트가 바뀌거나 스크린캐스트 프레임이 올 때마다 오른다 — 뷰포트 변경으로 찍은 한 장은 그 사이 아무것도 바뀌지 않았을 때만 나간다. */
-  frameSerial: number;
 }
 
 interface OperationBrowser {
@@ -92,54 +88,35 @@ interface OperationBrowser {
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null } | null;
   /** 「중단」이 눌린 횟수 — 배치처럼 여러 호출로 이어지는 실행이 중단을 건너뛰지 못하게 세대를 비교한다. */
   interruptSerial: number;
-  /** 사람이 누르고 있는 포인터 버튼 — 드래그·선택 동안 mouseMoved 가 버튼을 실어야 한다. */
+  /** 에이전트가 누르고 있는 포인터 버튼 — 드래그 동안 mouseMoved 가 버튼을 실어야 한다. */
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
-  /** IME 조합 중 페이지에 넣어 둔 글자 — 다음 조합·확정이 이만큼 지우고 다시 넣는다. */
-  composition: string | null;
-  /** 글자 넣기·조합 갱신의 직렬 사슬 — 요청이 겹쳐 와도 지우기와 넣기가 뒤섞이지 않게 한 줄로 세운다. */
-  textQueue: Promise<void>;
   agentCalls: Set<AbortController>;
 }
 
-/** 엔진이 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 무엇을 설치할지 말한다. */
-export function missingChromiumMessage(reason: ChromiumMissingReason | null): string {
+/** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 사람이 무엇을 해야 하는지 말한다. */
+export function unavailableMessage(reason: BrowserUnavailableReason | null): string {
   switch (reason) {
-    case "env_invalid": return "FLEET_BROWSER_CHROMIUM points at a file that does not exist or is not executable.";
-    case "wsl_missing": return "No Chrome was found in WSL or on Windows. Install Google Chrome on Windows (WSL uses it) or inside WSL.";
-    case "wsl_windows_node_missing": return "Windows Chrome was found, but driving it from WSL needs Node.js installed on Windows.";
-    default: return "No local Chromium was found. Install Google Chrome, Chromium, or Microsoft Edge, or set FLEET_BROWSER_CHROMIUM.";
+    case "shared": return "The Operation Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
+    default: return "The Operation Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
   }
 }
 
 export interface BrowserServiceDeps {
-  readonly dataDir: string;
-  readonly env: NodeJS.ProcessEnv;
-  readonly executablePath?: () => string | undefined;
   readonly enabled: () => boolean;
-  readonly localControl: () => boolean;
+  /** 지금 브라우저를 열 수 있는지와 뷰를 그릴 셸. 서버가 붙은 클라이언트들과 제어 보유자로 답한다. */
+  readonly availability: () => BrowserAvailability;
   readonly log: (message: string) => void;
-  /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진. 셸이 붙어 있으면 헤드리스 Chromium 대신 이것을 쓴다. */
-  readonly desktop?: DesktopEngine | null;
+  /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진 — 유일한 엔진이다. */
+  readonly desktop: DesktopEngine;
 }
 
 export interface BrowserServiceStatus {
   readonly enabled: boolean;
-  /** 이 기기에서 브라우저를 띄울 수 있는가 — 실행 파일을 찾았다는 뜻이지 이미 떠 있다는 뜻은 아니다. */
   readonly available: boolean;
-  /** 못 찾았을 때 그 까닭. 클라이언트가 안내 문장을 고른다. */
-  readonly missingReason: ChromiumMissingReason | null;
-  readonly executable: string | null;
-  readonly executableSource: "env" | "settings" | "playwright" | "system" | null;
-  /** WSL 에서 Windows Chrome 을 중계로 쓰는 중이면 "wsl". */
-  readonly bridge: "wsl" | null;
+  readonly reason: BrowserUnavailableReason | null;
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
   readonly operations: readonly string[];
-}
-
-function isLoopbackHost(host: string): boolean {
-  const value = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return value === "localhost" || value.endsWith(".localhost") || value === "::1" || /^127(\.\d{1,3}){3}$/.test(value) || value === "0.0.0.0";
 }
 
 /** 페이지가 선언한 아이콘, 없으면 /favicon.ico. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다. */
@@ -175,131 +152,82 @@ const PRESETS: Record<Exclude<ViewportPreset, "responsive">, { width: number; he
   tablet: { width: 768, height: 1024, mobile: true },
 };
 
-/** Chrome 에서 가져오기가 실패한 까닭별 안내 문장. 여기 없는 까닭은 "사본을 열지 못했다"로 묶인다. */
-const CHROME_IMPORT_FAILURES: Record<string, string> = {
-  chrome_profile_not_found: "That Chrome profile no longer exists.",
-  chrome_cookies_missing: "That Chrome profile has no cookie database.",
-  chrome_bridge_unavailable: "Windows did not report a temporary folder for WSL to stage the copied profile in.",
-};
-
 export class BrowserService {
   private client: CdpClient | null = null;
-  private starting: Promise<CdpClient> | null = null;
   private disposed = false;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
   private readonly operations = new Map<string, OperationBrowser>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
-  /** 헤드리스 창 높이와 문서 innerHeight 의 차(가상 크롬). 창을 뷰포트에 맞출 때 더한다. */
-  private windowChrome: number | null = null;
-  /** 헤드리스 표기를 뺀 일반 Chrome UA 와 브랜드 메타데이터 — 엔진이 뜰 때 Chrome 이 보고한 버전으로 만든다. */
+  /** 셸의 Chromium 이 보고한 일반 Chrome UA 와 브랜드 메타데이터 — 엔진을 집을 때 만든다. */
   private identity: { userAgent: string; metadata: Record<string, unknown> } | null = null;
   private unsubscribeEvents: (() => void) | null = null;
+  /** 마지막으로 본 가용성 — 열림에서 닫힘으로 넘어가는 순간에만 탭을 접는다. */
+  private lastAvailable: boolean | null = null;
 
   constructor(private readonly deps: BrowserServiceDeps) {}
 
-  private configuring = false;
-
-  private lookup(executablePath = this.deps.executablePath?.()): ChromiumLookup { return lookupChromium({ env: this.deps.env, dataDir: this.deps.dataDir, executablePath }); }
-
-  engineSettings() {
-    return { ...this.status(), configuredPath: this.deps.executablePath?.() ?? "", environmentOverride: Boolean(this.deps.env.FLEET_BROWSER_CHROMIUM) };
-  }
-
-  async configureEngine(executablePath: string, restart: boolean, save: () => void): Promise<void> {
-    if (this.configuring || this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
-    if (this.deps.env.FLEET_BROWSER_CHROMIUM) throw new BrowserPolicyError("browser_engine_env", "FLEET_BROWSER_CHROMIUM overrides Settings.");
-    if ((this.client || this.starting) && !restart) throw new BrowserPolicyError("browser_engine_restart_required", "Changing the engine closes all browser tabs.");
-    this.configuring = true;
-    let probe: CdpClient | null = null;
-    let directory: string | null = null;
-    try {
-      const { candidate } = this.lookup(executablePath);
-      if (executablePath && !candidate) throw new BrowserPolicyError("browser_engine_invalid", "Browser executable is unavailable.");
-      if (candidate) {
-        await fs.mkdir(this.deps.dataDir, { recursive: true });
-        directory = await fs.mkdtemp(path.join(this.deps.dataDir, "engine-check-"));
-        const bridge = candidate.bridge ? { ...candidate.bridge, userDataDir: candidate.bridge.toWindowsPath(directory) } : undefined;
-        try {
-          probe = await launchChromium({ executable: candidate.executable, userDataDir: directory, windowSize: BROWSER_DEFAULT_VIEWPORT, env: this.deps.env, log: () => {}, ...(bridge ? { bridge } : {}) });
-          await probe.send("Browser.getVersion");
-          const context = await probe.send<{ browserContextId: string }>("Target.createBrowserContext");
-          await probe.send("Target.createTarget", { url: "about:blank", browserContextId: context.browserContextId });
-          await probe.send("Target.disposeBrowserContext", { browserContextId: context.browserContextId });
-        } catch { throw new BrowserPolicyError("browser_engine_check_failed", "Could not connect to the Chromium engine."); }
-      }
-      if (this.disposed || !this.available()) throw new BrowserPolicyError("browser_unavailable", "Local browser control is unavailable.");
-      if (this.starting) await this.starting.catch(() => undefined);
-      save();
-      for (const op of this.operations.values()) this.interrupt(op.operationId);
-      await this.stopEngine();
-      this.windowChrome = null;
-      this.identity = null;
-      this.engine = "idle";
-      this.engineError = null;
-    } finally {
-      try { if (probe) await probe.close(); }
-      finally {
-        if (directory) await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
-        this.configuring = false;
-      }
-    }
-  }
-
   status(): BrowserServiceStatus {
-    const { candidate, reason } = this.lookup();
-    // 창을 든 Desktop 이 붙어 있으면 그 Chromium 이 엔진이다 — 따로 설치한 Chrome 이 없어도 브라우저를 열 수 있다.
-    const desktop = this.deps.desktop?.connected === true;
-    return { enabled: this.deps.enabled(), available: candidate !== null || desktop, missingReason: candidate !== null || desktop ? null : reason, executable: candidate?.executable ?? null, executableSource: candidate?.source ?? null, bridge: candidate?.bridge ? "wsl" : null, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
+    const { available, reason } = this.availability();
+    return { enabled: this.deps.enabled(), available, reason, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
   }
 
-  available(): boolean { return this.deps.enabled() && this.deps.localControl(); }
+  /** 정책의 답에 엔진의 실제 연결을 겹친다 — 호스트가 정해졌어도 그 셸이 붙어 있지 않으면 Desktop 이 없는 것이다. */
+  availability(): BrowserAvailability {
+    if (!this.deps.enabled()) return { available: false, reason: "desktop_required", host: null };
+    const policy = this.deps.availability();
+    if (!policy.available) return policy;
+    if (!this.deps.desktop.connected) return { available: false, reason: "desktop_required", host: policy.host };
+    return policy;
+  }
+
+  available(): boolean { return this.availability().available; }
+
+  /**
+   * 붙은 클라이언트·제어 보유자가 바뀌었다. 뷰를 그릴 셸을 엔진에 알리고, 브라우저를 쓸 수 없게 되었으면 열린 탭을
+   * 모두 닫는다 — 브라우저 탭이 이 Console 에 붙는 순간이 그 예다. 상태는 늘 다시 알린다(패널이 문장을 바꾼다).
+   */
+  reconcile(): void {
+    if (this.disposed) return;
+    const policy = this.deps.availability();
+    this.deps.desktop.setHost(policy.host);
+    const available = this.availability().available;
+    const closing = this.lastAvailable === true && !available;
+    this.lastAvailable = available;
+    if (closing) {
+      this.deps.log("browser paused: closing every tab");
+      for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); this.endAgentSession(op.operationId, "revoke"); }
+      void this.stopEngine();
+      return;
+    }
+    for (const op of this.operations.values()) this.emitState(op);
+  }
 
   // ---------- 엔진 ----------
 
   private async engineClient(): Promise<CdpClient> {
-    if (this.configuring || this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
+    if (this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
     if (this.client) return this.client;
-    if (this.starting) return this.starting;
-    const desktop = this.deps.desktop ?? null;
-    if (desktop?.connected) {
-      this.client = desktop;
-      this.engine = "ready";
-      this.engineError = null;
-      this.identity = await browserIdentity(desktop).catch(() => null);
-      this.unsubscribeEvents = desktop.on((event) => this.onEvent(event));
-      void desktop.closed.then(() => { if (this.client === desktop) this.onEngineClosed(); });
-      this.deps.log("browser engine ready (desktop native view)");
-      return desktop;
-    }
-    const { candidate: located, reason } = this.lookup();
-    if (!located) { this.engine = "failed"; this.engineError = "browser_engine_missing"; throw new BrowserPolicyError("browser_engine_missing", missingChromiumMessage(reason)); }
-    this.engine = "starting";
-    this.starting = launchChromium({ executable: located.executable, userDataDir: path.join(this.deps.dataDir, "profile"), windowSize: BROWSER_DEFAULT_VIEWPORT, deviceScaleFactor: BROWSER_SURFACE_SCALE, env: this.deps.env, log: this.deps.log, ...(located.bridge ? { bridge: located.bridge } : {}) })
-      .then(async (client) => {
-        // 띄우는 사이 dispose 가 지나갔으면 방금 뜬 Chromium 을 바로 닫는다 — 서버가 내려간 뒤 자식이 남지 않게.
-        if (this.disposed) { await client.close(); throw new Error("browser_engine_disposed"); }
-        this.client = client;
-        this.identity = await browserIdentity(client).catch(() => null);
-        this.engine = "ready";
-        this.engineError = null;
-        this.unsubscribeEvents = client.on((event) => this.onEvent(event));
-        void client.closed.then(() => this.onEngineClosed());
-        this.deps.log(`browser engine ready (${located.source}${located.bridge ? " via wsl bridge" : ""}: ${located.executable})`);
-        return client;
-      })
-      .catch((error: unknown) => { this.engine = "failed"; this.engineError = error instanceof Error ? error.message : "browser_engine_start_failed"; throw error; })
-      .finally(() => { this.starting = null; });
-    return this.starting;
+    const { available, reason } = this.availability();
+    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
+    const desktop = this.deps.desktop;
+    this.client = desktop;
+    this.engine = "ready";
+    this.engineError = null;
+    this.identity = await browserIdentity(desktop).catch(() => null);
+    this.unsubscribeEvents = desktop.on((event) => this.onEvent(event));
+    void desktop.closed.then(() => { if (this.client === desktop) this.onEngineClosed(); });
+    this.deps.log(`browser engine ready (desktop native view, host ${desktop.currentHost ?? "none"})`);
+    return desktop;
   }
 
   private onEngineClosed(): void {
     this.client = null;
     this.unsubscribeEvents?.();
     this.unsubscribeEvents = null;
+    this.identity = null;
     if (this.engine !== "failed") this.engine = "idle";
     for (const op of this.operations.values()) {
-      for (const tab of op.tabs.values()) tab.screencasting = false;
       op.tabs.clear();
       op.activeTabId = null;
       op.contextId = "";
@@ -326,8 +254,6 @@ export class BrowserService {
   async dispose(): Promise<void> {
     this.disposed = true;
     for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.subscribers.clear(); }
-    // 아직 띄우는 중이면 그 결말을 기다린다 — 성공했으면 아래 stopEngine 이 닫고, 실패했으면 닫을 것이 없다.
-    if (this.starting) await this.starting.catch(() => undefined);
     await this.stopEngine();
     this.operations.clear();
   }
@@ -337,7 +263,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, composition: null, textQueue: Promise.resolve() };
+      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, subscribers: new Set(), agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
       this.operations.set(operationId, op);
     }
     return op;
@@ -352,23 +278,19 @@ export class BrowserService {
     return { client, contextId: op.contextId };
   }
 
-  /** 지금 엔진이 Desktop 의 네이티브 뷰인가. 엔진이 아직 없으면 셸이 붙어 있는지로 답한다 — 패널이 첫 탭 전에 모드를 정하기 때문이다. */
-  get native(): boolean {
-    const desktop = this.deps.desktop ?? null;
-    return desktop !== null && (this.client === desktop || (this.client === null && desktop.connected));
-  }
-
   /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
   place(operationId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
     this.operation(operationId);
-    this.deps.desktop?.place(operationId, placement);
+    this.deps.desktop.place(operationId, placement);
   }
 
   state(operationId: string): BrowserOperationState {
     const op = this.operation(operationId);
+    const { available, reason } = this.availability();
     return {
       operationId,
-      native: this.native,
+      available,
+      reason,
       tabs: [...op.tabs.values()].map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 })),
       activeTabId: op.activeTabId,
       viewport: op.viewport,
@@ -383,9 +305,7 @@ export class BrowserService {
     const op = this.operation(operationId);
     op.subscribers.add(subscriber);
     subscriber.state?.(this.state(operationId));
-    const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
-    if (active) { if (active.lastFrame) subscriber.frame?.(active.lastFrame); void this.ensureScreencast(op, active); }
-    return () => { op.subscribers.delete(subscriber); void this.reconcileScreencast(op); this.scheduleIdle(); };
+    return () => { op.subscribers.delete(subscriber); this.scheduleIdle(); };
   }
 
   private emitState(op: OperationBrowser): void {
@@ -428,7 +348,8 @@ export class BrowserService {
 
   /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. */
   async agentCall<T>(operationId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (!this.available()) throw new BrowserPolicyError("browser_unavailable", "The Operation Browser is not available in this session.");
+    const { available, reason } = this.availability();
+    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
     const op = this.operation(operationId);
     const call = new AbortController();
     const onAbort = () => call.abort();
@@ -488,7 +409,7 @@ export class BrowserService {
     const { client, contextId } = await this.context(op);
     const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
     const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null, frameSerial: 0 };
+    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
     op.tabs.set(tab.id, tab);
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
@@ -499,8 +420,7 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    if (this.native) this.deps.desktop?.bindView(created.targetId, op.operationId);
-    else if (this.windowChrome === null) this.windowChrome = await this.measureWindowChrome(client);
+    this.deps.desktop.bindView(created.targetId, op.operationId);
     await this.applyViewport(client, tab, op.viewport);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
@@ -511,10 +431,13 @@ export class BrowserService {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     op.tabs.delete(tab.id);
-    if (op.activeTabId === tab.id) op.activeTabId = [...op.tabs.keys()].pop() ?? null;
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
-    const next = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
-    if (next) await this.ensureScreencast(op, next);
+    // 활성 탭을 닫았으면 남은 탭을 앞으로 세운다 — 엔진에도 알려야 그 뷰가 보인다(뷰는 활성인 것 하나만 그려진다).
+    if (op.activeTabId === tab.id) {
+      const next = [...op.tabs.keys()].pop() ?? null;
+      op.activeTabId = null;
+      if (next) { await this.selectTab(operationId, next); this.scheduleIdle(); return; }
+    }
     this.emitState(op);
     this.scheduleIdle();
   }
@@ -522,12 +445,8 @@ export class BrowserService {
   async selectTab(operationId: string, tabId: string): Promise<void> {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
-    const previous = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
     op.activeTabId = tab.id;
-    if (previous && previous !== tab) await this.stopScreencast(previous);
-    if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 헤드리스는 무시할 수 있다 */ } }
-    await this.ensureScreencast(op, tab);
-    if (tab.lastFrame) for (const subscriber of op.subscribers) subscriber.frame?.(tab.lastFrame);
+    if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 뷰가 사라지는 중 */ } }
     this.emitState(op);
   }
 
@@ -624,42 +543,6 @@ export class BrowserService {
     } catch { return null; }
   }
 
-  // ---------- Chrome 에서 가져오기 ----------
-
-  /** 엔진 Chrome 의 프로필들이 놓인 User Data 디렉터리. WSL 중계면 Windows 쪽 Chrome 의 것을 짚는다. */
-  private chromeUserData(located: ChromiumCandidate): string | null {
-    return located.bridge ? bridgedChromeUserDataDir(located.executable, located.bridge) : chromeUserDataDir();
-  }
-
-  /** 가져올 수 있는 원본 — 엔진이 Google Chrome 일 때만, 그 Chrome 의 프로필들. */
-  importSources(): { available: boolean; reason: "chrome_required" | "no_profiles" | null; profiles: ChromeProfile[] } {
-    const located = this.lookup().candidate;
-    if (!located || !isGoogleChrome(located.executable)) return { available: false, reason: "chrome_required", profiles: [] };
-    const source = this.chromeUserData(located);
-    const profiles = source ? listChromeProfiles(source) : [];
-    return { available: profiles.length > 0, reason: profiles.length > 0 ? null : "no_profiles", profiles };
-  }
-
-  /** 프로필의 쿠키를 이 Operation 의 브라우저 컨텍스트에 넣는다. 열린 탭은 다음 항해부터 로그인 상태를 본다. */
-  async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
-    const located = this.lookup().candidate;
-    if (!located || !isGoogleChrome(located.executable)) throw new BrowserPolicyError("chrome_required", "Importing needs Google Chrome as the browser engine.");
-    const source = this.chromeUserData(located);
-    const op = this.operation(operationId);
-    const { client, contextId } = await this.context(op);
-    let cookies: Awaited<ReturnType<typeof readChromeCookies>>;
-    try { cookies = await readChromeCookies({ executable: located.executable, profileId, env: this.deps.env, log: this.deps.log, ...(source ? { userDataDir: source } : {}), ...(located.bridge ? { bridge: located.bridge } : {}) }); }
-    catch (error) { const code = error instanceof Error && error.message.startsWith("chrome_") ? error.message : "chrome_import_failed"; throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile."); }
-    const params = cookies.map((cookie) => ({ name: cookie.name, value: cookie.value, domain: cookie.domain, path: cookie.path, secure: cookie.secure, httpOnly: cookie.httpOnly, ...(cookie.sameSite ? { sameSite: cookie.sameSite } : {}), ...(cookie.expires > 0 ? { expires: cookie.expires } : {}), ...(cookie.priority ? { priority: cookie.priority } : {}), ...(cookie.sourceScheme ? { sourceScheme: cookie.sourceScheme } : {}), ...(typeof cookie.sourcePort === "number" ? { sourcePort: cookie.sourcePort } : {}) }));
-    let imported = 0;
-    for (let index = 0; index < params.length; index += 200) {
-      const chunk = params.slice(index, index + 200);
-      try { await client.send("Storage.setCookies", { cookies: chunk, browserContextId: contextId }); imported += chunk.length; }
-      catch { for (const one of chunk) { try { await client.send("Storage.setCookies", { cookies: [one], browserContextId: contextId }); imported += 1; } catch { /* 이 쿠키는 못 넣는다 */ } } }
-    }
-    this.deps.log(`imported ${imported}/${cookies.length} cookies from Chrome profile ${profileId} into ${operationId}`);
-    return { cookies: imported };
-  }
 
   // ---------- 이벤트 ----------
 
@@ -675,27 +558,6 @@ export class BrowserService {
     const { op, tab } = found;
     const p = event.params as Record<string, any>;
     switch (event.method) {
-      case "Page.screencastFrame": {
-        const client = this.client;
-        if (client) void client.send("Page.screencastFrameAck", { sessionId: p.sessionId }, tab.sessionId).catch(() => undefined);
-        const meta = p.metadata ?? {};
-        // 프레임의 좌표 공간은 에뮬레이션된 뷰포트(CSS px)다 — 스크린캐스트 메타데이터의 deviceWidth는
-        // 창 크기를 말하므로 그대로 쓰면 패널의 클릭이 실제 위치의 배수로 어긋난다.
-        // 창을 뷰포트에 맞추고 항해마다 에뮬레이션을 다시 걸어도 렌더러 교체 직후 한 장은 창 표면 크기로 올 수
-        // 있다. JPEG 헤더의 실제 크기를 그대로 알리면 그 한 장도 좌표는 맞는다(상한 = 뷰포트라 축소되지 않는다).
-        // 픽셀 비율이 뷰포트와 같으면 뷰포트 CSS 크기를 그대로 선언한다 — 픽셀 수는 표면 배율 상한과 JPEG
-        // 축소에 따라 달라질 수 있어 픽셀을 배율로 나누면 좌표가 어긋난다. 비율이 다른 프레임(렌더러 교체
-        // 직후 창 표면 크기)만 픽셀에서 환산한다.
-        const pixels = jpegDimensions(p.data);
-        const sameShape = pixels ? Math.abs(pixels.width / pixels.height - op.viewport.width / op.viewport.height) < 0.015 : true;
-        const actual = pixels && !sameShape ? { width: Math.round(pixels.width / op.viewport.scale), height: Math.round(pixels.height / op.viewport.scale) } : { width: op.viewport.width, height: op.viewport.height };
-        const frame: BrowserFrame = { tabId: tab.id, data: p.data, mime: "image/jpeg", width: actual.width, height: actual.height, scrollX: meta.scrollOffsetX ?? 0, scrollY: meta.scrollOffsetY ?? 0 };
-        tab.lastFrame = frame;
-        // 이 프레임이 최신이다 — 뷰포트 변경으로 찍고 있던 한 장이 뒤늦게 도착해 화면을 되돌리지 않게 무효로 한다.
-        tab.frameSerial += 1;
-        if (op.activeTabId === tab.id) for (const subscriber of op.subscribers) subscriber.frame?.(frame);
-        return;
-      }
       case "Fleet.viewResized": {
         // 셸이 놓은 뷰의 실제 크기가 곧 뷰포트다(반응형일 때). 좌표·스크린샷 클립이 이 값을 기준으로 한다.
         if (op.viewport.preset !== "responsive") return;
@@ -706,9 +568,13 @@ export class BrowserService {
         return;
       }
       case "Target.detachedFromTarget": {
-        // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접는다.
+        // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접고, 활성이었으면 남은 탭을 앞으로 세운다.
         op.tabs.delete(tab.id);
-        if (op.activeTabId === tab.id) op.activeTabId = [...op.tabs.keys()].pop() ?? null;
+        if (op.activeTabId === tab.id) {
+          const next = [...op.tabs.keys()].pop() ?? null;
+          op.activeTabId = null;
+          if (next) { void this.selectTab(op.operationId, next).catch(() => undefined); return; }
+        }
         this.emitState(op);
         return;
       }
@@ -771,107 +637,28 @@ export class BrowserService {
     if (entry.level === "error") { tab.consoleErrors += 1; this.emitState(op); }
   }
 
-  // ---------- 스크린캐스트 ----------
-
-  private wantsFrames(op: OperationBrowser): boolean { for (const subscriber of op.subscribers) if (subscriber.frame) return true; return false; }
-
-  private async ensureScreencast(op: OperationBrowser, tab: Tab): Promise<void> {
-    if (!this.wantsFrames(op) || tab.screencasting || !this.client) return;
-    tab.screencasting = true;
-    try { await this.client.send("Page.startScreencast", { format: "jpeg", quality: SCREENCAST_QUALITY, maxWidth: Math.round(op.viewport.width * op.viewport.scale), maxHeight: Math.round(op.viewport.height * op.viewport.scale), everyNthFrame: 1 }, tab.sessionId); }
-    catch { tab.screencasting = false; }
-  }
-
-  private async stopScreencast(tab: Tab): Promise<void> {
-    if (!tab.screencasting || !this.client) return;
-    tab.screencasting = false;
-    // 스트림이 끊기는 전환(항해·탭 전환·뷰포트 적용)이다 — 그 전에 찍기 시작한 한 장은 이미 옛 화면이다.
-    tab.frameSerial += 1;
-    try { await this.client.send("Page.stopScreencast", {}, tab.sessionId); } catch { /* 탭이 사라졌다 */ }
-  }
-
-  private async reconcileScreencast(op: OperationBrowser): Promise<void> {
-    if (this.wantsFrames(op)) return;
-    for (const tab of op.tabs.values()) await this.stopScreencast(tab);
-  }
-
   // ---------- 뷰포트 ----------
 
-  /** about:blank 는 표면이 없어 innerHeight 가 창 높이를 그대로 말한다 — 문서를 하나 띄운 탐침 탭으로 잰다. */
-  private async measureWindowChrome(client: CdpClient): Promise<number> {
-    let targetId: string | null = null;
-    try {
-      const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "data:text/html,<title>probe</title>" });
-      targetId = created.targetId;
-      const { sessionId } = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
-      await client.send("Runtime.enable", {}, sessionId);
-      const win = await client.send<{ bounds: { height: number } }>("Browser.getWindowForTarget", { targetId });
-      const deadline = Date.now() + 1500;
-      while (Date.now() < deadline) {
-        const inner = await client.send<{ result: { value?: number } }>("Runtime.evaluate", { expression: "innerHeight", returnByValue: true }, sessionId);
-        const value = inner.result.value;
-        if (typeof value === "number" && value > 0 && value < win.bounds.height) return win.bounds.height - value;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-      return 0;
-    } catch { return 0; }
-    finally { if (targetId) await client.send("Target.closeTarget", { targetId }).catch(() => undefined); }
-  }
-
+  /** 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋만 뷰 안에서 흉내 낸다. */
   private async applyViewport(client: CdpClient, tab: Tab, viewport: BrowserViewport): Promise<void> {
     const preset = viewport.preset === "responsive" ? null : PRESETS[viewport.preset];
-    if (this.native) {
-      // 네이티브 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋만 뷰 안에서 흉내 낸다.
-      if (preset) await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile: preset.mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
-      else await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
-      await client.send("Emulation.setEmulatedMedia", { features: viewport.colorScheme ? [{ name: "prefers-color-scheme", value: viewport.colorScheme }] : [] }, tab.sessionId);
-      if (tab.screencasting) { await this.stopScreencast(tab); const op = [...this.operations.values()].find((entry) => entry.tabs.has(tab.id)); if (op) await this.ensureScreencast(op, tab); }
-      return;
-    }
-    // 창 표면을 뷰포트와 같게 둔다 — 에뮬레이션이 잠시 풀리는 순간(렌더러 교체)에도 프레임이 창 크기로
-    // 되돌아가 뷰포트와 어긋나지 않게. 창 높이에는 헤드리스의 가상 크롬만큼을 더한다.
-    try {
-      const win = await client.send<{ windowId: number; bounds: { width: number; height: number } }>("Browser.getWindowForTarget", { targetId: tab.targetId });
-      const height = viewport.height + (this.windowChrome ?? 0);
-      if (win.bounds.width !== viewport.width || win.bounds.height !== height) await client.send("Browser.setWindowBounds", { windowId: win.windowId, bounds: { width: viewport.width, height } });
-    } catch { /* 창 조정은 보조 수단이다 */ }
-    // 화면 크기도 창과 같게 알린다 — 헤드리스 기본 400×300 화면은 어떤 실제 기기와도 맞지 않는다.
-    await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: viewport.scale, mobile: preset?.mobile ?? false, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
+    if (preset) await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile: preset.mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
+    else await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
     await client.send("Emulation.setEmulatedMedia", { features: viewport.colorScheme ? [{ name: "prefers-color-scheme", value: viewport.colorScheme }] : [] }, tab.sessionId);
-    if (tab.screencasting) { await this.stopScreencast(tab); const op = [...this.operations.values()].find((entry) => entry.tabs.has(tab.id)); if (op) await this.ensureScreencast(op, tab); }
   }
 
-  async setViewport(operationId: string, request: { preset?: ViewportPreset; width?: number; height?: number; scale?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
+  async setViewport(operationId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
     const op = this.operation(operationId);
     const preset = request.preset ?? (request.width || request.height ? "responsive" : op.viewport.preset);
     const size = preset === "responsive"
       ? { width: clamp(request.width ?? op.viewport.width, 320, 3840), height: clamp(request.height ?? op.viewport.height, 240, 2400) }
       : PRESETS[preset];
-    const scale = typeof request.scale === "number" && Number.isFinite(request.scale) ? Math.min(BROWSER_SURFACE_SCALE, Math.max(1, Math.round(request.scale * 4) / 4)) : op.viewport.scale;
-    // 배율만 맞추는 요청(레티나·줌 따라 다시 찍기)은 표시 동기화지 뷰포트 결정이 아니다 — 에이전트가 정한 프리셋·색 구성의 소유권을 지운다면
-    // 다음 상태에서 「에이전트가 정함」이 사라지고 패널이 색 구성까지 되돌린다.
-    const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined && request.colorScheme === undefined;
+    // 색 구성만 맞추는 요청(테마 따라가기)은 표시 동기화지 뷰포트 결정이 아니다 — 에이전트가 정한 프리셋의 소유권을 지우지 않는다.
+    const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined;
     const setBy = displayOnly ? op.viewport.setBy : actor;
-    // 뷰포트를 바꾸기 전에 진행 중인 촬영부터 무효로 한다 — 촬영이 끝날 때 새 크기를 읽어 옛 픽셀에 새 이름표를 달지 않게.
-    for (const tab of op.tabs.values()) tab.frameSerial += 1;
-    op.viewport = { width: size.width, height: size.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
+    op.viewport = { width: size.width, height: size.height, scale: op.viewport.scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
     if (this.client) for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
     this.emitState(op);
-    // 정적인 페이지는 크기가 바뀌어도 새 프레임을 그리지 않을 수 있다 — 한 장을 직접 찍어 즉시 보낸다.
-    const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
-    if (active && op.subscribers.size > 0) {
-      // 스크린캐스트와 같은 물리 배율·품질로 찍는다 — screenshot() 은 에이전트·첨부용이라 CSS px 로 줄인다.
-      // 찍는 사이 뷰포트가 또 바뀌었으면 이 한 장은 옛 크기다 — 버리고 다음 변경의 촬영에 맡긴다.
-      const serial = active.frameSerial;
-      try {
-        const shot = await this.engineClient().then((client) => client.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: SCREENCAST_QUALITY, captureBeyondViewport: false }, active.sessionId));
-        if (active.frameSerial === serial && op.activeTabId === active.id) {
-          const frame: BrowserFrame = { tabId: active.id, data: shot.data, mime: "image/jpeg", width: op.viewport.width, height: op.viewport.height, scrollX: active.lastFrame?.scrollX ?? 0, scrollY: active.lastFrame?.scrollY ?? 0 };
-          active.lastFrame = frame;
-          for (const subscriber of op.subscribers) subscriber.frame?.(frame);
-        }
-      } catch { /* 항해 중이거나 탭이 사라졌다 — 다음 스크린캐스트 프레임이 대신한다 */ }
-    }
     return op.viewport;
   }
 
@@ -916,17 +703,6 @@ export class BrowserService {
     await this.dispatchKey(operationId, parsed.descriptor, parsed.modifiers, tabId);
   }
 
-  async domKey(operationId: string, input: { type: "down" | "up"; key: string; code: string; modifiers: Modifiers; repeat?: boolean }, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
-    const tab = this.tab(op, tabId);
-    const client = await this.engineClient();
-    const descriptor = describeDomKey(input.key, input.code, input.modifiers);
-    const modifiers = modifierBits(input.modifiers);
-    // macOS 편집 단축키(cmd+a·c·v·x·z)는 에이전트 경로와 같이 commands 로 실어야 실제 편집이 일어난다.
-    const command = editCommand(descriptor.key, input.modifiers);
-    if (input.type === "down") await client.send("Input.dispatchKeyEvent", { type: descriptor.text ? "keyDown" : "rawKeyDown", key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers, autoRepeat: input.repeat === true, ...(command ? { commands: [command] } : {}), ...(descriptor.text ? { text: descriptor.text, unmodifiedText: descriptor.text } : {}) }, tab.sessionId);
-    else await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers }, tab.sessionId);
-  }
 
   private async dispatchKey(operationId: string, descriptor: { key: string; code: string; keyCode: number; text?: string }, mods: Modifiers, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
@@ -940,79 +716,18 @@ export class BrowserService {
     await client.send("Input.dispatchKeyEvent", { ...common, type: "keyUp" }, tab.sessionId);
   }
 
-  async insertText(operationId: string, text: string, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
-    return this.serialText(op, async () => {
-      const tab = this.tab(op, tabId);
-      const client = await this.engineClient();
-      // 조합 중이던 글자가 있으면 확정 글자로 바꾼다 — 같으면 이미 들어가 있으니 그대로 둔다.
-      if (op.composition !== null) {
-        const pending = op.composition; op.composition = null;
-        if (pending === text) return;
-        await this.replaceChars(client, tab, [...pending].length, text);
-        return;
-      }
-      if (text) await client.send("Input.insertText", { text }, tab.sessionId);
-    });
-  }
-
-  /**
-   * 지우기와 넣기를 응답을 기다리지 않고 잇달아 보낸다 — 파이프는 순서를 지키고 렌더러는 입력 이벤트를 차례로 처리하므로,
-   * 빈 상태가 프레임에 찍히는 구간이 왕복 한 번에서 사실상 0 으로 줄어 조합 중 글자가 덜 깜빡인다.
-   */
-  private async replaceChars(client: CdpClient, tab: Tab, count: number, text: string): Promise<void> {
-    const key = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 };
-    const sends: Promise<unknown>[] = [];
-    for (let i = 0; i < count; i += 1) {
-      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "rawKeyDown" }, tab.sessionId));
-      sends.push(client.send("Input.dispatchKeyEvent", { ...key, type: "keyUp" }, tab.sessionId));
-    }
-    if (text) sends.push(client.send("Input.insertText", { text }, tab.sessionId));
-    await Promise.all(sends);
-  }
-
-  /** 글자 관련 호출을 Operation 단위로 한 줄로 세운다 — 앞 호출이 끝나기 전에는 다음이 시작하지 않는다. */
-  private serialText(op: OperationBrowser, run: () => Promise<void>): Promise<void> {
-    const next = op.textQueue.then(run, run);
-    op.textQueue = next.catch(() => undefined);
-    return next;
-  }
-
-  /**
-   * IME 조합 중 글자 — Chromium 의 조합 마커(imeSetComposition)는 노란 강조로 그려져 실제 브라우저의 밑줄과 다르다.
-   * 대신 조합 글자를 보통 글자로 넣고, 다음 조합·확정이 그만큼 지운 뒤 다시 넣는다. 빈 문자열은 조합 취소.
-   */
-  async imeComposition(operationId: string, text: string, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
-    return this.serialText(op, async () => {
-      const tab = this.tab(op, tabId);
-      const client = await this.engineClient();
-      const previous = op.composition;
-      op.composition = text || null;
-      if (previous) await this.replaceChars(client, tab, [...previous].length, text);
-      else if (text) await client.send("Input.insertText", { text }, tab.sessionId);
-    });
-  }
-
-  /** 포인터 아래 요소의 CSS cursor — 패널이 입력란 위에서 I 자, 링크 위에서 손 모양을 보여 주기 위해 묻는다. */
-  async cursorAt(operationId: string, x: number, y: number, tabId?: string | null): Promise<string> {
+  /** 에이전트의 `type` — 줄바꿈은 Enter 로, 나머지는 텍스트 삽입으로. */
+  async typeText(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
-    try {
-      const result = await client.send<{ result: { value?: unknown } }>("Runtime.evaluate", { expression: `(() => { const e = document.elementFromPoint(${x}, ${y}); return e ? getComputedStyle(e).cursor : "auto"; })()`, returnByValue: true }, tab.sessionId);
-      return typeof result.result.value === "string" ? result.result.value : "auto";
-    } catch { return "auto"; }
-  }
-
-  /** 에이전트의 `type` — 줄바꿈은 Enter 로, 나머지는 텍스트 삽입으로. */
-  async typeText(operationId: string, text: string, tabId?: string | null): Promise<void> {
     const parts = text.split("\n");
     for (let i = 0; i < parts.length; i += 1) {
-      if (parts[i]) await this.insertText(operationId, parts[i]!, tabId);
+      if (parts[i]) await client.send("Input.insertText", { text: parts[i] }, tab.sessionId);
       if (i < parts.length - 1) await this.keyChord(operationId, "Return", tabId);
     }
   }
+
 
   // ---------- 관찰 ----------
 
@@ -1233,8 +948,8 @@ interface AxNode {
 const INTERACTIVE_ROLES = new Set(["button", "link", "textbox", "searchbox", "checkbox", "radio", "combobox", "listbox", "option", "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "switch", "slider", "spinbutton", "textarea"]);
 
 /**
- * 이 창은 사람이 쓰는 로컬 Chrome 이다. 헤드리스 빌드가 UA 에 붙이는 HeadlessChrome 표기와 Chromium 브랜드를
- * Chrome 이 스스로 보고한 버전 그대로의 일반 Chrome 값으로 바꾼다 — 버전을 꾸미지는 않는다.
+ * 이 뷰는 사람이 쓰는 브라우저다. 셸의 Chromium 이 보고한 버전 그대로의 일반 Chrome 브랜드 메타데이터를 만든다 — 버전을
+ * 꾸미지는 않는다.
  */
 async function browserIdentity(client: CdpClient): Promise<{ userAgent: string; metadata: Record<string, unknown> } | null> {
   const version = await client.send<{ userAgent: string; product: string }>("Browser.getVersion");
@@ -1247,17 +962,5 @@ async function browserIdentity(client: CdpClient): Promise<{ userAgent: string; 
   return { userAgent, metadata };
 }
 
-/** base64 JPEG 의 SOF 마커에서 픽셀 크기를 읽는다. 디코딩 없이 헤더만 훑는다. */
-function jpegDimensions(base64: string): { width: number; height: number } | null {
-  const bytes = Buffer.from(base64.slice(0, 4096), "base64");
-  let i = 2;
-  while (i + 9 < bytes.length) {
-    if (bytes[i] !== 0xff) { i += 1; continue; }
-    const marker = bytes[i + 1] ?? 0;
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return { height: bytes.readUInt16BE(i + 5), width: bytes.readUInt16BE(i + 7) };
-    i += 2 + bytes.readUInt16BE(i + 2);
-  }
-  return null;
-}
 
 function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, Math.round(value))); }

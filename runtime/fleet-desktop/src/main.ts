@@ -155,8 +155,9 @@ async function boot(): Promise<void> {
   };
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
-   * Operation 브라우저의 네이티브 뷰. 이 셸이 띄운 콘솔(집)에서만 그린다 — 남의 콘솔 탭을 이 창에 띄우면
-   * 그 콘솔의 정책이 이 기계의 Chromium 을 움직이게 된다. 원격으로 건너가면 걷는다.
+   * Operation 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
+   * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
+   * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserViews = createDesktopBrowserViews({
     window: () => window,
@@ -170,7 +171,6 @@ async function boot(): Promise<void> {
     log: (message) => logger.info(message),
   });
   const synchronizeBrowserViews = async (origin: string): Promise<void> => {
-    if (origin !== localConsoleOrigin) { browserViews.stop(); return; }
     try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
   };
   let refreshNativeUpdateActions: (() => void) | null = null;

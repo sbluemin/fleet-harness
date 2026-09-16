@@ -4,7 +4,6 @@ import type { ConsoleExperimentSettings, ExperimentAideId, ExperimentEffort, Exp
 
 import { SettingsHelp } from "../components/settings-help.js";
 import { ComputerUseRow } from "./computer-use-row.js";
-import { BrowserEngineRow } from "./browser-engine-row.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import type { CoreMessageKey } from "../i18n/messages/index.js";
@@ -123,7 +122,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
         </div>
       </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
-      <BrowserEngineRow />
     </section>
   );
 }
