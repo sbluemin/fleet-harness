@@ -250,6 +250,37 @@ describe("Operations boot minimization", () => {
     expect(bodyPoolMocks.renderedOperationIds).toHaveLength(bodyPoolRenderCount);
   });
 
+  // 최소화 선반에서 패널을 꺼내는 것은 "이 Operation을 다시 쓰겠다"는 제스처다 — 꺼낸 자리에서
+  // Resume를 한 번 더 누르게 하지 않는다. 반대로 이미 캔버스에 떠 있던 휴면 패널로의 포커스 이동은
+  // 재개가 아니다(휴면 선반의 resume 계약을 여는 동작이 가로채면 안 된다).
+  it("resumes a dormant Operation when its minimized panel is opened, but not on focus alone", async () => {
+    const resumeOperation = vi.fn();
+    registryMocks.providers = [{ id: "terminal", resumeOperation }];
+    await bootApp([
+      { ...operation("visible", BOOT_FRESH_CREATED_AT(), "theater-a"), payload: { resumeAvailable: true } },
+      { ...operation("stowed", 1, "theater-a"), payload: { resumeAvailable: true } },
+    ]);
+    await navigateTo("/operations");
+    expect(getSnapshot().minimized).toEqual(["stowed"]);
+
+    // 이미 떠 있는 휴면 패널 — 여는 제스처가 아니므로 프로세스를 되살리지 않는다.
+    await act(async () => {
+      sideBarMocks.onFocus?.("visible");
+      await Promise.resolve();
+    });
+    expect(resumeOperation).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("stowed");
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getState().activeOperationId).toBe("stowed");
+    expect(resumeOperation).toHaveBeenCalledTimes(1);
+    expect(resumeOperation).toHaveBeenCalledWith("stowed");
+  });
+
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();

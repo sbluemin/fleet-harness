@@ -6,6 +6,7 @@ import type { OperationNode } from "./types.js";
 import { type DeferredDeletionReceipt, deleteOperation, fetchOperations } from "./api.js";
 import { minimizeOperation } from "./canvas/canvas-store.js";
 import { playMinimizeFlight } from "./canvas/panel-motion.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 import { clearIdleArrival } from "./operation-marks.js";
 import { getState, hydrateOperations, setActiveOperation } from "./store.js";
 
@@ -65,4 +66,21 @@ export function resumeOperationInPlace(
   } else {
     focusFallback(operationId);
   }
+}
+
+// 최소화 선반에서 패널을 꺼내는 제스처는 그 자체로 "이 Operation을 다시 쓰겠다"는 뜻이다.
+// 꺼낸 자리가 휴면 프레임이면 Resume를 한 번 더 누르게 하지 않고 여는 동작이 재개까지 데려간다.
+// 이미 캔버스에 떠 있던 휴면 패널은 대상이 아니다 — 사용자는 그 카드를 보고도 두기로 한 상태이고,
+// 단순한 포커스 이동이 프로세스를 되살리면 안 된다.
+// 재개 훅이 없는 plugin에서는 아무 일도 하지 않는다: 여는 동작이 이미 패널을 그 자리에 세웠으므로
+// resumeOperationInPlace의 focus 폭백은 여기서 할 일이 없다.
+export function resumeDormantOnOpen(
+  operationId: string,
+  operations: readonly OperationNode[],
+  plugins: readonly ClientExecutionProvider[],
+): void {
+  const operation = operations.find((candidate) => candidate.id === operationId);
+  if (!operation) return;
+  if (resolveOperationActivity(operation, getState().operationRuntime) !== "ended") return;
+  resumeOperationInPlace(operationId, operations, plugins, () => {});
 }
