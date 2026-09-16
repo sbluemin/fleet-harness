@@ -658,6 +658,8 @@ export class BrowserService {
         const actual = pixels && !sameShape ? { width: Math.round(pixels.width / op.viewport.scale), height: Math.round(pixels.height / op.viewport.scale) } : { width: op.viewport.width, height: op.viewport.height };
         const frame: BrowserFrame = { tabId: tab.id, data: p.data, mime: "image/jpeg", width: actual.width, height: actual.height, scrollX: meta.scrollOffsetX ?? 0, scrollY: meta.scrollOffsetY ?? 0 };
         tab.lastFrame = frame;
+        // 이 프레임이 최신이다 — 뷰포트 변경으로 찍고 있던 한 장이 뒤늦게 도착해 화면을 되돌리지 않게 무효로 한다.
+        tab.frameSerial += 1;
         if (op.activeTabId === tab.id) for (const subscriber of op.subscribers) subscriber.frame?.(frame);
         return;
       }
