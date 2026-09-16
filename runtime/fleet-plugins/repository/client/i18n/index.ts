@@ -226,8 +226,6 @@ const repositoryEn = {
   "repository.guard.merge": "A merge is in progress — finish or abort it in a terminal before using write actions.",
   "repository.guard.rebase": "A rebase is in progress — finish or abort it in a terminal before using write actions.",
   "repository.guard.cherryPick": "A cherry-pick is in progress — finish or abort it in a terminal before using write actions.",
-  "repository.guard.stationed_one": "Operation “{title}” is stationed in this checkout — its own commits can interleave with yours.",
-  "repository.guard.stationed_other": "{count} Operations are stationed in this checkout — their commits can interleave with yours.",
 
   // staging (Local Changes)
   "repository.staging.unstaged": "UNSTAGED",
@@ -526,8 +524,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.guard.merge": "병합이 진행 중입니다 — 터미널에서 끝내거나 중단한 뒤 쓰기 동작을 사용하세요.",
   "repository.guard.rebase": "리베이스가 진행 중입니다 — 터미널에서 끝내거나 중단한 뒤 쓰기 동작을 사용하세요.",
   "repository.guard.cherryPick": "체리픽이 진행 중입니다 — 터미널에서 끝내거나 중단한 뒤 쓰기 동작을 사용하세요.",
-  "repository.guard.stationed_one": "Operation “{title}”이(가) 이 체크아웃에 주둔 중입니다 — 그쪽 커밋이 내 커밋과 섞일 수 있습니다.",
-  "repository.guard.stationed_other": "Operation {count}개가 이 체크아웃에 주둔 중입니다 — 그쪽 커밋이 내 커밋과 섞일 수 있습니다.",
 
   "repository.staging.unstaged": "미스테이지",
   "repository.staging.staged": "스테이지됨",

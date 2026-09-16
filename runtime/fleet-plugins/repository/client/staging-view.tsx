@@ -54,14 +54,6 @@ export function guardMessageOf(workstate: WorkstateResult | null, t: T): string 
   return null;
 }
 
-function stationedMessageOf(workstate: WorkstateResult | null, t: T): string | null {
-  const stationed = workstate?.stationedOperations ?? [];
-  if (stationed.length === 0) return null;
-  return stationed.length === 1
-    ? t("repository.guard.stationed_one", { title: stationed[0]!.title })
-    : t("repository.guard.stationed_other", { count: stationed.length });
-}
-
 function hunkModeOf(selection: Selection): "staged" | "worktree" | "untracked" {
   if (selection.axis === "staged") return "staged";
   // 충돌 항목은 U를 공유하지만 tracked다 — untracked 축으로 읽으면 전체-추가 허위 diff가 된다.
@@ -124,7 +116,6 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   // 울타리를 읽지 못한 상태는 "울타리 없음"이 아니다 — 읽기 실패는 닫힌 쪽으로 넘어진다.
   const guardMessage = stateUnknown ? t("repository.guard.stateUnknown") : guardMessageOf(workstate, t);
-  const stationedMessage = stationedMessageOf(workstate, t);
   const writeLocked = guardMessage !== null;
 
   const showNotice = useCallback((next: StagingNotice) => {
@@ -343,11 +334,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const clean = status.kind === "ok" && !status.truncated && staged.length === 0 && unstaged.length === 0;
   const showComposer = !clean || amend || subject !== "" || bodyText !== "";
 
-  return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !stationedMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
+  return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
     {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
-    {(guardMessage || stationedMessage) && <div className={`repository-staging-guard${guardMessage ? " is-locked" : ""}`} role="status">
-      {guardMessage ?? stationedMessage}
-    </div>}
+    {guardMessage && <div className="repository-staging-guard is-locked" role="status">{guardMessage}</div>}
     {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를

@@ -26,7 +26,6 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       },
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
-      operations: { list: () => [] },
     },
   } as unknown as FleetPluginServerContext;
 }

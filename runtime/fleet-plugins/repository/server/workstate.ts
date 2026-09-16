@@ -6,7 +6,6 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
-import { isPathContained } from "./path-containment.js";
 import type { WorkstateResult } from "./types.js";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -89,21 +88,7 @@ export async function handleRepositoryWorkstate(
       }
     }
 
-    // 이 워크트리에 주둔한 Operation — 브라우저에 경로는 내보내지 않고 정체(제목)만 알린다.
-    // 실행 중 여부는 durable 스토어가 모른다: "여기 배치되어 있다"는 사실만 말한다.
-    let realGitCwd = gitCwd;
-    try { realGitCwd = await fs.realpath(gitCwd); } catch { /* 존재는 resolveGitCwd가 이미 보장 */ }
-    const stationedOperations: { readonly id: string; readonly title: string }[] = [];
-    for (const operation of ctx.host.operations.list()) {
-      const rawCwd = (operation.payload as { readonly cwd?: unknown } | null)?.cwd;
-      // cwd 없는 Operation은 터미널 플러그인이 Theater 루트에서 기동한다 — 루트 컨텍스트의 주둔으로 집계한다.
-      const cwd = typeof rawCwd === "string" ? rawCwd : theaterPath;
-      let realCwd: string;
-      try { realCwd = await fs.realpath(cwd); } catch { continue; }
-      if (isPathContained(realGitCwd, realCwd)) stationedOperations.push({ id: operation.id, title: operation.title });
-    }
-
-    const payload: WorkstateResult = { indexLock, inProgress, headBranch, headSha, upstream, ahead, behind, stationedOperations };
+    const payload: WorkstateResult = { indexLock, inProgress, headBranch, headSha, upstream, ahead, behind };
     ctx.host.http.writeJson(res, 200, payload);
   } catch (error) {
     if (error instanceof GitExecutorError) {
