@@ -778,6 +778,15 @@ function safeJobText(raw: string, options: ChatEventMapOptions, max: number): st
  * 본문으로 펼쳐지는 잡 텍스트. 같은 문을 지나되 줄 구조는 지킨다 — 여기서 공백을 한 칸으로
  * 접으면 마크다운 보고가 통째로 한 문단이 되어, 제목·목록·코드 블록이 전부 원문 기호로 남는다.
  */
+/**
+ * Console Use 전사용 정화 — 경로 정규화·축약·비밀 마스킹만 하고 꼬리를 자르지 않는다. 상한을 넘는 본문만
+ * 앞부분을 남기고 `truncated` 로 알린다(잡 꼬리 helper 는 마지막 줄들을 남기므로 대화 본문에는 맞지 않는다).
+ */
+export function maskChatText(raw: string, options: ChatEventMapOptions = {}, max = 64_000): { readonly text: string; readonly truncated: boolean } {
+  const masked = safeJobBody(raw, options, Number.MAX_SAFE_INTEGER);
+  return masked.length > max ? { text: masked.slice(0, max), truncated: true } : { text: masked, truncated: false };
+}
+
 function safeJobBody(raw: string, options: ChatEventMapOptions, max: number): string {
   // 줄 끝 공백과 줄바꿈 표기만 고른다. 줄 안의 공백은 건드리지 않는다 — 여기서 접으면 중첩
   // 목록의 들여쓰기, 들여쓴 코드 블록, 펜스 안의 Python·YAML이 전부 무너진 채 렌더러에 닿는다.

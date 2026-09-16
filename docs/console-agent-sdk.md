@@ -44,6 +44,7 @@ await session.dispose();
 - `settlement: result`는 기존 실행 엔진의 결과 처리 의미를 유지한다. `result-required`는 결과 없는 종료를 `incomplete`로 보고하며 `timeoutMs`가 지정되면 watchdog을 사용한다.
 - SDK가 내장 도구를 명시적으로 제한한다. 플러그인 세션이 요청할 수 있는 내장 도구는 `WebSearch`, `WebFetch`이며 생략하면 없다. 파일·셸·하위 Agent는 기본 제공하지 않는다.
 - `custom` 도구는 이 세션에만 연결된다. JSON Schema와 handler를 전달하며 provider SDK 핸들이나 MCP 인증 정보를 전달하지 않는다. handler는 취소 신호를 존중하고 쓰기 시 도메인의 stale-base·승인 방어를 유지해야 한다.
+- `ctx.host.consoleUse.contribute(tools)`는 플러그인이 자기 영역의 **읽기** 도구를 `fleet-console-use` 서버에 싣는 길이다(예: Repository의 `console_repo_*`, File Explorer의 `console_file_*`). 이름은 `console_` 접두사여야 하고 호스트 기본 도구·다른 플러그인과 겹칠 수 없다. 기여한 도구는 모든 Console Use 연결(Operation 호출자·부관)에 실리며 호스트 기본 도구와 같은 게이트(실험 옵트인 AND 호출자 토글)를 지난다. 플러그인은 자기 게이트를 따로 두지 않고, 쓰기 도구를 여기로 열지 않는다.
 - `consoleUse`는 Console 기본 도구의 명시적 요청이다. `allowControl: true`와 제어 도구 목록을 요청하면 호스트가 플러그인 호출자를 바인딩하며, 실행은 콘솔 사용 옵트인에 따른다. 플러그인은 다른 호출자나 Operation을 가장할 수 없다. `enabled`는 호출마다 평가하고 `snapshot`은 보조 관측만 제공한다. 전역 Admiral 도구는 자동 연결하지 않는다.
 - `aiGateway: true`는 fleet-ai-gateway 리소스 서버(라우팅 가이드·노출 모델 로스터)를 이 세션에 연결하고, 그 리소스를 읽을 내장 도구만 함께 연다. 도구·위임 실행 능력은 주지 않으며, 노출 로스터의 모델 표기는 `console_launch`가 그대로 받는다.
 - 실행 영수증과 자동 정책의 소유자는 Operation 또는 플러그인으로 구분한다. 부관단은 플러그인 단위로 정책을 공유하므로 대화를 닫아도 유지되지만, 호스트 재시작 시에는 일시 중지되고 플러그인이 해제되면 더 실행하지 않는다.

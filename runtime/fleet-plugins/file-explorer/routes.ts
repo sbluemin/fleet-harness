@@ -10,10 +10,14 @@ import {
   handleFilesWatch,
 } from "./server/tree-services.js";
 import { handleFilesSearch } from "./server/tree-services.js";
+import { createFileExplorerConsoleTools } from "./server/console-tools.js";
 
 export default definePlugin({
   id: "file-explorer",
   register(ctx) {
+    // Console Use 에 파일 읽기 도구를 싣는다 — 탐색기와 같은 경로 봉쇄·숨김 규칙으로, 쓰기는 없이.
+    const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createFileExplorerConsoleTools(ctx));
+    if (releaseConsoleTools) ctx.host.lifecycle.registerCleanup(releaseConsoleTools);
     registerRouter(ctx, "files/list", async ({ req, res }) => {
       await handleFilesList(req, res, ctx);
       return true;

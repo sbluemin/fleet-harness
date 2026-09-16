@@ -57,7 +57,7 @@ const pendingStatuses = new Set(["accepted", "running"]);
 
 export interface ConsoleExecutionAdapter {
   observe(operationId: string): ConsoleOperationObservation | null;
-  execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void): Promise<{ readonly operationId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
+  execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, caller: ConsoleCaller): Promise<{ readonly operationId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
 }
 export interface ConsoleControlDeps {
   readonly enabled: () => boolean;
@@ -205,7 +205,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     void adapter.execute(entry.input, assertCurrent, (outcome) => {
       updateAction(id, outcome === "unknown" ? { status: "outcome_unknown" } : { status: "finished", outcome });
       if (entry.policyId && outcome !== "succeeded" && outcome !== "completed") updateAutomation(entry.policyId, { status: "paused", lastError: outcome });
-    }).then((result) => {
+    }, entry.caller).then((result) => {
       const current = state.actions.find((a) => a.id === id)!;
       updateAction(id, { status: current.status === "accepted" ? "running" : current.status, operationId: result.operationId, delivery: result.delivery });
     }, (error) => {

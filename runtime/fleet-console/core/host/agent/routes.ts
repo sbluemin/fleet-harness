@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import os from "node:os";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -35,6 +36,8 @@ import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./o
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
+import { maskChatText } from "./chat-events.js";
+import type { ConsoleSurface } from "../mcp/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./analysis-types.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
@@ -318,6 +321,131 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     else if (!event.session.attentionPending) consoleAttentionReasons.delete(event.session.sessionId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeConsoleObservation);
+  // Console Use 확장면의 실행층 묶음 — 재개·뷰·대화·질문 답. 서버가 만든 같은 객체에 채운다.
+  const TRANSCRIPT_PAGE_BYTES = 512 * 1024;
+  // 정화만 한다(경로·비밀). 본문이 상한을 넘으면 앞부분을 남기고 항목에 `truncated` 를 싣는다 — 꼬리 helper 처럼
+  // 조용히 앞을 버리면 호출자가 부분 메시지를 전체로 오해한다.
+  const safeText = (operationId: string, raw: string) => { const payload = ctx.host.operations.get(operationId)?.payload; return maskChatText(raw, { cwd: payload ? readPayloadString(payload, "cwd") ?? undefined : undefined }); };
+  const textEntry = (base: Record<string, unknown>, kind: string, operationId: string, raw: string) => { const masked = safeText(operationId, raw); return { ...base, kind, text: masked.text, ...(masked.truncated ? { truncated: true } : {}) }; };
+  if (ctx.consoleSurface) Object.assign(ctx.consoleSurface, {
+    resume: async (operationId) => {
+      const result = await resumeOperation(operationId, false);
+      return result.ok ? { ok: true, status: result.resumed.status } : { ok: false, error: result.error };
+    },
+    setView: (operationId, mode) => setChatMode(operationId, mode === "chat"),
+    pendingAsks: (operationId) => chatRegistry.get(operationId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
+    answer: (operationId, askId, input) => {
+      const chat = chatRegistry.get(operationId);
+      if (!chat) return { ok: false, error: "chat_not_active" };
+      const result = chat.answer(askId, { ...(input.answers ? { answers: input.answers } : {}), ...(input.message ? { message: input.message.slice(0, MAX_CHAT_ANSWER_MESSAGE_CHARS) } : {}) });
+      return result.ok ? { ok: true, outcome: result.outcome } : { ok: false, error: result.error };
+    },
+    jobs: async (operationId) => {
+      const chat = chatRegistry.get(operationId);
+      if (!chat) return { error: "chat_not_active" };
+      return { jobs: chat.listJobs() };
+    },
+    catalog: async (operationId) => {
+      const node = ctx.host.operations.get(operationId);
+      if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { error: "unknown_operation" };
+      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { error: "chat_not_active" };
+      const seed = await resolveChatSeed(node);
+      if (!seed.ok) return { error: seed.error };
+      if (ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { error: "chat_not_active" };
+      let chat;
+      try { chat = await chatRegistry.ensure(operationId, () => seed.seed); } catch { return { error: "chat_unavailable" }; }
+      const catalog = await chat.readCatalog();
+      if (!catalog) return { error: "chat_catalog_unavailable" };
+      return { commands: catalog.commands, skills: catalog.skills, agents: catalog.agents };
+    },
+    transcript: async (operationId, cursor, limit, signal) => {
+      const node = ctx.host.operations.get(operationId);
+      if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { error: "unknown_operation" };
+      const chat = chatRegistry.get(operationId);
+      if (chat) {
+        const after = cursor ? Number(cursor) : 0;
+        if (!Number.isSafeInteger(after) || after < 0) return { error: "cursor_expired" };
+        const page = chat.readJournalPage(after, limit);
+        const entries = page.entries.map(({ seq, at, event }) => {
+          const base = { seq, at: at ? new Date(at).toISOString() : undefined };
+          switch (event.kind) {
+            case "dispatch": return textEntry(base, "user", operationId, event.text);
+            case "text": return textEntry(base, "assistant", operationId, event.text);
+            case "tool": return { ...base, kind: "tool", name: event.name, detail: event.detail, ...(event.outside ? { outside: true } : {}) };
+            case "ask": return { ...base, kind: "ask", id: event.id, form: event.form, ...(event.questions ? { questions: event.questions } : {}), ...(event.plan ? { plan: safeText(operationId, event.plan).text } : {}) };
+            case "ask-settled": return { ...base, kind: "ask-settled", id: event.id, outcome: event.outcome };
+            case "turn-end": return { ...base, kind: "turn-end", ok: event.ok, ...(event.stopped ? { stopped: true } : {}) };
+            case "command": return { ...base, kind: "command", name: event.name };
+            case "command-end": return { ...base, kind: "command-end" };
+            case "job": return { ...base, kind: "job", id: event.id, jobKind: event.jobKind, title: event.title, ...(event.who ? { who: event.who } : {}) };
+            case "job-end": return { ...base, kind: "job-end", id: event.id, ...(event.status ? { status: event.status } : {}), ...(event.summary ? { summary: event.summary } : {}) };
+            case "error": return { ...base, kind: "error", code: event.code };
+            default: return { ...base, kind: event.kind };
+          }
+        });
+        return { source: "chat", entries, nextCursor: page.nextSeq === null ? null : String(page.nextSeq), truncated: page.headCut };
+      }
+      // 터미널 표면 — 캡처된 정확한 전사 파일만 바이트 오프셋으로 읽는다. 사이드체인(서브에이전트)은 뺀다.
+      const file = readProviderSession(node.payload)?.transcriptPath;
+      if (!file) return { error: "transcript_unavailable" };
+      const offset = cursor ? Number(cursor) : 0;
+      if (!Number.isSafeInteger(offset) || offset < 0) return { error: "cursor_expired" };
+      let handle: fs.promises.FileHandle;
+      try { handle = await fs.promises.open(file, "r"); } catch { return { error: "transcript_unavailable" }; }
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile() || offset > stat.size) return { error: "cursor_expired" };
+        const buffer = Buffer.alloc(Math.min(TRANSCRIPT_PAGE_BYTES, stat.size - offset));
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+        if (signal?.aborted) return { error: "cancelled" };
+        let text = buffer.subarray(0, bytesRead).toString("utf8");
+        let consumed = bytesRead;
+        // 페이지 끝의 미완성 줄은 다음 페이지에 맡긴다 — 잘린 JSON 을 절반만 읽지 않는다.
+        if (offset + bytesRead < stat.size) {
+          const cut = text.lastIndexOf("\n");
+          if (cut < 0) {
+            // 한 레코드가 페이지보다 크다(거대한 도구 결과). 다음 줄바꿈까지 건너뛰어 커서를 그 뒤에 두고, 건너뛴 사실을 항목으로 남긴다.
+            let skipTo = offset + bytesRead;
+            const probe = Buffer.alloc(TRANSCRIPT_PAGE_BYTES);
+            while (skipTo < stat.size) {
+              const chunk = await handle.read(probe, 0, probe.length, skipTo);
+              const nl = probe.subarray(0, chunk.bytesRead).indexOf(0x0a);
+              if (nl >= 0) { skipTo += nl + 1; break; }
+              skipTo += chunk.bytesRead;
+              if (chunk.bytesRead === 0) break;
+            }
+            return { source: "terminal", entries: [{ kind: "skipped", bytes: skipTo - offset, reason: "record_exceeds_page" }], nextCursor: skipTo < stat.size ? String(skipTo) : null, truncated: true };
+          }
+          consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut);
+        }
+        const entries: Record<string, unknown>[] = [];
+        // 커서는 마지막으로 처리한 줄의 끝이다 — limit 에 걸려 멈추면 청크의 나머지 줄은 다음 페이지가 다시 읽는다.
+        let processed = 0;
+        for (const line of text.split("\n")) {
+          processed += Buffer.byteLength(line, "utf8") + 1;
+          if (!line.trim()) continue;
+          try {
+            const record = JSON.parse(line);
+            if (record.isSidechain === true) continue;
+            const content = record.message?.content;
+            const at = typeof record.timestamp === "string" ? record.timestamp : undefined;
+            if (record.type === "user") {
+              const parts = typeof content === "string" ? [content] : Array.isArray(content) ? content.flatMap((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string" ? [part.text] : []) : [];
+              if (parts.length) entries.push(textEntry({ at }, "user", operationId, parts.join("\n\n")));
+            } else if (record.type === "assistant" && Array.isArray(content)) {
+              for (const part of content) {
+                if (part.type === "text" && typeof part.text === "string") entries.push(textEntry({ at }, "assistant", operationId, part.text));
+                else if (part.type === "tool_use" && typeof part.name === "string") entries.push({ kind: "tool", at, name: part.name });
+              }
+            }
+          } catch { /* 깨진 줄은 건너뛴다. */ }
+          if (entries.length >= limit) { consumed = Math.min(consumed, processed); break; }
+        }
+        const next = offset + consumed;
+        return { source: "terminal", entries, nextCursor: next < stat.size ? String(next) : null, truncated: false };
+      } finally { await handle.close(); }
+    },
+  } satisfies Partial<ConsoleSurface>);
   const detachControl = ctx.consoleControl?.attach({
     observe(operationId) {
       const session = observability.getTerminalSessionInfo(operationId);
@@ -339,7 +467,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         output: session.chatActive ? chat?.readConsoleOutput() ?? { status: "unavailable", outcome: "unknown" } : consoleTerminal.read(operationId),
       };
     },
-    async execute(input, assertCurrent, settled) {
+    async execute(input, assertCurrent, settled, caller) {
       let response: { status: number; value: any } | undefined;
       const reply = (status: number, value: unknown) => { response = { status, value }; };
       if (input.kind === "launch") {
@@ -350,7 +478,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         assertCurrent();
         await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, prompt: sanitizeLaunchPrompt(input.text!), ...(input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
-        return { operationId: response.value.sessionId as string, delivery: "queued" };
+        // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
+        const launchedId = response.value.sessionId as string;
+        const launched = ctx.host.operations.get(launchedId);
+        if (launched) ctx.host.operations.patch(launchedId, { payload: { ...launched.payload, launchedBy: caller } });
+        return { operationId: launchedId, delivery: "queued" };
       }
       const operationId = input.operationId!;
       const targetSession = observability.getTerminalSessionInfo(operationId);
@@ -942,11 +1074,19 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 완전히 새 세션을 시작한다(Resume 실패 후의 Start fresh 경로). body 없음/파싱 실패는 일반 resume.
     const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown }>(req);
     const fresh = body?.fresh === true;
-    const node = ctx.host.operations.get(sessionId);
-    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+    const result = await resumeOperation(sessionId, fresh);
+    if (!result.ok) {
+      ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
     }
+    ctx.host.http.writeJson(res, 200, result.resumed);
+    return true;
+  }
+
+  /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다(chat 접기·좌표 판정·코어 재기동). */
+  async function resumeOperation(sessionId: string, fresh: boolean): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, status: 404, error: "session_not_found" };
     const payload = node.payload;
     const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(payload);
@@ -977,13 +1117,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const startsFresh = fresh
       || !resumeProviderSession
       || resumeProviderSession.source === "launch";
-    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
-    if (!result.ok) {
-      ctx.host.http.writeJson(res, result.status, { error: result.error });
-      return true;
-    }
-    ctx.host.http.writeJson(res, 200, result.resumed);
-    return true;
+    return await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
   }
 
   // handleResume(fresh 포함)과 handleMessage(dormant 전달)가 공유하는 재기동 코어 — 상태 어휘·
@@ -1259,11 +1393,25 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
       return true;
     }
-    if (req.method === "DELETE") {
-      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-        return true;
-      }
+    if (req.method === "DELETE" && node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const switched = await setChatMode(sessionId, req.method !== "DELETE");
+    if (!switched.ok) {
+      ctx.host.http.writeJson(res, switched.error === "chat_convert_busy" ? 409 : switched.error === "session_not_found" ? 404 : 409, { error: switched.error, ...(switched.error === "chat_convert_busy" ? { reason: "starting" } : {}) });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  /** handleChat 의 본체 — Console Use 의 console_view 도 같은 길을 쓴다. 이미 그 표면이면 바꾸지 않고 ok 다. */
+  async function setChatMode(sessionId: string, on: boolean): Promise<{ ok: true; mode: "chat" | "terminal"; changed: boolean } | { ok: false; error: string }> {
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, error: "session_not_found" };
+    if (!on) {
+      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: true, mode: "terminal", changed: false };
       // 진행 중 응답과 예약을 즉시 중단하고, 기존 필자가 닫힌 뒤에만 터미널로 넘긴다.
       await chatRegistry.dispose(sessionId);
       // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload에서 마커만 걷는다.
@@ -1272,25 +1420,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.operations.patch(sessionId, { payload: cleared });
       const released = observability.setTerminalSessionChatActive(sessionId, false);
       if (released) observability.notifySessionUpdated(released);
-      ctx.host.http.writeJson(res, 200, { ok: true });
-      return true;
+      return { ok: true, mode: "terminal", changed: true };
     }
-    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
-      ctx.host.http.writeJson(res, 200, { ok: true });
-      return true;
-    }
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) return { ok: true, mode: "chat", changed: false };
     const seed = await resolveChatSeed(node);
-    if (!seed.ok) {
-      ctx.host.http.writeJson(res, seed.status, { error: seed.error });
-      return true;
-    }
+    if (!seed.ok) return { ok: false, error: seed.error };
     const info = observability.getTerminalSessionInfo(sessionId);
     // PTY 스폰이 in-flight인 세션(starting)은 activity가 아직 null이라 non-live로 읽힌다 —
     // 이때 전환하면 launch가 완주해 PTY와 SDK가 같은 provider 세션의 이중 필자가 된다.
-    if (info?.status === "starting") {
-      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: "starting" });
-      return true;
-    }
+    if (info?.status === "starting") return { ok: false, error: "chat_convert_busy" };
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     // 전환 자체가 중단 요청이다 — 실행 중인 턴·입력 대기·백그라운드 작업도 PTY와 함께 접는다.
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
@@ -1300,8 +1438,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       terminalRuntime.invalidateTicketsForSession(sessionId);
       terminalRuntime.terminate(sessionId);
     }
-    ctx.host.http.writeJson(res, 200, { ok: true });
-    return true;
+    return { ok: true, mode: "chat", changed: true };
   }
 
   /**

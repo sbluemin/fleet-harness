@@ -7,7 +7,7 @@ type Subscriber = (event: AnalysisEvent) => void;
 type GlobalSubscriber = (operationId: string, event: AnalysisEvent) => void;
 type RosterSubscriber = (operationIds: readonly string[]) => void;
 type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
-type StoredArtifact = { readonly operationId: string; readonly html: string };
+type StoredArtifact = { readonly operationId: string; readonly html: string; readonly title: string; readonly createdAt: number };
 
 export class AnalysisRegistry {
   private readonly entries = new Map<string, Entry>();
@@ -20,7 +20,7 @@ export class AnalysisRegistry {
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.stopped) return;
-      if (event.type === "artifact") this.storeArtifact(operationId, event.artifact.id, event.artifact.html);
+      if (event.type === "artifact") this.storeArtifact(operationId, event.artifact.id, event.artifact.html, event.artifact.title, event.artifact.createdAt);
       this.publish(operationId, event);
       if (event.type === "error" && event.error.code === "analysis_exited") void this.stopEntry(operationId, entry);
     });
@@ -93,6 +93,12 @@ export class AnalysisRegistry {
     return this.artifacts.get(artifactId)?.html ?? null;
   }
 
+  listArtifacts(operationId: string): readonly { readonly id: string; readonly title: string; readonly createdAt: number }[] {
+    const rows: { readonly id: string; readonly title: string; readonly createdAt: number }[] = [];
+    for (const [id, artifact] of this.artifacts) if (artifact.operationId === operationId) rows.push({ id, title: artifact.title, createdAt: artifact.createdAt });
+    return rows;
+  }
+
   clearArtifacts(operationId: string): void {
     for (const [artifactId, artifact] of this.artifacts) {
       if (artifact.operationId === operationId) this.artifacts.delete(artifactId);
@@ -123,9 +129,9 @@ export class AnalysisRegistry {
     return true;
   }
 
-  private storeArtifact(operationId: string, artifactId: string, html: string): void {
+  private storeArtifact(operationId: string, artifactId: string, html: string, title: string, createdAt: number): void {
     this.artifacts.delete(artifactId);
-    this.artifacts.set(artifactId, { operationId, html });
+    this.artifacts.set(artifactId, { operationId, html, title, createdAt });
     let operationSize = 0;
     let oldestOperationArtifactId: string | undefined;
     for (const [storedArtifactId, artifact] of this.artifacts) {

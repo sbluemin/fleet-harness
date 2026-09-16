@@ -18,6 +18,8 @@ export interface ConsoleRuntimeContext {
   readonly legacyDataDir: string;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("./mcp/console-control.js").ConsoleControl;
+  /** Console Use 확장면. 실행층이 자기 묶음(재개·뷰·대화·분석가)을 여기에 채운다 — 서버가 만든 하나의 객체를 공유한다. */
+  readonly consoleSurface?: import("./mcp/console-use.js").ConsoleSurface;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
@@ -30,6 +32,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
   readonly consoleControl?: import("./mcp/console-control.js").ConsoleControl;
+  readonly consoleSurface?: import("./mcp/console-use.js").ConsoleSurface;
 }): ConsoleRuntimeContext {
   const basePath = "/api/v1";
   const wsBasePath = "/api/v1/terminal/ws";
@@ -42,6 +45,7 @@ export function createConsoleRuntimeContext(deps: {
   return {
     host: deps.host,
     consoleControl: deps.consoleControl,
+    consoleSurface: deps.consoleSurface,
     dataDir: deps.dataDir,
     legacyDataDir: deps.legacyDataDir,
     basePath,

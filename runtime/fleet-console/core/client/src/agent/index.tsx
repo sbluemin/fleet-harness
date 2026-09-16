@@ -20,7 +20,8 @@ import {
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { SESSION_WATCH_EVENT_CHANNEL, getSessionWatchReview, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeSessionWatchReviews, type SessionWatchReview } from "./experiments-api.js";
+import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
+import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus } from "../store.js";
 import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
 import { BrowserCaption, BrowserPanel } from "../browser/browser-panel.js";
 import { useBrowserEngine } from "../browser/browser-panel-store.js";
@@ -319,6 +320,17 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
       message: payload.body ? `${payload.title} — ${payload.body}` : payload.title,
     });
   });
+  // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Operation 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
+  // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
+  const disposeReveal = ctx.consoleEvents.subscribe(OPERATION_REVEAL_EVENT_CHANNEL, (payload) => {
+    if (!isOperationRevealEvent(payload)) return;
+    recordOperationReveal(payload);
+    const active = document.activeElement;
+    const typing = active instanceof HTMLElement && (active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+    if (typing) return;
+    focusConsoleOperation(payload.operationId);
+    requestOperationKeyboardFocus(payload.operationId);
+  });
   // 이 플러그인은 런타임 축의 권위를 가진다 — 첫 스냅샷이 도착하기 전까지는 그 축을 신뢰할 수 없다고
   // 먼저 선언하고 시작한다.
   ctx.runtime.setHydration("pending");
@@ -333,6 +345,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     installedApi = null;
     setInstalledExperiments(null);
     disposeWatch();
+    disposeReveal();
     disposeConnection();
   };
 }
@@ -617,8 +630,12 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   const experiments = useExperimentsSnapshot();
   const watchEnabled = readWatchEnabled(context.operation.payload);
   const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
-  const watchBubble = experiments?.sessionWatch === true && watchEnabled
-    ? <span className="session-watch-host" aria-hidden={liveReview === null ? true : undefined}><SessionWatchBubble context={context} review={liveReview} /></span>
+  const liveReveal = React.useSyncExternalStore(subscribeOperationReveals, () => getOperationReveal(context.operationId), () => null);
+  const watchBubble = (experiments?.sessionWatch === true && watchEnabled) || liveReveal
+    ? <span className="session-watch-host" aria-hidden={liveReview === null && liveReveal === null ? true : undefined}>
+        {experiments?.sessionWatch === true && watchEnabled ? <SessionWatchBubble context={context} review={liveReview} /> : null}
+        <RevealBubble context={context} reveal={liveReveal} />
+      </span>
     : null;
 
   return (
@@ -711,6 +728,39 @@ function SessionWatchBubble({ context, review }: { readonly context: OperationRe
 }
 
 
+
+/**
+ * console_reveal 의 말풍선 — 세션 관찰 말풍선과 같은 앵커·같은 닫힘 규칙(어떤 누름·입력이든 닫는다). 산 사건에만 뜬다.
+ */
+function RevealBubble({ context, reveal }: { readonly context: OperationRenderContext; readonly reveal: OperationReveal | null }) {
+  const t = getT(context.language ?? "en");
+  const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
+  const keyRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!reveal || reveal.at === keyRef.current) return;
+    keyRef.current = reveal.at;
+    setVisibleFor(reveal.at);
+  }, [reveal]);
+  React.useEffect(() => {
+    if (visibleFor === null) return;
+    const dismiss = () => setVisibleFor(null);
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", dismiss, true);
+      document.addEventListener("keydown", dismiss, true);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("keydown", dismiss, true);
+    };
+  }, [visibleFor]);
+  if (visibleFor === null || !reveal) return null;
+  return (
+    <div className="session-watch-bubble is-reveal" role="status" aria-live="polite">
+      <span className="session-watch-bubble__text">{t("terminal.experiments.revealBubble", { reason: reveal.reason })}</span>
+    </div>
+  );
+}
 
 /** 채팅 → 터미널. 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살린다(서버 ticket 가드). */
 async function openTerminalForOperation(context: OperationRenderContext): Promise<void> {

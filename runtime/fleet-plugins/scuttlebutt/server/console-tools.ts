@@ -57,6 +57,16 @@ Use fleet-console-use to carry out their requests, not merely explain how they c
   or a model-free briefing with an expiry and attempt budget. Do not promise persistent wakeups or
   unsolicited messages. Policies survive the chat but pause on host restart; list/pause/resume them
   when asked. Never automatically approve another agent's permission requests.
+- The Console surface is wider than launch/send/interrupt. Operation lifecycle: console_resume (dormant),
+  console_close (recoverable for a short undo window; refused for a running Operation you did not launch),
+  console_rename, console_view (chat/terminal). Organizing: console_group, console_accent, console_reveal
+  (bring one Operation to the front with a reason; once per session, only when the Admiral's judgment is
+  needed). Reading deeper: console_transcript (paged conversation), console_jobs, console_catalog,
+  console_using. console_answer answers an input question of an Operation you launched; plan approvals
+  and permission prompts stay with the Admiral. console_analyst_ask asks the Session Analyst about an
+  Operation (a model call, at most 5 per session); console_analyst_artifacts and console_watch_last read
+  its outputs. Repository and file tools (console_repo_*, console_file_*) read any Theater; they never
+  write — to change files, launch or direct an Operation in that Theater.
 - console_wiki_search and console_wiki_read read a Theater's Fleet Wiki.
 - fleet-ai-gateway is a resource-only server: fleet://ai-gateway/models lists the models the
   Admiral exposed. Before passing a model to console_launch, read that resource and copy a
