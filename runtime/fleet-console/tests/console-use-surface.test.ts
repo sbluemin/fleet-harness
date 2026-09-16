@@ -35,7 +35,7 @@ describe("Console Use surface boundaries", () => {
     const control = createConsoleControl(deps);
     const host = createConsoleUseMcpHost({ ...deps, control, surface, experimentEnabled: () => true, language: () => "en" });
     let contributedCalls = 0;
-    host.forPlugin("repository").contribute!([{ name: "console_repo_status", description: "status", inputSchema: { type: "object", properties: { theaterId: { type: "string" } }, required: ["theaterId"], additionalProperties: false }, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } }]);
+    const releaseContribution = host.forPlugin("repository").contribute!([{ name: "console_repo_status", description: "status", inputSchema: { type: "object", properties: { theaterId: { type: "string" } }, required: ["theaterId"], additionalProperties: false }, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } }]);
     expect(() => host.forPlugin("other").contribute!([{ name: "console_launch", description: "x", inputSchema: { type: "object" }, execute: async () => ({}) }])).toThrow(/already registered/);
     connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
     const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -57,6 +57,10 @@ describe("Console Use surface boundaries", () => {
     // 플러그인이 실은 도구는 같은 게이트를 지난다: 허용된 호출자는 통과, 토글이 없는 호출자는 거부.
     expect(await call("op-parent", "console_repo_status", { theaterId: "theater-a" })).toMatchObject({ ok: true });
     expect((await call("op-human", "console_repo_status", { theaterId: "theater-a" })).error).toBe("console_use_not_authorized");
+    expect(contributedCalls).toBe(1);
+    // 등록 해제(플러그인 롤백)된 기여는 이미 실린 레지스트리에서도 답하지 않는다.
+    releaseContribution();
+    expect((await call("op-parent", "console_repo_status", { theaterId: "theater-a" })).error).toBe("plugin_tool_unavailable");
     expect(contributedCalls).toBe(1);
     // console_operation 은 자식의 열린 질문과 계보를 함께 싣는다.
     expect(await call("op-parent", "console_operation", { operationId: "op-child" })).toMatchObject({ launchedBy: me, asks: [{ id: "ask-q", form: "question" }, { id: "ask-plan", form: "plan" }] });

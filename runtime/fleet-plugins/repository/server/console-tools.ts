@@ -5,7 +5,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
-import { InvalidRepoError, parseDiffFileList, parseNumstat, resolveGitCwd } from "./diff.js";
+import { InvalidRepoError, isNoHeadError, literalPathspec, parseDiffFileList, parseNumstat, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
 import { resolveContainedGitDir } from "./git-marker.js";
 import { isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelainEntries } from "./log.js";
@@ -72,12 +72,21 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
       const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       try {
+        // 읽기 전용이다 — 저장소가 설정한 textconv·외부 diff 드라이버를 실행하지 않는다(HTTP diff 핸들러와 같은 플래그).
+        const quiet = ["--no-ext-diff", "--no-textconv"];
         if (!args.path) {
           const base = args.ref ?? "HEAD";
-          const [names, nums] = await Promise.all([
-            runGit(["diff", base, "--relative", "--name-status", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
-            runGit(["diff", base, "--relative", "--numstat", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+          const list = (against: readonly string[]) => Promise.all([
+            runGit(["diff", ...quiet, ...against, "--relative", "--name-status", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
+            runGit(["diff", ...quiet, ...against, "--relative", "--numstat", "-z", "--diff-filter=MADRT", "--", "."], { cwd: gitCwd }),
           ]);
+          let names; let nums;
+          try { [names, nums] = await list([base]); }
+          catch (error) {
+            // 첫 커밋 전의 저장소는 HEAD 가 없다 — 스테이지 목록으로 대신한다(HTTP changed 핸들러와 같은 폴백).
+            if (args.ref !== undefined || !isNoHeadError(error)) throw error;
+            [names, nums] = await list(["--cached"]);
+          }
           const files = parseDiffFileList(names.stdout, nums.stdout);
           const untracked = await runGit(["ls-files", "--others", "--exclude-standard", "-z"], { cwd: gitCwd }).catch(() => ({ stdout: "" }));
           return { base, files, untracked: untracked.stdout.split("\0").filter(Boolean), truncated: names.truncated || nums.truncated };
@@ -86,11 +95,17 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         if (resolved !== gitCwd && !resolved.startsWith(gitCwd + path.sep)) throw new ToolError("path_outside_theater");
         const relative = path.relative(gitCwd, resolved);
         if (relative.startsWith("..")) throw new ToolError("path_outside_theater");
-        const result = await runGit(["diff", args.ref ?? "HEAD", "--", relative], { cwd: gitCwd });
+        // 파일 이름은 리터럴 pathspec 으로 넘긴다 — `*`·`[`·`:` 가 든 이름이 패턴으로 읽히지 않게.
+        let result;
+        try { result = await runGit(["diff", ...quiet, args.ref ?? "HEAD", "--", literalPathspec(relative)], { cwd: gitCwd }); }
+        catch (error) {
+          if (args.ref !== undefined || !isNoHeadError(error)) throw error;
+          result = await runGit(["diff", ...quiet, "--cached", "--", literalPathspec(relative)], { cwd: gitCwd });
+        }
         let diff = result.stdout;
         if (!diff) {
           // 추적되지 않은 새 파일은 HEAD 와의 diff 가 비어 있다 — 내용 자체를 추가로 보여 준다.
-          const untracked = await runGit(["diff", "--no-index", "--", "/dev/null", relative], { cwd: gitCwd, allowExitCodes: [1] }).catch(() => null);
+          const untracked = await runGit(["diff", ...quiet, "--no-index", "--", "/dev/null", relative], { cwd: gitCwd, allowExitCodes: [1] }).catch(() => null);
           diff = untracked?.stdout ?? "";
         }
         const cut = diff.length > DIFF_TEXT_CAP;

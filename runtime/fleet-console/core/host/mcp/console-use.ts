@@ -358,6 +358,8 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }): AgentToolSpec => ({
     id: tool.name, tag: tool.name, title: tool.name, description: tool.description, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], parameters: tool.inputSchema,
     execute: async (args, ctx) => {
+      // 등록이 해제된 기여는 이미 실린 레지스트리에서도 답하지 않는다 — 플러그인 등록 롤백 뒤 도구가 살아남지 않게.
+      if (contributed.get(tool.name)?.tool !== tool) return { ...text({ error: "plugin_tool_unavailable", plugin: pluginId, retryable: false }), isError: true };
       try {
         const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal });
         // 레지스트리는 `isError` 가 boolean 인 결과만 그대로 통과시킨다 — 플러그인 결과에 빠져 있으면 한 번 더 감싸진다.
@@ -519,8 +521,8 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       contributed.set(tool.name, entry);
       for (const register of registrars) register(entry);
     }
-    // 등록 해제는 새 연결에서만 사라진다 — 이미 실린 세션의 도구 목록은 토큰 발급 시점의 스냅숏이라
-    // 그 세션이 끝날 때까지 남고, 호출은 플러그인이 내려간 뒤 `plugin_tool_failed`로 답한다.
+    // 등록 해제 뒤에도 이미 실린 레지스트리에는 이름이 남는다(스냅숏·목록). 그 호출은 래퍼가 `plugin_tool_unavailable` 로
+    // 거절하고, 새 연결에는 실리지 않는다.
     return () => { for (const name of names) if (contributed.get(name)?.pluginId === pluginId) contributed.delete(name); };
   };
   return {

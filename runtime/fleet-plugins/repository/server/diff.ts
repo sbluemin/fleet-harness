@@ -15,7 +15,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function literalPathspec(relativePath: string): string {
+export function literalPathspec(relativePath: string): string {
   return `:(literal)${relativePath}`;
 }
 
@@ -76,7 +76,7 @@ async function ensureGitRepository(cwd: string): Promise<void> {
 }
 
 // no-HEAD repo(초기 커밋 없는 신규 저장소) 감지: git stderr에 "unknown revision" 또는 "bad revision" 포함
-function isNoHeadError(error: unknown): boolean {
+export function isNoHeadError(error: unknown): boolean {
   if (!(error instanceof GitExecutorError)) return false;
   if (error.code !== "non_zero_exit") return false;
   return error.stderr.includes("unknown revision") || error.stderr.includes("bad revision");
