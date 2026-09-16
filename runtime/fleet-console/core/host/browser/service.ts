@@ -18,10 +18,12 @@ import { describeDomKey, modifierBits, parseKeyChord, type Modifiers } from "./k
 export const BROWSER_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
 /** 헤드리스 창 표면의 물리 배율 — 스크린캐스트 픽셀 수의 상한이다. 패널의 devicePixelRatio 는 이 안에서 에뮬레이션된다. */
 const BROWSER_SURFACE_SCALE = 2;
-/** 마지막 스크린캐스트 프레임 뒤 이만큼 조용하면 정지 프레임을 찍는다. */
-const SETTLE_MS = 350;
-/** 정지 프레임 PNG 의 base64 상한 — 넘으면 고품질 JPEG 로 물러선다. */
-const STILL_PNG_LIMIT = 8_000_000;
+/**
+ * 스크린캐스트 JPEG 품질. 인코딩은 이 하나뿐이다 — 멈춘 화면만 다른 인코딩으로 덮으면 커서 깜빡임·호버 같은 작은
+ * 변화마다 두 화질이 번갈아 그려져 글자가 깜빡인다. 70 은 글자 가장자리와 색 경계가 번지고, 90 은 2배 표면에서
+ * 무손실과 육안 차이가 거의 없다(프레임당 약 1.5배 커진다).
+ */
+const SCREENCAST_QUALITY = 90;
 const MAX_TABS = 8;
 const IDLE_SHUTDOWN_MS = 5 * 60_000;
 const CONSOLE_RING = 500;
@@ -42,10 +44,7 @@ export interface BrowserOperationState {
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
 }
-/**
- * 패널에 보내는 한 장. `width`·`height` 는 CSS px 이고 픽셀은 뷰포트 배율만큼 크다. 움직이는 동안은 스크린캐스트의
- * JPEG 가 흐르고, 잠잠해지면 같은 자리에 무손실 PNG 한 장이 덮인다 — 사람이 실제로 읽는 정지 화면은 원본 그대로다.
- */
+/** 패널에 보내는 한 장. `width`·`height` 는 CSS px 이고 픽셀은 뷰포트 배율만큼 크다. */
 export interface BrowserFrame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number; readonly scrollX: number; readonly scrollY: number }
 export type BrowserSubscriber = { state?: (state: BrowserOperationState) => void; frame?: (frame: BrowserFrame) => void };
 
@@ -74,9 +73,8 @@ interface Tab {
   refs: Map<string, number>;
   screencasting: boolean;
   lastFrame: BrowserFrame | null;
-  /** 스크린캐스트 프레임마다 오른다 — 정지 프레임이 찍히는 사이 화면이 또 움직였는지 가린다. */
+  /** 뷰포트가 바뀌거나 스크린캐스트 프레임이 올 때마다 오른다 — 뷰포트 변경으로 찍은 한 장은 그 사이 아무것도 바뀌지 않았을 때만 나간다. */
   frameSerial: number;
-  settleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface OperationBrowser {
@@ -282,7 +280,7 @@ export class BrowserService {
     this.unsubscribeEvents = null;
     if (this.engine !== "failed") this.engine = "idle";
     for (const op of this.operations.values()) {
-      for (const tab of op.tabs.values()) { tab.screencasting = false; this.cancelSettle(tab); }
+      for (const tab of op.tabs.values()) tab.screencasting = false;
       op.tabs.clear();
       op.activeTabId = null;
       op.contextId = "";
@@ -371,7 +369,6 @@ export class BrowserService {
     op.agentCalls.clear();
     const client = this.client;
     if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
-    for (const tab of op.tabs.values()) this.cancelSettle(tab);
     op.tabs.clear();
     op.activeTabId = null;
     op.contextId = "";
@@ -459,7 +456,7 @@ export class BrowserService {
     const { client, contextId } = await this.context(op);
     const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
     const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null, frameSerial: 0, settleTimer: null };
+    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), screencasting: false, lastFrame: null, frameSerial: 0 };
     op.tabs.set(tab.id, tab);
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
@@ -481,7 +478,6 @@ export class BrowserService {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     op.tabs.delete(tab.id);
-    this.cancelSettle(tab);
     if (op.activeTabId === tab.id) op.activeTabId = [...op.tabs.keys()].pop() ?? null;
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
     const next = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
@@ -662,8 +658,9 @@ export class BrowserService {
         const actual = pixels && !sameShape ? { width: Math.round(pixels.width / op.viewport.scale), height: Math.round(pixels.height / op.viewport.scale) } : { width: op.viewport.width, height: op.viewport.height };
         const frame: BrowserFrame = { tabId: tab.id, data: p.data, mime: "image/jpeg", width: actual.width, height: actual.height, scrollX: meta.scrollOffsetX ?? 0, scrollY: meta.scrollOffsetY ?? 0 };
         tab.lastFrame = frame;
+        // 이 프레임이 최신이다 — 뷰포트 변경으로 찍고 있던 한 장이 뒤늦게 도착해 화면을 되돌리지 않게 무효로 한다.
+        tab.frameSerial += 1;
         if (op.activeTabId === tab.id) for (const subscriber of op.subscribers) subscriber.frame?.(frame);
-        this.scheduleSettle(op, tab);
         return;
       }
       case "Page.frameNavigated": {
@@ -730,56 +727,16 @@ export class BrowserService {
   private async ensureScreencast(op: OperationBrowser, tab: Tab): Promise<void> {
     if (op.subscribers.size === 0 || tab.screencasting || !this.client) return;
     tab.screencasting = true;
-    try { await this.client.send("Page.startScreencast", { format: "jpeg", quality: 70, maxWidth: Math.round(op.viewport.width * op.viewport.scale), maxHeight: Math.round(op.viewport.height * op.viewport.scale), everyNthFrame: 1 }, tab.sessionId); }
+    try { await this.client.send("Page.startScreencast", { format: "jpeg", quality: SCREENCAST_QUALITY, maxWidth: Math.round(op.viewport.width * op.viewport.scale), maxHeight: Math.round(op.viewport.height * op.viewport.scale), everyNthFrame: 1 }, tab.sessionId); }
     catch { tab.screencasting = false; }
   }
 
   private async stopScreencast(tab: Tab): Promise<void> {
     if (!tab.screencasting || !this.client) return;
     tab.screencasting = false;
-    this.cancelSettle(tab);
-    try { await this.client.send("Page.stopScreencast", {}, tab.sessionId); } catch { /* 탭이 사라졌다 */ }
-  }
-
-  /**
-   * 스크린캐스트가 잠잠해지면 정지 프레임을 찍는다. 스크린캐스트 JPEG(품질 70 · 크로마 절반)는 움직임을 나르기엔
-   * 충분하지만 글자 가장자리와 색 경계가 번진다 — 사람이 읽는 것은 멈춘 화면이므로 그 한 장만 무손실로 다시 보낸다.
-   * 프레임이 계속 오는 동안(스크롤·애니메이션·동영상)은 타이머가 계속 밀려 찍지 않는다.
-   */
-  private scheduleSettle(op: OperationBrowser, tab: Tab): void {
-    this.cancelSettle(tab);
-    if (op.subscribers.size === 0 || op.activeTabId !== tab.id) return;
-    const serial = ++tab.frameSerial;
-    tab.settleTimer = setTimeout(() => {
-      tab.settleTimer = null;
-      void this.captureStillFrame(op, tab).then((frame) => {
-        // 찍는 사이 스크린캐스트가 다시 움직였으면 이 한 장은 이미 옛 화면이다.
-        if (!frame || tab.frameSerial !== serial || op.activeTabId !== tab.id || !op.tabs.has(tab.id)) return;
-        tab.lastFrame = frame;
-        for (const subscriber of op.subscribers) subscriber.frame?.(frame);
-      });
-    }, SETTLE_MS);
-  }
-
-  /** 대기 중인 촬영을 거두고, 이미 찍고 있던 한 장도 버린다 — 뷰포트가 바뀐 뒤 옛 크기의 픽셀이 새 크기로 이름표를 달면 좌표가 어긋난다. */
-  private cancelSettle(tab: Tab): void {
+    // 스트림이 끊기는 전환(항해·탭 전환·뷰포트 적용)이다 — 그 전에 찍기 시작한 한 장은 이미 옛 화면이다.
     tab.frameSerial += 1;
-    if (tab.settleTimer) { clearTimeout(tab.settleTimer); tab.settleTimer = null; }
-  }
-
-  /**
-   * 지금 화면을 스크린캐스트와 같은 물리 배율로 한 장 찍는다 — screenshot() 은 에이전트·첨부용이라 CSS px 로 줄인다.
-   * 무손실 PNG 가 기본이고, 사진이 가득한 페이지처럼 너무 커지면 고품질 JPEG 로 물러선다(SSE 한 장이 수 MB 를 넘지 않게).
-   */
-  private async captureStillFrame(op: OperationBrowser, tab: Tab): Promise<BrowserFrame | null> {
-    const client = this.client;
-    if (!client) return null;
-    try {
-      const png = await client.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }, tab.sessionId);
-      const shot = png.data.length <= STILL_PNG_LIMIT ? { data: png.data, mime: "image/png" as const }
-        : { data: (await client.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: 92, captureBeyondViewport: false }, tab.sessionId)).data, mime: "image/jpeg" as const };
-      return { tabId: tab.id, data: shot.data, mime: shot.mime, width: op.viewport.width, height: op.viewport.height, scrollX: tab.lastFrame?.scrollX ?? 0, scrollY: tab.lastFrame?.scrollY ?? 0 };
-    } catch { return null; /* 항해 중이거나 탭이 사라졌다 — 다음 스크린캐스트 프레임이 대신한다 */ }
+    try { await this.client.send("Page.stopScreencast", {}, tab.sessionId); } catch { /* 탭이 사라졌다 */ }
   }
 
   private async reconcileScreencast(op: OperationBrowser): Promise<void> {
@@ -836,18 +793,25 @@ export class BrowserService {
     // 다음 상태에서 「에이전트가 정함」이 사라지고 패널이 색 구성까지 되돌린다.
     const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined && request.colorScheme === undefined;
     const setBy = displayOnly ? op.viewport.setBy : actor;
-    // 뷰포트를 바꾸기 전에 진행 중인 정지 촬영부터 버린다 — 촬영이 끝날 때 새 크기를 읽어 옛 픽셀에 새 이름표를 달지 않게.
-    for (const tab of op.tabs.values()) this.cancelSettle(tab);
+    // 뷰포트를 바꾸기 전에 진행 중인 촬영부터 무효로 한다 — 촬영이 끝날 때 새 크기를 읽어 옛 픽셀에 새 이름표를 달지 않게.
+    for (const tab of op.tabs.values()) tab.frameSerial += 1;
     op.viewport = { width: size.width, height: size.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
     if (this.client) for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
     this.emitState(op);
     // 정적인 페이지는 크기가 바뀌어도 새 프레임을 그리지 않을 수 있다 — 한 장을 직접 찍어 즉시 보낸다.
     const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
     if (active && op.subscribers.size > 0) {
-      // 찍는 사이 뷰포트가 또 바뀌었으면(applyViewport 가 serial 을 올린다) 이 한 장은 옛 크기다 — 버리고 다음 변경의 촬영에 맡긴다.
+      // 스크린캐스트와 같은 물리 배율·품질로 찍는다 — screenshot() 은 에이전트·첨부용이라 CSS px 로 줄인다.
+      // 찍는 사이 뷰포트가 또 바뀌었으면 이 한 장은 옛 크기다 — 버리고 다음 변경의 촬영에 맡긴다.
       const serial = active.frameSerial;
-      const frame = await this.captureStillFrame(op, active);
-      if (frame && active.frameSerial === serial && op.activeTabId === active.id) { active.lastFrame = frame; for (const subscriber of op.subscribers) subscriber.frame?.(frame); }
+      try {
+        const shot = await this.engineClient().then((client) => client.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: SCREENCAST_QUALITY, captureBeyondViewport: false }, active.sessionId));
+        if (active.frameSerial === serial && op.activeTabId === active.id) {
+          const frame: BrowserFrame = { tabId: active.id, data: shot.data, mime: "image/jpeg", width: op.viewport.width, height: op.viewport.height, scrollX: active.lastFrame?.scrollX ?? 0, scrollY: active.lastFrame?.scrollY ?? 0 };
+          active.lastFrame = frame;
+          for (const subscriber of op.subscribers) subscriber.frame?.(frame);
+        }
+      } catch { /* 항해 중이거나 탭이 사라졌다 — 다음 스크린캐스트 프레임이 대신한다 */ }
     }
     return op.viewport;
   }
