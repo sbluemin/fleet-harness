@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { fetchUpdateProgress } from "./api.js";
+import { hasConsoleVersionDrifted } from "./console-version.js";
 import type { ConsoleUpdateProgress } from "./types.js";
 
 /**
@@ -135,6 +136,13 @@ async function pollOnce(): Promise<void> {
   if (progress.state === "running") {
     setStore({ ...store, progress, targetVersion: progress.targetVersion ?? store.targetVersion });
     schedulePoll(POLL_INTERVAL_MS);
+    return;
+  }
+  if (progress.state === "completed" && hasConsoleVersionDrifted(progress.targetVersion ?? null)) {
+    // 콘솔은 새 버전으로 돌아왔지만 이 문서는 옛 번들이다. 커튼을 내린 채 새 문서를 받는다 —
+    // 결과 통보는 돌아온 문서가 디스크의 기록에서 다시 읽어 알린다(hydrateUpdateProgress).
+    stopWatching();
+    location.reload();
     return;
   }
   if (progress.state === "completed" || progress.state === "failed") {
