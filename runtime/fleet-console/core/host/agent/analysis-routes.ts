@@ -78,7 +78,16 @@ type InFlightStartDeletionMarker = {
   deleted: boolean;
 };
 
-export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: AnalysisRouteDeps = {}): void {
+/** Console Use 가 쓰는 분석가 서비스 — 라우트와 같은 레지스트리·카탈로그·전사 규칙 위에서 한 질문을 끝까지 돌린다. */
+export interface AnalysisConsoleService {
+  ask(operationId: string, question: string, signal?: AbortSignal): Promise<{ readonly ok: true; readonly answer: string; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly ok: false; readonly error: string }>;
+  artifacts(operationId: string, artifactId?: string): { readonly artifacts: readonly { readonly id: string; readonly title: string }[]; readonly html?: string } | { readonly error: string };
+}
+
+const CONSOLE_ASK_TIMEOUT_MS = 180_000;
+const CONSOLE_ARTIFACT_HTML_CAP = 200_000;
+
+export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: AnalysisRouteDeps = {}): AnalysisConsoleService {
   const registry = new AnalysisRegistry();
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
   const readAiGatewaySettings = deps.readAiGatewaySettings;
@@ -93,6 +102,64 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
     ctx.host.server.origin() !== null,
   ), readExperiments());
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
+
+  const ensureStarted = async (operation: OperationNode): Promise<string | null> => {
+    if (registry.activeOperationIds().includes(operation.id)) return null;
+    const currentCatalog = await catalog();
+    const selection = currentCatalog.selection;
+    const cli = currentCatalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
+    if (!selection || !cli?.available) return "analyst_unavailable";
+    const transcript = await resolveOperationTranscript(operation);
+    if (!transcript.captureFound) return "capture_missing";
+    if (!transcript.transcriptPath) return "transcript_missing";
+    const cwd = ctx.host.paths.resolveTheaterPath(operation.theaterId);
+    const origin = ctx.host.server.origin();
+    if (!cwd || !origin) return "analyst_unavailable";
+    try {
+      const result = await registry.start(operation.id, (onEvent) => createSession({
+        baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: selection.model, effort: selection.effort || undefined, cwd,
+        capturePath: transcript.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
+      }));
+      return result === "stopped" ? "analyst_unavailable" : null;
+    } catch { return "analyst_unavailable"; }
+  };
+  const service: AnalysisConsoleService = {
+    async ask(operationId, question, signal) {
+      const operation = getAgentOperation(ctx, operationId);
+      if (!operation) return { ok: false, error: "unknown_operation" };
+      const startError = await ensureStarted(operation);
+      if (startError) return { ok: false, error: startError };
+      return await new Promise((resolve) => {
+        let answer = "";
+        const artifacts: { readonly id: string; readonly title: string }[] = [];
+        let done = false;
+        const finish = (value: Awaited<ReturnType<AnalysisConsoleService["ask"]>>) => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener("abort", onAbort); unsubscribe?.(); resolve(value); };
+        const onAbort = () => finish({ ok: false, error: "cancelled" });
+        const timer = setTimeout(() => finish({ ok: false, error: "analyst_timeout" }), CONSOLE_ASK_TIMEOUT_MS);
+        timer.unref?.();
+        signal?.addEventListener("abort", onAbort, { once: true });
+        const unsubscribe = registry.subscribe(operationId, (event) => {
+          if (event.type === "chunk") answer += event.text;
+          else if (event.type === "artifact") artifacts.push({ id: event.artifact.id, title: event.artifact.title });
+          else if (event.type === "complete") finish({ ok: true, answer, artifacts });
+          else if (event.type === "error") finish({ ok: false, error: event.error.code });
+        });
+        if (!unsubscribe) { finish({ ok: false, error: "analyst_unavailable" }); return; }
+        void registry.message(operationId, question).then((result) => {
+          if (result === "busy") finish({ ok: false, error: "analyst_busy" });
+          else if (result === "not_found") finish({ ok: false, error: "analyst_unavailable" });
+        }, () => finish({ ok: false, error: "analyst_unavailable" }));
+      });
+    },
+    artifacts(operationId, artifactId) {
+      if (!getAgentOperation(ctx, operationId)) return { error: "unknown_operation" };
+      const rows = registry.listArtifacts(operationId).map(({ id, title }) => ({ id, title }));
+      if (!artifactId) return { artifacts: rows };
+      if (!rows.some((row) => row.id === artifactId)) return { error: "artifact_not_found" };
+      const html = registry.artifactHtml(artifactId) ?? "";
+      return { artifacts: rows, html: html.length > CONSOLE_ARTIFACT_HTML_CAP ? html.slice(0, CONSOLE_ARTIFACT_HTML_CAP) : html };
+    },
+  };
 
   registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
     // 어느 리스너의 Host 경계인지는 호스트만 안다.
@@ -155,6 +222,7 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
     }
   });
   ctx.host.lifecycle.registerCleanup(async () => { unsubscribeDelete(); unsubscribePurge(); await registry.dispose(); });
+  return service;
 }
 
 async function handleCatalog(ctx: ConsoleRuntimeContext, req: http.IncomingMessage, res: http.ServerResponse, catalog: () => Promise<AnalysisCatalog>): Promise<boolean> {

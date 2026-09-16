@@ -758,6 +758,33 @@ class AgentChatSession {
 
   private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] } | undefined;
 
+  /**
+   * Console Use 의 전사 페이지 — 저널을 seq 순으로 잘라 준다. 표시용 이벤트(델타·큐·맥박)는 빼고
+   * 사람이 읽는 것과 같은 줄(지시·답·도구·질문·턴 결말·잡 결말)만 싣는다. 본문 정화는 호출자가 한다.
+   */
+  readJournalPage(afterSeq: number, limit: number): { readonly entries: readonly AgentChatJournalEvent[]; readonly nextSeq: number | null; readonly headCut: boolean } {
+    const kept = new Set(["dispatch", "text", "tool", "ask", "ask-settled", "turn-end", "command", "command-end", "job", "job-end", "error"]);
+    const rows = this.journal.filter((entry) => entry.seq > afterSeq && kept.has(entry.event.kind));
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return { entries: page, nextSeq: rows.length > page.length && last ? last.seq : null, headCut: afterSeq < (this.journal[0]?.seq ?? 1) - 1 && this.journal.length >= JOURNAL_CAP };
+  }
+
+  /** 지금 열려 있는 질문 카드 — Console Use 가 답할 수 있는 좌표와 형식. 답 본문(원본 질문 키)은 싣지 않는다. */
+  listPendingAsks(): readonly { readonly id: string; readonly form: "question" | "plan"; readonly questions: readonly AgentChatQuestion[] }[] {
+    return [...this.pendingAsks].map(([id, pending]) => ({ id, form: pending.form, questions: pending.questions }));
+  }
+
+  /** 저널이 아는 잡들 — 살아 있는 것과 결말을 본 것. 상세는 `readJobDetail`. */
+  listJobs(): readonly { readonly id: string; readonly kind: string; readonly title?: string; readonly who?: string; readonly live: boolean; readonly status?: string; readonly summary?: string }[] {
+    const rows = new Map<string, { id: string; kind: string; title?: string; who?: string; live: boolean; status?: string; summary?: string }>();
+    for (const { event } of this.journal) {
+      if (event.kind === "job") rows.set(event.id, { id: event.id, kind: event.jobKind, title: event.title, who: event.who, live: this.liveJobs.has(event.id) });
+      else if (event.kind === "job-end") { const row = rows.get(event.id); if (row) { row.live = false; row.status = event.status; row.summary = event.summary; } }
+    }
+    return [...rows.values()];
+  }
+
   readConsoleOutput(): import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] {
     const busy = this.pendingTurns > 0 || this.turnOpen || this.settlingStoppedTurn;
     if (this.consoleOutputCache?.seq === this.seq && this.consoleOutputCache.busy === busy) return this.consoleOutputCache.value;

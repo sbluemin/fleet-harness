@@ -91,6 +91,38 @@ export function subscribeSessionWatchReviews(listener: () => void): () => void {
   return () => { reviewListeners.delete(listener); };
 }
 
+/** 서버 `server.ts`의 채널 이름과 같은 값 — Console Use 의 console_reveal 이 사용자 화면에 보내는 사건. */
+export const OPERATION_REVEAL_EVENT_CHANNEL = "operation:reveal";
+
+export interface OperationReveal {
+  readonly operationId: string;
+  readonly reason: string;
+  readonly at: number;
+}
+
+const reveals = new Map<string, OperationReveal>();
+const revealListeners = new Set<() => void>();
+
+export function isOperationRevealEvent(value: unknown): value is OperationReveal {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.operationId === "string" && typeof record.reason === "string" && typeof record.at === "number";
+}
+
+export function recordOperationReveal(event: OperationReveal): void {
+  reveals.set(event.operationId, { operationId: event.operationId, reason: event.reason.slice(0, 200), at: event.at });
+  for (const listener of revealListeners) listener();
+}
+
+export function getOperationReveal(operationId: string): OperationReveal | null {
+  return reveals.get(operationId) ?? null;
+}
+
+export function subscribeOperationReveals(listener: () => void): () => void {
+  revealListeners.add(listener);
+  return () => { revealListeners.delete(listener); };
+}
+
 /** Operation payload의 관찰 표식 — 서버가 쓰고 브라우저는 읽기만 한다. */
 export function readWatchEnabled(payload: Record<string, unknown> | undefined): boolean {
   const watch = payload?.watch;

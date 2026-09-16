@@ -382,6 +382,7 @@
 .session-watch-bubble__text { min-width: 0; }
 .session-watch-bubble.is-reviewing { color: var(--text-tertiary); }
 .session-watch-bubble.is-alert { border-color: color-mix(in oklch, var(--warn) 55%, transparent); color: var(--text-primary); }
+.session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }
 .session-watch-bubble.is-alert::before { border-color: color-mix(in oklch, var(--warn) 55%, transparent); }
 .session-watch-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; cursor: pointer; }

@@ -15,7 +15,7 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import { createAiGatewayMcpHost } from "./mcp/ai-gateway.js";
 import { createConsoleControl } from "./mcp/console-control.js";
-import { createConsoleUseMcpHost } from "./mcp/console-use.js";
+import { createConsoleUseMcpHost, type ConsoleSurface } from "./mcp/console-use.js";
 import { createPluginAdmiralMcpHost } from "./mcp/plugin-mcp.js";
 import { readConsoleQuotaSnapshot } from "./mcp/gateway-loadout.js";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
@@ -691,7 +691,67 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const consoleUseActivity = new Map<string, number>();
+  const CONSOLE_REVEAL_EVENT_CHANNEL = "operation:reveal";
+  pluginSseChannels.add(CONSOLE_REVEAL_EVENT_CHANNEL);
+  const listOperationUse = () => {
+    const experiments = readExperimentSettings(consoleSettingsStore);
+    const current = operations.list();
+    const consoleOperations: string[] = [];
+    for (const [id] of consoleUseActivity) {
+      if (!current.some((operation) => operation.id === id)) continue;
+      if (experiments.consoleControl && current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+    }
+    const owner = computerUse.activeOwner();
+    const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
+    const browserOperations = browserService.status().operations.filter((id) => current.some((operation) => operation.id === id) && browserService.state(id).driving);
+    return { console: consoleOperations, computer: computerOperation, browser: browserOperations };
+  };
+  /**
+   * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
+   * 화면 사건(보이기). 재개·뷰·대화·분석가는 실행층이 같은 객체에 채운다(`ctx.consoleSurface`).
+   */
+  const consoleSurface: ConsoleSurface = {
+    using: listOperationUse,
+    close: (operationId) => {
+      if (deletionCoordinator.hasPendingOperation(operationId)) return null;
+      const receipt = deletionCoordinator.deleteOperation(operationId);
+      if (!receipt) return null;
+      persistDurableState();
+      return { deletionId: receipt.deletionId, undoUntil: new Date(receipt.expiresAt).toISOString() };
+    },
+    rename: (operationId, title) => {
+      const before = operations.get(operationId);
+      if (!before) return false;
+      const node = pluginHostCapabilities.operations.patch(operationId, { title });
+      if (!node) return false;
+      // 사람의 PATCH와 같은 rename 사건을 낸다 — 터미널 구독자가 표시명 출처를 갱신하도록.
+      pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, { operationId: node.id, pluginId: node.pluginId, type: node.type, title: node.title, previousTitle: before.title });
+      return true;
+    },
+    accent: (operationId, accent) => !!pluginHostCapabilities.operations.patch(operationId, { accent }),
+    group: ({ mode, theaterId, name, color, groupId, operationIds }) => {
+      let group: { readonly id: string; readonly name: string; readonly color: string } | null = null;
+      if (mode === "create") group = operations.createGroup({ theaterId, name: name!, color: color ?? "teal" });
+      else if (mode === "assign") {
+        const existing = operations.listGroups(theaterId).find((candidate) => candidate.id === groupId);
+        if (!existing) throw new Error("unknown_group");
+        group = existing;
+      }
+      const members: string[] = [];
+      for (const id of operationIds) {
+        // groupId 는 호스트 저장소의 필드다(SDK patch 에는 없다) — 사람의 PATCH 와 같은 경로로 바꾸고 알린다.
+        const node = operations.patch(id, { groupId: group ? group.id : null });
+        if (node) { members.push(node.id); broadcastOperationChanged(node); }
+      }
+      persistDurableState();
+      return { group: group ? { id: group.id, name: group.name, color: group.color } : null, members };
+    },
+    reveal: (operationId, reason, caller) => {
+      publishPluginEvent(CONSOLE_REVEAL_EVENT_CHANNEL, { operationId, reason, caller, at: Date.now() });
+    },
+  };
   const consoleUse = createConsoleUseMcpHost({
+    surface: consoleSurface,
     onOperationUse: (operationId, active) => {
       const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
       if (count) consoleUseActivity.set(operationId, count);
@@ -874,6 +934,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
+    contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse: consoleUse.forPlugin(pluginId), aiGatewayMcp, computerUseMcp });
       consoleAgentOwners.add(pluginId);
@@ -2856,6 +2917,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         await rehydrateDurableState();
         coreLaunchKinds = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
+          consoleSurface,
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),

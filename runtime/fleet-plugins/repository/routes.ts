@@ -19,10 +19,14 @@ import { handleRepositoryTree } from "./server/tree.js";
 import { handleRepositoryBlob } from "./server/blob.js";
 import { handleRepositoryWorkstate } from "./server/workstate.js";
 import { handleRepositoryWorktrees } from "./server/worktrees.js";
+import { createRepositoryConsoleTools } from "./server/console-tools.js";
 
 export default definePlugin({
   id: "repository",
   register(ctx) {
+    // Console Use 에 저장소 읽기 도구를 싣는다 — 에이전트가 다른 Theater·worktree 의 상태·diff·로그를 보고 판단하도록.
+    const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createRepositoryConsoleTools(ctx));
+    if (releaseConsoleTools) ctx.host.lifecycle.registerCleanup(releaseConsoleTools);
     registerRouter(ctx, "repos", async ({ req, res }) => {
       await handleRepositoryRepos(req, res, ctx);
       return true;

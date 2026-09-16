@@ -103,10 +103,12 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
   const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
   registerShellRoutes(ctx, runtime);
-  registerAnalysisRoutes(ctx, {
+  const analysis = registerAnalysisRoutes(ctx, {
     // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
     readAiGatewaySettings: aiGatewayStore.read,
   });
+  // Console Use 확장면의 분석가 묶음 — 서버가 만든 같은 객체에 채운다.
+  if (ctx.consoleSurface) Object.assign(ctx.consoleSurface, { analystAsk: analysis.ask, analystArtifacts: analysis.artifacts } satisfies Partial<NonNullable<typeof ctx.consoleSurface>>);
   const sessionWatch = registerExperimentRoutes(ctx, {});
   const agentLaunchKinds = await registerAgentRoutes(ctx, runtime, {
     globalOptionsService: infraServices.globalOptionsService,
