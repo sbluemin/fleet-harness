@@ -279,6 +279,24 @@ describe("route surface", () => {
     expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("reports a content block the wire cannot translate as the client's 400, not a retryable fault", async () => {
+    // Claude Code only abandons a rejected block shape on a 400 naming it; any other status
+    // makes it resend the same body until its retry budget runs out.
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      messages: [{ role: "user", content: [{ type: "tool_removal_v9", tool: { name: "Read" } }] }],
+    }));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toContain("Unsupported Anthropic content block type: tool_removal_v9");
+    expect(streamSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createAiGatewayRouter(

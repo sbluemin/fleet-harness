@@ -79,6 +79,38 @@ describe("Anthropic request translation", () => {
       "allowed_domains must contain only valid web search hostnames",
     );
   });
+
+  it("keeps a Claude Code late tool addition turn alive and loads the named tool", () => {
+    // Claude Code 2.1.27x announces an MCP tool discovered mid-conversation as a system
+    // message block; before this the whole turn died before reaching any provider.
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [
+        { role: "user", content: "Hello" },
+        {
+          role: "system",
+          content: [
+            { type: "text", text: "The following tools just became available" },
+            { type: "tool_addition", tool: { type: "tool_reference", name: "mcp__docs__read" } },
+          ],
+        },
+      ],
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "mcp__docs__read", input_schema: { type: "object", properties: {} }, defer_loading: true },
+      ],
+    };
+
+    const canonical = translateAnthropicRequest(request);
+
+    expect(canonical.input[1]).toEqual({
+      type: "message",
+      role: "developer",
+      content: "The following tools just became availableTool available: mcp__docs__read",
+    });
+    expect(canonical.tools?.find((tool) => tool.name === "mcp__docs__read")?.defer_loading)
+      .toBeUndefined();
+  });
 });
 
 describe("model catalog", () => {

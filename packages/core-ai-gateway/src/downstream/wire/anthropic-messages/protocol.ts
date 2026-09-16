@@ -75,12 +75,24 @@ export interface AnthropicThinkingBlock {
   signature?: string;
 }
 
+/**
+ * Claude Code's mid-conversation tool change (beta `mid-conversation-tool-changes-2026-07-01`).
+ * Sent inside a `role:"system"` message when an MCP tool is discovered after the turn started
+ * and ToolSearch is absent; `tool.name` names an entry of the same request's `tools`.
+ */
+export interface AnthropicToolChangeBlock {
+  type: "tool_addition" | "tool_removal";
+  tool: { type: "tool_reference"; name: string };
+  cache_control?: unknown;
+}
+
 export type AnthropicMessageBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
-  | AnthropicThinkingBlock;
+  | AnthropicThinkingBlock
+  | AnthropicToolChangeBlock;
 
 export interface AnthropicMessage {
   // Claude Code는 스펙 문서와 달리 messages 안에 role:"system"을 실어 보낸다(실측).
@@ -207,11 +219,38 @@ export interface TranslateAnthropicRequestOptions {
   nativeTools?: readonly CanonicalNativeToolName[];
 }
 
-class UnsupportedAnthropicContentError extends TypeError {
+/**
+ * The client's own body is malformed for this wire, so the router must report it as a 400:
+ * Claude Code only falls back from a rejected content block on a 400 whose message names the
+ * block type, and retries any other status until its budget runs out.
+ */
+export class UnsupportedAnthropicContentError extends TypeError {
   constructor(type: string) {
     super(`Unsupported Anthropic content block type: ${type}`);
     this.name = "UnsupportedAnthropicContentError";
   }
+}
+
+/** `tool_addition`/`tool_removal` demoted to text; the tool catalog itself carries the change. */
+export function toolChangeText(block: AnthropicToolChangeBlock): string {
+  const name = typeof block.tool?.name === "string" && block.tool.name.length > 0
+    ? block.tool.name
+    : "(invalid reference)";
+  return block.type === "tool_addition" ? `Tool available: ${name}` : `Tool removed: ${name}`;
+}
+
+/** Tools a `tool_addition` block names are loaded for this turn, deferred or not. */
+export function toolAdditionNames(messages: readonly AnthropicMessage[]): Set<string> {
+  const names = new Set<string>();
+  for (const message of messages) {
+    if (typeof message.content === "string") continue;
+    for (const block of message.content) {
+      if (block.type === "tool_addition" && typeof block.tool?.name === "string") {
+        names.add(block.tool.name);
+      }
+    }
+  }
+  return names;
 }
 
 export function translateAnthropicRequest(
@@ -237,7 +276,11 @@ export function translateAnthropicRequest(
   if (request.system !== undefined) {
     canonical.instructions = request.system.map((block) => block.text).join("\n\n");
   }
-  const translatedTools = translateAnthropicTools(request, options.nativeTools);
+  const translatedTools = translateAnthropicTools(
+    request,
+    options.nativeTools,
+    toolAdditionNames(request.messages),
+  );
   if (translatedTools.functions.length > 0) {
     canonical.tools = translatedTools.functions;
   }
@@ -282,6 +325,7 @@ interface TranslatedAnthropicTools {
 function translateAnthropicTools(
   request: Pick<AnthropicMessagesRequest, "tools" | "tool_choice">,
   supportedNativeTools: readonly CanonicalNativeToolName[] | undefined,
+  addedTools: ReadonlySet<string> = new Set(),
 ): TranslatedAnthropicTools {
   const supported = new Set(supportedNativeTools ?? []);
   const functions: NonNullable<CanonicalResponseRequest["tools"]> = [];
@@ -289,13 +333,15 @@ function translateAnthropicTools(
 
   for (const tool of request.tools ?? []) {
     if (isAnthropicFunctionTool(tool)) {
+      // A tool the conversation added is loaded regardless of how the catalog declared it.
+      const deferLoading = addedTools.has(tool.name) ? undefined : tool.defer_loading;
       functions.push({
         type: "function",
         name: tool.name,
         ...(tool.description === undefined ? {} : { description: tool.description }),
         parameters: tool.input_schema,
         ...(tool.strict === undefined ? {} : { strict: tool.strict }),
-        ...(tool.defer_loading === undefined ? {} : { defer_loading: tool.defer_loading }),
+        ...(deferLoading === undefined ? {} : { defer_loading: deferLoading }),
       });
       continue;
     }
@@ -493,6 +539,10 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
         }
         break;
       case "redacted_thinking":
+        break;
+      case "tool_addition":
+      case "tool_removal":
+        parts.push({ type: "input_text", text: toolChangeText(block) });
         break;
       default:
         throw new UnsupportedAnthropicContentError(

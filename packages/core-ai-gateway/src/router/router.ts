@@ -10,7 +10,10 @@ import {
 } from "../upstream/anthropic/native.js";
 import { claudeCodeHarnessProfile } from "../downstream/harness/claude-code/profile.js";
 import type { GatewayHarnessProfile } from "../downstream/harness/contract.js";
-import { translateAnthropicRequest } from "../downstream/wire/anthropic-messages/protocol.js";
+import {
+  translateAnthropicRequest,
+  UnsupportedAnthropicContentError,
+} from "../downstream/wire/anthropic-messages/protocol.js";
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import { AntigravityGenerateContentAdapter } from "../upstream/antigravity/generate-content/adapter.js";
 import { resolveAntigravityCredentials } from "../upstream/antigravity/credentials.js";
@@ -716,7 +719,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const invalidRequest = error instanceof CursorRequestBudgetError
         || error instanceof CursorSessionIdentityError
         || error instanceof UnsupportedReasoningEffortError
-        || error instanceof ContextWindowExceededError;
+        || error instanceof ContextWindowExceededError
+        // A content block this wire cannot translate is the client's malformed body, not a
+        // gateway fault: on a 400 naming the block Claude Code falls back to another shape,
+        // whereas the transient status only makes it retry the same body.
+        || error instanceof UnsupportedAnthropicContentError;
       const type = invalidRequest ? "invalid_request_error" : "api_error";
       // Claude Code arms reactive compaction only from a 413 whose message names the
       // context window; a 400 carrying the same text ends the turn instead. Everything
