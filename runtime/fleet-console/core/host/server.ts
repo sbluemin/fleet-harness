@@ -1293,7 +1293,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptOperation(operationId) }); return true; }
       if (action === "place") {
         // 자리와 함께 이 화면의 Console 조합도 싣고 온다 — 뷰가 놓이는 순간이 곧 그 키를 가로채야 하는 순간이다.
-        if (Array.isArray(body.chords)) browserService.declareChords(body.chords.filter((chord): chord is string => typeof chord === "string"));
+        // 뷰를 든 창의 말만 듣는다: 목록은 하나뿐이고 companion 조합은 그 창이 선 작전마다 다르므로, 뷰가 없는
+        // 창이 덮어쓰면 호스트는 자기 단축키를 놓치거나 자기 렌더러가 모르는 조합을 가로챈다.
+        if (Array.isArray(body.chords) && shellOwnerOf(req) === desktopEngine.currentHost) {
+          browserService.declareChords(body.chords.filter((chord): chord is string => typeof chord === "string"));
+        }
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
         const x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
         if (body.visible === false && x === null) { browserService.place(operationId, null); writeJson(res, 200, { ok: true }); return true; }

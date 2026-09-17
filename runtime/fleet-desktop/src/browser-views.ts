@@ -111,6 +111,8 @@ interface LiveView {
   readonly spec: DesktopBrowserView;
   attached: boolean;
   lastBounds: { x: number; y: number; width: number; height: number } | null;
+  /** 눌림을 가로챈 키의 코드 — 놓는 순간도 페이지에 주지 않는다. */
+  readonly heldCodes: Set<string>;
 }
 
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
@@ -212,7 +214,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const window = deps.window();
     if (!window || window.isDestroyed()) return;
     const view = deps.createView(spec.partition);
-    const entry: LiveView = { view, spec, attached: false, lastBounds: null };
+    const entry: LiveView = { view, spec, attached: false, lastBounds: null, heldCodes: new Set() };
     live.set(spec.id, entry);
     const contents = view.webContents;
     window.contentView.addChildView(view);
@@ -224,11 +226,19 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // 이 뷰는 창 안의 또 다른 Chromium 이라, 여기서 누른 키는 콘솔 렌더러에 닿지 않는다. 콘솔이 자기 것이라고
     // 선언한 조합만 페이지에 넘기지 않고 되돌려 보낸다 — 나머지는 페이지의 키다(⌘C·⌘F·입력 전부 그대로).
     contents.on("before-input-event", (event, input) => {
+      // 누름을 가로챘으면 놓음도 가로챈다 — keyup 으로 단축키를 듣는 사이트가 같은 키를 한 번 더 내고,
+      // 페이지는 누른 적 없는 키를 놓는 이상한 짝을 받는다. 되돌려 보내지는 않는다: 명령은 누름이 낸다.
+      if (input.type === "keyUp") {
+        if (!entry.heldCodes.delete(input.code ?? "")) return;
+        event.preventDefault();
+        return;
+      }
       if (input.type !== "keyDown" || chords.size === 0) return;
       const chord = chordFromDesktopInput(input, apple);
       if (chord === null || !chords.has(chord)) return;
       if (!typedCharacterSurvives(chord, input.key ?? "", apple)) return;
       event.preventDefault();
+      entry.heldCodes.add(input.code ?? "");
       push({ keys: [{ viewId: spec.id, chord, id: ++keySerial, repeat: input.isAutoRepeat === true }] });
     });
     try {
