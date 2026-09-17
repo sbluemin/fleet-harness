@@ -7,6 +7,7 @@ import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserEngine, publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
 import { subscribeConsoleChannel } from "../operations-sse.js";
+import { CORE_SHORTCUT_COMMANDS, isApplePlatform, parseChord, resolveShortcutChords, useShortcutOverrides } from "../shortcut-bindings.js";
 import { themePolarity } from "../store.js";
 import { isDesktopShell } from "../desktop-shell.js";
 import "./browser-panel.css";
@@ -105,6 +106,35 @@ function useBrowserStream(operationId: string, enabled: boolean) {
     return () => { disposed = true; unsubscribe(); };
   }, [operationId, enabled]);
   return { state, connection };
+}
+
+const BROWSER_CHORD_EVENT = "browser:chord";
+
+/**
+ * 셸이 네이티브 뷰 위에서 가로챈 Console 조합을 이 창에서 되누른다. 뷰는 창 안의 또 다른 Chromium 이라
+ * 그 위에서 누른 키는 여기까지 오지 않는다 — 조합을 그대로 되살려 window 에 얹으면 등록부를 읽는 전역
+ * 핸들러(⌘K·⌘P·Quick Launch…)가 평소처럼 자기 명령을 고른다.
+ */
+function pressConsoleChord(chord: string): void {
+  const parsed = parseChord(chord);
+  if (parsed === null) return;
+  const apple = isApplePlatform();
+  const mod = parsed.modifiers.has("Mod");
+  const ctrl = parsed.modifiers.has("Ctrl");
+  // 등록부는 물리 코드로 판정하지만, Mod+Alt 조합은 event.key 도 함께 본다(AltGr 오인 거르기).
+  const key = parsed.code.startsWith("Key") ? parsed.code.slice(3).toLowerCase()
+    : parsed.code.startsWith("Digit") ? parsed.code.slice(5)
+    : parsed.code;
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    code: parsed.code,
+    key,
+    metaKey: apple && mod,
+    ctrlKey: apple ? ctrl : mod || ctrl,
+    altKey: parsed.modifiers.has("Alt"),
+    shiftKey: parsed.modifiers.has("Shift"),
+    bubbles: true,
+    cancelable: true,
+  }));
 }
 
 /** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
@@ -362,6 +392,21 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   // ---- 네이티브 뷰의 자리 ----
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
+  // 뷰가 포커스를 쥔 동안 셸이 가로챌 조합 — 등록부(사용자 재배정 포함)를 그대로 푼다. 자리와 함께 내려간다:
+  // 뷰가 놓이는 순간이 곧 그 키가 콘솔 렌더러를 떠나는 순간이다.
+  const overrides = useShortcutOverrides();
+  const consoleChords = React.useMemo(
+    () => [...new Set(CORE_SHORTCUT_COMMANDS.flatMap((command) => resolveShortcutChords(command.id, command.defaults)))],
+    [overrides],
+  );
+  React.useEffect(() => {
+    if (!available) return;
+    return subscribeConsoleChannel(BROWSER_CHORD_EVENT, (payload) => {
+      const body = payload as { readonly operationId?: unknown; readonly chord?: unknown };
+      if (body.operationId !== operationId || typeof body.chord !== "string") return;
+      pressConsoleChord(body.chord);
+    });
+  }, [available, operationId]);
   const placeRef = React.useRef<string>("");
   React.useEffect(() => {
     if (!available) return;
@@ -374,8 +419,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       const covered = document.querySelector('[aria-modal="true"]') !== null;
       const shown = activeTab !== null && mode === "none" && !covered && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const visible = shown ? visibleRect(host, rect) : null;
-      if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false }); return; }
-      post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true });
+      if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false, chords: consoleChords }); return; }
+      post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true, chords: consoleChords });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -385,7 +430,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
-  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null]);
+  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null, consoleChords]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
 

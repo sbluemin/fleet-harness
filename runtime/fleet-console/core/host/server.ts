@@ -125,6 +125,7 @@ interface ConsolePortListenPlan {
 
 /** Operation 스트림에 실리는 브라우저 상태 프레임의 이름. 화면은 이 채널로 탭·주소·조작 여부를 듣는다. */
 const BROWSER_STATE_EVENT = "browser:state";
+const BROWSER_CHORD_EVENT = "browser:chord";
 
 /**
  * SSE 구독자는 이제 자기가 어느 리스너에서 왔는지를 들고 다닌다. 제어권 이벤트의 수신자가
@@ -682,6 +683,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   browserService.onState((state) => {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
+    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
+  });
+  /**
+   * 네이티브 뷰 위에서 눌린 Console 조합. 뷰는 창 안의 또 다른 Chromium 이라 그 키가 콘솔 렌더러에 닿지 않는다 —
+   * 셸이 가로채 여기까지 올린 것을 그 창의 패널이 자기 창에서 되눌러 단축키를 발화한다.
+   */
+  browserService.onChord((chord) => {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(BROWSER_CHORD_EVENT, chord);
     for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
   });
   const browserMcp = createBrowserMcpHost({
@@ -1274,6 +1284,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptOperation(operationId) }); return true; }
       if (action === "place") {
+        // 자리와 함께 이 화면의 Console 조합도 싣고 온다 — 뷰가 놓이는 순간이 곧 그 키를 가로채야 하는 순간이다.
+        if (Array.isArray(body.chords)) browserService.declareChords(body.chords.filter((chord): chord is string => typeof chord === "string"));
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
         const x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
         if (body.visible === false && x === null) { browserService.place(operationId, null); writeJson(res, 200, { ok: true }); return true; }

@@ -20,6 +20,8 @@ const ATTACH_TIMEOUT_MS = 10_000;
 /** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
 const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
+/** 조합 문법 — 콘솔 렌더러의 등록부와 같은 모양만 셸로 내려보낸다. */
+const CHORD_SYNTAX = /^(?:(?:Mod|Ctrl|Alt|Shift)\+){0,4}[A-Za-z0-9]{1,32}$/u;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
 interface ViewRecord { id: string; operationId: string; partition: string; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
@@ -39,6 +41,7 @@ export class DesktopEngine implements CdpClient {
   private readonly listeners = new Set<CdpListener>();
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
+  private chords: readonly string[] = [];
   private nextCommandId = 1;
   private generation = 0;
   private host: string | null = null;
@@ -99,7 +102,18 @@ export class DesktopEngine implements CdpClient {
       const visible = view.active && placement !== null && placement.visible;
       return { id: view.id, operationId: view.operationId, partition: view.partition, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
-    return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command) };
+    return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command), ...(this.chords.length ? { chords: this.chords } : {}) };
+  }
+
+  /**
+   * 뷰 위에서 셸이 가로채야 할 Console 조합 — 콘솔 렌더러가 자기 등록부에서 풀어 알려 준다.
+   * 문법에 맞지 않는 것은 버린다: 이 목록은 그대로 셸의 스냅샷에 실린다.
+   */
+  setChords(next: readonly string[]): void {
+    const chords = [...new Set(next.filter((chord) => CHORD_SYNTAX.test(chord)))];
+    if (chords.length === this.chords.length && chords.every((chord, index) => chord === this.chords[index])) return;
+    this.chords = chords;
+    this.publish();
   }
 
   /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
@@ -148,6 +162,11 @@ export class DesktopEngine implements CdpClient {
     for (const event of body.events ?? []) {
       if (!this.views.has(event.viewId)) continue;
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
+    }
+    // 뷰가 포커스를 쥔 채로 눌린 Console 조합 — 셸이 페이지 대신 가로챘다. 콘솔 렌더러가 그 명령을 발화한다.
+    for (const key of body.keys ?? []) {
+      if (!this.views.has(key.viewId)) continue;
+      this.emit({ method: "Fleet.chordPressed", params: { chord: key.chord }, sessionId: key.viewId });
     }
     if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
   }

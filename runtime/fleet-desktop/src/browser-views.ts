@@ -1,4 +1,4 @@
-import type { BrowserWindow, WebContentsView } from "electron";
+import type { BrowserWindow, WebContents, WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
@@ -24,6 +24,30 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
  */
 
 export const MAX_DESKTOP_BROWSER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
+
+/** 수식키 자신과 Escape·Tab 은 조합의 키 자리에 서지 않는다 — 콘솔의 조합 문법과 같은 경계다. */
+const CHORD_KEY_CODE = /^(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|Escape$|Tab$)[A-Za-z0-9]{1,32}$/u;
+
+/**
+ * 뷰 위에서 누른 키를 콘솔의 조합 문자열로 읽는다. `Mod` 는 macOS 에서 ⌘, 그 밖에서 Ctrl —
+ * 콘솔 렌더러의 판정과 같은 규칙이라야 같은 키가 같은 명령을 낸다. 수식키만 눌렸으면 null.
+ */
+export function chordFromDesktopInput(input: { readonly code?: string; readonly meta?: boolean; readonly control?: boolean; readonly alt?: boolean; readonly shift?: boolean }, apple: boolean): string | null {
+  const code = input.code ?? "";
+  if (!CHORD_KEY_CODE.test(code)) return null;
+  const modifiers: string[] = [];
+  if (apple) {
+    if (input.meta) modifiers.push("Mod");
+    if (input.control) modifiers.push("Ctrl");
+  } else {
+    // Win/Super 키는 OS 것이라 조합에 들어가지 않는다.
+    if (input.meta) return null;
+    if (input.control) modifiers.push("Mod");
+  }
+  if (input.alt) modifiers.push("Alt");
+  if (input.shift) modifiers.push("Shift");
+  return [...modifiers, code].join("+");
+}
 const RELAY_FLUSH_MS = 8;
 /** relay 가 닿지 않으면 같은 배치를 이만큼 뒤에 다시 보낸다 — 순서는 지킨다. */
 const RELAY_RETRY_MS = 500;
@@ -71,11 +95,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
   let session = 0;
   let generation = -1;
-  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
+  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[]; keys: { viewId: string; chord: string }[] } = emptyOutbox();
+  /** 콘솔이 선언한 Console 조합 — 뷰가 포커스를 쥔 동안 이것만 가로챈다. */
+  let chords = new Set<string>();
+  const apple = process.platform === "darwin";
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> = Promise.resolve();
 
-  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
+  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[], keys: [] as { viewId: string; chord: string }[] }; }
 
   const scheduleFlush = (): void => {
     if (flushTimer !== null) return;
@@ -86,7 +113,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = origin;
     const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
-    if (outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
+    if (outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length + outbox.keys.length === 0) return;
     const batch = outbox;
     outbox = emptyOutbox();
     const body: DesktopBrowserRelay = {
@@ -95,6 +122,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       ...(batch.sizes.length ? { sizes: batch.sizes } : {}),
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
+      ...(batch.keys.length ? { keys: batch.keys } : {}),
     };
     // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 같은 자리에서 잠시 뒤 다시
     // 보낸다: 뒤에 줄 선 배치는 이 배치가 닿을 때까지 기다린다. 부착 통지나 명령 응답 하나가 사라지거나 순서가 뒤집히면
@@ -126,6 +154,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (partial.sizes) outbox.sizes.push(...partial.sizes);
     if (partial.results) outbox.results.push(...partial.results);
     if (partial.events) { outbox.events.push(...partial.events); if (outbox.events.length >= RELAY_MAX_EVENTS) { flush(); return; } }
+    // 단축키는 사람이 누른 것이다 — 8ms 를 더 기다리지 않고 바로 보낸다.
+    if (partial.keys) { outbox.keys.push(...partial.keys); flush(); return; }
     scheduleFlush();
   };
 
@@ -162,6 +192,15 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
+    // 이 뷰는 창 안의 또 다른 Chromium 이라, 여기서 누른 키는 콘솔 렌더러에 닿지 않는다. 콘솔이 자기 것이라고
+    // 선언한 조합만 페이지에 넘기지 않고 되돌려 보낸다 — 나머지는 페이지의 키다(⌘C·⌘F·입력 전부 그대로).
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || chords.size === 0) return;
+      const chord = chordFromDesktopInput(input, apple);
+      if (chord === null || !chords.has(chord)) return;
+      event.preventDefault();
+      push({ keys: [{ viewId: spec.id, chord }] });
+    });
     try {
       contents.debugger.attach("1.3");
       contents.debugger.on("message", (_event, method, params, sessionId) => {
@@ -192,6 +231,27 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (report) push({ detached: [id] });
   };
 
+  /**
+   * 지금 이 창에서 키보드를 쥔 webContents. 창이 앞에 없으면 null — 다른 앱을 쓰는 사람의 화면을
+   * 이 창으로 끌어오지 않는다.
+   */
+  const focusHolder = (): WebContents | null => {
+    const window = deps.window();
+    if (!window || window.isDestroyed() || !window.isFocused()) return null;
+    try { if (window.webContents.isFocused()) return window.webContents; } catch { return null; }
+    for (const entry of live.values()) {
+      try { if (!entry.view.webContents.isDestroyed() && entry.view.webContents.isFocused()) return entry.view.webContents; } catch { /* 죽은 뷰는 셈에서 뺀다. */ }
+    }
+    return null;
+  };
+
+  const restoreFocus = (holder: WebContents | null): void => {
+    if (!holder) return;
+    const window = deps.window();
+    if (!window || window.isDestroyed() || !window.isFocused()) return;
+    try { if (!holder.isDestroyed() && !holder.isFocused()) holder.focus(); } catch { /* 포커스는 부가 동작이다. */ }
+  };
+
   const run = (command: DesktopBrowserSnapshot["commands"][number]): void => {
     if (executed.has(command.id)) return;
     executed.add(command.id);
@@ -210,14 +270,21 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
     const entry = live.get(command.viewId);
     if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
+    // 에이전트가 보낸 합성 입력은 키보드를 쥔 쪽을 바꾸지 않는다. macOS·Electron 43 에서는 debugger 로 넣은
+    // `Input.*` 이 애초에 포커스를 옮기지 않았다(2026-09 실측) — 이 가드가 거기서 하는 일은 없다. 그래도
+    // 두는 이유는 Electron 의 포커스 처리가 플랫폼마다 같다고 믿지 않기 때문이다: 뷰가 키보드를 가져가는
+    // 순간 그 창의 Console 단축키는 통째로 죽고, 사람은 콘솔을 한 번 클릭해야 되찾는다. 페이지는 focus
+    // emulation 으로 이미 자기가 포커스를 쥐었다고 믿으므로 진짜 포커스를 옮기지 않아도 입력은 그대로 든다.
+    const holder = command.method.startsWith("Input.") ? focusHolder() : null;
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
-      .then((result) => push({ results: [{ id: command.id, result }] }))
-      .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
+      .then((result) => { restoreFocus(holder); push({ results: [{ id: command.id, result }] }); })
+      .catch((error: unknown) => { restoreFocus(holder); push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
     if (snapshot.generation < generation) return;
     generation = snapshot.generation;
+    chords = new Set(snapshot.chords ?? []);
     const wanted = new Set(snapshot.views.map((view) => view.id));
     for (const id of [...live.keys()]) if (!wanted.has(id)) drop(id, false);
     for (const spec of snapshot.views) {
@@ -258,6 +325,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     stream.stop();
     for (const id of [...live.keys()]) drop(id, false);
     executed.clear();
+    chords = new Set();
     generation = -1;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
