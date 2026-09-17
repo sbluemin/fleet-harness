@@ -42,6 +42,8 @@ export class DesktopEngine implements CdpClient {
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
   private chords: readonly string[] = [];
+  /** 이미 발화한 가로채기 일련번호 — 셸의 relay 재시도를 거른다. */
+  private readonly pressedKeys = new Set<number>();
   private nextCommandId = 1;
   private generation = 0;
   private host: string | null = null;
@@ -164,9 +166,16 @@ export class DesktopEngine implements CdpClient {
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
     }
     // 뷰가 포커스를 쥔 채로 눌린 Console 조합 — 셸이 페이지 대신 가로챘다. 콘솔 렌더러가 그 명령을 발화한다.
+    // relay 는 응답을 잃으면 같은 몸을 다시 보내므로, 이미 발화한 일련번호는 건너뛴다 — 한 번 누른 토글이
+    // 두 번 움직여 제자리로 돌아오는 일이 없게.
     for (const key of body.keys ?? []) {
       if (!this.views.has(key.viewId)) continue;
-      this.emit({ method: "Fleet.chordPressed", params: { chord: key.chord }, sessionId: key.viewId });
+      if (key.id !== undefined) {
+        if (this.pressedKeys.has(key.id)) continue;
+        this.pressedKeys.add(key.id);
+        if (this.pressedKeys.size > 2_000) for (const id of [...this.pressedKeys].slice(0, 1_000)) this.pressedKeys.delete(id);
+      }
+      this.emit({ method: "Fleet.chordPressed", params: { chord: key.chord, repeat: key.repeat === true }, sessionId: key.viewId });
     }
     if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
   }

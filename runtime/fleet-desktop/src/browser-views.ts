@@ -24,6 +24,11 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
  */
 
 export const MAX_DESKTOP_BROWSER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
+const RELAY_FLUSH_MS = 8;
+/** relay 가 닿지 않으면 같은 배치를 이만큼 뒤에 다시 보낸다 — 순서는 지킨다. */
+const RELAY_RETRY_MS = 500;
+/** Chromium 이 순서를 지켜 주는 이벤트지만, 한 번에 너무 많이 쌓이면 relay 하나가 콘솔의 한도를 넘는다. */
+const RELAY_MAX_EVENTS = 400;
 
 /** 수식키 자신과 Escape·Tab 은 조합의 키 자리에 서지 않는다 — 콘솔의 조합 문법과 같은 경계다. */
 const CHORD_KEY_CODE = /^(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|Escape$|Tab$)[A-Za-z0-9]{1,32}$/u;
@@ -32,19 +37,6 @@ const CHORD_KEY_CODE = /^(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|
  * 뷰 위에서 누른 키를 콘솔의 조합 문자열로 읽는다. `Mod` 는 macOS 에서 ⌘, 그 밖에서 Ctrl —
  * 콘솔 렌더러의 판정과 같은 규칙이라야 같은 키가 같은 명령을 낸다. 수식키만 눌렸으면 null.
  */
-/**
- * macOS 밖에서는 Ctrl 이 곧 Mod 라 `Ctrl+Space` 와 `Mod+Space` 가 한 키다. 눌린 키는 언제나 `Mod` 로 읽히므로,
- * 선언된 쪽도 같은 이름으로 접어야 `Ctrl+Space`·`Ctrl+Backquote` 같은 기본값이 뷰 위에서 죽지 않는다.
- * 콘솔 등록부의 chordsEquivalent 가 쓰는 판정과 같다.
- */
-export function foldDesktopChord(chord: string, apple: boolean): string {
-  if (apple) return chord;
-  const tokens = chord.split("+");
-  const code = tokens.pop() ?? "";
-  const modifiers = new Set(tokens.map((token) => token === "Ctrl" ? "Mod" : token));
-  return [...["Mod", "Ctrl", "Alt", "Shift"].filter((modifier) => modifiers.has(modifier)), code].join("+");
-}
-
 export function chordFromDesktopInput(input: { readonly code?: string; readonly meta?: boolean; readonly control?: boolean; readonly alt?: boolean; readonly shift?: boolean }, apple: boolean): string | null {
   const code = input.code ?? "";
   if (!CHORD_KEY_CODE.test(code)) return null;
@@ -61,11 +53,33 @@ export function chordFromDesktopInput(input: { readonly code?: string; readonly 
   if (input.shift) modifiers.push("Shift");
   return [...modifiers, code].join("+");
 }
-const RELAY_FLUSH_MS = 8;
-/** relay 가 닿지 않으면 같은 배치를 이만큼 뒤에 다시 보낸다 — 순서는 지킨다. */
-const RELAY_RETRY_MS = 500;
-/** Chromium 이 순서를 지켜 주는 이벤트지만, 한 번에 너무 많이 쌓이면 relay 하나가 콘솔의 한도를 넘는다. */
-const RELAY_MAX_EVENTS = 400;
+
+/**
+ * macOS 밖에서는 Ctrl 이 곧 Mod 라 `Ctrl+Space` 와 `Mod+Space` 가 한 키다. 눌린 키는 언제나 `Mod` 로 읽히므로,
+ * 선언된 쪽도 같은 이름으로 접어야 `Ctrl+Space`·`Ctrl+Backquote` 같은 기본값이 뷰 위에서 죽지 않는다.
+ * 콘솔 등록부의 chordsEquivalent 가 쓰는 판정과 같다.
+ */
+export function foldDesktopChord(chord: string, apple: boolean): string {
+  if (apple) return chord;
+  const tokens = chord.split("+");
+  const code = tokens.pop() ?? "";
+  const modifiers = new Set(tokens.map((token) => token === "Ctrl" ? "Mod" : token));
+  return [...["Mod", "Ctrl", "Alt", "Shift"].filter((modifier) => modifiers.has(modifier)), code].join("+");
+}
+
+/**
+ * 이 키를 페이지에서 빼앗아도 되는가. Win/Linux 의 일부 레이아웃은 AltGr 을 Ctrl+Alt 로 알리므로, `Mod+Alt` 조합과
+ * 글자 입력이 같은 모양으로 온다. 콘솔의 등록부(matchesChord)는 그때 `event.key` 가 그 자리의 글자인지로 한 번 더
+ * 가르는데, 되살린 조합의 key 는 물리 코드에서 나오므로 그 가드가 속는다 — 그래서 여기서 먼저 가른다.
+ */
+export function typedCharacterSurvives(chord: string, key: string, apple: boolean): boolean {
+  if (apple) return true;
+  const tokens = chord.split("+");
+  const code = tokens.pop() ?? "";
+  if (!code.startsWith("Key") || !tokens.includes("Alt")) return true;
+  if (!tokens.includes("Mod") && !tokens.includes("Ctrl")) return true;
+  return key.toLowerCase() === code.slice(3).toLowerCase();
+}
 
 export interface DesktopBrowserViewsDeps {
   readonly window: () => BrowserWindow | null;
@@ -108,14 +122,16 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
   let session = 0;
   let generation = -1;
-  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[]; keys: { viewId: string; chord: string }[] } = emptyOutbox();
+  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[]; keys: { viewId: string; chord: string; id: number; repeat: boolean }[] } = emptyOutbox();
   /** 콘솔이 선언한 Console 조합 — 뷰가 포커스를 쥔 동안 이것만 가로챈다. */
   let chords = new Set<string>();
+  /** 가로챈 키에 붙는 일련번호 — 같은 relay 를 다시 보내도 콘솔이 한 번만 발화하게 한다. */
+  let keySerial = 0;
   const apple = process.platform === "darwin";
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> = Promise.resolve();
 
-  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[], keys: [] as { viewId: string; chord: string }[] }; }
+  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[], keys: [] as { viewId: string; chord: string; id: number; repeat: boolean }[] }; }
 
   const scheduleFlush = (): void => {
     if (flushTimer !== null) return;
@@ -211,8 +227,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       if (input.type !== "keyDown" || chords.size === 0) return;
       const chord = chordFromDesktopInput(input, apple);
       if (chord === null || !chords.has(chord)) return;
+      if (!typedCharacterSurvives(chord, input.key ?? "", apple)) return;
       event.preventDefault();
-      push({ keys: [{ viewId: spec.id, chord }] });
+      push({ keys: [{ viewId: spec.id, chord, id: ++keySerial, repeat: input.isAutoRepeat === true }] });
     });
     try {
       contents.debugger.attach("1.3");
@@ -339,6 +356,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     for (const id of [...live.keys()]) drop(id, false);
     executed.clear();
     chords = new Set();
+    keySerial = 0;
     generation = -1;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }

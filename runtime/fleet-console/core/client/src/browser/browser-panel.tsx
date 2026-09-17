@@ -119,17 +119,23 @@ const FOCUS_GATED_COMMANDS: ReadonlySet<string> = new Set(["console.undo-close"]
 
 /**
  * Mod·Ctrl·Alt 가운데 하나는 쥐고 있어야 선언한다. 수식키 없이(또는 Shift 만으로) 서는 조합은 페이지에서
- * 그냥 글자다 — `Shift+Digit1`(Fit All)을 가로채면 웹 폼에 `!` 를 칠 수 없다. Console 도 편집 중에는
- * Alt 없는 작전 단축키를 발화하지 않는다(shortcuts.tsx 의 blocksOperationsShortcutWhileEditing).
+ * 그냥 글자다 — `Shift+Digit1`(Fit All)을 가로채면 웹 폼에 `!` 를 칠 수 없다.
  */
 const carriesCommandModifier = (chord: string) => /(?:^|\+)(?:Mod|Ctrl|Alt)\+/u.test(chord);
+
+/**
+ * 작전·companion 단축키는 Operations 핸들러가 내는데, 그 핸들러는 편집 중이면 Alt 없는 조합을 통째로
+ * 양보한다(shortcuts.tsx 의 blocksOperationsShortcutWhileEditing). 셸은 페이지 안의 캐럿을 볼 수 없으므로
+ * 그쪽 명령은 Alt 를 쥔 조합만 선언한다 — 기본값이 아니라 사용자가 바꾼 조합에도 같은 경계가 서야 한다.
+ */
+const survivesEditing = (chord: string) => chord.split("+").includes("Alt");
 
 /**
  * 셸이 네이티브 뷰 위에서 가로챈 Console 조합을 이 창에서 되누른다. 뷰는 창 안의 또 다른 Chromium 이라
  * 그 위에서 누른 키는 여기까지 오지 않는다 — 조합을 그대로 되살려 window 에 얹으면 등록부를 읽는 전역
  * 핸들러(⌘K·⌘P·Quick Launch…)가 평소처럼 자기 명령을 고른다.
  */
-function pressConsoleChord(chord: string): void {
+function pressConsoleChord(chord: string, repeat: boolean): void {
   const parsed = parseChord(chord);
   if (parsed === null) return;
   const apple = isApplePlatform();
@@ -146,6 +152,8 @@ function pressConsoleChord(chord: string): void {
     ctrlKey: apple ? ctrl : mod || ctrl,
     altKey: parsed.modifiers.has("Alt"),
     shiftKey: parsed.modifiers.has("Shift"),
+    // 눌러 둔 키의 반복분은 그대로 실어 보낸다 — Zen 토글과 companion 토글은 이 표식으로 한 번만 움직인다.
+    repeat,
     bubbles: true,
     cancelable: true,
   }));
@@ -416,17 +424,18 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     () => [...new Set([
       ...CORE_SHORTCUT_COMMANDS
         .filter((command) => !FOCUS_GATED_COMMANDS.has(command.id))
-        .flatMap((command) => resolveShortcutChords(command.id, command.defaults)),
-      ...companionShortcuts.flatMap((entry) => resolveShortcutChords(entry.commandId, [entry.defaultChord])),
+        .flatMap((command) => resolveShortcutChords(command.id, command.defaults)
+          .filter((chord) => command.group !== "operations" || survivesEditing(chord))),
+      ...companionShortcuts.flatMap((entry) => resolveShortcutChords(entry.commandId, [entry.defaultChord]).filter(survivesEditing)),
     ].filter(carriesCommandModifier))],
     [overrides, companionShortcuts],
   );
   React.useEffect(() => {
     if (!available) return;
     return subscribeConsoleChannel(BROWSER_CHORD_EVENT, (payload) => {
-      const body = payload as { readonly operationId?: unknown; readonly chord?: unknown };
+      const body = payload as { readonly operationId?: unknown; readonly chord?: unknown; readonly repeat?: unknown };
       if (body.operationId !== operationId || typeof body.chord !== "string") return;
-      pressConsoleChord(body.chord);
+      pressConsoleChord(body.chord, body.repeat === true);
     });
   }, [available, operationId]);
   const placeRef = React.useRef<string>("");

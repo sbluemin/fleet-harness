@@ -176,8 +176,13 @@ export interface DesktopBrowserRelay {
   readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
   readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
   readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];
-  /** 셸이 뷰 위에서 가로챈 Console 조합 — 스냅샷의 `chords` 에 있던 것만 온다. 콘솔이 그 명령을 발화한다. */
-  readonly keys?: readonly { readonly viewId: string; readonly chord: string }[];
+  /**
+   * 셸이 뷰 위에서 가로챈 Console 조합 — 스냅샷의 `chords` 에 있던 것만 온다. 콘솔이 그 명령을 발화한다.
+   * `id` 는 셸 수명 안에서 단조 증가한다: relay 는 응답이 오지 않으면 같은 몸을 다시 보내므로, 이것이 없으면
+   * 응답 한 번을 잃었을 때 한 번 누른 토글이 두 번 발화해 제자리로 돌아온다. `repeat` 는 눌러 둔 키의 반복분으로,
+   * 콘솔의 토글들이 그 표식을 보고 한 번만 움직인다.
+   */
+  readonly keys?: readonly { readonly viewId: string; readonly chord: string; readonly id?: number; readonly repeat?: boolean }[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -211,6 +216,7 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
-  if (value.keys !== undefined && !(Array.isArray(value.keys) && value.keys.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isChord(entry.chord)))) return false;
+  if (value.keys !== undefined && !(Array.isArray(value.keys) && value.keys.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isChord(entry.chord)
+    && (entry.id === undefined || isFiniteNumber(entry.id)) && (entry.repeat === undefined || typeof entry.repeat === "boolean")))) return false;
   return true;
 }

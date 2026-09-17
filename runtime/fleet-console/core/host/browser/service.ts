@@ -56,7 +56,7 @@ export interface BrowserOperationState {
  * 예산을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 큐에 갇힌다.
  */
 export type BrowserStateListener = (state: BrowserOperationState) => void;
-export type BrowserChordListener = (chord: { readonly operationId: string; readonly chord: string }) => void;
+export type BrowserChordListener = (chord: { readonly operationId: string; readonly chord: string; readonly repeat: boolean }) => void;
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
@@ -631,7 +631,8 @@ export class BrowserService {
       case "Fleet.chordPressed": {
         // 셸이 뷰 위에서 가로챈 Console 조합 — 그 창의 패널이 자기 창에서 되눌러 준다.
         const chord = typeof p.chord === "string" ? p.chord : "";
-        if (chord) for (const listener of this.chordListeners) { try { listener({ operationId: op.operationId, chord }); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
+        const repeat = p.repeat === true;
+        if (chord) for (const listener of this.chordListeners) { try { listener({ operationId: op.operationId, chord, repeat }); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
         return;
       }
       case "Target.detachedFromTarget": {
