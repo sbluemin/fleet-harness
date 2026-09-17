@@ -8,6 +8,7 @@ import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserEngine, publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
 import { subscribeConsoleChannel } from "../operations-sse.js";
 import { CORE_SHORTCUT_COMMANDS, isApplePlatform, parseChord, resolveShortcutChords, useShortcutOverrides } from "../shortcut-bindings.js";
+import { useActiveCompanionShortcuts } from "../shortcuts.js";
 import { themePolarity } from "../store.js";
 import { isDesktopShell } from "../desktop-shell.js";
 import "./browser-panel.css";
@@ -109,6 +110,19 @@ function useBrowserStream(operationId: string, enabled: boolean) {
 }
 
 const BROWSER_CHORD_EVENT = "browser:chord";
+
+/**
+ * 편집 중이면 Console 자신이 양보하는 명령 — 셸은 페이지 안에 캐럿이 섰는지 볼 수 없으므로 아예 선언하지
+ * 않는다. 선언하면 웹 폼에서 실행 취소가 죽고 그 자리에 Console 의 「닫은 Operation 되살리기」가 선다.
+ */
+const FOCUS_GATED_COMMANDS: ReadonlySet<string> = new Set(["console.undo-close"]);
+
+/**
+ * Mod·Ctrl·Alt 가운데 하나는 쥐고 있어야 선언한다. 수식키 없이(또는 Shift 만으로) 서는 조합은 페이지에서
+ * 그냥 글자다 — `Shift+Digit1`(Fit All)을 가로채면 웹 폼에 `!` 를 칠 수 없다. Console 도 편집 중에는
+ * Alt 없는 작전 단축키를 발화하지 않는다(shortcuts.tsx 의 blocksOperationsShortcutWhileEditing).
+ */
+const carriesCommandModifier = (chord: string) => /(?:^|\+)(?:Mod|Ctrl|Alt)\+/u.test(chord);
 
 /**
  * 셸이 네이티브 뷰 위에서 가로챈 Console 조합을 이 창에서 되누른다. 뷰는 창 안의 또 다른 Chromium 이라
@@ -395,9 +409,17 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   // 뷰가 포커스를 쥔 동안 셸이 가로챌 조합 — 등록부(사용자 재배정 포함)를 그대로 푼다. 자리와 함께 내려간다:
   // 뷰가 놓이는 순간이 곧 그 키가 콘솔 렌더러를 떠나는 순간이다.
   const overrides = useShortcutOverrides();
+  // companion 조합(Alt+B 로 이 브라우저를 여닫는 것까지)은 지금 선 작전에 따라 달라진다 — 코어 등록부만
+  // 실으면 뷰 안에서 자기 자신을 닫는 키가 페이지로 새어 나간다.
+  const companionShortcuts = useActiveCompanionShortcuts();
   const consoleChords = React.useMemo(
-    () => [...new Set(CORE_SHORTCUT_COMMANDS.flatMap((command) => resolveShortcutChords(command.id, command.defaults)))],
-    [overrides],
+    () => [...new Set([
+      ...CORE_SHORTCUT_COMMANDS
+        .filter((command) => !FOCUS_GATED_COMMANDS.has(command.id))
+        .flatMap((command) => resolveShortcutChords(command.id, command.defaults)),
+      ...companionShortcuts.flatMap((entry) => resolveShortcutChords(entry.commandId, [entry.defaultChord])),
+    ].filter(carriesCommandModifier))],
+    [overrides, companionShortcuts],
   );
   React.useEffect(() => {
     if (!available) return;

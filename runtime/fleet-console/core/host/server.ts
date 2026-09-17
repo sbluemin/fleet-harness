@@ -691,8 +691,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   browserService.onChord((chord) => {
     if (operationSseSubscribers.size === 0) return;
+    // 뷰를 든 창 하나에만 보낸다. 상태와 달리 조합은 명령이라, 이 기계의 창과 제어를 쥔 원격 창이 함께
+    // 붙어 있을 때 둘 다에게 보내면 한 번 누른 키가 두 번 발화하거나 뷰가 없는 창의 UI 를 연다.
+    const host = desktopEngine.currentHost;
+    if (host === null) return;
     const data = encodeSseData(BROWSER_CHORD_EVENT, chord);
-    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) {
+      if (subscriber.client !== "desktop") continue;
+      if ((subscriber.audience === "local" ? "local" : subscriber.sessionHandle) !== host) continue;
+      subscriber.res.write(data);
+    }
   });
   const browserMcp = createBrowserMcpHost({
     transport: mcpHttp.transport,

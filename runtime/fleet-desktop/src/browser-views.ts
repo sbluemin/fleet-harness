@@ -32,6 +32,19 @@ const CHORD_KEY_CODE = /^(?!(?:Shift|Control|Alt|Meta)(?:Left|Right)$|CapsLock$|
  * 뷰 위에서 누른 키를 콘솔의 조합 문자열로 읽는다. `Mod` 는 macOS 에서 ⌘, 그 밖에서 Ctrl —
  * 콘솔 렌더러의 판정과 같은 규칙이라야 같은 키가 같은 명령을 낸다. 수식키만 눌렸으면 null.
  */
+/**
+ * macOS 밖에서는 Ctrl 이 곧 Mod 라 `Ctrl+Space` 와 `Mod+Space` 가 한 키다. 눌린 키는 언제나 `Mod` 로 읽히므로,
+ * 선언된 쪽도 같은 이름으로 접어야 `Ctrl+Space`·`Ctrl+Backquote` 같은 기본값이 뷰 위에서 죽지 않는다.
+ * 콘솔 등록부의 chordsEquivalent 가 쓰는 판정과 같다.
+ */
+export function foldDesktopChord(chord: string, apple: boolean): string {
+  if (apple) return chord;
+  const tokens = chord.split("+");
+  const code = tokens.pop() ?? "";
+  const modifiers = new Set(tokens.map((token) => token === "Ctrl" ? "Mod" : token));
+  return [...["Mod", "Ctrl", "Alt", "Shift"].filter((modifier) => modifiers.has(modifier)), code].join("+");
+}
+
 export function chordFromDesktopInput(input: { readonly code?: string; readonly meta?: boolean; readonly control?: boolean; readonly alt?: boolean; readonly shift?: boolean }, apple: boolean): string | null {
   const code = input.code ?? "";
   if (!CHORD_KEY_CODE.test(code)) return null;
@@ -284,7 +297,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
     if (snapshot.generation < generation) return;
     generation = snapshot.generation;
-    chords = new Set(snapshot.chords ?? []);
+    chords = new Set((snapshot.chords ?? []).map((chord) => foldDesktopChord(chord, apple)));
     const wanted = new Set(snapshot.views.map((view) => view.id));
     for (const id of [...live.keys()]) if (!wanted.has(id)) drop(id, false);
     for (const spec of snapshot.views) {
