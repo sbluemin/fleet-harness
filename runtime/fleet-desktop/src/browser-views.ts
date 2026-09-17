@@ -275,11 +275,20 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     return null;
   };
 
-  const restoreFocus = (holder: WebContents | null): void => {
+  /**
+   * 명령이 뷰로 포커스를 옮겼을 때만 되돌린다. 명령이 도는 사이 사람이 다른 곳을 눌렀다면 그 선택이 우선이다 —
+   * 붙잡아 둔 옛 주인을 무조건 되살리면 방금 옮긴 포커스를 빼앗는다.
+   */
+  const restoreFocus = (entry: LiveView, holder: WebContents | null): void => {
     if (!holder) return;
     const window = deps.window();
     if (!window || window.isDestroyed() || !window.isFocused()) return;
-    try { if (!holder.isDestroyed() && !holder.isFocused()) holder.focus(); } catch { /* 포커스는 부가 동작이다. */ }
+    try {
+      const contents = entry.view.webContents;
+      if (contents.isDestroyed() || !contents.isFocused()) return;
+      if (holder === contents || holder.isDestroyed()) return;
+      holder.focus();
+    } catch { /* 포커스는 부가 동작이다. */ }
   };
 
   const run = (command: DesktopBrowserSnapshot["commands"][number]): void => {
@@ -307,8 +316,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // emulation 으로 이미 자기가 포커스를 쥐었다고 믿으므로 진짜 포커스를 옮기지 않아도 입력은 그대로 든다.
     const holder = command.method.startsWith("Input.") ? focusHolder() : null;
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
-      .then((result) => { restoreFocus(holder); push({ results: [{ id: command.id, result }] }); })
-      .catch((error: unknown) => { restoreFocus(holder); push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
+      .then((result) => { restoreFocus(entry, holder); push({ results: [{ id: command.id, result }] }); })
+      .catch((error: unknown) => { restoreFocus(entry, holder); push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {

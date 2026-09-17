@@ -133,7 +133,13 @@ export class DesktopEngine implements CdpClient {
 
   /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
   relay(owner: string, body: DesktopBrowserRelay): void {
-    if (body.hello) this.identities.set(owner, body.hello);
+    if (body.hello) {
+      this.identities.set(owner, body.hello);
+      // 셸이 자기를 소개하는 것은 그 셸의 수명이 새로 시작했다는 뜻이고, 그때 가로채기 일련번호도 1 부터 다시 센다.
+      // 여기서 비우지 않으면 새 수명의 첫 키들이 옛 번호와 겹쳐 조용히 버려진다 — 창을 다시 연 사람에게는
+      // 단축키가 한동안 죽은 것으로 보인다.
+      if (owner === this.host) this.pressedKeys.clear();
+    }
     if (owner !== this.host) return;
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
@@ -236,6 +242,8 @@ export class DesktopEngine implements CdpClient {
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }
     this.pending.clear();
     this.placements.clear();
+    // 번호는 셸의 수명 안에서만 뜻이 있다 — 다음 셸은 1 부터 센다.
+    this.pressedKeys.clear();
     this.publish();
     const resolve = this.closedResolve;
     this.closedResolve = null;
