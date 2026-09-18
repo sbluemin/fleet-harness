@@ -168,7 +168,9 @@ async function boot(): Promise<void> {
    */
   const browserViews = createDesktopBrowserViews({
     window: () => window,
-    createView: (partition) => new WebContentsView({ webPreferences: { partition, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } }),
+    // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
+    // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
+    createView: (partition) => new WebContentsView({ webPreferences: { partition, focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } }),
     zoomFactor: () => window?.webContents.getZoomFactor() ?? 1,
     scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,

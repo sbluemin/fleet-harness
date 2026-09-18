@@ -154,17 +154,7 @@ export interface DesktopBrowserSnapshot {
   readonly views: readonly DesktopBrowserView[];
   /** 아직 결과를 받지 못한 명령 전부. 셸은 이미 실행한 id 를 건너뛴다. */
   readonly commands: readonly DesktopBrowserCommand[];
-  /**
-   * 뷰가 키보드 포커스를 쥔 동안 셸이 페이지 대신 가로챌 Console 조합. 뷰는 창 안의 또 다른 Chromium 이라
-   * 그 위에서 누른 키는 콘솔 렌더러에 닿지 않는다 — 가로채지 않으면 ⌘K 같은 Console 단축키가 통째로 죽는다.
-   * 어떤 조합이 Console 것인지는 콘솔이 정해 여기 싣고, 셸은 그 목록만 relay 의 `keys` 로 되돌린다.
-   * 없거나 비어 있으면 셸은 아무 키도 가로채지 않는다(옛 콘솔과 붙은 새 셸이 그렇다).
-   */
-  readonly chords?: readonly string[];
 }
-
-/** 조합 문법 — `Mod+Alt+KeyB`처럼 수식키(Mod·Ctrl·Alt·Shift, 이 순서)와 `KeyboardEvent.code` 를 `+` 로 잇는다. */
-const CHORD_SYNTAX = /^(?:(?:Mod|Ctrl|Alt|Shift)\+){0,4}[A-Za-z0-9]{1,32}$/u;
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
 export interface DesktopBrowserRelay {
@@ -176,19 +166,11 @@ export interface DesktopBrowserRelay {
   readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
   readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
   readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];
-  /**
-   * 셸이 뷰 위에서 가로챈 Console 조합 — 스냅샷의 `chords` 에 있던 것만 온다. 콘솔이 그 명령을 발화한다.
-   * `id` 는 셸 수명 안에서 단조 증가한다: relay 는 응답이 오지 않으면 같은 몸을 다시 보내므로, 이것이 없으면
-   * 응답 한 번을 잃었을 때 한 번 누른 토글이 두 번 발화해 제자리로 돌아온다. `repeat` 는 눌러 둔 키의 반복분으로,
-   * 콘솔의 토글들이 그 표식을 보고 한 번만 움직인다.
-   */
-  readonly keys?: readonly { readonly viewId: string; readonly chord: string; readonly id?: number; readonly repeat?: boolean }[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const isSafeId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/u.test(value);
-const isChord = (value: unknown): value is string => typeof value === "string" && CHORD_SYNTAX.test(value);
 
 export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserBounds {
   return isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y) && isFiniteNumber(value.width) && isFiniteNumber(value.height) && value.width >= 0 && value.height >= 0;
@@ -205,8 +187,7 @@ export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowser
 
 export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowserSnapshot {
   return isRecord(value) && isFiniteNumber(value.generation) && Array.isArray(value.views) && value.views.every(isDesktopBrowserView)
-    && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
-    && (value.chords === undefined || (Array.isArray(value.chords) && value.chords.every(isChord)));
+    && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand);
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {
@@ -216,7 +197,5 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
-  if (value.keys !== undefined && !(Array.isArray(value.keys) && value.keys.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isChord(entry.chord)
-    && (entry.id === undefined || isFiniteNumber(entry.id)) && (entry.repeat === undefined || typeof entry.repeat === "boolean")))) return false;
   return true;
 }

@@ -56,7 +56,6 @@ export interface BrowserOperationState {
  * 예산을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 큐에 갇힌다.
  */
 export type BrowserStateListener = (state: BrowserOperationState) => void;
-export type BrowserChordListener = (chord: { readonly operationId: string; readonly chord: string; readonly repeat: boolean }) => void;
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
@@ -175,7 +174,6 @@ export class BrowserService {
   private engineError: string | null = null;
   private readonly operations = new Map<string, OperationBrowser>();
   private readonly stateListeners = new Set<BrowserStateListener>();
-  private readonly chordListeners = new Set<BrowserChordListener>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   /** 셸의 Chromium 이 보고한 일반 Chrome UA 와 브랜드 메타데이터 — 엔진을 집을 때 만든다. */
   private identity: { userAgent: string; metadata: Record<string, unknown> } | null = null;
@@ -273,7 +271,6 @@ export class BrowserService {
     this.disposed = true;
     for (const op of this.operations.values()) for (const call of op.agentCalls) call.abort();
     this.stateListeners.clear();
-    this.chordListeners.clear();
     await this.stopEngine();
     this.operations.clear();
   }
@@ -304,14 +301,6 @@ export class BrowserService {
     this.deps.desktop.place(operationId, placement);
   }
 
-  /**
-   * 패널이 알려 준 Console 조합 — 뷰가 포커스를 쥔 동안 셸이 이것만 가로채 되돌려 보낸다.
-   * 어떤 조합이 Console 것인지는 등록부를 가진 렌더러가 안다.
-   */
-  declareChords(chords: readonly string[]): void {
-    this.deps.desktop.setChords(chords);
-  }
-
   state(operationId: string): BrowserOperationState {
     const op = this.operation(operationId);
     const { available, reason } = this.availability();
@@ -338,12 +327,6 @@ export class BrowserService {
   private emitState(op: OperationBrowser): void {
     const state = this.state(op.operationId);
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
-  }
-
-  /** 네이티브 뷰 위에서 눌린 Console 조합 — 그 화면의 패널이 자기 창의 단축키로 되돌려 발화한다. */
-  onChord(listener: BrowserChordListener): () => void {
-    this.chordListeners.add(listener);
-    return () => { this.chordListeners.delete(listener); };
   }
 
   /** 허용 회수·Operation 종료 — 진행 중 에이전트 호출을 끊고 탭과 컨텍스트를 닫는다. */
@@ -626,13 +609,6 @@ export class BrowserService {
         if (width === op.viewport.width && height === op.viewport.height && scale === op.viewport.scale) return;
         op.viewport = { ...op.viewport, width, height, scale };
         this.emitState(op);
-        return;
-      }
-      case "Fleet.chordPressed": {
-        // 셸이 뷰 위에서 가로챈 Console 조합 — 그 창의 패널이 자기 창에서 되눌러 준다.
-        const chord = typeof p.chord === "string" ? p.chord : "";
-        const repeat = p.repeat === true;
-        if (chord) for (const listener of this.chordListeners) { try { listener({ operationId: op.operationId, chord, repeat }); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
         return;
       }
       case "Target.detachedFromTarget": {

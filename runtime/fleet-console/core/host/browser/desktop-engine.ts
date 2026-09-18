@@ -20,8 +20,6 @@ const ATTACH_TIMEOUT_MS = 10_000;
 /** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
 const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
-/** 조합 문법 — 콘솔 렌더러의 등록부와 같은 모양만 셸로 내려보낸다. */
-const CHORD_SYNTAX = /^(?:(?:Mod|Ctrl|Alt|Shift)\+){0,4}[A-Za-z0-9]{1,32}$/u;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
 interface ViewRecord { id: string; operationId: string; partition: string; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
@@ -41,9 +39,6 @@ export class DesktopEngine implements CdpClient {
   private readonly listeners = new Set<CdpListener>();
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
-  private chords: readonly string[] = [];
-  /** 이미 발화한 가로채기 일련번호 — 셸의 relay 재시도를 거른다. */
-  private readonly pressedKeys = new Set<number>();
   private nextCommandId = 1;
   private generation = 0;
   private host: string | null = null;
@@ -104,18 +99,7 @@ export class DesktopEngine implements CdpClient {
       const visible = view.active && placement !== null && placement.visible;
       return { id: view.id, operationId: view.operationId, partition: view.partition, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
-    return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command), ...(this.chords.length ? { chords: this.chords } : {}) };
-  }
-
-  /**
-   * 뷰 위에서 셸이 가로채야 할 Console 조합 — 콘솔 렌더러가 자기 등록부에서 풀어 알려 준다.
-   * 문법에 맞지 않는 것은 버린다: 이 목록은 그대로 셸의 스냅샷에 실린다.
-   */
-  setChords(next: readonly string[]): void {
-    const chords = [...new Set(next.filter((chord) => CHORD_SYNTAX.test(chord)))];
-    if (chords.length === this.chords.length && chords.every((chord, index) => chord === this.chords[index])) return;
-    this.chords = chords;
-    this.publish();
+    return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command) };
   }
 
   /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
@@ -133,13 +117,7 @@ export class DesktopEngine implements CdpClient {
 
   /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
   relay(owner: string, body: DesktopBrowserRelay): void {
-    if (body.hello) {
-      this.identities.set(owner, body.hello);
-      // 셸이 자기를 소개하는 것은 그 셸의 수명이 새로 시작했다는 뜻이고, 그때 가로채기 일련번호도 1 부터 다시 센다.
-      // 여기서 비우지 않으면 새 수명의 첫 키들이 옛 번호와 겹쳐 조용히 버려진다 — 창을 다시 연 사람에게는
-      // 단축키가 한동안 죽은 것으로 보인다.
-      if (owner === this.host) this.pressedKeys.clear();
-    }
+    if (body.hello) this.identities.set(owner, body.hello);
     if (owner !== this.host) return;
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
@@ -170,18 +148,6 @@ export class DesktopEngine implements CdpClient {
     for (const event of body.events ?? []) {
       if (!this.views.has(event.viewId)) continue;
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
-    }
-    // 뷰가 포커스를 쥔 채로 눌린 Console 조합 — 셸이 페이지 대신 가로챘다. 콘솔 렌더러가 그 명령을 발화한다.
-    // relay 는 응답을 잃으면 같은 몸을 다시 보내므로, 이미 발화한 일련번호는 건너뛴다 — 한 번 누른 토글이
-    // 두 번 움직여 제자리로 돌아오는 일이 없게.
-    for (const key of body.keys ?? []) {
-      if (!this.views.has(key.viewId)) continue;
-      if (key.id !== undefined) {
-        if (this.pressedKeys.has(key.id)) continue;
-        this.pressedKeys.add(key.id);
-        if (this.pressedKeys.size > 2_000) for (const id of [...this.pressedKeys].slice(0, 1_000)) this.pressedKeys.delete(id);
-      }
-      this.emit({ method: "Fleet.chordPressed", params: { chord: key.chord, repeat: key.repeat === true }, sessionId: key.viewId });
     }
     if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
   }
@@ -242,8 +208,6 @@ export class DesktopEngine implements CdpClient {
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }
     this.pending.clear();
     this.placements.clear();
-    // 번호는 셸의 수명 안에서만 뜻이 있다 — 다음 셸은 1 부터 센다.
-    this.pressedKeys.clear();
     this.publish();
     const resolve = this.closedResolve;
     this.closedResolve = null;

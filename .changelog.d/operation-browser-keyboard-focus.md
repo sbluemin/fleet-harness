@@ -4,5 +4,5 @@ branch: operation-browser-keyboard-focus
 
 ### fleet-console
 #### Fixed
-- Console shortcuts such as Cmd+K keep working while you use the Operation Browser, instead of going dead until you click elsewhere in the Console.
-  ko: Operation 브라우저를 쓰는 동안에도 Cmd+K 같은 Console 단축키가 그대로 동작합니다. 콘솔의 다른 곳을 눌러야 살아나던 문제가 사라졌습니다.
+- Operation Browser navigation no longer automatically takes keyboard focus from the Console; click the browser to use it directly.
+  ko: Operation 브라우저의 페이지 이동이 Console의 키보드 포커스를 자동으로 가져가지 않습니다. 브라우저를 직접 사용하려면 클릭하세요.
