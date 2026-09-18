@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.97.1] - 2026-09-18
+
+### fleet-console
+
+#### Fixed
+- Operation 브라우저의 페이지 이동이 Console의 키보드 포커스를 자동으로 가져가지 않습니다. 브라우저를 직접 사용하려면 클릭하세요.
+
 ## [1.97.0] - 2026-09-16
 
 ### fleet-console

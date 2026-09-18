@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.97.1] - 2026-09-18
+
+### fleet-console
+
+#### Fixed
+- Operation Browser navigation no longer automatically takes keyboard focus from the Console; click the browser to use it directly.
+
 ## [1.97.0] - 2026-09-16
 
 ### fleet-console
