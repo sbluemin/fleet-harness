@@ -76,9 +76,10 @@ function wrapTtl(gesture: ConsoleUseGesture): number {
 /**
  * 만료 경계마다 깨어난다 — 걷히기 LEAVE_MS 전에 `leaving` 으로 갈아 끼우고, 만료에 지운다.
  * 1초 고정 주기로는 220ms 페이드 창을 맞출 수 없어 다음 경계까지의 시간을 계산해 잔다.
+ * 부를 때마다 다시 잰다: 긴 시선(8초) 뒤에 짧은 누름(3초)이 오면 먼저 잡힌 타이머는 누름의 경계를 모른다.
  */
 function scheduleSweep(): void {
-  if (sweeper !== null) return;
+  if (sweeper !== null) { clearTimeout(sweeper); sweeper = null; }
   const now = Date.now();
   let next = Number.POSITIVE_INFINITY;
   for (const map of [operationWrap, theaterWrap, groupWrap, panelWrap]) {
