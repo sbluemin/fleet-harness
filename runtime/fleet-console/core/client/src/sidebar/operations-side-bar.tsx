@@ -1,6 +1,6 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { gestureCallerLabel, getTheaterScan, subscribeConsoleUseGestures } from "../console-use-gestures.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { createPortal } from "react-dom";
 import { useZenMode } from "../zen-mode.js";
 
@@ -1522,8 +1522,11 @@ function TheaterSectionHeader({
 }: TheaterSectionHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
+  // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다.
+  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getTheaterWrap(theater.id), () => null);
   const headerClassName = [
     "side-bar-theater-header",
+    consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
     dragging ? "side-bar-theater-header--dragging" : "",
     dropTarget ? "side-bar-theater-header--drop-target" : "",
@@ -1586,7 +1589,7 @@ function TheaterSectionHeader({
         onClick={select}
         onKeyDown={handleKeyDown}
         aria-current={active ? "true" : undefined}
-        title={active ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
+        title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
         <span className="side-bar-theater-anchor" aria-hidden="true">
           {theaterInitials(theater.label)}
@@ -1595,7 +1598,6 @@ function TheaterSectionHeader({
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </span>
         <span className="side-bar-theater-name">{theater.label}</span>
-        <TheaterScanMark theaterId={theater.id} />
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
@@ -1988,10 +1990,3 @@ function TrashIcon() {
 }
 
 /** Console Use 시선 — 에이전트가 이 Theater 의 목록을 훑거나 그룹을 만지면 헤더에 점이 두 번 맥동한다. */
-function TheaterScanMark({ theaterId }: { readonly theaterId: string }) {
-  const t = useT();
-  const scan = useSyncExternalStore(subscribeConsoleUseGestures, () => getTheaterScan(theaterId), () => null);
-  if (!scan) return null;
-  const label = t("sidebar.theater.scan", { caller: gestureCallerLabel(scan.caller), summary: scan.summary });
-  return <span className="side-bar-theater-scan" role="img" aria-label={label} title={label} />;
-}

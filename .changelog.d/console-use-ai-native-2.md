@@ -4,8 +4,8 @@ branch: console-use-ai-native-2
 
 ### fleet-console
 #### Changed
-- Console use now shows what an agent is doing on your Console: the Operation, group, or Repository/File panel it reads gets a brief mark, messages and answers it sends carry its name, groups and Operations it creates are attributed to it, and its own caption shows a one-line subtitle of the current action.
-  ko: 이제 에이전트가 Console 을 쓰는 것이 화면에 보입니다. 에이전트가 읽는 Operation·그룹·저장소/파일 패널에 잠깐 표식이 서고, 보낸 메시지와 답에는 에이전트 이름이 붙으며, 만든 그룹과 시작한 Operation 에는 누가 했는지가 남고, 에이전트 자신의 캡션 아래에는 지금 하는 일이 한 줄로 흐릅니다.
+- Console use now shows what an agent is doing on your Console: the Operation, group, Theater, or Repository/File panel it reads or changes is briefly wrapped in a pulse that matches the Console use badge, messages and answers it sends carry its name, and groups and Operations it creates are attributed to it.
+  ko: 이제 에이전트가 Console 을 쓰는 것이 화면에 보입니다. 에이전트가 읽거나 바꾸는 Operation·그룹·Theater·저장소/파일 패널이 「콘솔 사용」 배지와 같은 펄스로 잠깐 감싸이고, 보낸 메시지와 답에는 에이전트 이름이 붙으며, 만든 그룹과 시작한 Operation 에는 누가 했는지가 남습니다.
 - Console use tools are reorganized around the Console's own places (sidebar, Operation panel, Session Analyst, Quick Launch, Repository and File Explorer) and reduced to ten: `console_context`, `console_operations`, `console_organize`, `console_operation`, `console_send`, `console_panel`, `console_analyst`, `console_launch`, `console_repo`, `console_file`. Agents can now start an Operation directly into a group with a title, rename groups, and delete empty ones.
   ko: Console use 도구가 Console 의 자리(사이드바·Operation 패널·Session Analyst·Quick Launch·저장소·파일 탐색기)에 맞춰 10종으로 재편되었습니다: `console_context`, `console_operations`, `console_organize`, `console_operation`, `console_send`, `console_panel`, `console_analyst`, `console_launch`, `console_repo`, `console_file`. 에이전트가 그룹 안에 이름을 붙여 Operation 을 바로 시작하고, 그룹 이름을 바꾸거나 빈 그룹을 지울 수 있습니다.
 - Questions an agent asks a Session Analyst through Console use now appear in that Operation's own Analyst panel with the agent's name, and the conversation is there when you open the panel later.

@@ -20,7 +20,7 @@ import {
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { fetchAnalysisCatalog } from "./analysis-api.js";
-import { gestureCallerLabel, getCallerStrip, getOperationGaze, readLaunchAttribution, subscribeConsoleUseGestures } from "../console-use-gestures.js";
+import { gestureCallerLabel, getOperationWrap, readLaunchAttribution, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readWatchEnabled, readInstalledExperiments, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus } from "../store.js";
 import { ComputerScreenShare, useOperationUse } from "./computer-screen-share.js";
@@ -633,7 +633,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
   const liveReveal = React.useSyncExternalStore(subscribeOperationReveals, () => getOperationReveal(context.operationId), () => null);
   // Console Use 시선 — 에이전트가 이 Operation 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
-  const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationGaze(context.operationId), () => null);
+  const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationWrap(context.operationId)?.gesture ?? null, () => null);
   const launchedBy = readLaunchAttribution(context.operation.payload, context.operation.ts.createdAt);
   const watchBubble = (experiments?.sessionWatch === true && watchEnabled) || liveReveal || liveGaze
     ? <span className="session-watch-host" aria-hidden={liveReview === null && liveReveal === null && liveGaze === null ? true : undefined}>
@@ -810,7 +810,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   if (chatMode) {
     return (
       <div className="agent-stream-host">
-        <ConsoleUseStrip operationId={context.operationId} language={context.language} />
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
         <ComputerScreenShare operationId={context.operationId} />
       </div>
@@ -820,7 +819,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
-        <ConsoleUseStrip operationId={context.operationId} language={context.language} />
         <DormantOperationView context={context} session={session} />
         {session.resumeAvailable ? <DormantChatEntry context={context} /> : null}
       </div>
@@ -829,7 +827,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   return (
     <div className="agent-stream-host">
-      <ConsoleUseStrip operationId={context.operationId} language={context.language} />
       {/* 전환을 누르는 곳은 캡션이고, 무엇이 끝나야 넘어갈 수 있는지 말하는 이 오버레이는 본문이다. */}
       {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.operationId, false)} /> : null}
       <TerminalSurface
@@ -3516,24 +3513,5 @@ function AgentGlyph() {
       <path d="M8 2.6 12.6 5.2v5.6L8 13.4 3.4 10.8V5.2Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
       <path d="M6.2 7.9h3.6M8 6.1v3.6" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" />
     </svg>
-  );
-}
-
-/**
- * 호출자 패널의 행위 자막 — 이 Operation 이 Console Use 로 방금 무엇을 했는지 한 줄. 최근 것만 보이고 지나가면
- * 사라진다. 별도 이력 패널은 두지 않는다. 호출이 없는 Operation 에는 띠 자체가 없다.
- */
-function ConsoleUseStrip({ operationId, language }: { readonly operationId: string; readonly language?: "en" | "ko" }) {
-  const t = getT(language ?? "en");
-  const strip = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getCallerStrip(operationId), () => []);
-  const last = strip[strip.length - 1];
-  if (!last) return null;
-  const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(last.at));
-  return (
-    <div className="console-use-strip" role="status" aria-live="polite" title={strip.map((gesture) => gesture.summary).join(" · ")}>
-      <span className="console-use-strip__label">{t("terminal.experiments.menuConsoleUse")}</span>
-      <span className="console-use-strip__text">{last.summary}</span>
-      <span className="console-use-strip__time">{time}</span>
-    </div>
   );
 }

@@ -17461,50 +17461,86 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 /* ------------------------------------------------------------------------------------------
- * Console Use 제스처 — 에이전트가 이 Console 을 쓰는 것이 보이는 자리들.
- * 색은 Console Use 채널(--console-use-badge) 하나다: 캡션 배지·레일과 같은 채널이며, 신호 토큰이나
- * 아이덴티티 톤을 빌리지 않는다. 시선(gaze)은 점, 저자(by)는 잉크, 자막은 한 줄. 배경은 칠하지 않는다.
+ * Console Use 제스처 — 에이전트가 쓰고 있는 리소스를 통째로 감싸는 펄스.
+ * 요소 안에 점이나 아이콘을 그리지 않는다: 사이드바 행·Theater 행·그룹 헤더·레일 버튼·패널이 각자의
+ * 윤곽 그대로 감싸인다. 링은 캡션 「콘솔 사용」 배지의 halo(agent-use-halo-console, 0→7px 1.6s ease-out)와
+ * 같은 값이라 배지와 표식이 한 행위자로 읽히고, 면은 14%↔5% 로 같은 리듬에 숨쉰다.
+ * 색은 Console Use 채널(--console-use-badge) 하나다 — 정체성 톤·상태 토큰을 빌리지 않고, 테두리(상태 소유)는
+ * 건드리지 않는다: 행은 box-shadow 링 + background-image 워시, 패널은 outline 이 함께 호흡한다.
+ * 도착은 8px 바깥에서 링이 몸에 붙듯 들어오고(360ms), 걷힐 때는 스토어가 LEAVE_MS 전에 is-leaving 을 얹어
+ * 220ms 페이드한다. 같은 대상 재호출은 클래스가 그대로라 도착을 다시 재생하지 않는다.
  * ------------------------------------------------------------------------------------------ */
-.side-bar-chip-gaze,
-.side-bar-group-header__by,
-.side-bar-theater-scan,
-.rail-panel-gaze {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--console-use-badge);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--console-use-badge) 28%, transparent);
-  animation: console-use-gaze 1.2s ease-in-out 2;
+.is-console-use-wrapped {
+  --console-use-wrap: var(--console-use-badge);
+  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite;
 }
-.side-bar-group-header__by { animation: none; margin-left: var(--space-1); opacity: 0.85; }
-.rail-panel-gaze { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; }
-@keyframes console-use-gaze {
-  0%, 100% { box-shadow: 0 0 0 2px color-mix(in oklch, var(--console-use-badge) 28%, transparent); }
-  50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--console-use-badge) 0%, transparent); }
+/* 워시는 배경이 아니라 배경 이미지로 얹는다 — 행·헤더의 자기 배경(hover·활성·그룹 워시)을 덮어쓰지 않는다. */
+.is-console-use-wrapped:not(.canvas-operation) {
+  background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 14%, transparent), color-mix(in oklch, var(--console-use-wrap) 14%, transparent));
+  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite, console-use-wrap-breathe 1.6s ease-in-out 360ms infinite;
 }
-/* 패널 테두리 강조 — 시선이 닿은 Operation. 테두리는 상태 소유이므로 바깥 링으로만 말한다. */
-.operation-frame.is-console-use-gazed { outline: 1px solid color-mix(in oklch, var(--console-use-badge) 70%, transparent); outline-offset: 1px; }
-/* 호출자 패널 캡션 아래 자막 — 지금의 호출 한 줄. 지나가면 사라지고 이력 패널은 없다. */
-.console-use-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 20px;
-  padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--hairline);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
+@keyframes console-use-wrap-arrive {
+  from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
+  to { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 70%, transparent); }
 }
-.console-use-strip__label { color: var(--console-use-badge); font-weight: var(--weight-bold); flex: none; }
-.console-use-strip__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.console-use-strip__time { flex: none; color: var(--text-tertiary); }
+@keyframes console-use-wrap-halo {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 70%, transparent); }
+  100% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
+}
+@keyframes console-use-wrap-breathe {
+  0%, 100% { background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 14%, transparent), color-mix(in oklch, var(--console-use-wrap) 14%, transparent)); }
+  50% { background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 5%, transparent), color-mix(in oklch, var(--console-use-wrap) 5%, transparent)); }
+}
+/* 패널 — 큰 요소라 7px 링만으로는 약하다. outline 이 자리잡으며(offset 7→1px) 함께 호흡하고 링은 10px 까지 퍼진다. */
+.canvas-operation.is-console-use-wrapped {
+  outline: 1px solid var(--console-use-wrap);
+  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo-lg 1.6s ease-out 360ms infinite, console-use-ring-settle 420ms ease-out both, console-use-ring-breathe 1.6s ease-in-out 420ms infinite;
+}
+@keyframes console-use-wrap-halo-lg {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
+}
+@keyframes console-use-ring-settle {
+  from { outline-offset: 7px; outline-color: color-mix(in oklch, var(--console-use-wrap) 25%, transparent); }
+  to { outline-offset: 1px; }
+}
+@keyframes console-use-ring-breathe {
+  0%, 100% { outline-color: color-mix(in oklch, var(--console-use-wrap) 85%, transparent); }
+  50% { outline-color: color-mix(in oklch, var(--console-use-wrap) 35%, transparent); }
+}
+/* 레일 버튼 — 상자 테두리만 채널 색을 잠깐 빌린다. 아이콘 잉크는 그대로다. */
+.right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
+/* 제스처 종류 — 색도 리듬도 하나, 움직임만 갈린다. press 는 도착 직후 요소가 한 번 눌리고,
+   input 은 오른쪽 끝에 캐럿이 깜빡이고, create 는 자라나며 감싸인다. */
+.is-console-use-wrapped.is-press:not(.canvas-operation) { animation-name: console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-press; animation-duration: 360ms, 1.6s, 1.6s, 220ms; animation-delay: 0s, 360ms, 360ms, 360ms; animation-iteration-count: 1, infinite, infinite, 1; }
+@keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
+.is-console-use-wrapped.is-input:not(.canvas-operation) { position: relative; }
+.is-console-use-wrapped.is-input:not(.canvas-operation)::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 1.5px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--console-use-wrap);
+  pointer-events: none;
+  animation: console-use-wrap-caret 1s steps(2, start) infinite;
+}
+@keyframes console-use-wrap-caret { 50% { opacity: 0; } }
+.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
+@keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
+/* 떠남 — 스토어가 만료 LEAVE_MS 전에 얹는다. 링·워시가 함께 꺼진다. */
+.is-console-use-wrapped.is-leaving { animation: console-use-wrap-leave 220ms ease-in both; }
+.is-console-use-wrapped.is-leaving::after { display: none; }
+@keyframes console-use-wrap-leave { to { box-shadow: 0 0 0 0 transparent; background-image: none; outline-color: transparent; } }
 /* 저자 잉크 — 사람이 아닌 발화자·답변자·닫은 이. */
 .chat-by-agent { color: var(--console-use-badge); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; }
+/* reduced-motion — 정지한 1px 링 + 12% 워시. 무엇이 감싸였는지는 남고 움직임만 없다. */
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-chip-gaze, .side-bar-theater-scan, .rail-panel-gaze { animation: none; }
+  .is-console-use-wrapped, .is-console-use-wrapped::after { animation: none; }
+  .is-console-use-wrapped { box-shadow: 0 0 0 1px color-mix(in oklch, var(--console-use-wrap) 60%, transparent); }
+  .is-console-use-wrapped:not(.canvas-operation) { background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 12%, transparent), color-mix(in oklch, var(--console-use-wrap) 12%, transparent)); }
+  .canvas-operation.is-console-use-wrapped { outline-offset: 1px; }
+  .is-console-use-wrapped.is-leaving { box-shadow: none; background-image: none; outline-color: transparent; }
 }

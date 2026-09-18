@@ -1,7 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { ClientApiCapability, ClientSettingsCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
-import { getOperationGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
+import { getOperationWrap, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, fetchAnalysisJournal, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 import { subscribeInstalledExperiments } from "./experiments-api.js";
@@ -39,7 +39,7 @@ export function useAnalysisStore(context: OperationRenderContext): AnalysisStore
   // 패널이 열릴 때마다 채택을 시도한다 — 스토어는 캡션 칩 때문에 분석가가 시작되기 전에 만들어질 수 있고, 그 사이
   // 에이전트가 console_analyst 로 시작·질문했으면 지금 그 원장을 그려야 「분석가 시작」 대신 대화가 보인다.
   React.useEffect(() => { store.adopt(); }, [store]);
-  React.useEffect(() => subscribeConsoleUseGestures(() => { if (getOperationGaze(context.operationId)?.tool === "console_analyst") store.adopt(); }), [store, context.operationId]);
+  React.useEffect(() => subscribeConsoleUseGestures(() => { if (getOperationWrap(context.operationId)?.gesture.tool === "console_analyst") store.adopt(); }), [store, context.operationId]);
   return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset, refreshCatalog: store.refreshCatalog, adopt: store.adopt };
 }
 
