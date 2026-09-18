@@ -1,4 +1,4 @@
-import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent } from "./analysis-types.js";
+import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent, AnalysisOrigin } from "./analysis-types.js";
 
 // Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
 export const MAX_ANALYSIS_ARTIFACTS = 32;
@@ -18,7 +18,7 @@ export interface AnalysisTurnReceipt {
    한 덩어리로 병합되던 v1(`last.text + text`)의 봉합 자국이 여기서 사라진다. */
 export interface AnalysisSegment { readonly text: string; readonly steps: readonly AnalysisToolStep[]; }
 export type AnalysisEntry =
-  | { readonly role: "user"; readonly text: string; readonly at?: number }
+  | { readonly role: "user"; readonly text: string; readonly at?: number; readonly by?: AnalysisOrigin }
   | { readonly role: "analyst"; readonly segments: readonly AnalysisSegment[]; readonly at?: number; readonly receipt?: AnalysisTurnReceipt };
 
 /* 원장을 과정과 확정 답으로 가른다. 답 = 도구가 뒤따르지 않은 마지막 텍스트 구간.
@@ -100,7 +100,9 @@ export type AnalysisAction =
   | { readonly type: "stop-failed"; readonly message: string; readonly now: number }
   | { readonly type: "reset" }
   | { readonly type: "clear-artifacts" }
-  | { readonly type: "view-mode"; readonly mode: "chat" | "artifacts" };
+  | { readonly type: "view-mode"; readonly mode: "chat" | "artifacts" }
+  /** 서버 원장으로 화면을 채운다 — 에이전트가 시작·질문한 분석가도 사람에게 같은 대화로 보인다. */
+  | { readonly type: "hydrate"; readonly started: boolean; readonly model?: string; readonly entries: readonly { readonly at: number; readonly event: AnalysisEvent }[]; readonly now: number };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
@@ -145,11 +147,25 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
   if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null };
   if (action.type === "view-mode") return state.viewMode === action.mode ? state : { ...state, viewMode: action.mode };
+  if (action.type === "hydrate") {
+    let next: AnalysisState = { ...state, started: action.started, ...(action.model ? { model: action.model } : {}), entries: [], tools: [], busy: false, phase: "idle", error: null };
+    for (const row of action.entries) next = analysisReducer(next, { type: "event", event: row.event, now: row.at });
+    // 마지막 질문에 답이 아직 없으면 턴이 도는 중이다 — 스트림이 이어 그린다.
+    const last = next.entries[next.entries.length - 1];
+    if (last?.role === "user") next = { ...next, busy: true, phase: "starting", latestActivity: { kind: "starting", connected: true }, runStartedAt: last.at ?? action.now, runEndedAt: null };
+    return next;
+  }
   if (action.type !== "event") return state;
 
   const event = action.event;
   if (event.type === "connected") {
     return state.phase === "starting" ? { ...state, latestActivity: { kind: "starting", connected: true } } : state;
+  }
+  if (event.type === "user") {
+    // 사람의 질문은 보낼 때 이미 로컬로 섰다 — 같은 글이 에코로 오면 겹치지 않게 한다. 에이전트의 질문은 여기서만 선다.
+    const last = state.entries[state.entries.length - 1];
+    if (!event.by && last?.role === "user" && last.text === event.text && !last.by) return state;
+    return { ...state, entries: [...state.entries, { role: "user", text: event.text, at: event.at, ...(event.by ? { by: event.by } : {}) }], busy: true, phase: state.phase === "idle" || state.phase === "complete" ? "starting" : state.phase, runStartedAt: event.at, runEndedAt: null, error: null };
   }
   if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text, action.now) };
   // Thought content is deliberately neither stored nor rendered; only the observed event advances the phase.

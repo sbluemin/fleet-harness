@@ -1,4 +1,5 @@
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { gestureCallerLabel, getPanelGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -564,6 +565,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       onClick={handleClick}
     >
       {icon}
+      <RailPanelGaze panelId={entry.id} />
     </button>
   );
 }
@@ -575,4 +577,12 @@ function RailCollapseGlyph() {
 
 function RailKeepOpenGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.5h5.6M6.4 2.5v3.1L4.6 7.7v1h6.8v-1L9.6 5.6V2.5M8 8.7v4.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+/** Console Use 시선 — 에이전트가 이 레일 패널(저장소·파일)을 읽으면 아이콘 모서리에 점이 선다. */
+function RailPanelGaze({ panelId }: { readonly panelId: string }) {
+  const gaze = useSyncExternalStore(subscribeConsoleUseGestures, () => getPanelGaze(panelId), () => null);
+  if (!gaze) return null;
+  const label = `${gestureCallerLabel(gaze.caller)}: ${gaze.summary}`;
+  return <span className="rail-panel-gaze" role="img" aria-label={label} title={label} />;
 }

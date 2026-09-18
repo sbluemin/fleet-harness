@@ -18,6 +18,7 @@ import { Toast, ToastHost } from "./components/toast.js";
 import { UpdateCurtain } from "./components/update-curtain.js";
 import { claimTheaterBootMinimization } from "./boot-minimization-session.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
+import { subscribeClosingByAgent, type ClosingByAgent } from "./console-use-gestures.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { OperationBrowserWelcome } from "./components/operation-browser-welcome.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
@@ -68,6 +69,8 @@ export function App() {
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingDeletions, setPendingDeletions] = useState<readonly DeferredDeletionReceipt[]>([]);
+  // 에이전트가 닫은 Operation 의 저자 — 되돌리기 배너가 "누가 닫았는지" 를 말한다. 배너가 내려가면 함께 잊는다.
+  const [deletionAuthors, setDeletionAuthors] = useState<ReadonlyMap<string, { readonly caller: string; readonly title: string }>>(new Map());
   const [undoClock, setUndoClock] = useState(Date.now());
   const pendingDeletionsRef = useRef(pendingDeletions);
   const undoInFlightRef = useRef(false);
@@ -333,6 +336,14 @@ export function App() {
     });
   }, []);
 
+  // Console Use 의 닫기 — 사람이 누른 것과 같은 되돌리기 창을 이 화면에도 세운다.
+  useEffect(() => subscribeClosingByAgent((closing: ClosingByAgent) => {
+    if (closing.kind !== "operation") return;
+    const caller = closing.by.kind === "operation" ? closing.by.title ?? closing.by.operationId : closing.by.pluginId;
+    setDeletionAuthors((current) => new Map(current).set(closing.deletionId, { caller, title: closing.targetTitle }));
+    enqueueDeletion({ deletionId: closing.deletionId, kind: closing.kind, targetId: closing.targetId, expiresAt: closing.expiresAt });
+  }), [enqueueDeletion]);
+
   const undoLastClose = useCallback(() => {
     if (undoInFlightRef.current) return;
     const currentNow = Date.now();
@@ -533,7 +544,7 @@ export function App() {
           <Toast
             open={activeDeletion !== null}
             tone="undo"
-            title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : t("chrome.toast.operationClosed")}
+            title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : activeDeletion && deletionAuthors.get(activeDeletion.deletionId) ? t("chrome.toast.operationClosedBy", deletionAuthors.get(activeDeletion.deletionId)!) : t("chrome.toast.operationClosed")}
             message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
             actionLabel={t("chrome.toast.undo")}
             onAction={undoLastClose}

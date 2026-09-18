@@ -27,6 +27,7 @@ import {
   type AgentChatStepGroup,
   type AgentChatTurn,
   type AgentChatTurnItem,
+  chatOriginLabel,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.js";
@@ -730,6 +731,7 @@ function ChatTurn({
           <div className="agent-chat-dispatch-meta">
             {/* "Quick Launch로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
                 더는 특기 사항이 아니고, 경로를 가르는 origin 와이어는 배지 하나 값이 아니다. */}
+            {turn.dispatch.by ? <span className="chat-by-agent">{chatOriginLabel(turn.dispatch.by)}</span> : null}
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
           </div>
           <div className="agent-chat-dispatch-bubble">{turn.dispatch.text}</div>
@@ -1488,6 +1490,7 @@ function AskSettled({
           <span className="agent-chat-ask-settled-head">{row.header}</span>
           <span aria-hidden="true">→</span>
           <span className="agent-chat-ask-settled-value">{row.value}</span>
+          {ask.by ? <span className="chat-by-agent">{chatOriginLabel(ask.by)}</span> : null}
         </div>
       ))}
     </>

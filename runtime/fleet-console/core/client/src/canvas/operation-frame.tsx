@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { getOperationGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
@@ -132,6 +133,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   // 색은 도트만 지고 이름은 캡션의 기존 중립 메타 티어를 그대로 상속한다.
   const groupLabelVisible = Boolean(groupName && groupColor);
   const theaterLabelVisible = Boolean(theaterLabel);
+  // Console Use 시선 — 에이전트가 이 패널을 읽으면 바깥 링이 잠깐 켜진다(테두리는 상태 소유).
+  const gazed = useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationGaze(operation.id) !== null, () => false);
   const className = [
     "canvas-operation",
     unseen ? "is-unseen" : "",
@@ -144,6 +147,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     deckTile ? "is-deck-tile" : "",
     topEdge ? "is-top-edge" : "",
     dragging ? "is-dragging" : "",
+    gazed ? "is-console-use-gazed" : "",
     frameStatusClass(status),
   ].filter(Boolean).join(" ");
 

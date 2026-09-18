@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { ConsoleCaller } from "./control.js";
 
 export interface PluginMcpTransport {
   mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): { url(): Promise<string>; dispose(): void };
@@ -14,17 +15,33 @@ export interface AiGatewayMcpHost {
 
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
 
-export const CONSOLE_READ_TOOLS = [
-  "console_context", "console_theaters", "console_operations", "console_operation", "console_events", "console_end",
-  // 관측의 확장 — 누가 무엇을 쓰는지, 한 Operation의 전체 대화·잡·카탈로그, 분석가의 산출물과 관찰 결과.
-  "console_using", "console_transcript", "console_jobs", "console_catalog", "console_analyst_artifacts", "console_watch_last",
-] as const;
+/**
+ * Console Use 도구는 Console 화면의 자리 이름을 갖는다 — 사이드바(operations·organize), Operation 패널
+ * (operation·send·panel·analyst), Quick Launch(launch). 자리가 없는 동사(자동화·사건 대기·영수증 조회)는
+ * 도구가 아니다. 호출 하나는 사용자 화면 위의 제스처 하나이며, 호스트가 `console-use:call` 사건으로 알린다.
+ */
+export const CONSOLE_READ_TOOLS = ["console_context", "console_operations", "console_operation"] as const;
 export const CONSOLE_CONTROL_TOOLS = [
-  ...CONSOLE_READ_TOOLS, "console_launch", "console_send", "console_interrupt", "console_action", "console_automation",
-  // 운용의 확장 — 사람이 Operation에 하는 나머지 동사(재개·닫기·이름·뷰), 정리(그룹·액센트·보이기), 자식 질문 답, 분석가 질문.
-  "console_resume", "console_close", "console_rename", "console_view", "console_group", "console_accent", "console_reveal", "console_answer", "console_analyst_ask",
+  ...CONSOLE_READ_TOOLS, "console_organize", "console_send", "console_panel", "console_analyst", "console_launch",
 ] as const;
 export type ConsoleUseToolId = (typeof CONSOLE_CONTROL_TOOLS)[number];
+
+/** 어느 화면 자리에 제스처가 닿는가. 내용(전사·diff·파일 본문)은 싣지 않는다 — 원격 세션도 받는 채널이다. */
+export type ConsoleUseCallTarget =
+  | { readonly kind: "theater"; readonly theaterId: string }
+  | { readonly kind: "operation"; readonly operationId: string }
+  | { readonly kind: "group"; readonly groupId: string; readonly theaterId: string }
+  | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string };
+
+export interface ConsoleUseCallEvent {
+  readonly caller: ConsoleCaller;
+  readonly tool: string;
+  /** 사람이 읽는 한 줄 — 호출자 패널의 자막에 그대로 나간다. 경로는 Theater 상대, 식별자는 제목으로. */
+  readonly summary: string;
+  readonly gesture: "gaze" | "input" | "press" | "create" | "wait";
+  readonly target?: ConsoleUseCallTarget;
+  readonly at: number;
+}
 
 export interface ConsoleUseSnapshot {
   readonly takenAt?: string;
@@ -64,6 +81,15 @@ export interface PluginMcpTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
+  /**
+   * Console Use 기여 도구의 화면 자리. 호스트는 호출마다 그 Activity Rail 패널에 시선 표식과 자막을
+   * 그린다 — 자리를 선언하지 않은 도구는 Console Use 에 실리지 않는다. `describe` 는 인자에서 자막
+   * 한 줄과 보기(view)·경로를 뽑는다; 경로는 Theater 상대여야 한다.
+   */
+  readonly surface?: {
+    readonly panelId: string;
+    describe(args: Record<string, unknown>): { readonly theaterId: string; readonly summary: string; readonly view?: string; readonly path?: string } | null;
+  };
   execute(args: unknown, context: {
     readonly cwd: string;
     readonly sessionLabel?: string;

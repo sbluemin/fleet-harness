@@ -10,6 +10,9 @@ export interface ConsoleActionInput {
   readonly model?: string;
   readonly effort?: string;
   readonly viewMode?: "chat" | "terminal";
+  /** launch 전용 — 태어날 때부터 속할 그룹과 이름. 같은 Theater 의 그룹이어야 한다. */
+  readonly groupId?: string;
+  readonly title?: string;
 }
 
 export interface ConsoleOperationObservation {

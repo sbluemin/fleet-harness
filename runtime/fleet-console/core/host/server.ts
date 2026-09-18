@@ -693,6 +693,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const consoleUseActivity = new Map<string, number>();
   const CONSOLE_REVEAL_EVENT_CHANNEL = "operation:reveal";
   pluginSseChannels.add(CONSOLE_REVEAL_EVENT_CHANNEL);
+  // 제스처 채널 — 호출자·도구·대상·시각만. 읽은 내용은 싣지 않는다.
+  const CONSOLE_CALL_EVENT_CHANNEL = "console-use:call";
+  pluginSseChannels.add(CONSOLE_CALL_EVENT_CHANNEL);
+  // 에이전트가 닫으면 사람 화면에도 되돌리기 배너가 서야 한다 — 저자와 함께.
+  const OPERATION_CLOSING_EVENT_CHANNEL = "operation:closing";
+  pluginSseChannels.add(OPERATION_CLOSING_EVENT_CHANNEL);
   const listOperationUse = () => {
     const experiments = readExperimentSettings(consoleSettingsStore);
     const current = operations.list();
@@ -712,12 +718,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   const consoleSurface: ConsoleSurface = {
     using: listOperationUse,
-    close: (operationId) => {
+    close: (operationId, by) => {
       if (deletionCoordinator.hasPendingOperation(operationId)) return null;
+      const targetTitle = operations.get(operationId)?.title ?? operationId;
       const receipt = deletionCoordinator.deleteOperation(operationId);
       if (!receipt) return null;
       persistDurableState();
+      publishPluginEvent(OPERATION_CLOSING_EVENT_CHANNEL, { receipt, targetTitle, by: by.kind === "operation" ? { ...by, title: operations.get(by.operationId)?.title ?? by.operationId } : by });
       return { deletionId: receipt.deletionId, undoUntil: new Date(receipt.expiresAt).toISOString() };
+    },
+    groups: (theaterId) => (theaterId ? operations.listGroups(theaterId) : operations.listAllGroups()).map((group) => ({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order })),
+    groupPatch: ({ id, name, color, delete: remove }) => {
+      const existing = operations.listAllGroups().find((group) => group.id === id);
+      if (!existing) return { ok: false, error: "unknown_group" };
+      if (remove) {
+        // 빈 그룹만 지운다 — 멤버가 있으면 되돌릴 수 없는 정리가 된다.
+        if (operations.list().some((node) => node.groupId === id)) return { ok: false, error: "group_not_empty" };
+        operations.deleteGroup(id); persistDurableState(); broadcastGroupRemoved(id, existing.theaterId);
+        return { ok: true, name: existing.name, theaterId: existing.theaterId };
+      }
+      const group = operations.updateGroup(id, { ...(name ? { name } : {}), ...(color ? { color } : {}) });
+      if (!group) return { ok: false, error: "unknown_group" };
+      persistDurableState(); broadcastGroupChanged(group);
+      return { ok: true, name: group.name, theaterId: group.theaterId };
     },
     rename: (operationId, title) => {
       const before = operations.get(operationId);
@@ -730,8 +753,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     accent: (operationId, accent) => !!pluginHostCapabilities.operations.patch(operationId, { accent }),
     group: ({ mode, theaterId, name, color, groupId, operationIds }) => {
-      let group: { readonly id: string; readonly name: string; readonly color: string } | null = null;
-      if (mode === "create") group = operations.createGroup({ theaterId, name: name!, color: color ?? "teal" });
+      let group: ReturnType<typeof operations.createGroup> | null = null;
+      if (mode === "create") { group = operations.createGroup({ theaterId, name: name!, color: color ?? "teal" }); broadcastGroupChanged(group); }
       else if (mode === "assign") {
         const existing = operations.listGroups(theaterId).find((candidate) => candidate.id === groupId);
         if (!existing) throw new Error("unknown_group");
@@ -752,6 +775,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   };
   const consoleUse = createConsoleUseMcpHost({
     surface: consoleSurface,
+    onCall: (event) => publishPluginEvent(CONSOLE_CALL_EVENT_CHANNEL, event),
     onOperationUse: (operationId, active) => {
       const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
       if (count) consoleUseActivity.set(operationId, count);
@@ -1124,6 +1148,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveLaunchCatalog: resolveOperationCatalog,
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     broadcastOperationChanged,
+    broadcastGroupChanged,
+    broadcastGroupRemoved,
     subscribeOperationSse: (req, res) => {
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
@@ -2705,6 +2731,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return JSON.stringify(rest);
   }
 
+  /** 그룹 사건 — 이름·색·순서뿐이라 민감 필드가 없다. 원격 세션에도 그대로 흐른다. */
+  function broadcastGroupChanged(group: { readonly id: string; readonly name: string; readonly color: string; readonly order: number; readonly theaterId: string; readonly createdAt: number }): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData("group:changed", { group });
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+  }
+  function broadcastGroupRemoved(groupId: string, theaterId: string): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData("group:removed", { groupId, theaterId });
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+  }
   function broadcastOperationChanged(node: OperationNode): void {
     if (operationSseSubscribers.size === 0) return;
     const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [

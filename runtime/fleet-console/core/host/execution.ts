@@ -108,7 +108,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext) {
     readAiGatewaySettings: aiGatewayStore.read,
   });
   // Console Use 확장면의 분석가 묶음 — 서버가 만든 같은 객체에 채운다.
-  if (ctx.consoleSurface) Object.assign(ctx.consoleSurface, { analystAsk: analysis.ask, analystArtifacts: analysis.artifacts } satisfies Partial<NonNullable<typeof ctx.consoleSurface>>);
+  if (ctx.consoleSurface) Object.assign(ctx.consoleSurface, { analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state } satisfies Partial<NonNullable<typeof ctx.consoleSurface>>);
   const sessionWatch = registerExperimentRoutes(ctx, {});
   const agentLaunchKinds = await registerAgentRoutes(ctx, runtime, {
     globalOptionsService: infraServices.globalOptionsService,

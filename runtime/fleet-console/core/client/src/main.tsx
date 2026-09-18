@@ -36,6 +36,7 @@ import { HostPickerScreen } from "./components/host-picker-surface.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
+import { installConsoleUseGestures } from "./console-use-gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "./store.js";
 import { applyStoredSideBarGlass } from "./sidebar/operations-side-bar-store.js";
@@ -111,6 +112,7 @@ if (app && hostPicker) {
   );
 } else if (app) {
   const registry = await loadPluginRegistry();
+  installConsoleUseGestures();
   connectOperationsSse();
   createRoot(app).render(
     <StrictMode>

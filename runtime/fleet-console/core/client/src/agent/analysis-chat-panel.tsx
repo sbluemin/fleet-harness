@@ -1,3 +1,4 @@
+import { analysisOriginLabel } from "./analysis-types.js";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { AgentGlyph } from "./agent-glyphs.js";
@@ -227,7 +228,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   {earlierEntries.map((entry, index) => entry.role === "user" ? (
                     <li className="session-analyst__message session-analyst__message--user" key={`user-${index}`}>
                       <span className="session-analyst__ask-meta">
-                        <span className="session-analyst__ask-who">{t("terminal.analyst.you")}</span>
+                        <span className={`session-analyst__ask-who${entry.by ? " chat-by-agent" : ""}`}>{entry.by ? t("terminal.analyst.askedBy", { caller: analysisOriginLabel(entry.by) }) : t("terminal.analyst.you")}</span>
                         {entry.at !== undefined ? <span>{formatClock(entry.at, language)}</span> : null}
                       </span>
                       <div className="session-analyst__ask-bubble">{entry.text}</div>
@@ -250,7 +251,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 return entry.role === "user" ? (
                 <li className="session-analyst__message session-analyst__message--user" key={`user-${index}`}>
                   <span className="session-analyst__ask-meta">
-                    <span className="session-analyst__ask-who">{t("terminal.analyst.you")}</span>
+                    <span className={`session-analyst__ask-who${entry.by ? " chat-by-agent" : ""}`}>{entry.by ? t("terminal.analyst.askedBy", { caller: analysisOriginLabel(entry.by) }) : t("terminal.analyst.you")}</span>
                     {entry.at !== undefined ? <span>{formatClock(entry.at, language)}</span> : null}
                   </span>
                   <div className="session-analyst__ask-bubble">{entry.text}</div>

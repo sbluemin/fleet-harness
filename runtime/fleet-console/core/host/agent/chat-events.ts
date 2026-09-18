@@ -13,6 +13,9 @@ import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command
  */
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
+/** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
+export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+
 export interface AgentChatChange {
   readonly file: string;
   readonly added: number;
@@ -120,7 +123,8 @@ export type AgentChatStreamEvent =
    */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Operation 이 보낸 지시. 없으면 사람이 친 것이다. */
+  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 자식이 문맥을 비웠다(`/clear`). 서버가 이 신호를 받아 저널을 비우고 `cleared`를 낸다 —
    * 이 이벤트 자체는 원장에 남지 않는다.
@@ -208,6 +212,8 @@ export type AgentChatStreamEvent =
       readonly kind: "ask-settled";
       readonly id: string;
       readonly outcome: "answered" | "dismissed" | "approved" | "revised";
+      /** 사람이 아닌 답변자 — Console Use 로 답한 Operation. */
+      readonly by?: ChatOrigin;
       /** 접힌 줄이 보일 값 — header → 사용자가 고른 것. */
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
     }

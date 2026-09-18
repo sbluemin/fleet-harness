@@ -88,14 +88,22 @@ export function nativeClaudeAnalystModels(): readonly {
 }
 
 export type AnalysisSession = AnalystSessionInstance;
+/** 사람이 아닌 질문자 — Console Use 로 물은 Operation. 제목만 싣는다. */
+export type AnalysisOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+
 export type AnalysisEvent =
   | { readonly type: "connected" }
+  /** 원장 항목: 질문 하나가 접수됐다. 사람의 질문도 에이전트의 질문도 같은 원장에 서고, 패널은 이것을 그린다. */
+  | { readonly type: "user"; readonly text: string; readonly at: number; readonly by?: AnalysisOrigin }
   | { readonly type: "chunk"; readonly text: string }
   | { readonly type: "thought"; readonly text: string }
   | { readonly type: "tool"; readonly title: string; readonly status: string }
   | { readonly type: "artifact"; readonly artifact: { readonly id: string; readonly title: string; readonly html: string; readonly createdAt: number } }
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
+
+/** 원장 한 줄 — 사건과 그 시각. 분석가 세션과 수명을 같이한다(초기화·중지에 비움). */
+export type AnalysisJournalEntry = { readonly at: number; readonly event: Exclude<AnalysisEvent, { readonly type: "connected" } | { readonly type: "thought" }> };
 
 /**
  * AI gateway는 이 플러그인이 직접 서빙한다. 경로 조각은 core-ai-gateway가 소유하고, 어느

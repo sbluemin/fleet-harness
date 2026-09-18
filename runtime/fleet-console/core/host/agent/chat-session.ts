@@ -41,6 +41,7 @@ import {
   type AgentChatQuestion,
   type AgentChatQueueEntry,
   type AgentChatStreamEvent,
+  type ChatOrigin,
 } from "./chat-events.js";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
@@ -802,7 +803,7 @@ class AgentChatSession {
     return value;
   }
 
-  send(text: string, display: string = text, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void): void {
+  send(text: string, display: string = text, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): void {
     if (this.disposed) { onSettled?.("unknown"); return; }
     const id = `q${++this.queueSeq}`;
     this.pendingTurns += 1;
@@ -822,7 +823,7 @@ class AgentChatSession {
         // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
         this.pushQueue();
         const before = this.seq;
-        return this.dispatch(text).then(() => {
+        return this.dispatch(text, by).then(() => {
           const endingKind = readChatCommandLaneName(text) === null ? "turn-end" : "command-end";
           const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === endingKind)?.event;
           onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : end?.kind === "command-end" ? end.ok ? "succeeded" : "failed" : "unknown");
@@ -946,7 +947,7 @@ class AgentChatSession {
    * 계획은 allow 자체가 승인이 되고, 거절 메시지는 계획 쪽에서 곧 수정 요청이 되어 모델이 계획을
    * 고쳐 다시 낸다(실측).
    */
-  answer(id: string, input: AgentChatAnswerInput): AgentChatAnswerResult {
+  answer(id: string, input: AgentChatAnswerInput, by?: ChatOrigin): AgentChatAnswerResult {
     const pending = this.pendingAsks.get(id);
     if (!pending) return { ok: false, error: "ask_not_found" };
     const message = typeof input.message === "string" ? input.message.trim() : "";
@@ -958,7 +959,7 @@ class AgentChatSession {
       this.pendingAsks.delete(id);
       if (input.approve === true) {
         pending.settle({ behavior: "allow", updatedInput: { ...pending.input } });
-        this.settleAsk(id, "approved");
+        this.settleAsk(id, "approved", undefined, by);
         return { ok: true, outcome: "approved" };
       }
       if (message.length === 0) {
@@ -966,7 +967,7 @@ class AgentChatSession {
         return { ok: false, error: "invalid_answer" };
       }
       pending.settle({ behavior: "deny", message });
-      this.settleAsk(id, "revised");
+      this.settleAsk(id, "revised", undefined, by);
       return { ok: true, outcome: "revised" };
     }
 
@@ -977,7 +978,7 @@ class AgentChatSession {
         behavior: "deny",
         message: message.length > 0 ? message : "The user dismissed the question without answering.",
       });
-      this.settleAsk(id, "dismissed");
+      this.settleAsk(id, "dismissed", undefined, by);
       return { ok: true, outcome: "dismissed" };
     }
 
@@ -994,7 +995,7 @@ class AgentChatSession {
     this.settleAsk(id, "answered", pending.questions.map((question, index) => ({
       header: question.header,
       value: values[index] ?? "",
-    })));
+    })), by);
     return { ok: true, outcome: "answered" };
   }
 
@@ -1003,8 +1004,9 @@ class AgentChatSession {
     id: string,
     outcome: "answered" | "dismissed" | "approved" | "revised",
     answers?: readonly { readonly header: string; readonly value: string }[],
+    by?: ChatOrigin,
   ): void {
-    this.push({ kind: "ask-settled", id, outcome, ...(answers ? { answers } : {}) });
+    this.push({ kind: "ask-settled", id, outcome, ...(answers ? { answers } : {}), ...(by ? { by } : {}) });
     if (this.pendingAsks.size === 0) this.seed.reportAwaiting(false);
   }
 
@@ -2180,7 +2182,7 @@ class AgentChatSession {
    * 기다리는 이유는 자식의 사정이 아니라 화면의 사정이다 — 자식은 자기 큐를 갖고 있어 턴 중에
    * 받아도 잃지 않지만, 원장은 턴 하나씩 그리므로 앞 턴이 닫힌 뒤 다음 디스패치를 세운다.
    */
-  private async dispatch(text: string): Promise<void> {
+  private async dispatch(text: string, by?: ChatOrigin): Promise<void> {
     if (this.disposed) return;
     // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
     // "실패가 아니라 중지"라는 판정이다.
@@ -2194,7 +2196,7 @@ class AgentChatSession {
     // 정비 명령은 말풍선도 턴도 세우지 않는다 — 자기 줄 하나가 지시와 진행과 결말을 함께 진다.
     const lane = readChatCommandLaneName(text);
     if (lane === null) {
-      this.push({ kind: "dispatch", text, at: Date.now() });
+      this.push({ kind: "dispatch", text, at: Date.now(), ...(by ? { by } : {}) });
     } else {
       this.commandLane = { name: lane };
       this.push({ kind: "command", name: lane, at: Date.now() });

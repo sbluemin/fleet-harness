@@ -1,7 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { ClientApiCapability, ClientSettingsCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
-import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
+import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, fetchAnalysisJournal, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 import { subscribeInstalledExperiments } from "./experiments-api.js";
 
@@ -302,6 +302,17 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
     .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }))
     .finally(() => { catalogFlight = null; });
   void catalogFlight;
+  // 서버에 이미 살아 있는 분석가(에이전트가 시작했거나 리로드 전의 것)를 이어받는다 — 원장을 그리고 스트림을 붙인다.
+  // 「분석가 시작」 대신 대화가 보이는 것이 이 읽기의 전부다. 실패는 조용히 지나간다(아직 아무것도 요청하지 않은 화면).
+  void (previousDisposal ?? Promise.resolve())
+    .then(() => fetchAnalysisJournal(api, operationId))
+    .then(async (journal) => {
+      if (disposed || !journal.started || state.started) return;
+      dispatch({ type: "hydrate", started: true, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries, now: Date.now() });
+      if (state.busy) armWatchdog();
+      await openStream();
+    })
+    .catch(() => undefined);
 
   return store;
 }

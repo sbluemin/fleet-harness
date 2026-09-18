@@ -2,7 +2,7 @@ import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } 
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
-import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
+import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -102,6 +102,27 @@ export function connectOperationsSse(): void {
     try {
       const data = JSON.parse(msg.data) as { readonly operation?: unknown };
       if (isRecord(data.operation)) applyOperationUpdate(data.operation as unknown as OperationNode);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
+  // 그룹은 Operation 과 별개의 실체다 — 모르는 groupId 를 단 operation:changed 가 먼저 와도 이 사건이 뒤따르면 자리를 찾는다.
+  source.addEventListener("group:changed", (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly group?: unknown };
+      const group = data.group as Record<string, unknown> | undefined;
+      if (isRecord(group) && typeof group.id === "string" && typeof group.name === "string" && typeof group.color === "string" && typeof group.theaterId === "string" && typeof group.order === "number") applyGroupUpdate({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order, createdAt: typeof group.createdAt === "number" ? group.createdAt : Date.now() });
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+  source.addEventListener("group:removed", (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly groupId?: unknown };
+      if (typeof data.groupId === "string") applyGroupRemoved(data.groupId);
     } catch {
       // ignore malformed SSE event
     }

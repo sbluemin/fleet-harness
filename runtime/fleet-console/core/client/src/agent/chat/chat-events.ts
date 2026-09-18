@@ -28,6 +28,17 @@ export interface AgentChatQuestion {
 export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
+/** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
+export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId, title: typeof record.title === "string" ? record.title : record.operationId };
+  if (record.kind === "plugin" && typeof record.pluginId === "string") return { kind: "plugin", pluginId: record.pluginId };
+  return undefined;
+}
+export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }
+
 /** 원장에 선 카드 하나. settled가 붙으면 접힌 줄로 바뀐다. */
 export interface AgentChatAsk {
   readonly id: string;
@@ -38,6 +49,7 @@ export interface AgentChatAsk {
   readonly truncated?: true;
   readonly outcome?: AgentChatAskOutcome;
   readonly answers?: readonly { readonly header: string; readonly value: string }[];
+  readonly by?: AgentChatOrigin;
 }
 
 /** 턴보다 오래 사는 작업의 종류. 서버 모듈의 같은 이름과 한 벌이다. */
@@ -91,7 +103,7 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
+  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number; readonly by?: AgentChatOrigin }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -134,6 +146,7 @@ export type AgentChatStreamEvent =
       readonly id: string;
       readonly outcome: AgentChatAskOutcome;
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
+      readonly by?: AgentChatOrigin;
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean }
@@ -230,7 +243,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       return { ...journal, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
     case "dispatch":
       if (typeof event.text !== "string") return null;
-      return { ...journal, event: { kind: "dispatch", text: event.text, ...atField(event.at) } };
+      return { ...journal, event: { kind: "dispatch", text: event.text, ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
@@ -322,7 +335,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         : [];
       return {
         ...journal,
-        event: { kind: "ask-settled", id: event.id, outcome, ...(answers.length > 0 ? { answers } : {}) },
+        event: { kind: "ask-settled", id: event.id, outcome, ...(answers.length > 0 ? { answers } : {}), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) },
       };
     }
     case "tool-result":
@@ -548,7 +561,7 @@ export interface AgentChatTurnItem {
 }
 
 export interface AgentChatTurn {
-  readonly dispatch: { readonly text: string; readonly at?: number } | null;
+  readonly dispatch: { readonly text: string; readonly at?: number; readonly by?: AgentChatOrigin } | null;
   readonly items: readonly AgentChatTurnItem[];
   /**
    * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
@@ -863,7 +876,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
     }
     case "dispatch": {
       const turn: AgentChatTurn = {
-        dispatch: { text: event.text, ...(event.at !== undefined ? { at: event.at } : {}) },
+        dispatch: { text: event.text, ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}) },
         items: [],
         // synthetic replay에서는 저널의 live dispatch 뒤에 같은 턴의 turn-start가 따라온다. 여기서
         // 미리 done으로 닫으면 그 start가 별도 턴을 만들므로, replay-end나 다음 dispatch가 닫게 둔다.
@@ -1020,6 +1033,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         ...ask,
         outcome: event.outcome,
         ...(event.answers ? { answers: event.answers } : {}),
+        ...(event.by ? { by: event.by } : {}),
       }));
       // 답이 붙으면 모델의 차례다 — 다음 호출까지의 공백이 다시 생각이다.
       return merged ? restLastTurn(merged, now) : state;
