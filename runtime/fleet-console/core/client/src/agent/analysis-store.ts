@@ -71,6 +71,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
   let language = initialLanguage;
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
+  let adoptRetry: ReturnType<typeof setTimeout> | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   let catalogFlight: Promise<void> | null = null;
   let startFlight: Promise<void> | null = null;
@@ -153,6 +154,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
 
   const dispose = () => {
     if (disposed) return;
+    if (adoptRetry) { clearTimeout(adoptRetry); adoptRetry = null; }
     const previousDisposal = disposalFlights.get(operationId);
     const pendingReset = resetFlight;
     const pendingStop = stopFlight;
@@ -199,11 +201,19 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
   const unsubscribeExperiments = subscribeInstalledExperiments(() => { if (!disposed) refreshCatalogNow(); });
 
   let adoptFlight: Promise<void> | null = null;
-  const adopt = (): void => {
+  // 에이전트의 첫 질문은 분석가 시작보다 먼저 제스처를 낸다 — 그때 원장은 아직 비어 있으므로 몇 번 더 묻는다.
+  const ADOPT_RETRY_MS = 1_500;
+  const ADOPT_RETRIES = 10;
+  const adopt = (retriesLeft = 0): void => {
     if (disposed || state.started || adoptFlight) return;
+    if (adoptRetry) { clearTimeout(adoptRetry); adoptRetry = null; }
     adoptFlight = fetchAnalysisJournal(api, operationId)
       .then(async (journal) => {
-        if (disposed || !journal.started || state.started) return;
+        if (disposed || state.started) return;
+        if (!journal.started) {
+          if (retriesLeft > 0) adoptRetry = setTimeout(() => { adoptRetry = null; adopt(retriesLeft - 1); }, ADOPT_RETRY_MS);
+          return;
+        }
         dispatch({ type: "hydrate", started: true, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries, now: Date.now() });
         if (state.busy) armWatchdog();
         await openStream();
@@ -212,7 +222,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
       .finally(() => { adoptFlight = null; });
   };
   const store: AnalysisStore = {
-    adopt,
+    adopt: () => adopt(ADOPT_RETRIES),
     getSnapshot: () => state,
     subscribe: (listener) => {
       listeners.add(listener);

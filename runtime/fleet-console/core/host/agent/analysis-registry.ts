@@ -62,7 +62,10 @@ export class AnalysisRegistry {
     this.publish(operationId, user);
     void entry.session.send(text).catch(() => {
       if (this.entries.get(operationId) !== entry || entry.stopped) return;
-      this.publish(operationId, { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } });
+      // 합성한 실패도 원장에 선다 — 없으면 리로드 뒤 마지막 질문이 답을 기다리는 것으로 그려져 다음 질문이 막힌다.
+      const failure: AnalysisEvent = { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } };
+      this.record(entry, failure);
+      this.publish(operationId, failure);
     }).finally(() => { entry.messaging = false; });
     return "accepted";
   }

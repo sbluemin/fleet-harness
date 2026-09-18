@@ -1,8 +1,8 @@
-import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
+import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
-import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
+import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -217,6 +217,8 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
+      // 그룹은 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — Operation 스냅숏과 같은 순간에.
+      void fetchGroups(null).then((groups) => { if (retryGeneration === connectionGeneration) hydrateGroups(groups); }).catch(() => undefined);
       void fetchOperations()
         .then((operations) => {
           if (retryGeneration === connectionGeneration) hydrateOperations(operations);
@@ -252,6 +254,7 @@ export function reconnectOperationsSseNow(): void {
   activeSource?.close();
   activeSource = null;
   const reconnectGeneration = ++connectionGeneration;
+  void fetchGroups(null).then((groups) => { if (reconnectGeneration === connectionGeneration) hydrateGroups(groups); }).catch(() => undefined);
   void fetchOperations()
     .then((operations) => {
       if (reconnectGeneration === connectionGeneration) hydrateOperations(operations);

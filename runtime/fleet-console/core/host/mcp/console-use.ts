@@ -466,16 +466,18 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   // 플러그인이 실은 도구. 연결마다 호스트 기본 도구와 같은 래퍼(게이트·세션·중단)로 등록된다.
   const contributed = new Map<string, { readonly pluginId: string; readonly tool: PluginMcpTool }>();
   const registrars = new Set<(entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => void>();
-  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }): AgentToolSpec => ({
+  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }, callerPluginId: string | undefined): AgentToolSpec => ({
     id: tool.name, tag: tool.name, title: tool.name, description: tool.description, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], parameters: tool.inputSchema,
     execute: async (args, ctx) => {
       // 등록이 해제된 기여는 이미 실린 레지스트리에서도 답하지 않는다 — 플러그인 등록 롤백 뒤 도구가 살아남지 않게.
       if (contributed.get(tool.name)?.tool !== tool) return { ...text({ error: "plugin_tool_unavailable", plugin: pluginId, retryable: false }), isError: true };
-      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 호출자는 세션 라벨로 푼다.
+      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 플러그인 소유 연결(부관)은 연결이 묶은
+      // 플러그인이 호출자이고, Operation 연결은 세션 라벨로 푼다 — 핵심 도구의 caller() 와 같은 규칙.
       const label = ctx.sessionLabel ?? "";
-      const callerId = label.startsWith("chat:") ? label.slice(5) : label;
+      const labelId = label.startsWith("chat:") ? label.slice(5) : label;
+      const callerId: ConsoleCaller | null = callerPluginId ? { kind: "plugin", pluginId: callerPluginId } : deps.operations?.().some((op) => op.id === labelId) ? { kind: "operation", operationId: labelId } : null;
       const described = tool.surface && args && typeof args === "object" ? tool.surface.describe(args as Record<string, unknown>) : null;
-      if (described && deps.operations?.().some((op) => op.id === callerId)) deps.onCall?.({ caller: { kind: "operation", operationId: callerId }, tool: tool.name, summary: described.summary, gesture: "gaze", target: { kind: "panel", panelId: tool.surface!.panelId, theaterId: described.theaterId, ...(described.view ? { view: described.view } : {}), ...(described.path ? { path: described.path } : {}) }, at: Date.now() });
+      if (described && callerId) deps.onCall?.({ caller: callerId, tool: tool.name, summary: described.summary, gesture: "gaze", target: { kind: "panel", panelId: tool.surface!.panelId, theaterId: described.theaterId, ...(described.view ? { view: described.view } : {}), ...(described.path ? { path: described.path } : {}) }, at: Date.now() });
       try {
         const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal });
         // 레지스트리는 `isError` 가 boolean 인 결과만 그대로 통과시킨다 — 플러그인 결과에 빠져 있으면 한 번 더 감싸진다.
@@ -572,7 +574,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       for (const spec of specs) registerSpec(spec);
       const registerContributed = (entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => {
         if (closed || schemas.has(entry.tool.name)) return;
-        const spec = contributedSpec(entry);
+        const spec = contributedSpec(entry, pluginId);
         schemas.set(spec.id, z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject);
         registerSpec(spec);
       };
