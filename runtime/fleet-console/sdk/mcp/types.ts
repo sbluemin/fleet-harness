@@ -36,7 +36,7 @@ export type ConsoleUseCallTarget =
 export interface ConsoleUseCallEvent {
   readonly caller: ConsoleCaller;
   readonly tool: string;
-  /** 사람이 읽는 한 줄 — 호출자 패널의 자막에 그대로 나간다. 경로는 Theater 상대, 식별자는 제목으로. */
+  /** 사람이 읽는 한 줄 — 대상 표식의 툴팁·말풍선에 그대로 나간다. 경로는 Theater 상대, 식별자는 제목으로. */
   readonly summary: string;
   readonly gesture: "gaze" | "input" | "press" | "create" | "wait";
   readonly target?: ConsoleUseCallTarget;
@@ -82,8 +82,8 @@ export interface PluginMcpTool {
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   /**
-   * Console Use 기여 도구의 화면 자리. 호스트는 호출마다 그 Activity Rail 패널에 시선 표식과 자막을
-   * 그린다 — 자리를 선언하지 않은 도구는 Console Use 에 실리지 않는다. `describe` 는 인자에서 자막
+   * Console Use 기여 도구의 화면 자리. 호스트는 호출마다 그 Activity Rail 패널 버튼을 감싸는 표식을
+   * 그린다 — 자리를 선언하지 않은 도구는 Console Use 에 실리지 않는다. `describe` 는 인자에서 표식 이름표
    * 한 줄과 보기(view)·경로를 뽑는다; 경로는 Theater 상대여야 한다.
    */
   readonly surface?: {

@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { gestureCallerLabel, getPanelGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
+import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -551,21 +551,23 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
   const icon = typeof entry.icon === "function" ? entry.icon() : entry.icon;
   const title = resolveLocalizedText(entry.title, language);
+  // Console Use — 에이전트가 이 패널(저장소·탐색기)을 읽으면 버튼 상자가 감싸인다. 아이콘 잉크는 그대로다.
+  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getPanelWrap(entry.id), () => null);
+  const wrapClassName = consoleUseWrapClassName(wrap);
 
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${isActive ? " is-active" : ""}`}
+      className={`right-rail-ico${isActive ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={isActive}
       aria-label={title}
       disabled={entry.activate !== undefined && context.theaterId === null}
-      title={shortcut ? `${title} (${shortcut})` : title}
+      title={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${title} (${shortcut})` : title}
       onClick={handleClick}
     >
       {icon}
-      <RailPanelGaze panelId={entry.id} />
     </button>
   );
 }
@@ -580,9 +582,3 @@ function RailKeepOpenGlyph() {
 }
 
 /** Console Use 시선 — 에이전트가 이 레일 패널(저장소·파일)을 읽으면 아이콘 모서리에 점이 선다. */
-function RailPanelGaze({ panelId }: { readonly panelId: string }) {
-  const gaze = useSyncExternalStore(subscribeConsoleUseGestures, () => getPanelGaze(panelId), () => null);
-  if (!gaze) return null;
-  const label = `${gestureCallerLabel(gaze.caller)}: ${gaze.summary}`;
-  return <span className="rail-panel-gaze" role="img" aria-label={label} title={label} />;
-}

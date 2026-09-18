@@ -4,19 +4,21 @@ import { getState } from "./store.js";
 /**
  * Console Use 제스처 — 에이전트가 이 Console 을 쓴 호출 하나하나가 화면 어디에 닿았는지.
  *
- * 서버의 `console-use:call` 채널(caller·tool·summary·gesture·target·at)을 받아 세 곳이 읽는다:
- * 대상(사이드바 행·캡션·패널 테두리·레일 아이콘)의 **시선 표식**, 호출자 패널 캡션 아래의 **자막**,
- * 그룹 헤더의 **저자**. 내용은 오지 않는다 — 읽은 전사·diff·파일은 이 채널에 실리지 않는다.
- * 표식은 잠깐이고(GAZE_MS) 자막은 세션 동안 최근 것만 남는다. 별도 이력 패널은 없다.
+ * 서버의 `console-use:call` 채널(caller·tool·summary·gesture·target·at)을 받아 두 곳이 읽는다:
+ * 대상(사이드바 행·Theater 행·그룹 헤더·패널·레일 버튼)을 **감싸는 펄스**, 그룹 헤더의 **저자**(툴팁).
+ * 내용은 오지 않는다 — 읽은 전사·diff·파일은 이 채널에 실리지 않는다. 호출자 쪽에는 아무것도
+ * 적지 않는다: 캡션 배지와 레일이 이미 「쓰는 중」을 말하고, 무엇을 했는지는 대상이 말한다.
+ * 표식은 잠깐이고(GAZE_MS / MARK_MS), 걷히기 직전 잠깐 `leaving` 이 되어 페이드할 틈을 준다.
  */
 
 export const CONSOLE_USE_CALL_CHANNEL = "console-use:call";
 export const OPERATION_CLOSING_CHANNEL = "operation:closing";
 /** 시선 표식이 남는 시간. 같은 대상에 잇단 읽기는 이 창 안에서 하나로 합쳐진다. */
 export const GAZE_MS = 8_000;
-/** 쓰기 귀속 표식(이름 밑줄·버튼 눌림)이 남는 시간. */
+/** 쓰기(input·press·create) 표식이 남는 시간 — 읽기보다 짧다. 사건은 순간이고 시선은 머문다. */
 export const MARK_MS = 3_000;
-const STRIP_KEEP = 6;
+/** 걷히기 전 페이드 시간. CSS 의 떠남 전이와 같은 값이어야 한다. */
+export const LEAVE_MS = 220;
 /** 캡션의 "○○ 이 시작" 은 첫 몇 분 동안만 — 계보는 payload 에 영원히 남지만 표식은 잠깐이다. */
 export const LAUNCH_ATTRIBUTION_MS = 10 * 60_000;
 
@@ -46,12 +48,18 @@ export interface ClosingByAgent {
   readonly by: GestureCaller & { readonly title?: string };
 }
 
+/** 대상 하나를 감싸는 표식 — 제스처와, 걷히는 중인지. 같은 대상 재호출은 객체를 갈아 끼우되 도착을 다시 재생하지 않는다(클래스가 그대로라). */
+export interface ConsoleUseWrap {
+  readonly gesture: ConsoleUseGesture;
+  readonly leaving: boolean;
+}
+
 const listeners = new Set<() => void>();
-const operationGaze = new Map<string, ConsoleUseGesture>();
-const theaterScan = new Map<string, ConsoleUseGesture>();
-const panelGaze = new Map<string, ConsoleUseGesture>();
+const operationWrap = new Map<string, ConsoleUseWrap>();
+const theaterWrap = new Map<string, ConsoleUseWrap>();
+const groupWrap = new Map<string, ConsoleUseWrap>();
+const panelWrap = new Map<string, ConsoleUseWrap>();
 const groupCreator = new Map<string, ConsoleUseGesture>();
-const callerStrip = new Map<string, readonly ConsoleUseGesture[]>();
 const closingListeners = new Set<(closing: ClosingByAgent) => void>();
 let version = 0;
 let sweeper: ReturnType<typeof setTimeout> | null = null;
@@ -61,19 +69,41 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** 만료된 표식을 걷는다 — 구독자가 같은 스냅숏을 다시 읽지 않도록 버전만 올린다. */
+function wrapTtl(gesture: ConsoleUseGesture): number {
+  return gesture.gesture === "gaze" || gesture.gesture === "wait" ? GAZE_MS : MARK_MS;
+}
+
+/**
+ * 만료 경계마다 깨어난다 — 걷히기 LEAVE_MS 전에 `leaving` 으로 갈아 끼우고, 만료에 지운다.
+ * 1초 고정 주기로는 220ms 페이드 창을 맞출 수 없어 다음 경계까지의 시간을 계산해 잔다.
+ * 부를 때마다 다시 잰다: 긴 시선(8초) 뒤에 짧은 누름(3초)이 오면 먼저 잡힌 타이머는 누름의 경계를 모른다.
+ */
 function scheduleSweep(): void {
-  if (sweeper !== null) return;
+  if (sweeper !== null) { clearTimeout(sweeper); sweeper = null; }
+  const now = Date.now();
+  let next = Number.POSITIVE_INFINITY;
+  for (const map of [operationWrap, theaterWrap, groupWrap, panelWrap]) {
+    for (const wrap of map.values()) {
+      const expiresAt = wrap.gesture.at + wrapTtl(wrap.gesture);
+      const boundary = wrap.leaving ? expiresAt : expiresAt - LEAVE_MS;
+      if (boundary < next) next = boundary;
+    }
+  }
+  if (!Number.isFinite(next)) return;
   sweeper = setTimeout(() => {
     sweeper = null;
-    const now = Date.now();
+    const at = Date.now();
     let changed = false;
-    for (const [key, gesture] of operationGaze) if (now - gesture.at > GAZE_MS) { operationGaze.delete(key); changed = true; }
-    for (const [key, gesture] of theaterScan) if (now - gesture.at > GAZE_MS) { theaterScan.delete(key); changed = true; }
-    for (const [key, gesture] of panelGaze) if (now - gesture.at > GAZE_MS) { panelGaze.delete(key); changed = true; }
+    for (const map of [operationWrap, theaterWrap, groupWrap, panelWrap]) {
+      for (const [key, wrap] of map) {
+        const expiresAt = wrap.gesture.at + wrapTtl(wrap.gesture);
+        if (at >= expiresAt) { map.delete(key); changed = true; }
+        else if (!wrap.leaving && at >= expiresAt - LEAVE_MS) { map.set(key, { gesture: wrap.gesture, leaving: true }); changed = true; }
+      }
+    }
     if (changed) notify();
-    if (operationGaze.size || theaterScan.size || panelGaze.size) scheduleSweep();
-  }, 1_000);
+    scheduleSweep();
+  }, Math.max(16, next - now));
 }
 
 export function isConsoleUseGesture(value: unknown): value is ConsoleUseGesture {
@@ -87,18 +117,17 @@ export function isConsoleUseGesture(value: unknown): value is ConsoleUseGesture 
 
 export function recordConsoleUseGesture(gesture: ConsoleUseGesture): void {
   const target = gesture.target;
-  if (target?.kind === "operation") operationGaze.set(target.operationId, gesture);
-  else if (target?.kind === "theater") theaterScan.set(target.theaterId, gesture);
-  else if (target?.kind === "panel") panelGaze.set(target.panelId, gesture);
-  else if (target?.kind === "group") { if (gesture.gesture === "create") groupCreator.set(target.groupId, gesture); theaterScan.set(target.theaterId, gesture); }
-  const key = callerKey(gesture.caller);
-  callerStrip.set(key, [...(callerStrip.get(key) ?? []), gesture].slice(-STRIP_KEEP));
+  const wrap: ConsoleUseWrap = { gesture, leaving: false };
+  if (target?.kind === "operation") {
+    operationWrap.set(target.operationId, wrap);
+    // 행이 감싸이면 그 Theater 의 링은 먼저 걷는다 — 두 겹이 겹치면 어느 쪽도 읽히지 않는다.
+    const theaterId = getState().operations.find((operation) => operation.id === target.operationId)?.theaterId;
+    if (theaterId !== undefined) theaterWrap.delete(theaterId);
+  } else if (target?.kind === "theater") theaterWrap.set(target.theaterId, wrap);
+  else if (target?.kind === "panel") panelWrap.set(target.panelId, wrap);
+  else if (target?.kind === "group") { if (gesture.gesture === "create") groupCreator.set(target.groupId, gesture); groupWrap.set(target.groupId, wrap); }
   notify();
   scheduleSweep();
-}
-
-function callerKey(caller: GestureCaller): string {
-  return caller.kind === "operation" ? `operation:${caller.operationId}` : `plugin:${caller.pluginId}`;
 }
 
 /** 호출자를 사람이 읽는 이름으로 — Operation 은 제목, 플러그인은 id. 지워진 Operation 이면 id. */
@@ -113,25 +142,23 @@ export function subscribeConsoleUseGestures(listener: () => void): () => void {
 }
 export function getGestureVersion(): number { return version; }
 
-export function getOperationGaze(operationId: string): ConsoleUseGesture | null {
-  const gesture = operationGaze.get(operationId);
-  return gesture && Date.now() - gesture.at <= GAZE_MS ? gesture : null;
-}
-export function getTheaterScan(theaterId: string): ConsoleUseGesture | null {
-  const gesture = theaterScan.get(theaterId);
-  return gesture && Date.now() - gesture.at <= GAZE_MS ? gesture : null;
-}
-export function getPanelGaze(panelId: string): ConsoleUseGesture | null {
-  const gesture = panelGaze.get(panelId);
-  return gesture && Date.now() - gesture.at <= GAZE_MS ? gesture : null;
-}
+export function getOperationWrap(operationId: string): ConsoleUseWrap | null { return operationWrap.get(operationId) ?? null; }
+export function getTheaterWrap(theaterId: string): ConsoleUseWrap | null { return theaterWrap.get(theaterId) ?? null; }
+export function getGroupWrap(groupId: string): ConsoleUseWrap | null { return groupWrap.get(groupId) ?? null; }
+export function getPanelWrap(panelId: string): ConsoleUseWrap | null { return panelWrap.get(panelId) ?? null; }
 export function getGroupCreator(groupId: string): ConsoleUseGesture | null {
   return groupCreator.get(groupId) ?? null;
 }
-const EMPTY_STRIP: readonly ConsoleUseGesture[] = [];
-/** useSyncExternalStore 가 같은 스냅숏을 다시 받아야 하므로 빈 값은 상수다. */
-export function getCallerStrip(operationId: string): readonly ConsoleUseGesture[] {
-  return callerStrip.get(`operation:${operationId}`) ?? EMPTY_STRIP;
+
+/** 감싸인 요소에 얹는 클래스 — 없으면 빈 문자열. 종류(gesture)와 떠남만 가른다; 색·리듬은 CSS 한 벌이다. */
+export function consoleUseWrapClassName(wrap: ConsoleUseWrap | null): string {
+  if (!wrap) return "";
+  return `is-console-use-wrapped is-${wrap.gesture.gesture}${wrap.leaving ? " is-leaving" : ""}`;
+}
+
+/** 감싸인 요소의 이름표 — "누가: 무엇". */
+export function consoleUseWrapLabel(wrap: ConsoleUseWrap): string {
+  return `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}`;
 }
 
 /** 캡션의 "○○ 이 시작" — payload.launchedBy 가 있고 만든 지 얼마 안 된 Operation 만. */

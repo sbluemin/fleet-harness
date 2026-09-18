@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSPrope
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useAgentState } from "../agent/store.js";
-import { gestureCallerLabel, getOperationGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
@@ -147,8 +147,11 @@ export function OperationsSideBarChip({
       ? t("sidebar.chip.focusedAria", { title, groupContext })
       : t("sidebar.chip.focusAria", { title, groupContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
+  // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
+  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
   const chipClassName = [
     "side-bar-chip",
+    consoleUseWrapClassName(wrap),
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
@@ -283,6 +286,7 @@ export function OperationsSideBarChip({
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
       aria-describedby={detailAnchor ? detailId : undefined}
+      aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
       /* 네이티브 툴팁은 세우지 않는다 — 겨누면 상세 카드가 뜨고, 둘이 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
       style={chipStyle}
       onClick={focus}
@@ -352,7 +356,6 @@ export function OperationsSideBarChip({
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
-      {preview ? null : <SideBarChipGaze operationId={operation.id} />}
       {groupMark && statusAxis && groupBadge && !preview ? (
         <span
           className="side-bar-chip-group-pill"
@@ -462,10 +465,3 @@ function PluginOperationMarks({ operation }: { readonly operation: OperationNode
  * Console Use 시선 표식 — 어느 에이전트가 방금 이 Operation 을 읽거나 만졌는지. 호출자의 아이덴티티 톤 점 하나이며
  * 8초 뒤 사라진다. 배경·테두리는 칠하지 않는다(아이덴티티는 잉크·점에만).
  */
-function SideBarChipGaze({ operationId }: { readonly operationId: string }) {
-  const t = useT();
-  const gaze = useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationGaze(operationId), () => null);
-  if (!gaze) return null;
-  const label = t("sidebar.chip.gaze", { caller: gestureCallerLabel(gaze.caller), summary: gaze.summary });
-  return <span className={`side-bar-chip-gaze is-${gaze.gesture}`} role="img" aria-label={label} title={label} />;
-}
