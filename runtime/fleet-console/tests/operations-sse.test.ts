@@ -22,6 +22,7 @@ vi.mock("../core/client/src/api.js", () => ({
       this.status = status;
     }
   },
+  fetchGroups: vi.fn(async () => null),
   fetchObserverStatus: mocks.fetchObserverStatus,
   fetchOperations: mocks.fetchOperations,
   resumeConsoleSession: mocks.resumeConsoleSession,
