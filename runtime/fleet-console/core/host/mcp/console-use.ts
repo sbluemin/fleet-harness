@@ -291,6 +291,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       if (nodesAhead.length && nodesAhead.some((op) => op.theaterId !== nodesAhead[0]!.theaterId)) throw new ConsoleControlError("mixed_theaters");
       if (args.operationIds && args.title === undefined && args.accent === undefined && args.group === undefined) throw new ConsoleControlError("invalid_arguments");
       if (args.group && args.group.id === undefined && args.group.name === undefined && Object.keys(args.group).length) throw new ConsoleControlError("invalid_arguments");
+      // 넣을 그룹도 미리 푼다 — 같은 Theater 에 없는 그룹이면 어떤 쓰기도 하기 전에 거절한다.
+      if (args.group?.id && !(surface.groups?.(nodesAhead[0]?.theaterId) ?? []).some((g) => g.id === args.group!.id)) throw new ConsoleControlError("unknown_group");
       if (args.groupPatch) {
         const patched = need("groupPatch")(args.groupPatch);
         if (!patched.ok) throw new ConsoleControlError(patched.error);

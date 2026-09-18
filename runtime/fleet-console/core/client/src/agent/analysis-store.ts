@@ -222,10 +222,11 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
           adoptRetry = setTimeout(() => {
             adoptRetry = null;
             if (disposed || !state.busy) return;
+            // 원장이 권위다 — 아직 도는 턴이라도 지금까지의 원장으로 다시 그리고, 그 뒤 사건은 스트림이 잇는다.
             void fetchAnalysisJournal(api, operationId).then((again) => {
               if (disposed || !state.busy || !again.started) return;
-              const last = again.entries[again.entries.length - 1]?.event.type;
-              if (last === "complete" || last === "error") dispatch({ type: "hydrate", started: true, ...(again.model ? { model: again.model } : {}), entries: again.entries, now: Date.now() });
+              dispatch({ type: "hydrate", started: true, ...(again.model ? { model: again.model } : {}), entries: again.entries, now: Date.now() });
+              if (state.busy) armWatchdog();
             }).catch(() => undefined);
           }, ADOPT_RETRY_MS);
         }

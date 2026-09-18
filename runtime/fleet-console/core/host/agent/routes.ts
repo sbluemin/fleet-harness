@@ -491,7 +491,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 제목은 사람의 이름 바꾸기와 같은 길로 — 그래야 관측 세션이 사용자 소유 라벨로 기록해 자동 이름이 덮지 않는다.
         if (input.title) ctx.consoleSurface?.rename?.(launchedId, input.title);
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
-        if (input.groupId && ctx.consoleSurface?.group) ctx.consoleSurface.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] });
+        // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패 영수증을 남기면 재시도가 같은 Operation 을 하나 더 만든다.
+        if (input.groupId && ctx.consoleSurface?.group) { try { ctx.consoleSurface.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { operationId: launchedId, delivery: "queued" };
       }
       const operationId = input.operationId!;
