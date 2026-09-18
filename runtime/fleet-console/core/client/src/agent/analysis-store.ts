@@ -217,6 +217,18 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
         dispatch({ type: "hydrate", started: true, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries, now: Date.now() });
         if (state.busy) armWatchdog();
         await openStream();
+        // 원장 응답과 스트림 부착 사이에 끝난 턴은 어느 쪽에도 없다 — 아직 바쁘게 보이면 원장을 한 번 더 맞춘다.
+        if (!disposed && state.busy) {
+          adoptRetry = setTimeout(() => {
+            adoptRetry = null;
+            if (disposed || !state.busy) return;
+            void fetchAnalysisJournal(api, operationId).then((again) => {
+              if (disposed || !state.busy || !again.started) return;
+              const last = again.entries[again.entries.length - 1]?.event.type;
+              if (last === "complete" || last === "error") dispatch({ type: "hydrate", started: true, ...(again.model ? { model: again.model } : {}), entries: again.entries, now: Date.now() });
+            }).catch(() => undefined);
+          }, ADOPT_RETRY_MS);
+        }
       })
       .catch(() => undefined)
       .finally(() => { adoptFlight = null; });

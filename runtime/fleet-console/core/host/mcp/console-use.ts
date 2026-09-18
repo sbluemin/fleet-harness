@@ -284,20 +284,22 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     }).strict(), (args, ctx) => {
       requireCaller(ctx);
       const result: Record<string, unknown> = {};
+      // 쓰기는 전부 검증이 끝난 뒤에 — 그룹을 지운 다음 Operation 쪽 인자가 틀렸다고 답하면 되돌릴 수 없는 쓰기가 실패 응답 뒤에 남는다.
+      if (!args.operationIds && !args.groupPatch) throw new ConsoleControlError("invalid_arguments");
+      if (args.operationIds && args.title !== undefined && args.operationIds.length !== 1) throw new ConsoleControlError("invalid_arguments");
+      const nodesAhead = args.operationIds?.map(node) ?? [];
+      if (nodesAhead.length && nodesAhead.some((op) => op.theaterId !== nodesAhead[0]!.theaterId)) throw new ConsoleControlError("mixed_theaters");
+      if (args.operationIds && args.title === undefined && args.accent === undefined && args.group === undefined) throw new ConsoleControlError("invalid_arguments");
+      if (args.group && args.group.id === undefined && args.group.name === undefined && Object.keys(args.group).length) throw new ConsoleControlError("invalid_arguments");
       if (args.groupPatch) {
         const patched = need("groupPatch")(args.groupPatch);
         if (!patched.ok) throw new ConsoleControlError(patched.error);
         result.groupPatch = patched;
         gesture(ctx, "console_organize", args.groupPatch.delete ? `그룹 「${patched.name}」 지움` : `그룹 「${patched.name}」 ${args.groupPatch.name ? "이름" : "색"} 바꿈`, args.groupPatch.delete ? "press" : "input", { kind: "group", groupId: args.groupPatch.id, theaterId: patched.theaterId });
       }
-      if (!args.operationIds) {
-        if (!args.groupPatch) throw new ConsoleControlError("invalid_arguments");
-        return result;
-      }
-      if (args.title !== undefined && args.operationIds.length !== 1) throw new ConsoleControlError("invalid_arguments");
-      const nodes = args.operationIds.map(node);
+      if (!args.operationIds) return result;
+      const nodes = nodesAhead;
       const theaterId = nodes[0]!.theaterId;
-      if (nodes.some((op) => op.theaterId !== theaterId)) throw new ConsoleControlError("mixed_theaters");
       if (args.title !== undefined) {
         const before = nodes[0]!.title;
         if (!need("rename")(nodes[0]!.id, args.title)) throw new ConsoleControlError("unknown_operation");
@@ -318,14 +320,14 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         } else if (args.group.id) {
           result.group = group({ mode: "assign", theaterId, groupId: args.group.id, operationIds: nodes.map((op) => op.id) });
           const g = (result.group as { group: { id: string; name: string } | null }).group;
-          gesture(ctx, "console_organize", `${nodes.map((op) => op.title).join(", ")} → 그룹 「${g?.name ?? args.group.id}」`, "create", { kind: "group", groupId: args.group.id, theaterId });
+          // 기존 그룹에 넣는 것은 만든 것이 아니다 — create 는 그룹이 실제로 생기는 갈래에만.
+          gesture(ctx, "console_organize", `${nodes.map((op) => op.title).join(", ")} → 그룹 「${g?.name ?? args.group.id}」`, "press", { kind: "group", groupId: args.group.id, theaterId });
         } else if (args.group.name) {
           result.group = group({ mode: "create", theaterId, name: args.group.name, color: args.group.color, operationIds: nodes.map((op) => op.id) });
           const g = (result.group as { group: { id: string; name: string } | null }).group;
           gesture(ctx, "console_organize", `그룹 「${args.group.name}」 만듦 · ${nodes.length}개 넣음`, "create", g ? { kind: "group", groupId: g.id, theaterId } : { kind: "theater", theaterId });
-        } else throw new ConsoleControlError("invalid_arguments");
+        }
       }
-      if (!Object.keys(result).length) throw new ConsoleControlError("invalid_arguments");
       return result;
     }),
   ];

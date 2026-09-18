@@ -134,6 +134,8 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
       const origin: AnalysisOrigin = by.kind === "plugin" ? { kind: "plugin", pluginId: by.pluginId } : { kind: "operation", operationId: by.operationId, title: ctx.host.operations.get(by.operationId)?.title ?? by.operationId };
       const startError = await ensureStarted(operation);
       if (startError) return { ok: false, error: startError };
+      // 시작을 기다리는 동안 턴이 끝났거나 허용이 거둬졌으면 여기서 멈춘다 — 뒤늦게 붙인 abort 리스너는 이미 끊긴 신호를 듣지 못한다.
+      if (signal?.aborted) return { ok: false, error: "cancelled" };
       return await new Promise((resolve) => {
         let answer = "";
         const artifacts: { readonly id: string; readonly title: string }[] = [];

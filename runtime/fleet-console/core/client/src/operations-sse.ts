@@ -217,11 +217,13 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      // 그룹은 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — Operation 스냅숏과 같은 순간에.
-      void fetchGroups(null).then((groups) => { if (retryGeneration === connectionGeneration) hydrateGroups(groups); }).catch(() => undefined);
-      void fetchOperations()
-        .then((operations) => {
-          if (retryGeneration === connectionGeneration) hydrateOperations(operations);
+      // 그룹은 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — 두 스냅숏이 다 온 뒤에야 스트림을 다시
+      // 연다(그룹 조회가 늦게 끝나면 새 스트림의 사건을 옛 스냅숏이 덮는다). 그룹 조회 실패는 목록만 유지한다.
+      void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
+        .then(([operations, groups]) => {
+          if (retryGeneration !== connectionGeneration) return;
+          if (groups) hydrateGroups(groups);
+          hydrateOperations(operations);
         })
         // 콘솔이 재기동하면 이 화면의 세션은 사라지지만 페어링은 남는다. 그 사실을 아무도
         // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
@@ -254,10 +256,11 @@ export function reconnectOperationsSseNow(): void {
   activeSource?.close();
   activeSource = null;
   const reconnectGeneration = ++connectionGeneration;
-  void fetchGroups(null).then((groups) => { if (reconnectGeneration === connectionGeneration) hydrateGroups(groups); }).catch(() => undefined);
-  void fetchOperations()
-    .then((operations) => {
-      if (reconnectGeneration === connectionGeneration) hydrateOperations(operations);
+  void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
+    .then(([operations, groups]) => {
+      if (reconnectGeneration !== connectionGeneration) return;
+      if (groups) hydrateGroups(groups);
+      hydrateOperations(operations);
     })
     .catch(() => undefined)
     .finally(() => {
