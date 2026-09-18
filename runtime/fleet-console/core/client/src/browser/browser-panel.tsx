@@ -7,6 +7,8 @@ import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
 import { publishBrowserEngine, publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
 import { subscribeConsoleChannel } from "../operations-sse.js";
+import { CORE_SHORTCUT_COMMANDS, isApplePlatform, parseChord, resolveShortcutChords, useShortcutOverrides } from "../shortcut-bindings.js";
+import { useActiveCompanionShortcuts } from "../shortcuts.js";
 import { themePolarity } from "../store.js";
 import { isDesktopShell } from "../desktop-shell.js";
 import "./browser-panel.css";
@@ -105,6 +107,56 @@ function useBrowserStream(operationId: string, enabled: boolean) {
     return () => { disposed = true; unsubscribe(); };
   }, [operationId, enabled]);
   return { state, connection };
+}
+
+const BROWSER_CHORD_EVENT = "browser:chord";
+
+/**
+ * 편집 중이면 Console 자신이 양보하는 명령 — 셸은 페이지 안에 캐럿이 섰는지 볼 수 없으므로 아예 선언하지
+ * 않는다. 선언하면 웹 폼에서 실행 취소가 죽고 그 자리에 Console 의 「닫은 Operation 되살리기」가 선다.
+ */
+const FOCUS_GATED_COMMANDS: ReadonlySet<string> = new Set(["console.undo-close"]);
+
+/**
+ * Mod·Ctrl·Alt 가운데 하나는 쥐고 있어야 선언한다. 수식키 없이(또는 Shift 만으로) 서는 조합은 페이지에서
+ * 그냥 글자다 — `Shift+Digit1`(Fit All)을 가로채면 웹 폼에 `!` 를 칠 수 없다.
+ */
+const carriesCommandModifier = (chord: string) => /(?:^|\+)(?:Mod|Ctrl|Alt)\+/u.test(chord);
+
+/**
+ * 작전·companion 단축키는 Operations 핸들러가 내는데, 그 핸들러는 편집 중이면 Alt 없는 조합을 통째로
+ * 양보한다(shortcuts.tsx 의 blocksOperationsShortcutWhileEditing). 셸은 페이지 안의 캐럿을 볼 수 없으므로
+ * 그쪽 명령은 Alt 를 쥔 조합만 선언한다 — 기본값이 아니라 사용자가 바꾼 조합에도 같은 경계가 서야 한다.
+ */
+const survivesEditing = (chord: string) => chord.split("+").includes("Alt");
+
+/**
+ * 셸이 네이티브 뷰 위에서 가로챈 Console 조합을 이 창에서 되누른다. 뷰는 창 안의 또 다른 Chromium 이라
+ * 그 위에서 누른 키는 여기까지 오지 않는다 — 조합을 그대로 되살려 window 에 얹으면 등록부를 읽는 전역
+ * 핸들러(⌘K·⌘P·Quick Launch…)가 평소처럼 자기 명령을 고른다.
+ */
+function pressConsoleChord(chord: string, repeat: boolean): void {
+  const parsed = parseChord(chord);
+  if (parsed === null) return;
+  const apple = isApplePlatform();
+  const mod = parsed.modifiers.has("Mod");
+  const ctrl = parsed.modifiers.has("Ctrl");
+  // 등록부는 물리 코드로 판정하지만, Mod+Alt 조합은 event.key 도 함께 본다(AltGr 오인 거르기).
+  const key = parsed.code.startsWith("Key") ? parsed.code.slice(3).toLowerCase()
+    : parsed.code.startsWith("Digit") ? parsed.code.slice(5)
+    : parsed.code;
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    code: parsed.code,
+    key,
+    metaKey: apple && mod,
+    ctrlKey: apple ? ctrl : mod || ctrl,
+    altKey: parsed.modifiers.has("Alt"),
+    shiftKey: parsed.modifiers.has("Shift"),
+    // 눌러 둔 키의 반복분은 그대로 실어 보낸다 — Zen 토글과 companion 토글은 이 표식으로 한 번만 움직인다.
+    repeat,
+    bubbles: true,
+    cancelable: true,
+  }));
 }
 
 /** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
@@ -362,6 +414,30 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   // ---- 네이티브 뷰의 자리 ----
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
+  // 뷰가 포커스를 쥔 동안 셸이 가로챌 조합 — 등록부(사용자 재배정 포함)를 그대로 푼다. 자리와 함께 내려간다:
+  // 뷰가 놓이는 순간이 곧 그 키가 콘솔 렌더러를 떠나는 순간이다.
+  const overrides = useShortcutOverrides();
+  // companion 조합(Alt+B 로 이 브라우저를 여닫는 것까지)은 지금 선 작전에 따라 달라진다 — 코어 등록부만
+  // 실으면 뷰 안에서 자기 자신을 닫는 키가 페이지로 새어 나간다.
+  const companionShortcuts = useActiveCompanionShortcuts();
+  const consoleChords = React.useMemo(
+    () => [...new Set([
+      ...CORE_SHORTCUT_COMMANDS
+        .filter((command) => !FOCUS_GATED_COMMANDS.has(command.id))
+        .flatMap((command) => resolveShortcutChords(command.id, command.defaults)
+          .filter((chord) => command.group !== "operations" || survivesEditing(chord))),
+      ...companionShortcuts.flatMap((entry) => resolveShortcutChords(entry.commandId, [entry.defaultChord]).filter(survivesEditing)),
+    ].filter(carriesCommandModifier))],
+    [overrides, companionShortcuts],
+  );
+  React.useEffect(() => {
+    if (!available) return;
+    return subscribeConsoleChannel(BROWSER_CHORD_EVENT, (payload) => {
+      const body = payload as { readonly operationId?: unknown; readonly chord?: unknown; readonly repeat?: unknown };
+      if (body.operationId !== operationId || typeof body.chord !== "string") return;
+      pressConsoleChord(body.chord, body.repeat === true);
+    });
+  }, [available, operationId]);
   const placeRef = React.useRef<string>("");
   React.useEffect(() => {
     if (!available) return;
@@ -374,8 +450,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       const covered = document.querySelector('[aria-modal="true"]') !== null;
       const shown = activeTab !== null && mode === "none" && !covered && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const visible = shown ? visibleRect(host, rect) : null;
-      if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false }); return; }
-      post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true });
+      if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false, chords: consoleChords }); return; }
+      post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true, chords: consoleChords });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -385,7 +461,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
-  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null]);
+  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null, consoleChords]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
 
