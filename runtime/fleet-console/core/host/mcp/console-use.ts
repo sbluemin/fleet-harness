@@ -118,11 +118,12 @@ const NEXT_ACTION: Record<string, string> = {
   not_launched_by_caller: "Only Operations this caller launched can be answered. Ask the person instead.",
   unsupported_ask: "Plan approvals and permission prompts are for the person. Do not answer them.",
   target_busy: "The Operation is working and was not launched by you. Do not close it; ask the person.",
-  not_dormant: "Only a dormant Operation can be resumed; this one is live. Use console_send instead.",
+  not_dormant: "Only a dormant terminal Operation can be resumed. A chat Operation is never dormant here: console_send wakes it.",
   composer_busy: "The person is typing in that Operation's input right now. Wait a moment and retry with the same requestId, or ask them.",
   unknown_group: "No such group in that Theater. Read console_operations for the Theater's groups.",
   group_not_empty: "The group still has members. Move them out with console_organize (group: null) first.",
   mixed_theaters: "All Operations in one call must belong to the same Theater.",
+  invalid_arguments: "Check the tool's parameters. console_organize: give operationIds with title, accent, or group ({ id } to assign, { name, color? } to create, null to remove), or groupPatch alone. console_send: exactly one of text, askId, interrupt.",
 };
 
 function refuse(reason: ConsoleUseRefusal, operationId: string | null, language: "en" | "ko") {
@@ -310,7 +311,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       }
       if (args.group !== undefined) {
         const group = need("group");
-        if (args.group === null) {
+        // null 도 빈 객체도 "그룹에서 뺌" 이다 — 모델이 둘 중 무엇을 보내도 같은 제스처.
+        if (args.group === null || (!args.group.id && !args.group.name)) {
           result.group = group({ mode: "remove", theaterId, operationIds: nodes.map((op) => op.id) });
           gesture(ctx, "console_organize", `${nodes.map((op) => op.title).join(", ")} 그룹에서 뺌`, "press", { kind: "theater", theaterId });
         } else if (args.group.id) {

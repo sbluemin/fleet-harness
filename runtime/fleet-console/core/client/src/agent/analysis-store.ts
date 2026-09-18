@@ -1,6 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { ClientApiCapability, ClientSettingsCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
+import { getOperationGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, fetchAnalysisJournal, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 import { subscribeInstalledExperiments } from "./experiments-api.js";
@@ -13,6 +14,8 @@ export interface AnalysisStore {
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
   readonly refreshCatalog: () => void;
+  /** 서버에 살아 있는 분석가(에이전트가 시작한 것 포함)를 이어받는다 — 원장을 그리고 스트림을 붙인다. 이미 시작된 스토어면 아무 일도 없다. */
+  readonly adopt: () => void;
   readonly dispose: () => void;
   readonly updateContext: (settings: ClientSettingsCapability | undefined, language: "en" | "ko" | undefined) => void;
 }
@@ -24,6 +27,7 @@ interface AnalysisStoreBinding {
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
   readonly refreshCatalog: () => void;
+  readonly adopt: () => void;
 }
 
 const stores = new Map<string, AnalysisStore>();
@@ -32,7 +36,11 @@ const disposalFlights = new Map<string, Promise<void>>();
 export function useAnalysisStore(context: OperationRenderContext): AnalysisStoreBinding {
   const store = getAnalysisStore(context.operationId, context.api, context.settings, context.language);
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset, refreshCatalog: store.refreshCatalog };
+  // 패널이 열릴 때마다 채택을 시도한다 — 스토어는 캡션 칩 때문에 분석가가 시작되기 전에 만들어질 수 있고, 그 사이
+  // 에이전트가 console_analyst 로 시작·질문했으면 지금 그 원장을 그려야 「분석가 시작」 대신 대화가 보인다.
+  React.useEffect(() => { store.adopt(); }, [store]);
+  React.useEffect(() => subscribeConsoleUseGestures(() => { if (getOperationGaze(context.operationId)?.tool === "console_analyst") store.adopt(); }), [store, context.operationId]);
+  return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset, refreshCatalog: store.refreshCatalog, adopt: store.adopt };
 }
 
 export function getAnalysisStore(operationId: string, api: ClientApiCapability, settings?: ClientSettingsCapability, language?: "en" | "ko"): AnalysisStore {
@@ -190,7 +198,21 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
   };
   const unsubscribeExperiments = subscribeInstalledExperiments(() => { if (!disposed) refreshCatalogNow(); });
 
+  let adoptFlight: Promise<void> | null = null;
+  const adopt = (): void => {
+    if (disposed || state.started || adoptFlight) return;
+    adoptFlight = fetchAnalysisJournal(api, operationId)
+      .then(async (journal) => {
+        if (disposed || !journal.started || state.started) return;
+        dispatch({ type: "hydrate", started: true, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries, now: Date.now() });
+        if (state.busy) armWatchdog();
+        await openStream();
+      })
+      .catch(() => undefined)
+      .finally(() => { adoptFlight = null; });
+  };
   const store: AnalysisStore = {
+    adopt,
     getSnapshot: () => state,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -302,17 +324,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
     .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }))
     .finally(() => { catalogFlight = null; });
   void catalogFlight;
-  // 서버에 이미 살아 있는 분석가(에이전트가 시작했거나 리로드 전의 것)를 이어받는다 — 원장을 그리고 스트림을 붙인다.
-  // 「분석가 시작」 대신 대화가 보이는 것이 이 읽기의 전부다. 실패는 조용히 지나간다(아직 아무것도 요청하지 않은 화면).
-  void (previousDisposal ?? Promise.resolve())
-    .then(() => fetchAnalysisJournal(api, operationId))
-    .then(async (journal) => {
-      if (disposed || !journal.started || state.started) return;
-      dispatch({ type: "hydrate", started: true, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries, now: Date.now() });
-      if (state.busy) armWatchdog();
-      await openStream();
-    })
-    .catch(() => undefined);
+  // 서버에 이미 살아 있는 분석가(에이전트가 시작했거나 리로드 전의 것)를 이어받는다. 실패는 조용히 지나간다.
+  void (previousDisposal ?? Promise.resolve()).then(() => adopt());
 
   return store;
 }
