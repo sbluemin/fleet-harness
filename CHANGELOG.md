@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.98.0] - 2026-09-18
+
+### fleet-console
+
+#### Changed
+- Console use now shows what an agent is doing on your Console: the Operation, group, Theater, or Repository/File panel it reads or changes is briefly wrapped in a pulse that matches the Console use badge, messages and answers it sends carry its name, and groups and Operations it creates are attributed to it.
+- Console use tools are reorganized around the Console's own places (sidebar, Operation panel, Session Analyst, Quick Launch, Repository and File Explorer) and reduced to ten: `console_context`, `console_operations`, `console_organize`, `console_operation`, `console_send`, `console_panel`, `console_analyst`, `console_launch`, `console_repo`, `console_file`. Agents can now start an Operation directly into a group with a title, rename groups, and delete empty ones.
+- Questions an agent asks a Session Analyst through Console use now appear in that Operation's own Analyst panel with the agent's name, and the conversation is there when you open the panel later.
+- When an agent closes an Operation, the same undo banner you get for your own closes appears and says which agent closed it.
+
+#### Fixed
+- Groups created, renamed, recolored, or deleted by an agent or by another window now appear immediately in the sidebar instead of after a reload.
+
+#### Removed
+- The Console use automation tool (`console_automation`) is removed, along with the separate event, receipt, session-end, and Theater-list tools. Previously scheduled automations stay paused.
+
 ## [1.97.1] - 2026-09-18
 
 ### fleet-console
