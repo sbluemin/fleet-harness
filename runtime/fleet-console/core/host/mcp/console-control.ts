@@ -19,10 +19,11 @@ const actionObjectSchema = z.object({
   theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(),
+  groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   if (value.kind === "launch" ? !value.theaterId || !value.text || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && value.text) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.text !== undefined && !sanitizeLaunchPrompt(value.text)) ctx.addIssue({ code: "custom", message: "empty_prompt" });
 });

@@ -1,5 +1,6 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { gestureCallerLabel, getTheaterScan, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { createPortal } from "react-dom";
 import { useZenMode } from "../zen-mode.js";
 
@@ -1594,6 +1595,7 @@ function TheaterSectionHeader({
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </span>
         <span className="side-bar-theater-name">{theater.label}</span>
+        <TheaterScanMark theaterId={theater.id} />
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
@@ -1983,4 +1985,13 @@ function TrashIcon() {
       <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+/** Console Use 시선 — 에이전트가 이 Theater 의 목록을 훑거나 그룹을 만지면 헤더에 점이 두 번 맥동한다. */
+function TheaterScanMark({ theaterId }: { readonly theaterId: string }) {
+  const t = useT();
+  const scan = useSyncExternalStore(subscribeConsoleUseGestures, () => getTheaterScan(theaterId), () => null);
+  if (!scan) return null;
+  const label = t("sidebar.theater.scan", { caller: gestureCallerLabel(scan.caller), summary: scan.summary });
+  return <span className="side-bar-theater-scan" role="img" aria-label={label} title={label} />;
 }

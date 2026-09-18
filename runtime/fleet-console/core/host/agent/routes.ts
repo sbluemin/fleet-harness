@@ -7,7 +7,7 @@ import process from "node:process";
 import { buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
-import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
+import { CONSOLE_CONTROL_TOOLS, type ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../mcp/console-control.js";
@@ -36,7 +36,7 @@ import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./o
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
-import { maskChatText } from "./chat-events.js";
+import { maskChatText, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleSurface } from "../mcp/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./analysis-types.js";
@@ -334,10 +334,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     setView: (operationId, mode) => setChatMode(operationId, mode === "chat"),
     pendingAsks: (operationId) => chatRegistry.get(operationId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
-    answer: (operationId, askId, input) => {
+    answer: (operationId, askId, input, by) => {
       const chat = chatRegistry.get(operationId);
       if (!chat) return { ok: false, error: "chat_not_active" };
-      const result = chat.answer(askId, { ...(input.answers ? { answers: input.answers } : {}), ...(input.message ? { message: input.message.slice(0, MAX_CHAT_ANSWER_MESSAGE_CHARS) } : {}) });
+      const result = chat.answer(askId, { ...(input.answers ? { answers: input.answers } : {}), ...(input.message ? { message: input.message.slice(0, MAX_CHAT_ANSWER_MESSAGE_CHARS) } : {}) }, chatOrigin(by));
       return result.ok ? { ok: true, outcome: result.outcome } : { ok: false, error: result.error };
     },
     jobs: async (operationId) => {
@@ -446,6 +446,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       } finally { await handle.close(); }
     },
   } satisfies Partial<ConsoleSurface>);
+  /** Console Use 호출자를 채팅 원장의 저자로 — 제목만 싣는다. 사람이면 undefined. */
+  const chatOrigin = (by: ConsoleCaller | undefined): ChatOrigin | undefined => {
+    if (!by) return undefined;
+    if (by.kind === "plugin") return { kind: "plugin", pluginId: by.pluginId };
+    return { kind: "operation", operationId: by.operationId, title: ctx.host.operations.get(by.operationId)?.title ?? by.operationId };
+  };
   const detachControl = ctx.consoleControl?.attach({
     observe(operationId) {
       const session = observability.getTerminalSessionInfo(operationId);
@@ -482,6 +488,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchedId = response.value.sessionId as string;
         const launched = ctx.host.operations.get(launchedId);
         if (launched) ctx.host.operations.patch(launchedId, { payload: { ...launched.payload, launchedBy: caller } });
+        // 제목은 사람의 이름 바꾸기와 같은 길로 — 그래야 관측 세션이 사용자 소유 라벨로 기록해 자동 이름이 덮지 않는다.
+        if (input.title) ctx.consoleSurface?.rename?.(launchedId, input.title);
+        // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
+        // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패 영수증을 남기면 재시도가 같은 Operation 을 하나 더 만든다.
+        if (input.groupId && ctx.consoleSurface?.group) { try { ctx.consoleSurface.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { operationId: launchedId, delivery: "queued" };
       }
       const operationId = input.operationId!;
@@ -504,7 +515,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         settled("interrupted");
         return { operationId, delivery: "requested" };
       }
-      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled);
+      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller));
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
@@ -1235,7 +1246,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return deliverMessage(sessionId, text, attachmentIds, (status, value) => ctx.host.http.writeJson(res, status, value));
   }
 
-  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void): Promise<boolean> {
+  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): Promise<boolean> {
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
     if (sanitized.trim().length === 0) {
@@ -1301,7 +1312,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 자식에게는 첨부 경로가 붙은 프롬프트를, 화면에는 사람이 쓴 문면을 준다 — 예약 칩이
         // 호스트 절대 경로를 브라우저로 실어 나르지 않게 하는 경계가 이 인자 둘이다.
         assertCurrent();
-        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string, text.trim(), onSettled);
+        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string, text.trim(), onSettled, by);
       } catch (error) {
         settleAttachments(false);
         if (error instanceof ConsoleControlError) throw error;

@@ -1,8 +1,8 @@
-import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
+import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
-import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
+import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -107,6 +107,27 @@ export function connectOperationsSse(): void {
     }
   });
 
+  // 그룹은 Operation 과 별개의 실체다 — 모르는 groupId 를 단 operation:changed 가 먼저 와도 이 사건이 뒤따르면 자리를 찾는다.
+  source.addEventListener("group:changed", (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly group?: unknown };
+      const group = data.group as Record<string, unknown> | undefined;
+      if (isRecord(group) && typeof group.id === "string" && typeof group.name === "string" && typeof group.color === "string" && typeof group.theaterId === "string" && typeof group.order === "number") applyGroupUpdate({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order, createdAt: typeof group.createdAt === "number" ? group.createdAt : Date.now() });
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+  source.addEventListener("group:removed", (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly groupId?: unknown };
+      if (typeof data.groupId === "string") applyGroupRemoved(data.groupId);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
   source.addEventListener("update:available", () => {
     if (!isCurrentSource()) return;
     refreshObserverStatus();
@@ -196,9 +217,13 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      void fetchOperations()
-        .then((operations) => {
-          if (retryGeneration === connectionGeneration) hydrateOperations(operations);
+      // 그룹은 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — 두 스냅숏이 다 온 뒤에야 스트림을 다시
+      // 연다(그룹 조회가 늦게 끝나면 새 스트림의 사건을 옛 스냅숏이 덮는다). 그룹 조회 실패는 목록만 유지한다.
+      void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
+        .then(([operations, groups]) => {
+          if (retryGeneration !== connectionGeneration) return;
+          if (groups) hydrateGroups(groups);
+          hydrateOperations(operations);
         })
         // 콘솔이 재기동하면 이 화면의 세션은 사라지지만 페어링은 남는다. 그 사실을 아무도
         // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
@@ -231,9 +256,11 @@ export function reconnectOperationsSseNow(): void {
   activeSource?.close();
   activeSource = null;
   const reconnectGeneration = ++connectionGeneration;
-  void fetchOperations()
-    .then((operations) => {
-      if (reconnectGeneration === connectionGeneration) hydrateOperations(operations);
+  void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
+    .then(([operations, groups]) => {
+      if (reconnectGeneration !== connectionGeneration) return;
+      if (groups) hydrateGroups(groups);
+      hydrateOperations(operations);
     })
     .catch(() => undefined)
     .finally(() => {

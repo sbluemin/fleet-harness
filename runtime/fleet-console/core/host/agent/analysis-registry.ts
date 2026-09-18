@@ -1,12 +1,14 @@
-import type { AnalysisEvent, AnalysisSession } from "./analysis-types.js";
+import type { AnalysisEvent, AnalysisJournalEntry, AnalysisOrigin, AnalysisSession } from "./analysis-types.js";
 
 export const MAX_ANALYSIS_ARTIFACTS = 32;
 // Active artifacts remain available; stopped-session history is bounded process-wide.
 export const MAX_STOPPED_ANALYSIS_ARTIFACTS = 256;
+/** 원장 상한 — 넘치면 가장 오래된 질문 턴부터 통째로 버린다(턴 중간을 자르면 답이 질문 없이 남는다). */
+export const MAX_ANALYSIS_JOURNAL = 2_000;
 type Subscriber = (event: AnalysisEvent) => void;
 type GlobalSubscriber = (operationId: string, event: AnalysisEvent) => void;
 type RosterSubscriber = (operationIds: readonly string[]) => void;
-type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
+type Entry = { readonly session: AnalysisSession; readonly subscribers: Set<Subscriber>; readonly journal: AnalysisJournalEntry[]; model?: string; starting: boolean; messaging: boolean; stopped: boolean; disposePromise?: Promise<void> };
 type StoredArtifact = { readonly operationId: string; readonly html: string; readonly title: string; readonly createdAt: number };
 
 export class AnalysisRegistry {
@@ -15,16 +17,18 @@ export class AnalysisRegistry {
   private readonly globalSubscribers = new Set<GlobalSubscriber>();
   private readonly rosterSubscribers = new Set<RosterSubscriber>();
 
-  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession): Promise<"started" | "stopped" | "exists"> {
+  async start(operationId: string, create: (onEvent: (event: AnalysisEvent) => void) => AnalysisSession, model?: string): Promise<"started" | "stopped" | "exists"> {
     if (this.entries.has(operationId)) return "exists";
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.stopped) return;
       if (event.type === "artifact") this.storeArtifact(operationId, event.artifact.id, event.artifact.html, event.artifact.title, event.artifact.createdAt);
+      // 원장에는 본문 없는 아티팩트 참조만 남는다 — HTML 은 artifactHtml 로 따로 읽는다.
+      if (event.type !== "thought") this.record(entry, event.type === "artifact" ? { ...event, artifact: { ...event.artifact, html: "" } } : event);
       this.publish(operationId, event);
       if (event.type === "error" && event.error.code === "analysis_exited") void this.stopEntry(operationId, entry);
     });
-    entry = { session, subscribers: new Set(), starting: true, messaging: false, stopped: false };
+    entry = { session, subscribers: new Set(), journal: [], ...(model ? { model } : {}), starting: true, messaging: false, stopped: false };
     this.entries.set(operationId, entry);
     try {
       await session.start();
@@ -47,16 +51,38 @@ export class AnalysisRegistry {
     }
   }
 
-  async message(operationId: string, text: string): Promise<"accepted" | "not_found" | "busy"> {
+  async message(operationId: string, text: string, by?: AnalysisOrigin): Promise<"accepted" | "not_found" | "busy"> {
     const entry = this.entries.get(operationId);
     if (!entry || entry.stopped) return "not_found";
     if (entry.starting || entry.messaging) return "busy";
     entry.messaging = true;
+    // 질문은 원장에 먼저 선다 — 사람의 것도 에이전트의 것도. 패널은 이 에코를 그리고, 나중에 열어도 남는다.
+    const user: AnalysisEvent = { type: "user", text, at: Date.now(), ...(by ? { by } : {}) };
+    this.record(entry, user);
+    this.publish(operationId, user);
     void entry.session.send(text).catch(() => {
       if (this.entries.get(operationId) !== entry || entry.stopped) return;
-      this.publish(operationId, { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } });
+      // 합성한 실패도 원장에 선다 — 없으면 리로드 뒤 마지막 질문이 답을 기다리는 것으로 그려져 다음 질문이 막힌다.
+      const failure: AnalysisEvent = { type: "error", error: { code: "analysis_error", message: "Analysis request failed." } };
+      this.record(entry, failure);
+      this.publish(operationId, failure);
     }).finally(() => { entry.messaging = false; });
     return "accepted";
+  }
+
+  /** 그 Operation 의 분석가 원장 — 살아 있는 세션만. 없으면 null. */
+  journal(operationId: string): { readonly started: boolean; readonly model?: string; readonly entries: readonly AnalysisJournalEntry[] } | null {
+    const entry = this.entries.get(operationId);
+    if (!entry || entry.stopped) return null;
+    return { started: !entry.starting, ...(entry.model ? { model: entry.model } : {}), entries: entry.journal };
+  }
+
+  private record(entry: Entry, event: AnalysisEvent): void {
+    if (event.type === "connected" || event.type === "thought") return;
+    entry.journal.push({ at: Date.now(), event });
+    if (entry.journal.length <= MAX_ANALYSIS_JOURNAL) return;
+    const next = entry.journal.findIndex((row, index) => index > 0 && row.event.type === "user");
+    entry.journal.splice(0, next > 0 ? next : entry.journal.length - MAX_ANALYSIS_JOURNAL);
   }
 
   subscribe(operationId: string, subscriber: Subscriber): (() => void) | null {

@@ -334,6 +334,9 @@ export interface OperationsRouterDeps {
   readonly isPendingDeletion?: (id: string) => boolean;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
   readonly broadcastOperationChanged?: (node: OperationNode) => void;
+  /** 그룹은 Operation 과 별개의 실체다 — 생성·수정·삭제도 사건으로 흘러야 다른 클라이언트·에이전트의 변경이 새로고침 없이 보인다. */
+  readonly broadcastGroupChanged?: (group: OperationGroup) => void;
+  readonly broadcastGroupRemoved?: (groupId: string, theaterId: string) => void;
   // 요청도 함께 넘긴다 — 구독자가 어느 리스너에서 왔는지에 따라 받을 이벤트가 갈린다.
   readonly subscribeOperationSse?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
   readonly getPluginSensitiveFields?: (pluginId: string | null) => readonly string[];
@@ -562,6 +565,7 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
       ...(typeof body.order === "number" ? { order: body.order } : {}),
     });
     deps.persist();
+    deps.broadcastGroupChanged?.(group);
     deps.writeJson(res, 201, { group });
   } catch (error) {
     deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_group" });
@@ -578,8 +582,9 @@ async function handleGroupItem(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   if (req.method === "DELETE") {
+    const existing = deps.store.listAllGroups().find((group) => group.id === id);
     const deleted = deps.store.deleteGroup(id);
-    if (deleted) deps.persist();
+    if (deleted) { deps.persist(); if (existing) deps.broadcastGroupRemoved?.(id, existing.theaterId); }
     deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "group_not_found" });
     return;
   }
@@ -598,6 +603,7 @@ async function handleGroupItem(req: http.IncomingMessage, res: http.ServerRespon
     return;
   }
   deps.persist();
+  deps.broadcastGroupChanged?.(group);
   deps.writeJson(res, 200, { group });
 }
 

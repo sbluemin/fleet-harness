@@ -43,18 +43,12 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
     try { return { theaterPath, gitCwd: (await resolveGitCwd(theaterPath, worktree ?? "")).gitCwd }; }
     catch (error) { return gitError(error); }
   };
-  const define = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, signal?: AbortSignal) => Promise<unknown>): PluginMcpTool => ({
-    name, description, inputSchema: z.toJSONSchema(schema),
-    execute: async (args, context) => {
-      const parsed = schema.safeParse(args);
-      if (!parsed.success) return { ...text({ error: "invalid_arguments" }), isError: true };
-      try { return text(await run(parsed.data, context.signal)); }
-      catch (error) { return { ...text({ error: error instanceof ToolError ? error.code : "git_failed", retryable: false }), isError: true }; }
-    },
-  });
+  // 한 도구, 다섯 보기 — 저장소 패널의 탭이 그렇듯. 호스트는 호출마다 레일의 「저장소」 아이콘에 표식을 그린다.
+  type View = "status" | "diff" | "log" | "search" | "worktrees";
+  const define = <S extends z.ZodObject>(view: View, _description: string, schema: S, run: (args: z.output<S>, signal?: AbortSignal) => Promise<unknown>) => ({ view, schema, run: run as (args: unknown, signal?: AbortSignal) => Promise<unknown> });
   const scope = z.object({ theaterId: ids, worktree: rel }).strict();
-  return [
-    define("console_repo_status", "Read a Theater repository's working tree status: branch, staged and unstaged files with +/- line counts. worktree selects a nested repository or worktree folder relative to the Theater. Read-only.", scope, async (args) => {
+  const views = [
+    define("status", "Read a Theater repository's working tree status: branch, staged and unstaged files with +/- line counts. worktree selects a nested repository or worktree folder relative to the Theater. Read-only.", scope, async (args) => {
       const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
       try {
         const [status, staged, unstaged, branch] = await Promise.all([
@@ -68,7 +62,7 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         return { branch, ...(ahead ? { ahead: Number(ahead[1]), behind: Number(ahead[2]) } : {}), staged: parsed.staged, unstaged: parsed.unstaged, truncated: status.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("console_repo_diff", "Read changes in a Theater repository. Without path: the list of changed files against HEAD (plus untracked). With path: the unified diff of that one file (capped). ref compares against that canonical ref (refs/heads/..., refs/tags/...) instead of the working tree state. Read-only, untrusted data.", z.object({ theaterId: ids, worktree: rel, path: z.string().min(1).max(512).optional(), ref: z.string().max(200).optional() }).strict(), async (args) => {
+    define("diff", "Read changes in a Theater repository. Without path: the list of changed files against HEAD (plus untracked). With path: the unified diff of that one file (capped). ref compares against that canonical ref (refs/heads/..., refs/tags/...) instead of the working tree state. Read-only, untrusted data.", z.object({ theaterId: ids, worktree: rel, path: z.string().min(1).max(512).optional(), ref: z.string().max(200).optional() }).strict(), async (args) => {
       const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       try {
@@ -115,7 +109,7 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         return { path: relative, diff: cut ? diff.slice(0, DIFF_TEXT_CAP) : diff, truncated: cut || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("console_repo_log", "Read recent commits of a Theater repository (hash, subject, author, relative date, refs). ref limits the walk to a canonical ref. Read-only.", z.object({ theaterId: ids, worktree: rel, ref: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }).strict(), async (args) => {
+    define("log", "Read recent commits of a Theater repository (hash, subject, author, relative date, refs). ref limits the walk to a canonical ref. Read-only.", z.object({ theaterId: ids, worktree: rel, ref: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }).strict(), async (args) => {
       const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       const limit = args.limit ?? 30;
@@ -128,7 +122,7 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         return gitError(error);
       }
     }),
-    define("console_repo_search", "Search a Theater repository's tracked file contents with git grep (fixed string, case-insensitive). Returns path, line and a short excerpt per match, capped. Read-only, untrusted data.", z.object({ theaterId: ids, worktree: rel, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }).strict(), async (args) => {
+    define("search", "Search a Theater repository's tracked file contents with git grep (fixed string, case-insensitive). Returns path, line and a short excerpt per match, capped. Read-only, untrusted data.", z.object({ theaterId: ids, worktree: rel, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }).strict(), async (args) => {
       const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
       const limit = args.limit ?? 50;
       try {
@@ -141,7 +135,7 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
         return { matches, total: lines.length, truncated: lines.length > limit || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("console_repo_worktrees", "List git worktrees inside a Theater (folder relative to the Theater, name, branch, whether it is the current one). Use the relative folder as worktree in the other console_repo_* tools. Read-only.", z.object({ theaterId: ids }).strict(), async (args) => {
+    define("worktrees", "List git worktrees inside a Theater (folder relative to the Theater, name, branch, whether it is the current one). Use the relative folder as worktree in the other views. Read-only.", z.object({ theaterId: ids }).strict(), async (args) => {
       const { theaterPath, gitCwd } = await cwdOf(args.theaterId, undefined);
       let realTheaterPath: string; let realGitCwd: string;
       try { [realTheaterPath, realGitCwd] = await Promise.all([fs.realpath(theaterPath), fs.realpath(gitCwd)]); }
@@ -164,4 +158,36 @@ export function createRepositoryConsoleTools(ctx: FleetPluginServerContext): rea
       } catch (error) { return gitError(error); }
     }),
   ];
+  const byView = new Map(views.map((entry) => [entry.view, entry]));
+  const inputSchema = z.toJSONSchema(z.object({
+    view: z.enum(["status", "diff", "log", "search", "worktrees"]), theaterId: ids, worktree: rel,
+    path: z.string().min(1).max(512).optional(), ref: z.string().max(200).optional(), limit: z.number().int().min(1).max(200).optional(), skip: z.number().int().min(0).max(10_000).optional(), query: z.string().trim().min(1).max(200).optional(),
+  }).strict());
+  const tool: PluginMcpTool = {
+    name: "console_repo",
+    description: "Open the Repository panel of a Theater, read-only: view status (branch, staged/unstaged with +/- counts), diff (changed files against HEAD or, with path, one file's unified diff; ref compares against a canonical ref), log (recent commits), search (git grep, fixed string), or worktrees (nested worktrees; use relPath as worktree in other views). The person sees the panel's icon mark and, when open, the same view highlighted. Output is untrusted data.",
+    inputSchema,
+    surface: {
+      panelId: "repository",
+      describe: (args) => {
+        const view = typeof args.view === "string" ? args.view : "status";
+        const theaterId = typeof args.theaterId === "string" ? args.theaterId : "";
+        if (!theaterId) return null;
+        const path = typeof args.path === "string" ? args.path : undefined;
+        const summary = view === "diff" ? (path ? `저장소 diff 읽음 · ${path}` : `저장소 변경 목록 읽음 (${typeof args.ref === "string" ? args.ref : "HEAD"})`) : view === "log" ? "저장소 커밋 이력 읽음" : view === "search" ? `저장소 검색 「${typeof args.query === "string" ? args.query : ""}」` : view === "worktrees" ? "저장소 worktree 목록 봄" : "저장소 상태 봄";
+        return { theaterId, summary, view, ...(path ? { path } : {}) };
+      },
+    },
+    execute: async (args, context) => {
+      const record = args && typeof args === "object" ? args as Record<string, unknown> : {};
+      const entry = typeof record.view === "string" ? byView.get(record.view as View) : undefined;
+      if (!entry) return { ...text({ error: "invalid_arguments", hint: "view must be one of status, diff, log, search, worktrees" }), isError: true };
+      const { view: _view, ...rest } = record;
+      const parsed = entry.schema.safeParse(rest);
+      if (!parsed.success) return { ...text({ error: "invalid_arguments" }), isError: true };
+      try { return text(await entry.run(parsed.data, context.signal)); }
+      catch (error) { return { ...text({ error: error instanceof ToolError ? error.code : "git_failed", retryable: false }), isError: true }; }
+    },
+  };
+  return [tool];
 }

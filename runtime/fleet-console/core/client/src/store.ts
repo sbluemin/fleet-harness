@@ -386,6 +386,20 @@ export function hydrateGroups(groups: readonly OperationGroup[]): void {
   setState({ groups });
 }
 
+/** 그룹 사건 — 다른 클라이언트·에이전트가 만들거나 고친 그룹이 새로고침 없이 선다. 같은 사건으로 추가·갱신한다. */
+export function applyGroupUpdate(group: OperationGroup): void {
+  const index = state.groups.findIndex((item) => item.id === group.id);
+  const groups = [...state.groups];
+  if (index === -1) groups.push(group);
+  else groups[index] = group;
+  setState({ groups });
+}
+
+export function applyGroupRemoved(groupId: string): void {
+  if (!state.groups.some((item) => item.id === groupId)) return;
+  setState({ groups: state.groups.filter((item) => item.id !== groupId) });
+}
+
 export function setActiveTheater(theaterId: string | null): void {
   writeStoredActiveTheaterId(theaterId);
   setState({ activeTheaterId: theaterId });

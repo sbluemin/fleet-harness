@@ -1,4 +1,5 @@
-import { useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useSyncExternalStore, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { gestureCallerLabel, getGroupCreator, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 
 import { useT } from "../i18n/index.js";
 import type { OperationGroup } from "../types.js";
@@ -81,6 +82,7 @@ export function OperationsSideBarGroupHeader({
         <CollapseArrow collapsed={collapsed} />
       </button>
       <span className="side-bar-group-header__name">{group.name}</span>
+      <GroupCreatorMark groupId={group.id} />
       <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
     </div>
   );
@@ -96,4 +98,13 @@ function CollapseArrow({ collapsed }: { readonly collapsed: boolean }) {
       <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+/** 에이전트가 만든 그룹의 저자 — hover 로 읽는 작은 표식. 사람이 만든 그룹에는 없다. */
+function GroupCreatorMark({ groupId }: { readonly groupId: string }) {
+  const t = useT();
+  const creator = useSyncExternalStore(subscribeConsoleUseGestures, () => getGroupCreator(groupId), () => null);
+  if (!creator) return null;
+  const label = t("sidebar.group.createdBy", { caller: gestureCallerLabel(creator.caller) });
+  return <span className="side-bar-group-header__by" title={label} aria-label={label} role="img" />;
 }

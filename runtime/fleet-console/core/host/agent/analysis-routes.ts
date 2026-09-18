@@ -3,12 +3,13 @@ import type http from "node:http";
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { AnalystSession, type AnalystEvent } from "@dotobokuri/fleet-analyst";
 import type { OperationNode } from "@fleet-console/sdk/plugin";
+import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import type { ConsoleRuntimeContext } from "../runtime-context.js";
 import { registerRouter } from "../runtime-context.js";
 
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
-import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisStartBody, isMessageBody, resolveAnalysisGatewayBaseUrl, withAnalystSelection, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
+import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisStartBody, isMessageBody, resolveAnalysisGatewayBaseUrl, withAnalystSelection, type AnalysisCatalog, type AnalysisEvent, type AnalysisOrigin } from "./analysis-types.js";
 import { readAnalysisProviderSession } from "./provider-session.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 
@@ -80,9 +81,12 @@ type InFlightStartDeletionMarker = {
 
 /** Console Use 가 쓰는 분석가 서비스 — 라우트와 같은 레지스트리·카탈로그·전사 규칙 위에서 한 질문을 끝까지 돌린다. */
 export interface AnalysisConsoleService {
-  ask(operationId: string, question: string, signal?: AbortSignal): Promise<{ readonly ok: true; readonly answer: string; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly ok: false; readonly error: string }>;
+  ask(operationId: string, question: string, by: ConsoleCaller, signal?: AbortSignal): Promise<{ readonly ok: true; readonly answer: string; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly ok: false; readonly error: string }>;
   artifacts(operationId: string, artifactId?: string): { readonly artifacts: readonly { readonly id: string; readonly title: string }[]; readonly html?: string } | { readonly error: string };
+  /** 사람이 패널에서 보는 것과 같은 원장 — 시작 여부·모델·최근 항목·아티팩트 목록. */
+  state(operationId: string): { readonly started: boolean; readonly model?: string; readonly journal: readonly Record<string, unknown>[]; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly error: string };
 }
+const CONSOLE_JOURNAL_TAIL = 40;
 
 const CONSOLE_ASK_TIMEOUT_MS = 180_000;
 const CONSOLE_ARTIFACT_HTML_CAP = 200_000;
@@ -119,16 +123,19 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
       const result = await registry.start(operation.id, (onEvent) => createSession({
         baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: selection.model, effort: selection.effort || undefined, cwd,
         capturePath: transcript.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
-      }));
+      }), selection.model);
       return result === "stopped" ? "analyst_unavailable" : null;
     } catch { return "analyst_unavailable"; }
   };
   const service: AnalysisConsoleService = {
-    async ask(operationId, question, signal) {
+    async ask(operationId, question, by, signal) {
       const operation = getAgentOperation(ctx, operationId);
       if (!operation) return { ok: false, error: "unknown_operation" };
+      const origin: AnalysisOrigin = by.kind === "plugin" ? { kind: "plugin", pluginId: by.pluginId } : { kind: "operation", operationId: by.operationId, title: ctx.host.operations.get(by.operationId)?.title ?? by.operationId };
       const startError = await ensureStarted(operation);
       if (startError) return { ok: false, error: startError };
+      // 시작을 기다리는 동안 턴이 끝났거나 허용이 거둬졌으면 여기서 멈춘다 — 뒤늦게 붙인 abort 리스너는 이미 끊긴 신호를 듣지 못한다.
+      if (signal?.aborted) return { ok: false, error: "cancelled" };
       return await new Promise((resolve) => {
         let answer = "";
         const artifacts: { readonly id: string; readonly title: string }[] = [];
@@ -145,11 +152,18 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
           else if (event.type === "error") finish({ ok: false, error: event.error.code });
         });
         if (!unsubscribe) { finish({ ok: false, error: "analyst_unavailable" }); return; }
-        void registry.message(operationId, question).then((result) => {
+        void registry.message(operationId, question, origin).then((result) => {
           if (result === "busy") finish({ ok: false, error: "analyst_busy" });
           else if (result === "not_found") finish({ ok: false, error: "analyst_unavailable" });
         }, () => finish({ ok: false, error: "analyst_unavailable" }));
       });
+    },
+    state(operationId) {
+      if (!getAgentOperation(ctx, operationId)) return { error: "unknown_operation" };
+      const journal = registry.journal(operationId);
+      const artifacts = registry.listArtifacts(operationId).map(({ id, title }) => ({ id, title }));
+      if (!journal) return { started: false, journal: [], artifacts };
+      return { started: journal.started, ...(journal.model ? { model: journal.model } : {}), journal: journal.entries.slice(-CONSOLE_JOURNAL_TAIL).map((row) => ({ at: new Date(row.at).toISOString(), ...row.event })), artifacts };
     },
     artifacts(operationId, artifactId) {
       if (!getAgentOperation(ctx, operationId)) return { error: "unknown_operation" };
@@ -174,7 +188,7 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
     if (artifactMatch) return handleArtifact(ctx, req, res, decodeURIComponent(artifactMatch[1] ?? ""), registry);
     const clearArtifactsMatch = path.match(/^\/([^/]+)\/artifacts$/);
     if (clearArtifactsMatch) return handleClearArtifacts(ctx, req, res, decodeURIComponent(clearArtifactsMatch[1] ?? ""), registry);
-    const match = path.match(/^\/([^/]+)\/(ready|start|message|stream|stop)$/);
+    const match = path.match(/^\/([^/]+)\/(ready|start|message|stream|stop|journal)$/);
     if (!match) return false;
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -184,6 +198,13 @@ export function registerAnalysisRoutes(ctx: ConsoleRuntimeContext, deps: Analysi
       return true;
     }
     if (action === "ready") return handleReady(ctx, req, res, operation);
+    if (action === "journal") {
+      // 패널이 열릴 때 원장을 받아 그린다 — 에이전트가 시작·질문한 분석가도 사람에게 같은 대화로 보인다.
+      if (req.method !== "GET") return methodNotAllowed(ctx, res);
+      const journal = registry.journal(operationId);
+      ctx.host.http.writeJson(res, 200, journal ? { started: journal.started, ...(journal.model ? { model: journal.model } : {}), entries: journal.entries } : { started: false, entries: [] });
+      return true;
+    }
     if (action === "start") {
       const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
       inFlightStartDeletionMarkers.add(deletionMarker);
@@ -708,7 +729,7 @@ async function handleStart(
       cwd,
       capturePath: transcriptPath,
       onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
-    }));
+    }), selection.model);
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
     else ctx.host.http.writeJson(res, 200, { started: true });

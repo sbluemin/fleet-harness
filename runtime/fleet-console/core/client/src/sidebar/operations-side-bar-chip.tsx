@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useAgentState } from "../agent/store.js";
+import { gestureCallerLabel, getOperationGaze, subscribeConsoleUseGestures } from "../console-use-gestures.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { OperationNameMark } from "../components/operation-name-mark.js";
@@ -351,6 +352,7 @@ export function OperationsSideBarChip({
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
+      {preview ? null : <SideBarChipGaze operationId={operation.id} />}
       {groupMark && statusAxis && groupBadge && !preview ? (
         <span
           className="side-bar-chip-group-pill"
@@ -454,4 +456,16 @@ function PluginOperationMarks({ operation }: { readonly operation: OperationNode
       {descriptor.operationMarks({ operation, language, onClose: () => undefined })}
     </PluginErrorBoundary>
   );
+}
+
+/**
+ * Console Use 시선 표식 — 어느 에이전트가 방금 이 Operation 을 읽거나 만졌는지. 호출자의 아이덴티티 톤 점 하나이며
+ * 8초 뒤 사라진다. 배경·테두리는 칠하지 않는다(아이덴티티는 잉크·점에만).
+ */
+function SideBarChipGaze({ operationId }: { readonly operationId: string }) {
+  const t = useT();
+  const gaze = useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationGaze(operationId), () => null);
+  if (!gaze) return null;
+  const label = t("sidebar.chip.gaze", { caller: gestureCallerLabel(gaze.caller), summary: gaze.summary });
+  return <span className={`side-bar-chip-gaze is-${gaze.gesture}`} role="img" aria-label={label} title={label} />;
 }

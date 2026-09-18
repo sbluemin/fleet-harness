@@ -86,6 +86,18 @@ export async function fetchAnalysisReady(api: ClientApiCapability, operationId: 
 export async function startAnalysis(api: ClientApiCapability, operationId: string, input: { readonly language?: "en" | "ko" }, signal?: AbortSignal): Promise<void> { await request(api, `${base(operationId)}/start`, input, signal); }
 export async function sendAnalysisMessage(api: ClientApiCapability, operationId: string, text: string): Promise<void> { await request(api, `${base(operationId)}/message`, { text }); }
 export async function stopAnalysis(api: ClientApiCapability, operationId: string): Promise<void> { await request(api, `${base(operationId)}/stop`, {}); }
+/** 서버 원장 — 패널이 열릴 때 한 번 읽어 그린다. 살아 있는 세션이 없으면 started=false·빈 목록. */
+export async function fetchAnalysisJournal(api: ClientApiCapability, operationId: string): Promise<{ readonly started: boolean; readonly model?: string; readonly entries: readonly { readonly at: number; readonly event: AnalysisEvent }[] }> {
+  const response = await fetchOrThrow(api, `${base(operationId)}/journal`);
+  const payload = await response.json().catch(() => null) as { readonly started?: unknown; readonly model?: unknown; readonly entries?: unknown } | null;
+  if (!response.ok || !payload || typeof payload.started !== "boolean" || !Array.isArray(payload.entries)) throw errorFrom(response.status, payload);
+  const entries = payload.entries.flatMap((row) => {
+    if (!row || typeof row !== "object" || typeof (row as { at?: unknown }).at !== "number") return [];
+    const event = parseAnalysisEvent((row as { event?: unknown }).event);
+    return event ? [{ at: (row as { at: number }).at, event }] : [];
+  });
+  return { started: payload.started, ...(typeof payload.model === "string" ? { model: payload.model } : {}), entries };
+}
 export async function clearAnalysisArtifacts(api: ClientApiCapability, operationId: string): Promise<void> {
   const response = await fetchOrThrow(api, `${base(operationId)}/artifacts`, { method: "DELETE" });
   if (!response.ok) throw errorFrom(response.status, await response.json().catch(() => null));

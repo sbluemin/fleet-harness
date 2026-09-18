@@ -24,8 +24,14 @@ export interface AnalysisSelection {
 export interface AnalysisCatalog { readonly clis: readonly AnalysisCli[]; readonly selection?: AnalysisSelection; }
 export interface AnalysisError { readonly code: string; readonly message: string; }
 export interface AnalysisArtifact { readonly id: string; readonly title: string; readonly html: string; readonly createdAt: number; }
+/** 사람이 아닌 질문자 — Console Use 로 물은 Operation. 제목만 온다. */
+export type AnalysisOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export function analysisOriginLabel(origin: AnalysisOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }
+
 export type AnalysisEvent =
   | { readonly type: "connected" }
+  /** 원장 항목 — 질문 하나가 접수됐다(사람의 것도, 에이전트의 것도). */
+  | { readonly type: "user"; readonly text: string; readonly at: number; readonly by?: AnalysisOrigin }
   | { readonly type: "chunk"; readonly text: string }
   | { readonly type: "thought"; readonly text: string }
   | { readonly type: "tool"; readonly title: string; readonly status: string }
@@ -53,6 +59,10 @@ export function parseAnalysisCatalog(value: unknown): AnalysisCatalog | null {
 export function parseAnalysisEvent(value: unknown): AnalysisEvent | null {
   if (hasForbiddenAnalysisKey(value) || !isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "connected") return { type: "connected" };
+  if (value.type === "user" && typeof value.text === "string" && typeof value.at === "number") {
+    const by = isRecord(value.by) ? (value.by.kind === "operation" && typeof value.by.operationId === "string" ? { kind: "operation" as const, operationId: value.by.operationId, title: typeof value.by.title === "string" ? value.by.title : value.by.operationId } : value.by.kind === "plugin" && typeof value.by.pluginId === "string" ? { kind: "plugin" as const, pluginId: value.by.pluginId } : undefined) : undefined;
+    return { type: "user", text: value.text, at: value.at, ...(by ? { by } : {}) };
+  }
   if ((value.type === "chunk" || value.type === "thought") && typeof value.text === "string") return { type: value.type, text: value.text };
   if (value.type === "tool" && typeof value.title === "string" && typeof value.status === "string") return { type: "tool", title: value.title, status: value.status };
   if (value.type === "complete") return { type: "complete" };

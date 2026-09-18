@@ -128,7 +128,8 @@ describe("per-operation analysis store", () => {
     expect(second).toBe(first);
     first.dispatch({ type: "set-draft", draft: "Survives panel collapse" });
     await sendWithConnected(first, harness, operationId, "Review this session");
-    expect(harness.fetch.mock.calls.map((call) => call[1])).toEqual([
+    // 스토어는 열릴 때 서버 원장을 한 번 읽는다 — 에이전트가 시작·질문한 분석가를 같은 대화로 이어받기 위해서다.
+    expect(harness.fetch.mock.calls.map((call) => call[1]).filter((path) => !String(path).endsWith("/journal"))).toEqual([
       "analysis/catalog",
       "analysis/operation-store-share/start",
       "analysis/operation-store-share/message",

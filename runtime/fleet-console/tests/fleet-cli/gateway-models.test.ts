@@ -57,7 +57,7 @@ describe("fleet-console-use gateway roster", () => {
       expect(offConsole.agentInstruction).toContain("Settings > Experiments > Console use");
       expect(offConsole.message).toContain("설정 > 실험 기능 > 콘솔 사용");
       enabled = true;
-      // 읽기 5종도 함께 막힌다.
+      // 읽기도 함께 막힌다.
       for (const [name, body] of [["console_context", {}], ["console_operations", {}], ["console_send", args]] as const) {
         expect(await call(name, body)).toMatchObject({ error: "console_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
       }
@@ -68,10 +68,6 @@ describe("fleet-console-use gateway roster", () => {
       expect((await call("console_context", {})).caller.operationId).toBe("op-a");
       await call("console_operations", {});
       expect(onOperationUse.mock.calls).toEqual([["op-a", true]]);
-      expect(await call("console_end", {})).toMatchObject({ ended: true });
-      expect(onOperationUse).toHaveBeenLastCalledWith("op-a", false);
-      await call("console_context", {});
-      expect(onOperationUse).toHaveBeenLastCalledWith("op-a", true);
       expect((await call("console_launch", { requestId: "empty", theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
       expect(control.state().actions).toHaveLength(0);
       expect(executions).toBe(0);
@@ -153,13 +149,15 @@ describe("fleet-console-use gateway roster", () => {
       await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
       expect((await call(aide, "console_launch", args)).id).toBe(receipt.id);
       expect(executions).toBe(1);
-      expect((await call(other, "console_action", { actionId: receipt.id })).error).toBe("action_not_found");
-      const policy = await call(aide, "console_automation", { mode: "propose", policy: { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 } });
+      // 영수증 조회 도구는 없다 — 다른 플러그인 소유자는 같은 requestId 로도 남의 영수증을 얻지 못한다(새 영수증이 선다).
+      expect((await call(other, "console_launch", args)).id).not.toBe(receipt.id);
+      // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
+      const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
       await aide.dispose();
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
       const nextChat = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => enabled });
-      expect(await call(nextChat, "console_automation", { mode: "list" })).toHaveLength(1);
+      expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
       enabled = false;
       expect((await call(nextChat, "console_launch", { ...args, requestId: "disabled" })).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
@@ -180,7 +178,7 @@ describe("fleet-console-use gateway roster", () => {
       operations: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: "terminal", payload: { secret: "/private/transcript" }, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }],
     });
     const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
-    const b = host.connect({ tools: ["console_theaters", "console_operations"] });
+    const b = host.connect({ tools: ["console_context", "console_operations"] });
     try {
       const endpointA = (await a.getEndpoint()).servers[0]!;
       const endpointB = (await b.getEndpoint()).servers[0]!;
@@ -196,13 +194,13 @@ describe("fleet-console-use gateway roster", () => {
       expect(JSON.parse(second.result.content[0].text)).toMatchObject({ snapshotAt: null, operations: [{ activity: "unknown" }] });
       const filtered = await call(endpointB.url, tokenB.token, "console_operations", { activity: "awaiting" });
       expect(JSON.parse(filtered.result.content[0].text)).toMatchObject({ operations: [], coverage: { unknown: 1, complete: false } });
-      expect((await call(endpointA.url, tokenA.token, "console_theaters")).error).toBeDefined();
+      expect((await call(endpointA.url, tokenA.token, "console_context")).error).toBeDefined();
       expect((await call(endpointB.url, tokenA.token, "console_operations")).error).toBeDefined();
       enabled = false;
       expect((await call(endpointA.url, tokenA.token, "console_operations")).result.isError).toBe(true);
       a.releaseSessionToken("same-label");
       expect((await call(endpointA.url, tokenA.token, "console_operations")).error).toBeDefined();
-      expect((await call(endpointB.url, tokenB.token, "console_theaters")).result).toBeDefined();
+      expect((await call(endpointB.url, tokenB.token, "console_context")).result).toBeDefined();
       await a.dispose();
       await expect(a.getEndpoint()).rejects.toThrow("disposed");
     } finally { await host.dispose(); }
