@@ -51,7 +51,7 @@ export interface ConsoleUseDeps {
   readonly control?: ConsoleControl;
   readonly surface?: ConsoleSurface;
   readonly onOperationUse?: (operationId: string, active: boolean) => void;
-  /** 호출 하나가 화면 어디에 닿았는지 — 호스트가 SSE 로 모든 클라이언트에 흘려 표식·자막을 그린다. */
+  /** 호출 하나가 화면 어디에 닿았는지 — 호스트가 SSE 로 모든 클라이언트에 흘려 대상을 감싸는 표식을 그린다. */
   readonly onCall?: (event: ConsoleUseCallEvent) => void;
   readonly transport?: McpHttpTransport;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
@@ -254,7 +254,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(surface).filter((key) => typeof (surface as Record<string, unknown>)[key] === "function"), approval: "Experiments > Console use and, for an Operation caller, that Operation's own Console use toggle must both be on. Both being on is blanket authorization; no individual approvals.", enabled: control?.enabled() ?? false },
         coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length },
         pausedAutomations: callerId && control ? control.listAutomations(callerId).filter((a) => a.status === "paused").length : 0,
-        semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: reads mark the target, writes show the button/typing, and your caption shows a one-line subtitle." },
+        semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
       };
     }),
     define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage and last activity, plus the Theater's groups. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
