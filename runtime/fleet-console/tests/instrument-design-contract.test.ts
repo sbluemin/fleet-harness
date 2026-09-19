@@ -2790,11 +2790,24 @@ describe("Instrument core design contract", () => {
     expect(sheetBlock).toContain("position: absolute;");
     expect(sheetBlock).toContain("bottom: 0;");
     expect(sheetBlock).toContain("z-index: 4;");
-    // 시트는 팝업 판독성 레시피를 완주한다 — 틴트만 칠하면 유리 모드에서 아래 대화가 카드
-    // 본문을 뚫고 올라온다. 틴트 + 언더레이 + backdrop-filter 셋이 한 계약이다.
-    expect(sheetBlock).toContain("linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong))");
-    expect(sheetBlock).toContain("var(--glass-underlay);");
-    expect(sheetBlock).toContain("backdrop-filter: var(--glass-backdrop-strong);");
+    // 시트는 유리 채널을 쓰지 않는다 — 도트린은 CSS 규칙 옆에 적혀 있다. 이 면은 캔버스 위가
+    // 아니라 채팅 패널 **안**에 떠오르고, instrument에서 --glass-tint-strong의 합성값이 그 위에
+    // 서는 잡 카드(--surface-panel-raised)와 대비 1.00으로 겹쳐 카드가 사라졌다(실측). 채팅
+    // 로그와 같은 면을 칠해 단차를 되찾고, 층은 위쪽 헤어라인과 그림자가 말한다.
+    expect(sheetBlock).toContain("background: var(--surface-panel);");
+    // 계약은 선언에만 건다 — 도트린 주석은 폐기된 토큰 이름을 적어 이유를 남겨야 한다.
+    const sheetDeclarations = sheetBlock.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(sheetDeclarations).not.toContain("--glass-");
+    expect(sheetDeclarations).not.toContain("backdrop-filter");
+    expect(sheetBlock).toContain("border-top: 1px solid var(--hairline-strong);");
+    expect(sheetBlock).toContain("box-shadow: var(--shadow-soft);");
+    // 접는 문은 시트 안에 있고 버튼이다 — 눌리지 않는 힌트 글자는 닫기 자리에 서지 않는다.
+    expect(chatView0).toContain('className="agent-chat-sheet-close"');
+    expect(chatView0).not.toContain("sheetEscHint");
+    const sheetCloseHover = chat.match(/^\.agent-chat-sheet-grow:hover,\n\.agent-chat-sheet-close:hover \{[^}]*\}/m)?.[0] ?? "";
+    expect(sheetCloseHover).toContain("background: var(--control-rest-hover);");
+    expect(sheetCloseHover).toContain("color: var(--brass-ink);");
+    expect(chat).toContain(".agent-chat-sheet-grow:focus-visible,");
     // 시트가 덮은 대화는 물러날 뿐 숨지 않는다 — display·visibility가 아니라 opacity다.
     expect(chat).toContain(".agent-chat-log.is-shaded { opacity: 0.6; }");
     // 칩 줄의 @container 기준은 여전히 대화 면이고, 패널 루트도 컨테이너로 남는다.

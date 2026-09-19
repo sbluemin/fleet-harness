@@ -374,6 +374,18 @@ interface TranscriptLine {
 export interface ChatEventMapOptions {
   readonly cwd?: string;
   /**
+   * 경로를 접지 않고 원문 그대로 싣는다. 백그라운드 작업 표면(선반·시트·잡 상세)만 켠다.
+   *
+   * 그 표면의 유일한 목적이 "그 작업이 실제로 무엇을 건드렸나"에 답하는 것이고, `…/two/segments`로
+   * 접힌 좌표로는 답이 되지 않기 때문이다 — 같은 파일명이 저장소 안에 여럿 있고, 접힌 꼬리는
+   * 어느 쪽인지 말하지 않는다. 제품 소유자의 명시적 결정이며 Console CLAUDE.md의 DTO 제약이
+   * 같은 예외를 적어 둔다.
+   *
+   * 자격증명 마스킹은 이 플래그가 켜져도 그대로 지난다. 경로를 보여 주는 것과 도구 출력에 섞여
+   * 들어온 토큰을 원문으로 흘리는 것은 다른 결정이고, 후자는 요청되지 않았다.
+   */
+  readonly fullPaths?: boolean;
+  /**
    * tool_use id → 도구 이름. 결과 블록은 자기가 어떤 도구의 결말인지 모르므로, 무엇을 요약해도
    * 되는지 판단하려면 이 축이 필요하다. 세션이 소유하고 매퍼는 읽기만 한다.
    */
@@ -618,8 +630,48 @@ export interface AgentChatJobStep {
  * 들어가면 재접속마다 전량이 다시 흐른다. 사용자가 그 잡을 연 그때만 잘라서 읽는다.
  */
 export type AgentChatJobDetail =
-  | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
+  | {
+      readonly kind: "agent";
+      readonly steps: readonly AgentChatJobStep[];
+      readonly truncated: boolean;
+      /** 이 에이전트가 누구였는가. 없으면 자식이 메타를 남기지 않은 것이다. */
+      readonly identity?: AgentChatJobIdentity;
+    }
   | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/**
+ * 서브에이전트의 신원 — 전사록 옆의 `*.meta.json`이 실어 온다.
+ *
+ * 스트림이 싣는 `who`(subagent_type)와 겹치는 것은 종류뿐이고, 모델과 중첩 깊이는 그쪽에 없다.
+ * "누가 이 일을 했나"에 답하는 표면이 잡 상세 하나뿐이므로 여기서 함께 읽는다.
+ */
+export interface AgentChatJobIdentity {
+  readonly agentType?: string;
+  readonly model?: string;
+  readonly depth?: number;
+}
+
+/** 메타 파일 한 장을 신원으로 읽는다. 모양이 어긋난 필드는 통째로 빠진다 — 추측하지 않는다. */
+export function chatSubagentIdentity(raw: string, options: ChatEventMapOptions = {}): AgentChatJobIdentity | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const surface = jobSurfaceOptions(options);
+  const agentType = readString(record.agentType);
+  const model = readString(record.model);
+  const depth = readCount(record.spawnDepth);
+  const identity: AgentChatJobIdentity = {
+    ...(agentType !== undefined ? { agentType: safeJobText(agentType, surface, MAX_JOB_AGENT_LABEL_CHARS) } : {}),
+    ...(model !== undefined ? { model: safeJobText(model, surface, MAX_JOB_AGENT_LABEL_CHARS) } : {}),
+    ...(depth !== undefined ? { depth } : {}),
+  };
+  return Object.keys(identity).length > 0 ? identity : null;
+}
 
 /**
  * 컴포저 덱이 세우는 항목 하나.
@@ -774,10 +826,22 @@ function capTo(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** 잡 표면의 한 줄 텍스트는 도구 결과와 같은 문을 지난다 — 경로 정규화·축약·자격증명 마스킹. */
+/**
+ * 잡 표면의 한 줄 텍스트는 도구 결과와 같은 문을 지난다 — 자격증명 마스킹, 그리고 `fullPaths`가
+ * 꺼져 있을 때의 경로 정규화·축약.
+ */
 function safeJobText(raw: string, options: ChatEventMapOptions, max: number): string {
-  const flat = normalizePathTokens(raw.replace(/\s+/g, " ").trim(), options.cwd);
-  return capTo(maskSecrets(abbreviateAbsolutePaths(flat)), max);
+  const flat = raw.replace(/\s+/g, " ").trim();
+  return capTo(maskSecrets(foldPathsUnlessFull(flat, options)), max);
+}
+
+/**
+ * 경로 문을 한 자리에 모은다. `fullPaths`면 원문 그대로 지나가고, 아니면 기존 두 벌(cwd·홈
+ * 정규화 → 남은 절대 경로 축약)을 그대로 지난다.
+ */
+function foldPathsUnlessFull(value: string, options: ChatEventMapOptions): string {
+  if (options.fullPaths === true) return value;
+  return abbreviateAbsolutePaths(normalizePathTokens(value, options.cwd));
 }
 
 /**
@@ -797,13 +861,23 @@ function safeJobBody(raw: string, options: ChatEventMapOptions, max: number): st
   // 줄 끝 공백과 줄바꿈 표기만 고른다. 줄 안의 공백은 건드리지 않는다 — 여기서 접으면 중첩
   // 목록의 들여쓰기, 들여쓴 코드 블록, 펜스 안의 Python·YAML이 전부 무너진 채 렌더러에 닿는다.
   const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trimEnd());
-  const normalized = normalizePathTokens(lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(), options.cwd);
-  return capTo(maskSecrets(abbreviateAbsolutePaths(normalized)), max);
+  const joined = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return capTo(maskSecrets(foldPathsUnlessFull(joined, options)), max);
 }
 
-function jobStartedEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+/**
+ * 잡 표면으로 나가는 값들의 옵션. 경로를 접지 않는 결정은 이 표면 하나에만 걸리므로, 잡 매퍼가
+ * 스스로 켠다 — 스트림 매퍼 한 번의 호출 안에서 원장 줄과 잡 줄이 함께 만들어지기 때문에,
+ * 호출자가 켜면 원장의 도구 줄까지 함께 펴진다.
+ */
+function jobSurfaceOptions(options: ChatEventMapOptions): ChatEventMapOptions {
+  return { ...options, fullPaths: true };
+}
+
+function jobStartedEvent(message: Readonly<Record<string, unknown>>, caller: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   const id = readString(message.task_id);
   if (id === undefined) return [];
+  const options = jobSurfaceOptions(caller);
   // 서브에이전트는 유형이, 워크플로는 이름이 "누구의 작업인가"를 말한다. 셸에는 둘 다 없다.
   // 워크플로 이름은 모델이 쓴 스크립트의 meta.name이므로 자유 텍스트와 같은 문을 지나야 한다.
   const who = readString(message.subagent_type) ?? readString(message.workflow_name);
@@ -828,9 +902,10 @@ function jobStartedEvent(message: Readonly<Record<string, unknown>>, options: Ch
   }];
 }
 
-function jobProgressEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+function jobProgressEvent(message: Readonly<Record<string, unknown>>, caller: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   const id = readString(message.task_id);
   if (id === undefined) return [];
+  const options = jobSurfaceOptions(caller);
   const usage = message.usage as { readonly total_tokens?: unknown; readonly tool_uses?: unknown; readonly duration_ms?: unknown } | undefined;
   const stages = readWorkflowStages(message.workflow_progress, options);
   const note = readString(message.description);
@@ -863,9 +938,10 @@ function jobUpdatedEvent(message: Readonly<Record<string, unknown>>): readonly A
   return [];
 }
 
-function jobEndEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+function jobEndEvent(message: Readonly<Record<string, unknown>>, caller: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   const id = readString(message.task_id);
   if (id === undefined) return [];
+  const options = jobSurfaceOptions(caller);
   // 아는 세 값만 결말로 옮긴다. 값이 없거나 처음 보는 값이면 결말을 주장하지 않는다 —
   // 기본값을 completed로 두면 SDK가 새 상태를 하나 추가하는 날 원장이 조용히 거짓 완료를 그린다.
   const raw = message.status;
@@ -1159,9 +1235,11 @@ export function summarizeToolInput(input: unknown, options: ChatEventMapOptions 
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       const flat = value.replace(/\s+/g, " ").trim();
-      const shown = PATH_KEYS.includes(key)
-        ? displayPath(flat, options.cwd)
-        : normalizePathTokens(flat, options.cwd);
+      const shown = options.fullPaths === true
+        ? flat
+        : PATH_KEYS.includes(key)
+          ? displayPath(flat, options.cwd)
+          : normalizePathTokens(flat, options.cwd);
       return shown.length > MAX_TOOL_DETAIL_CHARS ? `${shown.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : shown;
     }
   }
@@ -1178,8 +1256,7 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
   if (text === null) return "";
   const first = text.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
   if (first === undefined) return "";
-  const flat = normalizePathTokens(first.replace(/\s+/g, " ").trim(), options.cwd);
-  const masked = maskSecrets(abbreviateAbsolutePaths(flat));
+  const masked = maskSecrets(foldPathsUnlessFull(first.replace(/\s+/g, " ").trim(), options));
   return masked.length > MAX_TOOL_RESULT_CHARS ? `${masked.slice(0, MAX_TOOL_RESULT_CHARS - 1)}…` : masked;
 }
 
