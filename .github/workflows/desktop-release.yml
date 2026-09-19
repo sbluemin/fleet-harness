@@ -1,8 +1,9 @@
 name: Desktop Release
 
 # stable-release.yml이 릴리스/태그를 만든 뒤 같은 런에서 호출한다(workflow_call).
-# 셸은 GitHub Release에서 한 번 내려받는 정적 설치본이며 electron-updater를 쓰지 않는다.
-# Console 갱신은 셸에 동봉하지 않고 런타임 조달 경로가 담당한다.
+# 셸은 GitHub Release를 갱신 소스로 삼아 electron-updater로 자기 자신을 갱신한다 — 설치본과 함께
+# 갱신 메타데이터(latest*.yml)를 같은 태그에 올려야 그 경로가 성립한다.
+# Console 갱신은 셸에 동봉하지 않고 런타임 조달 경로가 담당한다(버전도 서로 독립이다).
 on:
   workflow_call:
     inputs:
@@ -77,6 +78,13 @@ jobs:
             echo "No macOS shell installers were produced" >&2
             exit 1
           fi
+          # 갱신 메타데이터와 blockmap은 설치본과 같은 릴리스에 함께 있어야 한다 — electron-updater는
+          # latest 릴리스의 자산에서 latest-mac.yml을 읽고, 거기에 적힌 이름을 같은 태그에서 내려받는다.
+          if [ ! -f runtime/fleet-desktop/release/latest-mac.yml ]; then
+            echo "latest-mac.yml is missing — the shell cannot update itself without it" >&2
+            exit 1
+          fi
+          artifacts+=(runtime/fleet-desktop/release/latest-mac.yml runtime/fleet-desktop/release/*.blockmap)
           gh release upload "${{ inputs.tag }}" "${artifacts[@]}" --clobber
 
   # Windows x64 — arm64는 지원하지 않는다(electron-builder의 arm64 NSIS가 malformed 설치본을 만든다).
@@ -120,43 +128,24 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          installers=(runtime/fleet-desktop/release/Fleet\ Console-*-win-${{ matrix.arch }}.exe)
+          installers=(runtime/fleet-desktop/release/Fleet-Console-*-win-${{ matrix.arch }}.exe)
           if [ "${#installers[@]}" -ne 1 ]; then
             echo "Expected one Windows shell installer, found ${#installers[@]}" >&2
             exit 1
           fi
           echo "exe=${installers[0]}" >> "$GITHUB_OUTPUT"
 
-      # SignPath는 GitHub Actions 아티팩트로 업로드된 설치본만 서명한다.
-      - name: Upload unsigned installer for SignPath
-        id: unsigned
-        if: vars.SIGNPATH_PROJECT_SLUG != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-win-${{ matrix.arch }}
-          path: ${{ steps.art.outputs.exe }}
-          if-no-files-found: error
-
-      - name: Sign installer with SignPath
-        id: signpath
-        if: vars.SIGNPATH_PROJECT_SLUG != ''
-        uses: SignPath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
-          wait-for-completion: true
-          # 무료 등급은 릴리스마다 수동 승인이 필요하므로 넉넉히 대기(기본 600초 → 30분).
-          wait-for-completion-timeout-in-seconds: '1800'
-          # 단일 exe이므로 압축 해제 없이 원본 파일명으로 내려받는다.
-          skip-decompress: true
-          output-artifact-directory: runtime/fleet-desktop/release
-
+      # Windows 설치본은 서명하지 않는다. 설치본을 나중에 바꿔 쓰는 어떤 단계도 둘 수 없다 —
+      # latest.yml에 적힌 해시는 여기서 만들어진 그 파일의 것이고, 파일이 교체되면 갱신이 무결성 검사에서 막힌다.
       - name: Upload shell installer to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${{ inputs.tag }}" "${{ steps.art.outputs.exe }}" --clobber
+        run: |
+          if [ ! -f runtime/fleet-desktop/release/latest.yml ]; then
+            echo "latest.yml is missing — the shell cannot update itself without it" >&2
+            exit 1
+          fi
+          gh release upload "${{ inputs.tag }}" \
+            "${{ steps.art.outputs.exe }}" \
+            runtime/fleet-desktop/release/latest.yml --clobber

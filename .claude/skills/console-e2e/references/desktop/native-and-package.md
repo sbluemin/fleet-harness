@@ -23,7 +23,7 @@ pnpm --filter @dotobokuri/fleet-desktop package:dir
 pnpm --filter @dotobokuri/fleet-desktop verify:package
 ```
 
-Verify shell-only ASAR contents, passive entry assets, Node manifest, absence of embedded Console/Node payloads and updater artifacts, Electron architecture, and required fuses. Run packaged-live tests against the actual artifact on its native OS. Use `package:release` evidence only when signing credentials, signing/notarization or platform signature checks, and release verifier chain all pass.
+Verify shell-only ASAR contents, passive entry assets, Node manifest, absence of embedded Console/Node payloads, Electron architecture, and required fuses. Run packaged-live tests against the actual artifact on its native OS. Use `package:release` evidence only when signing credentials, signing/notarization or platform signature checks, and release verifier chain all pass.
 
 ## Platform matrix
 

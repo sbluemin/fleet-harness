@@ -6,7 +6,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
-import { isUpdaterArtifact } from "./strip-updater-artifacts.mjs";
 
 const execFileAsync = promisify(execFile);
 const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,7 +32,6 @@ if (invokedAsCli) {
 }
 
 export async function verifyPackagedApplication(releaseDirectory, platform = process.platform, options = {}) {
-  await assertNoUpdaterArtifacts(releaseDirectory);
   const applications = await findApplications(releaseDirectory, platform);
   if (applications.length === 0) throw new Error(`No unpacked Fleet Console application found in ${releaseDirectory}`);
   for (const application of applications) await verifyApplication(application, platform, options);
@@ -212,12 +210,6 @@ function normalizeAsarContractPath(file) {
 
 function normalizeAsarEntryPath(file) {
   return file.replace(/^[\\/]/, "");
-}
-
-async function assertNoUpdaterArtifacts(root) {
-  if (!existsSync(root)) return;
-  const entries = await readdir(root, { withFileTypes: true, recursive: true });
-  for (const entry of entries) if (entry.isFile() && isUpdaterArtifact(entry.name)) throw new Error(`Updater artifact is forbidden: ${join(entry.parentPath, entry.name)}`);
 }
 
 function parseCliArguments(argumentsList) {

@@ -1,6 +1,9 @@
 appId: com.dotobokuri.fleet-console
 productName: Fleet Console
-artifactName: "Fleet Console-${version}-${os}-${arch}.${ext}"
+# 공백 없는 이름이어야 한다. GitHub는 업로드된 자산 이름의 공백을 마침표로 바꾸고(`Fleet.Console-…`),
+# electron-updater는 메타데이터의 이름에서 공백을 하이픈으로 바꿔 내려받는다(`Fleet-Console-…`).
+# 공백이 하나라도 있으면 두 규칙이 갈라져 갱신 다운로드가 404가 된다.
+artifactName: "Fleet-Console-${version}-${os}-${arch}.${ext}"
 directories:
   buildResources: build
   output: release
@@ -8,11 +11,14 @@ files:
   - dist/**
   - package.json
 asar: true
-publish: null
+# 셸은 electron-updater로 자기 자신을 갱신하므로 갱신 메타데이터(latest*.yml)가 산출물에 있어야 한다.
+# 이 선언이 있어야 electron-builder가 그 파일과 패키지 안의 app-update.yml을 함께 만든다.
+# 업로드는 릴리스 워크플로가 하므로 빌드는 항상 `--publish never`로 돈다.
+publish:
+  provider: github
+  owner: sbluemin
+  repo: fleet-harness
 afterPack: ./scripts/verify-packaged-app.mjs
-# mac dmg/zip이 만드는 .blockmap·latest*.yml(updater 산출물)을 빌드 직후 제거한다 — shell-only는 electron-updater를
-# 쓰지 않고 verify:package가 이들을 금지하므로. (nsis는 differentialPackage:false로 별도 억제)
-afterAllArtifactBuild: ./scripts/strip-updater-artifacts.mjs
 # 액세스 링크는 `fleet://join?code=…` 하나뿐이라, OS가 이 스킴을 Fleet Console로 보내 주어야
 # 붙여넣기 없이 링크를 열 수 있다. 설치본에서만 성립하므로 개발 실행은 붙여넣기 경로를 쓴다.
 protocols:

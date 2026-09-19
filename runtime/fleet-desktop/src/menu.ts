@@ -1,6 +1,6 @@
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from "electron";
 
-import type { UpdateController } from "./update-controller.js";
+import type { NativeUpdateActions } from "./update-controller.js";
 
 export interface ApplicationMenuActions {
   readonly show: () => void;
@@ -11,7 +11,7 @@ export interface ApplicationMenuActions {
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
   readonly consoleReady: () => boolean;
-  readonly updates: UpdateController;
+  readonly updates: NativeUpdateActions;
 }
 
 export function installApplicationMenu(MenuCtor: typeof Menu, actions: ApplicationMenuActions, platform: NodeJS.Platform, window?: BrowserWindow): void {
@@ -43,15 +43,19 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
   MenuCtor.setApplicationMenu(MenuCtor.buildFromTemplate(template));
 }
 
+/**
+ * 네이티브 메뉴는 창 안의 알림과 같은 상태를 말한다. 받아 둔 것이 없으면 내려받기를, 받아 두었으면
+ * 재시작을 내준다 — 둘을 한 항목으로 합치면 누르는 사람이 무엇이 일어날지 모른 채 누른다.
+ * 확인·내려받기는 창을 가리는 대화를 띄우지 않는다. 결과는 언제나 콘솔 화면이 말한다.
+ */
 export function buildUpdateMenuItems(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
-  return actions.updates.enabled()
-    ? [
-        { label: "Check for Updates", click: () => void actions.updates.check() },
-        ...(actions.updates.availableVersion()
-          ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }]
-          : []),
-      ]
-    : [];
+  if (!actions.updates.enabled()) return [];
+  const version = actions.updates.version();
+  const stage = actions.updates.stage();
+  if (stage === "downloading") return [{ label: "Downloading Update…", enabled: false }];
+  if (stage === "ready" && version) return [{ label: `Restart to Update to ${version}`, click: actions.updates.restart }];
+  if (stage === "available" && version) return [{ label: `Download Update ${version}…`, click: actions.updates.download }];
+  return [{ label: "Check for Updates", click: actions.updates.check }];
 }
 
 function darwinConsoleActions(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {

@@ -31,6 +31,8 @@ import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_EVENT, desktopFullscreenSnapsho
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
+import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, createDesktopShellUpdateRouter, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand } from "./desktop-contract.js";
+import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, DesktopShellUpdateSnapshot } from "./desktop-contract.js";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, isDesktopBrowserRelay } from "@fleet-console/protocol/desktop";
 import { DesktopEngine } from "./browser/desktop-engine.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
@@ -534,6 +536,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
+  /**
+   * 셸 자신의 갱신 — 상태는 셸이 게시하고 창이 읽으며, 명령은 창이 보내고 셸이 읽는다. 두 방향 모두
+   * 소유자별로 갈라 담는다. 원격 Desktop이 붙어 있으면 두 창은 서로 다른 기계의 앱을 말하고 있다.
+   */
+  const desktopShellUpdateCommandSseSubscribers = new Map<http.ServerResponse, string>();
   /** 셸의 브라우저 스냅샷 구독 — 응답마다 그 셸의 주인(루프백은 "local", 원격은 세션 공개 이름). */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
   /**
@@ -630,6 +637,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 서로 다른 기계를 가리키고 있어 덮어쓸 관계가 아니다.
    */
   const desktopShellsByOwner = new Map<string | "local", DesktopShellSnapshot>();
+  const desktopShellUpdatesByOwner = new Map<string | "local", DesktopShellUpdateSnapshot>();
+  /**
+   * 걸어 둔 명령은 붙는 구독자마다 다시 들려주므로 시효가 있어야 한다 — 없으면 한참 뒤에 붙은 셸이
+   * 사용자가 잊은 명령으로 앱을 재시작한다. Console 위임 요청과 같은 이유, 같은 시효다.
+   */
+  const desktopShellUpdateCommandsByOwner = new Map<string | "local", { readonly snapshot: DesktopShellUpdateCommandSnapshot; readonly at: number }>();
   // 창을 들고 있는 Desktop이 게시하는 호스트 목록. 브라우저 단독이면 비어 있다.
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
@@ -1105,6 +1118,38 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     res.on("close", () => { clearInterval(keepalive); desktopBrowserSseSubscribers.delete(res); desktopEngine.subscriberClosed(owner); browserService.reconcile(); });
     return true;
   };
+  const desktopShellUpdateRouter = createDesktopShellUpdateRouter({
+    getUpdate: (req) => {
+      const owner = shellOwnerOf(req);
+      return (owner === null ? undefined : desktopShellUpdatesByOwner.get(owner)) ?? emptyDesktopShellUpdate();
+    },
+    setUpdate: (req, snapshot) => {
+      const owner = shellOwnerOf(req);
+      if (owner === null) return;
+      desktopShellUpdatesByOwner.set(owner, snapshot);
+      broadcastDesktopShellUpdate(owner, snapshot);
+    },
+    getCommand: (req) => {
+      const owner = shellOwnerOf(req);
+      return owner === null ? emptyDesktopShellUpdateCommand() : readDesktopShellUpdateCommand(owner);
+    },
+    requestCommand: (req, command) => {
+      const owner = shellOwnerOf(req);
+      if (owner === null) return;
+      publishDesktopShellUpdateCommand(owner, command);
+    },
+    isAuthorized: isExactConsoleOrigin,
+    readJsonBody,
+    subscribeCommand: (req, res, snapshot) => {
+      const owner = shellOwnerOf(req);
+      if (owner === null) { writeJson(res, 401, { error: "unauthorized" }); return; }
+      openDesktopSse(res, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, snapshot);
+      desktopShellUpdateCommandSseSubscribers.set(res, owner);
+      res.on("close", () => { desktopShellUpdateCommandSseSubscribers.delete(res); });
+    },
+    writeJson,
+    writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
+  });
   const desktopShellRouter = createDesktopShellRouter({
     getShell: (req) => {
       const owner = shellOwnerOf(req);
@@ -1180,6 +1225,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const shellOwner = audience === "local" ? "local" : sessionHandle;
       const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
       if (publishedShell !== undefined) res.write(encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
+      const publishedShellUpdate = shellOwner === null ? undefined : desktopShellUpdatesByOwner.get(shellOwner);
+      if (publishedShellUpdate !== undefined) res.write(encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, publishedShellUpdate));
       // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
       // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
       if (audience === "local") {
@@ -1374,6 +1421,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
+    if (await desktopShellUpdateRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
     if (await desktopFullscreenRouter(context)) return true;
     if (desktopUpdateRouter(context)) return true;
@@ -1728,6 +1776,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다. 남겨 두면 handle이
     // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
     desktopShellsByOwner.delete(handle);
+    desktopShellUpdatesByOwner.delete(handle);
+    desktopShellUpdateCommandsByOwner.delete(handle);
     // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
     endSessionStreams(handle, "reclaimed");
     broadcastControlChanged();
@@ -1758,6 +1808,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     access.revokeSessionsByPairing(removed.id);
     for (const session of closed) {
       desktopShellsByOwner.delete(session.handle);
+      desktopShellUpdatesByOwner.delete(session.handle);
+      desktopShellUpdateCommandsByOwner.delete(session.handle);
       endSessionStreams(session.handle, "reclaimed");
     }
     broadcastControlChanged();
@@ -1996,6 +2048,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!access.revokeSessionByHandle(session.handle)) continue;
       // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다.
       desktopShellsByOwner.delete(session.handle);
+      desktopShellUpdatesByOwner.delete(session.handle);
+      desktopShellUpdateCommandsByOwner.delete(session.handle);
       /**
        * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
        * 잔상이므로. 건너뛰는 것은 안내뿐이고 스트림은 그 사정과 무관하게 닫힌다.
@@ -2911,6 +2965,43 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function openDesktopSse(res: http.ServerResponse, event: string, snapshot: unknown): void {
+    res.writeHead(200, withSecurityHeaders({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    }));
+    res.write(":connected\n\n");
+    res.write(encodeSseData(event, snapshot));
+  }
+
+  function broadcastDesktopShellUpdate(owner: string | "local", snapshot: DesktopShellUpdateSnapshot): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, snapshot);
+    for (const subscriber of operationSseSubscribers) {
+      const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
+      if (subscriberOwner === owner) subscriber.res.write(data);
+    }
+  }
+
+  function readDesktopShellUpdateCommand(owner: string | "local"): DesktopShellUpdateCommandSnapshot {
+    const pending = desktopShellUpdateCommandsByOwner.get(owner);
+    if (pending === undefined) return emptyDesktopShellUpdateCommand();
+    if (Date.now() - pending.at <= DESKTOP_UPDATE_REQUEST_TTL_MS) return pending.snapshot;
+    desktopShellUpdateCommandsByOwner.delete(owner);
+    return emptyDesktopShellUpdateCommand();
+  }
+
+  function publishDesktopShellUpdateCommand(owner: string | "local", command: DesktopShellUpdateCommandKind): void {
+    const snapshot: DesktopShellUpdateCommandSnapshot = { command, commandId: `${Date.now()}-${crypto.randomUUID()}` };
+    desktopShellUpdateCommandsByOwner.set(owner, { snapshot, at: Date.now() });
+    if (desktopShellUpdateCommandSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_SHELL_UPDATE_COMMAND_EVENT, snapshot);
+    for (const [res, subscriber] of desktopShellUpdateCommandSseSubscribers) {
+      if (subscriber === owner) res.write(data);
+    }
+  }
+
   function readDesktopUpdateRequest(): DesktopUpdateRequestSnapshot {
     if (desktopUpdateRequest.requestId === null) return desktopUpdateRequest;
     if (Date.now() - desktopUpdateRequestedAt <= DESKTOP_UPDATE_REQUEST_TTL_MS) return desktopUpdateRequest;
@@ -3193,7 +3284,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // A listener stop ends live sessions, but unused grants remain valid unless public identity changes.
     access.revokeSessions("remote");
     for (const owner of desktopShellsByOwner.keys()) {
-      if (owner !== "local") desktopShellsByOwner.delete(owner);
+      if (owner === "local") continue;
+      desktopShellsByOwner.delete(owner);
+      desktopShellUpdatesByOwner.delete(owner);
+      desktopShellUpdateCommandsByOwner.delete(owner);
     }
     // 원격을 끄면 보유자도 사라진다. 알리지 않으면 커튼이 아무도 없는 콘솔 위에 남는다 —
     // 신원 갱신도 리스너를 다시 여는 경로라 이 자리를 지난다.

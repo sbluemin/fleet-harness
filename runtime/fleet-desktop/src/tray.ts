@@ -2,7 +2,7 @@ import type { Menu, Tray } from "electron";
 
 import { buildUpdateMenuItems } from "./menu.js";
 import type { DesktopResourcePaths } from "./resource-paths.js";
-import type { UpdateController } from "./update-controller.js";
+import type { NativeUpdateActions } from "./update-controller.js";
 
 export interface TrayActions {
   readonly show: () => void;
@@ -13,7 +13,7 @@ export interface TrayActions {
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
   readonly consoleReady: () => boolean;
-  readonly updates: UpdateController;
+  readonly updates: NativeUpdateActions;
 }
 
 export interface TrayConstructor {

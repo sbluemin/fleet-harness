@@ -64,7 +64,7 @@ export function createInfoPlist(sourceInfo, electronAppPath) {
 }
 
 export function createMacDevLaunchArguments(wrapperPath, appPath, args = [], env = process.env) {
-  const overrides = ["FLEET_CONSOLE_DATA_DIR", "FLEET_DESKTOP_DATA_DIR", "FLEET_DATA_DIR", "FLEET_CONSOLE_NODE_PATH"]
+  const overrides = ["FLEET_CONSOLE_DATA_DIR", "FLEET_DESKTOP_DATA_DIR", "FLEET_DATA_DIR", "FLEET_CONSOLE_NODE_PATH", "FLEET_DESKTOP_DEV_UPDATE_FEED"]
     .flatMap((key) => env[key] ? ["--env", `${key}=${env[key]}`] : []);
   return ["-W", "-n", ...overrides, wrapperPath, "--args", appPath, ...args];
 }

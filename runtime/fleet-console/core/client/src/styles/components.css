@@ -14534,6 +14534,144 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: flex;
 }
 
+/* 도움말 버튼에 달리는 말풍선. 메뉴와 같은 닻·같은 유리를 쓰되, 읽을 것이 있는 카드이므로
+   폭이 조금 넓고 줄 간격이 있다. 액센트는 쓰지 않는다 — 알리는 자리이지 재촉하는 자리가 아니다. */
+.command-band-update-bubble {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  min-width: 248px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 12px 14px 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  text-align: left;
+}
+
+/* 말풍선 꼬리. 도움말 버튼 아래를 가리켜 이 말이 어디서 나온 것인지 붙여 둔다 —
+   꼬리가 없으면 화면 구석에 떠 있는 또 하나의 상자로 읽힌다.
+   본체와 같은 유리를 칠하되 backdrop-filter는 다시 걸지 않는다(두 번 흐려진다). */
+.command-band-update-bubble::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  /* 도움말 버튼의 가운데. 버튼은 밴드의 오른쪽 끝에 있고 말풍선은 그 오른쪽 모서리에 맞춰 선다. */
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--surface-rim-strong);
+  border-right: 1px solid var(--surface-rim-strong);
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  transform: rotate(-45deg);
+}
+
+.command-band-update-bubble-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.command-band-update-bubble-title {
+  flex: 1;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.command-band-update-bubble-close {
+  flex: none;
+  margin: -2px -4px 0 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.2;
+}
+
+.command-band-update-bubble-close:hover {
+  color: var(--text-primary);
+}
+
+.command-band-update-bubble-lead,
+.command-band-update-bubble-detail {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  /* 한글 낱말 가운데가 갈라지면 한 번 더 읽게 된다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.command-band-update-bubble-lead { color: var(--text-secondary); }
+.command-band-update-bubble-detail { color: var(--text-tertiary); }
+
+.command-band-update-bubble-progress {
+  display: block;
+  height: 2px;
+  margin-top: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-rim);
+  overflow: hidden;
+}
+
+.command-band-update-bubble-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--warn-ink);
+  transform-origin: left center;
+  transition: transform 160ms linear;
+}
+
+.command-band-update-bubble-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.command-band-update-bubble-link:hover { color: var(--text-primary); }
+
+/* 권하는 한 가지 일. 문장을 다 읽은 자리에서 폭 전체로 이어진다. */
+.command-band-update-bubble-action {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--text-primary) 7%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  text-align: center;
+}
+
+.command-band-update-bubble-action:hover {
+  background: color-mix(in oklab, var(--text-primary) 12%, transparent);
+}
+
 .command-band-system-menu {
   position: absolute;
   right: 0;
@@ -14599,6 +14737,44 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 .command-band-system-menu a.command-band-version-row:hover,
 .command-band-system-menu a.command-band-version-row:focus-visible { background: var(--surface-pillar); color: var(--text-primary); }
+/* 두 몫으로 나뉜 버전 행. 왼쪽은 릴리스 페이지로 나가고 오른쪽 칩은 이 자리에서 수행한다. */
+.command-band-system-menu .command-band-version-row--split { padding: 0; gap: 0; }
+
+.command-band-system-menu .command-band-version-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 4px 7px 10px;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  text-decoration: none;
+}
+
+.command-band-system-menu .command-band-version-row-main:hover,
+.command-band-system-menu .command-band-version-row-main:focus-visible {
+  background: var(--surface-pillar);
+  color: var(--text-primary);
+}
+
+.command-band-system-menu .command-band-version-row-chip--action {
+  margin: 4px 6px 4px 0;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-family: var(--font-mono);
+}
+
+.command-band-system-menu .command-band-version-row-chip--action:hover:not(:disabled),
+.command-band-system-menu .command-band-version-row-chip--action:focus-visible {
+  border-color: var(--surface-rim-strong);
+  background: var(--surface-pillar);
+}
+
+.command-band-system-menu .command-band-version-row--split .command-band-version-row-refresh { margin-right: 8px; }
+
 .command-band-version-row--static { cursor: default; }
 .command-band-version-row-version { color: var(--text-primary); }
 .command-band-version-row-chip { margin-left: auto; padding-left: 10px; font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: 0.02em; color: var(--positive); font-variant-numeric: tabular-nums; }
