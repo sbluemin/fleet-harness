@@ -344,22 +344,10 @@
 /* 목록이 열을 소유한다 — 행마다 자기 격자를 세우면 등급 열이 행마다 다른 폭으로 선다. 행은
    subgrid로 이 열을 물려받아, 가장 긴 등급 하나가 묶음 안 모든 행의 첫 열 폭을 정한다. */
 .ai-gateway-rows {
-  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-1);
   padding: 0 var(--space-2) var(--space-2) var(--space-2);
-}
-
-/* 세로선 — 글리프 가운데에서 내려와 마지막 레코드의 가지에서 끝난다. */
-.ai-gateway-rows::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: calc(var(--space-2) + 14px);
-  left: 21px;
-  width: 1px;
-  background: var(--surface-rim-strong);
 }
 
 /* 들여쓴 레코드: 등급 → 모델·속성 → 조작. 행은 호스트 전용 말풍선의 기준 상자이기도
@@ -384,6 +372,29 @@
   width: 9px;
   height: 1px;
   background: var(--surface-rim-strong);
+}
+
+/* 세로선은 레코드가 자기 구간만큼 그린다 — 묶음 쪽에서 한 줄로 그으면 끝점이 마지막 행의
+   높이를 숫자로 가정해야 하고, 칸이 늘거나 좁은 카드에서 조작이 아래로 접히면 그 가정이
+   깨져 마지막 가지 밑으로 꼬리가 남는다. 구간은 위쪽 간격과 경계선까지 덮어 이어진다. */
+.ai-gateway-rows > .ai-gateway-model-row::after {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--space-1) - 1px);
+  bottom: calc(-1 * var(--space-1));
+  left: -9px;
+  width: 1px;
+  background: var(--surface-rim-strong);
+}
+
+/* 첫 레코드는 묶음 머리글 바로 아래에서 시작하고, 마지막 레코드는 자기 가지에서 끊는다.
+   기준이 패딩 상자라 첫 구간만 경계선 두께만큼 끌어올려야 머리글과 사이가 비지 않는다. */
+.ai-gateway-rows > .ai-gateway-model-row:first-child::after {
+  top: -1px;
+}
+
+.ai-gateway-rows > .ai-gateway-model-row:last-child::after {
+  bottom: 50%;
 }
 
 .ai-gateway-model-text {
