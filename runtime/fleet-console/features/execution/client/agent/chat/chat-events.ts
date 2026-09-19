@@ -672,8 +672,20 @@ export interface AgentChatJobStep {
  * 출력은 잡 하나당 수백 KB까지 자란다.
  */
 export type AgentChatJobDetail =
-  | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
+  | {
+      readonly kind: "agent";
+      readonly steps: readonly AgentChatJobStep[];
+      readonly truncated: boolean;
+      readonly identity?: AgentChatJobIdentity;
+    }
   | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/** 서브에이전트가 누구였는가 — 서버가 전사록 옆 메타에서 읽어 보낸다. 서버 타입의 사본이다. */
+export interface AgentChatJobIdentity {
+  readonly agentType?: string;
+  readonly model?: string;
+  readonly depth?: number;
+}
 
 /** 서버 payload를 상세로 읽는다. 모양이 어긋나면 null — 화면은 "없다"를 그린다. */
 export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDetail | null {
@@ -684,6 +696,7 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
     return typeof value.tail === "string" ? { kind: "shell", tail: value.tail, truncated } : null;
   }
   if (value.kind !== "agent" || !Array.isArray(value.steps)) return null;
+  const identity = readJobIdentityPayload(value.identity);
   const steps: AgentChatJobStep[] = [];
   for (const entry of value.steps) {
     if (!entry || typeof entry !== "object") continue;
@@ -696,7 +709,19 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
       ...(typeof step.outcome === "string" && step.outcome.length > 0 ? { outcome: step.outcome } : {}),
     });
   }
-  return { kind: "agent", steps, truncated };
+  return { kind: "agent", steps, truncated, ...(identity !== null ? { identity } : {}) };
+}
+
+/** 신원은 전부 선택 필드다 — 하나도 못 읽으면 줄 자체를 세우지 않는다. */
+function readJobIdentityPayload(value: unknown): AgentChatJobIdentity | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const identity: AgentChatJobIdentity = {
+    ...(typeof record.agentType === "string" && record.agentType.length > 0 ? { agentType: record.agentType } : {}),
+    ...(typeof record.model === "string" && record.model.length > 0 ? { model: record.model } : {}),
+    ...(typeof record.depth === "number" && Number.isFinite(record.depth) && record.depth >= 0 ? { depth: record.depth } : {}),
+  };
+  return Object.keys(identity).length > 0 ? identity : null;
 }
 
 /**

@@ -2583,6 +2583,67 @@
   padding-left: 17px;
 }
 
+/* 도는 잡의 "지금 무엇을" 한 줄. 카드가 열리기 전에 답하는 자리이므로 제목과 같은 들여쓰기에
+   서고, 동사만 상태 잉크를 든다 — 그 옆의 note는 자식이 쓴 자유 텍스트라 중립으로 남는다. */
+.agent-chat-job-now {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-left: 17px;
+  font-size: var(--t-xs);
+}
+
+.agent-chat-job-now-verb { flex: none; color: var(--aurora-ink); }
+
+.agent-chat-job-now-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+/* 서브에이전트 신원 줄 — 누가 이 일을 했는가. 카드와 같은 면을 써서 상세 안의 한 칸으로 읽힌다. */
+.agent-chat-detail-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+}
+
+.agent-chat-identity-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-chat-identity-key {
+  flex: none;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-identity-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* 결말이 아직 없는 마지막 스텝 — 지금 도는 그 도구다. */
+.agent-chat-step.is-live .agent-chat-step-verb { color: var(--aurora-ink); }
+
 .agent-chat-job-dots { display: inline-flex; align-items: center; gap: 3px; }
 .agent-chat-job-dot-gap { width: 6px; }
 
@@ -2721,18 +2782,20 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-2) clamp(var(--space-3), 2.5cqi, var(--space-5)) var(--space-2);
-  /* 팝업 판독성 계약: 틴트 아래의 불투명 언더레이와 backdrop-filter를 한 벌로 쓴다.
-     glass 게이트가 열리면 언더레이는 투명해지고 틴트+블러가 재료가 되며, 게이트가 닫히거나
-     투명도 축소 선호가 켜지면 언더레이가 불투명 표면으로 돌아온다. */
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 도트린: 이 면은 유리 채널을 쓰지 않는다. 시트가 캔버스 위가 아니라 **채팅 패널 안**에
+     떠오르고, instrument에서 --glass-tint-strong의 합성값이 그 위에 서는 잡 카드
+     (--surface-panel-raised)와 대비 1.00으로 겹쳐 카드가 헤어라인만 남기고 사라졌다(실측
+     rgb(16,23,30) 대 rgb(15,23,30)). 채팅 로그가 칠하는 것과 같은 면을 칠해 카드가 원장 위에서
+     지던 단차를 그대로 되찾고, "층이 하나 갈렸다"는 위쪽 헤어라인과 그림자가 말한다.
+     블러가 굴절시킬 명도차도 없었다 — 뒤가 이미 같은 계열의 평면이다. */
+  background: var(--surface-panel);
   border-top: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-soft);
   animation: agent-chat-sheet-rise var(--duration-base) var(--ease-spring);
 }
+
+/* 발자국 200스텝에 62%는 좁다. 높이는 세션 안에서만 산다. */
+.agent-chat-sheet.is-tall { height: 82%; }
 
 @keyframes agent-chat-sheet-rise {
   from {
@@ -2755,10 +2818,54 @@
   color: var(--text-tertiary);
 }
 
-.agent-chat-sheet-hint {
+/* 높이 손잡이와 닫기. 둘 다 머리줄 오른쪽 끝에 서고, 평소에는 조용하다가 가리켰을 때만
+   brass로 클릭 가능성을 예고한다 — 콘솔의 다른 조용한 컨트롤과 같은 문법이다. */
+.agent-chat-sheet-grow {
+  appearance: none;
+  cursor: pointer;
   margin-left: auto;
-  letter-spacing: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  padding: 1px 7px;
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
   text-transform: none;
+  color: var(--text-tertiary);
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-sheet-close {
+  appearance: none;
+  cursor: pointer;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  padding: 0;
+  color: var(--text-tertiary);
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-sheet-close svg { width: 11px; height: 11px; }
+
+.agent-chat-sheet-grow:hover,
+.agent-chat-sheet-close:hover {
+  background: var(--control-rest-hover);
+  border-color: var(--control-hover-rim);
+  color: var(--brass-ink);
+}
+
+.agent-chat-sheet-grow:focus-visible,
+.agent-chat-sheet-close:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }
 
 /* 시트가 덮은 동안 대화는 한 단 물러난다 — 숨는 것이 아니라 층이 갈렸다는 것을 말한다. */
@@ -2794,13 +2901,17 @@
   padding: var(--space-2) 0;
 }
 
+/* 한 줄로 선다. wrap을 두면 긴 제목이 '중단'을 다음 줄로 밀어, 되돌릴 수 없는 문이 예상
+   못한 자리에 섰다(실측). 대신 제목이 줄어들고 좌표는 고정된다. */
 .agent-chat-detail-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  min-width: 0;
   font-family: var(--font-body);
 }
+
+.agent-chat-detail-gap { flex: 1 1 auto; min-width: 0; }
 
 .agent-chat-detail-back {
   appearance: none;
@@ -2833,7 +2944,6 @@
 .agent-chat-detail-stop {
   appearance: none;
   cursor: pointer;
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
@@ -2867,6 +2977,7 @@
 }
 
 .agent-chat-detail-title {
+  flex: 0 1 auto;
   font-size: var(--t-md);
   color: var(--text-primary);
   overflow: hidden;

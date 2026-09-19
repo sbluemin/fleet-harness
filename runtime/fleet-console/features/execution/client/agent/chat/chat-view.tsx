@@ -99,6 +99,8 @@ export function AgentChatView({
   // 위로 한 번 더 굴리면 펼쳐진다. 새 턴이 서면(팔로우 중일 때) 다시 접힌다.
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
+  /** 시트가 대화를 얼마나 덮는가. 이 패널이 사는 동안만 기억한다 — 영속 선호가 아니다. */
+  const [workTall, setWorkTall] = React.useState(false);
   // 선반의 문. Esc로 접었을 때 초점이 돌아가는 자리다 — 문을 누르지 않고 닫았어도 다음 Tab이
   // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
   const ledgeToggleRef = React.useRef<HTMLButtonElement>(null);
@@ -297,6 +299,13 @@ export function AgentChatView({
     setWorkOpen(false);
     setOpenJobId(null);
   }, []);
+
+  // 시트 안의 × 로 접는 길. 그 버튼은 눌리는 순간 사라지므로, Esc 와 같은 좌표(선반의 상태
+  // 버튼)로 초점을 돌려주지 않으면 다음 Tab 이 패널 밖 body 에서 시작한다.
+  const closeWork = React.useCallback(() => {
+    collapseWork();
+    ledgeToggleRef.current?.focus();
+  }, [collapseWork]);
 
   const handleStop = React.useCallback(async (): Promise<boolean> => {
     setStopping(true);
@@ -509,6 +518,9 @@ export function AgentChatView({
             job={selectedJob}
             operationId={context.operationId}
             language={language}
+            tall={workTall}
+            onToggleTall={() => setWorkTall((value) => !value)}
+            onClose={closeWork}
             onOpen={setOpenJobId}
             onBack={() => setOpenJobId(null)}
           />
@@ -1638,6 +1650,18 @@ function WorkFold({
  * 나르고 식별 색조는 마크로만 칠한다는 Console 채널 규칙이 여기서도 그대로 선다.
  * 글리프는 원장의 계열 알파벳과 같은 글자다 — 위임 잡은 위임 절과, 셸 잡은 셸 절과 같은 표식을 쓴다.
  */
+/**
+ * 시트를 접는 ×. 공유 AgentGlyph 표에는 닫기가 없고, 이 한 자리를 위해 그 표를 늘리면 도구
+ * 계열 어휘에 창 컨트롤이 섞인다 — 획은 여기서 진다.
+ */
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <path d="M1.5 1.5 L10.5 10.5 M10.5 1.5 L1.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
 function JobGlyph({ kind }: { readonly kind: AgentChatJobKind }) {
   return <AgentGlyph name={kind === "agent" ? "delegate" : kind === "shell" ? "run" : kind === "workflow" ? "workflow" : "other"} />;
 }
@@ -1713,6 +1737,20 @@ function JobCard({
         ))}
         {job.kind === "workflow" && job.stages.length > 0 ? <StageDots stages={job.stages} /> : null}
       </span>
+      {/* 도는 잡의 "지금 무엇을". 목록 앞에서 묻는 것이 그 질문이므로, 열지 않고도 답이 나와야
+          한다. 동사는 원장 스텝과 같은 축에서 오고, 대상은 진행 알림이 싣지 않으므로 없다 —
+          그 좌표는 상세의 발자국이 진다. */}
+      {job.open && (job.lastTool !== undefined || job.note !== undefined) ? (
+        <span className="agent-chat-job-now">
+          <span className="agent-chat-step-orbit" aria-hidden="true" />
+          <span className="agent-chat-job-now-verb">
+            {job.lastTool !== undefined ? runningVerb(job.lastTool, language) : job.note}
+          </span>
+          {job.lastTool !== undefined && job.note !== undefined ? (
+            <span className="agent-chat-job-now-note">{job.note}</span>
+          ) : null}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -1788,8 +1826,14 @@ function WorkLedge({
  * 시트 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다.
  *
  * 대화 옆 컬럼도 아래 서랍도 아니다. 선반 바로 위에서 대화의 아래쪽을 덮으며 떠오르고, 접으면
- * 로그와 컴포저는 처음 그 자리다. 접는 문은 이 안에 없다: 선반의 같은 상태 버튼을 다시 누르거나
- * Esc와 대화 위를 누르면 접힌다.
+ * 로그와 컴포저는 처음 그 자리다.
+ *
+ * 면은 채팅 패널과 같은 것을 칠한다. 유리 채널(`--glass-tint-strong`)을 쓰던 시절, instrument에서
+ * 그 합성값이 카드 면과 대비 1.00으로 겹쳐 카드가 헤어라인만 남기고 사라졌다(실측). 층은 재료가
+ * 아니라 위쪽 헤어라인과 그림자가 진다.
+ *
+ * 접는 문은 머리줄 오른쪽 끝의 × 버튼이다. Esc와 대화 클릭, 선반 재클릭도 그대로 접는다 — 문이
+ * 생겼다고 이미 있던 길을 닫지 않는다.
  */
 function WorkSheet({
   id,
@@ -1798,6 +1842,9 @@ function WorkSheet({
   job,
   operationId,
   language,
+  tall,
+  onToggleTall,
+  onClose,
   onOpen,
   onBack,
 }: {
@@ -1807,6 +1854,9 @@ function WorkSheet({
   readonly job: AgentChatJob | null;
   readonly operationId: string;
   readonly language: "en" | "ko";
+  readonly tall: boolean;
+  readonly onToggleTall: () => void;
+  readonly onClose: () => void;
   readonly onOpen: (id: string) => void;
   readonly onBack: () => void;
 }) {
@@ -1814,10 +1864,27 @@ function WorkSheet({
   const open = jobs.filter((entry) => entry.open);
   const settled = jobs.filter((entry) => !entry.open);
   return (
-    <section ref={sheetRef} className="agent-chat-sheet" id={id} aria-label={t("terminal.chat.workAria")}>
+    <section
+      ref={sheetRef}
+      className={`agent-chat-sheet${tall ? " is-tall" : ""}`}
+      id={id}
+      aria-label={t("terminal.chat.workAria")}
+    >
       <div className="agent-chat-sheet-head">
         <span>{t("terminal.chat.workAria")}</span>
-        <span className="agent-chat-sheet-hint">{t("terminal.chat.sheetEscHint")}</span>
+        {/* 200스텝짜리 발자국에 62%는 좁다. 높이는 세션 안에서만 기억한다 — 한 번 키운 높이가
+            다음 Operation까지 따라가면, 그쪽 잡 둘을 보려고 대화를 82% 덮게 된다. */}
+        <button type="button" className="agent-chat-sheet-grow" onClick={onToggleTall}>
+          {tall ? t("terminal.chat.sheetShrink") : t("terminal.chat.sheetGrow")}
+        </button>
+        <button
+          type="button"
+          className="agent-chat-sheet-close"
+          aria-label={t("terminal.chat.sheetClose")}
+          onClick={onClose}
+        >
+          <CloseGlyph />
+        </button>
       </div>
       <div className="agent-chat-work-body">
         {job !== null ? (
@@ -1871,6 +1938,9 @@ function JobDetail({
         </button>
         <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-detail-title">{job.title}</span>
+        {/* 제목과 결말 사이의 신축 자리. 이것이 없으면 긴 제목이 머리줄을 밀어 '중단'이 다음
+            줄로 내려가고, 되돌릴 수 없는 문이 예상 못한 자리에 선다. */}
+        <span className="agent-chat-detail-gap" aria-hidden="true" />
         <span className={`agent-chat-job-outcome ${jobStateClass(job)}`}>{jobOutcome(job, language)}</span>
         {/* 도는 잡에만 선다. 끝난 잡 위의 중단 버튼은 누를 수 없는 문이고, 그 자리에 있는 것만으로
             결말이 아직 열려 있다고 말한다. */}
@@ -1888,6 +1958,7 @@ function JobDetail({
       </div>
       {stop.state === "failed" ? <div className="agent-chat-detail-stop-error">{t("terminal.chat.jobStopFailed")}</div> : null}
       <div className="agent-chat-detail-meta">{jobMetaParts(job, language).join(" · ")}</div>
+      <JobIdentity detail={detail} language={language} />
       <div className="agent-chat-detail-body">
         {job.kind === "workflow" ? (
           job.stages.length > 0
@@ -1912,7 +1983,7 @@ function JobDetail({
           <div className="agent-chat-work-empty">{t("terminal.chat.jobNoReport")}</div>
         ) : null}
         {job.open && job.note !== undefined ? <p className="agent-chat-detail-note">{job.note}</p> : null}
-        <JobExtra detail={detail} language={language} />
+        <JobExtra detail={detail} job={job} language={language} />
       </div>
     </>
   );
@@ -1926,21 +1997,37 @@ function JobDetail({
  */
 function JobExtra({
   detail,
+  job,
   language,
 }: {
   readonly detail: { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null };
+  readonly job: AgentChatJob;
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  if (detail.state === "idle") return null;
+  // 발자국을 남기지 않는 종류(other)가 도는 동안에도 본문은 비어 있지 않아야 한다. 빈 화면은
+  // "기록이 없다"로 읽히는데, 사실은 "이 종류엔 원래 없다"이다.
+  if (detail.state === "idle") {
+    return job.open && job.kind !== "workflow"
+      ? <div className="agent-chat-work-empty">{t("terminal.chat.jobWorking")}</div>
+      : null;
+  }
   if (detail.state === "loading") {
     return <div className="agent-chat-detail-loading">{t("terminal.chat.jobDetailLoading")}</div>;
   }
   const value = detail.value;
   // 못 읽었다는 것과 비어 있다는 것은 다르다. 전자는 좌표를 못 찾았거나 아직 안 쓰인 것이고,
   // 후자는 그 작업이 정말 아무 도구도 쓰지 않은 것이다 — 둘을 한 문장으로 뭉치면 거짓이 된다.
+  // 도는 중에는 셋째가 있다: 아직 첫 줄이 쓰이지 않은 것. 그것을 "기록 없음"으로 적으면 방금
+  // 시작한 작업이 실패한 것처럼 읽힌다.
   if (value === null) {
-    return <div className="agent-chat-work-empty">{t("terminal.chat.jobDetailUnavailable")}</div>;
+    return (
+      <div className="agent-chat-work-empty">
+        {job.open
+          ? t(job.kind === "shell" ? "terminal.chat.jobOutputPending" : "terminal.chat.jobTrailPending")
+          : t("terminal.chat.jobDetailUnavailable")}
+      </div>
+    );
   }
   if (value.kind === "shell") {
     return (
@@ -1955,53 +2042,105 @@ function JobExtra({
     return (
       <>
         <div className="agent-chat-kicker">{t("terminal.chat.jobTrail")}</div>
-        <div className="agent-chat-work-empty">{t("terminal.chat.jobTrailEmpty")}</div>
+        <div className="agent-chat-work-empty">
+          {t(job.open ? "terminal.chat.jobTrailPending" : "terminal.chat.jobTrailEmpty")}
+        </div>
       </>
     );
   }
+  // 도는 동안의 개수는 최종값이 아니다 — "지금까지"라고 말해야 다음 응답이 늘린 숫자가 정정이
+  // 아니라 진행으로 읽힌다.
+  const count = job.open
+    ? t("terminal.chat.jobTrailLive", { count: value.steps.length })
+    : String(value.steps.length);
+  const last = value.steps.length - 1;
   return (
     <>
-      <div className="agent-chat-kicker">{t("terminal.chat.jobTrail")} {value.steps.length}</div>
+      <div className="agent-chat-kicker">{t("terminal.chat.jobTrail")} {count}</div>
       {value.truncated ? <div className="agent-chat-detail-cut">{t("terminal.chat.jobTrailCut")}</div> : null}
       <div className="agent-chat-trail">
-        {value.steps.map((step, index) => (
-          // 원장의 스텝과 같은 클래스를 쓴다 — 서브에이전트가 한 일이 이 세션이 한 일과 같은
-          // 문법으로 읽혀야, 중첩된 것이 새 화면이 아니라 같은 화면의 한 겹으로 보인다.
-          <div key={index} className={`agent-chat-step is-${step.failed === true ? "fail" : "ok"}`}>
-            <span className="agent-chat-step-mark" aria-hidden="true">{step.failed === true ? "✕" : "✓"}</span>
-            <span className="agent-chat-step-verb">{step.name}</span>
-            {step.detail !== undefined ? <span className="agent-chat-step-object">{step.detail}</span> : null}
-            {step.outcome !== undefined ? (
-              <span className={`agent-chat-step-out${step.failed === true ? " is-error" : ""}`}>{step.outcome}</span>
-            ) : null}
-          </div>
-        ))}
+        {value.steps.map((step, index) => {
+          // 결말 없는 마지막 줄은 지금 도는 그 도구다. 끝난 스텝과 같은 ✓를 달면 화면이 아직
+          // 오지 않은 결과를 성공으로 적는다.
+          const live = job.open && index === last && step.outcome === undefined && step.failed !== true;
+          return (
+            // 원장의 스텝과 같은 클래스를 쓴다 — 서브에이전트가 한 일이 이 세션이 한 일과 같은
+            // 문법으로 읽혀야, 중첩된 것이 새 화면이 아니라 같은 화면의 한 겹으로 보인다.
+            <div key={index} className={`agent-chat-step is-${step.failed === true ? "fail" : "ok"}${live ? " is-live" : ""}`}>
+              {live
+                ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+                : <span className="agent-chat-step-mark" aria-hidden="true">{step.failed === true ? "✕" : "✓"}</span>}
+              <span className="agent-chat-step-verb">{step.name}</span>
+              {step.detail !== undefined ? <span className="agent-chat-step-object">{step.detail}</span> : null}
+              {step.outcome !== undefined ? (
+                <span className={`agent-chat-step-out${step.failed === true ? " is-error" : ""}`}>{step.outcome}</span>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </>
   );
 }
 
 /**
- * 잡 상세를 그 잡을 연 그때 한 번 읽는다.
+ * 서브에이전트의 신원 한 줄 — 누가 이 일을 했는가.
  *
- * 워크플로는 요청하지 않는다 — 단계 트리가 이미 맥박으로 흐르고 그것이 곧 상세다. 도는 잡도
- * 요청하지 않는다: 전사록과 출력 파일은 작업이 끝난 뒤에야 완결되므로, 도는 중에 읽으면 반쪽을
- * 보여 주고 그게 전부인 것처럼 굳는다.
+ * 스트립의 `who`는 종류만 말한다. 모델과 중첩 깊이는 전사록 옆 메타에만 있고, 어느 모델이
+ * 돌았는지는 Fleet에서 잡을 여는 가장 흔한 이유다.
+ */
+function JobIdentity({
+  detail,
+  language,
+}: {
+  readonly detail: { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null };
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const value = detail.value;
+  if (value === null || value.kind !== "agent" || value.identity === undefined) return null;
+  const identity = value.identity;
+  const fields: readonly (readonly [string, string])[] = [
+    ...(identity.agentType !== undefined ? [[t("terminal.chat.jobIdentityAgent"), identity.agentType] as const] : []),
+    ...(identity.model !== undefined ? [[t("terminal.chat.jobIdentityModel"), modelLabel(identity.model)] as const] : []),
+    ...(identity.depth !== undefined ? [[t("terminal.chat.jobIdentityDepth"), String(identity.depth)] as const] : []),
+  ];
+  if (fields.length === 0) return null;
+  return (
+    <div className="agent-chat-detail-identity">
+      {fields.map(([label, shown]) => (
+        <span key={label} className="agent-chat-identity-field">
+          <span className="agent-chat-identity-key">{label}</span>
+          <span className="agent-chat-identity-value" title={shown}>{shown}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** 도는 잡의 상세를 다시 묻는 간격. 전사록은 append되므로 다시 읽는 것이 곧 따라가는 것이다. */
+const JOB_DETAIL_POLL_MS = 2_000;
+
+/**
+ * 잡 상세를 읽는다 — 끝난 잡은 한 번, 도는 잡은 결말을 볼 때까지 되풀이해서.
  *
- * 그런데 "닫혔다"와 "결말이 보고됐다"는 같은 순간이 아니다. 백그라운드 셸은 `task_updated`가
- * `killed`로 먼저 닫고, 출력 파일의 좌표는 그 뒤에 오는 `task_notification`이 들고 온다(실측
- * 순서이며 매퍼에도 그렇게 적혀 있다). 그래서 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다
- * 먼저 도착해 404를 받고, 좌표가 도착해도 다시 묻지 않아 "기록 없음"이 영영 굳는다.
+ * 워크플로는 요청하지 않는다: 단계 트리가 이미 맥박으로 흐르고 그것이 곧 상세다.
  *
- * 그래서 결말 보고가 **도착한 횟수**를 의존성에 둔다. 보고의 내용(요약·소요 시간)으로 도착을
- * 추론하면, status만 실은 알림에서는 아무 필드도 바뀌지 않아 상세가 "기록 없음"에 굳는다 —
- * 매퍼가 허용하는 형태이고 테스트도 그 형태를 덮고 있다. 세는 것이 추론보다 정확하다.
+ * 도는 잡을 묻는 것이 이 훅의 요점이다. 서브에이전트 전사록과 셸 출력 파일은 **작업이 도는 동안
+ * 계속 append 된다**(실측: 실행 중 세션의 전사록이 6.5MB·897줄까지 자라며 갱신). 끝난 뒤에만
+ * 물으면 도구를 172회 쓴 작업이 그동안 본문 0줄로 서 있게 된다. 반쪽을 보여 주는 것은 문제가
+ * 아니다 — 화면이 "지금까지"라고 말하고 다음 응답이 이어 그리기 때문이다.
+ *
+ * "닫혔다"와 "결말이 보고됐다"는 여전히 같은 순간이 아니다. 백그라운드 셸은 `task_updated`가
+ * `killed`로 먼저 닫고, 출력 파일의 좌표는 뒤따르는 `task_notification`이 들고 온다(실측 순서이며
+ * 매퍼에도 그렇게 적혀 있다). 그래서 결말 보고가 **도착한 횟수**(`job.ends`)를 계속 의존성에 둔다 —
+ * 폴링이 닫히는 순간에 맞춰 멈추더라도, 뒤늦게 온 좌표가 마지막 한 번을 다시 부른다.
  */
 function useAgentChatJobDetail(
   operationId: string,
   job: AgentChatJob,
 ): { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null } {
-  const wanted = (job.kind === "agent" || job.kind === "shell") && !job.open;
+  const wanted = job.kind === "agent" || job.kind === "shell";
   const [result, setResult] = React.useState<{ readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null }>(
     { state: "idle", value: null },
   );
@@ -2011,16 +2150,28 @@ function useAgentChatJobDetail(
       return;
     }
     let live = true;
-    setResult({ state: "loading", value: null });
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
-    void readAgentChatJobDetail(operationId, job.id, controller.signal)
-      .then((value) => { if (live) setResult({ state: "ready", value }); })
-      .catch(() => { if (live) setResult({ state: "ready", value: null }); });
+    // 첫 응답까지만 loading이다. 되풀이하는 동안 loading으로 되돌리면 2초마다 발자국이 사라졌다
+    // 다시 서고, 읽던 자리가 그때마다 날아간다.
+    setResult((prev) => (prev.state === "idle" ? { state: "loading", value: null } : prev));
+    const read = (): void => {
+      void readAgentChatJobDetail(operationId, job.id, controller.signal)
+        .then((value) => {
+          if (!live) return;
+          // 도는 중의 null은 "없다"가 아니라 "아직"이다 — 이미 그린 발자국을 그것으로 지우지 않는다.
+          setResult((prev) => (value === null && job.open && prev.value !== null ? prev : { state: "ready", value }));
+        })
+        .catch(() => { if (live) setResult((prev) => (prev.state === "ready" ? prev : { state: "ready", value: null })); })
+        .finally(() => { if (live && job.open) timer = setTimeout(read, JOB_DETAIL_POLL_MS); });
+    };
+    read();
     return () => {
       live = false;
+      if (timer !== undefined) clearTimeout(timer);
       controller.abort();
     };
-  }, [operationId, job.id, wanted, job.ends]);
+  }, [operationId, job.id, wanted, job.open, job.ends]);
   return result;
 }
 

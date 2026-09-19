@@ -31,17 +31,20 @@ import {
   chatEventsFromSdkMessage,
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
+  chatSubagentIdentity,
   chatSubagentTrailFromTranscript,
   readChatCommandLaneName,
   readJobKind,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
   type AgentChatJobDetail,
+  type AgentChatJobIdentity,
   type AgentChatJobKind,
   type AgentChatJournalEvent,
   type AgentChatQuestion,
   type AgentChatQueueEntry,
   type AgentChatStreamEvent,
+  type ChatEventMapOptions,
   type ChatOrigin,
 } from "./chat-events.js";
 import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
@@ -291,6 +294,12 @@ const JOB_TAIL_READ_BYTES = 256 * 1024;
  * 상한이 아니라 창 때문에 조용히 짧아진다.
  */
 const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 잡 상세가 지나는 문. 자격증명 마스킹은 그대로고 경로만 원문으로 나간다 — 이 표면이 답하는
+ * 질문이 "그 작업이 무엇을 건드렸나"이고, 접힌 좌표로는 답이 되지 않기 때문이다(제품 결정).
+ */
+const JOB_DETAIL_OPTIONS = (cwd: string): ChatEventMapOptions => ({ cwd, fullPaths: true });
 
 /**
  * 파일의 마지막 `windowBytes`만 읽는다.
@@ -1239,16 +1248,34 @@ class AgentChatSession {
     // 전사록도 같은 이유로 창을 둔다 — 도구 결과가 큰 에이전트의 전사록은 작업 길이에 비례해
     // 자라고, 발자국이 최근 200스텝만 남기는 것과 무관하게 파일 전체가 메모리에 올라온다.
     // 창을 셸보다 넉넉히 잡는 이유는 한 줄이 훨씬 무겁기 때문이다(실측 표본 19줄 126KB).
-    const window = await readFileTail(path.join(dir, "subagents", `agent-${jobId}.jsonl`), JOB_TRANSCRIPT_READ_BYTES);
+    const base = path.join(dir, "subagents", `agent-${jobId}`);
+    const window = await readFileTail(`${base}.jsonl`, JOB_TRANSCRIPT_READ_BYTES);
     if (window === null) return null;
-    const trail = chatSubagentTrailFromTranscript(window.text, { cwd: this.seed.cwd });
-    return { kind: "agent", steps: trail.steps, truncated: trail.truncated || window.headCut };
+    const trail = chatSubagentTrailFromTranscript(window.text, JOB_DETAIL_OPTIONS(this.seed.cwd));
+    // 신원은 전사록과 별개의 파일이고 없을 수 있다 — 없다고 발자국까지 버리지 않는다.
+    const identity = await this.readJobIdentity(`${base}.meta.json`);
+    return {
+      kind: "agent",
+      steps: trail.steps,
+      truncated: trail.truncated || window.headCut,
+      ...(identity !== null ? { identity } : {}),
+    };
+  }
+
+  private async readJobIdentity(file: string): Promise<AgentChatJobIdentity | null> {
+    try {
+      // 메타는 한 줄짜리 JSON이라 창을 두지 않는다. 자식이 아직 쓰지 않았으면 ENOENT로 떨어진다.
+      const raw = await fs.readFile(file, "utf8");
+      return chatSubagentIdentity(raw, { cwd: this.seed.cwd });
+    } catch {
+      return null;
+    }
   }
 
   private async readShellTail(file: string): Promise<AgentChatJobDetail | null> {
     const window = await readFileTail(file, JOB_TAIL_READ_BYTES);
     if (window === null) return null;
-    const tail = chatShellTailFromOutput(window.text, { cwd: this.seed.cwd });
+    const tail = chatShellTailFromOutput(window.text, JOB_DETAIL_OPTIONS(this.seed.cwd));
     return { kind: "shell", tail: tail.tail, truncated: tail.truncated || window.headCut };
   }
 
