@@ -98,6 +98,8 @@ const CLAUDE_HARNESS_ID = "claude";
  * 그 문장은 자식에게 오류 결과로 전달된다 — 새 지시를 보내는 통로가 아니므로 길 필요가 없다.
  */
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
+/** Console Use 의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
+const SLEEP_SETTLE_MS = 5_000;
 
 /**
  * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
@@ -331,6 +333,26 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     resume: async (operationId) => {
       const result = await resumeOperation(operationId, false);
       return result.ok ? { ok: true, status: result.resumed.status } : { ok: false, error: result.error };
+    },
+    // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
+    // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
+    // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
+    sleep: async (operationId) => {
+      const session = observability.getTerminalSessionInfo(operationId);
+      if (!session) return { ok: false, error: "unknown_operation" };
+      if (session.chatActive) return { ok: false, error: "chat_never_dormant" };
+      if (session.status === "dormant") return { ok: false, error: "already_dormant" };
+      if (!readProviderSession(ctx.host.operations.get(operationId)?.payload)) return { ok: false, error: "not_resumable" };
+      if (!terminalRuntime.terminate(operationId)) return { ok: false, error: "not_resumable" };
+      const dormant = await new Promise<boolean>((resolve) => {
+        const finish = (value: boolean) => { clearTimeout(timer); unsubscribe(); resolve(value); };
+        const timer = setTimeout(() => finish(false), SLEEP_SETTLE_MS);
+        const unsubscribe = observability.subscribeAll((event) => {
+          if (event.type === "session:updated" && "session" in event && event.session.sessionId === operationId && event.session.status === "dormant") finish(true);
+        });
+        if (observability.getTerminalSessionInfo(operationId)?.status === "dormant") finish(true);
+      });
+      return { ok: true, lifecycle: dormant ? "dormant" : "ending" };
     },
     setView: (operationId, mode) => setChatMode(operationId, mode === "chat"),
     pendingAsks: (operationId) => chatRegistry.get(operationId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
