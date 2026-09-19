@@ -23,8 +23,9 @@ import "./browser-panel.css";
  * 첨부는 스크린샷 한 장이고 붙여넣기로 간다: 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
  * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다. 보내는 것은 언제나 사람이다.
  *
- * 로그인 상태는 창을 든 기계의 Google Chrome 프로필에서 쿠키로 가져올 수 있다 — Desktop 셸이 읽어 그 Operation 의
- * 세션에만 넣는다.
+ * 세션은 둘 중 하나다: 닫히면 사라지는 **임시 세션**(기본)이거나, 이 기계에 남아 모든 Operation 이 함께 쓰는
+ * **내 프로필**이거나. 캡션의 표식이 지금 어느 쪽인지 말하고 거기서 바꾼다. 로그인 상태는 창을 든 기계의
+ * Google Chrome 프로필에서 쿠키로 가져올 수 있다 — Desktop 셸이 읽어 지금 쓰는 세션에만 넣는다.
  */
 
 interface TabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
@@ -36,6 +37,8 @@ interface BrowserState {
   readonly tabs: readonly TabState[]; readonly activeTabId: string | null; readonly viewport: Viewport; readonly driving: boolean;
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
   readonly available: boolean; readonly reason: UnavailableReason | null;
+  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다. */
+  readonly profile: string | null;
 }
 interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
@@ -51,6 +54,11 @@ type Mark = { readonly kind: "stroke"; readonly stroke: Stroke } | { readonly ki
 
 /** Operation 스트림에 실려 오는 브라우저 상태 프레임 (호스트의 같은 이름). */
 const BROWSER_STATE_EVENT = "browser:state";
+/**
+ * 영속 프로필의 id. 지금은 하나뿐이라 화면에서는 「내 프로필」한 낱말로 읽힌다 — 이름을 붙인 여러 프로필은
+ * 이 id 자리에 다른 값이 오는 것으로 자란다. 서버의 같은 이름과 짝이다(클라이언트는 셸 계약을 import 하지 않는다).
+ */
+const BROWSER_PROFILE = "default";
 
 const base = (operationId: string) => `/api/v1/browser/operations/${encodeURIComponent(operationId)}`;
 
@@ -201,6 +209,9 @@ const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="
 const TabletGlyph = () => glyph('<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M7 12.4h2"/>');
 const ReloadGlyph = () => glyph('<path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 1v3M6.5 2.5 8 4l1.5-1.5"/>');
 const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d="M2.5 10.5V12A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5v-1.5"/>');
+/* 세션의 정체 — 남는 것은 방패, 사라지는 것은 가림. 두 글리프의 대비가 표식 한 칸에서 읽혀야 한다. */
+const ProfileGlyph = () => glyph('<path d="M8 1.8 13 3.6v4.1c0 3-2 5.2-5 6.5-3-1.3-5-3.5-5-6.5V3.6z"/>');
+const EphemeralGlyph = () => glyph('<path d="M3 7.4 4.4 3.4h7.2L13 7.4"/><path d="M1.8 7.4h12.4"/><circle cx="5" cy="10.4" r="2"/><circle cx="11" cy="10.4" r="2"/><path d="M7 10.4h2"/>');
 /** Google Chrome 로고 — 브랜드 색은 브랜드의 것이라 토큰이 아닌 고정값이다. */
 const ChromeGlyph = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
@@ -286,9 +297,11 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
   const panel = useBrowserPanel(context.operationId);
   const importUnavailable = document.documentElement.dataset.desktopPlatform === "win32";
   const [viewportMenu, setViewportMenu] = React.useState(false);
+  const [profileMenu, setProfileMenu] = React.useState(false);
   const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
+  const persistent = (panel?.profile ?? null) !== null;
   const viewport = panel?.viewport ?? null;
   const viewportTip = viewport ? `${viewport.width}×${viewport.height} · ${t(`terminal.browser.preset.${viewport.preset}`)}${viewport.setBy === "agent" ? ` · ${t("terminal.browser.setByAgent")}` : ""}` : t("terminal.browser.viewport");
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
@@ -303,6 +316,44 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
           </div>
         ))}
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
+      </div>
+      {/* 세션 표식 — 지금 어떤 세션인지 늘 읽히고, 여기서 바꾼다. 에이전트가 모는 브라우저라 정체가 보여야 한다. */}
+      <div className="op-browser__profile">
+        <button
+          type="button"
+          className={`op-browser__pchip${persistent ? " is-persistent" : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={profileMenu}
+          data-tip={t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
+          disabled={!ready}
+          onClick={() => setProfileMenu((open) => !open)}
+        >
+          {persistent ? <ProfileGlyph /> : <EphemeralGlyph />}
+          <span>{t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</span>
+        </button>
+        {profileMenu ? (
+          <div className="op-browser__menu" role="menu">
+            {([null, BROWSER_PROFILE] as const).map((value) => (
+              <button
+                key={value ?? "ephemeral"}
+                type="button"
+                role="menuitemradio"
+                aria-checked={(panel?.profile ?? null) === value}
+                className="op-browser__menu-item"
+                onClick={() => { setProfileMenu(false); panel?.actions.chooseProfile(value); }}
+              >
+                <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+              </button>
+            ))}
+            <div className="op-browser__menu-sep" role="separator" />
+            <button type="button" role="menuitem" className="op-browser__menu-item" onClick={() => { setProfileMenu(false); panel?.actions.openClearProfile(); }}>
+              <strong>{t("terminal.browser.profile.clearItem")}</strong>
+              <span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span>
+            </button>
+            <p className="op-browser__menu-note">{t("terminal.browser.profile.sharedNote")}</p>
+          </div>
+        ) : null}
       </div>
       <button type="button" className="op-browser__icon" title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined} data-tip={t(importUnavailable ? "terminal.browser.import.windowsPending" : "terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!ready || importUnavailable} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
       <div className="op-browser__viewport-menu">
@@ -334,6 +385,9 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const [notice, setNotice] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<Mode>("none");
+  const [profileSwitch, setProfileSwitch] = React.useState<string | null | undefined>(undefined);
+  const [clearingProfile, setClearingProfile] = React.useState(false);
+  const [profileBusy, setProfileBusy] = React.useState(false);
   const [importSources, setImportSources] = React.useState<ImportSources | null>(null);
   const [importProfile, setImportProfile] = React.useState("");
   const [importing, setImporting] = React.useState(false);
@@ -598,6 +652,27 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       if (result) { setImportSources(null); setInfo(t("terminal.browser.import.done", { count: String(result.cookies) })); }
     } finally { setImporting(false); }
   };
+  // ---- 세션 고르기 — 임시(null)이거나 내 프로필이거나. 세션은 살아 있는 뷰에 바꿔 끼울 수 없어 탭을 닫고 다시 연다 ----
+  const applyProfile = async (next: string | null) => {
+    setProfileBusy(true);
+    try {
+      const ok = await run<BrowserState>("profile", { profile: next });
+      if (ok) setInfo(next ? t("terminal.browser.profile.switchedPersistent") : t("terminal.browser.profile.switchedEphemeral"));
+    } finally { setProfileBusy(false); setProfileSwitch(undefined); }
+  };
+  const chooseProfile = (next: string | null) => {
+    if ((state?.profile ?? null) === next) return;
+    // 탭이 열려 있으면 먼저 확인을 받는다 — 전환은 그 탭들을 닫는 일이다.
+    if ((state?.tabs.length ?? 0) > 0) { setProfileSwitch(next); return; }
+    void applyProfile(next);
+  };
+  const runClearProfile = async () => {
+    setProfileBusy(true);
+    try {
+      const ok = await run<{ cleared: string }>("clear-profile", { profile: BROWSER_PROFILE });
+      if (ok) setInfo(t("terminal.browser.profile.cleared"));
+    } finally { setProfileBusy(false); setClearingProfile(false); }
+  };
   const toggleMode = (next: Mode) => setMode((current) => current === next ? "none" : next);
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
@@ -607,12 +682,15 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
       available,
+      profile: available ? state?.profile ?? null : null,
       actions: {
         selectTab: (tabId) => { void run("tabs", { action: "select", tabId }); },
         closeTab: (tabId) => { void run("tabs", { action: "close", tabId }); },
         createTab: () => { void run("tabs", { action: "create" }); setEditingUrl(true); },
         openImport: () => { void openImport(); },
         setViewport,
+        chooseProfile,
+        openClearProfile: () => setClearingProfile(true),
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
@@ -675,9 +753,59 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
                 <span className="op-browser__dialog-glyph" aria-hidden="true"><GlobeGlyph /></span>
                 <span><strong>{t("terminal.browser.import.cookies")}</strong><span className="op-browser__help">{t("terminal.browser.import.cookiesHelp")}</span></span>
               </div>
+              {/* 쿠키가 어디로 들어가는지 — 영속 프로필이면 남고 임시 세션이면 탭과 함께 사라진다. */}
+              <div className="op-browser__dialog-item is-target">
+                <span className="op-browser__dialog-glyph" aria-hidden="true">{state?.profile ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
+                <span>
+                  <strong>{t(state?.profile ? "terminal.browser.import.intoProfile" : "terminal.browser.import.intoEphemeral")}</strong>
+                  <span className="op-browser__help">{t(state?.profile ? "terminal.browser.import.intoProfileHelp" : "terminal.browser.import.intoEphemeralHelp")}</span>
+                </span>
+              </div>
               <div className="op-browser__dialog-actions">
                 <button type="button" className="op-browser__button" disabled={importing} onClick={() => setImportSources(null)}>{t("terminal.browser.import.cancel")}</button>
                 <button type="button" className="op-browser__button op-browser__button--primary" disabled={importing || !importProfile} onClick={() => void runImport()}>{importing ? t("terminal.browser.import.busy") : t("terminal.browser.import.run")}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
+        {profileSwitch !== undefined ? (
+          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>
+            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")} onClick={(event) => event.stopPropagation()}>
+              <div className="op-browser__dialog-head">
+                <div>
+                  <h3>{t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")}</h3>
+                  <p>{t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}</p>
+                </div>
+              </div>
+              <div className="op-browser__dialog-item">
+                <span className="op-browser__dialog-glyph" aria-hidden="true">{profileSwitch ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
+                <span>
+                  <strong>{t(profileSwitch ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                  <span className="op-browser__help">{t(profileSwitch ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+                </span>
+              </div>
+              <div className="op-browser__dialog-actions">
+                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setProfileSwitch(undefined)}>{t("terminal.browser.import.cancel")}</button>
+                <button type="button" className="op-browser__button op-browser__button--primary" disabled={profileBusy} onClick={() => void applyProfile(profileSwitch)}>{t("terminal.browser.profile.switchRun")}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {/* 비우기 — 이 기계의 프로필 전체를 지운다. 되돌릴 수 없으므로 범위를 먼저 말한다. */}
+        {clearingProfile ? (
+          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setClearingProfile(false); }}>
+            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.profile.clearTitle")} onClick={(event) => event.stopPropagation()}>
+              <div className="op-browser__dialog-head">
+                <div><h3>{t("terminal.browser.profile.clearTitle")}</h3><p>{t("terminal.browser.profile.clearBody")}</p></div>
+              </div>
+              <div className="op-browser__dialog-item">
+                <span className="op-browser__dialog-glyph" aria-hidden="true"><ProfileGlyph /></span>
+                <span><strong>{t("terminal.browser.profile.persistent")}</strong><span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span></span>
+              </div>
+              <div className="op-browser__dialog-actions">
+                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setClearingProfile(false)}>{t("terminal.browser.import.cancel")}</button>
+                <button type="button" className="op-browser__button op-browser__button--danger" disabled={profileBusy} onClick={() => void runClearProfile()}>{t("terminal.browser.profile.clearRun")}</button>
               </div>
             </div>
           </div>

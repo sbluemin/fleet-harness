@@ -14,12 +14,17 @@ export interface BrowserPanelSnapshot {
   readonly busy: boolean;
   /** 지금 이 Console 에서 브라우저를 열 수 있는가 — 아니면 캡션의 문(새 탭·뷰포트)도 닫힌다. */
   readonly available: boolean;
+  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션 — 캡션의 표식이 이것을 말한다. */
+  readonly profile: string | null;
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
     readonly createTab: () => void;
     readonly openImport: () => void;
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
+    /** 세션을 바꾼다. 열린 탭이 있으면 패널이 먼저 확인을 받는다 — 세션은 뷰에 바꿔 끼울 수 없다. */
+    readonly chooseProfile: (profile: string | null) => void;
+    readonly openClearProfile: () => void;
   };
 }
 

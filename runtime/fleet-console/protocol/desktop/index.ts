@@ -129,6 +129,12 @@ export interface DesktopBrowserView {
   readonly operationId: string;
   /** Electron 세션 파티션 — Operation 마다 다르며 앱 수명 동안만 산다. */
   readonly partition: string;
+  /**
+   * 영속 브라우저 프로필의 id. `null` 이면 이 뷰는 위 `partition` 의 메모리 세션에 산다.
+   * 값이 있으면 셸이 자기 데이터 루트 아래에서 경로를 만들어 디스크 세션을 연다 — 콘솔은 경로를 보내지 않는다.
+   * 옛 셸은 이 필드를 모르고 `partition` 만 읽으므로 임시 세션으로 떨어진다.
+   */
+  readonly profile: string | null;
   readonly visible: boolean;
   /** 콘솔 창의 CSS px 좌표. 셸이 창의 줌 배율을 곱해 DIP 로 놓는다. */
   readonly bounds: DesktopBrowserBounds | null;
@@ -145,8 +151,20 @@ export interface DesktopBrowserCommand { readonly id: number; readonly viewId: s
 export const DESKTOP_BROWSER_SHELL_VIEW = "shell";
 /** 셸이 이 기계의 Google Chrome 프로필을 센다. 결과: `{ available, reason, profiles }`. */
 export const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
-/** 셸이 Chrome 프로필의 쿠키를 `partition` 세션에 넣는다. 인자: `{ partition, profileId }`, 결과: `{ cookies }`. */
+/**
+ * 셸이 Chrome 프로필의 쿠키를 대상 세션에 넣는다. 인자: `{ partition, profileId, browserProfile }`,
+ * 결과: `{ cookies }`. `browserProfile` 이 있으면 그 영속 프로필로, 없으면 `partition` 의 메모리 세션으로 간다.
+ */
 export const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
+/** 셸이 영속 브라우저 프로필의 저장소를 비운다. 인자: `{ browserProfile }`, 결과: `{ cleared: true }`. */
+export const DESKTOP_BROWSER_CLEAR_PROFILE = "Fleet.clearBrowserProfile";
+/**
+ * 영속 브라우저 프로필 id 로 받아들이는 모양. 이 id 는 셸에서 디렉터리 이름이 되므로 Windows 파일명으로
+ * 안전한 문자만 남긴다 — 점·콜론을 빼면 예약 이름과 확장자 해석 문제도 함께 사라진다.
+ */
+export const DESKTOP_BROWSER_PROFILE_ID = /^[A-Za-z0-9_-]{1,64}$/u;
+/** 지금은 프로필이 하나뿐이다. 저장 키를 id 로 잡아 두어 이름 붙인 여러 프로필이 나중에 이주 없이 붙는다. */
+export const DESKTOP_BROWSER_DEFAULT_PROFILE = "default";
 
 export interface DesktopBrowserSnapshot {
   /** 스냅샷마다 오른다 — 셸이 옛 스냅샷을 새 것 위에 덮어쓰지 않게. */
@@ -178,6 +196,7 @@ export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserB
 
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.operationId === "string" && isSafeId(value.partition)
+    && (value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
     && typeof value.visible === "boolean" && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
 }
 

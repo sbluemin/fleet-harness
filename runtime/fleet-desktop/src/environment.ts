@@ -62,6 +62,19 @@ export function resolveDesktopUserDataDirectory(userDataDir: string, resourceRoo
   return isPackaged ? userDataDir : path.join(resolveCanonicalLocalConsolePaths({ packageRoot: resourceRoot }).dir, "desktop");
 }
 
+/**
+ * 영속 브라우저 프로필이 사는 자리 — Fleet 루트 아래의 Desktop 슬롯.
+ *
+ * Electron 의 `userData` 를 쓰지 않는 것이 요점이다: 그 기본값은 Windows 에서 `%APPDATA%`(Roaming)이라
+ * 브라우저 캐시와 쿠키가 로그온마다 동기화된다 — Chrome 자신이 프로필을 `%LOCALAPPDATA%` 에 두는 까닭이다.
+ * Fleet 루트(`~/.fleet`)는 어느 플랫폼에서도 사용자 홈 아래이고 로밍되지 않으므로 분기가 필요 없다.
+ * 개발 실행은 `FLEET_DESKTOP_DATA_DIR` 가 이미 격리 슬롯을 가리키므로 프로필도 함께 격리된다.
+ */
+export function resolveBrowserProfileRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const base = resolveDesktopDataDirectoryOverride(env) ?? path.join(resolveFleetDataDir(env), "desktop");
+  return path.join(base, "browser-profiles");
+}
+
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {
   // 개발 실행도 명시 슬롯을 존중한다 — 단 **새 이름만**. 옛 이름은 개발 모드에서 계속 무시하는
   // 것이 기존 불변식이다: 개발자 셸에 떠돌던 값 하나가 dev Desktop을 엉뚱한 슬롯으로 끌고 가면

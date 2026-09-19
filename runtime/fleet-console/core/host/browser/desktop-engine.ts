@@ -22,7 +22,7 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; operationId: string; partition: string; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
+interface ViewRecord { id: string; operationId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
 interface Placement { bounds: DesktopBrowserBounds; visible: boolean }
 
 export interface DesktopEngineDeps {
@@ -33,6 +33,9 @@ export interface DesktopEngineDeps {
 
 export class DesktopEngine implements CdpClient {
   private readonly views = new Map<string, ViewRecord>();
+  /** 컨텍스트마다의 영속 프로필. Operation 은 컨텍스트를 하나씩 가지므로 파티션은 늘 Operation 마다 다르고,
+   *  같은 프로필을 고른 Operation 들만 셸에서 같은 디스크 세션을 나눠 쓴다. */
+  private readonly contextProfiles = new Map<string, string | null>();
   private readonly placements = new Map<string, Placement>();
   private readonly pending = new Map<number, Pending>();
   private readonly attachWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
@@ -97,7 +100,7 @@ export class DesktopEngine implements CdpClient {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
       const placement = this.placements.get(view.operationId) ?? null;
       const visible = view.active && placement !== null && placement.visible;
-      return { id: view.id, operationId: view.operationId, partition: view.partition, visible, bounds: placement?.bounds ?? null, url: view.url };
+      return { id: view.id, operationId: view.operationId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
     return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command) };
   }
@@ -161,10 +164,18 @@ export class DesktopEngine implements CdpClient {
         const identity = (this.host ? this.identities.get(this.host) : undefined) ?? { product: "Chrome/0", userAgent: "" };
         return { product: identity.product, userAgent: identity.userAgent, protocolVersion: "1.3" } as T;
       }
-      case "Target.createBrowserContext": return { browserContextId: `fleet-browser-${crypto.randomUUID().slice(0, 8)}` } as T;
+      case "Target.createBrowserContext": {
+        // `fleetProfile` 은 Fleet 의 확장 인자다 — 이 컨텍스트의 뷰가 어느 영속 프로필에 살지.
+        const contextId = `fleet-browser-${crypto.randomUUID().slice(0, 8)}`;
+        this.contextProfiles.set(contextId, typeof params.fleetProfile === "string" ? params.fleetProfile : null);
+        return { browserContextId: contextId } as T;
+      }
       case "Target.disposeBrowserContext": {
         const partition = String(params.browserContextId ?? "");
+        // 파티션은 Operation 마다 다르므로 여기서 떨어지는 뷰도 그 Operation 의 것뿐이다. 프로필을 공유하는
+        // 다른 Operation 의 뷰는 파티션이 달라 살아남고, 디스크의 프로필도 지워지지 않는다.
         for (const view of [...this.views.values()]) if (view.partition === partition) this.dropView(view.id);
+        this.contextProfiles.delete(partition);
         this.publish();
         return {} as T;
       }
@@ -220,7 +231,7 @@ export class DesktopEngine implements CdpClient {
 
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
-    this.views.set(id, { id, operationId: "", partition, url, attached: false, active: false, size: null });
+    this.views.set(id, { id, operationId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null });
     // Operation 은 컨텍스트 이름으로 안다 — 서비스가 컨텍스트를 Operation 마다 하나 만들기 때문이다.
     const attached = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
