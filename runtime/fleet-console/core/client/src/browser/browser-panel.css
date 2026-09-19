@@ -125,7 +125,9 @@
 .op-browser__dialog-key { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
 /* 원본 선택은 SDK Select 그대로 — 여기서는 폭만 잡는다. 상자·테두리를 덧입히면 Select 의 자기 상자와 겹친다. */
 .op-browser__select { flex: 1; min-width: 0; }
-.op-browser__select .fc-select { width: 100%; }
+/* SDK Select 은 min-width:220px 를 깔고 있어 좁은 companion 의 대화상자를 뚫고 나간다 — 여기서만 바닥을 푼다. */
+.op-browser__select .fc-select { width: 100%; min-width: 0; }
+.op-browser__select .fc-select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-browser__dialog-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ink-veil); border-radius: var(--radius-xs); font-size: var(--t-sm); color: var(--text-primary); }
 .op-browser__dialog-item strong { font-weight: var(--weight-medium); display: block; }
 .op-browser__dialog-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 2px; }
@@ -160,3 +162,27 @@
 .op-browser__comment-ok:disabled { opacity: 0.4; cursor: default; }
 .op-browser__comment-ok:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
+
+/* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Operation 의 정체다 ---- */
+/* 글리프 하나로 말한다: 상자도 테두리도 두지 않아 옆의 화면 크기 글리프와 같은 결로 패널에 붙는다.
+   brass 는 위치·초점 채널이므로 쓰지 않는다 — 영속은 "남는다"는 **상태**라 signal 의 positive 를 든다. */
+.op-browser__profile { position: relative; flex: none; align-self: center; }
+.op-browser__pchip.is-persistent { color: var(--positive-ink); }
+.op-browser__pchip.is-persistent:hover:not(:disabled) { color: var(--positive-ink); background: color-mix(in oklch, var(--positive) 12%, transparent); }
+/* 세션 메뉴 — 항목마다 앞에 자기 글리프가 서고, 설명은 한 줄을 넘지 않는다. */
+.op-browser__profile .op-browser__menu { right: 0; min-width: 216px; padding: var(--space-1); }
+.op-browser__menu-item { display: flex; align-items: flex-start; gap: var(--space-2); }
+.op-browser__menu-glyph { flex: none; display: inline-flex; margin-top: 1px; color: var(--text-tertiary); }
+.op-browser__menu-glyph svg { width: 13px; height: 13px; }
+.op-browser__menu-item:hover .op-browser__menu-glyph, .op-browser__menu-item:focus-visible .op-browser__menu-glyph { color: inherit; }
+.op-browser__menu-item[aria-checked="true"] .op-browser__menu-glyph { color: inherit; }
+.op-browser__menu-item:disabled { opacity: 0.4; cursor: default; }
+.op-browser__menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
+.op-browser__menu-body { display: flex; flex-direction: column; min-width: 0; }
+.op-browser__menu-body strong { font-weight: var(--weight-medium); }
+.op-browser__menu-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 1px; white-space: normal; line-height: 1.35; }
+.op-browser__menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--hairline); }
+/* 가져오기 대화상자의 도착지 줄 — 쿠키가 어디에 남는지. */
+.op-browser__dialog-item.is-target { border: 1px solid var(--positive); background: var(--positive-glow); }
+.op-browser__button--danger { border-color: var(--coral); color: var(--coral-ink); }
+.op-browser__button--danger:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }

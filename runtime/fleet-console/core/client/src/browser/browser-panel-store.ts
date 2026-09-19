@@ -14,12 +14,17 @@ export interface BrowserPanelSnapshot {
   readonly busy: boolean;
   /** 지금 이 Console 에서 브라우저를 열 수 있는가 — 아니면 캡션의 문(새 탭·뷰포트)도 닫힌다. */
   readonly available: boolean;
+  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션 — 캡션의 표식이 이것을 말한다. */
+  readonly profile: string | null;
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
     readonly createTab: () => void;
     readonly openImport: () => void;
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
+    /** 세션을 바꾼다. 열린 탭이 있으면 패널이 먼저 확인을 받는다 — 세션은 뷰에 바꿔 끼울 수 없다. */
+    readonly chooseProfile: (profile: string | null) => void;
+    readonly openClearProfile: () => void;
   };
 }
 
@@ -38,6 +43,33 @@ export function useBrowserPanel(operationId: string): BrowserPanelSnapshot | nul
     return () => { set.delete(listener); if (set.size === 0) listeners.delete(operationId); };
   }, [operationId]);
   return React.useSyncExternalStore(subscribe, () => snapshots.get(operationId) ?? null, () => null);
+}
+
+// ---------- 캡션이 띄운 것 ----------
+
+/**
+ * 캡션의 메뉴가 열려 있는가 — 캡션에서 본문으로 흐르는 유일한 신호다.
+ *
+ * 네이티브 뷰는 언제나 페이지 위에 그려지므로, 캡션에서 본문 영역까지 내려오는 메뉴는 뷰가 물러서지 않으면
+ * 그 아래가 가려지고 클릭도 받지 못한다. 대화상자는 `aria-modal` 로 그 사실을 스스로 말하지만 메뉴는 모달이
+ * 아니므로(그렇게 만들면 보조기술에 거짓말이 된다) 여기로 알린다.
+ */
+const captionOverlays = new Map<string, boolean>();
+const overlayListeners = new Map<string, Set<() => void>>();
+
+export function publishBrowserCaptionOverlay(operationId: string, open: boolean): void {
+  if ((captionOverlays.get(operationId) ?? false) === open) return;
+  if (open) captionOverlays.set(operationId, true); else captionOverlays.delete(operationId);
+  for (const listener of overlayListeners.get(operationId) ?? []) listener();
+}
+
+export function useBrowserCaptionOverlay(operationId: string): boolean {
+  const subscribe = React.useCallback((listener: () => void) => {
+    const set = overlayListeners.get(operationId) ?? new Set<() => void>();
+    set.add(listener); overlayListeners.set(operationId, set);
+    return () => { set.delete(listener); if (set.size === 0) overlayListeners.delete(operationId); };
+  }, [operationId]);
+  return React.useSyncExternalStore(subscribe, () => captionOverlays.get(operationId) ?? false, () => false);
 }
 
 // ---------- 브라우저를 열 수 있는가 ----------

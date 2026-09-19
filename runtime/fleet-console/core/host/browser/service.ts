@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
 
 /**
  * Operation Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -39,6 +39,8 @@ export interface BrowserViewport { readonly width: number; readonly height: numb
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
 export interface BrowserOperationState {
   readonly operationId: string;
+  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
+  readonly profile: string | null;
   readonly tabs: readonly BrowserTabState[];
   readonly activeTabId: string | null;
   readonly viewport: BrowserViewport;
@@ -96,6 +98,8 @@ interface Tab {
 interface OperationBrowser {
   readonly operationId: string;
   contextId: string;
+  /** 사람이 고른 세션의 정체. 기본은 임시(`null`) — 에이전트가 모는 브라우저라 로그인이 기본으로 남으면 안 된다. */
+  profile: string | null;
   tabs: Map<string, Tab>;
   activeTabId: string | null;
   viewport: BrowserViewport;
@@ -105,6 +109,12 @@ interface OperationBrowser {
   interruptSerial: number;
   /** 에이전트가 누르고 있는 포인터 버튼 — 드래그 동안 mouseMoved 가 버튼을 실어야 한다. */
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
+  /**
+   * 아직 `tabs` 에 들어가지 못한, 만드는 중인 탭의 수. 뷰가 붙기를 기다리는 동안 이 Operation 의 마지막 탭이
+   * 닫히면 「탭이 없다」로 읽혀 컨텍스트가 거둬지고, 붙는 중이던 뷰가 그 자리에서 죽는다. 사람과 에이전트가
+   * 같은 탭을 함께 쓰므로 이 겹침은 실제로 일어난다.
+   */
+  pendingTabs: number;
   agentCalls: Set<AbortController>;
 }
 
@@ -280,7 +290,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
+      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
@@ -289,7 +299,7 @@ export class BrowserService {
   private async context(op: OperationBrowser): Promise<{ client: CdpClient; contextId: string }> {
     const client = await this.engineClient();
     if (!op.contextId) {
-      const created = await client.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: false });
+      const created = await client.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: false, fleetProfile: op.profile });
       op.contextId = created.browserContextId;
     }
     return { client, contextId: op.contextId };
@@ -306,6 +316,7 @@ export class BrowserService {
     const { available, reason } = this.availability();
     return {
       operationId,
+      profile: op.profile,
       available,
       reason,
       tabs: [...op.tabs.values()].map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 })),
@@ -333,17 +344,31 @@ export class BrowserService {
   async closeOperation(operationId: string): Promise<void> {
     const op = this.operations.get(operationId);
     if (!op) return;
-    for (const call of op.agentCalls) call.abort();
-    op.agentCalls.clear();
-    const client = this.client;
-    if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
-    op.tabs.clear();
-    op.activeTabId = null;
-    op.contextId = "";
+    await this.resetContext(op);
     this.endAgentSession(operationId, "revoke");
     this.emitState(op);
     this.operations.delete(operationId);
     this.scheduleIdle();
+  }
+
+  /**
+   * 이 Operation 의 탭과 브라우저 컨텍스트를 거둔다. 영속 프로필의 **디스크 저장소는 건드리지 않는다** —
+   * 컨텍스트는 이 Operation 의 것이지만 프로필은 모두의 것이다.
+   */
+  private async resetContext(op: OperationBrowser): Promise<void> {
+    for (const call of op.agentCalls) call.abort();
+    op.agentCalls.clear();
+    await this.disposeContext(op);
+    op.tabs.clear();
+    op.pendingTabs = 0;
+    op.activeTabId = null;
+  }
+
+  /** 이 Operation 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
+  private async disposeContext(op: OperationBrowser): Promise<void> {
+    const client = this.client;
+    if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
+    op.contextId = "";
   }
 
   /** 지금까지 「중단」이 눌린 횟수 — 여러 호출로 이어지는 실행(배치)이 시작 시점과 비교해 멈춘다. */
@@ -422,11 +447,20 @@ export class BrowserService {
     const op = this.operation(operationId);
     if (op.tabs.size >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
     const target = url ? this.admit(op, url, actor) : null;
-    const { client, contextId } = await this.context(op);
-    const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
-    const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
-    op.tabs.set(tab.id, tab);
+    // 뷰가 붙는 동안은 탭이 아직 `tabs` 에 없다 — 그 사이 마지막 탭이 닫혀도 컨텍스트가 거둬지지 않게 세어 둔다.
+    op.pendingTabs += 1;
+    let client: CdpClient;
+    let tab: Tab;
+    try {
+      const context = await this.context(op);
+      client = context.client;
+      const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: context.contextId });
+      const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
+      tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+      op.tabs.set(tab.id, tab);
+    } finally {
+      op.pendingTabs -= 1;
+    }
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
       client.send("Runtime.enable", {}, tab.sessionId),
@@ -436,7 +470,7 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    this.deps.desktop.bindView(created.targetId, op.operationId);
+    this.deps.desktop.bindView(tab.targetId, op.operationId);
     await this.applyViewport(client, tab, op.viewport);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
@@ -454,6 +488,10 @@ export class BrowserService {
       op.activeTabId = null;
       if (next) { await this.selectTab(operationId, next); this.scheduleIdle(); return; }
     }
+    // 마지막 탭이 닫히면 브라우저 컨텍스트도 거둔다. 임시 세션의 약속이 이것이다 — 「탭을 닫으면 로그인이
+    // 사라집니다」. 컨텍스트를 그대로 두면 유휴 종료까지의 5분 안에 새 탭을 여는 사람이 같은 파티션과 그
+    // 쿠키를 되받는다. 영속 프로필도 같이 거두지만 잃는 것은 없다 — 그 쿠키는 디스크의 프로필에 산다.
+    if (op.tabs.size === 0 && op.pendingTabs === 0) await this.disposeContext(op);
     this.emitState(op);
     this.scheduleIdle();
   }
@@ -546,14 +584,17 @@ export class BrowserService {
     return client.send<ChromeImportSources>(DESKTOP_BROWSER_CHROME_PROFILES, {});
   }
 
-  /** Chrome 프로필의 쿠키를 이 Operation 의 세션 파티션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다. */
+  /**
+   * Chrome 프로필의 쿠키를 이 Operation 이 지금 쓰는 세션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다.
+   * 영속 프로필을 쓰고 있으면 그 프로필로 들어가 다음에 열 때도 남고, 임시 세션이면 그 세션과 함께 사라진다.
+   */
   async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
     if (!/^[A-Za-z0-9 ._-]+$/.test(profileId)) throw new BrowserPolicyError("chrome_profile_not_found", CHROME_IMPORT_FAILURES.chrome_profile_not_found!);
     const op = this.operation(operationId);
     const { client, contextId } = await this.context(op);
     try {
-      const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId });
-      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${operationId}`);
+      const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId, browserProfile: op.profile });
+      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${op.profile ? `browser profile ${op.profile}` : operationId}`);
       return result;
     } catch (error) {
       // 셸의 까닭은 CdpError 메시지(`Fleet.importChromeCookies: chrome_…`)에 실려 온다.
@@ -561,6 +602,46 @@ export class BrowserService {
       const code = /^(chrome_[a-z_]+)/.exec(raw)?.[1] ?? "chrome_import_failed";
       throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile.");
     }
+  }
+
+  // ---------- 프로필 ----------
+
+  /**
+   * 이 Operation 이 쓸 세션을 고른다 — 임시(`null`)이거나 영속 프로필이거나.
+   *
+   * 세션은 살아 있는 뷰에 바꿔 끼울 수 없으므로 열린 탭을 닫고 컨텍스트를 새로 만든다. 사람에게는 화면이
+   * 비워지는 일이라 패널이 먼저 확인을 받는다. 프로필의 디스크 저장소는 그대로 남는다.
+   */
+  async setProfile(operationId: string, profile: string | null): Promise<BrowserOperationState> {
+    if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
+    const op = this.operation(operationId);
+    if (op.profile === profile) return this.state(operationId);
+    await this.resetContext(op);
+    op.profile = profile;
+    this.deps.log(`${operationId} browser session is now ${profile ?? "ephemeral"}`);
+    this.emitState(op);
+    // 전환이 마지막 탭을 닫았을 수 있다 — 그 길은 closeTab 을 거치지 않으므로 유휴 종료를 여기서 건다.
+    this.scheduleIdle();
+    return this.state(operationId);
+  }
+
+  /**
+   * 영속 프로필의 저장소를 비운다 — 모든 Operation 의 로그인이 함께 풀린다.
+   *
+   * 그 프로필을 쓰는 Operation 의 탭을 먼저 모두 닫는다: Windows 는 열려 있는 파일을 지우지 못하고,
+   * 살아 있는 페이지가 방금 지운 쿠키를 다시 써 넣을 수도 있다.
+   */
+  async clearProfile(profile: string): Promise<void> {
+    if (profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
+    for (const op of this.operations.values()) {
+      if (op.profile !== profile) continue;
+      await this.resetContext(op);
+      this.emitState(op);
+    }
+    const client = await this.engineClient();
+    await client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile });
+    this.deps.log(`cleared browser profile ${profile}`);
+    this.scheduleIdle();
   }
 
   // ---------- 파비콘 프록시 ----------

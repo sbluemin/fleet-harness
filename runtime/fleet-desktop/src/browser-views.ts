@@ -32,7 +32,8 @@ const RELAY_MAX_EVENTS = 400;
 
 export interface DesktopBrowserViewsDeps {
   readonly window: () => BrowserWindow | null;
-  readonly createView: (partition: string) => WebContentsView;
+  /** `profile` 이 있으면 그 영속 프로필의 디스크 세션에, `null` 이면 `partition` 의 메모리 세션에 뷰를 연다. */
+  readonly createView: (partition: string, profile: string | null) => WebContentsView;
   /** 콘솔 창 렌더러의 줌 배율 — 패널이 알린 CSS px 를 DIP 로 바꾼다. */
   readonly zoomFactor: () => number;
   /** 뷰가 놓인 화면의 배율 — 콘솔이 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */
@@ -152,7 +153,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const create = (spec: DesktopBrowserView): void => {
     const window = deps.window();
     if (!window || window.isDestroyed()) return;
-    const view = deps.createView(spec.partition);
+    const view = deps.createView(spec.partition, spec.profile ?? null);
     const entry: LiveView = { view, spec, attached: false, lastBounds: null };
     live.set(spec.id, entry);
     const contents = view.webContents;

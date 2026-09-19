@@ -3,13 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView } from "electron";
+import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
-import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
+import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
@@ -47,6 +49,31 @@ const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
 const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
+/**
+ * 영속 브라우저 프로필의 세션. 한 프로필은 앱 안에서 하나뿐이라 Operation 여럿이 같은 로그인을 함께 쓴다.
+ *
+ * 콘솔은 **id 만** 보내고 경로는 여기서 만든다 — 임의 경로가 셸로 흘러들 길을 두지 않는다.
+ * `fromPartition` 이 아니라 `fromPath` 인 것이 요점이다: 파티션은 앱의 `userData` 아래에 묶이는데,
+ * 그 기본값이 Windows 에서 Roaming 이라 브라우저 캐시가 로그온마다 동기화된다.
+ */
+const browserProfileSessions = new Map<string, Session>();
+function browserProfileSession(profile: string): Session {
+  if (!DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
+  const cached = browserProfileSessions.get(profile);
+  if (cached) return cached;
+  const directory = path.join(resolveBrowserProfileRoot(), profile);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const created = session.fromPath(directory);
+  browserProfileSessions.set(profile, created);
+  return created;
+}
+/** 쿠키가 들어갈 자리 — 영속 프로필이거나, 그 Operation 의 임시 파티션이거나. 둘 다 아니면 받지 않는다. */
+function browserTargetSession(params: Record<string, unknown>): { readonly session: Session; readonly label: string } | null {
+  const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
+  if (profile !== null) return DESKTOP_BROWSER_PROFILE_ID.test(profile) ? { session: browserProfileSession(profile), label: `profile ${profile}` } : null;
+  const partition = typeof params.partition === "string" && BROWSER_PARTITION.test(params.partition) ? params.partition : null;
+  return partition === null ? null : { session: session.fromPartition(partition), label: partition };
+}
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const desktopResources = resolveDesktopResourcePaths(isPackaged);
@@ -170,7 +197,13 @@ async function boot(): Promise<void> {
     window: () => window,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
-    createView: (partition) => new WebContentsView({ webPreferences: { partition, focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } }),
+    // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Operation 의 메모리 파티션에 뷰를 연다.
+    createView: (partition, profile) => new WebContentsView({
+      webPreferences: {
+        ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),
+        focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
+      },
+    }),
     zoomFactor: () => window?.webContents.getZoomFactor() ?? 1,
     scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
@@ -185,15 +218,23 @@ async function boot(): Promise<void> {
     shellCommand: async (method, params) => {
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
       if (method === DESKTOP_BROWSER_IMPORT_COOKIES) {
-        const partition = typeof params.partition === "string" && BROWSER_PARTITION.test(params.partition) ? params.partition : null;
+        const target = browserTargetSession(params);
         const profileId = typeof params.profileId === "string" ? params.profileId : null;
-        if (!partition || !profileId) throw new Error("chrome_import_invalid");
+        if (!target || !profileId) throw new Error("chrome_import_invalid");
         const cookies = await readChromeCookies({ profileId, tempRoot: app.getPath("temp"), log: (message) => logger.info(message) });
-        const jar = session.fromPartition(partition).cookies;
+        const jar = target.session.cookies;
         let imported = 0;
         for (const cookie of cookies) { try { await jar.set(toElectronCookie(cookie)); imported += 1; } catch { /* 이 쿠키는 못 넣는다 */ } }
-        logger.info(`imported ${imported}/${cookies.length} cookies from Chrome profile ${profileId} into ${partition}`);
+        logger.info(`imported ${imported}/${cookies.length} cookies from Chrome profile ${profileId} into ${target.label}`);
         return { cookies: imported };
+      }
+      if (method === DESKTOP_BROWSER_CLEAR_PROFILE) {
+        const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
+        if (profile === null || !DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
+        // 콘솔이 이 프로필의 뷰를 먼저 모두 닫고 부른다 — Windows 는 열려 있는 파일을 지우지 못한다.
+        await browserProfileSession(profile).clearStorageData();
+        logger.info(`cleared browser profile ${profile}`);
+        return { cleared: true };
       }
       throw new Error("desktop_shell_unsupported");
     },

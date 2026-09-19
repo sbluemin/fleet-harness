@@ -430,6 +430,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Operation's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Operation's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/profile", summary: "Choose whether an Operation's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/operations/:operationId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
@@ -1256,7 +1258,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
       return true;
     }
-    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import|profile|clear-profile)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -1293,6 +1295,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (action === "import") {
         if (typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, await browserService.importFromChrome(operationId, body.profileId)); return true;
+      }
+      if (action === "profile") {
+        if (body.profile !== null && typeof body.profile !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, await browserService.setProfile(operationId, body.profile)); return true;
+      }
+      if (action === "clear-profile") {
+        if (typeof body.profile !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        await browserService.clearProfile(body.profile);
+        writeJson(res, 200, { cleared: body.profile }); return true;
       }
       if (action === "tabs") {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
