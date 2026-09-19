@@ -4,8 +4,8 @@ import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
 export interface BrowserToolDeps {
   readonly service: BrowserService;
-  /** 인라인 예산을 넘긴 스크린샷이 놓이는 자리. 없으면 예산과 무관하게 인라인으로 싣는다. */
-  readonly screenshots?: BrowserScreenshotStore;
+  /** 캡처가 놓이는 자리. 스크린샷은 결과에 싣지 않고 언제나 여기 파일로 건넨다. */
+  readonly screenshots: BrowserScreenshotStore;
 }
 
 /**
@@ -16,7 +16,8 @@ export interface BrowserToolDeps {
  * 세션 라벨은 MCP 호스트가 Operation id 로 바꿔서 넘긴다.
  */
 
-type ToolResult = { content: { type: "text"; text: string }[] | { type: string; [key: string]: unknown }[]; isError?: boolean };
+type TextBlock = { type: "text"; text: string };
+type ToolResult = { content: TextBlock[]; isError: boolean };
 
 function text(value: unknown, isError = false): ToolResult {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], isError };
@@ -30,16 +31,6 @@ function failure(error: unknown): ToolResult {
 }
 
 const TAB_ID = { type: "string", description: "Tab ID from tabs_context or the tab that opened it. Omit for the active tab." };
-
-/**
- * 인라인으로 실을 수 있는 스크린샷의 크기(base64 문자 수).
- *
- * MCP 도구 결과에는 호출하는 CLI 쪽 토큰 상한이 걸려 있고(Claude Code 기본 25,000), base64 이미지도 그
- * 예산을 텍스트로 쓴다. 넘기면 CLI 가 결과를 통째로 파일로 흘려보내므로 **모델은 이미지를 아예 보지 못한다**.
- * 그래서 넘길 크기는 우리가 먼저 알아채고 경로로 바꾼다. base64 는 대략 3.5~4 자에 1 토큰이니 64,000 자는
- * 16,000~18,000 토큰 — 함께 실리는 안내문까지 얹어도 기본 상한 안에 든다.
- */
-const INLINE_SCREENSHOT_BUDGET_CHARS = 64_000;
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const { service } = deps;
@@ -60,23 +51,26 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
 
   /**
    * 한 장의 스크린샷. 화질은 JPEG 압축으로 줄이되 **해상도는 건드리지 않는다** — 줄인 해상도는 UI 의 작은
-   * 글자, 특히 획이 조밀한 한글을 뭉개서 에이전트가 문구를 잘못 읽는 쪽으로 실패한다. 압축으로도 예산을
-   * 넘기면 해상도를 깎는 대신 파일로 내려 보낸다.
+   * 글자, 특히 획이 조밀한 한글을 뭉개서 에이전트가 문구를 잘못 읽는 쪽으로 실패한다.
+   *
+   * 캡처는 도구 결과에 싣지 않고 **언제나 파일로 건넨다**. 결과에 실린 base64 는 이미지가 아니라 텍스트로
+   * 값이 매겨져 한 장이 수만 토큰을 먹고, 그러고도 호출한 CLI 의 상한을 넘기면 결과가 통째로 흘러가
+   * 모델은 이미지를 아예 보지 못한다. 경로는 몇 십 토큰이고 에이전트가 제 손으로 읽을 때 비로소 이미지로
+   * 들어가니, 같은 장이 스무 배 넘게 싸면서 더 확실히 닿는다.
    */
-  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }) => {
+  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<TextBlock[]> => {
     const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg" });
     const geometry = `Screenshot ${shot.width}x${shot.height} CSS px. Coordinates for computer actions are these pixels; the origin is the top-left of the viewport.`;
-    const inline = () => [{ type: "image", data: shot.data, mimeType: shot.mimeType }, { type: "text", text: geometry }];
     // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
     // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
-    if (signal.aborted) return inline();
-    if (!deps.screenshots || shot.data.length <= INLINE_SCREENSHOT_BUDGET_CHARS) return inline();
+    if (signal.aborted) return [{ type: "text", text: geometry }];
     try {
       const filePath = deps.screenshots.save(operationId, Buffer.from(shot.data, "base64"), "jpg");
-      return [{ type: "text", text: `${geometry}\nThe image is too large to return inline, so it was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
+      return [{ type: "text", text: `${geometry}\nThe image was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
     } catch {
-      // 파일로 못 내려도 캡처는 살아 있다 — 인라인으로 실어 보내고 상한 판정은 호출한 CLI 에 맡긴다.
-      return inline();
+      // 앞선 조작은 이미 일어났다 — 실패로 되돌리면 에이전트가 같은 클릭을 되풀이한다. 이 장만 포기하고
+      // 그 사실을 알린다. base64 로 되돌아가지는 않는다.
+      return [{ type: "text", text: `${geometry}\nThe image could not be written to this machine, so there is no picture of this call. Take a screenshot again to see the page.` }];
     }
   };
 
@@ -87,7 +81,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels of the last screenshot (viewport origin). Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find (scroll_to) before coordinate clicks. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a).", {
+  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels of the last screenshot (viewport origin). Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find (scroll_to) before coordinate clicks. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
     type: "object", properties: {
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
       coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in CSS pixels." },
@@ -104,8 +98,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     const tabId = args.tabId ?? null;
     const xy = (value: unknown): { x: number; y: number } => { if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === "number" && Number.isFinite(n))) throw new BrowserPolicyError("browser_coordinate_invalid", "coordinate must be [x, y] numbers from the latest screenshot."); return { x: value[0], y: value[1] }; };
     switch (args.action) {
-      case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal) };
-      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }) }; }
+      case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal), isError: false };
+      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }), isError: false }; }
       case "left_click": case "right_click": case "double_click": case "triple_click": {
         const { x, y } = xy(args.coordinate);
         await service.click(operationId, x, y, { button: args.action === "right_click" ? "right" : "left", clickCount: args.action === "double_click" ? 2 : args.action === "triple_click" ? 3 : 1 }, tabId);
@@ -127,7 +121,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
-    return { content: [{ type: "text", text: `${args.action} done.` }, ...await screenshotBlock(operationId, tabId, signal)] };
+    return { content: [{ type: "text", text: `${args.action} done.` }, ...await screenshotBlock(operationId, tabId, signal)], isError: false };
   });
 
   const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry [ref_N] ids for form_input, computer scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
@@ -183,7 +177,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     parameters: { type: "object", properties: { actions: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", properties: { name: { type: "string" }, input: { type: "object" } }, required: ["name"] } } }, required: ["actions"], additionalProperties: false },
     execute: async (args, context) => {
       const actions = (args as { actions?: { name: string; input?: Record<string, unknown> }[] }).actions ?? [];
-      const content: { type: string; [key: string]: unknown }[] = [];
+      const content: TextBlock[] = [];
       // 스텝마다 새 호출이 열리므로 「중단」은 세대로 이어 본다 — 한 번 눌렸으면 남은 스텝은 시작하지 않는다.
       const operationId = context.sessionLabel ?? "";
       const serial = service.interruptSerial(operationId);
@@ -195,7 +189,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         content.push({ type: "text", text: `— step ${index + 1}: ${action.name}` }, ...result.content);
         if (result.isError) return { content, isError: true };
       }
-      return { content };
+      return { content, isError: false };
     },
   };
 
