@@ -434,6 +434,18 @@ export function App() {
     });
   }, [canUndoLastClose, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
 
+  const deletionToast = (
+    <Toast
+      open={activeDeletion !== null}
+      tone="undo"
+      title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : activeDeletion && deletionAuthors.get(activeDeletion.deletionId) ? t("chrome.toast.operationClosedBy", deletionAuthors.get(activeDeletion.deletionId)!) : t("chrome.toast.operationClosed")}
+      message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
+      actionLabel={t("chrome.toast.undo")}
+      onAction={undoLastClose}
+      progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
+    />
+  );
+
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
@@ -494,7 +506,7 @@ export function App() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
+                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} deletionToast={mobileLayout ? null : deletionToast} />} />
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
@@ -541,15 +553,7 @@ export function App() {
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
           />
-          <Toast
-            open={activeDeletion !== null}
-            tone="undo"
-            title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : activeDeletion && deletionAuthors.get(activeDeletion.deletionId) ? t("chrome.toast.operationClosedBy", deletionAuthors.get(activeDeletion.deletionId)!) : t("chrome.toast.operationClosed")}
-            message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
-            actionLabel={t("chrome.toast.undo")}
-            onAction={undoLastClose}
-            progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
-          />
+          {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>
     </ActiveCompanionShortcutsProvider>

@@ -52,9 +52,10 @@ interface OperationsProps {
   readonly state: ConsoleState;
   readonly claimBootPanelMinimization: (theaterId: string) => readonly string[] | null;
   readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
+  readonly deletionToast?: ReactNode;
 }
 
-export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion }: OperationsProps) {
+export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, deletionToast }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
@@ -875,6 +876,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           openMenuOperationId={operationMenu?.operationId ?? null}
           onDismissOperationMenu={dismissOperationMenu}
         />
+      </div>
+      <div className="operations-toast-region" style={{ left: arenaInsets.left, right: arenaInsets.right }}>
+        <div className="app-toast-host">{deletionToast}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
