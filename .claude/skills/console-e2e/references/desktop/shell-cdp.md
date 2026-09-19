@@ -2,20 +2,7 @@
 
 ## Shell/CDP workflow
 
-Replace `<worktree>` with the absolute target checkout and `<cdp-port>` with one verified free loopback port. Choose one session literal, replacing `fleet-desktop-e2e-20260905-a7c3` consistently in every call. Redeclare `ab()` in each independent call that uses it. Build, then launch Electron directly so the CDP flag reaches the app:
-
-```bash
-cd <worktree>
-export PATH="<pnpm-bin>:$PATH"
-pnpm --filter @dotobokuri/fleet-console build
-pnpm --filter @dotobokuri/fleet-desktop build
-
-ELECTRON_BIN="$(node -e "const {createRequire}=require('module');const r=createRequire(require('path').resolve('runtime/fleet-desktop/package.json'));process.stdout.write(r('electron'))")"
-NODE_BIN="$(command -v node)"
-FLEET_CONSOLE_NODE_PATH="$NODE_BIN" "$ELECTRON_BIN" --remote-debugging-port=<cdp-port> <worktree>/runtime/fleet-desktop
-```
-
-Run the app as a managed background process. Wait for the CDP port, then connect:
+Replace `<cdp-port>` with one verified free loopback port. Choose one session literal, replacing `fleet-desktop-e2e-20260905-a7c3` consistently in every call. Redeclare `ab()` in each independent call that uses it. Launch the app as [Setup](setup.md) specifies, as a managed background process. Wait for a CDP page target — the port answers before a window exists — then connect:
 
 ```bash
 ab --session fleet-desktop-e2e-20260905-a7c3 connect <cdp-port>

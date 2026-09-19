@@ -109,7 +109,11 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       return connection;
     },
     /** 한 Operation의 허용을 거둘 때 — 진행 중 호출을 끊고 탭·컨텍스트를 닫는다. */
-    revokeOperation(operationId: string): void { void deps.service.closeOperation(operationId); },
+    revokeOperation(operationId: string): void {
+      void deps.service.closeOperation(operationId);
+      // 스크린샷은 사람이 본 페이지의 사본이다 — 브라우저를 거둘 때 함께 거둔다.
+      deps.screenshots?.release(operationId);
+    },
     /** 턴이 끝났다 — 사용 중 표시를 내린다. 실행 런타임의 턴 종료 훅이 부른다. */
     endAgentSession(operationId: string): void { deps.service.endAgentSession(operationId, "turn"); },
     /** 사용자의 「중단」 — 허용은 남기고 진행 중 호출만 끊는다. */
@@ -119,6 +123,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       disposed = true;
       await Promise.all([...connections].map((connection) => connection.dispose()));
       await deps.service.dispose();
+      deps.screenshots?.cleanup();
     },
   };
 }

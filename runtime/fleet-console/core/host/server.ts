@@ -43,6 +43,7 @@ import { stripConsoleInternalEnv } from "./terminal/launch-env.js";
 import { createComputerUseMcpHost } from "./mcp/computer-use.js";
 import { BrowserService, BrowserPolicyError, type BrowserAvailability } from "./browser/service.js";
 import { writeImageToClipboard } from "./browser/clipboard.js";
+import { createBrowserScreenshotStore } from "./browser/screenshot-store.js";
 import { createBrowserMcpHost } from "./mcp/browser.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -688,9 +689,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
     for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
   });
+  // 스크린샷은 Console 호스트에 놓인다 — 뷰를 그리는 Desktop 은 원격일 수 있어도 도구를 부르는 에이전트는
+  // 언제나 이 기계에서 돌기 때문이다.
+  const browserScreenshots = createBrowserScreenshotStore({
+    dataDir: durablePaths.dir,
+    log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
+  });
   const browserMcp = createBrowserMcpHost({
     transport: mcpHttp.transport,
     service: browserService,
+    screenshots: browserScreenshots,
     operations: () => operations.list(),
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
