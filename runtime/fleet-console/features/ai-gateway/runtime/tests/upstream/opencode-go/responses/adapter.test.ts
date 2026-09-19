@@ -44,6 +44,39 @@ describe("opencode go responses adapter", () => {
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer sk-go");
   });
 
+  it("drops the tool patterns this backend refuses and keeps the ones it reads", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new OpencodeGoResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "Artifact",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            // A backslash-digit escape: refused as `is not a "regex"`, which fails the whole
+            // request rather than the one tool.
+            file_paths: {
+              type: "array",
+              items: { type: "string", minLength: 1, maxLength: 1024, pattern: "^[^\\0]*$" },
+            },
+            asset_id: { type: "string", pattern: "^[0-9a-f]{32}$" },
+          },
+          required: ["file_paths", "asset_id"],
+        },
+      }],
+      tool_choice: "auto",
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ parameters: { properties: Record<string, Record<string, unknown>> } }>;
+    };
+    const properties = body.tools[0]!.parameters.properties;
+    expect(properties.file_paths!.items).not.toHaveProperty("pattern");
+    expect(properties.file_paths!.items).toHaveProperty("maxLength", 1024);
+    expect(properties.asset_id).toHaveProperty("pattern", "^[0-9a-f]{32}$");
+  });
+
   it("drops function_call_arguments.delta but forwards the whole done event", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse(
       chunk({ type: "response.created", response: { id: "r1", model: "gpt-5.6-luna", usage: null } }),

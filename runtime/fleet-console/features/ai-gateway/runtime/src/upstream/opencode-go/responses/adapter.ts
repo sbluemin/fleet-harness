@@ -216,9 +216,9 @@ function forOpenCodeGoResponsesBackend(
 
   const wireTools: OpenCodeResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
-    // Runs on every tool, strict or not: an OpenAI Responses backend compiles `pattern` before
+    // Runs on every tool, strict or not: an OpenAI Responses backend validates `pattern` before
     // it reads `strict`, so an unreadable one fails the request either way.
-    const parameters = re2SafeParameters(wireTool.parameters);
+    const parameters = readablePatternParameters(wireTool.parameters);
     // A schema outside strict mode's subset is rejected with a 400 that fails the whole
     // request, not just that tool, so an incompatible tool keeps its original schema and
     // forfeits the guarantee rather than taking every other tool down with it.
@@ -451,38 +451,48 @@ function usage(value: unknown): CanonicalUsage {
 }
 
 /**
- * `pattern` values an OpenAI Responses backend cannot compile.
+ * `pattern` values an OpenAI Responses backend refuses.
  *
- * Such a backend runs every function tool's `pattern` through RE2, which has neither lookaround
- * nor Unicode property escapes, and refuses the request as a whole — `param: "tools"`, not the
- * one tool. Claude Code's `Artifact` tool carries five of them, which is what took every Codex
- * turn down at its first message. `pattern` only advises the model about a value's shape and
- * nothing downstream enforces it, so dropping the ones RE2 cannot read costs nothing observable
- * and is safe on a backend that would have accepted them.
+ * Such a backend validates every function tool's `pattern` before it reads the request and
+ * refuses the request as a whole, so one unreadable pattern kills the turn before any output
+ * reaches the client. Which syntax is unreadable differs per backend, and the union of both
+ * measured refusals is dropped here:
  *
- * Measured against ChatGPT's Codex backend, not this one:
- * `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/codex/responses/adapter.ts` holds the measurements and
- * the same rule for the same wire contract; a change here belongs there too.
+ * - Lookaround and Unicode property escapes, which an RE2 engine cannot compile. Measured
+ *   against ChatGPT's Codex backend, not this one — the file named below holds those numbers.
+ * - A backslash-digit escape — `\0`, a backreference `\1`, an octal `\012`. Measured 2026-09-19
+ *   against `muse-spark-1.3-contributor`: each returns `Invalid JSON schema: … is not a
+ *   "regex"`, with and without `strict`, while `\x00`, `\u0000`, and even lookaround are
+ *   accepted, and `grok-4.6` on this same wire accepts every one of them — the refusal belongs
+ *   to the model's backend, not to the Go namespace. Claude Code's `Artifact` tool spells
+ *   `file_paths` as `^[^\0]*$`, which took every Muse-Spark turn down at its first message.
+ *
+ * `pattern` only advises the model about a value's shape and nothing downstream enforces it, so
+ * dropping the ones a backend cannot read costs nothing observable and is safe on a backend that
+ * would have accepted them.
+ *
+ * `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/codex/responses/adapter.ts` carries the same rule for
+ * the same wire contract; a change here belongs there too.
  */
-const RE2_HOSTILE_PATTERN = /\(\?[=!<]|\\[pP]\{/u;
+const UNREADABLE_PATTERN = /\(\?[=!<]|\\[pP]\{|\\[0-9]/u;
 
-function re2SafeParameters(schema: Record<string, unknown>): Record<string, unknown> {
-  const converted = re2SafeSchema(schema);
+function readablePatternParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = readablePatternSchema(schema);
   return isRecord(converted) ? converted : schema;
 }
 
 /**
- * Drops the `pattern` constraints RE2 rejects and keeps every one it accepts.
+ * Drops the `pattern` constraints a backend refuses and keeps every one it reads.
  *
  * Walks the value generically rather than following JSON Schema keywords: the offending
  * patterns sit wherever the tool author put them, and a keyword walk would have to be widened
  * for each new nesting shape. Only a **string** under a `pattern` key is dropped, so a property
  * that happens to be named `pattern` keeps its subschema. Unchanged nodes are returned by
- * identity so a tool with no hostile pattern reaches the wire as the object it already was.
+ * identity so a tool with no refused pattern reaches the wire as the object it already was.
  */
-function re2SafeSchema(value: unknown): unknown {
+function readablePatternSchema(value: unknown): unknown {
   if (Array.isArray(value)) {
-    const next = value.map(re2SafeSchema);
+    const next = value.map(readablePatternSchema);
     return next.some((entry, index) => entry !== value[index]) ? next : value;
   }
   if (!isRecord(value)) return value;
@@ -490,11 +500,11 @@ function re2SafeSchema(value: unknown): unknown {
   let changed = false;
   const next: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (key === "pattern" && typeof entry === "string" && RE2_HOSTILE_PATTERN.test(entry)) {
+    if (key === "pattern" && typeof entry === "string" && UNREADABLE_PATTERN.test(entry)) {
       changed = true;
       continue;
     }
-    const converted = re2SafeSchema(entry);
+    const converted = readablePatternSchema(entry);
     if (converted !== entry) changed = true;
     next[key] = converted;
   }
