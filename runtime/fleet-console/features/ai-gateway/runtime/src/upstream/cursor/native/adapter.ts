@@ -1090,9 +1090,22 @@ function cursorClientToolDiscipline(
   const hasShell = ["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf));
   if (redirectLeaves.has("grep") || hasShell) routed.push("search");
   if (hasShell) routed.push("shell");
+  // Cursor's own prompt describes a native file read, and the model opened with one in 9 of 10
+  // measured baseline trials even with the caller's read tool advertised. That native read
+  // fail-closes and the model has to reissue, so each one costs a whole discarded generation.
+  // Unlike search and shell it has no redirect to fall back on: the native success shape cannot
+  // state whether the caller returned a complete file, and answering with an unverifiable body
+  // measurably sent the model back to re-read instead. Naming the advertised tool in the rule is
+  // the lever that reaches the model before it chooses.
+  const readTool = tools.find((tool) => (
+    cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase() === "read"
+  ))?.toolName;
   const guidance = [
     routed.length > 0
       ? `Native ${routed.join(", ")} requests are routed through the caller's tools and permissions.`
+      : undefined,
+    readTool
+      ? `Read files with \`${readTool}\`; the native file read is unavailable.`
       : undefined,
     nativeWebSearch
       ? "Native web search is available; native mutation and fetch remain unavailable."

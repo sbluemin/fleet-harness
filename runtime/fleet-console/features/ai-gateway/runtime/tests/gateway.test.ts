@@ -40,6 +40,7 @@ import {
   UpstreamProtocolError,
   collectAnthropicMessage,
   encodeAnthropicSse,
+  normalizeAnthropicSystem,
   translateAnthropicRequest,
   withSseKeepAlive
 } from "../src/index.js";
@@ -110,6 +111,43 @@ describe("Anthropic request translation", () => {
     });
     expect(canonical.tools?.find((tool) => tool.name === "mcp__docs__read")?.defer_loading)
       .toBeUndefined();
+  });
+
+  it("reduces a string system prompt to the block array every reader assumes", () => {
+    // Anthropic accepts a bare string; the provider policies and the canonical conversion read the
+    // array. Passing a string through turned a legal caller shape into a 500 on every provider.
+    const stringSystem = { ...baseRequest(), system: "Follow the house style." } as unknown as AnthropicMessagesRequest;
+
+    const normalized = normalizeAnthropicSystem(stringSystem);
+
+    expect(normalized?.system).toEqual([{ type: "text", text: "Follow the house style." }]);
+    expect(translateAnthropicRequest(normalized!).instructions).toBe("Follow the house style.");
+    expect(normalizeAnthropicSystem({ ...baseRequest(), system: 42 } as unknown as AnthropicMessagesRequest))
+      .toBeNull();
+  });
+});
+
+describe("non-streaming response assembly", () => {
+  it("keeps the arguments of a tool call that closes without streaming argument deltas", async () => {
+    // The Cursor adapter reports a client tool call whole, on the closing item, and emits no
+    // `function_call_arguments` events at all. The SSE encoder already accepts that shape, so a
+    // non-streaming turn of the same conversation must not hand the caller an empty tool input.
+    async function* events(): AsyncGenerator<CanonicalResponseEvent> {
+      yield { type: "response.created", response: { id: "resp_1", model: "cursor-grok", usage: { input_tokens: 10, output_tokens: 0 } } };
+      yield {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "item_1", type: "function_call", call_id: "toolu_1", name: "Read", arguments: '{"file_path":"/tmp/a.py"}' },
+      };
+      yield { type: "response.completed", response: { id: "resp_1", model: "cursor-grok", usage: { input_tokens: 10, output_tokens: 4 } } };
+    }
+
+    const message = await collectAnthropicMessage(events(), "cursor-grok");
+
+    expect(message.stop_reason).toBe("tool_use");
+    expect(message.content).toEqual([
+      { type: "tool_use", id: "toolu_1", name: "Read", input: { file_path: "/tmp/a.py" } },
+    ]);
   });
 });
 

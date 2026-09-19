@@ -11,6 +11,7 @@ import {
 import { claudeCodeHarnessProfile } from "../downstream/harness/claude-code/profile.js";
 import type { GatewayHarnessProfile } from "../downstream/harness/contract.js";
 import {
+  normalizeAnthropicSystem,
   translateAnthropicRequest,
   UnsupportedAnthropicContentError,
 } from "../downstream/wire/anthropic-messages/protocol.js";
@@ -447,6 +448,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       writeAnthropicError(res, 400, "invalid_request_error", "Request model must be a non-empty string");
       return true;
     }
+    // 와이어가 허용하는 `system` 표기를 이 패키지가 읽는 한 가지 모양으로 줄인다. 공급자 정책과
+    // canonical 변환 모두 배열만 읽으므로, 문자열을 그대로 흘리면 목적지를 가리지 않고 500이 된다.
+    const normalizedSystem = normalizeAnthropicSystem(body);
+    if (!normalizedSystem) {
+      writeAnthropicError(res, 400, "invalid_request_error", "Request system must be a string or an array of text blocks");
+      return true;
+    }
+    body = normalizedSystem;
 
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const modelOverride = deps.readModelOverride?.();

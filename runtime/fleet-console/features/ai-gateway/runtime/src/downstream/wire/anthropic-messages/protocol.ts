@@ -147,6 +147,31 @@ export interface AnthropicMessagesRequest {
   stream?: boolean;
 }
 
+/**
+ * Reduce `system` to the block array the rest of the gateway reads.
+ *
+ * Anthropic accepts a bare string there and Claude Code sends the array, so every reader in this
+ * package — the canonical conversion below, and the client-identity strip each provider policy
+ * runs — was written against the array alone and reached `.map`/`.filter` on a string as a type
+ * lie. Normalizing once at this wire's own seam keeps one shape for both, instead of teaching
+ * every reader two. `null` means the caller sent a shape this wire cannot accept.
+ */
+export function normalizeAnthropicSystem(
+  request: AnthropicMessagesRequest,
+): AnthropicMessagesRequest | null {
+  const system: unknown = request.system;
+  if (system === undefined) return request;
+  if (Array.isArray(system)) return request;
+  // An empty instruction carries nothing, and a wire that rejects an empty text block would fail
+  // the turn over a field the caller effectively omitted.
+  if (system === null || system === "") {
+    const { system: _absent, ...rest } = request;
+    return rest;
+  }
+  if (typeof system !== "string") return null;
+  return { ...request, system: [{ type: "text", text: system }] };
+}
+
 export interface AnthropicModelEntry {
   readonly type: "model";
   readonly id: string;
@@ -896,6 +921,22 @@ export async function collectAnthropicMessage(
             // thinking block is the only place to hang it, and clients render nothing for it.
             if (!thinking.has(event.item.id)) thinking.set(event.item.id, "");
           }
+          break;
+        }
+        // An adapter may carry the whole argument JSON on the closing item and stream no argument
+        // deltas at all. `encodeAnthropicSse` already accepts that shape, so the non-streaming
+        // body has to as well, or the same turn reports its tool call with no arguments. The
+        // prefix test is the streaming encoder's: a `done` that does not extend what streamed is
+        // not authoritative over it.
+        if (event.item.type === "function_call") {
+          let entry = toolArgs.get(event.item.id);
+          if (entry === undefined) {
+            stopReason = "tool_use";
+            entry = { index: content.length, text: "" };
+            content.push({ type: "tool_use", id: event.item.call_id, name: event.item.name, input: {} });
+            toolArgs.set(event.item.id, entry);
+          }
+          if (event.item.arguments.startsWith(entry.text)) entry.text = event.item.arguments;
           break;
         }
         // Provider-executed web search arrives whole at `done` — there is no argument-delta
