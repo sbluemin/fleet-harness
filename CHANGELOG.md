@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.100.0] - 2026-09-19
+
+### fleet-console
+
+#### Added
+- Console now tells you in the window when a Console or Desktop update is out, with what it means for your session and a link to the release notes. Closing the notice keeps it from returning for that version; the mark on the help button stays until you update. The help menu's Desktop row acts on the update instead of opening GitHub.
+
+#### Fixed
+- Agents no longer lose large Operation Browser screenshots; a screenshot too big to send back is saved on your machine and the agent opens the file instead.
+
+### fleet-desktop
+
+#### Added
+- Fleet Desktop now updates itself instead of sending you to the GitHub release page. It checks for a new version on its own, and the download starts only when you ask for it - nothing is fetched in the background and nothing restarts until you press Restart. When Console also has an update waiting, that one restart installs both. Windows still shows a publisher warning on the first manual install, and Linux is not covered.
+
+#### Removed
+- The app no longer interrupts you with a native update dialog or a tray balloon. New versions are announced inside Console instead.
+
 ## [1.99.0] - 2026-09-19
 
 ### fleet-cli
