@@ -405,7 +405,7 @@
      밖의 자기 계약이고, 코덱스 리딩 시트의 극단값은 별도 독트린 예외다. */
   --z-overlay: 100;
   --z-lightbox: 104;
-  --z-curtain: 110;
+  --z-mode-title: 110;
   --z-tour: 120;
   --z-teardown: 130;
 

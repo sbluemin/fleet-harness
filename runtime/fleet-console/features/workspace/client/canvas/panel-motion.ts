@@ -7,7 +7,7 @@ const ARRIVAL_PULSE_DURATION_MS = 600;
 const FALLBACK_DURATION_MS = 360;
 const FALLBACK_EASING = "cubic-bezier(0.4, 0.14, 0.2, 1)";
 
-interface FlightTiming {
+export interface FlightTiming {
   readonly duration: number;
   readonly easing: string;
 }
@@ -118,7 +118,7 @@ function pulseChip(chip: HTMLElement): void {
 }
 
 // duration/easing은 테마 토큰(--duration-slow/--ease-glide)을 우선 읽고, 실패 시 토큰 정의와 같은 값으로 폴백한다.
-function flightTiming(): FlightTiming {
+export function flightTiming(): FlightTiming {
   try {
     const styles = getComputedStyle(document.documentElement);
     return {
@@ -136,4 +136,33 @@ function parseDurationMs(value: string): number | null {
   if (!match) return null;
   const amount = Number.parseFloat(match[1]!);
   return match[2] === "s" ? amount * 1000 : amount;
+}
+
+// 모드 전환 FLIP — 재부모화(덱 칸 portal)로 좌표 전이가 끊긴 패널을, 새 자리에서 옛 자리로의
+// 역변환을 걸었다가 풀어 실제 요소째 옮긴다. 조상 줌(k)은 화면 rect와 요소 자체 크기의 비로
+// 읽는다 — 월드 transform 안의 패널은 화면 px 이동량을 그 배율로 나눠야 제자리에 선다.
+export function flyPanelBetweenRects(element: HTMLElement, from: DOMRect, to: DOMRect, timing: FlightTiming, delay: number): boolean {
+  if (typeof element.animate !== "function") return false;
+  if (from.width <= 0 || from.height <= 0 || to.width <= 0 || to.height <= 0) return false;
+  if (Math.abs(from.left - to.left) < 0.5 && Math.abs(from.top - to.top) < 0.5
+    && Math.abs(from.width - to.width) < 0.5 && Math.abs(from.height - to.height) < 0.5) return false;
+  const k = element.offsetWidth > 0 ? to.width / element.offsetWidth : 1;
+  const previousOrigin = element.style.transformOrigin;
+  element.style.transformOrigin = "0 0";
+  const restore = () => { element.style.transformOrigin = previousOrigin; };
+  try {
+    const animation = element.animate(
+      [
+        { transform: `translate(${(from.left - to.left) / k}px, ${(from.top - to.top) / k}px) scale(${from.width / to.width}, ${from.height / to.height})` },
+        { transform: "none" },
+      ],
+      { duration: timing.duration, easing: timing.easing, delay, fill: "backwards" },
+    );
+    animation.onfinish = restore;
+    animation.oncancel = restore;
+    return true;
+  } catch {
+    restore();
+    return false;
+  }
 }

@@ -686,14 +686,16 @@ describe("Instrument core design contract", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
 
-  it("keeps the War Room entry sweep without an ambient scan line", () => {
+  // War Room 진입은 아레나 위에 빛을 지나가게 하지 않는다 — 상시 스캔 라인도, 커튼 시절의
+  // 진입 스윕도 없다. 패널이 첫 프레임부터 보이는 지금, 그 위를 지나는 광은 이동을 가릴 뿐이다.
+  it("keeps the War Room entry free of scan lines and sweeps", () => {
     const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
 
     expect(canvas).not.toContain("canvas-triage-scan");
     expect(components).not.toContain("triage-scan-line");
-    expect(canvas).toContain('{triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}');
-    expect(components).toContain("animation: triage-sweep-pass 900ms");
+    expect(canvas).not.toContain("canvas-triage-sweep");
+    expect(components).not.toContain("triage-sweep-pass");
   });
 
   it("denies the canvas a scroll port so a focused overhanging descendant cannot shift the board", () => {
@@ -721,7 +723,7 @@ describe("Instrument core design contract", () => {
 
     // 모드 바닥은 색이지 그 위에 덮는 층이 아니다. 캔버스 전면 의사요소는 패널 세계
     // (.operations-canvas-world, z-index auto) 위에 놓여 무대에 오른 패널을 통째로 어둡게 하므로
-    // 어떤 모드에서도 두지 않는다 — 진입 스크림은 커튼(.canvas-mode-curtain)이 소유한다.
+    // 어떤 모드에서도 두지 않는다 — 진입은 스크림 없이 제목(.canvas-mode-title)만 띄운다.
     expect(components).not.toMatch(/^\.operations-canvas\.is-triage::(after|before) \{/m);
     expect(components).not.toMatch(/^\.operations-canvas\.is-formation-view::(after|before) \{/m);
 
@@ -843,15 +845,21 @@ describe("Instrument core design contract", () => {
     for (const sharedModeClass of [
       "canvas-mode-frame",
       "canvas-mode-bracket",
-      "canvas-mode-curtain",
-      "canvas-mode-curtain-kicker",
-      "canvas-mode-curtain-ruler",
-      // Cruise 복귀도 진입과 같은 커튼을 쓴다 — 모드 전환 연출은 세 모드가 한 문법을 공유한다.
-      "canvas-cruise-curtain",
     ]) {
       expect(canvas).toContain(sharedModeClass);
       expect(components).toContain(`.${sharedModeClass}`);
     }
+    // 모드 전환 제목은 스크림 없이 세 줄만 띄우고, 세 모드(Cruise 복귀 포함)가 같은 컴포넌트를 쓴다 —
+    // 패널은 진입 첫 프레임부터 보여야 하므로 진입 중 패널을 숨기거나 착지를 미루는 규칙은 없다.
+    const overlays = source("../../../features/workspace/client/canvas/canvas-overlays.tsx");
+    for (const modeTitleClass of ["canvas-mode-title", "canvas-mode-title-kicker", "canvas-mode-title-ruler", "canvas-mode-title-word", "canvas-mode-title-body"]) {
+      expect(overlays).toContain(modeTitleClass);
+      expect(components).toContain(`.${modeTitleClass}`);
+    }
+    expect(canvas.split("<ModeTitle").length - 1).toBe(3);
+    expect(components).not.toContain("canvas-mode-curtain");
+    expect(components.match(/\.canvas-mode-title \{[^}]*\}/)?.[0] ?? "").not.toContain("background");
+    expect(components).not.toMatch(/\.is-formation-entering \.canvas-operation \{/);
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
     // 하단 대기 레일은 제거됐다 — 사이드바 '대기'가 이미 같은 순서를 쥐고 있어, 두 곳이 동시에
@@ -865,7 +873,7 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain("!entry.picked && !isTriageOperationDeferred(entry.operation.id)");
     // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
     expect(canvas).toContain("setAsideArmed");
-    expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
+    expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain|sweep)/);
     // Formation 판의 중앙은 대기광 채널이, 둘레는 워시 채널이 정한다 — 유리가 굴절할 빛을
     // 패널 뒤에 놓기 위해서다. 두 채널 모두 기본값이 현행 sea라 게이트가 닫히면 원래 픽셀이다.
     // 연출 자체는 Map 지형 채널로 옮겨 갔으므로, 이 문장의 근거는 theme.css의 Instrument 사양이 진다.
@@ -1152,7 +1160,7 @@ describe("Instrument core design contract", () => {
         const selector = masked.slice(selectorStart, blockStart);
         // Mode instrument chrome has host-approved literal brass/fog blends; adjacent CSS doctrine
         // comments distinguish these decorative labels from semantic body-copy color.
-        if (selector.includes(".canvas-mode-curtain-kicker")
+        if (selector.includes(".canvas-mode-title-kicker")
           || selector.includes(".canvas-formation-guide-index")) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);

@@ -3326,7 +3326,7 @@
    Carbon (12,14,19)↔(16,20,26) — 파랑 채널 최대 −15/255. Whites는 abyss가 97.8%라 무변).
    덱 상태에서 비네트가 실제로 닿는 곳은 캔버스 가장자리 26px 여백뿐이고 거기 바닥은 이미
    심해라 기여가 ≤1/255였다 — 얻는 것 없이 무대 패널만 어둡게 하던 층이라 통째로 걷었다.
-   모드 진입의 스크림은 커튼(.canvas-mode-curtain)이 계속 소유한다. */
+   모드 진입은 스크림 없이 제목(.canvas-mode-title)만 띄운다 — 패널은 첫 프레임부터 보인다. */
 .operations-canvas.is-triage {
   background: var(--canvas-field-triage);
   cursor: default;
@@ -3462,78 +3462,88 @@
 .is-formation-entering .canvas-mode-bracket--sw { animation: formation-bracket-sw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-formation-entering .canvas-mode-bracket--se { animation: formation-bracket-se var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 
-.canvas-triage-sweep {
+/* 모드 전환 제목 — 킥커·제목·설명 세 줄. 스크림은 없다: 예전 커튼은 아레나 중앙을 abyss 66%로
+   덮고 패널을 1180ms 숨긴 채 제목을 보여 줬는데, 사용자가 본 것은 이동이 아니라 빈 아레나였다.
+   지금은 패널이 첫 프레임부터 목적 좌표로 미끄러지고, 글자는 그 위에서 자기 후광(text-shadow)으로
+   바닥을 만든다. 무대는 아레나다 — 전면 인셋 0이면 제목이 사이드바 뒤 절반을 포함한 캔버스 중심에 선다. */
+.canvas-mode-title {
   position: absolute;
-  /* 진입 연출도 아레나 위에서 논다 — 전면 인셋 0이면 스윕 광이 부유 카드 뒤를 지나간다. */
   inset: var(--arena-top, 0px) var(--arena-right, 0px) var(--arena-bottom, 0px) var(--arena-left, 0px);
-  z-index: 78;
-  pointer-events: none;
-  background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--brass) 5%, transparent) 68%, color-mix(in oklch, var(--brass) 20%, transparent));
-  mask-image: linear-gradient(to right, transparent, oklch(0% 0 0) 18%, oklch(0% 0 0) 82%, transparent);
-  animation: triage-sweep-pass 900ms cubic-bezier(0.3, 0.1, 0.2, 1) both;
-}
-
-/* 무대가 점유된 동안 검토 전인 대기 항목 — 상태는 aurora가 border/텍스트로 말하고(애니메이션이
-   hover의 brass border보다 우선), hover/focus 피드백은 기존 brass 배경 워시가 그대로 맡는다.
-   미룬 항목에는 붙지 않는다 — 사용자가 이미 본 신호를 다시 흔드는 소음이 된다. */
-.canvas-mode-curtain {
-  position: absolute;
-  /* 커튼 스크림·타이틀의 무대는 아레나다 — 전면 인셋 0이면 타이틀이 보이는 무대의 중심이
-     아니라 캔버스 중심(사이드바 뒤 절반 포함)에 서고 비네트가 유리 카드를 흐린다. */
-  inset: var(--arena-top, 0px) var(--arena-right, 0px) var(--arena-bottom, 0px) var(--arena-left, 0px);
-  z-index: var(--z-curtain);
+  z-index: var(--z-mode-title);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   padding: 10%;
   pointer-events: none;
-  /* 모드 스크림·비네트는 canvas-abyss를 따라 테마 극성에 맞춘다 — 다크=심해, 라이트=백무. */
-  background: radial-gradient(52% 46% at 50% 50%, color-mix(in oklch, var(--canvas-abyss) 66%, transparent), transparent 72%);
   color: var(--text-secondary);
   text-align: center;
 }
 
-/* Doctrine exception: the curtain kicker is literal instrument chrome and intentionally blends brass with fog. */
-.canvas-mode-curtain-kicker {
+.canvas-mode-title-kicker,
+.canvas-mode-title-heading,
+.canvas-mode-title-body {
+  /* 겹친 두 겹의 6px가 후광의 심을 만든다 — 터미널 본문 위에서도 설명 줄이 읽히는 최소치(실측). */
+  text-shadow:
+    0 0 1px var(--canvas-abyss),
+    0 1px 2px var(--canvas-abyss),
+    0 0 6px var(--canvas-abyss),
+    0 0 6px var(--canvas-abyss),
+    0 0 14px var(--canvas-abyss),
+    0 0 28px var(--canvas-abyss);
+}
+
+/* Doctrine exception: the mode title kicker is literal instrument chrome and intentionally blends brass with fog. */
+.canvas-mode-title-kicker {
   color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.18em;
+  animation: mode-title-kicker 1350ms var(--ease-glide) both;
 }
 
-.canvas-mode-curtain-ruler {
-  width: 190px;
+.canvas-mode-title-ruler {
+  width: 0;
   height: 1px;
   background: linear-gradient(to right, transparent, var(--brass), transparent);
+  animation: mode-title-ruler 1350ms var(--ease-glide) both;
 }
 
-.canvas-mode-curtain strong {
+.canvas-mode-title-heading {
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 24px;
+  font-size: var(--t-xl);
   font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
 }
 
-.canvas-mode-curtain > span:last-child {
+/* 제목은 낱말 단위로 60ms씩 아래에서 밀려 올라오고, 들어온 순서대로 흩어진다(--wi는 컴포넌트가 준다). */
+.canvas-mode-title-word {
+  display: inline-block;
+  white-space: pre;
+  opacity: 0;
+  animation: mode-title-word 1350ms var(--ease-glide) both;
+  animation-delay: calc(var(--wi, 0) * 60ms);
+}
+
+.canvas-mode-title-body {
   max-width: 560px;
   color: var(--text-secondary);
   font-size: var(--t-md);
   line-height: 1.5;
+  animation: mode-title-body 1350ms var(--ease-glide) both;
 }
 
-.canvas-triage-curtain {
-  animation: triage-curtain-sequence 1500ms linear both;
-}
-
-.canvas-formation-curtain {
-  animation: formation-curtain-sequence 1400ms linear both;
-}
-
-.canvas-cruise-curtain {
-  animation: cruise-curtain-sequence 1400ms linear both;
+/* 낭독 전용 — 시각 제목과 같은 문장을 상시 status 영역에 싣는다. */
+.canvas-mode-title-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .canvas-formation-guide {
@@ -3647,6 +3657,11 @@
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+/* 모드 전환 flight 동안만 — 캔버스 좌표에서 칸으로 날아드는 패널은 칸보다 크므로 스크롤 포트가 잘라낸다. */
+.canvas-triage-deck-grid.is-mode-flight {
+  overflow: visible;
 }
 
 /* ── 함대 지도 ───────────────────────────────────────────────────────────────
@@ -4172,19 +4187,6 @@
 @keyframes formation-bracket-sw { from { transform: translate(-18px, 18px); } to { transform: translate(0, 0); } }
 @keyframes formation-bracket-se { from { transform: translate(18px, 18px); } to { transform: translate(0, 0); } }
 
-@keyframes triage-sweep-pass {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(100%); }
-}
-
-@keyframes triage-curtain-sequence {
-  0% { opacity: 0; }
-  22% { opacity: 1; }
-  54% { opacity: 1; }
-  82% { opacity: 0; }
-  100% { opacity: 0; }
-}
-
 @keyframes triage-stage-enter {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
@@ -4195,29 +4197,36 @@
   to { opacity: 1; clip-path: inset(0); }
 }
 
-@keyframes formation-curtain-sequence {
-  0% { opacity: 0; }
-  22% { opacity: 1; }
-  54% { opacity: 1; }
-  82% { opacity: 0; }
-  100% { opacity: 0; }
+/* filter는 0%·hold 지점에도 blur(0)을 명시한다 — 끝점에만 두면 전 구간에 걸쳐 보간돼 처음부터 흐려진다. */
+@keyframes mode-title-kicker {
+  0% { opacity: 0; filter: blur(0); }
+  14% { opacity: 1; }
+  76% { opacity: 1; filter: blur(0); }
+  100% { opacity: 0; filter: blur(3px); }
 }
 
-@keyframes cruise-curtain-sequence {
-  0% { opacity: 0; }
-  22% { opacity: 1; }
-  54% { opacity: 1; }
-  82% { opacity: 0; }
-  100% { opacity: 0; }
+@keyframes mode-title-ruler {
+  0% { width: 0; opacity: 1; }
+  24% { width: 160px; }
+  76% { width: 160px; opacity: 1; }
+  100% { width: 220px; opacity: 0; }
 }
 
-@keyframes formation-tile-land {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes mode-title-word {
+  0% { opacity: 0; transform: translateY(14px); filter: blur(4px); }
+  22% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  70% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  92%, 100% { opacity: 0; transform: translateY(-10px); filter: blur(6px); }
+}
+
+@keyframes mode-title-body {
+  0%, 22% { opacity: 0; filter: blur(0); }
+  44% { opacity: 1; }
+  68% { opacity: 1; filter: blur(0); }
+  88%, 100% { opacity: 0; filter: blur(4px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-triage-sweep,
   .canvas-fleet-map,
   .canvas-fleet-map.is-leaving,
   .canvas-fleet-map-dot,
@@ -4227,8 +4236,7 @@
   .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
-  .operations-canvas.is-formation-entering .canvas-formation-guide,
-  .operations-canvas.is-formation-entering .canvas-operation {
+  .operations-canvas.is-formation-entering .canvas-formation-guide {
     animation: none;
   }
 
@@ -4243,10 +4251,13 @@
     opacity: 0.6;
   }
 
-  .canvas-triage-curtain,
-  .canvas-formation-curtain,
-  .canvas-cruise-curtain {
+  /* 움직임 없이도 전환 제목은 읽혀야 한다 — 낱말 지연을 걷고 계단으로 켜졌다 꺼진다. */
+  .canvas-mode-title-kicker,
+  .canvas-mode-title-ruler,
+  .canvas-mode-title-word,
+  .canvas-mode-title-body {
     animation-timing-function: steps(1, start);
+    animation-delay: 0s;
   }
 
   .canvas-triage-deck-cell {
@@ -4821,7 +4832,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage {
-  animation: triage-stage-enter 460ms cubic-bezier(0.2, 0.9, 0.25, 1) 1260ms both;
+  animation: triage-stage-enter 460ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
 .canvas-operation.is-triage-stage .canvas-operation-titlebar {
@@ -4839,13 +4850,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
-}
-
-/* 커튼(1400ms)이 걷힌 뒤에 타일이 오른다 — Triage의 커튼:등단 비율(1500:1260)을 그대로 따른다.
-   stagger는 40ms로 좁혀 마지막 타일까지 진입 연출(1950ms) 안에 끝나게 한다. */
-.operations-canvas.is-formation-entering .canvas-operation {
-  animation: formation-tile-land 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
-  animation-delay: calc(var(--li, 0) * 40ms + 1180ms);
 }
 
 /* Cruise에서 캡션이 캔버스 클립 밖으로 나가면 본문 위 오버레이로 접는다.

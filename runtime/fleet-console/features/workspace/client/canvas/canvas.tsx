@@ -22,11 +22,11 @@ import type { ConsoleState, OperationNode } from "../../../../core/client/src/in
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
-import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
+import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
-import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
+import { CanvasGrid, ModeTitle, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import type { GroupContextMenuAlign } from "./group-context-menu.js";
@@ -40,6 +40,13 @@ import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, ge
 
 // 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
 const FLEET_MAP_LEAVE_MS = 320;
+// 모드 전환 제목(킥커·제목·설명)이 서 있는 길이. 패널 glide(--duration-slow + 슬롯 stagger)와
+// 제목의 낱말 진입·퇴장이 모두 이 안에서 끝난다 — CSS의 mode-title 키프레임 길이와 같은 값.
+const MODE_TITLE_DURATION_MS = 1_350;
+// 모드 전환 flight의 슬롯 stagger와 출발 rect의 유효 기간 — 덱 칸은 슬롯 등록 뒤 두 번째 커밋에서야
+// 패널을 받으므로, 첫 커밋에서 못 날린 패널을 다음 커밋까지 기다린다.
+const MODE_FLIGHT_STAGGER_MS = 40;
+const MODE_FLIGHT_WINDOW_MS = 400;
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -155,6 +162,10 @@ export function OperationsCanvas({
   const previousTriageDeckStageRef = useRef<string | null>(null);
   const triageDeckArrivalDwellRef = useRef<TriageDeckArrivalDwell | null>(null);
   const triageStageRectRef = useRef(new Map<string, DOMRect>());
+  // War Room 진입·이탈 flight — 패널이 덱 칸으로 portal 재부모화되면 left/top 전이가 끊기므로,
+  // 스토어가 바뀐 직후(렌더 전) 화면 rect를 잡아 두고 커밋 뒤 FLIP으로 실제 패널을 옮긴다.
+  const modeFlightRef = useRef<{ readonly from: Map<string, DOMRect>; readonly flown: Set<string>; readonly deadline: number } | null>(null);
+  const renderedTriageActiveRef = useRef(triageActive);
   const triageStageActivityRef = useRef<{
     readonly operationId: string;
     readonly activity: OperationActivityVisual;
@@ -195,9 +206,9 @@ export function OperationsCanvas({
       setTriageEntering(false);
       return;
     }
-    // 커튼은 전역 진입 시각 기준으로 한 번만 친다 — 선별 중 Theater 자동 전환은 재생하지 않는다.
+    // 전환 제목은 전역 진입 시각 기준으로 한 번만 띄운다 — 선별 중 Theater 자동 전환은 재생하지 않는다.
     const enteredAt = getTriageEnteredAt() ?? Date.now();
-    const remaining = Math.max(0, 1_900 - (Date.now() - enteredAt));
+    const remaining = Math.max(0, MODE_TITLE_DURATION_MS - (Date.now() - enteredAt));
     setTriageEntering(remaining > 0);
     if (remaining === 0) return;
     const timer = window.setTimeout(() => setTriageEntering(false), remaining);
@@ -221,20 +232,19 @@ export function OperationsCanvas({
       return;
     }
     setFormationEntering(true);
-    // 커튼 1400ms → 타일 착지 1180ms + stagger 40ms×n + 420ms. 9패널 기준 1920ms에 끝난다.
     const timer = window.setTimeout(() => {
       setFormationEntering(false);
-    }, 1_950);
+    }, MODE_TITLE_DURATION_MS);
     return () => window.clearTimeout(timer);
   }, [formationView, state.activeTheaterId]);
 
-  // 모드 이탈도 진입과 같은 무게로 알린다 — Cruise 복귀 역시 커튼 한 장으로 도착을 선언한다.
+  // 모드 이탈도 진입과 같은 무게로 알린다 — Cruise 복귀 역시 같은 세 줄로 도착을 선언한다.
   useEffect(() => {
     const mode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
     const previousMode = previousCanvasModeRef.current;
     previousCanvasModeRef.current = mode;
     if (mode !== "cruise") {
-      // Tactical↔War Room 직접 전환은 그 모드의 커튼이 소유한다 — 남은 복귀 커튼을 즉시 걷는다.
+      // Tactical↔War Room 직접 전환은 그 모드의 제목이 소유한다 — 남은 복귀 제목을 즉시 걷는다.
       setCruiseEntering(false);
       return;
     }
@@ -243,7 +253,7 @@ export function OperationsCanvas({
     // Station Keeping이 켜져 있으면 모드 밖에서 생긴 겹침(War Room 지도 이동 등)을 복귀 시점에 정착시킨다.
     enforceStationKeeping();
     setCruiseEntering(true);
-    const timer = window.setTimeout(() => setCruiseEntering(false), 1_400);
+    const timer = window.setTimeout(() => setCruiseEntering(false), MODE_TITLE_DURATION_MS);
     return () => window.clearTimeout(timer);
   }, [formationView, triageActive]);
 
@@ -599,6 +609,49 @@ export function OperationsCanvas({
     return triageDeckZoom.control.attachWheelListener(canvasElement);
   }, [triageDeckZoom.control]);
   useLayoutEffect(() => {
+    renderedTriageActiveRef.current = triageActive;
+  }, [triageActive]);
+  useEffect(() => subscribeTriage(() => {
+    // 스토어 리스너는 React 커밋 전에 동기로 불린다 — 아직 옛 자리에 서 있는 패널의 rect가 출발점이다.
+    if (isTriageActive() === renderedTriageActiveRef.current || prefersReducedMotion()) return;
+    const root = canvasRef.current;
+    if (!root) return;
+    const from = new Map<string, DOMRect>();
+    for (const element of root.querySelectorAll<HTMLElement>(".canvas-operation[data-operation-id]")) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(element).visibility === "hidden") continue;
+      from.set(element.dataset.operationId!, rect);
+    }
+    modeFlightRef.current = from.size > 0 ? { from, flown: new Set(), deadline: performance.now() + MODE_FLIGHT_WINDOW_MS } : null;
+  }), []);
+  useLayoutEffect(() => {
+    const flight = modeFlightRef.current;
+    const root = canvasRef.current;
+    if (!flight || !root) return;
+    if (performance.now() > flight.deadline) {
+      modeFlightRef.current = null;
+      return;
+    }
+    const timing = flightTiming();
+    let flown = 0;
+    for (const element of root.querySelectorAll<HTMLElement>(".canvas-operation[data-operation-id]")) {
+      const operationId = element.dataset.operationId!;
+      const from = flight.from.get(operationId);
+      if (!from || flight.flown.has(operationId)) continue;
+      const to = element.getBoundingClientRect();
+      if (to.width <= 0 || to.height <= 0 || getComputedStyle(element).visibility === "hidden") continue;
+      flight.flown.add(operationId);
+      if (flyPanelBetweenRects(element, from, to, timing, flown * MODE_FLIGHT_STAGGER_MS)) flown += 1;
+    }
+    if (flight.flown.size >= flight.from.size) modeFlightRef.current = null;
+    // 덱 격자는 스크롤 포트라 칸보다 큰 출발 상자를 잘라낸다 — 비행하는 동안만 클립을 푼다.
+    const grid = root.querySelector<HTMLElement>(".canvas-triage-deck-grid");
+    if (grid && flown > 0) {
+      grid.classList.add("is-mode-flight");
+      window.setTimeout(() => grid.classList.remove("is-mode-flight"), timing.duration + flown * MODE_FLIGHT_STAGGER_MS + 40);
+    }
+  });
+  useLayoutEffect(() => {
     if (!triageActive) {
       previousTriageDeckStageRef.current = null;
       triageStageRectRef.current.clear();
@@ -938,8 +991,8 @@ export function OperationsCanvas({
         element.style.removeProperty("--li");
       }
     };
-    // 진입 연출이 끝나는 1950ms까지 --li를 유지해야 마지막 타일의 착지 애니메이션이 잘리지 않는다.
-    const timer = window.setTimeout(clear, 1_950);
+    // 마지막 슬롯의 glide(stagger + --duration-slow)가 끝날 때까지 채널을 유지한다.
+    const timer = window.setTimeout(clear, MODE_TITLE_DURATION_MS);
     return () => {
       window.clearTimeout(timer);
       clear();
@@ -951,6 +1004,18 @@ export function OperationsCanvas({
   // resize를 fan-out하지 않기 위한 핵심 계약이다.
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
   const companionSlotCount = visibleCompanionPanels.length + 1;
+  // 전환 제목의 낭독 문장 — 시각 요소와 같은 문자열을 상시 status 영역에 싣는다.
+  const modeTitleAnnouncement = formationEntering
+    ? `${t("canvas.formation.modeTitle")} — ${t("canvas.formation.modeBody", { count: formationOperationIds.length })}`
+    : triageEntering
+      ? `${t("canvas.triage.modeTitle")} — ${triageQueue.length > 0
+        ? t("canvas.triage.modeBody", { waiting: triageQueue.length, stowed: Math.max(0, triageDeckOperations.length - 1) })
+        : t("canvas.triage.modeBodyEmpty", { stowed: triageDeckOperations.length })}`
+      : cruiseEntering
+        ? `${t("canvas.cruise.modeTitle")} — ${formationOperationIds.length > 0
+          ? t("canvas.cruise.modeBody", { count: formationOperationIds.length })
+          : t("canvas.cruise.modeBodyEmpty")}`
+        : "";
 
   return (
     <main
@@ -1228,12 +1293,11 @@ export function OperationsCanvas({
             <span className="canvas-mode-bracket canvas-mode-bracket--se" />
           </div>
           {formationEntering ? (
-            <div className="canvas-mode-curtain canvas-formation-curtain" aria-hidden="true">
-              <span className="canvas-mode-curtain-kicker">{t("canvas.formation.curtainKicker")}</span>
-              <span className="canvas-mode-curtain-ruler" />
-              <strong>{t("canvas.formation.curtainTitle")}</strong>
-              <span>{t("canvas.formation.curtainBody", { count: formationOperationIds.length })}</span>
-            </div>
+            <ModeTitle
+              kicker={t("canvas.formation.modeKicker")}
+              title={t("canvas.formation.modeTitle")}
+              body={t("canvas.formation.modeBody", { count: formationOperationIds.length })}
+            />
           ) : null}
         </>
       ) : null}
@@ -1247,22 +1311,19 @@ export function OperationsCanvas({
           </div>
           {/* 하단 대기 레일은 제거됐다 — 사이드바 '대기'가 이미 같은 순서를 쥐고 있어, 두 곳이
               동시에 "처리할 것이 있다"고 말하면 시선만 화면 아래위로 갈라진다(제품 결정). */}
-          {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (
-            <div className="canvas-mode-curtain canvas-triage-curtain" aria-hidden="true">
-              <span className="canvas-mode-curtain-kicker">{t("canvas.triage.curtainKicker")}</span>
-              <span className="canvas-mode-curtain-ruler" />
-              <strong>{t("canvas.triage.curtainTitle")}</strong>
-              <span>{triageQueue.length > 0
-                ? t("canvas.triage.curtainBody", { waiting: triageQueue.length, stowed: Math.max(0, triageDeckOperations.length - 1) })
-                : t("canvas.triage.curtainBodyEmpty", { stowed: triageDeckOperations.length })}</span>
-            </div>
+            <ModeTitle
+              kicker={t("canvas.triage.modeKicker")}
+              title={t("canvas.triage.modeTitle")}
+              body={triageQueue.length > 0
+                ? t("canvas.triage.modeBody", { waiting: triageQueue.length, stowed: Math.max(0, triageDeckOperations.length - 1) })
+                : t("canvas.triage.modeBodyEmpty", { stowed: triageDeckOperations.length })}
+            />
           ) : null}
         </>
       ) : null}
       <TriageWatchDeck
         active={triageActive}
-        entering={triageEntering}
         theaters={state.theaters}
         operations={triageDeckOperations}
         operationRuntime={state.operationRuntime}
@@ -1276,15 +1337,16 @@ export function OperationsCanvas({
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
       />
       {cruiseEntering ? (
-        <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
-          <span className="canvas-mode-curtain-kicker">{t("canvas.cruise.curtainKicker")}</span>
-          <span className="canvas-mode-curtain-ruler" />
-          <strong>{t("canvas.cruise.curtainTitle")}</strong>
-          <span>{formationOperationIds.length > 0
-            ? t("canvas.cruise.curtainBody", { count: formationOperationIds.length })
-            : t("canvas.cruise.curtainBodyEmpty")}</span>
-        </div>
+        <ModeTitle
+          kicker={t("canvas.cruise.modeKicker")}
+          title={t("canvas.cruise.modeTitle")}
+          body={formationOperationIds.length > 0
+            ? t("canvas.cruise.modeBody", { count: formationOperationIds.length })
+            : t("canvas.cruise.modeBodyEmpty")}
+        />
       ) : null}
+      {/* 전환 제목의 낭독 채널 — 상시 마운트된 status 영역이라 첫 전환부터 알린다. */}
+      <div className="canvas-mode-title-status" role="status" aria-live="polite">{modeTitleAnnouncement}</div>
       <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {/* 함대 지도가 서면 활성 Theater의 빈 상태는 동시 표면이 아니다 — 다른 Theater의 패널로
           지도가 서는 동안 빈 상태를 함께 두면 지도를 가리고 숨은 버튼이 탭 순서에 남는다. 퇴장

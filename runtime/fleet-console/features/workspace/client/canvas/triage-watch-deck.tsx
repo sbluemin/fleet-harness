@@ -27,7 +27,6 @@ export interface TriageDeckTheater {
 
 interface TriageWatchDeckProps {
   readonly active: boolean;
-  readonly entering: boolean;
   /** 전 Theater 목록 — deck는 Theater 밴드로 갈라 전 Theater의 휴면 아닌 Operation을 올린다. */
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
@@ -330,7 +329,6 @@ export function resolveTriageDeckPromotion(input: {
 
 export function TriageWatchDeck({
   active,
-  entering,
   theaters,
   operations,
   operationRuntime,
@@ -362,7 +360,8 @@ export function TriageWatchDeck({
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
   // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
   // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
-  const visible = active && !entering && operations.length > 0;
+  // 진입 연출을 기다리지 않는다 — 덱은 모드가 서는 첫 프레임부터 자기 자리에 있다.
+  const visible = active && operations.length > 0;
   const underStage = stagedOperationId !== null;
 
   useLayoutEffect(() => {
