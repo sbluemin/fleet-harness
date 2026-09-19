@@ -13,7 +13,6 @@ import { OperationNameMark } from "../../../../../features/execution/client/comp
 import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "../../../../../features/execution/client/components/operation-workspace-context.js";
 import { useAgentState } from "../../../../../features/execution/client/agent/store.js";
 import { setGlobalSettingsField } from "../../../../../features/settings/client/global-settings-store.js";
-import { toggleCommandBandDocked } from "../../integration/fullscreen-band-store.js";
 import {
   filterOperationSearchEntries,
   groupOperationSearchEntries,
@@ -452,10 +451,6 @@ export function OperationSearch({
         requestAnimationFrame(() => {
           document.querySelector<HTMLElement>(sideBarCollapsing ? ".side-bar-edge-dock" : ".side-bar-collapse")?.focus();
         });
-        break;
-      }
-      case "toggle-command-band-dock": {
-        toggleCommandBandDocked();
         break;
       }
       case "switch-theme": {

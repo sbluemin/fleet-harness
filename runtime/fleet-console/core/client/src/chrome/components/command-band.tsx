@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
@@ -17,7 +18,8 @@ import { toggleOperationSearch } from "../../integration/store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../../integration/types.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { useViewMode } from "../../integration/view-mode-store.js";
-import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
+import { useDesktopFullscreenSnapshot } from "../../integration/desktop-fullscreen.js";
+import { useZenChromeSlot } from "../../integration/zen-chrome-slot.js";
 import { toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
 
 interface CommandBandProps {
@@ -151,8 +153,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const mapControlsRef = useRef<HTMLDivElement>(null);
   const bandLeftRef = useRef<HTMLDivElement>(null);
   const bandRightRef = useRef<HTMLDivElement>(null);
-  const edgeRevealRef = useRef<HTMLButtonElement>(null);
-  const pointerWithinRef = useRef({ edge: false, band: false });
   const [bandWidth, setBandWidth] = useState(0);
   const [leftContentEnd, setLeftContentEnd] = useState(0);
   const [rightContentWidth, setRightContentWidth] = useState(0);
@@ -188,27 +188,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin"
     ? t("chrome.commandBand.local")
     : t("chrome.commandBand.localDesktop");
-  const canAutoHide = useCallback(() => {
-    const activeElement = document.activeElement;
-    const focusWithin = activeElement instanceof Node && (commandBandRef.current?.contains(activeElement) || edgeRevealRef.current?.contains(activeElement));
-    return !focusWithin && !pointerWithinRef.current.edge && !pointerWithinRef.current.band;
-  }, []);
-  const fullscreen = useFullscreenCommandBand(canAutoHide);
-  // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
-  // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
-  const edgeRevealActive = !zenMode && fullscreen.isFullscreen && !fullscreen.isDocked;
+  // 전체화면에서 밴드는 창 모드와 똑같은 흐름 요소다 — 자동 은닉·엣지 스트립·도킹 핀은
+  // 퇴역했다. 크롬을 치우는 결정은 Zen 하나가 소유한다(중복 제스처 정리).
+  // 이 스냅숏이 남은 이유는 단 하나: darwin 전체화면에서 신호등이 물러난 자리로 좌측
+  // 클러스터를 활주시키기 위해서다. 브라우저 전체화면에는 신호등이 없으므로 대상이 아니다.
+  const nativeFullscreen = useDesktopFullscreenSnapshot();
+  const zenSlot = useZenChromeSlot();
   useEffect(() => {
     if (zenMode) setEnvironmentOpen(false);
   }, [zenMode]);
-
-  // 도킹하면 엣지 스트립이 display:none으로 사라지는데 Chromium은 activeElement를 그 위에
-  // 그대로 남긴다. 그 포커스가 남아 있으면 canAutoHide가 영원히 거짓이라, 나중에 도킹을 풀어도
-  // 밴드가 다시는 숨지 않는다.
-  useEffect(() => {
-    if (edgeRevealActive) return;
-    const edge = edgeRevealRef.current;
-    if (edge !== null && document.activeElement === edge) edge.blur();
-  }, [edgeRevealActive]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -290,11 +278,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     });
     if (mutations && bandRight) mutations.observe(bandRight, { childList: true, subtree: true });
     if (mutations && bandLeft) mutations.observe(bandLeft, { childList: true, subtree: true });
+    // darwin 전체화면의 좌측 인셋 활주(88px ↔ 8px)는 자식을 옮기기만 하고 크기는 바꾸지 않아
+    // ResizeObserver가 울지 않는다. 하한은 자식의 offsetLeft에서 나오므로 전이가 끝난 뒤 한 번
+    // 더 잰다 — 축소 모션 선호에서는 전이가 없어 이벤트도 없지만, 그때는 첫 measure()가 이미
+    // 최종 값을 읽는다.
+    const remeasureAfterGlide = (event: TransitionEvent) => {
+      if (event.propertyName === "padding-inline-start") measure();
+    };
+    bandLeft?.addEventListener("transitionend", remeasureAfterGlide);
     return () => {
       observer.disconnect();
       mutations?.disconnect();
+      bandLeft?.removeEventListener("transitionend", remeasureAfterGlide);
     };
-  }, [operationsViewVisible, state.channel, state.connection, canvasMode, fullscreen.isFullscreen]);
+  }, [operationsViewVisible, state.channel, state.connection, canvasMode, nativeFullscreen]);
 
   useEffect(() => {
     if (state.channel === "local") return;
@@ -314,64 +311,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
   };
 
-  const hideAfterInteractionLeaves = () => {
-    if (canAutoHide()) fullscreen.hideAfterLeave();
-  };
-
-  const handleInteractionBlur = (event: FocusEvent<HTMLElement>) => {
-    const nextTarget = event.relatedTarget;
-    if ((!(nextTarget instanceof Node) || (!commandBandRef.current?.contains(nextTarget) && !edgeRevealRef.current?.contains(nextTarget))) && !pointerWithinRef.current.edge && !pointerWithinRef.current.band) {
-      fullscreen.hideAfterLeave();
-    }
-  };
-
-  const handleEdgePointerEnter = () => {
-    pointerWithinRef.current.edge = true;
-    fullscreen.reveal();
-  };
-
-  const handleEdgePointerLeave = () => {
-    pointerWithinRef.current.edge = false;
-    hideAfterInteractionLeaves();
-  };
-
-  const handleBandPointerEnter = () => {
-    pointerWithinRef.current.band = true;
-    fullscreen.reveal();
-  };
-
-  const handleBandPointerLeave = () => {
-    pointerWithinRef.current.band = false;
-    hideAfterInteractionLeaves();
-  };
-
-  const commandBandHidden = zenMode || (fullscreen.isFullscreen && !fullscreen.isVisible);
+  // Zen만이 밴드를 내린다. 밴드는 마운트된 채 inert로 물러나므로, 그 안에 자리를 빌린
+  // 플러그인 항목은 Zen 손잡이로 옮겨 간다(아래 commandBandEntries 주석).
+  const commandBandHidden = zenMode;
 
   return (
     <>
-      <button
-        ref={edgeRevealRef}
-        type="button"
-        className={`command-band-edge-reveal${edgeRevealActive ? " is-fullscreen" : ""}`}
-        aria-label={t("chrome.commandBand.showCommandBand")}
-        onPointerEnter={handleEdgePointerEnter}
-        onPointerLeave={handleEdgePointerLeave}
-        onFocus={fullscreen.reveal}
-        onBlur={handleInteractionBlur}
-        onKeyDown={(event) => { if (event.key === "Tab") fullscreen.reveal(); }}
-      />
       <header
         ref={commandBandRef}
-        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${centerControlsCentered ? "" : " is-center-flow"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}${fullscreen.isFullscreen && fullscreen.isDocked ? " is-docked" : ""}`}
+        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${centerControlsCentered ? "" : " is-center-flow"}${nativeFullscreen ? " is-native-fullscreen" : ""}`}
         style={{
           "--command-band-center-gutter": `${injectedCenterGutter}px`,
         } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}
         inert={commandBandHidden || undefined}
-        onPointerEnter={handleBandPointerEnter}
-        onPointerLeave={handleBandPointerLeave}
-        onFocus={fullscreen.reveal}
-        onBlur={handleInteractionBlur}
       >
       <div ref={bandLeftRef} className="command-band-left">
         <BrandHome />
@@ -553,24 +506,37 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div ref={bandRightRef} className="command-band-right">
         {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
             두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
-        {/* 밴드가 숨은 동안(Zen·전체화면)은 항목을 내리지 않는다 — 밴드는 마운트된 채 inert로 숨으므로,
-            항목을 그대로 두면 플러그인은 슬롯이 있다고 믿고 상태를 거기에 숨긴다. 내려야 "슬롯 없음"이 된다. */}
-        {commandBandHidden ? null : commandBandEntries.map((entry) => (
-          // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 밴드 전체를
-          // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
-          <PluginErrorBoundary key={entry.id} fallback={null}>
-            <CommandBandPluginEntry render={entry.render} />
-          </PluginErrorBoundary>
-        ))}
-        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
-          <PinIcon />
-        </button> : null}
+        <ChromePluginEntries entries={commandBandEntries} zen={zenMode} zenSlot={zenSlot} />
         <ViewModeToggle className="command-band-button command-band-viewmode" />
         <CommandBandSystemCluster />
       </div>
       </header>
     </>
   );
+}
+
+/**
+ * 상단 크롬의 플러그인 항목. 평소에는 밴드 우측 클러스터에 서고, Zen 중에는 종료 손잡이 옆
+ * 슬롯으로 **포털**된다 — 언마운트가 아니라 이동이다. 언마운트하면 플러그인은 슬롯이 없다고
+ * 보고 자기 표면을 캔버스로 되돌리는데(부관은 새로 돌아간다), Zen이 치우려던 것이 되돌아온다.
+ *
+ * Zen인데 슬롯이 아직 붙지 않았거나(첫 커밋) 애초에 없는 배치(모바일)에서는 아무 데도 두지
+ * 않는다 — 그때는 슬롯 없음이 사실이고, 플러그인이 캔버스로 돌아가는 편이 맞다.
+ */
+function ChromePluginEntries({ entries, zen, zenSlot }: {
+  readonly entries: readonly { readonly id: string; readonly render: () => ReactNode }[];
+  readonly zen: boolean;
+  readonly zenSlot: HTMLElement | null;
+}) {
+  const rendered = entries.map((entry) => (
+    // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 밴드 전체를
+    // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
+    <PluginErrorBoundary key={entry.id} fallback={null}>
+      <CommandBandPluginEntry render={entry.render} />
+    </PluginErrorBoundary>
+  ));
+  if (!zen) return <>{rendered}</>;
+  return zenSlot === null ? null : createPortal(rendered, zenSlot);
 }
 
 function CommandBandPluginEntry({ render }: { readonly render: () => ReactNode }) {
@@ -700,8 +666,3 @@ function FormationRowsIcon() {
 }
 
 
-
-
-function PinIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6M6.2 2.5v3l2.1 2.1v1H7.1V13.5l.9 1M9.8 2.5v3L7.7 7.6v1h1.2V13.5L8 14.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}

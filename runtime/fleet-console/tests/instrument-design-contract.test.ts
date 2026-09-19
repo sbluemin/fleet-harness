@@ -2452,7 +2452,6 @@ describe("Instrument core design contract", () => {
     expect(sideBarBlock).toContain("position: absolute;");
     expect(sideBarBlock).toContain("border-radius: var(--radius-md);");
     expect(sideBarBlock).toContain("border: 1px solid var(--surface-rim);");
-    expect(layout).toContain(".command-band.is-fullscreen {");
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
@@ -2461,32 +2460,40 @@ describe("Instrument core design contract", () => {
     // 캔버스 모드 컨트롤이 가져갔다.
     expect(layout).not.toContain(".command-band-theater-cluster");
     expect(layout).not.toContain("--command-band-carrier");
-    expect(commandBand).toContain("useFullscreenCommandBand");
-    // 엣지 스트립은 자동 은닉일 때만 존재한다 — 도킹 중에 남기면 스테이지 최상단을 가로챈다.
-    expect(commandBand).toContain("const edgeRevealActive = !zenMode && fullscreen.isFullscreen && !fullscreen.isDocked;");
-    expect(commandBand).toContain('className={`command-band-edge-reveal${edgeRevealActive ? " is-fullscreen" : ""}`}');
-    expect(commandBand).toContain('aria-label={t("chrome.commandBand.showCommandBand")}');
-    expect(commandBand).toContain('aria-pressed={fullscreen.isDocked}');
+    // 전체화면 자동 은닉은 원자적으로 퇴역했다 — 밴드를 오버레이로 띄우던 규칙, 그것을
+    // 되부르던 엣지 스트립, "계속 보이기" 도킹이 함께 사라져야 한다. 하나라도 남으면 스테이지
+    // 최상단에 클릭을 가로채는 투명 오버레이나 아무도 되돌릴 수 없는 숨김이 남는다.
+    expect(commandBand).not.toContain("useFullscreenCommandBand");
+    expect(commandBand).not.toContain("command-band-edge-reveal");
+    expect(commandBand).not.toContain("command-band-dock-toggle");
+    expect(layout).not.toContain(".command-band.is-fullscreen");
+    expect(layout).not.toContain(".command-band-edge-reveal");
     expect(commandBand).toContain("inert={commandBandHidden || undefined}");
-    expect(commandBand).toContain("onKeyDown={(event) => { if (event.key === \"Tab\") fullscreen.reveal(); }}");
-    expect(layout).toContain(".command-band.is-fullscreen {");
-    expect(layout).toContain("position: fixed;");
-    expect(layout).toContain("transform: translateY(-100%);");
-    expect(layout).toContain("transition: transform var(--duration-base) var(--ease-glide);");
-    expect(layout).toContain(".command-band-edge-reveal.is-fullscreen {");
-    expect(layout).toContain("height: 8px;");
-    expect(layout).toContain('html[data-desktop-shell="true"] .command-band-edge-reveal {');
-    // 도킹은 흐름 복귀다 — position/transform을 되돌리지 않으면 "계속 보이기"가 44px을 계속 덮는다.
-    const dockedBandBlock = layout.match(/\.command-band\.is-fullscreen\.is-docked \{[^}]*\}/)?.[0] ?? "";
-    expect(dockedBandBlock).toContain("position: relative;");
-    expect(dockedBandBlock).toContain("transform: none;");
-    // 떠 있을 때의 z-index를 물려받으면 그보다 낮은 오버레이(What's new는 35) 위에 밴드가
-    // 그려지고 클릭까지 받는다 — 도킹은 창 모드와 같은 쌓임으로 돌아가야 한다.
-    expect(dockedBandBlock).toContain("z-index: auto;");
-    const whatsNewOverlayBlock = components.match(/\.whatsnew-overlay \{[^}]*\}/)?.[0] ?? "";
-    expect(whatsNewOverlayBlock).toContain("z-index: 35;");
-    // 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — 도킹된 밴드에 걸면 44px 빈 띠만 남는다.
-    expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
+    // 크롬을 치우는 결정은 Zen 하나가 소유한다.
+    expect(commandBand).toContain("const commandBandHidden = zenMode;");
+    // Zen이 밴드를 내려도 플러그인 항목은 언마운트되지 않고 손잡이 슬롯으로 옮겨 간다 —
+    // 언마운트하면 플러그인은 슬롯이 없다고 보고 자기 표면을 캔버스로 되돌린다(부관은 새로
+    // 돌아간다). 그것이 바로 Zen이 치우려던 것이다.
+    expect(commandBand).toContain("createPortal(rendered, zenSlot)");
+    const appShell = source("app/app.tsx");
+    expect(appShell).toContain('<span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />');
+    // 슬롯은 Zen이 꺼져 있어도 DOM에 남는다 — 포털 컨테이너가 커밋 중에 사라지면 옮겨 가던
+    // 항목이 분리된 노드에 남는다. 손잡이 전체가 hidden이라 그려지지는 않는다.
+    expect(appShell).toContain('<div className="zen-mode-handle" hidden={!zenActive}>');
+    // Zen에서 서 있는 크롬은 하나다 — 슬롯은 손잡이 안에서 종료 버튼과 한 면을 나눈다.
+    const zenHandleBlock = layout.match(/\.zen-mode-handle \{[^}]*\}/)?.[0] ?? "";
+    expect(zenHandleBlock).toContain("background: var(--surface-panel);");
+    expect(layout).toContain(".zen-mode-chrome-slot:empty { display: none; }");
+    // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
+    // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
+    const darwinBandLeftBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band-left \{[^}]*\}/)?.[0] ?? "";
+    expect(darwinBandLeftBlock).toContain("padding-inline-start: 88px;");
+    // 전이는 전체화면 쪽에만 선다 — 창 모드 쪽에 두면 나올 때도 220ms 활주해, 이미 돌아온
+    // 신호등 아래에 브랜드가 그동안 깔린다.
+    expect(darwinBandLeftBlock).not.toContain("transition:");
+    const darwinFullscreenBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band\.is-native-fullscreen \.command-band-left \{[^}]*\}/)?.[0] ?? "";
+    expect(darwinFullscreenBlock).toContain("padding-inline-start: var(--space-2);");
+    expect(darwinFullscreenBlock).toContain("transition: padding-inline-start var(--duration-base) var(--ease-glide);");
     // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 불리언 토글의 눌림은
     // 워시 + brass 글리프다.
     const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";

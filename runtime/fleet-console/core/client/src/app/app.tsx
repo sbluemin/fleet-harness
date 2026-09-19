@@ -51,6 +51,7 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
+import { setZenChromeSlot } from "../integration/zen-chrome-slot.js";
 import { setZenMode, toggleZenMode, useZenMode } from "../integration/zen-mode.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 
@@ -139,7 +140,7 @@ export function App() {
   }, []);
   useLayoutEffect(() => {
     const focused = document.activeElement;
-    if (!(focused instanceof HTMLElement) || !focused.closest("[inert], .zen-mode-exit[hidden]")) return;
+    if (!(focused instanceof HTMLElement) || !focused.closest("[inert], .zen-mode-handle[hidden]")) return;
     const target = workFocusRef.current;
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
@@ -450,18 +451,26 @@ export function App() {
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
       <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
-        <button type="button" className="zen-mode-exit" hidden={!zenActive} onClick={() => {
-          setZenMode(false);
-          requestAnimationFrame(() => {
-            const target = workFocusRef.current;
-            if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
-            else document.querySelector<HTMLElement>(".operations-center-stage .xterm-helper-textarea, .operations-center-stage")?.focus({ preventScroll: true });
-          });
-        }} aria-label={t("zen.exit")}>
+        {/* Zen에서 서 있는 크롬은 이 손잡이 하나다. 밴드에 자리를 빌린 플러그인 항목(부관
+            글리프)은 밴드가 내려가는 동안 사라지지 않고 이 손잡이 왼편 슬롯으로 옮겨 온다 —
+            닿을 수 없는 곳에 숨기지 않으면서도 크롬 조각은 여전히 하나다.
+            슬롯 요소는 Zen이 꺼져 있어도 DOM에 남긴다: 포털의 컨테이너가 커밋 중에 사라지면
+            옮겨 가던 항목이 분리된 노드에 남는다. 손잡이가 hidden이라 그려지지는 않는다. */}
+        <div className="zen-mode-handle" hidden={!zenActive}>
           <span className="zen-mode-exit-grip" aria-hidden="true" />
-          <span>{t("zen.exitCompact")}</span>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7 3 3 3-3" /></svg>
-        </button>
+          <span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />
+          <button type="button" className="zen-mode-exit" onClick={() => {
+            setZenMode(false);
+            requestAnimationFrame(() => {
+              const target = workFocusRef.current;
+              if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+              else document.querySelector<HTMLElement>(".operations-center-stage .xterm-helper-textarea, .operations-center-stage")?.focus({ preventScroll: true });
+            });
+          }} aria-label={t("zen.exit")}>
+            <span>{t("zen.exitCompact")}</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7 3 3 3-3" /></svg>
+          </button>
+        </div>
         {zenActive && zenAwaitingCount > 0 ? <button type="button" className="zen-mode-attention" onClick={() => openOperationSearch()}>{t("zen.awaiting", { count: zenAwaitingCount })}</button> : null}
         <span className="zen-mode-announcement" role="status" aria-live="polite">{zenActive ? t("zen.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
