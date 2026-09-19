@@ -1,8 +1,11 @@
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { BrowserPolicyError, type BrowserService } from "./service.js";
+import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
 export interface BrowserToolDeps {
   readonly service: BrowserService;
+  /** 인라인 예산을 넘긴 스크린샷이 놓이는 자리. 없으면 예산과 무관하게 인라인으로 싣는다. */
+  readonly screenshots?: BrowserScreenshotStore;
 }
 
 /**
@@ -28,6 +31,16 @@ function failure(error: unknown): ToolResult {
 
 const TAB_ID = { type: "string", description: "Tab ID from tabs_context or the tab that opened it. Omit for the active tab." };
 
+/**
+ * 인라인으로 실을 수 있는 스크린샷의 크기(base64 문자 수).
+ *
+ * MCP 도구 결과에는 호출하는 CLI 쪽 토큰 상한이 걸려 있고(Claude Code 기본 25,000), base64 이미지도 그
+ * 예산을 텍스트로 쓴다. 넘기면 CLI 가 결과를 통째로 파일로 흘려보내므로 **모델은 이미지를 아예 보지 못한다**.
+ * 그래서 넘길 크기는 우리가 먼저 알아채고 경로로 바꾼다. base64 는 대략 3.5~4 자에 1 토큰이니 64,000 자는
+ * 16,000~18,000 토큰 — 함께 실리는 안내문까지 얹어도 기본 상한 안에 든다.
+ */
+const INLINE_SCREENSHOT_BUDGET_CHARS = 64_000;
+
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const { service } = deps;
   const spec = (id: string, description: string, parameters: Record<string, unknown>, run: (args: Record<string, any>, operationId: string, signal: AbortSignal) => Promise<ToolResult>): AgentToolSpec => ({
@@ -45,9 +58,23 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return { browserOpen: state.tabs.length > 0, tabs: state.tabs.map((tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, isActive: tab.id === state.activeTabId })), viewport: { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset } };
   };
 
+  /**
+   * 한 장의 스크린샷. 화질은 JPEG 압축으로 줄이되 **해상도는 건드리지 않는다** — 줄인 해상도는 UI 의 작은
+   * 글자, 특히 획이 조밀한 한글을 뭉개서 에이전트가 문구를 잘못 읽는 쪽으로 실패한다. 압축으로도 예산을
+   * 넘기면 해상도를 깎는 대신 파일로 내려 보낸다.
+   */
   const screenshotBlock = async (operationId: string, tabId: string | null | undefined, clip?: { x: number; y: number; width: number; height: number }) => {
-    const shot = await service.screenshot(operationId, { tabId, clip, format: "png" });
-    return [{ type: "image", data: shot.data, mimeType: shot.mimeType }, { type: "text", text: `Screenshot ${shot.width}x${shot.height} CSS px. Coordinates for computer actions are these pixels; the origin is the top-left of the viewport.` }];
+    const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg" });
+    const geometry = `Screenshot ${shot.width}x${shot.height} CSS px. Coordinates for computer actions are these pixels; the origin is the top-left of the viewport.`;
+    const inline = () => [{ type: "image", data: shot.data, mimeType: shot.mimeType }, { type: "text", text: geometry }];
+    if (!deps.screenshots || shot.data.length <= INLINE_SCREENSHOT_BUDGET_CHARS) return inline();
+    try {
+      const filePath = deps.screenshots.save(operationId, Buffer.from(shot.data, "base64"), "jpg");
+      return [{ type: "text", text: `${geometry}\nThe image is too large to return inline, so it was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
+    } catch {
+      // 파일로 못 내려도 캡처는 살아 있다 — 인라인으로 실어 보내고 상한 판정은 호출한 CLI 에 맡긴다.
+      return inline();
+    }
   };
 
   const navigate = spec("navigate", "Navigate a tab to a URL, or go back/forward/reload in its history. Without tabId the active tab is used; if no tab is open, one is created. Any http(s) URL is allowed.", {
