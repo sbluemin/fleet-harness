@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { withNodeSystemCa } from "@dotobokuri/core-process";
-import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
 
 import { satisfiesNodeEngine } from "./node-bootstrap.js";
 import type { RuntimePaths } from "./runtime-paths.js";

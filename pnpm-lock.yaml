@@ -274,12 +274,9 @@ importers:
         specifier: ^4.4.1
         version: 4.4.1
     devDependencies:
-      '@fleet-console/access-protocol':
+      '@fleet-console/protocol':
         specifier: workspace:*
-        version: link:access-protocol
-      '@fleet-console/desktop-protocol':
-        specifier: workspace:*
-        version: link:desktop-protocol
+        version: link:protocol
       '@fontsource-variable/cascadia-code':
         specifier: ^5.2.2
         version: 5.2.2
@@ -344,15 +341,6 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
-  runtime/fleet-console/access-protocol:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-
   runtime/fleet-console/computer-use:
     dependencies:
       '@modelcontextprotocol/sdk':
@@ -374,15 +362,6 @@ importers:
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
-
-  runtime/fleet-console/desktop-protocol:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.2
 
   runtime/fleet-console/font-picker:
     devDependencies:
@@ -433,6 +412,15 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
 
+  runtime/fleet-console/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
   runtime/fleet-console/sdk:
     dependencies:
       react:
@@ -463,12 +451,9 @@ importers:
       '@electron/fuses':
         specifier: 2.1.3
         version: 2.1.3
-      '@fleet-console/access-protocol':
+      '@fleet-console/protocol':
         specifier: workspace:*
-        version: link:../fleet-console/access-protocol
-      '@fleet-console/desktop-protocol':
-        specifier: workspace:*
-        version: link:../fleet-console/desktop-protocol
+        version: link:../fleet-console/protocol
       electron:
         specifier: 43.1.0
         version: 43.1.0

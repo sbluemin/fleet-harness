@@ -1,1 +1,1 @@
-export * from "@fleet-console/access-protocol";
+export * from "@fleet-console/protocol/remote";

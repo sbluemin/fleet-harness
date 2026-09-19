@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DesktopBrowserSnapshot } from "@fleet-console/desktop-protocol";
+import type { DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 
 import { DesktopEngine } from "../core/host/browser/desktop-engine.js";
 

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createGlobalPackageUpdater } from "@dotobokuri/core-agent";
 import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
 import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
-import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
 
