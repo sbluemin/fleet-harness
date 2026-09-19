@@ -1,4 +1,4 @@
-# Console E2E platform automation
+# Browser fallback platform automation
 
 Use this reference when agent-browser availability or the behavior under test depends on the host OS, CPU architecture, keyboard path, PTY, or renderer.
 
@@ -43,7 +43,7 @@ $ab = Join-Path $toolDir "agent-browser-win32-x64.exe"
 & $ab skills get dogfood
 ```
 
-Use `& $ab ...` for every subsequent command. If Windows x64 emulation cannot execute the official binary, stop and report the environment block. Do not rename an x64 binary to appear ARM64, use a third-party build, or replace agent-browser while claiming the `console-e2e` workflow ran.
+Use `& $ab ...` for every subsequent command. If Windows x64 emulation cannot execute the official binary, stop and report the environment block. Do not rename an x64 binary to appear ARM64, use a third-party build, or claim the agent-browser fallback ran when another driver was used.
 
 Keep the binary in an owned temporary directory. After closing the owned browser session, remove only that verified directory when evidence retention does not require it.
 

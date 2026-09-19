@@ -47,4 +47,4 @@ EOF
 
 Expect Electron UA, `process`/`require` unavailable, a loopback Console URL, and no query/fragment. Attempt same-origin Console navigation and one harmless disallowed navigation; verify the former stays inside `/console/` and the latter leaves the URL unchanged. Avoid `window.open` during automation because valid HTTPS popups intentionally hand off to the user's external browser.
 
-Reload the renderer and repeat URL, sandbox, errors, console, and screenshot checks. Treat the Console DOM as supporting evidence only; detailed SPA behavior belongs to `console-e2e`.
+Reload the renderer and repeat URL, sandbox, errors, console, and screenshot checks. Treat the Console DOM as supporting evidence for shell claims. For detailed SPA behavior in this Electron renderer, apply [Console verification](../verification.md) using the existing owned CDP session; do not switch to a standalone browser or use its cleanup helper on the Desktop session.

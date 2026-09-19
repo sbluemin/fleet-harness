@@ -1,6 +1,6 @@
 ---
 name: console-handoff
-description: Prepare and seed an isolated Fleet Console URL for the user to try a change themselves. Use console-e2e for agent-driven browser verification and desktop-e2e for Electron verification.
+description: Prepare and seed an isolated Fleet Console URL for the user to try a change themselves. Use console-e2e for agent-driven browser or Electron Desktop verification.
 ---
 
 # Console Handoff
@@ -26,6 +26,6 @@ Resolve values from the request and task context. Live turns spend real quota; c
 ## Boundaries and completion
 
 - Never stop/restart the user's Console or an unknown runtime.
-- Do not open the testing browser for the user. Do not mix agent-browser verification with the handoff instance.
+- Do not open the testing browser for the user. Do not mix automated browser verification with the handoff instance.
 - Do not stop the instance later for cleanup. The user decides when it ends. If a requested rebuild requires restart, send the new port and URL.
 - Finish once seed state, PID, and URL are verified and the handoff is delivered. Handoff is not proof that usability verification passed.

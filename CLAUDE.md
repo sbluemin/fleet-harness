@@ -19,7 +19,7 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 | Unreleased change records | `.changelog.d/` |
 
 - Modify the repository in a dedicated `canary`-based worktree created through the `git-worktree` skill, unless the user explicitly directs otherwise. Read-only work needs no worktree.
-- Route Console browser verification to `console-e2e`, Electron shell verification to `desktop-e2e`, and a Console for the user to try to `console-handoff`. Load a skill's body only for its task.
+- Route Console browser and Electron Desktop verification to `console-e2e`, and a Console for the user to try to `console-handoff`. Load a skill's body only for its task.
 - For local execution, consult **Isolated Development Data** in `docs/fleet-development-reference.md`. Development and verification must not touch real user data or another session's processes.
 
 ## Architecture boundaries
