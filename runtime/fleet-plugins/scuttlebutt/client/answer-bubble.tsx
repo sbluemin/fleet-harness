@@ -90,7 +90,14 @@ export function AnswerBubble({
         // 본문이 포커스를 받아야 Escape 한 번으로 물었던 자리로 돌아간다.
         text.setAttribute("tabindex", clipped ? "0" : "-1");
       }
-      bubble.style.left = `${Math.max(margin, window.innerWidth - margin - width - slot * (width + gap))}px`;
+      // 행의 오른쪽 끝은 창 가장자리가 아니라 **글리프 무리**의 오른쪽이다. 무리가 밴드 우측
+      // 클러스터에 있을 때는 둘이 거의 같지만, Zen에서는 무리가 종료 손잡이와 함께 화면 가운데로
+      // 옮겨 간다 — 그때 창 끝에 붙이면 답이 자기 부관에게서 떨어져 반대편 구석에 선다(인도 검수).
+      // 슬롯 계단은 무리 하나를 기준으로 유지한다: 말풍선마다 자기 글리프에 붙이면 동시 답이
+      // 같은 자리를 놓고 겹친다.
+      const cluster = document.querySelector(".scuttlebutt-dock")?.getBoundingClientRect();
+      const anchorRight = Math.min(cluster ? cluster.right : mascotRect.right, window.innerWidth - margin);
+      bubble.style.left = `${Math.max(margin, anchorRight - width - slot * (width + gap))}px`;
       bubble.style.bottom = "";
       bubble.style.top = `${top}px`;
       bubble.style.visibility = "visible";
