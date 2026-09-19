@@ -409,7 +409,15 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .zen-mode-exit:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 .zen-mode-attention { right: auto; left: var(--space-4); color: var(--aurora-ink); }
 .zen-mode-attention:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-body:has([aria-modal="true"]:not([hidden])) .zen-mode-handle,
+/* 모달이 열리면 Zen의 **종료 버튼**만 물러난다 — 모달 위에 남은 부유 조작면이 되지 않게.
+   손잡이째 걷으면 그 안에 세든 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 Zen에서
+   여기 말고 닿을 자리가 없고 그 답 말풍선이 글리프를 닻으로 삼는다 — Quick Launch로 부관을
+   부르는 동안 정작 그 부관이 사라졌다(인도 검수). 버튼은 visibility가 아니라 display로
+   내린다: 자리를 남기면 글리프 옆에 빈 판때기가 붙어 선다.
+   둘 곳이 아무것도 없을 때만 손잡이 면 전체가 물러난다. */
+body:has([aria-modal="true"]:not([hidden])) .zen-mode-exit { display: none; }
+body:has([aria-modal="true"]:not([hidden])) .zen-mode-chrome-slot { padding-inline: var(--space-2); }
+body:has([aria-modal="true"]:not([hidden])) .zen-mode-handle:has(.zen-mode-chrome-slot:empty),
 body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .console-shell .command-band,

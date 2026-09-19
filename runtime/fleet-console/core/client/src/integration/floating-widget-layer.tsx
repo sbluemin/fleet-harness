@@ -275,7 +275,9 @@ const KEEP_OUT_SELECTOR = [
   ".rail-pane:not(.is-parked)",
   ".quick-launch-card",
   ".quick-launch-overlay [role=\"listbox\"]",
-  ".zen-mode-exit:not([hidden])",
+  // 손잡이 전체를 잡는다 — 종료 버튼만 잡으면 그 옆 슬롯에 선 플러그인 글리프 위로 새가
+  // 날아가 앉는다. hidden은 손잡이가 지므로 판정도 여기서 한다.
+  ".zen-mode-handle:not([hidden])",
   ".zen-mode-attention",
   "[aria-modal=\"true\"]",
   "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.quick-launch-overlay):not(.floating-widget-layer *)",
