@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.101.0] - 2026-09-19
+
+### fleet-console
+
+#### Changed
+- The command band now stays in place in fullscreen instead of hiding itself; Zen mode remains the single way to clear the chrome.
+- Quaker aides you keep in the top bar now stay there in Zen mode, on the Zen handle, instead of returning to the canvas.
+- Chat now counts an agent's MCP tool calls by the server that served them, so one line reads "fleet-browser 5 times" instead of a row of raw tool identifiers; open the line to see each call by name.
+- Switching between Cruise, Tactical, and War Room no longer covers the canvas with a curtain: panels stay visible and slide straight into their new places while the mode name and summary appear over them and fade away on their own.
+- Background work now shows what a job is doing while it runs: the list says which tool each job is on, and opening a subagent shows its tool trail as it happens, along with which agent and model did the work. File paths appear in full instead of shortened, while credentials stay masked.
+
+#### Fixed
+- Agents working in the Operation Browser no longer burn through their context on screenshots, so a browsing session runs far longer before it fills up.
+- The background work panel no longer washes out against the conversation, and it closes with a proper button instead of a hint that could not be clicked.
+
+### fleet-desktop
+
+#### Changed
+- On macOS, the Fleet name and mark glide into the space the window controls leave behind when you enter fullscreen.
+
 ## [1.100.0] - 2026-09-19
 
 ### fleet-console
