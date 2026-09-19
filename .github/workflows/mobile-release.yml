@@ -41,7 +41,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # v3은 기본 packages가 `tools platform-tools`인데, 구글 저장소에서 레거시 `tools`가 내려가
+      # `sdkmanager tools`가 실패한다(액션이 잡을 그대로 죽인다). v4.0.2가 그 기본값에서 `tools`를
+      # 뺐으므로 메이저를 올려 받는다.
+      - uses: android-actions/setup-android@v4
       - name: Install the pinned Android platform and build-tools
         run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
       - run: pnpm install --frozen-lockfile
