@@ -1,7 +1,7 @@
-import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { describe, expect, it } from "vitest";
 
-import { buildAgentCliLaunchKinds } from "../../core/host/agent/agent-cli-launch-kinds.js";
+import { buildAgentCliLaunchKinds } from "../../features/execution/host/agent/agent-cli-launch-kinds.js";
 
 // 축은 사다리 어휘 그대로다. 한 모델이 그 일부만 내놓아도 축은 줄지 않는다 — 그래야 표면이
 // 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.

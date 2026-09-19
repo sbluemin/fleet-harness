@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createTerminalConnection, type WebSocketLike } from "../../core/client/src/terminal/shared/terminal-connection.js";
+import { createTerminalConnection, type WebSocketLike } from "../../features/execution/client/terminal/shared/terminal-connection.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

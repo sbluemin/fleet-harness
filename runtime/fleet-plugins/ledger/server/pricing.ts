@@ -1,4 +1,4 @@
-import { GATEWAY_MODEL_PRICING, type GatewayModelPricing } from "@dotobokuri/core-ai-gateway";
+import { GATEWAY_MODEL_PRICING, type GatewayModelPricing } from "@fleet-console/ai-gateway";
 
 import { GATEWAY_MODEL_PREFIX, parseModelIdentity } from "./identity.js";
 import type { TokscaleModelEntry } from "./types.js";

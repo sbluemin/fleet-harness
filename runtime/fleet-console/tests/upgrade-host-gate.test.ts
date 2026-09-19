@@ -3,8 +3,8 @@ import type { Duplex } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { UpgradeHandlerContext } from "../core/host/route-registry/registry.js";
-import { createUpgradeListener } from "../core/host/server.js";
+import type { UpgradeHandlerContext } from "../core/host/transport/route-registry/registry.js";
+import { createUpgradeListener } from "../core/host/bootstrap/server.js";
 
 type UpgradeHandleMock = (ctx: UpgradeHandlerContext) => boolean;
 

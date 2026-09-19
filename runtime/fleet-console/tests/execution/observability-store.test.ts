@@ -4,10 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { sessionActivity } from "../../core/client/src/agent/connection.js";
-import { createConsoleObservabilityStore } from "../../core/host/agent/observability-store.js";
-import { projectWorkspace } from "../../core/host/agent/workspace-context.js";
-import { createWorkspaceHookRegistry } from "../../core/host/agent/workspace-hooks.js";
+import { sessionActivity } from "../../features/execution/client/agent/connection.js";
+import { createConsoleObservabilityStore } from "../../features/execution/host/agent/observability-store.js";
+import { projectWorkspace } from "../../features/execution/host/agent/workspace-context.js";
+import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 
 const tempDirs: string[] = [];
 

@@ -1,10 +1,10 @@
-import { fetchLatestVersion } from "@dotobokuri/core-agent";
+import { fetchLatestVersion } from "@fleet-console/updates";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchLatestFleetCliVersion } from "../../cli/update/registry.js";
 
-vi.mock("@dotobokuri/core-agent", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@dotobokuri/core-agent")>(),
+vi.mock("@fleet-console/updates", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@fleet-console/updates")>(),
   fetchLatestVersion: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ describe("update registry", () => {
     mockedFetchLatestVersion.mockResolvedValue(undefined);
   });
 
-  it("delegates fleet-console registry lookup to the shared core-agent helper", async () => {
+  it("delegates fleet-console registry lookup to the shared update helper", async () => {
     mockedFetchLatestVersion.mockResolvedValue("1.2.3");
 
     await expect(fetchLatestFleetCliVersion("latest")).resolves.toBe("1.2.3");

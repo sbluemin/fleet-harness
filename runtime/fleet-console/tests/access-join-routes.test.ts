@@ -4,10 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { sessionCookieName } from "../core/host/auth.js";
-import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
-import { createConsoleLock } from "../core/host/lock.js";
-import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import { sessionCookieName } from "../features/remote-access/host/auth.js";
+import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { createConsoleServer, type ConsoleServer } from "../core/host/bootstrap/server.js";
 
 interface Fixture {
   readonly endpoint: string;

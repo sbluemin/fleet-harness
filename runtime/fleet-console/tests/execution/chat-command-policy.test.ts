@@ -5,7 +5,7 @@ import {
   classifyChatCommand,
   isChatCommandLane,
   isClassifiedChatCommand,
-} from "../../core/host/agent/chat-command-policy.js";
+} from "../../features/execution/host/agent/chat-command-policy.js";
 
 /**
  * 2026-08-29에 살아 있는 Console이 실제로 광고한 내장 명령 전량.

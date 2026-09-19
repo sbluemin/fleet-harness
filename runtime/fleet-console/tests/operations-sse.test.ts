@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   setConnectionState: vi.fn(),
 }));
 
-vi.mock("../core/client/src/api.js", () => ({
+vi.mock("../core/client/src/integration/api.js", () => ({
   ApiError: class ApiError extends Error {
     readonly status: number;
 
@@ -28,8 +28,8 @@ vi.mock("../core/client/src/api.js", () => ({
   resumeConsoleSession: mocks.resumeConsoleSession,
 }));
 
-vi.mock("../core/client/src/store.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/client/src/store.js")>();
+vi.mock("../core/client/src/integration/store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/client/src/integration/store.js")>();
   return {
     ...actual,
     applyObserverStatus: mocks.applyObserverStatus,
@@ -40,12 +40,12 @@ vi.mock("../core/client/src/store.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
+vi.mock("../core/client/src/integration/desktop-fullscreen.js", () => ({
   applyDesktopFullscreenSnapshot: mocks.applyDesktopFullscreenSnapshot,
   resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
 }));
 
-import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/operations-sse.js";
+import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/integration/operations-sse.js";
 
 class TestEventSource {
   static instances: TestEventSource[] = [];
@@ -98,7 +98,7 @@ describe("operations SSE update availability", () => {
 
   it("adds Operations created by another caller and updates them without duplicates or focus changes", async () => {
     vi.stubGlobal("EventSource", TestEventSource);
-    const actual = await vi.importActual<typeof import("../core/client/src/store.js")>("../core/client/src/store.js");
+    const actual = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
     const previous = actual.getState();
     actual.setState({ operations: [], activeOperationId: null });
     mocks.applyOperationUpdate.mockImplementation(actual.applyOperationUpdate);
@@ -160,7 +160,7 @@ describe("operations SSE update availability", () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
     mocks.getState.mockReturnValue({ activeTheaterId: null });
-    const actualState = await vi.importActual<typeof import("../core/client/src/store.js")>("../core/client/src/store.js");
+    const actualState = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
     actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
 
     connectOperationsSse();

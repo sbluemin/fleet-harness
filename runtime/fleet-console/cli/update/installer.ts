@@ -4,15 +4,10 @@ import { accessSync, constants, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import {
-  createGlobalPackageUpdater,
-  type GlobalPackageManagerInstall,
-  type GlobalPackageSpawnContext,
-  type GlobalPackageUpdater,
-} from "@dotobokuri/core-agent";
+import { createGlobalPackageUpdater, type GlobalPackageManagerInstall, type GlobalPackageSpawnContext, type GlobalPackageUpdater } from "@fleet-console/updates";
 import {
   resolvePathBinary,
-} from "@dotobokuri/core-process";
+} from "@fleet-console/process";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
 import { resolveSiblingConsoleCliPath, stopRunningConsoleBeforeUpdate } from "./stop-console.js";

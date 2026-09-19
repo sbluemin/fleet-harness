@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createStaticConsoleHandler } from "../core/host/static-console.js";
+import { createStaticConsoleHandler } from "../core/host/transport/static-console.js";
 
 type CapturedResponse = { status: number; headers: Record<string, string> };
 

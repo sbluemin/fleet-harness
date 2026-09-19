@@ -3,8 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { resolvePathBinary } from "@dotobokuri/core-process";
-import { withHidden } from "@dotobokuri/core-process";
+import { resolvePathBinary } from "@fleet-console/process";
+import { withHidden } from "@fleet-console/process";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 

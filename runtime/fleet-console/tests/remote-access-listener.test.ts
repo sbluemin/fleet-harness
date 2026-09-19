@@ -8,12 +8,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createConsoleLock } from "../core/host/lock.js";
-import { PAIRED_DEVICE_LIMIT } from "../core/host/paired-devices.js";
-import { normalizeFingerprint } from "../core/host/remote-identity.js";
-import { parseAccessLink } from "../core/host/access-link.js";
-import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
-import type { ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
+import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
+import { parseAccessLink } from "../features/remote-access/host/access-link.js";
+import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
+import type { ConsoleRemoteAccessSettings } from "../features/settings/host/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.

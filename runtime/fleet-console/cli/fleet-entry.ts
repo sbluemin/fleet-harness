@@ -1,4 +1,4 @@
-import { createProviderAuthService } from "@dotobokuri/core-ai-gateway";
+import { createProviderAuthService } from "@fleet-console/ai-gateway";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";

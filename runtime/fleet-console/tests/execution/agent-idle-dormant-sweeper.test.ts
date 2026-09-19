@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentTerminalSessionInfo } from "../../core/host/agent/types.js";
+import type { AgentTerminalSessionInfo } from "../../features/execution/host/agent/types.js";
 import {
   sweepIdleAgentSessions,
   startIdleAgentDormantSweeper,
-} from "../../core/host/agent/agent-idle-dormant-sweeper.js";
+} from "../../features/execution/host/agent/agent-idle-dormant-sweeper.js";
 
 describe("idle agent dormant sweeper", () => {
   it("returns immediately when auto-dormant is disabled (null)", () => {

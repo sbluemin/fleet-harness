@@ -18,13 +18,13 @@ fs.rmSync(path.join(__dirname, "dist", "fleet-plugins"), { recursive: true, forc
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/cli.ts", "access-protocol": "core/host/access-link.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts", "fleet-plugins/codex/routes": "../fleet-plugins/codex/routes.ts" },
+    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/bootstrap/cli.ts", "access-protocol": "features/remote-access/host/access-link.ts", "desktop-protocol": "core/host/shell/desktop-protocol.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts", "fleet-plugins/codex/routes": "../fleet-plugins/codex/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
     // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli·access-protocol 엔트리에만 생성한다.
     // 빌트인 플러그인 라우트 번들은 런타임 산출물일 뿐 타입 소비 대상이 아니며,
     // tsconfig include 밖이라 source-only @fleet-console/sdk(.ts) 타입을 DTS 패스에서 해석하지 못한다.
-    dts: { entry: { cli: "core/host/cli.ts", "access-protocol": "core/host/access-link.ts" }, resolve: true },
+    dts: { entry: { cli: "core/host/bootstrap/cli.ts", "access-protocol": "features/remote-access/host/access-link.ts" }, resolve: true },
     sourcemap: false,
     clean: false,
     // tsup은 기본값으로 모든 import 지정자에서 node: 접두를 벗긴다. fs·os·path처럼 맨 이름
@@ -36,7 +36,7 @@ export default defineConfig([
     // native(node-pty)·동적 require(ws)·font-list의 플랫폼 helper는 정적 분석 대상이 아니라 external로 남으며,
     // publish 스크립트가 published dependencies로 유지한다.
     // @fleet-console source-only 워크스페이스 패키지는 npm publish 시 번들 흡수한다.
-    noExternal: [/^@fleet-plugins\//,/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//, /^@fleet-console\/(sdk|markdown|computer-use|font-picker|protocol)(\/|$)/, "@clack/prompts", /^@clack\//, /^zod(\/|$)/],
+    noExternal: [/^@fleet-plugins\//, /^@dotobokuri\//, /^@fleet-console\//, "@clack/prompts", /^@clack\//, /^zod(\/|$)/],
     // esbuild는 plugin-host가 외부 플러그인의 .ts/.tsx 엔트리를 번들할 때 동적 import한다 —
     // 게시 설치본도 그 경로에 도달하므로 published dependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.
@@ -44,15 +44,16 @@ export default defineConfig([
     esbuildOptions(options) {
       options.alias = {
         ...options.alias,
-        "@dotobokuri/core-agent/claude": path.join(workspaceRoot, "packages/core-agent/src/claude"),
-        "@dotobokuri/core-agent": path.join(workspaceRoot, "packages/core-agent/src"),
-        "@dotobokuri/core-process": path.join(workspaceRoot, "packages/core-process/src"),
-        "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
-        "@dotobokuri/fleet-analyst": path.join(workspaceRoot, "packages/fleet-analyst/src"),
-        "@dotobokuri/core-infra/data-dir/settings": path.join(workspaceRoot, "packages/core-infra/src/data-dir/settings/store.ts"),
-        "@dotobokuri/core-infra/data-dir": path.join(workspaceRoot, "packages/core-infra/src/data-dir/paths.ts"),
-        "@dotobokuri/core-infra/workspace-dir": path.join(workspaceRoot, "packages/core-infra/src/workspace-dir/workspace-dir.ts"),
-        "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
+        "@fleet-console/agent-runtime/claude": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/claude"),
+        "@fleet-console/agent-runtime": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src"),
+        "@fleet-console/ai-gateway": path.join(workspaceRoot, "runtime/fleet-console/features/ai-gateway/runtime/src"),
+        "@fleet-console/process": path.join(workspaceRoot, "runtime/fleet-console/foundation/process/src"),
+        "@fleet-console/agent-runtime/fleet": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/fleet"),
+        "@fleet-console/analyst": path.join(workspaceRoot, "runtime/fleet-console/features/analyst/runtime/src"),
+        "@fleet-console/infra/data-dir/settings": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/settings/store.ts"),
+        "@fleet-console/infra/data-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/paths.ts"),
+        "@fleet-console/infra/workspace-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/workspace-dir/workspace-dir.ts"),
+        "@fleet-console/infra": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src"),
       };
     },
     splitting: false,

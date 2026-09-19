@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createConsoleUpdateApplyService, emitConsoleUpdateWorkerScript, type ConsoleUpdateWorkerScriptConfig } from "../core/host/update-apply.js";
+import { createConsoleUpdateApplyService, emitConsoleUpdateWorkerScript, type ConsoleUpdateWorkerScriptConfig } from "../features/updates/host/update-apply.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
 
 const TEMP_DIRS: string[] = [];

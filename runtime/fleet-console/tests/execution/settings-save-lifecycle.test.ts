@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SystemPromptSettingsState } from "../../core/client/src/agent/settings.js";
+import type { SystemPromptSettingsState } from "../../features/settings/client/execution-settings.js";
 
 const BASE: SystemPromptSettingsState = {
   agentIdleDormantMinutes: 60,
@@ -28,7 +28,7 @@ describe("terminal settings save lifecycle", () => {
       if (init?.method !== "PUT") return Promise.resolve(response(BASE));
       return new Promise<Response>((resolve) => pending.set(Object.keys(JSON.parse(init.body as string))[0]!, resolve));
     }));
-    const store = await import("../../core/client/src/agent/settings.js");
+    const store = await import("../../features/settings/client/execution-settings.js");
     await store.loadSystemPromptSettings();
     const permission = store.setSystemPromptSettingsField("claudeCodeSkipPermissions", true);
     const prompt = store.setSystemPromptSettingsField("claudeCodeSystemPrompt", "off");
@@ -48,7 +48,7 @@ describe("terminal settings save lifecycle", () => {
   it("ignores stale reads after saving and settles cancelled loads", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(BASE));
     vi.stubGlobal("fetch", fetchMock);
-    const store = await import("../../core/client/src/agent/settings.js");
+    const store = await import("../../features/settings/client/execution-settings.js");
     await store.loadSystemPromptSettings();
     let resolveRead!: (response: Response) => void;
     fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRead = resolve; }));

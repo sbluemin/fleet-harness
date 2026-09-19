@@ -24,7 +24,7 @@
     "verify:package": "node scripts/verify-packaged-app.mjs"
   },
   "devDependencies": {
-    "@dotobokuri/core-process": "workspace:*",
+    "@fleet-console/process": "workspace:*",
     "@dotobokuri/fleet-console": "workspace:*",
     "@electron/asar": "3.4.1",
     "@electron/fuses": "2.1.3",

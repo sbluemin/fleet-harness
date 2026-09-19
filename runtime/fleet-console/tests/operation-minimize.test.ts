@@ -2,10 +2,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSnapshot, loadForTheater, setOperationGeometry } from "../core/client/src/canvas/canvas-store.js";
-import { minimizeOperationCompletely } from "../core/client/src/operation-actions.js";
-import { getIdleArrivalIds, markIdleArrival, resetIdleArrivalForTests, setIdleArrivalAcknowledgementSuspended } from "../core/client/src/operation-marks.js";
-import { getState, setState } from "../core/client/src/store.js";
+import { getSnapshot, loadForTheater, setOperationGeometry } from "../features/workspace/client/canvas/canvas-store.js";
+import { minimizeOperationCompletely } from "../core/client/src/integration/operation-actions.js";
+import { getIdleArrivalIds, markIdleArrival, resetIdleArrivalForTests, setIdleArrivalAcknowledgementSuspended } from "../features/execution/client/operation-marks.js";
+import { getState, setState } from "../core/client/src/integration/store.js";
 
 beforeEach(() => {
   window.localStorage.clear();

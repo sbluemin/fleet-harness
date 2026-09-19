@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
+import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
 import {
   buildConsoleHelpText,
   assertCliCanControlDaemon,
@@ -21,11 +21,11 @@ import {
   parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
-} from "../core/host/cli.js";
-import { defaultSpawnBrowser, openBrowser } from "../core/host/browser.js";
-import { describeConsoleLaunch, describeDaemonStartFailure, formatFailureNotice } from "../core/host/failure-notice.js";
-import { createConsoleLock } from "../core/host/lock.js";
-import { createConsolePaths } from "../core/host/paths.js";
+} from "../core/host/bootstrap/cli.js";
+import { defaultSpawnBrowser, openBrowser } from "../core/host/shell/browser.js";
+import { describeConsoleLaunch, describeDaemonStartFailure, formatFailureNotice } from "../core/host/transport/failure-notice.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
 const LOCK: ConsoleLockPayload = {
   pid: 1234,

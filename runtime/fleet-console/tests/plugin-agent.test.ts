@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
-import { createPluginAgentHost } from "../core/host/agent/plugin-agent.js";
+import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@fleet-console/agent-runtime/claude";
+import { createPluginAgentHost } from "../features/execution/host/agent/plugin-agent.js";
 import type { AgentEvent } from "@fleet-console/sdk/agent";
 
 const roots: string[] = [];

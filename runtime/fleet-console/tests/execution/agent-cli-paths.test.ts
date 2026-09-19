@@ -5,7 +5,7 @@ import path from "node:path";
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { validateAgentCliPathForSave } from "../../core/host/agent/agent-cli-detect.js";
+import { validateAgentCliPathForSave } from "../../features/execution/host/agent/agent-cli-detect.js";
 import {
   AGENT_CLI_COMMANDS,
   AGENT_CLI_PATHS_STORAGE_KEY,
@@ -14,7 +14,7 @@ import {
   createAgentCliPathStore,
   normalizeAgentCliPaths,
   resolveAgentCliBinary,
-} from "../../core/host/agent/agent-cli-paths.js";
+} from "../../features/execution/host/agent/agent-cli-paths.js";
 
 const temporaryDirectories: string[] = [];
 

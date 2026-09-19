@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
+import { createAiGatewaySettingsStore } from "@fleet-console/ai-gateway";
 import { launchClaudeGateway } from "../../../cli/gateway/launch.js";
 import type { FleetCliGatewayServer } from "../../../cli/gateway/server.js";
 import type { FleetCliRuntime } from "../../../cli/runtime/runtime.js";

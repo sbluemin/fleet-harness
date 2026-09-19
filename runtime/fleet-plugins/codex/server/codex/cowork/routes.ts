@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { toClaudeGatewayModelId, type GatewayModel } from "@dotobokuri/core-ai-gateway";
+import { toClaudeGatewayModelId, type GatewayModel } from "@fleet-console/ai-gateway";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import type { MemoryPaths } from "../../wiki/index.js";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "./index.js";

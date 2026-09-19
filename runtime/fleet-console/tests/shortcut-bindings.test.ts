@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chordFromKeyboardEvent, chordsEquivalent, judgeRecordedChord, matchesChord, setShortcutOverrides, resolveShortcutChords } from "../core/client/src/shortcut-bindings.js";
+import { chordFromKeyboardEvent, chordsEquivalent, judgeRecordedChord, matchesChord, setShortcutOverrides, resolveShortcutChords } from "../core/client/src/integration/shortcut-bindings.js";
 
 function key(overrides: Partial<{ code: string; key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }>) {
   return { code: "KeyB", key: "b", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...overrides };

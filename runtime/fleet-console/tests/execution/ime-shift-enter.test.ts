@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createImeShiftEnterHandler, type ImeShiftEnterKeyEvent } from "../../core/client/src/terminal/shared/ime-shift-enter.js";
+import { createImeShiftEnterHandler, type ImeShiftEnterKeyEvent } from "../../features/execution/client/terminal/shared/ime-shift-enter.js";
 
 // KeyboardEvent의 Pick 서브셋을 만드는 헬퍼
 function makeKey(

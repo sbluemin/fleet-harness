@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
+import { resolvePathBinary, type ResolvedBinary } from "@fleet-console/process";
 
 import type { UpdateCommandIo } from "./dispatcher.js";
 

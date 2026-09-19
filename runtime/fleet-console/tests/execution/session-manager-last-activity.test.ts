@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createTerminalSessionManager } from "../../core/host/terminal/session-manager.js";
-import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../core/host/terminal/terminal-types.js";
+import { createTerminalSessionManager } from "../../features/execution/host/terminal/session-manager.js";
+import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../features/execution/host/terminal/terminal-types.js";
 
 describe("session-manager lastActivityAt", () => {
   it("updates lastActivityAt on attach, PTY output, and binary input but not resize", async () => {

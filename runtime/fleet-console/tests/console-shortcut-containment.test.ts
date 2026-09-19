@@ -2,7 +2,7 @@
 
 import { expect, it, vi } from "vitest";
 
-import { installConsoleGlobalShortcuts } from "../core/client/src/global-shortcuts.js";
+import { installConsoleGlobalShortcuts } from "../core/client/src/integration/global-shortcuts.js";
 
 it("keeps Zen out of modal, composition, repeat, and AltGr input while allowing a terminal toggle", () => {
   const toggleZenMode = vi.fn();

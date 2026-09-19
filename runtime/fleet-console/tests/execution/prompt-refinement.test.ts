@@ -1,4 +1,4 @@
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type http from "node:http";
 
 import { PROMPT_REFINE_MAX_CHARS } from "@fleet-console/sdk/plugin";
@@ -6,8 +6,8 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { describe, expect, it, vi } from "vitest";
 
-import { refineLaunchPrompt } from "../../core/client/src/agent/experiments-api.js";
-import { registerExperimentRoutes } from "../../core/host/agent/experiments-routes.js";
+import { refineLaunchPrompt } from "../../features/execution/client/agent/experiments-api.js";
+import { registerExperimentRoutes } from "../../features/execution/host/agent/experiments-routes.js";
 
 // 전달 테스트는 다듬기 API를 지나지 않는다. 여기서는 클라이언트→라우트의 옵트인·본문 전용
 // 계약과 초안 무결성을 검증하고, 실제 모델의 문장 품질은 검증했다고 간주하지 않는다.

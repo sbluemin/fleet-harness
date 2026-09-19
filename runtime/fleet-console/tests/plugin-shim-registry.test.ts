@@ -23,7 +23,7 @@ function specifiersIn(source: string, pattern: RegExp): readonly string[] {
  */
 describe("plugin shim registry", () => {
   const pluginHost = read("core/host/plugin-host/plugin-host.ts");
-  const main = read("core/client/src/main.tsx");
+  const main = read("core/client/src/app/main.tsx");
   const generator = readFileSync(path.join(path.dirname(path.dirname(consoleRoot)), "scripts", "generate-fleet-console-shim-keys.mjs"), "utf8");
 
   const defined = specifiersIn(pluginHost, /\{ name: "[^"]+", specifier: "([^"]+)"/gu);

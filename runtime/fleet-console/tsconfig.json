@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -14,14 +18,23 @@
     "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@dotobokuri/core-agent": ["../../packages/core-agent/dist/index.d.ts"],
-      "@dotobokuri/fleet-admiral": ["../../packages/fleet-admiral/dist/index.d.ts"],
-      "@dotobokuri/core-infra": ["../../packages/core-infra/dist/index.d.ts"],
-      "@dotobokuri/core-ai-gateway": ["../../packages/core-ai-gateway/dist/index.d.ts"],
-      "@fleet-console/protocol/desktop": ["protocol/desktop/index.ts"]
+      "@fleet-console/agent-runtime": [
+        "../../runtime/fleet-console/foundation/agent-runtime/dist/index.d.ts"
+      ],
+      "@fleet-console/infra": [
+        "../../runtime/fleet-console/foundation/infra/dist/index.d.ts"
+      ],
+      "@fleet-console/ai-gateway": [
+        "../../runtime/fleet-console/features/ai-gateway/runtime/dist/index.d.ts"
+      ],
+      "@fleet-console/protocol/desktop": [
+        "protocol/desktop/index.ts"
+      ]
     }
   },
   "include": [
@@ -31,6 +44,8 @@
     "core/client/src/virtual-fleet-plugins.d.ts",
     "tests/**/*.ts",
     "tsup.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "features/*/host/**/*.ts",
+    "features/updates/runtime/**/*.ts"
   ]
 }

@@ -5,7 +5,7 @@ import {
   type AiGatewayStoredSettings,
   type GatewayModel,
   type GatewayProvider,
-} from "@dotobokuri/core-ai-gateway";
+} from "@fleet-console/ai-gateway";
 
 import { GATEWAY_SET_KEYS, describeGatewayPolicy, type GatewaySetKey } from "./policy.js";
 import { command, dim, optionRow, resolveColorEnabled, section, stripAnsi } from "../styles/tokens.js";

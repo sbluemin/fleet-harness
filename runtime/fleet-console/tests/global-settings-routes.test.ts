@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter } from "../core/host/settings/settings-domain.js";
-import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../core/host/settings/settings-domain.js";
+import { createGlobalSettingsRouter } from "../features/settings/host/settings-domain.js";
+import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
 
 const DEFAULT_REMOTE_ACCESS = {
   enabled: false,

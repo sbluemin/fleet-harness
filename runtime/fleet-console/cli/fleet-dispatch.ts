@@ -1,11 +1,11 @@
-import { createProviderAuthService, type AuthService } from "@dotobokuri/core-ai-gateway";
+import { createProviderAuthService, type AuthService } from "@fleet-console/ai-gateway";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
 import { dispatchGatewayCommand } from "./gateway/dispatcher.js";
 import { dispatchDoctorCommand } from "./doctor.js";
-import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/console-lifecycle.js";
+import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/bootstrap/console-lifecycle.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 import { resolveSiblingConsoleCliPath } from "./update/stop-console.js";
 

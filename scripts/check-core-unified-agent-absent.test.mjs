@@ -32,6 +32,6 @@ test("leaves compiled release history alone", () => {
 });
 
 test("passes on a clean tree", () => {
-  const root = fixture({ "packages/x/src/a.ts": 'import "@dotobokuri/core-agent";\n' });
+  const root = fixture({ "packages/x/src/a.ts": 'import "@fleet-console/agent-runtime";\n' });
   assert.deepEqual(findCoreUnifiedAgentReferences(root), []);
 });

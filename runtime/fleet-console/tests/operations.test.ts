@@ -7,12 +7,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { createConsoleLock } from "../core/host/lock.js";
-import { createOperationsRouter } from "../core/host/operations/operations-domain.js";
-import { createSanitizedOpDto } from "../core/host/operations/operations-domain.js";
-import { createOperationStore } from "../core/host/operations/operations-domain.js";
-import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
-import type { OperationCreateInput, OperationNode } from "../core/host/operations/operations-domain.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { createOperationsRouter } from "../features/execution/host/operations/operations-domain.js";
+import { createSanitizedOpDto } from "../features/execution/host/operations/operations-domain.js";
+import { createOperationStore } from "../features/execution/host/operations/operations-domain.js";
+import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
+import type { OperationCreateInput, OperationNode } from "../features/execution/host/operations/operations-domain.js";
 
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];

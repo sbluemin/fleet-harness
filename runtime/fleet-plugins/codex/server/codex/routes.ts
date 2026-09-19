@@ -48,7 +48,7 @@ import type {
 } from "./contracts.js";
 import { withSecurityHeaders } from "./contracts.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
-import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
+import type { GatewayModel } from "@fleet-console/ai-gateway";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

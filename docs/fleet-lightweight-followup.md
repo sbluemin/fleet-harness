@@ -4,12 +4,12 @@
 
 Fleet now uses explicit package ownership without standalone Admiral compatibility packages.
 
-- `runtime/fleet-console/cli` owns the thin `fleet` launcher: argv/process lifecycle, host-specific adapters, concrete runtime assembly, one in-process Fleet MCP, and an ephemeral loopback AI Gateway for a Claude Code child with inherited stdio; it consumes Admiral policy from `@dotobokuri/fleet-admiral` and does not own PTY/TUI/interception.
+- `runtime/fleet-console/cli` owns the thin `fleet` launcher: argv/process lifecycle, host-specific adapters, concrete runtime assembly, one in-process Fleet MCP, and an ephemeral loopback AI Gateway for a Claude Code child with inherited stdio; it consumes Admiral policy from `@fleet-console/agent-runtime/fleet` and does not own PTY/TUI/interception.
 - `runtime/fleet-console` owns the standalone loopback HTTP backend, REST/SSE/WebSocket, PTY/provider/plugin runtime, durable state, and static UI.
 - `runtime/fleet-desktop` is an optional thin Electron shell that supervises the existing Console Service through its public desktop protocol and loads `/console/`; it owns no duplicate UI or service runtime.
-- `packages/core-infra` owns host-agnostic infrastructure and I/O gateways.
-- `packages/core-agent` owns Fleet-domain-agnostic executor runtime, generic in-process MCP server primitives, and the shared register data contract.
-- `@dotobokuri/core-agent` owns the tool vocabulary, MCP serving, and the Claude gateway SDK.
+- `runtime/fleet-console/foundation/infra` owns host-agnostic infrastructure and I/O gateways.
+- `runtime/fleet-console/foundation/agent-runtime` owns Fleet-domain-agnostic executor runtime, generic in-process MCP server primitives, and the shared register data contract.
+- `@fleet-console/agent-runtime` owns the tool vocabulary, MCP serving, and the Claude gateway SDK.
 
 ## Purpose
 

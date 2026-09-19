@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 
-import { DesktopEngine } from "../core/host/browser/desktop-engine.js";
+import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 
 /**
  * 네이티브 뷰 엔진의 수명 계약 — 호스트 셸이 붙어 있는 동안 탭 생성이 뷰 생성·부착으로 풀리고, 세션 명령이 스냅샷으로

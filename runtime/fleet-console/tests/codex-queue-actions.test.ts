@@ -2,7 +2,7 @@ import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 
-import { resolveWorkspaceDirectory } from "@dotobokuri/core-infra";
+import { resolveWorkspaceDirectory } from "@fleet-console/infra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startCodexTestServer } from "./codex-test-server.js";

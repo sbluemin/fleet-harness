@@ -167,7 +167,7 @@ describe("diagram hydrator security", () => {
 
   it("source declares strict Mermaid config (static check)", async () => {
     const fs = await import("node:fs/promises");
-    const src = await fs.readFile("markdown/mermaid.ts", "utf8");
+    const src = await fs.readFile("foundation/markdown/mermaid.ts", "utf8");
     expect(src).toMatch(/securityLevel:\s*["']strict["']/);
     expect(src).toMatch(/htmlLabels:\s*false/);
     expect(src).toMatch(/startOnLoad:\s*false/);

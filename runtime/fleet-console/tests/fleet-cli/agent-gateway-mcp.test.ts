@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isHostSessionToolAllowed } from "@dotobokuri/fleet-admiral";
+import { isHostSessionToolAllowed } from "@fleet-console/agent-runtime/fleet";
 import { createFleetCliRuntime, type FleetCliRuntime } from "../../cli/runtime/runtime.js";
 
 interface McpToolListResponse {

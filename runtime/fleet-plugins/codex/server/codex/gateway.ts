@@ -9,7 +9,7 @@ import type { MemoryPaths, WikiWorkspaceResolver } from "../wiki/index.js";
 import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "./cowork/index.js";
 import type { CoworkConnector } from "./cowork/index.js";
-import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";

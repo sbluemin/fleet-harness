@@ -1,5 +1,5 @@
 import { spawn, type SpawnOptions } from "node:child_process";
-import { withHidden } from "@dotobokuri/core-process";
+import { withHidden } from "@fleet-console/process";
 
 export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
 

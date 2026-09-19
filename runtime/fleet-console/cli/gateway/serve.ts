@@ -3,8 +3,8 @@ import {
   createProviderAuthService,
   type AiGatewaySettingsStore,
   type AuthService,
-} from "@dotobokuri/core-ai-gateway";
-import { getFleetDataDir } from "@dotobokuri/core-infra";
+} from "@fleet-console/ai-gateway";
+import { getFleetDataDir } from "@fleet-console/infra";
 
 import { collectGatewayModels } from "./report.js";
 import { startGatewayHttpServer, type FleetCliGatewayServer } from "./server.js";

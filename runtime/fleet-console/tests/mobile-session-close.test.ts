@@ -5,10 +5,10 @@ import { createRoot } from "react-dom/client";
 
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../core/client/src/mobile/operation-body-pool.js", () => ({ OperationBodySlot: () => null }));
+vi.mock("../core/client/src/chrome/mobile/operation-body-pool.js", () => ({ OperationBodySlot: () => null }));
 
-import { MobileSessionView } from "../core/client/src/mobile/mobile-session-view.js";
-import type { OperationNode } from "../core/client/src/types.js";
+import { MobileSessionView } from "../core/client/src/chrome/mobile/mobile-session-view.js";
+import type { OperationNode } from "../core/client/src/integration/types.js";
 
 /**
  * Mobile session chrome used to name the Operation and stop there, so Close existed only on

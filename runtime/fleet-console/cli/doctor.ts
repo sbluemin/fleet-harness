@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
-import type { AuthService } from "@dotobokuri/core-ai-gateway";
-import { getFleetDataDir } from "@dotobokuri/core-infra";
+import { resolvePathBinary, type ResolvedBinary } from "@fleet-console/process";
+import type { AuthService } from "@fleet-console/ai-gateway";
+import { getFleetDataDir } from "@fleet-console/infra";
 
 import { AUTH_CLI_DEFINITIONS } from "./auth/login-flow.js";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
-import { createConsolePaths } from "../core/host/paths.js";
-import { runConsoleStatus } from "../core/host/console-lifecycle.js";
+import { createConsolePaths } from "../core/host/bootstrap/paths.js";
+import { runConsoleStatus } from "../core/host/bootstrap/console-lifecycle.js";
 
 const CLAUDE_COMMAND = "claude";
 const SEMVER_PATTERN = /(\d+\.\d+\.\d+)/;

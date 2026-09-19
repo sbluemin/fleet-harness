@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 
-import type { GlobalSettingsState } from "../core/client/src/types.js";
+import type { GlobalSettingsState } from "../core/client/src/integration/types.js";
 
 const deferred = new Map<string, { resolve: (value: unknown) => void; reject: (reason: unknown) => void }>();
 
-vi.mock("../core/client/src/global-settings-api.js", () => ({
+vi.mock("../features/settings/client/global-settings-api.js", () => ({
   fetchGlobalSettingsState: vi.fn(),
   updateGlobalSettings: vi.fn((patch: Record<string, unknown>) => {
     const field = Object.keys(patch)[0] as string;
@@ -40,7 +40,7 @@ describe("overlapping global settings saves", () => {
   });
 
   it("keeps a failed field's error when an unrelated field succeeds afterwards", async () => {
-    const store = await import("../core/client/src/global-settings-store.js");
+    const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
     const failing = store.setGlobalSettingsField("theme", "carbon");
@@ -60,7 +60,7 @@ describe("overlapping global settings saves", () => {
   });
 
   it("clears the error once that same field is retried", async () => {
-    const store = await import("../core/client/src/global-settings-store.js");
+    const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
     const first = store.setGlobalSettingsField("theme", "carbon");
@@ -77,7 +77,7 @@ describe("overlapping global settings saves", () => {
   });
 
   it("drops field failures once an authoritative reload replaces the state", async () => {
-    const store = await import("../core/client/src/global-settings-store.js");
+    const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
     const failing = store.setGlobalSettingsField("theme", "carbon");
@@ -97,10 +97,10 @@ describe("overlapping global settings saves", () => {
   });
 
   it("does not let a read started before a save restore the old value", async () => {
-    const api = await import("../core/client/src/global-settings-api.js");
+    const api = await import("../features/settings/client/global-settings-api.js");
     let resolveRead!: (state: GlobalSettingsState) => void;
     vi.mocked(api.fetchGlobalSettingsState).mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
-    const store = await import("../core/client/src/global-settings-store.js");
+    const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
     const reading = store.loadGlobalSettings();
     const saving = store.setGlobalSettingsField("language", "ko");
@@ -116,7 +116,7 @@ describe("overlapping global settings saves", () => {
   });
 
   it("still refuses a second write to the same field while one is in flight", async () => {
-    const store = await import("../core/client/src/global-settings-store.js");
+    const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
     const first = store.setGlobalSettingsField("theme", "carbon");

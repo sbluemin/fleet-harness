@@ -6,7 +6,7 @@
 cd <worktree> && pnpm --filter @dotobokuri/fleet-console build
 ```
 
-Rebuild any workspace package the change touched first (`pnpm --filter @dotobokuri/core-agent build`), because the Console bundle resolves those from `dist/`.
+Rebuild any workspace package the change touched first (`pnpm --filter @fleet-console/agent-runtime build`), because the Console bundle resolves those from `dist/`.
 
 ### 2. Boot it isolated, with the levers already set
 

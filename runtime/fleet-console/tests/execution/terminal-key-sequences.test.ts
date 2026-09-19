@@ -6,7 +6,7 @@ import {
   terminalKeySequence,
   terminalModifierParameter,
   type TerminalKeyModifiers,
-} from "../../core/client/src/terminal/shared/terminal-key-sequences.js";
+} from "../../features/execution/client/terminal/shared/terminal-key-sequences.js";
 
 const ESC = String.fromCharCode(0x1b);
 const NONE: TerminalKeyModifiers = { ctrl: false, alt: false, shift: false };

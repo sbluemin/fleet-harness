@@ -8,7 +8,8 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 
 | Owner | Path |
 |---|---|
-| Reusable core capabilities and Fleet domains | `packages/` |
+| Reusable Console capabilities | `runtime/fleet-console/foundation/` |
+| Console product features | `runtime/fleet-console/features/` |
 | `fleet` terminal launcher, Console server and web product | `runtime/fleet-console/` |
 | Built-in Console plugins | `runtime/fleet-plugins/` |
 | Electron native shell | `runtime/fleet-desktop/` |
@@ -24,7 +25,7 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 
 ## Architecture boundaries
 
-- Dependencies flow from runtime hosts to Fleet domains to core capabilities. `core-*` packages remain Fleet-domain-agnostic; reusable packages must not reach back into a runtime host.
+- Dependencies flow from Console composition to features to foundation. Foundation must not import feature, core, CLI, or plugin implementations or contracts; host-specific behavior crosses explicit injected ports. Shared Fleet execution policy may live in foundation without importing product features.
 - Runtime hosts own composition, process lifecycle, UI, and host adapters. Console is the sole published host for the `fleet` launcher and Console web product. Built-ins live in `runtime/fleet-plugins/`; Desktop remains a shell over the Console public protocol.
 - Cross-package construction uses explicit dependency objects. Do not add DI containers, service locators, or hidden cross-layer lookups.
 - Consume other packages through declared exports only. Source deep imports must not create shadow APIs.

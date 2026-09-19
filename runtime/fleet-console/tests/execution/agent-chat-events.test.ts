@@ -9,8 +9,8 @@ import {
   summarizeToolInput,
   summarizeToolResult,
   type AgentChatStreamEvent,
-} from "../../core/host/agent/chat-events.js";
-import { readChatJournalEvent } from "../../core/client/src/agent/chat/chat-events.js";
+} from "../../features/execution/host/agent/chat-events.js";
+import { readChatJournalEvent } from "../../features/execution/client/agent/chat/chat-events.js";
 
 describe("chat transcript mapping", () => {
   it("maps a plain user line to a dispatch", () => {

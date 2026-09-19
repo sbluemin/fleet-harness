@@ -2,11 +2,11 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
-import { registerShellRoutes } from "../../core/host/terminal/shell.js";
-import type { TerminalRuntime, TerminalTicketContext } from "../../core/host/terminal/index.js";
+import { registerShellRoutes } from "../../features/execution/host/terminal/shell.js";
+import type { TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
  * 등급 판정은 Console의 것이다. 이 테스트가 지키는 것은 "플러그인이 그 판정을 덮어쓰지 않는다"이다 —

@@ -4,15 +4,15 @@ import os from "node:os";
 import path from "node:path";
 
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { registerAgentRoutes } from "../../core/host/agent/routes.js";
-import { createConsoleControl } from "../../core/host/mcp/console-control.js";
-import { resolveAgentCliBinary } from "../../core/host/agent/agent-cli-paths.js";
-import type { TerminalRuntime, TerminalSocket } from "../../core/host/terminal/index.js";
-import { createPluginTerminalTicketRegistry } from "../../core/host/terminal/tickets.js";
+import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
+import { createConsoleControl } from "../../features/console-use/host/console-control.js";
+import { resolveAgentCliBinary } from "../../features/execution/host/agent/agent-cli-paths.js";
+import type { TerminalRuntime, TerminalSocket } from "../../features/execution/host/terminal/index.js";
+import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
 
 function createTestChatSocket(onSend: (raw: string) => void): TerminalSocket {
   const closeListeners = new Set<() => void>();

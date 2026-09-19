@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createRemoteJoinGuard, normalizeRemoteJoinSource } from "../core/host/remote-join-guard.js";
+import { createRemoteJoinGuard, normalizeRemoteJoinSource } from "../features/remote-access/host/remote-join-guard.js";
 
 function fakeClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let value = start;

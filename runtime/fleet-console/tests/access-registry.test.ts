@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, sessionCookieName } from "../core/host/auth.js";
-import { isValidRemoteBindHost } from "../core/host/settings/settings-domain.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, sessionCookieName } from "../features/remote-access/host/auth.js";
+import { isValidRemoteBindHost } from "../features/settings/host/settings-domain.js";
 
 function createClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let current = start;

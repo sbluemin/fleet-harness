@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveConsolePackageRequire } from "../../core/host/terminal/console-require.js";
+import { resolveConsolePackageRequire } from "../../features/execution/host/terminal/console-require.js";
 
 const consolePackageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "fleet-console");
 const fallback = createRequire(import.meta.url);

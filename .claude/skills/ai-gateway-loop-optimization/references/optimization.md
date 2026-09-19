@@ -32,7 +32,7 @@ Commit to one primary optimization per measurement round. Multiple simultaneous 
 
 ## Phase 3 — Change at the owning layer
 
-Keep provider semantics in `packages/core-ai-gateway/src/upstream/<provider>/`, and anything specific to the client CLI being served in `packages/core-ai-gateway/src/downstream/harness/<client>/`. Cross-provider helpers are justified only for direction-neutral vocabulary or transport mechanics already permitted by the package boundary.
+Keep provider semantics in `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/<provider>/`, and anything specific to the client CLI being served in `runtime/fleet-console/features/ai-gateway/runtime/src/downstream/harness/<client>/`. Cross-provider helpers are justified only for direction-neutral vocabulary or transport mechanics already permitted by the package boundary.
 
 Add tests for both sides of every classifier:
 

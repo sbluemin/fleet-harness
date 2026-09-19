@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-import { getState, subscribe } from "../store.js";
-import type { ConsoleState } from "../types.js";
+import { getState, subscribe } from "../integration/store.js";
+import type { ConsoleState } from "../integration/types.js";
 
 export function useConsoleState(): ConsoleState {
   return useSyncExternalStore(subscribe, getState, getState);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readAnalysisProviderSession, readProviderSession } from "../../core/host/agent/provider-session.js";
+import { readAnalysisProviderSession, readProviderSession } from "../../features/execution/host/agent/provider-session.js";
 
 describe("readProviderSession", () => {
   it("omits an empty transcriptPath instead of passing it through", () => {

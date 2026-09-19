@@ -15,7 +15,7 @@ import {
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type GatewayProvider,
-} from "@dotobokuri/core-ai-gateway";
+} from "@fleet-console/ai-gateway";
 
 import {
   buildCompactCeilingChoices,

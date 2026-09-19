@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@dotobokuri/core-ai-gateway": "workspace:*",
-    "@dotobokuri/core-infra": "workspace:*",
+    "@fleet-console/ai-gateway": "workspace:*",
+    "@fleet-console/infra": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "react": "19.2.7",

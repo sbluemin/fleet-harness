@@ -1,4 +1,4 @@
-import { buildAiGatewayCatalog } from "@dotobokuri/core-ai-gateway";
+import { buildAiGatewayCatalog } from "@fleet-console/ai-gateway";
 import { describe, expect, it } from "vitest";
 
 import {

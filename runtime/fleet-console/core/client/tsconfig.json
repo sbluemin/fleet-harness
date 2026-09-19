@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -11,18 +15,40 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "baseUrl": "../..",
     "paths": {
-      "@xterm/addon-fit": ["node_modules/@xterm/addon-fit"],
-      "@xterm/addon-unicode11": ["node_modules/@xterm/addon-unicode11"],
-      "@xterm/addon-webgl": ["node_modules/@xterm/addon-webgl"],
-      "@xterm/xterm": ["node_modules/@xterm/xterm"],
-      "react": ["node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["node_modules/@types/react/jsx-runtime.d.ts"],
-      "virtual:fleet-plugins": ["core/client/src/virtual-fleet-plugins.d.ts"]
+      "@xterm/addon-fit": [
+        "node_modules/@xterm/addon-fit"
+      ],
+      "@xterm/addon-unicode11": [
+        "node_modules/@xterm/addon-unicode11"
+      ],
+      "@xterm/addon-webgl": [
+        "node_modules/@xterm/addon-webgl"
+      ],
+      "@xterm/xterm": [
+        "node_modules/@xterm/xterm"
+      ],
+      "react": [
+        "node_modules/@types/react/index.d.ts"
+      ],
+      "react/jsx-runtime": [
+        "node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "virtual:fleet-plugins": [
+        "core/client/src/virtual-fleet-plugins.d.ts"
+      ]
     },
-    "typeRoots": ["node_modules/@types"]
+    "typeRoots": [
+      "node_modules/@types"
+    ]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "../../features/*/client/**/*"
+  ]
 }

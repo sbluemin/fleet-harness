@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
-import type { AuthService } from "@dotobokuri/core-ai-gateway";
+import { createAiGatewaySettingsStore } from "@fleet-console/ai-gateway";
+import type { AuthService } from "@fleet-console/ai-gateway";
 import { startGatewayHttpServer, type FleetCliGatewayServer } from "../../../cli/gateway/server.js";
 
 const authService: AuthService = {

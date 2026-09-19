@@ -1,0 +1,75 @@
+{
+  "name": "@fleet-console/infra",
+  "version": "1.100.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-console/foundation/infra"
+  },
+  "private": true,
+  "author": "sbluemin",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "CLAUDE.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./data-dir": {
+      "types": "./dist/data-dir/paths.d.ts",
+      "import": "./dist/data-dir/paths.js",
+      "require": "./dist/data-dir/paths.cjs"
+    },
+    "./data-dir/settings": {
+      "types": "./dist/data-dir/settings/store.d.ts",
+      "import": "./dist/data-dir/settings/store.js",
+      "require": "./dist/data-dir/settings/store.cjs"
+    },
+    "./fs-store": {
+      "types": "./dist/fs-store/index.d.ts",
+      "import": "./dist/fs-store.js",
+      "require": "./dist/fs-store.cjs"
+    },
+    "./workspace-dir": {
+      "types": "./dist/workspace-dir/workspace-dir.d.ts",
+      "import": "./dist/workspace-dir/workspace-dir.js",
+      "require": "./dist/workspace-dir/workspace-dir.cjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "data-dir": [
+        "dist/data-dir/paths.d.ts"
+      ],
+      "data-dir/settings": [
+        "dist/data-dir/settings/store.d.ts"
+      ],
+      "fs-store": [
+        "dist/fs-store/index.d.ts"
+      ],
+      "workspace-dir": [
+        "dist/workspace-dir/workspace-dir.d.ts"
+      ]
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createConsoleObservabilityStore } from "../../core/host/agent/observability-store.js";
-import { createOscAgentActivityTracker } from "../../core/host/agent/osc-agent-activity.js";
-import { createTerminalSessionManager } from "../../core/host/terminal/session-manager.js";
-import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../core/host/terminal/terminal-types.js";
+import { createConsoleObservabilityStore } from "../../features/execution/host/agent/observability-store.js";
+import { createOscAgentActivityTracker } from "../../features/execution/host/agent/osc-agent-activity.js";
+import { createTerminalSessionManager } from "../../features/execution/host/terminal/session-manager.js";
+import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../features/execution/host/terminal/terminal-types.js";
 
 afterEach(() => {
   vi.useRealTimers();
