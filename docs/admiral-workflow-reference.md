@@ -4,7 +4,7 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 1. Architecture State
 
-- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, one in-process Fleet MCP (Wiki + `gateway_models`), an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
+- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, an in-process AI Gateway MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/core-agent` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
@@ -14,7 +14,7 @@ This document is the operational doctrine for agents working inside this reposit
 
 The `fleet` launcher (under `runtime/fleet-console/cli`) owns:
 - Thin argv dispatch and process lifecycle for Claude Code passthrough, `fleet auth`, `fleet update`, and `fleet console`.
-- One in-process Fleet MCP (Wiki + `gateway_models`) and an ephemeral loopback AI Gateway for the Claude child.
+- An in-process AI Gateway MCP and an ephemeral loopback AI Gateway for the Claude child.
 - Host adapters that consume Admiral prompt/protocol/tool policy from `@dotobokuri/fleet-admiral`.
 - Concrete runtime assembly in `cli/runtime/runtime.ts`.
 
@@ -28,7 +28,6 @@ It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructur
   -> fleet-admiral
   -> core-agent
   -> core-infra
-  -> fleet-wiki
 
 core-agent / core-infra
   -> core-agent

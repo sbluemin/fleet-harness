@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
-import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@fleet-plugins/codex/wiki-read";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { CONSOLE_CONTROL_TOOLS, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 

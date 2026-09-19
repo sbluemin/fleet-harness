@@ -53,7 +53,6 @@ export default defineConfig([
         "@dotobokuri/core-infra/data-dir": path.join(workspaceRoot, "packages/core-infra/src/data-dir/paths.ts"),
         "@dotobokuri/core-infra/workspace-dir": path.join(workspaceRoot, "packages/core-infra/src/workspace-dir/workspace-dir.ts"),
         "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
-        "@dotobokuri/fleet-wiki": path.join(workspaceRoot, "packages/fleet-wiki/src"),
       };
     },
     splitting: false,

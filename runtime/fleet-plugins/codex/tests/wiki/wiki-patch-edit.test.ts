@@ -3,12 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { parseLog } from "../src/log.js";
-import { approvePatch, enqueuePatch, listQueue, parsePatch, rewriteQueuedPatch, showQueue } from "../src/patch.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { computeContentHash, pathExists, readJsonFile, readPatchFile, readWikiEntry } from "../src/store.js";
-import { buildPatchEditToolConfig } from "../src/tools/patch-edit.js";
-import type { PatchMeta } from "../src/types.js";
+import { parseLog } from "../../server/wiki/log.js";
+import { approvePatch, enqueuePatch, listQueue, parsePatch, rewriteQueuedPatch, showQueue } from "../../server/wiki/patch.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { computeContentHash, pathExists, readJsonFile, readPatchFile, readWikiEntry } from "../../server/wiki/store.js";
+import { buildPatchEditToolConfig } from "../../server/wiki/tools/patch-edit.js";
+import type { PatchMeta } from "../../server/wiki/types.js";
 
 const cleanupPaths: string[] = [];
 

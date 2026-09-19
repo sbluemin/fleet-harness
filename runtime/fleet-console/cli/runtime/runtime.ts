@@ -1,6 +1,4 @@
 import { createMcpHttpTransport } from "../../core/host/mcp/http-transport.js";
-import { createCodexMcpTools } from "@fleet-plugins/codex/mcp";
-import { createPluginAdmiralMcpHost } from "../../core/host/mcp/plugin-mcp.js";
 import path from "node:path";
 import { createAiGatewayMcpHost } from "../../core/host/mcp/ai-gateway.js";
 
@@ -22,12 +20,9 @@ import {
 } from "@dotobokuri/fleet-admiral";
 import {
   createInfraServices,
-  ensureWorkspaceDirectory,
   getFleetDataDir,
-  withDirectoryLock,
   type InfraServices,
 } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;
@@ -56,13 +51,6 @@ export async function createFleetCliRuntime(
     isCursorConnected: async () => true,
     ...createAiGatewayQuotaCollectors({ authService }),
   });
-  const wikiWorkspaceResolver = createWikiWorkspaceResolver({
-    ensureWorkspace: (cwd) => ensureWorkspaceDirectory(dataDir, cwd),
-    withMigrationLock: (workspace, operation) => withDirectoryLock(
-      { lockDir: path.join(workspace.path, "knowledge.migration.lock") },
-      operation,
-    ),
-  });
   const mcpHttp = createMcpHttpTransport();
   const aiGatewayMcp = createAiGatewayMcpHost({ transport: mcpHttp.transport,
     readSelection: () => {
@@ -83,12 +71,10 @@ export async function createFleetCliRuntime(
     },
   });
 
-  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
-  pluginMcp.register("codex", createCodexMcpTools(wikiWorkspaceResolver));
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
     const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
-      additionalMcpSessions: [aiGatewayMcp.connect(), pluginMcp.connect()],
+      additionalMcpSessions: [aiGatewayMcp.connect()],
     });
     let cleaned = false;
     return {
@@ -101,12 +87,12 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        try { await agentRuntime.cleanup(); } finally { try { await Promise.all([aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); } }
+        try { await agentRuntime.cleanup(); } finally { try { await aiGatewayMcp.dispose(); } finally { await mcpHttp.dispose(); } }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
-    try { await Promise.all([aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await aiGatewayMcp.dispose(); } finally { await mcpHttp.dispose(); }
     throw error;
   }
 }

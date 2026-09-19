@@ -3,12 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { readPatchSet } from "../src/patch.js";
-import { showQueue } from "../src/patch.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { pathExists, readJsonFile, writeWikiEntry } from "../src/store.js";
-import { buildCompileSourceToolConfig } from "../src/tools/compile-source.js";
-import type { PatchMeta, WikiEntry } from "../src/types.js";
+import { readPatchSet } from "../../server/wiki/patch.js";
+import { showQueue } from "../../server/wiki/patch.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { pathExists, readJsonFile, writeWikiEntry } from "../../server/wiki/store.js";
+import { buildCompileSourceToolConfig } from "../../server/wiki/tools/compile-source.js";
+import type { PatchMeta, WikiEntry } from "../../server/wiki/types.js";
 
 const cleanupPaths: string[] = [];
 

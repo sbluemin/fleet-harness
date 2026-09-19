@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ensureWorkspaceDirectory, withDirectoryLock } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver } from "../server/wiki/index.js";
 import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "../server/wiki-mcp.js";
 import { describe, expect, it } from "vitest";
 

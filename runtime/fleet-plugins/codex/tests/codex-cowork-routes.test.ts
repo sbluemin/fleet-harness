@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths, ensureMemoryRoot, writeWikiEntry } from "../server/wiki/index.js";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { handleCoworkRequest } from "../server/codex/cowork/routes.js";

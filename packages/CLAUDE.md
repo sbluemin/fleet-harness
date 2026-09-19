@@ -12,7 +12,6 @@
 | `core-infra/` | Authentication, data-root, and durable filesystem gateways |
 | `fleet-admiral/` | Admiral prompt, protocol, tool, launch, and runtime policy |
 | `fleet-analyst/` | Session Analyst transcript indexing, prompt, and tools |
-| `fleet-wiki/` | Fleet Wiki storage, retrieval, and approval-gated mutation domain |
 
 ## Constraints
 

@@ -3,7 +3,7 @@ import { chmod, lstat, mkdtemp, readFile, rm, stat, symlink, unlink, writeFile, 
 import os from "node:os";
 import path from "node:path";
 
-import { ensureMemoryRoot, resolveMemoryPaths } from "../src/paths.js";
+import { ensureMemoryRoot, resolveMemoryPaths } from "../../server/wiki/paths.js";
 import {
   DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS,
   DEFAULT_TEMPLATE_PRD,
@@ -18,8 +18,8 @@ import {
   readWorkspaceSchemaSummary,
   scanTemplates,
   validateTemplateCompliance,
-} from "../src/schema.js";
-import { pathExists } from "../src/store.js";
+} from "../../server/wiki/schema.js";
+import { pathExists } from "../../server/wiki/store.js";
 
 const PRE_EXISTING_DOCTRINE = "# Pre-existing workspace doctrine\n\nunchanged bytes\n";
 

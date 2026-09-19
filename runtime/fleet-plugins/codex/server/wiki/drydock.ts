@@ -337,7 +337,7 @@ function safetyIssues(content: string, filePath: string): DryDockIssue[] {
 function parseFrontmatter(content: string): ParsedFrontmatterDocument | null {
   const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return null;
-  const [, rawFrontmatter, body] = match;
+  const [, rawFrontmatter = "", body = ""] = match;
   const frontmatter: Record<string, unknown> = {};
   for (const line of rawFrontmatter.split("\n")) {
     if (!line.trim()) continue;

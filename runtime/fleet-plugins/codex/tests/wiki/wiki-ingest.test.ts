@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { showQueue } from "../src/patch.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { computeContentHash, readRawSourceEntry, writeWikiEntry } from "../src/store.js";
-import { buildIngestToolConfig } from "../src/tools/ingest.js";
-import type { WikiEntry } from "../src/types.js";
+import { showQueue } from "../../server/wiki/patch.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { computeContentHash, readRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";
+import { buildIngestToolConfig } from "../../server/wiki/tools/ingest.js";
+import type { WikiEntry } from "../../server/wiki/types.js";
 
 const cleanupPaths: string[] = [];
 

@@ -47,7 +47,7 @@ const patchEditLocks = new Map<string, Promise<void>>();
 export async function parsePatch(markdown: string): Promise<Patch> {
   const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) throw new Error("missing patch frontmatter");
-  const [, rawFrontmatter, body] = match;
+  const [, rawFrontmatter = "", body = ""] = match;
   const frontmatter: Record<string, string> = {};
   for (const line of rawFrontmatter.split("\n")) {
     if (!line.trim()) continue;
@@ -553,7 +553,7 @@ function parsePatchBodyEntry(content: string): WikiEntry | undefined {
 function parseStoredWikiEntry(content: string): WikiEntry | undefined {
   const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return undefined;
-  const [, rawFrontmatter, body] = match;
+  const [, rawFrontmatter = "", body = ""] = match;
   const frontmatter = new Map<string, string>();
   for (const line of rawFrontmatter.split("\n")) {
     const separator = line.indexOf(":");

@@ -473,7 +473,7 @@ function parseTemplateMarkdown(content: string): { frontmatter: Record<string, u
   const normalized = content.replace(/\r\n/g, "\n");
   const match = normalized.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, body: normalized };
-  const [, rawFrontmatter, body] = match;
+  const [, rawFrontmatter = "", body = ""] = match;
   const frontmatter: Record<string, unknown> = {};
   for (const line of rawFrontmatter.split("\n")) {
     if (!line.trim()) continue;

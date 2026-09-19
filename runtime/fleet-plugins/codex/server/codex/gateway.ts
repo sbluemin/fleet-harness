@@ -4,7 +4,7 @@ import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
 import net from "node:net";
 
-import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import type { MemoryPaths, WikiWorkspaceResolver } from "../wiki/index.js";
 
 import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "./cowork/index.js";

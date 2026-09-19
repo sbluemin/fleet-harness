@@ -22,7 +22,7 @@ const MARKER_NAME = "knowledge.migrated.json";
 const MARKER_TEMP_REGEXP = /^knowledge\.migrated\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
 const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
 
-/** Host-injected canonical-workspace gate; fleet-wiki intentionally knows no host package. */
+/** 호스트가 주입하는 정규 workspace 경계. Wiki 저장 로직은 호스트 구현을 알지 못한다. */
 export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependencies): WikiWorkspaceResolver {
   return createResolver(deps);
 }

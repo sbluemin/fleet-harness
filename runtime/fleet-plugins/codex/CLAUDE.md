@@ -1,6 +1,6 @@
 # Codex Plugin
 
-Codex owns the Wiki UI, Admiral Wiki MCP registration, and the Cowork session, draft, and session-scoped tool definitions. Shared Wiki storage, retrieval, schemas, and patch approval remain in `@dotobokuri/fleet-wiki`.
+Codex owns Wiki storage, retrieval, schemas, patch approval, UI, Admiral Wiki MCP registration, and the Cowork session, draft, and session-scoped tool definitions. Wiki implementation lives in `server/wiki/`; its `CLAUDE.md` owns storage and tool trust boundaries. The standalone Fleet CLI does not register Codex Wiki tools.
 
 ## Boundaries
 

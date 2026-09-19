@@ -2,7 +2,7 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
-// Cowork DTO의 단일 출처는 fleet-wiki cowork 서브패키지다(type-only라 브라우저 번들 무영향).
+// Cowork DTO의 단일 출처는 Codex Cowork 모듈이다(type-only라 브라우저 번들 무영향).
 export type { CoworkAnnotationDto, CoworkEventDto, CoworkSessionDto } from "./cowork/index.js";
 /** Cowork 모델 한 행 — id는 Gateway가 받는 모델 표기, label은 메뉴에 보이는 이름, provider는 공급자 밴드다. */
 export interface CoworkModelRow { readonly id: string; readonly label: string; readonly provider: string; }

@@ -21,7 +21,6 @@
       "@dotobokuri/fleet-admiral": ["../../packages/fleet-admiral/dist/index.d.ts"],
       "@dotobokuri/core-infra": ["../../packages/core-infra/dist/index.d.ts"],
       "@dotobokuri/core-ai-gateway": ["../../packages/core-ai-gateway/dist/index.d.ts"],
-      "@dotobokuri/fleet-wiki": ["../../packages/fleet-wiki/dist/index.d.ts"],
       "@fleet-console/protocol/desktop": ["protocol/desktop/index.ts"]
     }
   },

@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appendLog, createMemoryPaths } from "@dotobokuri/fleet-wiki";
+import { appendLog, createMemoryPaths } from "../server/wiki/index.js";
 import { handleApiRequest } from "../server/codex/routes.js";
 
 describe("Codex schema API", () => {

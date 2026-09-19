@@ -1,10 +1,10 @@
 import type { AgentToolGroup } from "@fleet-console/sdk/agent";
-import { approvePatch, enqueuePatch } from "@dotobokuri/fleet-wiki";
-import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "@dotobokuri/fleet-wiki";
+import { approvePatch, enqueuePatch } from "../../wiki/index.js";
+import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../../wiki/index.js";
 import { createWikiDraftToolSpecs } from "./draft-tools.js";
 import { getWikiToolSpecs } from "../../wiki-mcp.js";
-import type { MemoryPaths, Patch, WikiEntry } from "@dotobokuri/fleet-wiki";
-import type { WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import type { MemoryPaths, Patch, WikiEntry } from "../../wiki/index.js";
+import type { WikiWorkspaceResolver } from "../../wiki/index.js";
 import { join } from "node:path";
 import { COWORK_SYSTEM_PROMPT } from "./store.js";
 import type { CoworkStore } from "./store.js";
@@ -22,7 +22,7 @@ export function createCoworkTools(store: CoworkStore, workspaceId: string, sessi
 }
 
 /**
- * 호스트가 주입하는 provider 클라이언트의 최소 표면 — fleet-wiki 독트린상 이 패키지는
+ * 호스트가 주입하는 provider 클라이언트의 최소 표면 — Codex 실행 경계상 이 플러그인은
  * provider 조립을 알지 못하며, 커넥터는 반드시 호스트가 소유한다.
  */
 export interface CoworkAgentClient {

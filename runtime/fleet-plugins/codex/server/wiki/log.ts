@@ -75,7 +75,7 @@ function parseLogText(content: string): WikiLogEntry[] {
     if (!match) {
       throw new Error(`invalid log header: ${header}`);
     }
-    const [, timestamp, event] = match;
+    const [, timestamp = "", event = ""] = match;
     if (Number.isNaN(Date.parse(timestamp))) {
       throw new Error(`invalid log timestamp: ${timestamp}`);
     }
@@ -89,7 +89,7 @@ function parseLogText(content: string): WikiLogEntry[] {
       if (!bulletMatch) {
         throw new Error(`invalid log bullet: ${line}`);
       }
-      const [, key, rawValue] = bulletMatch;
+      const [, key = "", rawValue = ""] = bulletMatch;
       payload[key] = parsePayloadValue(unescapeInlineCode(rawValue));
     }
     entries.push({

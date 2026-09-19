@@ -20,7 +20,7 @@ import {
   classifyWikiWorkspaceNodeForTest,
   shouldSyncDirectoryForTest,
   type WikiWorkspaceResolverDependencies,
-} from "../src/workspace-resolver.js";
+} from "../../server/wiki/workspace-resolver.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });

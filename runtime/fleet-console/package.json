@@ -66,7 +66,6 @@
     "@dotobokuri/core-process": "workspace:*",
     "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-analyst": "workspace:*",
-    "@dotobokuri/fleet-wiki": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/computer-use": "workspace:*",
