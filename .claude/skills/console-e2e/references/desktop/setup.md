@@ -23,7 +23,16 @@ Use a unique CDP port and agent-browser session. CDP grants full renderer contro
 3. Inspect running Fleet Desktop/Console processes and locks. Do not quit the installed user app, delete a lock, or signal a process you did not launch.
 4. Build Console and Desktop from the target checkout. Ensure the package manager binary is also on `PATH` because nested package scripts invoke it by name.
 5. Record the rollback point and owned resources: app PID/session, CDP port, Console directory/lock, log path, screenshots, and package output.
+6. Confirm the launch by a CDP page target, never by a live process. A main-process failure still leaves helper processes running, so a process list cannot distinguish a booted app from a failed one, and the failure is waiting on the user's screen as a modal dialog. Missing target, unwritten data directory, or a launcher that returns while processes persist all mean the app did not boot: read the failure before relaunching, and never repeat a blind launch.
 
-Development Desktop derives its userData and Console directory from the source checkout. Run only when that checkout has no live Desktop-owned instance. Use an absolute Node path and absolute E2E main path; package-filter commands change cwd.
+Development Desktop derives its userData and Console directory from the source checkout. Run only when that checkout has no live Desktop-owned instance. Launch every development run through the checkout's isolated development target, which builds Console and Desktop, points the run at the checkout-local data root, supplies the managed Node path, and forwards the trailing flag to the app:
+
+```bash
+cd <worktree>
+export PATH="<pnpm-bin>:$PATH"
+pnpm desktop --remote-debugging-port=<cdp-port>
+```
+
+Starting the Electron binary yourself bypasses that data root and reads the user's real one. It also drops the managed Node path, which a development build takes from `FLEET_CONSOLE_NODE_PATH` or from the `npm_node_execpath` that pnpm/npm sets, and without it the main process aborts before opening a window. Keep a direct invocation for a claim that genuinely needs one, and give it the isolated variables and `FLEET_CONSOLE_NODE_PATH` explicitly; an environment override keeps those variables rather than clearing the environment wholesale. Use an absolute Node path and absolute E2E main path; package-filter commands change cwd.
 
 Store temporary logs, screenshots, and artifacts in the session scratchpad. Set the absolute target worktree path for every command. `ab()`, `SESSION`, and `CDP_PORT` do not survive independent shell calls; redeclare them or substitute the same recorded literals.
