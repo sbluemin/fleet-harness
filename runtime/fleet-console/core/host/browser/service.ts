@@ -352,10 +352,15 @@ export class BrowserService {
   private async resetContext(op: OperationBrowser): Promise<void> {
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
-    const client = this.client;
-    if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
+    await this.disposeContext(op);
     op.tabs.clear();
     op.activeTabId = null;
+  }
+
+  /** 이 Operation 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
+  private async disposeContext(op: OperationBrowser): Promise<void> {
+    const client = this.client;
+    if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
     op.contextId = "";
   }
 
@@ -467,6 +472,10 @@ export class BrowserService {
       op.activeTabId = null;
       if (next) { await this.selectTab(operationId, next); this.scheduleIdle(); return; }
     }
+    // 마지막 탭이 닫히면 브라우저 컨텍스트도 거둔다. 임시 세션의 약속이 이것이다 — 「탭을 닫으면 로그인이
+    // 사라집니다」. 컨텍스트를 그대로 두면 유휴 종료까지의 5분 안에 새 탭을 여는 사람이 같은 파티션과 그
+    // 쿠키를 되받는다. 영속 프로필도 같이 거두지만 잃는 것은 없다 — 그 쿠키는 디스크의 프로필에 산다.
+    if (op.tabs.size === 0) await this.disposeContext(op);
     this.emitState(op);
     this.scheduleIdle();
   }
@@ -595,6 +604,8 @@ export class BrowserService {
     op.profile = profile;
     this.deps.log(`${operationId} browser session is now ${profile ?? "ephemeral"}`);
     this.emitState(op);
+    // 전환이 마지막 탭을 닫았을 수 있다 — 그 길은 closeTab 을 거치지 않으므로 유휴 종료를 여기서 건다.
+    this.scheduleIdle();
     return this.state(operationId);
   }
 
@@ -614,6 +625,7 @@ export class BrowserService {
     const client = await this.engineClient();
     await client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile });
     this.deps.log(`cleared browser profile ${profile}`);
+    this.scheduleIdle();
   }
 
   // ---------- 파비콘 프록시 ----------

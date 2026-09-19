@@ -132,9 +132,12 @@ export interface DesktopBrowserView {
   /**
    * 영속 브라우저 프로필의 id. `null` 이면 이 뷰는 위 `partition` 의 메모리 세션에 산다.
    * 값이 있으면 셸이 자기 데이터 루트 아래에서 경로를 만들어 디스크 세션을 연다 — 콘솔은 경로를 보내지 않는다.
-   * 옛 셸은 이 필드를 모르고 `partition` 만 읽으므로 임시 세션으로 떨어진다.
+   *
+   * 양쪽 방향의 옛 짝을 모두 견뎌야 한다. 옛 셸은 이 필드를 모르고 `partition` 만 읽어 임시 세션으로 떨어지고,
+   * **옛 콘솔**은 이 필드를 아예 싣지 않으므로 검사는 없는 것(`undefined`)을 `null` 과 같이 받아들인다 —
+   * 그러지 않으면 스냅샷 하나가 통째로 거부되어 새 Desktop 이 옛 Console 에서 탭을 열지 못한다.
    */
-  readonly profile: string | null;
+  readonly profile?: string | null;
   readonly visible: boolean;
   /** 콘솔 창의 CSS px 좌표. 셸이 창의 줌 배율을 곱해 DIP 로 놓는다. */
   readonly bounds: DesktopBrowserBounds | null;
@@ -196,7 +199,7 @@ export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserB
 
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.operationId === "string" && isSafeId(value.partition)
-    && (value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
+    && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
     && typeof value.visible === "boolean" && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
 }
 
