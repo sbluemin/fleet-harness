@@ -7,6 +7,8 @@ import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell,
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 
+import { autoUpdater } from "electron-updater";
+
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
@@ -32,7 +34,8 @@ import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
-import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
+import { createConsoleRelaunchController, createDisabledNativeUpdateActions, createNoopConsoleRelaunchController, type NativeUpdateActions } from "./update-controller.js";
+import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
@@ -126,7 +129,7 @@ async function boot(): Promise<void> {
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
-  const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
+  const registry = createRegistryChecker({ packageName: PACKAGE_NAME });
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
@@ -142,6 +145,9 @@ async function boot(): Promise<void> {
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
+  // 창이 지금 보고 있는 콘솔. 셸 갱신 상태는 이 주소에 게시하고 명령도 이 주소에서 듣는다 —
+  // 원격 콘솔을 보고 있어도 이 앱은 이 기계의 앱이므로, 그 화면에서도 같은 줄이 서야 한다.
+  let servingConsoleOrigin: string | null = null;
   // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로 그 origin으로 가는
   // 메인 프로세스 요청은 인증서 핀과 세션 쿠키를 갖춘 세션을 타야 한다 — 다만 창의 것이어서는 안 된다(shell-network.ts).
   const consoleSession = session.defaultSession;
@@ -186,6 +192,30 @@ async function boot(): Promise<void> {
       return;
     }
     await updateSynchronizer.start(origin);
+  };
+  /**
+   * 셸 자신의 갱신 명령은 반대다 — 창이 어느 콘솔을 보고 있든 그 화면의 사용자가 이 기계의 앱을
+   * 갱신하려는 것이므로, 원격 콘솔에서도 듣는다. 수행 대상은 언제나 이 앱 하나뿐이다.
+   */
+  let shellUpdater: ShellUpdater | null = null;
+  const publishShellUpdate = createShellUpdatePublisher({
+    fetch: consoleFetch,
+    origin: () => servingConsoleOrigin,
+    log: (message) => logger.error(message),
+  });
+  const shellUpdateCommands = createShellUpdateCommandSynchronizer({
+    fetch: consoleFetch,
+    perform: (command) => {
+      if (command === "check") void shellUpdater?.check();
+      else if (command === "download") void shellUpdater?.download();
+      else shellUpdater?.restart();
+    },
+  });
+  const subscribeShellUpdates = async (origin: string): Promise<void> => {
+    servingConsoleOrigin = origin;
+    await shellUpdateCommands.start(origin);
+    // 새로 붙은 화면은 이 셸이 이미 아는 상태를 모른다 — 지금 값을 한 번 게시해 두 자리를 맞춘다.
+    if (shellUpdater) publishShellUpdate(shellUpdater.snapshot());
   };
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
@@ -292,7 +322,7 @@ async function boot(): Promise<void> {
     loadConsole: (url) => handOffWindowToConsole({
       publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
@@ -386,7 +416,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => controls.onConsoleLoaded(),
       onFirstRunFailure: async () => showFirstRunFailure(),
@@ -396,18 +426,37 @@ async function boot(): Promise<void> {
     });
     return launch.start() as Promise<BrowserWindow>;
   }, async () => { bridge.dispose(); await supervisor.stop(); });
-  const updates = isPackaged
-    ? createUpdateController({
+  const consoleRelaunch = isPackaged
+    ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
-      registry,
-      showDialog: async (version) => showUpdateDialog(window, version, () => registry.markPrompted?.(version)),
       prepareToQuit: () => lifecycle.prepareToQuit(),
       relaunch: () => app.relaunch(),
       quit: () => app.quit(),
-      onStateChange: () => refreshNativeUpdateActions?.(),
     })
-    : createNoopUpdateController();
-  applyDelegatedUpdate = (version) => { void updates.applyRequested(version); };
+    : createNoopConsoleRelaunchController();
+  applyDelegatedUpdate = (version) => { void consoleRelaunch.applyRequested(version); };
+  // 갱신기는 패키징된 앱에서만 산다. 개발 실행에서는 갱신 소스를 직접 지정했을 때만 깨어난다 —
+  // 이 동선을 눈으로 확인하려면 어딘가에서 한 번은 실제로 밟아 봐야 하기 때문이다.
+  const developmentConfigPath = isPackaged ? undefined : writeDevelopmentUpdateConfig(app.getPath("userData"), process.env.FLEET_DESKTOP_DEV_UPDATE_FEED, logger);
+  shellUpdater = isPackaged || developmentConfigPath
+    ? createShellUpdater({
+      updater: autoUpdater,
+      currentVersion: () => app.getVersion(),
+      publish: (snapshot) => { publishShellUpdate(snapshot); refreshNativeUpdateActions?.(); },
+      log: (message) => logger.error(message),
+      ...(developmentConfigPath ? { developmentConfigPath } : {}),
+    })
+    : null;
+  const updates: NativeUpdateActions = shellUpdater === null
+    ? createDisabledNativeUpdateActions()
+    : {
+      enabled: () => true,
+      stage: () => shellUpdater?.snapshot().stage ?? "idle",
+      version: () => shellUpdater?.snapshot().version ?? null,
+      check: () => { void shellUpdater?.check(); },
+      download: () => { void shellUpdater?.download(); },
+      restart: () => shellUpdater?.restart(),
+    };
   const actions = {
     show: () => { void lifecycle.show(); },
     quit: () => { void lifecycle.quit(); },
@@ -435,7 +484,12 @@ async function boot(): Promise<void> {
   };
   for (const link of pendingAccessLinks.splice(0)) deliverAccessLink(link);
   receiveAccessLink(findAccessLinkArgument(process.argv));
-  if (isPackaged) setInterval(() => { void updates.check(false); }, 60 * 60 * 1_000);
+  // 고정 주기 확인. 주기를 사용자가 바꾸는 설정은 두지 않는다 — 확인은 값싸고, 조절 가능한 주기는
+  // "왜 아직 안 왔나"라는 질문만 하나 더 만든다. 지금 확인하고 싶은 사람에게는 화면의 직접 확인이 있다.
+  if (shellUpdater) {
+    void shellUpdater.check();
+    setInterval(() => { void shellUpdater?.check(); }, 60 * 60 * 1_000);
+  }
 }
 
 async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {
@@ -494,15 +548,20 @@ async function showFirstRunFailure(): Promise<boolean> {
   return false;
 }
 
-async function showUpdateDialog(window: BrowserWindow | null, version: string, markPrompted: () => void): Promise<{ response: number; checkboxChecked: boolean }> {
-  const activeWindow = resolveActiveWindow(window);
-  const options = { type: "info" as const, title: "Update available", message: `Fleet Console ${version} is ready to install.`, detail: "Takes a few seconds and restarts the console — running operations restore as dormant panels.", buttons: ["Update and Restart", "Later"], defaultId: 0, cancelId: 1, checkboxLabel: "Skip this version" };
-  const show = async (): Promise<{ response: number; checkboxChecked: boolean }> => {
-    markPrompted();
-    return activeWindow ? dialog.showMessageBox(activeWindow, options) : dialog.showMessageBox(options);
-  };
-  // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
-  return process.platform === "win32" ? showWindowsHiddenUpdateDialog(activeWindow, trayHolder.current, version, show) : show();
+/**
+ * 개발 실행의 갱신 설정. 체크아웃 안이 아니라 이 실행의 userData에 쓴다 — 저장소에 남는 파일이
+ * 되어서는 안 되고, 데이터 디렉터리를 갈아 끼우면 이 설정도 함께 갈린다.
+ */
+function writeDevelopmentUpdateConfig(userDataDirectory: string, feedUrl: string | undefined, logger: DesktopLogger): string | undefined {
+  if (!feedUrl) return undefined;
+  try {
+    const configPath = path.join(userDataDirectory, "dev-app-update.yml");
+    fs.writeFileSync(configPath, `provider: generic\nurl: ${feedUrl}\n`, { mode: 0o600 });
+    return configPath;
+  } catch (error) {
+    logger.error(`development update config unavailable: ${describeError(error)}`);
+    return undefined;
+  }
 }
 
 function readBootLogDirectory(): string | null {

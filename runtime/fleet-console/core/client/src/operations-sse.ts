@@ -2,6 +2,7 @@ import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeCons
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
+import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
 import { forgetTriageOperation } from "./canvas/triage-store.js";
 import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
@@ -154,6 +155,17 @@ export function connectOperationsSse(): void {
     const msg = e as MessageEvent<string>;
     try {
       applyDesktopShellSnapshot(JSON.parse(msg.data));
+    } catch {
+      // 잘못된 프레임은 아는 것을 지우지 않는다.
+    }
+  });
+
+  // 셸 자신의 갱신 상태. 집 주소와 같은 길로 온다 — 화면이 이미 열어 둔 스트림 하나면 충분하다.
+  source.addEventListener("desktop:shell-update", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      applyDesktopShellUpdateSnapshot(JSON.parse(msg.data));
     } catch {
       // 잘못된 프레임은 아는 것을 지우지 않는다.
     }

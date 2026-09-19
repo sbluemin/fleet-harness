@@ -562,6 +562,10 @@ jobs:
   # desktop 무변경 릴리스 → 직전 릴리스의 셸 설치본을 그대로 초안 Release에 이월한다.
   # 바이트 동일 복사라 서명/노터라이즈가 유지되고, 직전 릴리스에서 받으므로 무변경이 연속돼도
   # 자산 체인이 자동으로 이어진다. 매 릴리스에 설치본이 항상 부착되게 하기 위한 장치.
+  #
+  # 갱신 메타데이터(latest*.yml)와 blockmap도 함께 이월한다. electron-updater는 최신 릴리스의
+  # 자산에서 메타데이터를 읽으므로, 빠지면 desktop을 건드리지 않은 릴리스마다 갱신 확인이 404로 실패한다.
+  # 이월된 메타데이터는 이월된 버전을 그대로 가리키므로 없는 업데이트를 알리지도 않는다.
   desktop-carry:
     needs: release
     if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'false'
@@ -578,12 +582,18 @@ jobs:
           mkdir -p desktop-assets
           gh release download "$PREV_TAG" -R "${{ github.repository }}" \
             --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' \
+            --pattern 'latest*.yml' --pattern '*.blockmap' \
             --dir desktop-assets
           count=$(find desktop-assets -type f | wc -l)
           if [ "$count" -eq 0 ]; then
             echo "No desktop shell assets found on $PREV_TAG to carry forward" >&2
             exit 1
           fi
+          # 메타데이터 없이 설치본만 이월하면 갱신 확인이 매 릴리스 실패한다. 직전 릴리스가 메타데이터
+          # 도입 이전이면 여기서 멈추는 대신 경고만 남긴다 — 그 다음 desktop 빌드가 체인을 다시 잇는다.
+          for name in latest-mac.yml latest.yml; do
+            [ -f "desktop-assets/$name" ] || echo "::warning::$PREV_TAG has no $name to carry forward; shell update checks stay broken until the next desktop build"
+          done
           gh release upload "$NEXT_TAG" desktop-assets/* --clobber -R "${{ github.repository }}"
 
   # 셸 빌드가 성공했을 때만 성공-빌드 마커 태그(desktop-v*)를 릴리스 커밋에 남긴다.

@@ -7,6 +7,8 @@ import { ApiError, applyConsoleUpdate, checkConsoleUpdate } from "../api.js";
 import { beginUpdateWatch, markUpdateDelegated } from "../update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
+import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../desktop-shell-update.js";
+import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
@@ -40,15 +42,7 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
-/**
- * Desktop 설치 파일은 Console 릴리스의 자산으로 올라간다 — Desktop 전용 Release는 없고
- * `desktop-v*` 태그는 빌드 마커일 뿐이다. 그래서 "최신 Desktop"은 릴리스 태그가 아니라
- * latest 릴리스의 자산 이름(`Fleet.Console-0.7.5-mac-arm64.dmg`)에서 읽는다.
- */
-const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness/releases/latest";
 const GITHUB_LATEST_RELEASE_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
-const DESKTOP_LATEST_CACHE_KEY = "fleet-console.desktop-latest";
-const DESKTOP_ASSET_VERSION_PATTERN = /^Fleet\.Console-(\d+\.\d+\.\d+)-/u;
 
 /**
  * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
@@ -610,11 +604,22 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const [opens, setOpens] = useState(0);
   useEffect(() => { if (open) setOpens((count) => count + 1); }, [open]);
   const shell = useDesktopHomeOrigin(opens);
-  const desktopCheck = useDesktopLatestVersion(shell.desktopVersion);
-  const desktopLatest = desktopCheck.latest;
+  const shellUpdate = useDesktopShellUpdate(opens);
   // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는
   // 메뉴를 열면 칩이 말한다.
-  const updateReady = updateAvailable || desktopLatest !== null;
+  const updateReady = updateAvailable || shellUpdate.stage === "available" || shellUpdate.stage === "ready";
+  /**
+   * 셸 재시작 한 번이 Console까지 최신으로 만든다 — 돌아온 셸의 진입 흐름이 새 Console을 조달하기
+   * 때문이다. 그래서 셸 갱신이 걸려 있으면 Console 행은 칩을 거두고 그 사실만 말한다.
+   *
+   * 창이 남의 기계의 콘솔을 보고 있으면 접지 않는다. 그때 두 행은 서로 다른 기계를 가리키고 있어,
+   * 접는 순간 남의 호스트 재시작이 내 앱 재시작에 숨는다.
+   */
+  const onHomeConsole = shell.origin !== null && shell.origin === window.location.origin;
+  const consoleFoldsIntoShell = updateAvailable
+    && onHomeConsole
+    && (shellUpdate.stage === "available" || shellUpdate.stage === "downloading" || shellUpdate.stage === "ready");
+  const notice = useUpdateNotice({ shellUpdate, updateAvailable, latestVersion, onHomeConsole });
   // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
   // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
   // 있든 온보딩을 처음부터 다시 보게 한다.
@@ -637,13 +642,24 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
       <HelpGlyph />
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
+    {!open && notice.kind !== null && !notice.dismissed ? (
+      <UpdateNoticeBubble
+        kind={notice.kind}
+        shellUpdate={shellUpdate}
+        latestVersion={latestVersion}
+        consoleFolds={notice.consoleFolds}
+        hasShell={shell.desktopVersion !== null}
+        onHomeConsole={onHomeConsole}
+        onDismiss={notice.dismiss}
+      />
+    ) : null}
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
       <div className="command-band-system-menu-divider" role="separator" />
-      <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} onStarted={() => setOpen(false)} />
-      {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} latestVersion={desktopLatest} onRefresh={desktopCheck.refresh} /> : null}
+      <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} foldedIntoShell={consoleFoldsIntoShell} onStarted={() => setOpen(false)} />
+      {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} update={shellUpdate} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
       <GithubLinks />
     </div> : null}
@@ -657,15 +673,25 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
  * 예전 업데이트 행의 것을 그대로 가져왔고, 두 번째 누름이 곧 호스트 재시작 동의라는 문법도 같다.
  * 칩이 없으면(최신, 또는 확인 불가) 행은 정보만 말하는 정적 행이다.
  */
-function ConsoleVersionRow({ version, latestVersion, onStarted }: {
+function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, onStarted }: {
   readonly version: string;
   readonly latestVersion: string | null;
+  /** 셸 재시작이 이 갱신까지 가져온다 — 누를 것을 두 개 두지 않고, 그 사실만 적는다. */
+  readonly foldedIntoShell: boolean;
   readonly onStarted: () => void;
 }) {
   const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
+  if (latestVersion !== null && foldedIntoShell) {
+    return (
+      <div className="command-band-version-row command-band-version-row--static command-band-version-row--blocked" aria-label={t("chrome.system.version.consoleFolded", { version, latest: latestVersion })} title={t("chrome.system.update.foldedTitle")}>
+        {body}
+        <span className="command-band-version-row-chip">{t("chrome.system.update.folded")}</span>
+      </div>
+    );
+  }
   if (latestVersion === null) {
     return (
       <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.console", { version })}>
@@ -718,30 +744,89 @@ function ConsoleVersionRow({ version, latestVersion, onStarted }: {
 }
 
 /**
- * 이 창을 든 Fleet Desktop. Desktop은 스스로 갈아 끼우지 못하므로, 새 버전이 있으면 행이
- * GitHub Release로 가는 링크가 된다 — Desktop 창에서는 셸이 이 항해를 외부 브라우저로 넘긴다.
+ * 이 창을 든 Fleet Desktop. 행은 두 몫으로 나뉜다 — 이름·버전 쪽은 무엇이 바뀌는지 보러 릴리스 페이지로
+ * 나가고, 오른쪽 칩은 이 자리에서 갱신을 수행한다. 하나로 합치면 "무엇이 바뀌었나"를 보려던 손이
+ * 설치를 시작하게 된다.
  */
-function DesktopVersionRow({ version, latestVersion, onRefresh }: {
+function DesktopVersionRow({ version, update }: {
   readonly version: string;
-  readonly latestVersion: string | null;
-  readonly onRefresh: () => Promise<boolean>;
+  readonly update: DesktopShellUpdate;
 }) {
   const t = useT();
+  const [busy, setBusy] = useState(false);
   const body = <><MonitorGlyph /><span className="command-band-version-row-name">Desktop</span><span className="command-band-version-row-version">v{version}</span></>;
-  if (latestVersion === null) {
+  const releases = (
+    <a
+      className="command-band-version-row-main"
+      href={GITHUB_LATEST_RELEASE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      role="menuitem"
+      aria-label={t("chrome.system.version.desktop", { version })}
+      title={t("chrome.system.version.desktopReleasesTitle")}
+    >
+      {body}
+    </a>
+  );
+
+  if (update.stage === "idle") {
     return (
-      <div className="command-band-version-row command-band-version-row--static" aria-label={t("chrome.system.version.desktop", { version })}>
-        {body}
-        <VersionRefresh onRefresh={onRefresh} />
+      <div className="command-band-version-row command-band-version-row--split">
+        {releases}
+        <VersionRefresh onRefresh={refreshDesktop} />
       </div>
     );
   }
+
+  if (update.stage === "downloading") {
+    return (
+      <div className="command-band-version-row command-band-version-row--split command-band-version-row--live" aria-live="polite">
+        {releases}
+        <span className="command-band-version-row-chip" aria-label={t("chrome.system.version.desktopDownloading", { latest: update.version ?? "" })}>
+          {t("chrome.system.desktopUpdate.downloading", { percent: update.percent ?? 0 })}
+        </span>
+      </div>
+    );
+  }
+
+  // 내려받기는 재시도할 수 있는 실패다 — 칩을 잠그지 않고 같은 자리에서 다시 누르게 둔다.
+  const failed = update.stage === "error";
+  const ready = update.stage === "ready";
+  const command = ready ? "restart" : "download";
+  const label = failed
+    ? t("common.retry")
+    : ready
+      ? t("chrome.system.desktopUpdate.restart")
+      : t("chrome.system.desktopUpdate.download", { latest: update.version ?? "" });
+
   return (
-    <a className="command-band-version-row command-band-version-row--info" href={GITHUB_LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t("chrome.system.version.desktopUpdate", { version, latest: latestVersion })} title={t("chrome.system.version.desktopUpdateTitle", { latest: latestVersion })}>
-      {body}
-      <span className="command-band-version-row-chip">v{latestVersion} ↗</span>
-    </a>
+    <div className={`command-band-version-row command-band-version-row--split command-band-version-row--${failed ? "error" : "info"}`}>
+      {releases}
+      <button
+        type="button"
+        role="menuitem"
+        className="command-band-version-row-chip command-band-version-row-chip--action"
+        disabled={busy}
+        onClick={() => {
+          if (busy) return;
+          setBusy(true);
+          void requestDesktopShellUpdate(command).finally(() => setBusy(false));
+        }}
+        aria-label={t("chrome.system.version.desktopUpdate", { version, latest: update.version ?? "" })}
+        title={ready ? t("chrome.system.desktopUpdate.restartTitle") : t("chrome.system.desktopUpdate.downloadTitle")}
+        aria-live="polite"
+      >
+        {label}
+      </button>
+    </div>
   );
+}
+
+/** 지금 확인한다. 셸이 GitHub 릴리스를 다시 묻고, 그 답은 상태로 돌아온다. */
+async function refreshDesktop(): Promise<boolean> {
+  await requestDesktopShellUpdate("check");
+  // 확인 결과는 스트림으로 온다 — 여기서 "새 버전 있음"을 단정하면 아직 오지 않은 답을 지어내는 것이다.
+  return false;
 }
 
 /**
@@ -905,90 +990,6 @@ function isStarCacheFresh(): boolean {
 function writeCachedStars(count: number): void {
   try {
     window.localStorage.setItem(GITHUB_STARS_CACHE_KEY, JSON.stringify({ count, at: Date.now() }));
-  } catch {
-    // Public GitHub metadata remains optional when browser storage is unavailable.
-  }
-}
-
-/**
- * Desktop의 최신 버전. 창을 든 Desktop이 버전을 알렸을 때만 묻고, 더 새로운 버전이 있을 때만
- * 그 번호를 돌려준다. 비인증 GitHub API는 시간당 60회라 스타 수와 같은 캐시(6h)를 쓰고,
- * 실패·한도 초과·자산명 불일치는 조용히 null이다 — 칩이 비는 것과 "최신"은 같은 모양이다.
- */
-function useDesktopLatestVersion(desktopVersion: string | null): { readonly latest: string | null; readonly refresh: () => Promise<boolean> } {
-  const [latest, setLatest] = useState<string | null>(() => readCachedDesktopLatest()?.version ?? null);
-
-  useEffect(() => {
-    if (desktopVersion === null) return;
-    const cached = readCachedDesktopLatest();
-    if (cached && Date.now() - cached.at < GITHUB_STARS_TTL_MS) {
-      setLatest(cached.version);
-      return;
-    }
-    let cancelled = false;
-    fetchDesktopLatestVersion()
-      .then((version) => { if (!cancelled) setLatest(version); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [desktopVersion]);
-
-  const newer = desktopVersion !== null && latest !== null && isNewerVersion(latest, desktopVersion) ? latest : null;
-  // 사용자가 직접 누른 확인은 캐시를 믿지 않는다 — GitHub에 지금 묻고, 그 답으로 캐시를 새로 쓴다.
-  const refresh = async (): Promise<boolean> => {
-    const version = await fetchDesktopLatestVersion();
-    setLatest(version);
-    return desktopVersion !== null && isNewerVersion(version, desktopVersion);
-  };
-  return { latest: newer, refresh };
-}
-
-/** latest 릴리스의 자산 이름에서 Desktop 버전을 읽어 캐시에 쓴다. 자산이 없으면 실패다 — "최신"으로 오해하게 두지 않는다. */
-async function fetchDesktopLatestVersion(): Promise<string> {
-  const response = await fetch(GITHUB_LATEST_RELEASE_API_URL, { headers: { Accept: "application/vnd.github+json" } });
-  if (!response.ok) throw new Error(`status ${response.status}`);
-  const data = await response.json() as { readonly assets?: unknown };
-  const version = readDesktopVersionFromAssets(data.assets);
-  if (version === null) throw new Error("desktop_asset_missing");
-  writeCachedDesktopLatest(version);
-  return version;
-}
-
-function readDesktopVersionFromAssets(assets: unknown): string | null {
-  if (!Array.isArray(assets)) return null;
-  for (const asset of assets) {
-    const name = (asset as { readonly name?: unknown })?.name;
-    const match = typeof name === "string" ? DESKTOP_ASSET_VERSION_PATTERN.exec(name) : null;
-    if (match) return match[1]!;
-  }
-  return null;
-}
-
-function isNewerVersion(candidate: string, current: string): boolean {
-  const a = candidate.split(".").map(Number);
-  const b = current.split(".").map(Number);
-  for (let index = 0; index < 3; index += 1) {
-    const left = a[index] ?? 0;
-    const right = b[index] ?? 0;
-    if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
-    if (left !== right) return left > right;
-  }
-  return false;
-}
-
-function readCachedDesktopLatest(): { readonly version: string; readonly at: number } | null {
-  try {
-    const raw = window.localStorage.getItem(DESKTOP_LATEST_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { readonly version?: unknown; readonly at?: unknown };
-    return typeof parsed.version === "string" && typeof parsed.at === "number" ? { version: parsed.version, at: parsed.at } : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedDesktopLatest(version: string): void {
-  try {
-    window.localStorage.setItem(DESKTOP_LATEST_CACHE_KEY, JSON.stringify({ version, at: Date.now() }));
   } catch {
     // Public GitHub metadata remains optional when browser storage is unavailable.
   }

@@ -25,12 +25,13 @@
   },
   "devDependencies": {
     "@dotobokuri/core-process": "workspace:*",
-    "@electron/asar": "3.4.1",
     "@dotobokuri/fleet-console": "workspace:*",
-    "@fleet-console/protocol": "workspace:*",
+    "@electron/asar": "3.4.1",
     "@electron/fuses": "2.1.3",
+    "@fleet-console/protocol": "workspace:*",
     "electron": "43.1.0",
     "electron-builder": "26.15.3",
+    "electron-updater": "6.6.2",
     "tsup": "8.5.1",
     "typescript": "6.0.2",
     "vitest": "4.1.10"

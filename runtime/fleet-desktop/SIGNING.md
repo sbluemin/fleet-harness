@@ -11,58 +11,45 @@ users run the x64 build under emulation.
 
 ## Shell-only release model
 
-GitHub Releases publish only native shell installers: macOS `.dmg`/`.zip` and Windows
-`.exe`. The workflow always builds with `--publish never` and uses `gh release upload`
-after package verification. It does not create or upload `latest*.yml` or `.blockmap`
-files: Fleet Console Desktop has no `electron-updater` automatic-update channel.
+GitHub Releases publish native shell installers — macOS `.dmg`/`.zip` and Windows `.exe` —
+together with the updater metadata that lets an installed shell replace itself:
+`latest-mac.yml`, `latest.yml`, and the `.blockmap` files beside them. The workflow always
+builds with `--publish never` and uses `gh release upload` after package verification, so
+uploading stays an explicit workflow step rather than a build side effect.
 
-The signed shell is a one-time download. It procures and updates Fleet Console at runtime
-from the npm registry; the Console package's registry `shasum` integrity metadata, rather
-than the shell installer signature, is the trust basis for downloaded Console code.
+Artifact names must not contain spaces. GitHub rewrites spaces in an uploaded asset name to
+periods while `electron-updater` rewrites them to hyphens, so a single space desynchronizes
+the two and every update download 404s.
 
-Windows signing is **conditional**: that job ships a working unsigned installer until
-SignPath is configured. macOS release packaging is fail-closed — missing credentials
-fail the mac job; it does not publish an unsigned installer.
+The shell installer is downloaded once by hand; after that the shell updates itself from the
+same releases. It still procures and updates Fleet Console separately at runtime from the npm
+registry — the Console package's registry `shasum` integrity metadata, rather than the shell
+installer signature, is the trust basis for downloaded Console code, and the two versions stay
+independent.
+
+Windows installers are **unsigned by design**, which is also why no step may rewrite or replace
+the installer after packaging: the hash recorded in `latest.yml` belongs to the file produced by
+that build, and a substituted file fails the updater's integrity check. macOS release packaging
+is fail-closed — missing credentials fail the mac job; it does not publish an unsigned installer.
+Squirrel.Mac requires the signed, notarized `.zip`, so macOS self-update depends on that job.
 
 ## Current status
 
 | Platform | Signed? | Note |
 |---|---|---|
-| Windows x64 | ❌ (until SignPath configured) | SmartScreen warning on first install |
+| Windows x64 | ❌ by design | SmartScreen warning on first manual install |
 | macOS arm64 | Required (Developer ID Application + notarization) | Repository Actions secrets; job fails if any of the five is missing |
 
-## Windows — SignPath (free for open-source)
+## Windows — unsigned by design
 
-[SignPath Foundation](https://signpath.org) signs OSS projects for free. When configured,
-the Windows job builds and verifies the shell installer, signs it via SignPath, then uploads
-the signed `.exe` to the draft release. No updater manifest is rewritten or published.
+The Windows job builds, verifies and uploads the installer as produced. Nothing signs or
+rewrites it afterwards, so the hash in `latest.yml` always matches the uploaded `.exe` and
+self-update passes its integrity check.
 
-**One-time setup (only a maintainer can do this):**
-
-1. Apply to the SignPath Foundation OSS program and create an **Organization**.
-2. Connect this GitHub repository as a **Trusted Build System** (GitHub Actions connector).
-3. Create a **Project**, a **Signing Policy** (e.g. `release`), and an
-   **Artifact Configuration** for a single `.exe`.
-4. Create a **CI user + API token**.
-
-**Then add these to the GitHub repo** (Settings → Secrets and variables → Actions):
-
-| Kind | Name | Value |
-|---|---|---|
-| Variable | `SIGNPATH_ORGANIZATION_ID` | SignPath organization ID |
-| Variable | `SIGNPATH_PROJECT_SLUG` | project slug (**presence of this turns signing on**) |
-| Variable | `SIGNPATH_SIGNING_POLICY_SLUG` | signing policy slug |
-| Variable | `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` | artifact configuration slug |
-| Secret | `SIGNPATH_API_TOKEN` | SignPath REST API token |
-
-Notes:
-- The **free tier requires manual approval per signing request**. The workflow waits up
-  to 30 minutes (`wait-for-completion-timeout-in-seconds: 1800`) — approve the request in
-  the SignPath dashboard while the release job runs.
-- v1 signs the **installer** (clears the download SmartScreen prompt). Deep-signing the
-  inner binaries (installed `Fleet Console.exe` + native `.node`/`.dll`) — which SignPath
-  can't reach inside NSIS — is a follow-up if you want the *installed* app fully signed
-  (build `--dir` → batch-sign inner PEs → repackage).
+A first manual install therefore shows a SmartScreen publisher warning. Updates applied by
+the installed shell run an installer the app downloaded itself, so they do not go through
+the browser download path that attaches the mark of the web. [Unverified] — confirm on a real
+Windows host before claiming the update path is warning-free.
 
 ## macOS — Developer ID (fail-closed)
 
@@ -94,7 +81,8 @@ root `package.json` `pnpm.supportedArchitectures` config installs on any host.
 ## Validation
 
 Each CI job runs `verify:package` after packaging. The gate requires a shell-only ASAR,
-secure Electron fuses, no embedded runtime payload or sidecar directory, no updater
-metadata, and an Electron binary whose architecture matches the artifact directory.
+secure Electron fuses, no embedded runtime payload or sidecar directory, and an Electron
+binary whose architecture matches the artifact directory. Release artifact verification
+additionally requires updater metadata that names the packaged version.
 The mac job additionally runs `verify:package --release` (Developer ID Application
 authority, stapler validate, and `spctl` assess).

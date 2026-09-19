@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { verifyPackagedApplication } from "./verify-packaged-app.mjs";
-import { isUpdaterArtifact } from "./strip-updater-artifacts.mjs";
 
 const execFileAsync = promisify(execFile);
 const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,7 +13,7 @@ const releaseDirectory = resolve(process.argv[2] ?? join(desktopDirectory, "rele
 const version = JSON.parse(await readFile(join(desktopDirectory, "package.json"), "utf8")).version;
 const target = assertReleaseEnvironment();
 
-await assertNoUpdaterArtifacts(releaseDirectory);
+await assertUpdaterMetadata(releaseDirectory, target.platform);
 if (target.platform === "darwin") await verifyMacRelease();
 if (target.platform === "win32") await verifyWindowsRelease();
 if (target.platform === "linux") await verifyLinuxRelease();
@@ -22,7 +21,7 @@ if (target.platform === "linux") await verifyLinuxRelease();
 console.log(`release artifact verification passed for ${target.value}`);
 
 async function verifyMacRelease() {
-  const artifacts = ["arm64", "x64"].flatMap((architecture) => [`Fleet Console-${version}-mac-${architecture}.zip`, `Fleet Console-${version}-mac-${architecture}.dmg`]);
+  const artifacts = ["arm64", "x64"].flatMap((architecture) => [`Fleet-Console-${version}-mac-${architecture}.zip`, `Fleet-Console-${version}-mac-${architecture}.dmg`]);
   await requireArtifacts(artifacts);
   for (const artifact of artifacts) {
     if (artifact.endsWith(".zip")) await execFileAsync("unzip", ["-t", join(releaseDirectory, artifact)]);
@@ -32,7 +31,7 @@ async function verifyMacRelease() {
 }
 
 async function verifyWindowsRelease() {
-  const installer = `Fleet Console-${version}-win-x64.exe`;
+  const installer = `Fleet-Console-${version}-win-x64.exe`;
   await requireArtifacts([installer]);
   await assertWindowsSignature(join(releaseDirectory, installer));
   await verifyPackagedApplication(findUnpackedDirectory("win", "x64"), "win32");
@@ -80,9 +79,26 @@ function findUnpackedDirectory(platform, architecture) {
   return directory;
 }
 
-async function assertNoUpdaterArtifacts(root) {
-  const entries = await readdir(root, { withFileTypes: true, recursive: true });
-  for (const entry of entries) if (entry.isFile() && isUpdaterArtifact(entry.name)) throw new Error(`Updater artifact is forbidden: ${join(entry.parentPath, entry.name)}`);
+/**
+ * 갱신 메타데이터는 이제 산출물의 일부다 — 셸이 자기 자신을 이 파일로 갱신한다.
+ * 비어 있거나 다른 버전을 가리키는 메타데이터는 없는 것보다 나쁘므로, 이름과 함께 버전도 본다.
+ * Linux는 자동 갱신 대상이 아니라 메타데이터를 요구하지 않는다.
+ */
+function updaterMetadataFileName(platform) {
+  if (platform === "darwin") return "latest-mac.yml";
+  if (platform === "win32") return "latest.yml";
+  return null;
+}
+
+async function assertUpdaterMetadata(root, platform) {
+  const fileName = updaterMetadataFileName(platform);
+  if (!fileName) return;
+  const metadataPath = join(root, fileName);
+  await access(metadataPath);
+  const metadata = await readFile(metadataPath, "utf8");
+  const declared = /^version:\s*(\S+)\s*$/m.exec(metadata)?.[1];
+  if (declared !== version) throw new Error(`${fileName} declares version ${declared ?? "(none)"}, expected ${version}`);
+  if (!metadata.includes(`Fleet-Console-${version}-`)) throw new Error(`${fileName} does not reference the packaged ${version} artifacts`);
 }
 
 function assertReleaseEnvironment() {
