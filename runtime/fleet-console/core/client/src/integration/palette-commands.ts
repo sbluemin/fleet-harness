@@ -4,7 +4,6 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
-import { getCommandBandDocked } from "./fullscreen-band-store.js";
 import { isZenMode } from "./zen-mode.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
@@ -59,7 +58,6 @@ export type PaletteCommandAction =
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "toggle-zen" }
-  | { readonly kind: "toggle-command-band-dock" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
@@ -205,8 +203,6 @@ export function buildPaletteCommands(
   // true면 팔레트가 이미 적용된 선택으로 보아 실행을 건너뛴다.
   const zenKey = isZenMode() ? "zen.exit" : "zen.enter";
   push({ commandId: "toggle-zen", label: t(zenKey), aliasLabel: `${alias(zenKey)} 집중 크롬`, action: { kind: "toggle-zen" }, group: "view", glyph: "console-band", shortcut: "console.toggle-zen" });
-  const bandKey = getCommandBandDocked() ? "palette.stopKeepingCommandBandVisible" : "palette.keepCommandBandVisible";
-  push({ commandId: "toggle-command-band-dock", label: t(bandKey), aliasLabel: alias(bandKey), action: { kind: "toggle-command-band-dock" }, group: "console", glyph: "console-band" });
   for (const theme of buildPaletteThemes(t)) {
     push({ commandId: `switch-theme:${theme.id}`, label: t("palette.switchTheme", { label: theme.label }), aliasLabel: alias("palette.switchTheme", { label: theme.label }), current: theme.id === current.activeTheme, action: { kind: "switch-theme", theme: theme.id }, group: "console", glyph: "console-theme" });
   }

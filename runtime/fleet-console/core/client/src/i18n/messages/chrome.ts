@@ -1,6 +1,5 @@
 export const chromeEn = {
   // command-band
-  "chrome.commandBand.showCommandBand": "Show command band",
   "chrome.commandBand.local": "Local",
   "chrome.commandBand.localDesktop": "Local · Desktop",
   "chrome.commandBand.searchSessions": "Search sessions",
@@ -21,8 +20,6 @@ export const chromeEn = {
   "chrome.commandBand.tacticalGrid": "Grid layout",
   "chrome.commandBand.tacticalColumns": "Columns layout",
   "chrome.commandBand.tacticalRows": "Rows layout",
-  "chrome.commandBand.keepCommandBandVisible": "Keep command band visible",
-  "chrome.commandBand.stopKeepingCommandBandVisible": "Stop keeping command band visible",
   "chrome.commandBand.environment": "Environment",
   "chrome.commandBand.loadingEnvironment": "Loading environment details…",
   "chrome.commandBand.unableToLoadEnvironment": "Unable to load environment details.",
@@ -415,7 +412,6 @@ export const chromeEn = {
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
-  "chrome.commandBand.showCommandBand": "커맨드 밴드를 표시합니다",
   "chrome.commandBand.local": "로컬",
   "chrome.commandBand.localDesktop": "로컬 · Desktop",
   "chrome.commandBand.searchSessions": "세션 검색",
@@ -436,8 +432,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.commandBand.tacticalGrid": "격자 레이아웃",
   "chrome.commandBand.tacticalColumns": "열 레이아웃",
   "chrome.commandBand.tacticalRows": "행 레이아웃",
-  "chrome.commandBand.keepCommandBandVisible": "커맨드 밴드 계속 보이기",
-  "chrome.commandBand.stopKeepingCommandBandVisible": "커맨드 밴드 계속 보이기 해제",
   "chrome.commandBand.environment": "환경",
   "chrome.commandBand.loadingEnvironment": "환경 정보를 불러오는 중…",
   "chrome.commandBand.unableToLoadEnvironment": "환경 정보를 불러올 수 없습니다.",
