@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.99.0] - 2026-09-19
+
+### fleet-cli
+
+#### Removed
+- The standalone `fleet` launcher no longer injects Codex Wiki tools; Wiki remains available through the Console Codex plugin.
+
+### fleet-console
+
+#### Added
+- The Operation Browser now lets you choose between a temporary session and your own profile from the marker beside the tabs. A temporary session forgets everything when its tabs close; your profile keeps signed-in sites on this computer and is shared by every Operation, so switching to it later brings those logins back. Switching sessions closes the open tabs, and the marker's menu can clear the profile.
+- Chrome cookie import now goes into whichever session the Operation is using, and the import window says where the cookies will land. Importing into your profile keeps those logins for later. Importing from Chrome is still unavailable on Windows.
+- Agents using the Console can put an idle terminal Operation to sleep: its process ends, the card stays on the Ended shelf, and Resume brings it back with its session.
+
+#### Fixed
+- The Chrome profile list in the browser import window no longer spills past the edge of a narrow browser panel.
+- An Operation closed by an agent or from another window now leaves the sidebar and canvas immediately, and undoing the close brings it back everywhere without a refresh.
+
 ## [1.98.0] - 2026-09-18
 
 ### fleet-console
