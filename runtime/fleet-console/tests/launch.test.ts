@@ -4,11 +4,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
+import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@fleet-console/agent-runtime/fleet";
 
-import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../core/host/agent/launch.js";
-import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../core/host/terminal/pty.js";
-import type { TerminalLaunchSpec } from "../core/host/terminal/terminal-types.js";
+import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../features/execution/host/agent/launch.js";
+import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../features/execution/host/terminal/pty.js";
+import type { TerminalLaunchSpec } from "../features/execution/host/terminal/terminal-types.js";
 
 interface FakeRuntime {
   readonly carrierRuntime: {

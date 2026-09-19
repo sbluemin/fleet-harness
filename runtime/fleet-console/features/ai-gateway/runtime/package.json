@@ -1,0 +1,48 @@
+{
+  "name": "@fleet-console/ai-gateway",
+  "version": "1.100.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-console/features/ai-gateway/runtime"
+  },
+  "private": true,
+  "author": "sbluemin",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "models.json"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
+    "e2e:provider-loop": "node scripts/provider-loop-e2e.mjs",
+    "probe:claude-auto-compact": "pnpm run build 1>&2 && node scripts/probe-claude-auto-compact.mjs",
+    "probe:claude-codex-compact": "pnpm run build 1>&2 && node scripts/probe-claude-codex-compact.mjs",
+    "probe:cursor-context": "pnpm run build 1>&2 && node scripts/probe-cursor-context-windows.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.0",
+    "@fleet-console/infra": "workspace:*",
+    "zod": "^4.3.6",
+    "@fleet-console/agent-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

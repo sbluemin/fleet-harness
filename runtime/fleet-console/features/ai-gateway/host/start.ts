@@ -1,0 +1,68 @@
+import path from "node:path";
+import { DEFAULT_WIRE_LOG_MAX_BYTES, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
+import type { RouteHandler } from "@fleet-console/sdk/routing";
+interface GatewayStartContext {
+  readonly basePath: string;
+  readonly dataDir: string;
+  readonly legacyDataDir: string;
+  readonly host: {
+    readonly paths: Pick<FleetPluginHostCapabilities["paths"], "fleetDataDir">;
+    readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
+    readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
+    readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
+  };
+  registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
+}
+import { registerAiGatewayRoutes } from "./routes.js";
+import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
+
+function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
+  setWireLogTarget(stored === undefined
+    ? undefined
+    : stored
+      ? {
+        path: path.join(ctx.dataDir, "ai-gateway", "wire-log.jsonl"),
+        maxBytes: DEFAULT_WIRE_LOG_MAX_BYTES,
+      }
+      : null);
+}
+
+function createWireLogRuntime(ctx: GatewayStartContext) {
+  return {
+    enabled: wireLogEnabled,
+    apply: (stored: boolean | undefined) => applyWireLog(ctx, stored),
+  };
+}
+
+function applyStoredWireLog(ctx: GatewayStartContext, read: () => AiGatewayStoredSettings): void {
+  try {
+    applyWireLog(ctx, read().wireLogEnabled);
+  } catch {
+    // 손상된 설정은 환경변수의 로깅 대상을 비활성화한 채 기동한다.
+    applyWireLog(ctx, false);
+  }
+}
+
+export function startAiGateway(ctx: GatewayStartContext) {
+  const authService = createProviderAuthService({ dataDir: ctx.host.paths.fleetDataDir });
+  // AI Gateway 선별의 저장 형태·검증·승계는 core-ai-gateway가 소유한다. 호스트는 이 설정이
+  // 예전에 살던 자기 소유 디렉터리만 알려 주고(플러그인 데이터 슬롯), 그 승계 판단은 하지 않는다.
+  // Apply the stored target before registering routes so no request can observe an uninitialized mode.
+  // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 core가 실제 홈(`~/.fleet`)으로 떨어져,
+  // 격리 루트로 띄운 Console이 사용자의 진짜 설정을 읽고 덮어쓴다.
+  const aiGatewayStore = createAiGatewaySettingsStore({
+    dataDir: ctx.host.paths.fleetDataDir,
+    legacyDir: ctx.legacyDataDir,
+  });
+  const wireLog = createWireLogRuntime(ctx);
+  applyStoredWireLog(ctx, aiGatewayStore.read);
+  ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));
+  registerTerminalModelAuthRoutes(ctx, { authService });
+  const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
+    readAiGatewaySettings: aiGatewayStore.read,
+    readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
+    readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+  });
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime };
+}

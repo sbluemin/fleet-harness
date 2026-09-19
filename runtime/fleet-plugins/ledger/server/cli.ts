@@ -2,8 +2,8 @@ import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:chil
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { resolvePathBinary } from "@dotobokuri/core-process";
-import { withHidden } from "@dotobokuri/core-process";
+import { resolvePathBinary } from "@fleet-console/process";
+import { withHidden } from "@fleet-console/process";
 
 export interface CliResult {
   readonly stdout: string;

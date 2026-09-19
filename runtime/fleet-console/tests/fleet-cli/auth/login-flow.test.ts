@@ -16,8 +16,8 @@ vi.mock("@clack/prompts", () => ({
   select: vi.fn(),
 }));
 
-vi.mock("@dotobokuri/fleet-admiral", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
+vi.mock("@fleet-console/ai-gateway", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@fleet-console/ai-gateway")>();
   return {
     ...actual,
     validateKimiAuthKey: mocks.validate,

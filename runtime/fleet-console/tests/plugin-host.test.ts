@@ -1,5 +1,5 @@
 import http from "node:http";
-import { createMcpHttpTransport } from "../core/host/mcp/http-transport.js";
+import { createMcpHttpTransport } from "../core/host/transport/mcp-http.js";
 import fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import os from "node:os";
@@ -9,11 +9,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
-import { createPluginAdmiralMcpHost } from "../core/host/mcp/plugin-mcp.js";
+import { createPluginAdmiralMcpHost } from "../core/host/plugin-host/mcp.js";
 import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "../core/host/plugin-host/plugin-host.js";
-import { RouteRegistry } from "../core/host/route-registry/registry.js";
-import { UpgradeRegistry } from "../core/host/route-registry/registry.js";
+import { RouteRegistry } from "../core/host/transport/route-registry/registry.js";
+import { UpgradeRegistry } from "../core/host/transport/route-registry/registry.js";
 import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugin-host.js";
 
 const tempDirs: string[] = [];

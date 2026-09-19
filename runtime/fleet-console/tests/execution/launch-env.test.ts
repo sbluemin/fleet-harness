@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chatChildEnv, stripConsoleInternalEnv } from "../../core/host/terminal/launch-env.js";
+import { chatChildEnv, stripConsoleInternalEnv } from "../../features/execution/host/terminal/launch-env.js";
 
 describe("stripConsoleInternalEnv", () => {
   it("removes desktop protocol markers and internal hints while keeping hook-required keys", () => {

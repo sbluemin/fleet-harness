@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalAlternateScreenController } from "../../core/client/src/terminal/shared/terminal-alternate-screen.js";
+import { createTerminalAlternateScreenController } from "../../features/execution/client/terminal/shared/terminal-alternate-screen.js";
 
 interface FakeBuffer {
   readonly type: "normal" | "alternate";

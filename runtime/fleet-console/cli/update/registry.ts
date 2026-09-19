@@ -1,4 +1,4 @@
-import { fetchLatestVersion, type UpdateChannel } from "@dotobokuri/core-agent";
+import { fetchLatestVersion, type UpdateChannel } from "@fleet-console/updates";
 
 export type { UpdateChannel };
 

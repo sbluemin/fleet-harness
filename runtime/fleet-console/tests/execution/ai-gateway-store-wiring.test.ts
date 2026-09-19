@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 // 조용히 폴백하기 때문이다. 그러면 격리 루트로 띄운 Console이 사용자의 진짜 설정을 읽고
 // 덮어쓰는데, 관측 가능한 실패가 하나도 없다. 그래서 배선 자체를 소스 계약으로 고정한다.
 const ROUTES_SOURCE = readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "core", "host", "execution.ts"),
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "features", "ai-gateway", "host", "start.ts"),
   "utf-8",
 );
 
@@ -31,6 +31,6 @@ describe("ai gateway settings store wiring", () => {
     // 다시 들면 두 벌이 갈라진다.
     expect(ROUTES_SOURCE).not.toContain("./server/ai-gateway-settings.js");
     expect(ROUTES_SOURCE).toContain("createAiGatewaySettingsStore");
-    expect(ROUTES_SOURCE).toContain("@dotobokuri/core-ai-gateway");
+    expect(ROUTES_SOURCE).toContain("@fleet-console/ai-gateway");
   });
 });

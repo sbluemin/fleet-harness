@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SERVER = fs.readFileSync(path.join(HERE, "..", "core", "host", "server.ts"), "utf8");
+const SERVER = fs.readFileSync(path.join(HERE, "..", "core", "host", "bootstrap", "server.ts"), "utf8");
 
 /**
  * 플러그인이 코어 SSE 스트림에 채널을 얹는 계약.
@@ -46,7 +46,7 @@ describe("plugin SSE channel wiring", () => {
  */
 describe("theater lifecycle events", () => {
   it("announces register, restore, and forget on the plugin event bus", () => {
-    expect(SERVER).toContain('publishTheaterLifecycle("registered"');
+    expect(fs.readFileSync(path.join(HERE, "..", "features", "workspace", "host", "routes.ts"), "utf8")).toContain('publishTheaterLifecycle("registered"');
     expect(SERVER).toContain('publishTheaterLifecycle("restored"');
     expect(SERVER).toContain('publishTheaterLifecycle("forgotten"');
     expect(SERVER).toMatch(/publishPluginEvent\(`theater:\$\{event\}`/);

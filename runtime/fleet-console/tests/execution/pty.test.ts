@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createShellTerminalLaunchResolver, ensureNodePtySpawnHelpersExecutable } from "../../core/host/terminal/pty.js";
+import { createShellTerminalLaunchResolver, ensureNodePtySpawnHelpersExecutable } from "../../features/execution/host/terminal/pty.js";
 
 const temporaryDirectories: string[] = [];
 

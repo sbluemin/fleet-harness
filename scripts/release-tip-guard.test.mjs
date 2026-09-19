@@ -69,7 +69,7 @@ test('refuses a pattern shape it cannot reason about rather than treating it as 
 test('holds the release only when every changed path is declared release-irrelevant', () => {
   const patterns = ['docs/**', '.github/**', '**.md'];
   assert.equal(areAllPathsIgnorable(['docs/a.txt', 'README.md'], patterns), true);
-  assert.equal(areAllPathsIgnorable(['docs/a.txt', 'runtime/fleet-console/core/host/server.ts'], patterns), false);
+  assert.equal(areAllPathsIgnorable(['docs/a.txt', 'runtime/fleet-console/core/host/bootstrap/server.ts'], patterns), false);
 });
 
 test('stops for markdown that the build turns into a published artifact', () => {

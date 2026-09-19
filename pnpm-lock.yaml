@@ -20,139 +20,6 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
 
-  packages/core-agent:
-    dependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.3.269
-        version: 0.3.269(@anthropic-ai/sdk@0.112.1(zod@4.4.1))(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
-      '@dotobokuri/core-ai-gateway':
-        specifier: workspace:*
-        version: link:../core-ai-gateway
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../core-process
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-      zod:
-        specifier: ^4.3.6
-        version: 4.4.1
-
-  packages/core-ai-gateway:
-    dependencies:
-      '@bufbuild/protobuf':
-        specifier: ^2.12.0
-        version: 2.13.0
-      '@dotobokuri/core-infra':
-        specifier: workspace:*
-        version: link:../core-infra
-      zod:
-        specifier: ^4.3.6
-        version: 4.4.1
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.2)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.2
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/core-infra:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/core-process:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/fleet-admiral:
-    dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../core-agent
-      '@dotobokuri/core-ai-gateway':
-        specifier: workspace:*
-        version: link:../core-ai-gateway
-      '@dotobokuri/core-infra':
-        specifier: workspace:*
-        version: link:../core-infra
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../core-process
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/fleet-analyst:
-    dependencies:
-      '@dotobokuri/core-agent':
-        specifier: workspace:*
-        version: link:../core-agent
-      zod:
-        specifier: ^4.3.6
-        version: 4.4.1
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.2)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.2
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-
   runtime/fleet-console:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -161,36 +28,36 @@ importers:
       '@clack/prompts':
         specifier: 1.4.0
         version: 1.4.0
-      '@dotobokuri/core-agent':
+      '@fleet-console/agent-runtime':
         specifier: workspace:*
-        version: link:../../packages/core-agent
-      '@dotobokuri/core-ai-gateway':
+        version: link:foundation/agent-runtime
+      '@fleet-console/ai-gateway':
         specifier: workspace:*
-        version: link:../../packages/core-ai-gateway
-      '@dotobokuri/core-infra':
+        version: link:features/ai-gateway/runtime
+      '@fleet-console/analyst':
         specifier: workspace:*
-        version: link:../../packages/core-infra
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../../packages/core-process
-      '@dotobokuri/fleet-admiral':
-        specifier: workspace:*
-        version: link:../../packages/fleet-admiral
-      '@dotobokuri/fleet-analyst':
-        specifier: workspace:*
-        version: link:../../packages/fleet-analyst
+        version: link:features/analyst/runtime
       '@fleet-console/computer-use':
         specifier: workspace:*
-        version: link:computer-use
+        version: link:features/computer-use/runtime
       '@fleet-console/font-picker':
         specifier: workspace:*
-        version: link:font-picker
+        version: link:foundation/font-picker
+      '@fleet-console/infra':
+        specifier: workspace:*
+        version: link:foundation/infra
       '@fleet-console/markdown':
         specifier: workspace:*
-        version: link:markdown
+        version: link:foundation/markdown
+      '@fleet-console/process':
+        specifier: workspace:*
+        version: link:foundation/process
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:sdk
+      '@fleet-console/updates':
+        specifier: workspace:*
+        version: link:features/updates
       '@fleet-plugins/codex':
         specifier: workspace:*
         version: link:../fleet-plugins/codex
@@ -319,7 +186,60 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
-  runtime/fleet-console/computer-use:
+  runtime/fleet-console/features/ai-gateway/runtime:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: ^2.12.0
+        version: 2.13.0
+      '@fleet-console/agent-runtime':
+        specifier: workspace:*
+        version: link:../../../foundation/agent-runtime
+      '@fleet-console/infra':
+        specifier: workspace:*
+        version: link:../../../foundation/infra
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+
+  runtime/fleet-console/features/analyst/runtime:
+    dependencies:
+      '@fleet-console/agent-runtime':
+        specifier: workspace:*
+        version: link:../../../foundation/agent-runtime
+      '@fleet-console/ai-gateway':
+        specifier: workspace:*
+        version: link:../../ai-gateway/runtime
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+
+  runtime/fleet-console/features/computer-use/runtime:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
@@ -341,7 +261,37 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
 
-  runtime/fleet-console/font-picker:
+  runtime/fleet-console/features/updates: {}
+
+  runtime/fleet-console/foundation/agent-runtime:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.269
+        version: 0.3.269(@anthropic-ai/sdk@0.112.1(zod@4.4.1))(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
+      '@fleet-console/infra':
+        specifier: workspace:*
+        version: link:../infra
+      '@fleet-console/process':
+        specifier: workspace:*
+        version: link:../process
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
+
+  runtime/fleet-console/foundation/font-picker:
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -357,18 +307,33 @@ importers:
         version: 27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3)
       react:
         specifier: ^19.0.0
-        version: 19.2.7
+        version: 19.2.8
       react-dom:
         specifier: ^19.0.0
-        version: 19.2.7(react@19.2.7)
+        version: 19.2.7(react@19.2.8)
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
       vitest:
         specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.10(@types/node@24.12.2)(jsdom@27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
-  runtime/fleet-console/markdown:
+  runtime/fleet-console/foundation/infra:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+
+  runtime/fleet-console/foundation/markdown:
     dependencies:
       dompurify:
         specifier: ^3.2.7
@@ -389,6 +354,21 @@ importers:
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
+
+  runtime/fleet-console/foundation/process:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
   runtime/fleet-console/protocol:
     devDependencies:
@@ -417,9 +397,6 @@ importers:
 
   runtime/fleet-desktop:
     devDependencies:
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../../packages/core-process
       '@dotobokuri/fleet-console':
         specifier: workspace:*
         version: link:../fleet-console
@@ -429,6 +406,9 @@ importers:
       '@electron/fuses':
         specifier: 2.1.3
         version: 2.1.3
+      '@fleet-console/process':
+        specifier: workspace:*
+        version: link:../fleet-console/foundation/process
       '@fleet-console/protocol':
         specifier: workspace:*
         version: link:../fleet-console/protocol
@@ -484,15 +464,15 @@ importers:
 
   runtime/fleet-plugins/codex:
     dependencies:
-      '@dotobokuri/core-ai-gateway':
+      '@fleet-console/ai-gateway':
         specifier: workspace:*
-        version: link:../../../packages/core-ai-gateway
-      '@dotobokuri/core-infra':
+        version: link:../../fleet-console/features/ai-gateway/runtime
+      '@fleet-console/infra':
         specifier: workspace:*
-        version: link:../../../packages/core-infra
+        version: link:../../fleet-console/foundation/infra
       '@fleet-console/markdown':
         specifier: workspace:*
-        version: link:../../fleet-console/markdown
+        version: link:../../fleet-console/foundation/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -526,7 +506,7 @@ importers:
     dependencies:
       '@fleet-console/markdown':
         specifier: workspace:*
-        version: link:../../fleet-console/markdown
+        version: link:../../fleet-console/foundation/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -561,12 +541,12 @@ importers:
 
   runtime/fleet-plugins/ledger:
     dependencies:
-      '@dotobokuri/core-ai-gateway':
+      '@fleet-console/ai-gateway':
         specifier: workspace:*
-        version: link:../../../packages/core-ai-gateway
-      '@dotobokuri/core-process':
+        version: link:../../fleet-console/features/ai-gateway/runtime
+      '@fleet-console/process':
         specifier: workspace:*
-        version: link:../../../packages/core-process
+        version: link:../../fleet-console/foundation/process
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -595,12 +575,12 @@ importers:
 
   runtime/fleet-plugins/quota:
     dependencies:
-      '@dotobokuri/core-ai-gateway':
+      '@fleet-console/ai-gateway':
         specifier: workspace:*
-        version: link:../../../packages/core-ai-gateway
-      '@dotobokuri/core-infra':
+        version: link:../../fleet-console/features/ai-gateway/runtime
+      '@fleet-console/infra':
         specifier: workspace:*
-        version: link:../../../packages/core-infra
+        version: link:../../fleet-console/foundation/infra
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -629,9 +609,9 @@ importers:
 
   runtime/fleet-plugins/repository:
     dependencies:
-      '@dotobokuri/core-process':
+      '@fleet-console/process':
         specifier: workspace:*
-        version: link:../../../packages/core-process
+        version: link:../../fleet-console/foundation/process
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -665,7 +645,7 @@ importers:
     dependencies:
       '@fleet-console/markdown':
         specifier: workspace:*
-        version: link:../../fleet-console/markdown
+        version: link:../../fleet-console/foundation/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -700,12 +680,12 @@ importers:
 
   runtime/fleet-plugins/skills:
     dependencies:
-      '@dotobokuri/core-process':
-        specifier: workspace:*
-        version: link:../../../packages/core-process
       '@fleet-console/markdown':
         specifier: workspace:*
-        version: link:../../fleet-console/markdown
+        version: link:../../fleet-console/foundation/markdown
+      '@fleet-console/process':
+        specifier: workspace:*
+        version: link:../../fleet-console/foundation/process
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk
@@ -10023,7 +10003,6 @@ snapshots:
     dependencies:
       react: 19.2.8
       scheduler: 0.27.0
-    optional: true
 
   react-is@18.3.1: {}
 
@@ -10845,6 +10824,34 @@ snapshots:
       - tsx
       - yaml
 
+  vitest@4.1.10(@types/node@24.12.2)(jsdom@27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3)):
+    dependencies:
+      '@vitest/expect': 4.1.10
+      '@vitest/mocker': 4.1.10(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/pretty-format': 4.1.10
+      '@vitest/runner': 4.1.10
+      '@vitest/snapshot': 4.1.10
+      '@vitest/spy': 4.1.10
+      '@vitest/utils': 4.1.10
+      es-module-lexer: 2.1.0
+      expect-type: 1.3.0
+      magic-string: 0.30.21
+      obug: 2.1.1
+      pathe: 2.0.3
+      picomatch: 4.0.4
+      std-env: 4.1.0
+      tinybench: 2.9.0
+      tinyexec: 1.1.2
+      tinyglobby: 0.2.16
+      tinyrainbow: 3.1.0
+      vite: 7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 24.12.2
+      jsdom: 27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3)
+    transitivePeerDependencies:
+      - msw
+
   vitest@4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.10
@@ -10870,34 +10877,6 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.12.2
       jsdom: 29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3)
-    transitivePeerDependencies:
-      - msw
-
-  vitest@4.1.5(@types/node@24.12.2)(jsdom@27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3)):
-    dependencies:
-      '@vitest/expect': 4.1.5
-      '@vitest/mocker': 4.1.5(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
-      '@vitest/pretty-format': 4.1.5
-      '@vitest/runner': 4.1.5
-      '@vitest/snapshot': 4.1.5
-      '@vitest/spy': 4.1.5
-      '@vitest/utils': 4.1.5
-      es-module-lexer: 2.1.0
-      expect-type: 1.3.0
-      magic-string: 0.30.21
-      obug: 2.1.1
-      pathe: 2.0.3
-      picomatch: 4.0.4
-      std-env: 4.1.0
-      tinybench: 2.9.0
-      tinyexec: 1.1.2
-      tinyglobby: 0.2.16
-      tinyrainbow: 3.1.0
-      vite: 7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 24.12.2
-      jsdom: 27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3)
     transitivePeerDependencies:
       - msw
 

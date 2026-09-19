@@ -4,10 +4,10 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "@fleet-console/computer-use/codex-transport";
-import { ComputerUseService } from "../../core/host/agent/computer-use.js";
+import { ComputerUseService } from "../../features/computer-use/host/computer-use.js";
 import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "@fleet-console/computer-use";
 import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { createComputerUseMcpHost } from "../../core/host/mcp/computer-use.js";
+import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
 
 const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}) });
 

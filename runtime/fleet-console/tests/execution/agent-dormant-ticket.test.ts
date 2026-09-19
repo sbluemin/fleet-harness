@@ -3,18 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
-import { MAX_LAUNCH_PROMPT_CHARS } from "@dotobokuri/fleet-admiral";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../../core/host/agent/launch.js";
-import { registerAgentRoutes } from "../../core/host/agent/routes.js";
-import type { TerminalRuntime } from "../../core/host/terminal/index.js";
-import { createPluginTerminalTicketRegistry } from "../../core/host/terminal/tickets.js";
-import type { TerminalTicketContext } from "../../core/host/terminal/terminal-types.js";
+import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../../features/execution/host/agent/launch.js";
+import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
+import type { TerminalRuntime } from "../../features/execution/host/terminal/index.js";
+import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
+import type { TerminalTicketContext } from "../../features/execution/host/terminal/terminal-types.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 const temporaryDirectories: string[] = [];

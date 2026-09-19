@@ -9,20 +9,20 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 export default defineConfig({
   resolve: {
     alias: {
-      "@dotobokuri/core-agent/claude": path.join(workspaceRoot, "packages/core-agent/src/claude"),
-      "@dotobokuri/core-agent": path.join(workspaceRoot, "packages/core-agent/src"),
-      "@dotobokuri/core-ai-gateway": path.join(workspaceRoot, "packages/core-ai-gateway/src"),
-      "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
+      "@fleet-console/agent-runtime/claude": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/claude"),
+      "@fleet-console/agent-runtime": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src"),
+      "@fleet-console/ai-gateway": path.join(workspaceRoot, "runtime/fleet-console/features/ai-gateway/runtime/src"),
+      "@fleet-console/agent-runtime/fleet": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/fleet"),
       // 서브패스 alias는 bare alias보다 먼저 와야 한다: 접두 매칭이라 뒤에 두면 절대 도달하지 않는다.
-      "@dotobokuri/core-infra/data-dir/settings": path.join(workspaceRoot, "packages/core-infra/src/data-dir/settings/store.ts"),
-      "@dotobokuri/core-infra/data-dir": path.join(workspaceRoot, "packages/core-infra/src/data-dir/paths.ts"),
-      "@dotobokuri/core-infra/workspace-dir": path.join(workspaceRoot, "packages/core-infra/src/workspace-dir/workspace-dir.ts"),
-      "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
+      "@fleet-console/infra/data-dir/settings": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/settings/store.ts"),
+      "@fleet-console/infra/data-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/paths.ts"),
+      "@fleet-console/infra/workspace-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/workspace-dir/workspace-dir.ts"),
+      "@fleet-console/infra": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src"),
     },
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.{ts,tsx}", "core/host/agent/**/*.test.ts", "core/client/src/agent/**/*.test.{ts,tsx}"],
+    include: ["tests/**/*.test.{ts,tsx}", "features/*/host/**/*.test.ts", "features/*/client/**/*.test.{ts,tsx}"],
     // built smoke self-skips unless FLEET_BUILT_SMOKE=1; keep it discoverable for explicit runs.
     // 파일의 첫 테스트는 그 파일 모듈 그래프의 transform/import 비용을 혼자 지불한다 — 전체 스위트를
     // 병렬로 돌릴 때 그 비용이 기본 5초를 넘겨서, 로직과 무관한 첫 테스트만 타임아웃으로 죽는다.

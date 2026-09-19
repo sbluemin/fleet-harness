@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalSessionManager } from "../core/host/terminal/session-manager.js";
-import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../core/host/terminal/terminal-types.js";
+import { createTerminalSessionManager } from "../features/execution/host/terminal/session-manager.js";
+import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../features/execution/host/terminal/terminal-types.js";
 
 interface MockPty extends TerminalPtyHandle {
   readonly writes: Array<string | Buffer>;

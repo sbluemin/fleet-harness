@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createPluginSettingsRouter } from "../core/host/settings/settings-domain.js";
-import type { ConsoleSettingsData } from "../core/host/settings/settings-domain.js";
+import { createPluginSettingsRouter } from "../features/settings/host/settings-domain.js";
+import type { ConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 
 interface WriteJsonCall {
   readonly status: number;

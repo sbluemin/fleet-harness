@@ -1,0 +1,32 @@
+{
+  "name": "@fleet-console/analyst",
+  "version": "1.100.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist",
+    "CLAUDE.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fleet-console/agent-runtime": "workspace:*",
+    "zod": "^4.3.6",
+    "@fleet-console/ai-gateway": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

@@ -1,18 +1,15 @@
-import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
+import { findGatewayModel } from "@fleet-console/ai-gateway";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createConsoleControl } from "../../core/host/mcp/console-control.js";
+import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 
-import {
-	type GatewayLoadout,
-	type GatewayQuotaSnapshot,
-	isHostSessionToolAllowed,
-} from "@dotobokuri/fleet-admiral";
-import { createAiGatewayMcpHost } from "../../core/host/mcp/ai-gateway.js";
-import { createConsoleUseMcpHost } from "../../core/host/mcp/console-use.js";
+import { type GatewayLoadout, type GatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
+import { isHostSessionToolAllowed } from "@fleet-console/agent-runtime/fleet";
+import { createAiGatewayMcpHost } from "../../features/ai-gateway/host/mcp.js";
+import { createConsoleUseMcpHost } from "../../features/console-use/host/console-use.js";
 import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
 
 let lifecycle: ConsoleUseMcpConnection | undefined;

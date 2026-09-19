@@ -36,7 +36,7 @@ operations; they are not delegated.
 ## 2. Delegation Policy Surface
 
 Fleet contributes a single English host-routing entrypoint from
-`packages/fleet-admiral/src/ai-gateway/host-prompt.ts`. POSIX CLI launches pass
+`runtime/fleet-console/foundation/agent-runtime/src/fleet/ai-gateway/host-prompt.ts`. POSIX CLI launches pass
 `--append-system-prompt`; Windows launches use `--append-system-prompt-file`
 with a private temporary file, shim-safe path validation, and launch-owned cleanup.
 
@@ -61,7 +61,7 @@ owns live roster spellings, constraints, and execution availability. There is
 no `gateway_models` tool or `fleet:delegation` skill.
 
 The command hook at
-`packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
+`runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
 Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, handles Workflow receipts and the
 SessionStart version stamp, selected by its first argument:
 
@@ -117,11 +117,11 @@ once per identity would put the same table in the session window twenty times ov
 
 Runtime state is read through direct owners:
 
-- Workflow receipt and version stamp: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand policy assets: `packages/fleet-admiral/assets/ai-gateway/`, generated into `EMBEDDED_AI_GATEWAY_ASSETS` and served through `buildGatewayPolicyResources`. These resources own detailed routing doctrine; no Fleet skills are rendered.
+- Workflow receipt and version stamp: `runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- On-demand policy assets: `runtime/fleet-console/features/ai-gateway/runtime/assets/ai-gateway/`, generated into `EMBEDDED_AI_GATEWAY_ASSETS` and served through `buildGatewayPolicyResources`. These resources own detailed routing doctrine; no Fleet skills are rendered.
 - Model facts: `runtime/fleet-console/core/host/mcp/gateway-models.ts`, served as `fleet://ai-gateway/models` by `fleet-ai-gateway`. The host reads the live roster directly, with no hook receipt.
-- Executor/session/model state: `@dotobokuri/core-agent`
-- MCP registry/server state: `@dotobokuri/core-agent`
+- Executor/session/model state: `@fleet-console/agent-runtime`
+- MCP registry/server state: `@fleet-console/agent-runtime`
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. MCP registry/server state stays live for tool exposure, but no longer

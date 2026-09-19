@@ -4,9 +4,9 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 1. Architecture State
 
-- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, an in-process AI Gateway MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
-- `packages/core-agent` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
-- `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
+- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, an in-process AI Gateway MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@fleet-console/agent-runtime/fleet`.
+- `runtime/fleet-console/foundation/agent-runtime` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
+- `runtime/fleet-console/foundation/infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
 - `runtime/fleet-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
 
@@ -15,7 +15,7 @@ This document is the operational doctrine for agents working inside this reposit
 The `fleet` launcher (under `runtime/fleet-console/cli`) owns:
 - Thin argv dispatch and process lifecycle for Claude Code passthrough, `fleet auth`, `fleet update`, and `fleet console`.
 - An in-process AI Gateway MCP and an ephemeral loopback AI Gateway for the Claude child.
-- Host adapters that consume Admiral prompt/protocol/tool policy from `@dotobokuri/fleet-admiral`.
+- Host adapters that consume Admiral prompt/protocol/tool policy from `@fleet-console/agent-runtime/fleet`.
 - Concrete runtime assembly in `cli/runtime/runtime.ts`.
 
 It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
@@ -24,24 +24,32 @@ It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructur
 
 ```text
 @dotobokuri/fleet-console
-  (package-local: cli/ thin fleet launcher + Console service)
-  -> fleet-admiral
-  -> core-agent
-  -> core-infra
+  (package-local: cli/ launcher + core/ composition + features/)
+  -> @fleet-console/ai-gateway, @fleet-console/analyst, @fleet-console/updates,
+     @fleet-console/computer-use
+  -> @fleet-console/agent-runtime, @fleet-console/infra, @fleet-console/process,
+     @fleet-console/markdown, @fleet-console/font-picker
+  -> @fleet-console/sdk, @fleet-console/protocol
 
-core-agent / core-infra
-  -> core-agent
+@fleet-console/ai-gateway / @fleet-console/analyst
+  -> @fleet-console/agent-runtime
+  -> @fleet-console/infra
+
+@fleet-console/agent-runtime
+  -> @fleet-console/infra
+  -> @fleet-console/process
 ```
 
 Forbidden patterns:
-- Lower packages importing a runtime host (`runtime/fleet-console` or `runtime/fleet-desktop`).
+- Foundation importing a feature, `core/`, `cli/`, or a plugin — implementations and contracts alike.
+- The agent substrate (`/tools`, `/mcp`, `/claude`) importing its own Fleet policy layer (`/fleet`).
 - Recreating deleted compatibility packages or namespace facades.
 - Deep-importing package `src/**` or `internal/**` across package boundaries.
 
 ## 4. Operational Guidance For Agents
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
-2. Keep Admiral runtime policy under `packages/fleet-admiral`; use `assets/hooks/` and `assets/skills/` only as the embedded hook and skill authoring sources.
+2. Keep shared Fleet execution policy under `runtime/fleet-console/foundation/agent-runtime/src/fleet/`, and Gateway model exposure and delegation identities under `runtime/fleet-console/features/ai-gateway/runtime/src/fleet/`. Their `assets/hooks/` and `assets/ai-gateway/` trees are authoring sources only: hooks ship inside the launched plugin, routing guidance ships as on-demand MCP resources.
 3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
 4. Use the embedded `professional-pushback` skill when a requested approach has a material technical flaw and `delegation` to plan the smallest useful evidence graph and integrate its results.
 5. Keep Fleet pin syntax out of the semantic skill, but require the roster lookup there: the skill's preflight makes the host call `gateway_models` itself, and per-dispatch identity choice is the skill's semantic policy — no pre-dispatch hook judges a pin. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.

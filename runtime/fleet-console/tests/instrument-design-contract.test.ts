@@ -11,22 +11,24 @@ import {
   PANE_CONTAINER_INSET_ALLOWANCE,
   PANE_WIDTH_CLASS_PX,
   resolvePaneDefaultWidth,
-} from "../core/client/src/rail/pane-width.js";
+} from "../core/client/src/chrome/rail/pane-width.js";
 
 const CONSOLE_ROOT = new URL("../", import.meta.url);
 const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
 const PRODUCT_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
+  new URL("features/", CONSOLE_ROOT),
   new URL("sdk/", CONSOLE_ROOT),
   new URL("../fleet-plugins/", CONSOLE_ROOT),
 ] as const;
 const CSS_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
+  new URL("features/", CONSOLE_ROOT),
   new URL("../fleet-plugins/", CONSOLE_ROOT),
 ] as const;
 const STANDALONE_CSS_SOURCES = [
-  new URL("markdown/styles.css", CONSOLE_ROOT),
-  new URL("font-picker/styles.css", CONSOLE_ROOT),
+  new URL("foundation/markdown/styles.css", CONSOLE_ROOT),
+  new URL("foundation/font-picker/styles.css", CONSOLE_ROOT),
 ] as const;
 const CODEX_COMPONENTS_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/components.css", CONSOLE_ROOT);
 const CODEX_LAYOUT_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
@@ -47,32 +49,32 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
-const TERMINAL_AGENT_PATH = new URL("../core/client/src/agent/index.tsx", import.meta.url);
-const TERMINAL_ANALYSIS_CSS_PATH = new URL("../core/client/src/agent/analysis.css", import.meta.url);
-const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../core/client/src/agent/agent-cli.css", import.meta.url);
-const TERMINAL_SURFACE_PATH = new URL("../core/client/src/terminal/shared/terminal-surface.tsx", import.meta.url);
-const TERMINAL_CHAT_VIEW_PATH = new URL("../core/client/src/agent/chat/chat-view.tsx", import.meta.url);
-const TERMINAL_CHAT_COMPOSER_PATH = new URL("../core/client/src/agent/chat/composer.tsx", import.meta.url);
-const TERMINAL_CHAT_CSS_PATH = new URL("../core/client/src/agent/chat/chat.css", import.meta.url);
+const TERMINAL_AGENT_PATH = new URL("../features/execution/client/agent/index.tsx", import.meta.url);
+const TERMINAL_ANALYSIS_CSS_PATH = new URL("../features/analyst/client/analysis.css", import.meta.url);
+const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/agent-cli.css", import.meta.url);
+const TERMINAL_SURFACE_PATH = new URL("../features/execution/client/terminal/shared/terminal-surface.tsx", import.meta.url);
+const TERMINAL_CHAT_VIEW_PATH = new URL("../features/execution/client/agent/chat/chat-view.tsx", import.meta.url);
+const TERMINAL_CHAT_COMPOSER_PATH = new URL("../features/execution/client/agent/chat/composer.tsx", import.meta.url);
+const TERMINAL_CHAT_CSS_PATH = new URL("../features/execution/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
 const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
 const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
-const FONT_PICKER_CSS_PATH = new URL("../font-picker/styles.css", import.meta.url);
+const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
-  "app.tsx",
-  "canvas/canvas-store.ts",
-  "canvas/canvas-overlays.tsx",
-  "canvas/canvas-context-menu.tsx",
-  "canvas/canvas-minimap.tsx",
-  "canvas/canvas.tsx",
-  "pages/operations.tsx",
-  "components/command-band.tsx",
-  "components/command-band-system-cluster.tsx",
-  "sidebar/operations-side-bar.tsx",
+  "app/app.tsx",
+  "../../../features/workspace/client/canvas/canvas-store.ts",
+  "../../../features/workspace/client/canvas/canvas-overlays.tsx",
+  "../../../features/workspace/client/canvas/canvas-context-menu.tsx",
+  "../../../features/workspace/client/canvas/canvas-minimap.tsx",
+  "../../../features/workspace/client/canvas/canvas.tsx",
+  "../../../features/workspace/client/operations.tsx",
+  "chrome/components/command-band.tsx",
+  "chrome/components/command-band-system-cluster.tsx",
+  "../../../features/workspace/client/sidebar/operations-side-bar.tsx",
   "styles/theme.css",
   "styles/components.css",
   "styles/layout.css",
@@ -609,7 +611,7 @@ describe("Instrument core design contract", () => {
 
   it("keeps one control grammar on the caption band", () => {
     const components = source("styles/components.css");
-    const frame = source("canvas/operation-frame.tsx");
+    const frame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     const shelf = externalSource(SDK_CAPTION_ACTIONS_PATH);
 
     // 마크 버튼은 창 컨트롤과 한 선택자에서 규칙을 받는다 — 밴드 하나가 두 벌의 격자를 갖지 않게.
@@ -665,7 +667,7 @@ describe("Instrument core design contract", () => {
   it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
     const types = externalSource(SDK_RAIL_TYPES_PATH);
     const version = externalSource(SDK_VERSION_PATH);
-    const rightRail = source("rail/right-rail.tsx");
+    const rightRail = source("chrome/rail/right-rail.tsx");
     expect(version).toContain("SDK_API_VERSION = 1");
     for (const field of ["RailPathContext", "pathContext", "selectPathContext", "pathAware"]) expect(types).toContain(field);
     expect(types.match(/@deprecated/g)?.length).toBeGreaterThanOrEqual(4);
@@ -685,7 +687,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the War Room entry sweep without an ambient scan line", () => {
-    const canvas = source("canvas/canvas.tsx");
+    const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
 
     expect(canvas).not.toContain("canvas-triage-scan");
@@ -697,7 +699,7 @@ describe("Instrument core design contract", () => {
   it("denies the canvas a scroll port so a focused overhanging descendant cannot shift the board", () => {
     const components = source("styles/components.css");
     const canvasBlock = components.match(/\n\.operations-canvas \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const contextMenu = source("canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
 
     // hidden은 스크롤바만 감출 뿐 스크롤 포트를 남긴다 — 밖으로 나간 자손에 포커스가 닿으면
     // 브라우저가 이 컨테이너를 굴려 판 전체가 밀린 채 남는다. clip은 그 포트를 만들지 않는다.
@@ -710,7 +712,7 @@ describe("Instrument core design contract", () => {
   it("lets each theme own the Map terrain while the canvas CSS stays theme-blind", () => {
     const components = source("styles/components.css");
     const theme = source("styles/theme.css");
-    const overlays = source("canvas/canvas-overlays.tsx");
+    const overlays = source("../../../features/workspace/client/canvas/canvas-overlays.tsx");
 
     // Map의 두 바닥은 채널을 소비만 한다 — 연출 리터럴이 여기로 돌아오면 세 다크가 다시 한 판을 쓴다.
     expect(components).toContain(".operations-canvas-sea {\n  background: var(--canvas-field);\n}");
@@ -769,7 +771,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the Map canvas out of the keyboard focus order", () => {
-    const canvas = source("canvas/canvas.tsx");
+    const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const theme = source("styles/theme.css");
     // tabindex=-1이면 채팅 로그처럼 포커스 불가한 본문을 누른 뒤 Enter가 바다에 brass 링을 남긴다.
     expect(canvas).not.toContain("tabIndex={-1}");
@@ -780,7 +782,7 @@ describe("Instrument core design contract", () => {
 
   it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
     const menuBlock = components.match(/\n\.canvas-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
 
     // 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼 읽힌다 — 스크롤 포트(휠·키보드·
@@ -804,10 +806,10 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps minimap navigation and collapse controls while hiding Map in Formation and maximize", () => {
-    const minimap = source("canvas/canvas-minimap.tsx");
-    const canvas = source("canvas/canvas.tsx");
+    const minimap = source("../../../features/workspace/client/canvas/canvas-minimap.tsx");
+    const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
-    const contextMenu = source("canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
     expect(minimap).toContain('{t("canvas.minimap.label")}');
     expect(minimap).toContain("onPointerMove={onPointerMove}");
     expect(minimap).toContain("onJump({");
@@ -962,10 +964,10 @@ describe("Instrument core design contract", () => {
      페이지 컴포넌트는 번들러 가상 모듈(virtual:fleet-plugins)을 끌어와 단위 렌더가 불가능하므로
      (quick-launch.ts의 같은 주석), 이 파일의 다른 설정 계약과 같은 소스 수준으로 못박는다. */
   it("locks the liquid glass row to the material actually on screen under the light theme", () => {
-    const settings = source("settings/sections.tsx");
+    const settings = source("../../../features/settings/client/sections.tsx");
 
     // 극성 판정은 store의 단일 소유자를 쓴다 — 여기서 === "whites"를 다시 쓰면 두 번째 진실이 된다.
-    expect(settings).toMatch(/import \{[^}]*\bthemePolarity\b[^}]*\} from "\.\.\/store\.js";/);
+    expect(settings).toMatch(/import \{[^}]*\bthemePolarity\b[^}]*\} from "\.\.\/\.\.\/\.\.\/core\/client\/src\/integration\/store\.js";/);
     expect(settings).toMatch(/const lightTheme = themePolarity\(activeTheme\) === "light";/);
 
     // 손잡이는 저장값이 아니라 화면에 실린 재질을 말한다.
@@ -991,7 +993,7 @@ describe("Instrument core design contract", () => {
      뷰포트 미디어는 침묵한다). */
   it("retires the appearance preview and stacks the settings pane by container, not viewport", () => {
     const components = source("styles/components.css");
-    const settings = source("settings/sections.tsx");
+    const settings = source("../../../features/settings/client/sections.tsx");
 
     expect(components).not.toContain("appearance-preview");
     expect(settings).not.toContain("AppearancePreview");
@@ -1110,7 +1112,7 @@ describe("Instrument core design contract", () => {
   // 게이트는 그 자리가 비었는지만 묻는다.
   it("gates the band underflow on an empty shell-bar slot, not a list of bars", () => {
     const layout = source("styles/layout.css");
-    const app = source("app.tsx");
+    const app = source("app/app.tsx");
 
     // 래퍼는 상자를 만들지 않는다 — 있으나 없으나 레이아웃이 같아야 도입 비용이 0이다.
     expect(layout).toMatch(/\.console-shell-bars \{[^}]*display: contents;/);
@@ -1257,7 +1259,7 @@ describe("Instrument core design contract", () => {
       if (CSS_THEME_SOURCES.some((theme) => fileURLToPath(theme) === file)) continue;
       // markdown/styles.css는 vendored highlight.js 팔레트(github-dark ↔ github) 전체가 파일 상단
       // doctrine 주석으로 예외 선언된 표면이다. 신택스 역할색은 --syntax-* 채널이 따로 지고 있다.
-      if (file === fileURLToPath(new URL("markdown/styles.css", CONSOLE_ROOT))) continue;
+      if (file === fileURLToPath(new URL("foundation/markdown/styles.css", CONSOLE_ROOT))) continue;
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
       const report = (index: number, snippet: string) => {
@@ -1325,8 +1327,8 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps user identity on the caption and chip title ink and off the caption fill, chip spine, and state border channel", () => {
-    const frame = source("canvas/operation-frame.tsx");
-    const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const frame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
+    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const titleIdleBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
     const titleActiveBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\]\.is-active > \.canvas-operation-titlebar \.canvas-operation-identity-name \{[^}]*\}/)?.[0] ?? "";
@@ -1374,7 +1376,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the caption group chip — the group colour lives inside the chip and never on the caption fill", () => {
-    const frame = source("canvas/operation-frame.tsx");
+    const frame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     const components = source("styles/components.css");
     const chipBlock = components.match(/\.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
     const activeBlock = components.match(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
@@ -1412,8 +1414,8 @@ describe("Instrument core design contract", () => {
   it("keeps no Operation caption owned by a surface that is no longer an Operation", () => {
     // Shell이 확대 표면으로 옮겨 가면서 캡션의 Theater 라벨은 채울 주체를 잃었다.
     // 규칙만 남으면 다음 사람이 "무엇이 이걸 그리나"를 코드에서 되짚어야 한다.
-    const canvas = source("canvas/canvas.tsx");
-    const nameMark = source("components/operation-name-mark.tsx");
+    const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
+    const nameMark = source("../../../features/execution/client/components/operation-name-mark.tsx");
 
     expect(canvas).not.toContain('operation.type === "shell"');
     expect(nameMark).not.toContain("ShellKindMark");
@@ -1458,20 +1460,20 @@ describe("Instrument core design contract", () => {
     // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .operation-provider-mark 대조표는
     // 퇴역했다 — 실행 좌표의 톤은 --launch-provider-tone 축이 맡는다(아래 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
-    const quickLaunch = source("components/quick-launch.tsx");
+    const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
     // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
     expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
-    expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
-    expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
-    expect(source("components/operation-search.tsx")).not.toContain("operation-provider-mark");
+    expect(source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
+    expect(source("chrome/components/command-band.tsx")).not.toContain("operation-provider-mark");
+    expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-provider-mark");
     expect(quickLaunch).not.toContain("launchProviderGlyph(entry.launchProvider)");
     expect(quickLaunch).not.toContain("launchProviderGlyph(mentionTarget.entry.launchProvider)");
     // 팔레트와 Quick Launch 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
     // 뱃지를 되살리면 같은 사실이 한 행에서 두 번 발화된다.
-    expect(source("components/operation-search.tsx")).toContain("<OperationNameMark");
-    expect(source("components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
-    expect(source("components/operation-search.tsx")).not.toContain("operation-search-status--");
+    expect(source("chrome/components/operation-search.tsx")).toContain("<OperationNameMark");
+    expect(source("chrome/components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
+    expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-search-status--");
     expect(quickLaunch).toContain("<OperationNameMark");
     expect(quickLaunch).toContain("resolveOperationMarkVisual");
     expect(quickLaunch).not.toContain("operation-search-status--");
@@ -1760,7 +1762,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the demoted dormant shelf outside the live queue", () => {
-    const sidebar = source("sidebar/triage-side-bar.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
     const components = source("styles/components.css");
     const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
     const caption = components.match(/\.side-bar-status-header \{[^}]*\}/)?.[0] ?? "";
@@ -1816,24 +1818,24 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps Formation and maximize store contracts without the retired focus mode", () => {
-    const store = source("canvas/canvas-store.ts");
+    const store = source("../../../features/workspace/client/canvas/canvas-store.ts");
     expect(store).toContain("toggleFormationView");
     expect(store).not.toContain("MapFullscreen");
     expect(store).toContain("setMaximizedOperationId");
   });
 
   it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
-    const app = source("app.tsx");
-    const operations = source("pages/operations.tsx");
-    const sidebar = source("sidebar/operations-side-bar.tsx");
-    const sideBarStore = source("sidebar/operations-side-bar-store.ts");
-    const idleArrival = source("operation-marks.ts");
-    const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const app = source("app/app.tsx");
+    const operations = source("../../../features/workspace/client/operations.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
+    const sideBarStore = source("../../../features/workspace/client/sidebar/operations-side-bar-store.ts");
+    const idleArrival = source("../../../features/execution/client/operation-marks.ts");
+    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const theme = source("styles/theme.css");
-    const activity = source("operation-activity.ts");
-    const commandBand = source("components/command-band.tsx");
-    const watchDeck = source("canvas/triage-watch-deck.tsx");
+    const activity = source("../../../features/execution/client/operation-activity.ts");
+    const commandBand = source("chrome/components/command-band.tsx");
+    const watchDeck = source("../../../features/workspace/client/canvas/triage-watch-deck.tsx");
 
     // 조합은 등록부가 정한다(기본 Alt+S, Settings에서 재배정 가능) — 리터럴 키 판정이 되돌아오면 안 된다.
     expect(operations).toContain('matchesShortcutCommand(event, "operations.sort-by-status")');
@@ -1841,7 +1843,7 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain("toggleSideBarStatusAxis();");
     // 상태별 보기는 스위치 하나다 — 스트립에 토글로 한 번만 서고(Theater 행에 되돌리면 배치가
     // 스코프를 속인다), 켜지면 Theater마다 상태 섹션이 선다. 기본 화면은 Theater 묶음만 말한다.
-    const triageSidebar = source("sidebar/triage-side-bar.tsx");
+    const triageSidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
     expect(sidebar).not.toContain("operations-side-bar-axis");
     expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} />");
@@ -1963,7 +1965,7 @@ describe("Instrument core design contract", () => {
     // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
     expect(commandBand).not.toContain("resolveOperationMarkVisual");
     // 지도 점은 함대 지도(Cruise 축소)가 그린다 — 덱은 칸에 패널을 세울 뿐 마크 축을 소비하지 않는다.
-    expect(source("canvas/fleet-map.tsx")).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
+    expect(source("../../../features/workspace/client/canvas/fleet-map.tsx")).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
     expect(watchDeck).not.toContain("resolveOperationMarkVisual");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
@@ -2024,9 +2026,9 @@ describe("Instrument core design contract", () => {
 
   it("pins the selectable Right Rail panel behavior contract", () => {
     const rail = source("styles/rail.css");
-    const rightRail = source("rail/right-rail.tsx");
-    const settingsPane = source("settings/settings-pane.tsx");
-    const railStore = source("rail/rail-store.ts");
+    const rightRail = source("chrome/rail/right-rail.tsx");
+    const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
+    const railStore = source("chrome/rail/rail-store.ts");
     // 전면 해도 개편: push/overlay 이원은 퇴역했다 — 부유 카드가 유일한 형태이고, "가리지
     // 않는다"는 구 push 기대는 아레나 인셋이 승계한다. 이원의 잔재가 되살아나면 레일이
     // 두 재질·두 기하로 갈라진다.
@@ -2098,11 +2100,11 @@ describe("Instrument core design contract", () => {
     expect(rail).not.toContain(".right-rail-menu");
     expect(rightRail).toContain("onDoubleClick={handleResetCardWidth}");
     expect(rail).toMatch(/\.right-rail \{[^}]*overflow: hidden;/);
-    expect(source("components/command-band-system-cluster.tsx")).toContain('from "./use-menu-button-keyboard.js"');
+    expect(source("chrome/components/command-band-system-cluster.tsx")).toContain('from "./use-menu-button-keyboard.js"');
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
-    expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
-    expect(source("canvas/operation-frame.tsx")).toContain("capturing: false");
+    expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
+    expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).toContain("capturing: false");
   });
 
   it("pins the popup opacity underlay contract", () => {
@@ -2176,8 +2178,8 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
-    const app = source("app.tsx");
-    const commandBand = source("components/command-band.tsx");
+    const app = source("app/app.tsx");
+    const commandBand = source("chrome/components/command-band.tsx");
     const theme = source("styles/theme.css");
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
@@ -2200,10 +2202,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("command-band-sidebar-toggle");
     expect(commandBand).not.toContain("command-band-rail-toggle");
     expect(commandBand).not.toContain("panelTogglesVisible");
-    const sidebarPanelSource = source("sidebar/operations-side-bar.tsx");
-    const triageSidebarSource = source("sidebar/triage-side-bar.tsx");
-    const railPanelSource = source("rail/right-rail.tsx");
-    const edgeDocks = source("components/panel-edge-docks.tsx");
+    const sidebarPanelSource = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
+    const triageSidebarSource = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
+    const railPanelSource = source("chrome/rail/right-rail.tsx");
+    const edgeDocks = source("chrome/components/panel-edge-docks.tsx");
     expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
     expect(triageSidebarSource).toContain("<SideBarCollapseControl />");
     expect(railPanelSource).toContain('className="right-rail-ico right-rail-collapse"');
@@ -2273,7 +2275,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
-    const sidebar = source("sidebar/operations-side-bar.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
     expect(sidebar).toContain('className="side-bar-ghost-theater-row"');
@@ -2337,8 +2339,8 @@ describe("Instrument core design contract", () => {
     expect(commandBandCenterBlock).toContain("justify-content: center;");
     expect(commandBandCenterBlock).not.toContain("overflow:");
     expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);
-    const rightRail = source("rail/right-rail.tsx");
-    const railStore = source("rail/rail-store.ts");
+    const rightRail = source("chrome/rail/right-rail.tsx");
+    const railStore = source("chrome/rail/rail-store.ts");
     for (const legacyRightRailCoupling of ["rightRailWidth", "setRightRailWidth", "useRightRailWidth", "--command-band-right-width"]) {
       expect(commandBand).not.toContain(legacyRightRailCoupling);
       expect(rightRail).not.toContain(legacyRightRailCoupling);
@@ -2668,7 +2670,7 @@ describe("Instrument core design contract", () => {
     // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
     // 필드(라이트 종이·게이트 닫힘)에서도 글리프를 투명 위에 그려 GPU가 감마 미보정 sRGB로
     // 재합성하게 만들고, 획 잉크가 18.2% 사라진다(dpr=2 실측). 상수로 되돌리면 그 회귀가 재발한다.
-    const options = fs.readFileSync(fileURLToPath(new URL("../core/client/src/terminal/shared/terminal-options.ts", import.meta.url)), "utf8");
+    const options = fs.readFileSync(fileURLToPath(new URL("../features/execution/client/terminal/shared/terminal-options.ts", import.meta.url)), "utf8");
     expect(options).not.toMatch(/^\s*allowTransparency:/m);
     expect(surface).toContain("allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
     expect(surface).toContain("terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
@@ -2920,7 +2922,7 @@ describe("Instrument core design contract", () => {
     expect(chat).toMatch(/\.agent-chat-stream\.is-streaming \{[\s\S]*?-webkit-mask-image: linear-gradient\(to bottom, #000 calc\(100% - 1\.6em\), rgb\(0 0 0 \/ 42%\)\);/);
     const chatCaretSeal = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-stream\.is-streaming > pre:last-child > code::after \{\s*animation: none;\s*\}[\s\S]*?\.agent-chat-stream\.is-streaming \{\s*-webkit-mask-image: none;\s*mask-image: none;\s*\}/)?.[0] ?? "";
     expect(chatCaretSeal).not.toBe("");
-    const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../core/client/src/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
+    const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../features/execution/client/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
     expect(streamedMarkdown).toContain('const streamingClass = streaming ? `${className ?? ""} is-streaming`.trim() : className;');
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
     // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
@@ -2975,7 +2977,7 @@ describe("Instrument core design contract", () => {
       expect(chatTallyGlyphBlock, signal).not.toContain(signal);
     }
     expect(chat).toMatch(/\.agent-chat-tally\.is-live \.agent-chat-tally-glyph \{\s*color: var\(--text-secondary\);\s*\}/);
-    const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../core/client/src/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
+    const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../features/execution/client/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
     expect(agentGlyphs).toContain('stroke="currentColor"');
     expect(agentGlyphs).not.toMatch(/var\(--(aurora|positive|warn|coral|brass|id-)/);
     for (const family of ["delegate", "run", "workflow", "think", "artifact"]) {
@@ -2986,7 +2988,7 @@ describe("Instrument core design contract", () => {
     expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>');
     // 분석가 시길도 같은 알파벳을 쓴다 — 같은 뜻을 두 면이 다른 기호로 부르지 않는다.
     for (const panel of ["analysis-chat-panel.tsx", "analysis-artifacts-panel.tsx"]) {
-      const source0 = fs.readFileSync(fileURLToPath(new URL(`../core/client/src/agent/${panel}`, import.meta.url)), "utf8");
+      const source0 = fs.readFileSync(fileURLToPath(new URL(`../features/analyst/client/${panel}`, import.meta.url)), "utf8");
       expect(source0, panel).not.toContain('aria-hidden="true">◆</span>');
       expect(source0, panel).toContain("<AgentGlyph name=");
     }
@@ -3191,7 +3193,7 @@ describe("Instrument core design contract", () => {
   it("keeps real GNB producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
-    const commandBand = source("components/command-band.tsx");
+    const commandBand = source("chrome/components/command-band.tsx");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
@@ -3301,7 +3303,7 @@ describe("Instrument core design contract", () => {
 
   it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
     // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
     const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
     const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
@@ -3358,7 +3360,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the remote NAT endpoint on the established token grammar without warn hover", () => {
-    const settings = source("settings/sections.tsx");
+    const settings = source("../../../features/remote-access/client/settings-section.tsx");
     const components = source("styles/components.css");
 
     expect(settings).toContain('t("settings.remote.listenAddress")');
@@ -3376,9 +3378,9 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the access-link entry in the host box and out of Settings", () => {
-    const systemCluster = source("components/command-band-system-cluster.tsx");
-    const settings = source("settings/sections.tsx");
-    const dialog = source("components/add-host-dialog.tsx");
+    const systemCluster = source("chrome/components/command-band-system-cluster.tsx");
+    const settings = source("../../../features/remote-access/client/settings-section.tsx");
+    const dialog = source("../../../features/remote-access/client/add-host-dialog.tsx");
 
     // 추가는 관리보다 위에 선다 — 목록을 고르러 온 사람이 먼저 만나는 것은 새 콘솔을 붙이는 일이다.
     const addAt = systemCluster.indexOf('t("chrome.hosts.add")');
@@ -3402,21 +3404,21 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
-    const systemCluster = source("components/command-band-system-cluster.tsx");
-    const sidebar = source("sidebar/operations-side-bar.tsx");
-    const chip = source("sidebar/operations-side-bar-chip.tsx");
-    const statusIcon = source("components/operation-status-icon.tsx");
-    const nameMark = source("components/operation-name-mark.tsx");
-    const minimap = source("canvas/canvas-minimap.tsx");
-    const commandBand = source("components/command-band.tsx");
+    const systemCluster = source("chrome/components/command-band-system-cluster.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
+    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
+    const statusIcon = source("../../../features/execution/client/components/operation-status-icon.tsx");
+    const nameMark = source("../../../features/execution/client/components/operation-name-mark.tsx");
+    const minimap = source("../../../features/workspace/client/canvas/canvas-minimap.tsx");
+    const commandBand = source("chrome/components/command-band.tsx");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
-    expect(source("canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
+    expect(source("../../../features/workspace/client/canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
     // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
     expect(systemCluster).not.toContain("command-band-settings");
-    expect(source("rail/right-rail.tsx")).toContain('t("settings.title")');
+    expect(source("chrome/rail/right-rail.tsx")).toContain('t("settings.title")');
     expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
     expect(systemCluster).toContain("openWhatsNew");
     expect(components).toContain(".command-band-system-cluster {");
@@ -3427,7 +3429,7 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면
     // 같은 사실이 표면 수만큼의 조형으로 갈라진다. 칩·밴드·모바일이 모두 이 문을 지난다.
-    expect(chip).toContain('import { OperationNameMark } from "../components/operation-name-mark.js"');
+    expect(chip).toContain('import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js"');
     expect(nameMark).toContain('return <OperationStatusIcon status={status}');
     // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
     expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
@@ -3443,7 +3445,7 @@ describe("Instrument core design contract", () => {
 
     expect(minimap).not.toContain("is-plugin");
     expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
-    const operationFrame = source("canvas/operation-frame.tsx");
+    const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     expect(operationFrame).toContain('className="canvas-operation-identity-name"');
     expect(operationFrame).toContain('className="canvas-operation-identity-input"');
     expect(operationFrame).toContain("useInlineRename");
@@ -3469,8 +3471,8 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain("restoreIdentityFocusRef.current = true;");
     expect(operationFrame).toContain("identityTriggerRef.current?.focus()");
     expect(operationFrame).toContain('t("canvas.frame.renameTitle"');
-    expect(source("canvas/canvas.tsx")).toContain("onRename: (operationId: string, title: string) => void;");
-    expect(source("pages/operations.tsx")).toContain("onRename={handleRename}");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("onRename: (operationId: string, title: string) => void;");
+    expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).toContain(".canvas-operation-identity-name,");
     expect(components).toContain("font-family: var(--font-body);");
     expect(components).toContain("font-size: calc(var(--font-body-size) * 0.92);");
@@ -3518,9 +3520,9 @@ describe("Instrument core design contract", () => {
     expect(firstFocusSettle).toContain("transition: none;");
     const reducedMotionTerminal = components.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.canvas-operation-terminal \{[^}]*\}/)?.[0] ?? "";
     expect(reducedMotionTerminal).toContain("transition: none;");
-    expect(source("canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
-    expect(source("store.ts")).toContain("--unfocused-panel-opacity");
-    expect(source("settings/sections.tsx")).toContain("onPreview={previewPanelFade}");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain('focusFadeTransitionReady ? "" : "is-focus-fade-settling"');
+    expect(source("integration/store.ts")).toContain("--unfocused-panel-opacity");
+    expect(source("../../../features/settings/client/sections.tsx")).toContain("onPreview={previewPanelFade}");
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar \{/);
     expect(components).not.toMatch(/\.canvas-operation:not\(\.is-active\)[^{]*> \.canvas-operation-titlebar::after \{/);
     // 이동의 순간은 링이 말한다 — 전이 전용이라 지속 상태가 아니라 일시 클래스가 소유하고,
@@ -3599,14 +3601,14 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
     // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
     // Tactical grid/rows 행 보폭은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
-    expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
-    expect(source("canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
+    expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
     // Station Keeping도 같은 32px를 충돌 상자에 넣는다 — 본문 AABB만 보면 아래 캡션이 위를 침범한다.
-    expect(source("canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
-    expect(source("canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
-    expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("canvas/canvas.tsx")).toContain("y: arena.y + TITLEBAR_OUTSET_PX");
-    const canvasZoom = source("canvas/canvas.tsx");
+    expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
+    expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("y: arena.y + TITLEBAR_OUTSET_PX");
+    const canvasZoom = source("../../../features/workspace/client/canvas/canvas.tsx");
     expect(canvasZoom).toContain("TITLEBAR_OUTSET_PX * operationZoom");
     expect(canvasZoom).toContain("const operationZoom = focusLayerHidden");
     expect(canvasZoom).toContain("? canvas.viewport.zoom");
@@ -3618,17 +3620,17 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).not.toContain("adaptivePanelMaterial");
     expect(canvasZoom).not.toContain("is-panel-density-high");
     expect(components).not.toContain(".operations-canvas.is-panel-density-high");
-    expect(source("canvas/coordinates.ts")).toContain("y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("canvas/coordinates.ts")).toContain("arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");
-    expect(source("canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
-    expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
-    expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
+    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
+    expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
+    expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-more-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
     expect(components).toContain("left: -1px;");
     expect(components).toContain("name → More → 상시 컨트롤");
-    const canvas = source("canvas/canvas.tsx");
+    const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     expect(canvas).toContain("export function useGlanceHold(): boolean");
     expect(canvas).toContain('event.code === "AltLeft" || event.code === "AltRight"');
     expect(canvas).toContain("event.ctrlKey || event.metaKey");
@@ -3649,7 +3651,7 @@ describe("Instrument core design contract", () => {
 
   it("pins the caption status rail motion grammar — one motion per state, hierarchy, phase lock", () => {
     const components = source("styles/components.css");
-    const operationFrame = source("canvas/operation-frame.tsx");
+    const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
     expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
@@ -3882,7 +3884,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the Quick Launch ultracode recognition grammar", () => {
     const components = source("styles/components.css");
-    const composer = source("components/quick-launch.tsx");
+    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
 
     // 바에는 인식 칩을 두지 않는다 — 90px 알약이 실행 버튼을 둘째 줄로 떨어뜨렸다.
     // 상태는 고지 줄·단어 하이라이트·테두리 링이 말한다.
@@ -4060,7 +4062,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the chat start-view arming grammar", () => {
     const components = source("styles/components.css");
-    const composer = source("components/quick-launch.tsx");
+    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
 
     // 바 첫 줄의 여유가 0이라 이 상태는 **칩을 두지 않는다** — 칩 하나가 서면 바가 두 줄로 접힌다.
     // 무장은 카드 외곽선과 입력 위 안내줄이 함께 진다.
@@ -4262,7 +4264,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the Quick Launch effort row grammar — value tone yields to the location channel", () => {
     const components = source("styles/components.css");
-    const composer = source("components/quick-launch.tsx");
+    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
 
     // 덱 행은 트랙과 같은 좌표(data-effort-level)로 색을 읽는다 — 라벨 문자열은 번역·모델마다
     // 달라 색의 기준이 될 수 없다.
@@ -4285,7 +4287,7 @@ describe("Effort track interaction grammar", () => {
     // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
     // 쓰므로 문구가 갈라지지 않는다.
     const common = source("i18n/messages/common.ts");
-    const canvasMenu = source("canvas/canvas-context-menu.tsx");
+    const canvasMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
     expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
     expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
     for (const surface of [composer, canvasMenu]) {
@@ -4298,7 +4300,7 @@ describe("Effort track interaction grammar", () => {
     // (deck.gatedNames)을 쓴다. 한쪽 기준을 다른 쪽에 빌려 주면 열리지 않는 단이 이름에 실린다.
     expect(composer).toMatch(/\{ tiers: deck\.gatedNames \}/u);
     expect(composer).not.toMatch(/const tiers = gatedEffortNames\(selectedRow\);/u);
-    expect(source("quick-launch.ts")).toMatch(/gatedNames: offeredGated\.map\(\(chip\) => chip\.label\)\.join\("·"\),/u);
+    expect(source("../../../features/execution/client/quick-launch.ts")).toMatch(/gatedNames: offeredGated\.map\(\(chip\) => chip\.label\)\.join\("·"\),/u);
 
     // 문 행은 listbox 안에 산다. option role이 지원하지 않는 aria-expanded를 달면 무시되거나
     // 무효로 읽히므로, 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔ "… 접기").
@@ -4347,7 +4349,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the provider band as the sole supplier mark in the command deck", () => {
     const components = source("styles/components.css");
-    const composer = source("components/quick-launch.tsx");
+    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
 
     // 밴드가 스크롤을 따라 붙기 때문에 행 마크를 걷어낼 수 있다. 두 규칙은 한 쌍이다 —
     // sticky를 잃으면 스크롤한 목록에서 모델 이름만 남고 공급자를 잃는다.
@@ -4370,8 +4372,8 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
-    const quickLaunch = source("components/quick-launch.tsx");
-    const canvasMenu = source("canvas/canvas-context-menu.tsx");
+    const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
+    const canvasMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
@@ -4391,9 +4393,9 @@ describe("Effort track interaction grammar", () => {
 // 화면은 조용히 예전 동작 — 덱이 자기 카드 얼굴을 따로 그리고 본문을 transform으로 줄여 글자까지
 // 뭉개던 축소판 — 으로 돌아간다.
 describe("War Room deck panel grammar", () => {
-  const deck = source("canvas/triage-watch-deck.tsx");
-  const canvas = source("canvas/canvas.tsx");
-  const frame = source("canvas/operation-frame.tsx");
+  const deck = source("../../../features/workspace/client/canvas/triage-watch-deck.tsx");
+  const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
+  const frame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
   const components = source("styles/components.css");
 
   it("lets the deck draw a place and the canvas put the real panel in it", () => {
@@ -4560,13 +4562,13 @@ describe("War Room deck panel grammar", () => {
     const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-dot \{[^}]*\}/)?.[0] ?? "";
     expect(zoneDot).toContain("pointer-events: auto;");
     // 지도의 점과 표석은 캔버스 제스처에서 제외된다 — 바다만 팬·휠을 통과시킨다.
-    const fleetMap = source("canvas/fleet-map.tsx");
+    const fleetMap = source("../../../features/workspace/client/canvas/fleet-map.tsx");
     expect(fleetMap.match(/data-canvas-blocker/g)?.length).toBe(2);
     expect(fleetMap).not.toContain('<div\n      className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}\n      data-canvas-blocker');
   });
 
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {
-    const sidebar = source("sidebar/triage-side-bar.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
     const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";
     const section = components.match(/\.side-bar-status-section--minimized \{[^}]*\}/)?.[0] ?? "";
     expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
@@ -4590,7 +4592,7 @@ describe("War Room deck panel grammar", () => {
    그 어긋남은 또 난다. 아래 계약이 둘을 한 자리에서 맞춰 본다. */
 describe("Pane width class contract", () => {
   const components = source("styles/components.css");
-  const settingsPane = source("settings/settings-pane.tsx");
+  const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
 
   /**
    * 설정 페인의 **테마 격자**를 1열로 접는 컨테이너 문턱들.

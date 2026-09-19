@@ -1,9 +1,9 @@
 import type http from "node:http";
 
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import { describe, expect, it } from "vitest";
 
-import { createTerminalModelAuthRouter } from "../../core/host/ai-gateway/model-auth-routes.js";
+import { createTerminalModelAuthRouter } from "../../features/ai-gateway/host/model-auth-routes.js";
 
 interface WriteJsonCall { readonly status: number; readonly body: unknown }
 interface RouterHarnessOptions {

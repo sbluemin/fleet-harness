@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { createBrowserToolSpecs } from "../core/host/browser/tools.js";
-import { createBrowserScreenshotStore, resolveBrowserScreenshotNamespaceRoot } from "../core/host/browser/screenshot-store.js";
+import { createBrowserToolSpecs } from "../features/browser/host/tools.js";
+import { createBrowserScreenshotStore, resolveBrowserScreenshotNamespaceRoot } from "../features/browser/host/screenshot-store.js";
 
 /**
  * 스크린샷이 에이전트에게 닿는 계약. 도구 결과에는 부르는 CLI 쪽 토큰 상한이 걸려 있고, 넘기면 그쪽이 결과를

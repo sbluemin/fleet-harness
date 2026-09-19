@@ -3,8 +3,8 @@ import { useMemo } from "react";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
-import { useGlobalSettingsStore } from "../global-settings-store.js";
-import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
+import { useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
+import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { CORE_MESSAGES, type CoreMessageKey } from "./messages/index.js";
 
 const translators: Record<ConsoleLocale, Translate<CoreMessageKey>> = {

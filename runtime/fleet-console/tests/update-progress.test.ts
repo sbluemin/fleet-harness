@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { takeConsoleResumePort } from "../core/host/server.js";
+import { takeConsoleResumePort } from "../core/host/bootstrap/server.js";
 import {
   CONSOLE_UPDATE_OUTCOME_TTL_MS,
   CONSOLE_UPDATE_PROGRESS_STALE_MS,
@@ -12,7 +12,7 @@ import {
   readConsoleUpdateProgress,
   writeConsoleUpdateProgress,
   type ConsoleUpdateProgressRecord,
-} from "../core/host/update-progress.js";
+} from "../features/updates/host/update-progress.js";
 
 const dirs: string[] = [];
 /** 기록이 남은 직후의 시각. 결과에도 시효가 있으므로 판정 시각을 고정해야 뜻이 고정된다. */

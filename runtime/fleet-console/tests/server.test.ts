@@ -7,20 +7,20 @@ import { execFileSync } from "node:child_process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-contract.js";
-import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-contract.js";
+import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/shell/desktop-contract.js";
+import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
-import { createConsoleLock } from "../core/host/lock.js";
-import { deriveOperationLabel } from "../core/host/agent/auto-name.js";
-import { createConsoleObservabilityStore } from "../core/host/agent/observability-store.js";
-import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
-import type { AgentCliDetector } from "../core/host/agent/agent-cli-detect.js";
-import { canonicalizeTheaterPathSync, workspaceHash } from "../core/host/theaters/theater-domain.js";
-import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { deriveOperationLabel } from "../features/execution/host/agent/auto-name.js";
+import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
+import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
+import type { AgentCliDetector } from "../features/execution/host/agent/agent-cli-detect.js";
+import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
+import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
 import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
-import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../core/host/terminal/terminal-types.js";
-import { createPluginTerminalUpgradeHandler } from "../core/host/terminal/ws.js";
+import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
+import { createPluginTerminalUpgradeHandler } from "../features/execution/host/terminal/ws.js";
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
@@ -29,8 +29,8 @@ const fleetAdmiralMock = vi.hoisted(() => ({
   resolveProfile: null as null | ((...args: readonly unknown[]) => unknown),
 }));
 
-vi.mock("@dotobokuri/fleet-admiral", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
+vi.mock("@fleet-console/agent-runtime/fleet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@fleet-console/agent-runtime/fleet")>();
   return {
     ...actual,
     createFleetGatewayAgentRuntimeLifecycle: (deps: Parameters<typeof actual.createFleetGatewayAgentRuntimeLifecycle>[0]) =>
@@ -49,7 +49,7 @@ vi.mock("esbuild", async (importOriginal) => {
         fleetAdmiralMock.esbuildExternals.push([...(options.external ?? [])]);
         return actual.build(options);
       }
-      const external = [...(options.external ?? []), "@dotobokuri/fleet-admiral"];
+      const external = [...(options.external ?? []), "@fleet-console/agent-runtime/fleet"];
       fleetAdmiralMock.esbuildExternals.push(external);
       return actual.build({ ...options, external });
     },

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalSessionManager } from "../../core/host/terminal/session-manager.js";
-import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../core/host/terminal/terminal-types.js";
+import { createTerminalSessionManager } from "../../features/execution/host/terminal/session-manager.js";
+import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../features/execution/host/terminal/terminal-types.js";
 
 const DA_QUERY = "\x1b[c";
 const DA_RESPONSE = "\x1b[?1;2c";

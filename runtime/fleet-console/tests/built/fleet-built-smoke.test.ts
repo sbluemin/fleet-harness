@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
-import { resolveDefaultServerModulePath } from "../../core/host/console-lifecycle.js";
+import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fleetDist = path.join(packageRoot, "dist", "fleet.mjs");

@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { agentChatAskFromToolInput, type AgentChatJournalEvent } from "../../core/host/agent/chat-events.js";
-import { AgentChatRegistry, type AgentChatSessionSeed } from "../../core/host/agent/chat-session.js";
+import { agentChatAskFromToolInput, type AgentChatJournalEvent } from "../../features/execution/host/agent/chat-events.js";
+import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
 
 /**
  * 대화형 도구 왕복의 계약.

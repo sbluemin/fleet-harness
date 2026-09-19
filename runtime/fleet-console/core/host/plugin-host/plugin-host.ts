@@ -365,8 +365,8 @@ function renderShim(definition: ShimDefinition): string {
 }
 
 
-import type { RouteHandler, RouteRegistry } from "../route-registry/registry.js";
-import type { UpgradeHandler, UpgradeRegistry } from "../route-registry/registry.js";
+import type { RouteHandler, RouteRegistry } from "../transport/route-registry/registry.js";
+import type { UpgradeHandler, UpgradeRegistry } from "../transport/route-registry/registry.js";
 
 export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly routes: RouteRegistry;

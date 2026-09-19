@@ -19,8 +19,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@dotobokuri/core-agent": ["../../../packages/core-agent/dist/index.d.ts"],
-      "@dotobokuri/core-process": ["../../../packages/core-process/dist/index.d.ts"],
+      "@fleet-console/agent-runtime": ["../../../runtime/fleet-console/foundation/agent-runtime/dist/index.d.ts"],
+      "@fleet-console/process": ["../../../runtime/fleet-console/foundation/process/dist/index.d.ts"],
       "react": ["../../fleet-console/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["../../fleet-console/node_modules/@types/react/jsx-runtime.d.ts"]
     }

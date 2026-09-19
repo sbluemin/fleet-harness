@@ -14,19 +14,19 @@ const mocks = vi.hoisted(() => ({
   visitTriageTheater: vi.fn(),
 }));
 
-vi.mock("../core/client/src/api.js", () => ({
+vi.mock("../core/client/src/integration/api.js", () => ({
   fetchGroups: mocks.fetchGroups,
   fetchOperations: mocks.fetchOperations,
   forgetTheater: mocks.forgetTheater,
 }));
 
-vi.mock("../core/client/src/canvas/triage-store.js", () => ({
+vi.mock("../features/workspace/client/canvas/triage-store.js", () => ({
   isTriageActive: mocks.isTriageActive,
   resetTriageTheater: mocks.resetTriageTheater,
   visitTriageTheater: mocks.visitTriageTheater,
 }));
 
-vi.mock("../core/client/src/store.js", () => ({
+vi.mock("../core/client/src/integration/store.js", () => ({
   failAddTheater: mocks.failAddTheater,
   getState: mocks.getState,
   hydrateGroups: mocks.hydrateGroups,
@@ -34,7 +34,7 @@ vi.mock("../core/client/src/store.js", () => ({
   removeTheater: mocks.removeTheater,
 }));
 
-import { forgetTheaterCompletely } from "../core/client/src/theater.js";
+import { forgetTheaterCompletely } from "../features/workspace/client/theater.js";
 
 const RECEIPT = {
   deletionId: "deletion-theater-a",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeAccessLink, parseAccessLink, type ValidatedAccessLink } from "../core/host/access-link.js";
-import { createRemoteHostStore, type RemoteHostStoreDeps } from "../core/host/remote-hosts.js";
+import { encodeAccessLink, parseAccessLink, type ValidatedAccessLink } from "../features/remote-access/host/access-link.js";
+import { createRemoteHostStore, type RemoteHostStoreDeps } from "../features/remote-access/host/remote-hosts.js";
 
 const FINGERPRINT_A = "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F";
 const FINGERPRINT_B = "11223344556677889900AABBCCDDEEFF11223344556677889900AABBCCDDEEFF";

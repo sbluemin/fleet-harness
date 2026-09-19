@@ -5,7 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
-import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
+import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import {
   isProviderId,
   PROVIDER_ORDER_DEFAULT,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { operationRuntimeVisual, runtimeStateVisual } from "../core/client/src/operation-activity.js";
+import { operationRuntimeVisual, runtimeStateVisual } from "../features/execution/client/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { act, createElement, useEffect } from "react";
@@ -14,8 +14,8 @@ import {
   getIdleArrivalIds,
   markIdleArrival,
   resetIdleArrivalForTests,
-} from "../core/client/src/operation-marks.js";
-import { focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setState as setConsoleState } from "../core/client/src/store.js";
+} from "../features/execution/client/operation-marks.js";
+import { focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import {
   clearFormationView,
   forceDropCompanionOperationId,
@@ -31,12 +31,12 @@ import {
   setOperationGeometry,
   setTheaterFocusLayerSnapshot,
   toggleFormationView,
-} from "../core/client/src/canvas/canvas-store.js";
+} from "../features/workspace/client/canvas/canvas-store.js";
 import {
   requestSideBarOperationAction,
   subscribeSideBarOperationAction,
-} from "../core/client/src/sidebar/interaction.js";
-import { resetSideBarStatusSectionCollapseForTests, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
+} from "../features/workspace/client/sidebar/interaction.js";
+import { resetSideBarStatusSectionCollapseForTests, setSideBarCollapsed } from "../features/workspace/client/sidebar/operations-side-bar-store.js";
 import {
   armTriageSetAside,
   clampTriageDeckZoom,
@@ -73,13 +73,13 @@ import {
   setTriageSpotlightEnabled,
   subscribeTriage,
   visitTriageTheater,
-} from "../core/client/src/canvas/triage-store.js";
-import { resolveTriageSideBarSections, TriageSideBar } from "../core/client/src/sidebar/triage-side-bar.js";
-import type { OperationNode } from "../core/client/src/types.js";
-import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
-import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
-import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
-import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-marks.js";
+} from "../features/workspace/client/canvas/triage-store.js";
+import { resolveTriageSideBarSections, TriageSideBar } from "../features/workspace/client/sidebar/triage-side-bar.js";
+import type { OperationNode } from "../core/client/src/integration/types.js";
+import { TriageClearPlate } from "../features/workspace/client/canvas/canvas-overlays.js";
+import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../features/workspace/client/canvas/triage-watch-deck.js";
+import { triageStageGeometryFor } from "../features/workspace/client/canvas/coordinates.js";
+import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../features/execution/client/operation-marks.js";
 
 const THEATER_ID = "theater-a";
 const THEATERS = [

@@ -19,7 +19,7 @@ import {
   readDesktopProtocolEnvironment,
   resolveCanonicalLocalConsolePaths,
   resolveCanonicalStableConsolePaths,
-} from "../core/host/desktop-protocol.js";
+} from "../core/host/shell/desktop-protocol.js";
 
 const TEMP_DIRS: string[] = [];
 const CONSOLE_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

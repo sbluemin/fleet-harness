@@ -6,11 +6,11 @@ import tls from "node:tls";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { encodeAccessLink, parseAccessLink } from "../core/host/access-link.js";
-import { createPairedDeviceStore } from "../core/host/paired-devices.js";
-import { createRemoteEndpointStore } from "../core/host/remote-endpoint.js";
-import { createRemoteHostStore } from "../core/host/remote-hosts.js";
-import { createRemoteIdentityStore, fingerprintOf, fingerprintsMatch, normalizeFingerprint } from "../core/host/remote-identity.js";
+import { encodeAccessLink, parseAccessLink } from "../features/remote-access/host/access-link.js";
+import { createPairedDeviceStore } from "../features/remote-access/host/paired-devices.js";
+import { createRemoteEndpointStore } from "../features/remote-access/host/remote-endpoint.js";
+import { createRemoteHostStore } from "../features/remote-access/host/remote-hosts.js";
+import { createRemoteIdentityStore, fingerprintOf, fingerprintsMatch, normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 
 const tempDirs: string[] = [];
 

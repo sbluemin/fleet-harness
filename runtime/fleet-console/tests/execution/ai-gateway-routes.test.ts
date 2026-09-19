@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
-import { registerAiGatewayRoutes } from "../../core/host/ai-gateway/routes.js";
+import { registerAiGatewayRoutes } from "../../features/ai-gateway/host/routes.js";
 
 describe("AI gateway Console route adapter", () => {
   it("registers the route and lifecycle cleanup", async () => {

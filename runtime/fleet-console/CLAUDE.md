@@ -7,12 +7,12 @@
 | Directory | Responsibility |
 |---|---|
 | `cli/` | Dual-entry `fleet` launcher (auth/update/console/cli passthrough) and thin Claude gateway |
-| `core/host/` | Server lifecycle, security, durable state, and core APIs |
-| `core/client/` | React application, host chrome, and browser state |
+| `core/host/` | Bootstrap, transport, plugin adapters, and native-shell composition |
+| `core/client/` | Application composition, global chrome, and feature integration |
+| `features/` | Vertical product owners: execution, AI Gateway, Analyst, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates |
+| `foundation/` | Agent runtime, process/infra primitives, Markdown, and Font Picker |
 | `protocol/` | Shared remote-access and Console-Desktop protocol contracts |
 | `sdk/` | Plugin-facing contracts and stateless helpers |
-| `markdown/` | Shared sanitized markdown and diagram rendering |
-| `font-picker/` | Shared controlled font-selection surface |
 | `tests/` | Service, security, state, and integration contracts |
 | `../fleet-plugins/` | Built-in plugin implementations |
 | `../fleet-desktop/` | Optional thin native shell |
@@ -20,9 +20,9 @@
 ## Domain boundaries
 
 - A **Theater** is any registered project root. An **Operation** is a Console-managed unit inside a Theater. A Codex workspace is the subset of a Theater or selected path that contains Fleet Wiki knowledge.
-- Console core owns Agent execution, Chat, Terminal PTYs, the global Shell, AI Gateway composition, Theater and Operation state, window chrome, path selection, security gates, and plugin registries. Plugins own their extension panels and scoped runtime behavior; they consume Console capabilities without depending on another plugin’s mount path.
+- Console features own execution, Chat/PTY session state, Gateway, Analyst, Console Use, Browser, Computer Use, remote pairing, Workspace, Settings, and Updates. Core composes those capabilities and owns global chrome, transport admission, shell adapters, and plugin registries. Plugins own their extension panels and scoped runtime behavior; they consume Console capabilities without depending on another plugin’s mount path.
 - Desktop may supervise and display Console only through the public desktop protocol; it must not duplicate server, PTY, provider, plugin, state, or React behavior.
-- Host code may consume public APIs from lower-layer Fleet packages, but must not import any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
+- Host code may consume public APIs from features and foundation, but must not import any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
 - Built-ins are trusted static plugins. Installing an external plugin grants same-process Node and same-origin browser privileges; external plugins are not sandboxed.
 
 ## Security and state constraints

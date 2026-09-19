@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createPluginTerminalUpgradeHandler } from "../../core/host/terminal/ws.js";
-import type { TerminalTicketContext } from "../../core/host/terminal/terminal-types.js";
+import { createPluginTerminalUpgradeHandler } from "../../features/execution/host/terminal/ws.js";
+import type { TerminalTicketContext } from "../../features/execution/host/terminal/terminal-types.js";
 
 function context(overrides: Partial<TerminalTicketContext> = {}): TerminalTicketContext {
   return { cwd: "/tmp", sessionId: "op-1", ...overrides };

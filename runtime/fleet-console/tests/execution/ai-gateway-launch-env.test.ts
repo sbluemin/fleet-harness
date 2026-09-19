@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { prepareAiGatewayLaunchProfile } from "@dotobokuri/fleet-admiral";
-import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
+import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 
 const temporaryDirectories: string[] = [];
 

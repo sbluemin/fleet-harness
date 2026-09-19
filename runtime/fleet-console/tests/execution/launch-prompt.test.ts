@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createAgentTerminalLaunchResolver } from "../../core/host/agent/launch.js";
+import { createAgentTerminalLaunchResolver } from "../../features/execution/host/agent/launch.js";
 
 const baseProfile = {
   id: "claude",

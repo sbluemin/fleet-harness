@@ -2,68 +2,34 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileS
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.dirname(scriptDir);
-const assetRoot = path.join(repoRoot, "packages", "fleet-admiral", "assets");
-const hookRoot = path.join(assetRoot, "hooks");
-const outputPath = path.join(repoRoot, "packages", "fleet-admiral", "src", "agent-cli", "assets.generated.ts");
-const fleetHarnessPackage = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-if (typeof fleetHarnessPackage.version !== "string" || fleetHarnessPackage.version.length === 0) {
-  throw new Error("fleet-harness package version is missing");
+const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const consoleRoot = path.join(repoRoot, "runtime/fleet-console");
+const runtimeRoot = path.join(consoleRoot, "foundation/agent-runtime");
+const gatewayRoot = path.join(consoleRoot, "features/ai-gateway/runtime");
+const { version } = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+if (typeof version !== "string" || !version) throw new Error("fleet-harness package version is missing");
+
+function generate(root, source, output, name, withVersion = false) {
+  const entries = listFiles(path.join(root, source)).map((file) => ({
+    relativePath: path.relative(path.join(root, source), file).split(path.sep).join("/"),
+    content: readFileSync(file, "utf8"),
+  }));
+  const content = `// ${source}에서 생성한다. 직접 수정하지 않는다.\n// 재생성: node scripts/generate-fleet-admiral-assets.mjs\n\nexport interface EmbeddedAgentCliAsset { readonly content: string; readonly relativePath: string }\n${withVersion ? `export const FLEET_HARNESS_VERSION = ${JSON.stringify(version)};\n` : ""}export const ${name}: readonly EmbeddedAgentCliAsset[] = ${JSON.stringify(entries, null, 2)};\n`;
+  const target = path.join(root, output);
+  mkdirSync(path.dirname(target), { recursive: true });
+  if (!existsSync(target) || readFileSync(target, "utf8") !== content) writeFileSync(target, content);
 }
 
-function assetEntries(rootPath) {
-  if (!existsSync(rootPath)) return [];
-  return listFiles(rootPath).map((filePath) => {
-    const relativePath = path.relative(rootPath, filePath).split(path.sep).join("/");
-    const content = readFileSync(filePath, "utf8");
-    return `  { relativePath: ${JSON.stringify(relativePath)}, content: ${JSON.stringify(content)} },`;
-  });
-}
+generate(runtimeRoot, "assets/hooks", "src/fleet/agent-cli/assets.generated.ts", "EMBEDDED_AGENT_CLI_HOOK_ASSETS", true);
+generate(gatewayRoot, "assets/ai-gateway", "src/fleet/assets.generated.ts", "EMBEDDED_AI_GATEWAY_ASSETS");
 
-const hookEntries = assetEntries(hookRoot).join("\n");
-const gatewayEntries = assetEntries(path.join(assetRoot, "ai-gateway")).join("\n");
-
-const output = `// packages/fleet-admiral/assets (ai-gateway + hooks) asset tree에서 생성된 내장 자산이다.
-// 재생성: node scripts/generate-fleet-admiral-assets.mjs
-
-export interface EmbeddedAgentCliAsset {
-  readonly content: string;
-  readonly relativePath: string;
-}
-
-export const FLEET_HARNESS_VERSION = ${JSON.stringify(fleetHarnessPackage.version)};
-
-export const EMBEDDED_AI_GATEWAY_ASSETS: readonly EmbeddedAgentCliAsset[] = [
-${gatewayEntries}
-];
-
-export const EMBEDDED_AGENT_CLI_HOOK_ASSETS: readonly EmbeddedAgentCliAsset[] = [
-${hookEntries}
-];
-`;
-
-mkdirSync(path.dirname(outputPath), { recursive: true });
-if (!existsSync(outputPath) || readFileSync(outputPath, "utf8") !== output) {
-  writeFileSync(outputPath, output);
-}
-
-function listFiles(rootPath) {
+function listFiles(root) {
   const files = [];
-  collectFiles(rootPath, files);
-  return files.sort();
-}
-
-function collectFiles(currentPath, files) {
-  for (const entry of readdirSync(currentPath)) {
-    const entryPath = path.join(currentPath, entry);
-    const stat = lstatSync(entryPath);
-    if (stat.isDirectory()) {
-      collectFiles(entryPath, files);
-      continue;
-    }
-    if (stat.isFile()) {
-      files.push(entryPath);
-    }
+  for (const entry of readdirSync(root)) {
+    const child = path.join(root, entry);
+    const stat = lstatSync(child);
+    if (stat.isDirectory()) files.push(...listFiles(child));
+    else if (stat.isFile()) files.push(child);
   }
+  return files.sort();
 }

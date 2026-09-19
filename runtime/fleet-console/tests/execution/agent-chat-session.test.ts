@@ -4,12 +4,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
+import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
-import { AgentChatRegistry, type AgentChatSessionSeed } from "../../core/host/agent/chat-session.js";
-import { createWorkspaceHookRegistry } from "../../core/host/agent/workspace-hooks.js";
-import { initialAgentChatLogState, reduceAgentChatLog } from "../../core/client/src/agent/chat/chat-events.js";
-import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../core/host/agent/chat-events.js";
+import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
+import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
+import { initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
+import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
 const temporaryDirectories: string[] = [];
 

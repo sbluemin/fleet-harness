@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OSC_CLIPBOARD_IDENT, createTerminalOsc52Clipboard, parseOsc52ClipboardWrite } from "../../core/client/src/terminal/shared/terminal-osc52-clipboard.js";
+import { OSC_CLIPBOARD_IDENT, createTerminalOsc52Clipboard, parseOsc52ClipboardWrite } from "../../features/execution/client/terminal/shared/terminal-osc52-clipboard.js";
 
 const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
 

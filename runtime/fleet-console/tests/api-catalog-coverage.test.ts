@@ -2,9 +2,9 @@ import fs from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { buildApiCatalog } from "../core/host/api-catalog.js";
+import { buildApiCatalog } from "../core/host/transport/api-catalog.js";
 
-const SERVER_SOURCE = fs.readFileSync(new URL("../core/host/server.ts", import.meta.url), "utf8");
+const SERVER_SOURCE = fs.readFileSync(new URL("../core/host/bootstrap/server.ts", import.meta.url), "utf8");
 
 /**
  * 카탈로그는 백엔드 API 표면의 선언이고 설정 화면이 그대로 보여준다. 코어 디스패치가

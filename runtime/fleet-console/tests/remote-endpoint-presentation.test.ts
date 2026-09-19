@@ -1,17 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildRemoteEndpointPresentation,
-  isValidRemoteAdvertisedHost,
-  isValidRemoteListenAddress,
-  remoteAccessStateEquals,
-  remoteEffectiveEndpoint,
-  remoteEndpointImpact,
-  remoteEndpointRequirements,
-  isValidRemoteAccessPort,
-  REMOTE_AUTO_PORT_MIN,
-  type RemoteAccessState,
-} from "../core/client/src/types.js";
+import { buildRemoteEndpointPresentation, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, remoteAccessStateEquals, remoteEffectiveEndpoint, remoteEndpointImpact, remoteEndpointRequirements, isValidRemoteAccessPort, REMOTE_AUTO_PORT_MIN, type RemoteAccessState } from "../features/remote-access/client/contracts.js";
 
 const BASE: RemoteAccessState = {
   enabled: false,

@@ -1,11 +1,11 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData } from "@dotobokuri/core-infra";
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { GlobalOptionsData } from "@fleet-console/infra";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import { describe, expect, it } from "vitest";
 
-import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
-import { registerTerminalSettingsRoutes } from "../../core/host/agent/settings-routes.js";
+import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { registerTerminalSettingsRoutes } from "../../features/settings/host/execution-settings-routes.js";
 
 interface WriteJsonCall {
   readonly status: number;

@@ -2,11 +2,11 @@ import type http from "node:http";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { ConsoleRuntimeContext } from "../../core/host/runtime-context.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
-import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../core/host/terminal/shell.js";
-import type { TerminalRuntime, TerminalTicketContext } from "../../core/host/terminal/index.js";
+import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/execution/host/terminal/shell.js";
+import type { TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
  * Shell은 콘솔 하나에 하나뿐인 전역 표면이다. 이 파일이 지키는 것은 두 가지다 —

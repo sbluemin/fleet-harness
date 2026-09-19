@@ -31,9 +31,9 @@ const REFERENCE = new RegExp(`["']${VENDOR_SDK.replace(/[.*+?^${}()|[\]\\]/g, "\
  */
 const ALLOWED = [
   // 이 리포가 vendor SDK를 부르는 유일한 production 지점과 그 wrapper-only 단위 테스트.
-  "packages/core-agent/src/claude/vendor-sdk.ts",
-  "packages/core-agent/tests/claude-vendor-sdk.test.ts",
-  "packages/core-agent/package.json",
+  "runtime/fleet-console/foundation/agent-runtime/src/claude/vendor-sdk.ts",
+  "runtime/fleet-console/foundation/agent-runtime/tests/claude-vendor-sdk.test.ts",
+  "runtime/fleet-console/foundation/agent-runtime/package.json",
   // 선존: Console은 소스에서 부르지 않지만 게시 매니페스트 external 해석을 위해 선언한다.
   "runtime/fleet-console/package.json",
   // 플러그인 런타임 번들러가 이 패키지를 external로 지정한다 — 이름만 쓰고 import하지 않는다.
@@ -118,7 +118,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const stale = violations.filter((violation) => violation.kind === "stale");
   if (unexpected.length > 0) {
     console.error(`${VENDOR_SDK} may only be referenced from the allowed locations in scripts/check-claude-agent-sdk-boundary.mjs.`);
-    console.error("Consume @dotobokuri/core-agent instead of depending on the vendor SDK:");
+    console.error("Consume @fleet-console/agent-runtime instead of depending on the vendor SDK:");
     for (const violation of unexpected) console.error(`- ${violation.path}`);
   }
   if (stale.length > 0) {

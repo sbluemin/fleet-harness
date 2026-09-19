@@ -14,11 +14,8 @@ import {
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
-} from "@dotobokuri/core-ai-gateway";
-import {
-  KIMI_AUTH_PROVIDER_ID,
-  OPENCODE_AUTH_PROVIDER_ID,
-} from "@dotobokuri/fleet-admiral";
+} from "@fleet-console/ai-gateway";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 
 export interface FleetCliGatewayServer {
   origin(): string;

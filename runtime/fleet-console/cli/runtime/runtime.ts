@@ -1,6 +1,6 @@
-import { createMcpHttpTransport } from "../../core/host/mcp/http-transport.js";
+import { createMcpHttpTransport } from "../../core/host/transport/mcp-http.js";
 import path from "node:path";
-import { createAiGatewayMcpHost } from "../../core/host/mcp/ai-gateway.js";
+import { createAiGatewayMcpHost } from "../../features/ai-gateway/host/mcp.js";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
@@ -12,17 +12,14 @@ import {
   setWireLogTarget,
   type AiGatewaySettingsStore,
   type AuthService,
-} from "@dotobokuri/core-ai-gateway";
-import {
-  createFleetGatewayAgentRuntimeLifecycle,
-  parseGatewayQuotaSnapshot,
-  type FleetGatewayAgentRuntimeLifecycle,
-} from "@dotobokuri/fleet-admiral";
+} from "@fleet-console/ai-gateway";
+import { createFleetGatewayAgentRuntimeLifecycle, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
+import { parseGatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
 import {
   createInfraServices,
   getFleetDataDir,
   type InfraServices,
-} from "@dotobokuri/core-infra";
+} from "@fleet-console/infra";
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;

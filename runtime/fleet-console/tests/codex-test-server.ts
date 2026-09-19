@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { createConsoleServer } from "../core/host/server.js";
+import { createConsoleServer } from "../core/host/bootstrap/server.js";
 
 interface StartCodexTestServerOptions {
   readonly cwd: string;

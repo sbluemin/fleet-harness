@@ -6,12 +6,9 @@ import {
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
-} from "@dotobokuri/core-ai-gateway";
-import {
-  KIMI_AUTH_PROVIDER_ID,
-  OPENCODE_AUTH_PROVIDER_ID,
-} from "@dotobokuri/fleet-admiral";
-import { getFleetDataDir } from "@dotobokuri/core-infra";
+} from "@fleet-console/ai-gateway";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
+import { getFleetDataDir } from "@fleet-console/infra";
 
 import { buildGatewayHelpText } from "./help.js";
 import { runGatewayInteractive } from "./interactive.js";

@@ -8,12 +8,12 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
-import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
-import { CANVAS_MODE_STORAGE_KEY } from "../core/client/src/canvas/canvas-mode-session.js";
-import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
-import { focusOperation, getState, hydrateOperations, setActiveOperation, setOperationRuntimeHydration, setState } from "../core/client/src/store.js";
-import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../features/workspace/client/canvas/canvas-store.js";
+import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/integration/boot-minimization-session.js";
+import { CANVAS_MODE_STORAGE_KEY } from "../features/workspace/client/canvas/canvas-mode-session.js";
+import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../features/workspace/client/canvas/triage-store.js";
+import { focusOperation, getState, hydrateOperations, setActiveOperation, setOperationRuntimeHydration, setState } from "../core/client/src/integration/store.js";
+import type { OperationNode, TheaterBootstrap } from "../core/client/src/integration/types.js";
 
 const apiMocks = vi.hoisted(() => ({
   fetchTheaterBootstrap: vi.fn(),
@@ -48,7 +48,7 @@ const bodyPoolMocks = vi.hoisted(() => ({
   order: [] as string[],
 }));
 
-vi.mock("../core/client/src/api.js", () => ({
+vi.mock("../core/client/src/integration/api.js", () => ({
   ...apiMocks,
   ApiError: class ApiError extends Error {
     readonly status: number;
@@ -73,7 +73,7 @@ vi.mock("@fleet-console/sdk/operations/browser", async (importOriginal) => ({
   ...await importOriginal<typeof import("@fleet-console/sdk/operations/browser")>(),
   fetchOperationCatalog: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../core/client/src/canvas/canvas.js", () => ({
+vi.mock("../features/workspace/client/canvas/canvas.js", () => ({
   OperationsCanvas: ({ catalog, onLaunchAtGeometry, onLaunchKind, onRefreshCatalog }: {
     readonly catalog: readonly OperationCatalogPlugin[];
     readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry>;
@@ -88,45 +88,45 @@ vi.mock("../core/client/src/canvas/canvas.js", () => ({
     return null;
   },
 }));
-vi.mock("../core/client/src/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
-vi.mock("../core/client/src/components/command-band.js", () => ({ CommandBand: () => null }));
-vi.mock("../core/client/src/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
-vi.mock("../core/client/src/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
-vi.mock("../core/client/src/components/operation-search.js", () => ({ OperationSearch: () => null }));
-vi.mock("../core/client/src/mobile/operation-body-pool.js", () => ({
+vi.mock("../core/client/src/chrome/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
+vi.mock("../core/client/src/chrome/components/command-band.js", () => ({ CommandBand: () => null }));
+vi.mock("../core/client/src/chrome/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
+vi.mock("../core/client/src/chrome/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
+vi.mock("../core/client/src/chrome/components/operation-search.js", () => ({ OperationSearch: () => null }));
+vi.mock("../core/client/src/chrome/mobile/operation-body-pool.js", () => ({
   OperationBodyPool: ({ operations, children }: { readonly operations: readonly OperationNode[]; readonly children: ReactNode }) => {
     bodyPoolMocks.renderedOperationIds.push(operations.map((operation) => operation.id));
     bodyPoolMocks.order.push(`pool:${operations.map((operation) => operation.id).join(",")}`);
     return createElement(Fragment, null, children);
   },
 }));
-vi.mock("../core/client/src/components/toast.js", () => ({
+vi.mock("../core/client/src/chrome/components/toast.js", () => ({
   Toast: () => null,
   // App은 토스트를 ToastHost 스택으로 감싼다 — mock도 같은 쌍을 제공해야 App 렌더가 산다.
   ToastHost: ({ children }: { readonly children?: ReactNode }) => createElement(Fragment, null, children),
 }));
-vi.mock("../core/client/src/components/whatsnew-modal.js", () => ({ WhatsNewModal: () => null }));
-vi.mock("../core/client/src/global-settings-store.js", () => ({
+vi.mock("../features/updates/client/whatsnew-modal.js", () => ({ WhatsNewModal: () => null }));
+vi.mock("../features/settings/client/global-settings-store.js", () => ({
   getGlobalSettingsStoreState: () => ({ state: null }),
   useGlobalSettingsStore: () => ({ state: null }),
 }));
-vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
+vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
 // 데스크톱 /settings는 이제 레일 표면으로 번역하는 어댑터다 — 이 테스트의 관심은 "비-operations
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.
-vi.mock("../core/client/src/settings/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
-vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: []}) }));
+vi.mock("../features/settings/client/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
+vi.mock("../core/client/src/integration/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: []}) }));
 // 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
-vi.mock("../core/client/src/rail/rail-store.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../core/client/src/rail/rail-store.js")>()),
+vi.mock("../core/client/src/chrome/rail/rail-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/client/src/chrome/rail/rail-store.js")>()),
   toggleRailChrome: vi.fn(),
 }));
-vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
-vi.mock("../core/client/src/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
+vi.mock("../core/client/src/chrome/rail/right-rail.js", () => ({ RightRail: () => null }));
+vi.mock("../features/updates/client/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 // operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
 // 부분 목으로 두어야 이 스토어에 export가 늘어도 이 테스트가 따라 깨지지 않는다.
-vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar-store.js")>()),
+vi.mock("../features/workspace/client/sidebar/operations-side-bar-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../features/workspace/client/sidebar/operations-side-bar-store.js")>()),
   getSideBarState: () => ({ collapsed: false }),
   setSideBarCollapsed: vi.fn(),
   getSideBarStatusAxis: () => false,
@@ -136,8 +136,8 @@ vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (import
   toggleSideBarStatusAxis: vi.fn(),
 }));
 // TriageSideBar가 같은 모듈의 목록 조립 헬퍼를 함께 읽으므로 부분 목이어야 한다.
-vi.mock("../core/client/src/sidebar/operations-side-bar.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar.js")>()),
+vi.mock("../features/workspace/client/sidebar/operations-side-bar.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../features/workspace/client/sidebar/operations-side-bar.js")>()),
   OperationsSideBar: ({ onClose, onFocus, onMinimize, onResume }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void; readonly onResume: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
     sideBarMocks.onResume = onResume;
@@ -146,7 +146,7 @@ vi.mock("../core/client/src/sidebar/operations-side-bar.js", async (importOrigin
     return null;
   },
 }));
-vi.mock("../core/client/src/whatsnew-i18n.js", () => ({
+vi.mock("../features/updates/client/whatsnew-i18n.js", () => ({
   resolveConsoleLanguage: () => "en",
   resolveReleaseNotesLocale: () => "en",
 }));
@@ -345,7 +345,7 @@ describe("Operations boot minimization", () => {
     const theaters = deferred<TheaterBootstrap>();
     apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
     apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
-    const { App } = await import("../core/client/src/app.js");
+    const { App } = await import("../core/client/src/app/app.js");
 
     await act(async () => {
       root!.render(createElement(BrowserRouter, null, createElement(App)));
@@ -416,7 +416,7 @@ async function bootApp(operationsList: readonly OperationNode[], theaterList = [
   const theaters = deferred<TheaterBootstrap>();
   apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
   apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
-  const { App } = await import("../core/client/src/app.js");
+  const { App } = await import("../core/client/src/app/app.js");
   await act(async () => {
     root!.render(createElement(BrowserRouter, null, createElement(App)));
   });

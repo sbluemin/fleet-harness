@@ -3,7 +3,7 @@ import {
   createAiGatewayQuotaCollectors,
   createProviderAuthService,
   createQuotaService,
-} from "@dotobokuri/core-ai-gateway";
+} from "@fleet-console/ai-gateway";
 
 import { handleConnect, handleFold, handleOrder, handleSummary } from "./server/handlers.js";
 

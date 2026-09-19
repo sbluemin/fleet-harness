@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
+import { createAiGatewaySettingsStore } from "@fleet-console/ai-gateway";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { createWikiWorkspaceResolver } from "./server/wiki/index.js";
 

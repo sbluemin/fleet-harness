@@ -1,48 +1,32 @@
 # Fleet Development Reference Guide
 
-This guide explains how Fleet development is organized.
-
 ## 1. Architectural Split
 
-Fleet development follows a hard one-way dependency graph:
+Fleet Console is the sole published owner of the CLI launcher and web product. Private workspace identities are implementation boundaries, not separately published products.
 
-- `runtime/fleet-console/cli` — thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns argv/process lifecycle, one in-process Fleet MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio (no PTY/TUI/interception).
-- `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
-- `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
-- `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
-- `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
-- `runtime/fleet-plugins/codex` — Wiki storage, retrieval, approval, MCP tools, and web UI; the standalone Fleet CLI does not inject Codex Wiki.
-- `packages/core-agent` — tool, MCP, and Claude gateway SDK substrate.
+- `runtime/fleet-console/cli/` owns argv/process lifecycle and thin Claude Code passthrough.
+- `runtime/fleet-console/core/host/` owns bootstrap, transport, plugin adapters, and native-shell composition.
+- `runtime/fleet-console/core/client/src/` owns app composition, chrome, and integration.
+- `runtime/fleet-console/features/` owns Execution, AI Gateway, Analyst, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, and Updates.
+- `runtime/fleet-console/foundation/` owns Agent runtime, process/infra primitives, Markdown, and Font Picker.
+- `runtime/fleet-console/sdk/` and `protocol/` own plugin and shell contracts.
+- Built-ins remain under `runtime/fleet-plugins/`; Wiki belongs to Codex, not CLI injection.
+- Desktop and Mobile remain thin shells; Desktop does not duplicate Console runtime or UI.
 
 ## 2. Where New Work Goes
 
-### 2.1 `runtime/fleet-console/cli`
+Put a product capability's state, routes, runtime, and UI with its feature. Optional `host/`, `client/`, `runtime/`, and `contracts/` directories follow actual ownership; do not create empty layers. Core assembles producers and consumers through explicit dependencies. Generic or reusable mechanisms belong in foundation, including shared Fleet execution policy when it does not import product features.
 
-Put code here when it belongs to the thin `fleet` launcher: argv/process lifecycle, Claude Code passthrough, `auth`/`update`/`console` dispatch, one in-process Fleet MCP, an ephemeral loopback AI Gateway, concrete service assembly, or Admiral prompt/protocol/tool policy. Do not put PTY, TUI, or terminal I/O interception here.
-
-### 2.3 `packages/core-infra`
-
-Put code here when it owns generic auth, data-dir resolution, data-dir/settings, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`.
-
-### 2.4 `runtime/fleet-console`
-
-Put code here when it owns the standalone loopback HTTP backend for CLI register ingest, observer REST/SSE, terminal WebSocket tickets, static console serving, Console durable state, plugin runtime, PTY runtime, or console server lifecycle.
-
-### 2.4.1 `runtime/fleet-desktop`
-
-Put code here only when it concerns Electron main-process lifecycle, one native window/tray/menu, native update surfaces, or supervision of the packaged standard Node Console Service. The shell must load the verified loopback `/console/` URL and must not duplicate Console UI, HTTP/REST/SSE/WebSocket, `node-pty`, provider policy, plugin routes, or durable state.
-
-### 2.5 `packages/core-agent`
-
-Put code here when it owns the host-agnostic one-shot executor/session/model runtime engine (fresh provider client per call, readiness/session discovery, and explicit resume), builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
+Updates owns version/registry primitives and its UI/API; CLI, Console, and Desktop retain their own process shutdown, runtime procurement, lock, and restart responsibilities. Remote Access owns pairing, sessions, control, saved hosts, and remote listener policy, not every security mechanism.
 
 ## 3. Import Rules
 
-- The Console-owned `fleet` launcher assembles concrete services through explicit leaf package calls.
-- Lower packages must not import runtime hosts (`runtime/fleet-console`, `runtime/fleet-desktop`) or any package above them in the dependency graph.
-- Consumers use public package exports only.
-- Do not deep-import `src/**` or `internal/**` across package boundaries.
-- The Desktop shell depends on the Console Service protocol; the Console Service never depends on Electron.
+- Foundation must not import feature, core, CLI, or plugin implementations or contracts.
+- Agent substrate (`tools`, `mcp`, `claude`) must not import Fleet execution policy (`fleet`). Gateway model meanings and delegation registrations arrive through explicit ports.
+- Consume private workspace packages through declared exports; never deep-import another package's source.
+- Keep headless runtime imports free of UI/host startup side effects. Browser graphs remain Node-free.
+- Core coordinates durable state through one writer and composes plugin capability adapters. Avoid mutable shared capability bags, DI containers, and service locators.
+- Published Console bins and `./cli`, `./desktop-protocol`, `./access-protocol` exports remain compatible. Private package renames do not change HTTP/MCP/storage identities.
 
 ## 4. State Synchronization
 

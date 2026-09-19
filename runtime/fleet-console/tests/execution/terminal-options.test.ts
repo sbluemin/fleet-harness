@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalLinkHandler, TERMINAL_OPTIONS } from "../../core/client/src/terminal/shared/terminal-options.js";
+import { createTerminalLinkHandler, TERMINAL_OPTIONS } from "../../features/execution/client/terminal/shared/terminal-options.js";
 
 describe("TERMINAL_OPTIONS", () => {
 

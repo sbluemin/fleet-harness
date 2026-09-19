@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createConsoleDaemonLifecycle } from "../core/host/console-lifecycle.js";
-import { createConsoleLock } from "../core/host/lock.js";
-import { createConsolePaths } from "../core/host/paths.js";
+import { createConsoleDaemonLifecycle } from "../core/host/bootstrap/console-lifecycle.js";
+import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const TEMP_DIRS: string[] = [];

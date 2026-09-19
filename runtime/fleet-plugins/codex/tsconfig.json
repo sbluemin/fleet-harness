@@ -25,11 +25,11 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@dotobokuri/core-infra": [
-        "../../../packages/core-infra/dist/index.d.ts"
+      "@fleet-console/infra": [
+        "../../../runtime/fleet-console/foundation/infra/dist/index.d.ts"
       ],
-      "@dotobokuri/core-process": [
-        "../../../packages/core-process/dist/index.d.ts"
+      "@fleet-console/process": [
+        "../../../runtime/fleet-console/foundation/process/dist/index.d.ts"
       ],
       "react": [
         "../../fleet-console/node_modules/@types/react/index.d.ts"

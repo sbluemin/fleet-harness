@@ -48,7 +48,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build console protocol + desktop shell
         run: |
-          pnpm --filter @dotobokuri/core-process build
+          pnpm --filter @fleet-console/process build
           pnpm --filter @dotobokuri/fleet-console build
           pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installers (mac arm64)
@@ -112,7 +112,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build console protocol + desktop shell
         run: |
-          pnpm --filter @dotobokuri/core-process build
+          pnpm --filter @fleet-console/process build
           pnpm --filter @dotobokuri/fleet-console build
           pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installer (nsis, ${{ matrix.arch }})

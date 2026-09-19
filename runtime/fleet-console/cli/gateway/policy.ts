@@ -10,7 +10,7 @@ import {
   type CompactCeiling,
   type GatewayProvider,
   type XaiEndpointPreference,
-} from "@dotobokuri/core-ai-gateway";
+} from "@fleet-console/ai-gateway";
 
 /**
  * `fleet gateway set`이 다루는 정책 축. 모델 선별은 여기 없다 — 모델 하나가 공급자·강도

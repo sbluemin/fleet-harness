@@ -9,8 +9,8 @@ import {
   createConsoleDurableStateStore,
   readDurableStateVersion,
   sanitizeDurableConsoleState,
-} from "../core/host/durable-state.js";
-import type { ConsoleDataPaths } from "../core/host/paths.js";
+} from "../features/workspace/host/durable-state.js";
+import type { ConsoleDataPaths } from "../core/host/bootstrap/paths.js";
 
 const tempDirs: string[] = [];
 

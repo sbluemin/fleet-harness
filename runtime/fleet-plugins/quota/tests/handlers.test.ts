@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import type { QuotaService } from "@dotobokuri/core-ai-gateway";
+import type { QuotaService } from "@fleet-console/ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleConnect, handleFold, handleOrder, handleSummary } from "../server/handlers.js";

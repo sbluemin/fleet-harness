@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CONSOLE_CONTROL_TOOLS, type ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
-import { createConsoleControl } from "../core/host/mcp/console-control.js";
-import { createConsoleUseMcpHost, type ConsoleSurface } from "../core/host/mcp/console-use.js";
+import { createConsoleControl } from "../features/console-use/host/console-control.js";
+import { createConsoleUseMcpHost, type ConsoleUseActions } from "../features/console-use/host/console-use.js";
 
 let connection: ConsoleUseMcpConnection | undefined;
 
@@ -28,7 +28,7 @@ describe("Console Use surface boundaries", () => {
     ];
     const answered: string[] = [];
     const slept: string[] = [];
-    const surface: ConsoleSurface = {
+    const surface: ConsoleUseActions = {
       pendingAsks: (id) => id === "op-child" ? [{ id: "ask-q", form: "question", questions: [] }, { id: "ask-plan", form: "plan", questions: [] }] : id === "op-human" ? [{ id: "ask-h", form: "question", questions: [] }] : [],
       answer: (id, askId) => { answered.push(`${id}:${askId}`); return { ok: true, outcome: "answered" }; },
       sleep: async (id) => { slept.push(id); return { ok: true, lifecycle: "dormant" }; },

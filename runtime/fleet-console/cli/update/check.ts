@@ -1,4 +1,4 @@
-import { isVersionGreater } from "@dotobokuri/core-agent";
+import { isVersionGreater } from "@fleet-console/updates";
 
 import type { FleetCliRelease } from "../release.js";
 import { readCachedLatestVersion, writeCachedLatestVersion } from "./cache.js";

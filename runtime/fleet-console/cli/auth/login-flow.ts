@@ -1,12 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
-import type { AuthService } from "@dotobokuri/core-ai-gateway";
-import {
-  KIMI_AUTH_PROVIDER_ID,
-  OPENCODE_AUTH_PROVIDER_ID,
-  validateKimiAuthKey,
-  validateOpencodeGoAuthKey,
-  type AuthKeyValidationResult,
-} from "@dotobokuri/fleet-admiral";
+import type { AuthService } from "@fleet-console/ai-gateway";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, validateKimiAuthKey, validateOpencodeGoAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;

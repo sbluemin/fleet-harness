@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createPluginTerminalTicketRegistry } from "../../core/host/terminal/tickets.js";
+import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
 
 describe("terminal ticket invalidateForSession", () => {
   it("drops outstanding tickets for the target session only", () => {

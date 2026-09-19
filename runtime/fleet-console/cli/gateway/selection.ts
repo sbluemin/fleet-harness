@@ -5,7 +5,7 @@ import {
   type AiGatewayStoredModel,
   type AiGatewayStoredSettings,
   type GatewayProvider,
-} from "@dotobokuri/core-ai-gateway";
+} from "@fleet-console/ai-gateway";
 
 /** 인터랙티브 화면이 고르는 한 줄. 라벨·힌트는 프롬프트가 그대로 쓴다. */
 export interface GatewayModelChoice {

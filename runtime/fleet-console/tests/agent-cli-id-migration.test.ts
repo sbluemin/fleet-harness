@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeDurableConsoleState } from "../core/host/durable-state.js";
+import { sanitizeDurableConsoleState } from "../features/workspace/host/durable-state.js";
 
 const baseOperation = {
   id: "op",
