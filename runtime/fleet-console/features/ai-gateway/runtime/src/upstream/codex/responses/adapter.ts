@@ -643,7 +643,7 @@ function forOpenAIResponsesBackend(
     const { defer_loading: _deferLoading, ...wireTool } = tool;
     // Runs on every tool, strict or not: the backend compiles `pattern` before it reads
     // `strict`, so an unreadable one fails the request either way.
-    const parameters = re2SafeParameters(wireTool.parameters);
+    const parameters = readablePatternParameters(wireTool.parameters);
     // A schema outside strict mode's subset is rejected with a 400 that fails the whole
     // request, not just that tool, so an incompatible tool keeps its original schema and
     // forfeits the guarantee rather than taking every other tool down with it.
@@ -948,7 +948,7 @@ function usage(value: unknown): CanonicalUsage {
 }
 
 /**
- * `pattern` values the Responses backend cannot compile.
+ * `pattern` values a Responses backend refuses.
  *
  * It runs every function tool's `pattern` through RE2, which has neither lookaround nor
  * Unicode property escapes, and refuses the request as a whole — `param: "tools"`, not the one
@@ -960,31 +960,36 @@ function usage(value: unknown): CanonicalUsage {
  * Claude Code's `Artifact` tool carries five of them (`collection`, `doc_id`, `field`, and the
  * two inside `writes`), so every Console turn on a Codex model died on its first message.
  * `pattern` only advises the model about a value's shape and nothing downstream enforces it,
- * so dropping the ones RE2 cannot read costs nothing observable — the same trade `strictSchema`
- * already makes for `format`.
+ * so dropping the ones a backend cannot read costs nothing observable — the same trade
+ * `strictSchema` already makes for `format`.
+ *
+ * The backslash-digit escape below is the OpenCode Go measurement, not one taken here: that
+ * backend refuses `\0`, `\1`, and `\012` while accepting the lookaround this one rejects. The
+ * rule stays identical in both files because dropping an advisory `pattern` a backend would
+ * have accepted costs nothing, while a copy that lags the other costs a whole turn.
  *
  * `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/opencode-go/responses/adapter.ts` carries the same
  * rule for the same wire contract; a change here belongs there too.
  */
-const RE2_HOSTILE_PATTERN = /\(\?[=!<]|\\[pP]\{/u;
+const UNREADABLE_PATTERN = /\(\?[=!<]|\\[pP]\{|\\[0-9]/u;
 
-function re2SafeParameters(schema: Record<string, unknown>): Record<string, unknown> {
-  const converted = re2SafeSchema(schema);
+function readablePatternParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = readablePatternSchema(schema);
   return isRecord(converted) ? converted : schema;
 }
 
 /**
- * Drops the `pattern` constraints RE2 rejects and keeps every one it accepts.
+ * Drops the `pattern` constraints a backend refuses and keeps every one it reads.
  *
  * Walks the value generically rather than following JSON Schema keywords: the offending
  * patterns sit wherever the tool author put them, and a keyword walk would have to be widened
  * for each new nesting shape. Only a **string** under a `pattern` key is dropped, so a property
  * that happens to be named `pattern` keeps its subschema. Unchanged nodes are returned by
- * identity so a tool with no hostile pattern reaches the wire as the object it already was.
+ * identity so a tool with no refused pattern reaches the wire as the object it already was.
  */
-function re2SafeSchema(value: unknown): unknown {
+function readablePatternSchema(value: unknown): unknown {
   if (Array.isArray(value)) {
-    const next = value.map(re2SafeSchema);
+    const next = value.map(readablePatternSchema);
     return next.some((entry, index) => entry !== value[index]) ? next : value;
   }
   if (!isRecord(value)) return value;
@@ -992,11 +997,11 @@ function re2SafeSchema(value: unknown): unknown {
   let changed = false;
   const next: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (key === "pattern" && typeof entry === "string" && RE2_HOSTILE_PATTERN.test(entry)) {
+    if (key === "pattern" && typeof entry === "string" && UNREADABLE_PATTERN.test(entry)) {
       changed = true;
       continue;
     }
-    const converted = re2SafeSchema(entry);
+    const converted = readablePatternSchema(entry);
     if (converted !== entry) changed = true;
     next[key] = converted;
   }
