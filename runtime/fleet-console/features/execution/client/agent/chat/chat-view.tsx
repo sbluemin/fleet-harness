@@ -11,7 +11,9 @@ import { AgentGlyph } from "../agent-glyphs.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
   AGENT_CHAT_THINK_FAMILY,
+  agentChatMcpCall,
   agentChatToolFamily,
+  agentChatToolLabel,
   openAgentChatJobs,
   segmentAgentChatLedger,
   splitAgentChatTurn,
@@ -1096,10 +1098,11 @@ function Tally({
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
       <span className="agent-chat-tally-clause">
         <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>
-        {/* 알려진 계열은 문구 하나로 끝나지만, `other`는 도구 이름이 곧 주어다. 그 이름만 따로
-            그려 한 단 밝은 잉크를 지운다 — 접히지 않은 스텝 줄의 동사가 이미 그 잉크를 쓰므로,
-            이것은 새 문법이 아니라 두 줄을 같은 문법으로 되돌리는 것이다. */}
-        {group.family === "other" && group.name !== undefined
+        {/* 알려진 계열은 문구 하나로 끝나지만, 어떤 계열은 주어를 따로 진다 — `other`는 도구
+            이름이, `mcp`는 서버가 그 주어다. 주어를 가진 절은 그것을 그려야 한다: 문구만 남기면
+            "2회"처럼 무엇을 두 번 했는지가 사라진다. 이름은 한 단 밝은 잉크를 쓴다 — 접히지 않은
+            스텝 줄의 동사가 이미 그 잉크를 쓰므로, 이것은 두 줄을 같은 문법으로 되돌리는 것이다. */}
+        {group.name !== undefined
           ? <span className="agent-chat-tally-name">{group.name}</span>
           : null}
         <span>{groupLabel(group, t)}</span>
@@ -1516,7 +1519,9 @@ function Step({
   // 우리가 아는 것은 호출이 나갔다는 사실뿐이다.
   const unconfirmed = item.state === "done";
   const name = item.name ?? "";
-  const verb = running ? runningVerb(name, language) : unconfirmed ? name : pastVerb(name, language);
+  // 확인되지 않은 스텝은 시제를 얻지 못하므로 이름이 곧 동사 자리다 — 그 이름도 줄에 세우는
+  // 표시형(MCP는 서버 접두를 벗은 도구 이름)을 쓴다.
+  const verb = running ? runningVerb(name, language) : unconfirmed ? agentChatToolLabel(name) : pastVerb(name, language);
   // 결과 칩은 변경 장부가 있으면 줄 수를, 없으면 도구가 돌려준 한 줄 요약을 보인다.
   // 실패는 언제나 요약이 이긴다 — 무엇이 잘못됐는지가 얼마나 썼는지보다 먼저다.
   const outcome = failed
@@ -2108,6 +2113,10 @@ function formatCount(value: number): string {
 function runningVerb(name: string, language: "en" | "ko"): string {
   const t = getT(language);
   const family = agentChatToolFamily(name);
+  // 도는 MCP 호출은 집계 줄의 꼬리에 절로 붙는다. 그 자리에는 절을 감싼 서버가 없으므로
+  // 서버와 도구를 함께 말해야 무엇을 쓰는 중인지가 남는다.
+  const call = family === "mcp" ? agentChatMcpCall(name) : undefined;
+  if (call !== undefined) return t("terminal.chat.activityUsingMcp", { server: call.server, tool: call.tool });
   return family === "other"
     ? t("terminal.chat.activityUsing", { name })
     : t(`terminal.chat.verb.${family}.now` as Parameters<typeof t>[0]);
@@ -2116,7 +2125,8 @@ function runningVerb(name: string, language: "en" | "ko"): string {
 function pastVerb(name: string, language: "en" | "ko"): string {
   const t = getT(language);
   const family = agentChatToolFamily(name);
-  return family === "other" ? name : t(`terminal.chat.verb.${family}.past` as Parameters<typeof t>[0]);
+  if (family === "other" || family === "mcp") return agentChatToolLabel(name);
+  return t(`terminal.chat.verb.${family}.past` as Parameters<typeof t>[0]);
 }
 
 function formatChange(change: AgentChatChange): string {

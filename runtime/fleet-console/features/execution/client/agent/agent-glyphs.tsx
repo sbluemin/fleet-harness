@@ -15,7 +15,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  */
 export type AgentGlyphName =
   | "read" | "write" | "edit" | "run" | "inspect" | "search" | "fetch" | "delegate"
-  | "workflow" | "stop" | "plan" | "ask" | "propose" | "other" | "think" | "artifact"
+  | "workflow" | "stop" | "plan" | "ask" | "propose" | "mcp" | "other" | "think" | "artifact"
   | "reset" | "close" | "export" | "clear";
 
 interface GlyphStroke {
@@ -54,6 +54,8 @@ const GLYPHS: Readonly<Record<AgentGlyphName, readonly GlyphStroke[]>> = {
   plan: [{ d: "m3 7 2 2 4-4" }, { d: "m3 17 2 2 4-4" }, { d: "M13 6h8" }, { d: "M13 12h8" }, { d: "M13 18h8" }],
   ask: [{ d: RING }, { d: "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7" }, { d: "M12 17h.01" }],
   propose: [{ d: "M9 18h6" }, { d: "M10 22h4" }, { d: "M8.5 14.5A6 6 0 1 1 15.5 14.5c-.6.6-1 1.4-1 2.5h-5c0-1.1-.4-1.9-1-2.5Z" }],
+  // MCP 서버는 꽂는 것이다 — 플러그 하나가 "Fleet 밖에서 들여온 능력"을 점 하나보다 정확히 말한다.
+  mcp: [{ d: "M9 3v5" }, { d: "M15 3v5" }, { d: "M6 8h12v3.5a6 6 0 0 1-12 0z" }, { d: "M12 17.5V21" }],
   other: [{ d: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4", fill: true }],
   think: [{ d: RING, dash: "4 3.6" }],
   artifact: [{ d: DOC }, { d: DOC_FOLD }, { d: "m9 15 2 2 4-4" }],
