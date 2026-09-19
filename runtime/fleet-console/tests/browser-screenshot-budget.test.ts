@@ -76,6 +76,23 @@ describe("operation browser screenshots", () => {
     }
   });
 
+  it("leaves a serving console's screenshots alone when a second one starts and gives up", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "browser-screenshot-"));
+    const serving = createBrowserScreenshotStore({ dataDir });
+    try {
+      const filePath = serving.save(OPERATION, OVERSIZED, "jpg");
+
+      // 같은 데이터 루트로 두 번째 Console 이 올라온다. 서버는 기동 끝에서야 runtime lock 을 잡으므로
+      // 이 프로세스는 아직 자기가 질지 모른 채 만들어지고, 잠금에 실패하면 정리하며 내려간다.
+      const losing = createBrowserScreenshotStore({ dataDir });
+      losing.cleanup();
+
+      expect(existsSync(filePath)).toBe(true);
+    } finally {
+      serving.cleanup();
+    }
+  });
+
   it("returns a screenshot within budget inline", async () => {
     const { screenshots } = store();
     try {

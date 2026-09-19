@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { chmodSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 
 /**
  * 인라인으로 싣기엔 큰 스크린샷이 놓이는 자리. 에이전트는 경로를 받아 제 손으로 읽는다.
@@ -21,7 +21,7 @@ export interface BrowserScreenshotStore {
   save(operationId: string, bytes: Buffer, ext: "jpg" | "png"): string;
   /** 이 Operation 의 스크린샷을 모두 거둔다. */
   release(operationId: string): void;
-  /** 서버 종료 — 네임스페이스째 거둔다. */
+  /** 서버 종료 — 이 프로세스가 남긴 스크린샷을 거둔다. */
   cleanup(): void;
 }
 
@@ -34,17 +34,28 @@ export function resolveBrowserScreenshotNamespaceRoot(dataDir: string): string {
 export function createBrowserScreenshotStore(options: { readonly dataDir: string; readonly log?: (message: string) => void }): BrowserScreenshotStore {
   const namespaceRoot = resolveBrowserScreenshotNamespaceRoot(options.dataDir);
   const counters = new Map<string, number>();
+  /** 이 프로세스가 만든 Operation 디렉터리. 회수는 여기 있는 것만 건드린다. */
+  const owned = new Set<string>();
+  let reclaimed = false;
 
-  // 지난 프로세스가 남긴 스크린샷은 사람이 본 페이지의 사본이다 — 같은 데이터 루트의 동시 실행은 runtime
-  // lock 이 막으므로 여기 있는 것은 전부 죽은 프로세스의 잔재다. 기동하며 통째로 비운다.
-  try {
-    let hadLeftovers = true;
-    try { lstatSync(namespaceRoot); } catch { hadLeftovers = false; }
-    rmSync(namespaceRoot, { force: true, recursive: true });
-    if (hadLeftovers) options.log?.("cleared leftover screenshots from a previous run");
-  } catch {
-    // 청소는 best-effort — 잔재가 기동을 막지 않는다.
-  }
+  /**
+   * 지난 프로세스가 남긴 스크린샷은 사람이 본 페이지의 사본이므로 오래 두지 않는다. 다만 **첫 저장까지 미룬다** —
+   * 서버는 생성 시점이 아니라 기동 끝에서 runtime lock 을 잡으므로, 생성하며 비우면 잠금 경쟁에서 지게 될
+   * 프로세스가 이미 돌고 있는 쪽의 살아 있는 네임스페이스를 지워 건네준 경로를 무효로 만든다. 저장이 일어나는
+   * 시점이면 이 프로세스가 서비스 중이고, 남아 있는 것은 죽은 프로세스의 잔재다.
+   */
+  const reclaimLeftovers = (): void => {
+    if (reclaimed) return;
+    reclaimed = true;
+    try {
+      let hadLeftovers = true;
+      try { lstatSync(namespaceRoot); } catch { hadLeftovers = false; }
+      rmSync(namespaceRoot, { force: true, recursive: true });
+      if (hadLeftovers) options.log?.("cleared leftover screenshots from a previous run");
+    } catch {
+      // 청소는 best-effort — 잔재가 저장을 막지 않는다.
+    }
+  };
 
   // Operation id 는 경로 조각으로 쓰기에 안전하지 않다 — 해시로 고정 길이 이름을 만든다.
   const operationDir = (operationId: string) =>
@@ -67,8 +78,10 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
 
   return {
     save(operationId, bytes, ext) {
+      reclaimLeftovers();
       const dir = operationDir(operationId);
       mkdirSync(dir, { recursive: true, mode: 0o700 });
+      owned.add(dir);
       const serial = (counters.get(operationId) ?? 0) + 1;
       counters.set(operationId, serial);
       const filePath = path.join(dir, `shot-${String(serial).padStart(4, "0")}.${ext}`);
@@ -79,11 +92,19 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
     },
     release(operationId) {
       counters.delete(operationId);
-      try { rmSync(operationDir(operationId), { force: true, recursive: true }); } catch { /* best-effort */ }
+      const dir = operationDir(operationId);
+      owned.delete(dir);
+      try { rmSync(dir, { force: true, recursive: true }); } catch { /* best-effort */ }
     },
     cleanup() {
       counters.clear();
-      try { rmSync(namespaceRoot, { force: true, recursive: true }); } catch { /* best-effort */ }
+      // 이 프로세스가 만든 것만 거둔다 — 기동에 실패한 쪽의 정리가 이미 서비스 중인 쪽의 장을 지우면 안 된다.
+      for (const dir of owned) {
+        try { rmSync(dir, { force: true, recursive: true }); } catch { /* best-effort */ }
+      }
+      owned.clear();
+      // 마지막 하나가 나가면 네임스페이스도 접는다. 남의 디렉터리가 있으면 비어 있지 않아 그대로 남는다.
+      try { rmdirSync(namespaceRoot); } catch { /* 비어 있지 않거나 이미 없다 */ }
     },
   };
 }
