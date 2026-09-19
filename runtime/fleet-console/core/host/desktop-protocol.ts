@@ -12,8 +12,8 @@ import {
   DESKTOP_RESOURCE_ROOT_MARKER,
   isDesktopDevelopmentEnvironment as isDesktopDevelopmentEnvironmentFor,
   isDesktopResourceRootMarkerValid,
-} from "@fleet-console/desktop-protocol";
-import type { DesktopProtocolEnvironment } from "@fleet-console/desktop-protocol";
+} from "@fleet-console/protocol/desktop";
+import type { DesktopProtocolEnvironment } from "@fleet-console/protocol/desktop";
 
 export {
   DESKTOP_DEVELOPMENT_ENV,
@@ -26,7 +26,7 @@ export {
   isCompatibleDesktopOwner,
   resolveCanonicalLocalConsolePaths,
   resolveCanonicalStableConsolePaths,
-} from "@fleet-console/desktop-protocol";
+} from "@fleet-console/protocol/desktop";
 export type {
   CanonicalConsolePaths,
   ConsoleOwnerKind,
@@ -34,7 +34,7 @@ export type {
   DesktopProtocolEnvironment,
   ResolveCanonicalConsolePathsInput,
   ResolveCanonicalLocalConsolePathsInput,
-} from "@fleet-console/desktop-protocol";
+} from "@fleet-console/protocol/desktop";
 
 export interface DesktopProtocolValidationDeps {
   readonly expectedPackageRoot?: string;

@@ -19,11 +19,11 @@ describe("published Console manifest", () => {
         "@modelcontextprotocol/sdk": "1.30.0",
         tar: "7.5.22",
         fflate: "0.8.2",
-        "@fleet-console/desktop-protocol": "workspace:*",
+        "@fleet-console/protocol": "workspace:*",
       },
       devDependencies: {
         typescript: "^6.0.2",
-        "@fleet-console/desktop-protocol": "workspace:*",
+        "@fleet-console/protocol": "workspace:*",
       },
       optionalDependencies: { fixture: "workspace:^" },
       peerDependencies: { react: "^19.0.0" },

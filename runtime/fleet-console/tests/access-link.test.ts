@@ -10,7 +10,7 @@ import {
   sanitizeAccessLabel,
   type AccessLinkPayload,
   type ValidatedAccessLink,
-} from "@fleet-console/access-protocol";
+} from "@fleet-console/protocol/remote";
 
 interface AccessProtocolVectors {
   readonly positive: ReadonlyArray<{
@@ -25,7 +25,7 @@ interface AccessProtocolVectors {
   }>;
 }
 
-const vectors = JSON.parse(readFileSync(fileURLToPath(new URL("../access-protocol/vectors.json", import.meta.url)), "utf8")) as AccessProtocolVectors;
+const vectors = JSON.parse(readFileSync(fileURLToPath(new URL("../protocol/remote/vectors.json", import.meta.url)), "utf8")) as AccessProtocolVectors;
 const IPV4_VECTOR = vectors.positive[0]!;
 const TOKEN = IPV4_VECTOR.payload.token;
 const FINGERPRINT = IPV4_VECTOR.parsed.fingerprint;

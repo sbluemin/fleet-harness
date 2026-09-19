@@ -9,7 +9,7 @@ import {
   type DesktopBrowserRelay,
   type DesktopBrowserSnapshot,
   type DesktopBrowserView,
-} from "@fleet-console/desktop-protocol";
+} from "@fleet-console/protocol/desktop";
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";

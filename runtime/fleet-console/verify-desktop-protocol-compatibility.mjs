@@ -34,7 +34,7 @@ const protocol = await import(pathToFileURL(path.join(__dirname, "dist", "deskto
 assertExactExports("runtime", Object.keys(protocol), runtimeExports);
 
 const declaration = await readFile(path.join(__dirname, "dist", "desktop-protocol.d.ts"), "utf8");
-if (declaration.includes("workspace:") || declaration.includes("@fleet-console/desktop-protocol")) {
+if (declaration.includes("workspace:") || declaration.includes("@fleet-console/protocol")) {
   throw new Error("desktop_protocol_compatibility_declaration_workspace_import");
 }
 const declarationExport = [...declaration.matchAll(/export \{([^}]*)\};/gs)].at(-1)?.[1];

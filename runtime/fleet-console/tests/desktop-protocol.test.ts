@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
+import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
 
 import {
   DESKTOP_DEVELOPMENT_ENV,
@@ -37,7 +37,7 @@ describe("desktop protocol", () => {
   });
 
   it("keeps the shared contract free of host and filesystem ownership", () => {
-    const source = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "desktop-protocol", "index.ts"), "utf8");
+    const source = fs.readFileSync(path.join(CONSOLE_PACKAGE_ROOT, "protocol", "desktop", "index.ts"), "utf8");
 
     expect(source).not.toMatch(/node:(?:fs|child_process)/);
     expect(source).not.toMatch(/(?:@dotobokuri\/|fleet-desktop|fleet-plugins)/);

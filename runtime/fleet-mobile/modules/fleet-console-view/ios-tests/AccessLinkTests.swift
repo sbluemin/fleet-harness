@@ -3,7 +3,7 @@ import XCTest
 @testable import FleetConsoleCore
 
 // AccessLinkTest.kt의 이식. 포지티브/네거티브 벡터는 콘솔의 공유 프로토콜 벡터
-// (runtime/fleet-console/access-protocol/vectors.json)를 그대로 소비한다 — 포크 금지.
+// (runtime/fleet-console/protocol/remote/vectors.json)를 그대로 소비한다 — 포크 금지.
 final class AccessLinkTests: XCTestCase {
   private lazy var vectors: [String: Any] = {
     let url = Self.protocolVectorsURL()
@@ -79,13 +79,13 @@ final class AccessLinkTests: XCTestCase {
   // AccessLinkTest.kt의 walk-up 탐색을 이식한다. swift test의 작업 디렉터리에 기대지 않고
   // 이 테스트 파일 위치(#filePath)를 기준으로 조상들을 훑어 공유 벡터를 찾는다.
   static func protocolVectorsURL() -> URL {
-    let relative = "runtime/fleet-console/access-protocol/vectors.json"
+    let relative = "runtime/fleet-console/protocol/remote/vectors.json"
     var current = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     let fm = FileManager.default
     for _ in 0..<20 {
       let direct = current.appendingPathComponent(relative)
       if fm.fileExists(atPath: direct.path) { return direct }
-      let sibling = current.appendingPathComponent("../fleet-console/access-protocol/vectors.json").standardizedFileURL
+      let sibling = current.appendingPathComponent("../fleet-console/protocol/remote/vectors.json").standardizedFileURL
       if fm.fileExists(atPath: sibling.path) { return sibling }
       current.deleteLastPathComponent()
     }

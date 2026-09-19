@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 
-import { normalizeFingerprint, pinHostname } from "@fleet-console/access-protocol";
+import { normalizeFingerprint, pinHostname } from "@fleet-console/protocol/remote";
 
 /** Chromium 검증 결과 코드. 0=수락, -2=거부, -3=Chromium 판정 그대로. */
 export const CERTIFICATE_ACCEPTED = 0;

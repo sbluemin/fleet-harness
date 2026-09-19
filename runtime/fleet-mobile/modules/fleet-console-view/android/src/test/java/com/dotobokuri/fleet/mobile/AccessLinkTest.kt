@@ -66,12 +66,12 @@ class AccessLinkTest {
   private fun protocolVectorsFile(): File {
     var current: File? = File(System.getProperty("user.dir")).absoluteFile
     while (current != null) {
-      val direct = File(current, "runtime/fleet-console/access-protocol/vectors.json")
+      val direct = File(current, "runtime/fleet-console/protocol/remote/vectors.json")
       if (direct.isFile) return direct
-      val sibling = File(current, "../fleet-console/access-protocol/vectors.json").canonicalFile
+      val sibling = File(current, "../fleet-console/protocol/remote/vectors.json").canonicalFile
       if (sibling.isFile) return sibling
       current = current.parentFile
     }
-    throw AssertionError("runtime/fleet-console/access-protocol/vectors.json was not found")
+    throw AssertionError("runtime/fleet-console/protocol/remote/vectors.json was not found")
   }
 }

@@ -9,7 +9,7 @@
 | `cli/` | Dual-entry `fleet` launcher (auth/update/console/cli passthrough) and thin Claude gateway |
 | `core/host/` | Server lifecycle, security, durable state, and core APIs |
 | `core/client/` | React application, host chrome, and browser state |
-| `desktop-protocol/` | Shared Console-Desktop protocol contract |
+| `protocol/` | Shared remote-access and Console-Desktop protocol contracts |
 | `sdk/` | Plugin-facing contracts and stateless helpers |
 | `markdown/` | Shared sanitized markdown and diagram rendering |
 | `font-picker/` | Shared controlled font-selection surface |

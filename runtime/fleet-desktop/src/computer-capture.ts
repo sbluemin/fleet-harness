@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { desktopCapturer, systemPreferences, type WebContents } from "electron";
-import { DESKTOP_COMPUTER_CAPTURE_PATH, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget } from "@fleet-console/desktop-protocol";
+import { DESKTOP_COMPUTER_CAPTURE_PATH, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget } from "@fleet-console/protocol/desktop";
 
 const VERIFY_WINDOW = `
 ObjC.import('AppKit'); ObjC.import('CoreGraphics');
