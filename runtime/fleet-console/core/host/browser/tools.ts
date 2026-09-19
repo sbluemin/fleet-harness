@@ -63,10 +63,13 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
    * 글자, 특히 획이 조밀한 한글을 뭉개서 에이전트가 문구를 잘못 읽는 쪽으로 실패한다. 압축으로도 예산을
    * 넘기면 해상도를 깎는 대신 파일로 내려 보낸다.
    */
-  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, clip?: { x: number; y: number; width: number; height: number }) => {
+  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }) => {
     const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg" });
     const geometry = `Screenshot ${shot.width}x${shot.height} CSS px. Coordinates for computer actions are these pixels; the origin is the top-left of the viewport.`;
     const inline = () => [{ type: "image", data: shot.data, mimeType: shot.mimeType }, { type: "text", text: geometry }];
+    // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
+    // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
+    if (signal.aborted) return inline();
     if (!deps.screenshots || shot.data.length <= INLINE_SCREENSHOT_BUDGET_CHARS) return inline();
     try {
       const filePath = deps.screenshots.save(operationId, Buffer.from(shot.data, "base64"), "jpg");
@@ -101,8 +104,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     const tabId = args.tabId ?? null;
     const xy = (value: unknown): { x: number; y: number } => { if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === "number" && Number.isFinite(n))) throw new BrowserPolicyError("browser_coordinate_invalid", "coordinate must be [x, y] numbers from the latest screenshot."); return { x: value[0], y: value[1] }; };
     switch (args.action) {
-      case "screenshot": return { content: await screenshotBlock(operationId, tabId) };
-      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, { x: r[0], y: r[1], width: r[2], height: r[3] }) }; }
+      case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal) };
+      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }) }; }
       case "left_click": case "right_click": case "double_click": case "triple_click": {
         const { x, y } = xy(args.coordinate);
         await service.click(operationId, x, y, { button: args.action === "right_click" ? "right" : "left", clickCount: args.action === "double_click" ? 2 : args.action === "triple_click" ? 3 : 1 }, tabId);
@@ -124,7 +127,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
-    return { content: [{ type: "text", text: `${args.action} done.` }, ...await screenshotBlock(operationId, tabId)] };
+    return { content: [{ type: "text", text: `${args.action} done.` }, ...await screenshotBlock(operationId, tabId, signal)] };
   });
 
   const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry [ref_N] ids for form_input, computer scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {

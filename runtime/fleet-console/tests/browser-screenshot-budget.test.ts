@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createBrowserToolSpecs } from "../core/host/browser/tools.js";
-import { createBrowserScreenshotStore } from "../core/host/browser/screenshot-store.js";
+import { createBrowserScreenshotStore, resolveBrowserScreenshotNamespaceRoot } from "../core/host/browser/screenshot-store.js";
 
 /**
  * 스크린샷이 에이전트에게 닿는 계약. 도구 결과에는 부르는 CLI 쪽 토큰 상한이 걸려 있고, 넘기면 그쪽이 결과를
@@ -20,9 +20,14 @@ const BUDGET_CHARS = 64_000;
 const OVERSIZED = Buffer.alloc(Math.ceil((BUDGET_CHARS + 4_000) * 3 / 4), 0x7f);
 const WITHIN_BUDGET = Buffer.alloc(8_000, 0x7f);
 
-function screenshotTool(bytes: Buffer, screenshots?: ReturnType<typeof createBrowserScreenshotStore>) {
+function screenshotTool(bytes: Buffer, screenshots?: ReturnType<typeof createBrowserScreenshotStore>, aborted = false) {
   const service = {
-    agentCall: (_id: string, _signal: AbortSignal, run: (signal: AbortSignal) => Promise<unknown>) => run(new AbortController().signal),
+    agentCall: (_id: string, _signal: AbortSignal, run: (signal: AbortSignal) => Promise<unknown>) => {
+      const controller = new AbortController();
+      // 브라우저를 거두면 진행 중 호출은 이 자리에서 끊긴다 — 회수는 그보다 먼저 지나간다.
+      if (aborted) controller.abort();
+      return run(controller.signal);
+    },
     screenshot: () => Promise.resolve({ data: bytes.toString("base64"), mimeType: "image/jpeg", width: 1404, height: 1177 }),
   };
   const specs = createBrowserToolSpecs({ service: service as never, screenshots });
@@ -31,12 +36,13 @@ function screenshotTool(bytes: Buffer, screenshots?: ReturnType<typeof createBro
 }
 
 function store() {
-  return createBrowserScreenshotStore({ dataDir: mkdtempSync(path.join(tmpdir(), "browser-screenshot-")) });
+  const dataDir = mkdtempSync(path.join(tmpdir(), "browser-screenshot-"));
+  return { screenshots: createBrowserScreenshotStore({ dataDir }), root: resolveBrowserScreenshotNamespaceRoot(dataDir) };
 }
 
 describe("operation browser screenshots", () => {
   it("hands over an oversized screenshot as a file the agent can read, and takes it back with the browser", async () => {
-    const screenshots = store();
+    const { screenshots } = store();
     try {
       const { content } = await screenshotTool(OVERSIZED, screenshots)();
 
@@ -58,8 +64,20 @@ describe("operation browser screenshots", () => {
     }
   });
 
+  it("writes nothing when the call was already cut off", async () => {
+    const { screenshots, root } = store();
+    try {
+      // 거둔 뒤에 끝난 캡처가 파일을 쓰면 회수가 지나간 디렉터리를 되살리며 그 페이지가 남는다.
+      const { content } = await screenshotTool(OVERSIZED, screenshots, true)();
+      expect(content.some((block) => block.type === "image")).toBe(true);
+      expect(existsSync(root)).toBe(false);
+    } finally {
+      screenshots.cleanup();
+    }
+  });
+
   it("returns a screenshot within budget inline", async () => {
-    const screenshots = store();
+    const { screenshots } = store();
     try {
       const { content } = await screenshotTool(WITHIN_BUDGET, screenshots)();
       expect(content[0]?.type).toBe("image");

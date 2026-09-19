@@ -52,7 +52,11 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
 
   const prune = (dir: string): void => {
     try {
-      const files = readdirSync(dir).filter((name) => name.startsWith("shot-")).sort();
+      // 나이는 이름의 사전순이 아니라 일련번호가 정한다 — 자리수를 넘긴 번호(shot-10000)가 사전순으로 앞서면
+      // 방금 쓴 장을 지우고 없는 경로를 돌려주게 된다.
+      const files = readdirSync(dir)
+        .filter((name) => /^shot-\d+\./.test(name))
+        .sort((a, b) => Number.parseInt(a.slice(5), 10) - Number.parseInt(b.slice(5), 10));
       for (const name of files.slice(0, Math.max(0, files.length - KEEP_PER_OPERATION))) {
         try { rmSync(path.join(dir, name), { force: true }); } catch { /* best-effort */ }
       }
@@ -67,7 +71,6 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       const serial = (counters.get(operationId) ?? 0) + 1;
       counters.set(operationId, serial);
-      // 정렬이 곧 나이가 되도록 자리수를 고정한다.
       const filePath = path.join(dir, `shot-${String(serial).padStart(4, "0")}.${ext}`);
       writeFileSync(filePath, bytes, { mode: SCREENSHOT_FILE_MODE });
       try { chmodSync(filePath, SCREENSHOT_FILE_MODE); } catch { /* POSIX 권한이 없는 파일시스템 */ }
