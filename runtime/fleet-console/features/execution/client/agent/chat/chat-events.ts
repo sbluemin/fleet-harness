@@ -1260,14 +1260,40 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   ExitPlanMode: "propose",
 };
 
+/**
+ * MCP 호출의 이름은 `mcp__<server>__<tool>` 한 덩어리로 온다. 서버 이름에도 `_`가 들 수 있으므로
+ * 조각을 세지 않고 구분자 `__`를 앞에서부터 가장 이르게 찾는다 — 도구 이름에 남은 `__`는 도구의 것이다.
+ */
+const MCP_CALL = /^mcp__(.+?)__(.+)$/u;
+
+/** MCP 호출이면 서버와 도구로 가른다. 아니면 undefined — 내장 도구는 이 축을 쓰지 않는다. */
+export function agentChatMcpCall(name: string | undefined): { readonly server: string; readonly tool: string } | undefined {
+  const match = name !== undefined ? MCP_CALL.exec(name) : null;
+  return match?.[1] !== undefined && match[2] !== undefined ? { server: match[1], tool: match[2] } : undefined;
+}
+
+/**
+ * 줄에 세울 도구 이름. MCP 호출은 서버 접두를 벗는다 — 어느 서버였는지는 그 스텝을 감싼 집계 절이
+ * 이미 말하고, 접두까지 다시 쓰면 한 줄에 같은 서버 이름이 스텝 수만큼 되풀이된다.
+ */
+export function agentChatToolLabel(name: string | undefined): string {
+  return agentChatMcpCall(name)?.tool ?? name ?? "";
+}
+
 export function agentChatToolFamily(name: string | undefined): string {
+  // MCP 도구는 이름이 곧 식별자라 표에 실을 수 없다. 대신 계열을 하나 두고, 집계는 그 안에서
+  // 서버별로 갈린다 — 도구마다 절이 서면 서버 하나가 절 다섯 개로 흩어져 줄의 자리를 다 쓴다.
+  if (agentChatMcpCall(name) !== undefined) return "mcp";
   return (name !== undefined ? TOOL_FAMILIES[name] : undefined) ?? "other";
 }
 
-/** 집계 한 덩어리 — 계열과 그 계열로 끝난 스텝 수. `other`는 도구 이름별로 따로 센다. */
+/**
+ * 집계 한 덩어리 — 계열과 그 계열로 끝난 스텝 수. `other`는 도구 이름별로, `mcp`는 서버별로
+ * 따로 센다.
+ */
 export interface AgentChatStepGroup {
   readonly family: string;
-  /** `other` 계열의 표시 이름. 알려진 계열에서는 비어 있다. */
+  /** 절의 주어 — `other`는 도구 이름, `mcp`는 서버 이름. 그 밖의 계열에서는 비어 있다. */
   readonly name?: string;
   readonly count: number;
 }
@@ -1394,14 +1420,21 @@ function foldSegment(
     }
     folded.push(step);
     const family = agentChatToolFamily(step.name);
-    const key = family === "other" ? `other:${step.name ?? ""}` : family;
+    // 계열 하나가 한 절인 것이 기본이지만, 두 계열은 주어를 따로 센다: `other`는 도구 이름이,
+    // `mcp`는 서버가 그 절의 주어다.
+    const subject = family === "other"
+      ? step.name ?? ""
+      : family === "mcp"
+        ? agentChatMcpCall(step.name)?.server ?? ""
+        : undefined;
+    const key = subject === undefined ? family : `${family}:${subject}`;
     const found = seen.get(key);
     if (found === undefined) {
       seen.set(key, groups.length);
       groups.push({
         family,
         count: 1,
-        ...(family === "other" ? { name: step.name ?? "" } : {}),
+        ...(subject !== undefined ? { name: subject } : {}),
       });
     } else {
       const current = groups[found];

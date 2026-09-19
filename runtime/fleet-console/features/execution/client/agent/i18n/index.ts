@@ -204,6 +204,8 @@ export const terminalEn = {
   "terminal.chat.stepCount": "{count} steps",
   "terminal.chat.receiptAria": "Show the work behind this answer",
   "terminal.chat.activityUsing": "Using {name}",
+  // 도는 MCP 호출의 꼬리. 집계 절과 달리 이 자리에는 서버를 말해 주는 절이 없으므로 둘을 함께 쓴다.
+  "terminal.chat.activityUsingMcp": "Running {tool} on {server}",
   "terminal.chat.workedLabel": "Worked on this",
   "terminal.chat.foldAria": "Show the work behind this answer",
   "terminal.chat.foldTurnFailed": "· turn failed",
@@ -248,6 +250,10 @@ export const terminalEn = {
   // 줄에서 유일하게 훑을 수 있는 토큰이 사라진다. 두 지원 언어 모두 이름이 앞에 선다.
   "terminal.chat.group.other_one": "once",
   "terminal.chat.group.other_other": "{count} times",
+  // MCP 절의 주어는 서버다. 문구가 `other`와 같은 것은 우연이 아니라 같은 문법이기 때문이다 —
+  // 앞에 선 이름이 주어이고 이 문구는 그 주어를 몇 번 썼는지만 말한다.
+  "terminal.chat.group.mcp_one": "once",
+  "terminal.chat.group.mcp_other": "{count} times",
   "terminal.chat.outsideTheater": "outside",
   "terminal.chat.outsideTheaterTitle": "This path is outside the Theater folder",
   "terminal.chat.verb.read.now": "Reading",
@@ -817,6 +823,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.chat.stepCount": "{count}스텝",
   "terminal.chat.receiptAria": "이 응답의 작업 과정 보기",
   "terminal.chat.activityUsing": "{name} 사용 중",
+  "terminal.chat.activityUsingMcp": "{server}에서 {tool} 실행 중",
   "terminal.chat.workedLabel": "작업함",
   "terminal.chat.foldAria": "이 응답 뒤의 과정 보기",
   "terminal.chat.foldTurnFailed": "· 턴 실패",
@@ -859,6 +866,8 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.chat.group.propose_other": "계획을 {count}번 냄",
   "terminal.chat.group.other_one": "한 번",
   "terminal.chat.group.other_other": "{count}회",
+  "terminal.chat.group.mcp_one": "한 번",
+  "terminal.chat.group.mcp_other": "{count}회",
   "terminal.chat.outsideTheater": "Theater 밖",
   "terminal.chat.outsideTheaterTitle": "이 경로는 Theater 폴더 밖입니다",
   "terminal.chat.verb.read.now": "읽는 중",
