@@ -10688,6 +10688,51 @@ body[data-side-bar-animating="true"] .canvas-operation {
   pointer-events: none;
 }
 
+/* 종료 알림은 부유 사이드바를 제외한 Map 안에만 머문다. */
+.operations-toast-region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 40;
+  overflow: clip;
+  container-type: inline-size;
+  pointer-events: none;
+}
+
+.operations-toast-region > .app-toast-host {
+  position: absolute;
+  max-width: min(380px, calc(100% - 2 * var(--space-5)));
+}
+
+.operations-toast-region .app-toast {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 240px) {
+  .operations-toast-region > .app-toast-host {
+    right: var(--space-1);
+    max-width: calc(100% - 2 * var(--space-1));
+  }
+
+  .operations-toast-region .app-toast {
+    padding: var(--space-1);
+    gap: 0;
+  }
+
+  .operations-toast-region .app-toast-dot {
+    display: none;
+  }
+
+  .operations-toast-region .app-toast-body {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
 .app-toast {
   display: flex;
   align-items: flex-start;
