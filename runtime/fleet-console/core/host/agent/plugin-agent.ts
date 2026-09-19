@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@dotobokuri/core-agent/claude";
 import type { AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { FLEET_AI_GATEWAY_MCP_SERVER, FLEET_CONSOLE_USE_MCP_SERVER, type AiGatewayMcpHost, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
@@ -9,7 +10,6 @@ import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type C
 
 export interface PluginAgentDeps {
   readonly baseUrl: () => string | null;
-  readonly dataDir: string;
   readonly consoleUse: ConsoleUseMcpHost;
   readonly aiGatewayMcp: Pick<AiGatewayMcpHost, "connect">;
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)에서는 `tools.computerUse` 요청이 조용히 빠진다. */
@@ -40,8 +40,8 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     const baseUrl = deps.baseUrl();
     if (!baseUrl) throw new Error("agent_gateway_unavailable");
     if (disposed) throw new Error("agent_host_disposed");
-    await fs.mkdir(deps.dataDir, { recursive: true, mode: 0o700 });
-    const cwd = await fs.mkdtemp(path.join(deps.dataDir, "session-"));
+    // 대화 연속성에 필요한 자식 상태만 임시로 둔다. Console 영속 데이터와 연결하지 않는다.
+    const cwd = await fs.mkdtemp(path.join(tmpdir(), "fleet-plugin-agent-"));
     if (disposed) { await fs.rm(cwd, { recursive: true, force: true }); throw new Error("agent_host_disposed"); }
     const lifetime = new AbortController();
     let turnController: AbortController | null = null;

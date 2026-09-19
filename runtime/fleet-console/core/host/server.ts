@@ -972,7 +972,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, dataDir: path.join(durablePaths.dir, "agent-runtime", pluginId), consoleUse: consoleUse.forPlugin(pluginId), aiGatewayMcp, computerUseMcp });
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), aiGatewayMcp, computerUseMcp });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },
