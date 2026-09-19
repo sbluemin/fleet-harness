@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fleet Desktop E2E"
-  short_description: "Verify Fleet Electron native, security, and package boundaries"
-  default_prompt: "Choose the requested Fleet Desktop lanes and target OS, load only relevant references, and verify an isolated real app. Route Console SPA-only behavior to console-e2e. Finish with observed evidence, unverified boundaries, and owned-resource cleanup results."

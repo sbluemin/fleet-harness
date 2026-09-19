@@ -4,7 +4,7 @@ This directory owns repository-work skills. It is separate from published Admira
 
 ## Authoring
 
-- Preserve directory names and `name`; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` unsupported by the Console parser and descriptions longer than 500 characters.
+- Preserve directory names and `name` unless an explicitly requested merge or rename requires updating their callers; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` unsupported by the Console parser and descriptions longer than 500 characters.
 - Keep inputs, execution decisions, authority boundaries, and completion/stop conditions in the entrypoint. Leave judgment-dependent ordering flexible; retain order required by dependencies or side effects.
 - Put long commands and platform/mode-specific procedures once in `references/`. Link them with **when and why to read**, not a requirement to preload everything.
 - Do not duplicate procedures owned by another skill or `CLAUDE.md`. Add a skill only for a distinct recurring task.
@@ -25,9 +25,11 @@ Review semantic changes by assembling an entrypoint with **only references selec
 
 | Representative request/condition | Expected route and contract |
 |---|---|
-| Escape from a Console modal reaches a background shortcut | console-e2e; setup/verification, actual focus and shortcut checks |
+| Escape from a Console modal reaches a background shortcut | console-e2e browser route; Fleet Browser, setup/verification, actual focus and shortcut checks |
+| Browser verification with Fleet Browser unavailable or explicit headless/pre-navigation instrumentation required | console-e2e browser fallback; record reason, agent-browser init/owned-session cleanup, no permission bypass |
+| Verify a Console modal inside Electron | console-e2e Desktop route; keep owned CDP renderer for SPA checks, do not substitute a browser tab |
 | Give me a URL to try this branch myself | console-handoff; verify seed/PID, leave server running, do not open the browser for the user |
-| Reopen a closed Windows Desktop window from the tray | desktop-e2e native lane; Windows headed evidence, not macOS/CDP substitution |
+| Reopen a closed Windows Desktop window from the tray | console-e2e Desktop native lane; Windows headed evidence, not macOS/CDP substitution |
 | Reduce Gateway loop requests with the same prompt | ai-gateway-loop-optimization; standalone when caller/host is irrelevant, frozen before/after workload |
 | Consolidate package micro-files and proxies | clean-code; public consumers and approved batches, no file-count-only deletion |
 | Plugin colors look disjoint across Console | design-sweep; quick=candidates, full=three-theme measurements |

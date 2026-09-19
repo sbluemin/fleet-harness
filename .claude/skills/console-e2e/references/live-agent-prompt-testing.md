@@ -10,6 +10,10 @@ The base skill still owns isolation, instrumentation, and cleanup. This page onl
 what the agent-CLI path needs on top, and every item below was paid for by a failed
 attempt.
 
+## Browser driver
+
+Keep the driver selected by the base skill. The `ab` examples and measured CLI quirks below apply only to agent-browser fallback or Desktop CDP; they do not require switching away from Fleet Browser. For Fleet Browser use its page, form, pointer, keyboard, screenshot, and read-only inspection tools. Select combobox options with real input, not JavaScript mutation. For canvas terminals focus the terminal, send input through the driver, and verify the resulting screenshot; do not assume DOM text or an input acknowledgement proves delivery.
+
 ## Absolute paths, or you test the wrong build
 
 `Bash` tool calls reset cwd between invocations. `node runtime/fleet-console/dist/cli.mjs

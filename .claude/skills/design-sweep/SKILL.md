@@ -23,7 +23,7 @@ Default `<scope>` is core client styles plus all `runtime/fleet-plugins/*` CSS; 
 
 Read [Implementation and verification](references/implementation.md), then make token-first changes in a dedicated worktree. Preserve persisted-key compatibility and co-update contract tests for legitimate grammar changes. Never disable tests or erase exceptions to get green.
 
-Run available tests/typecheck/build for affected Console and each plugin. Before delivery, compare **headed screenshots** against the approved mock in all three themes. Distinguish this mode from `console-e2e`'s default headless and prove the run was headed. If unavailable, leave that gate unverified. Invoke `pr-workflow` only when publication is within authorized delivery scope.
+Run available tests/typecheck/build for affected Console and each plugin. Before delivery, compare **headed screenshots** against the approved mock in all three themes. Confirm the selected `console-e2e` driver ran headed; its agent-browser fallback defaults to headless. If unavailable, leave that gate unverified. Invoke `pr-workflow` only when publication is within authorized delivery scope.
 
 ## Completion
 

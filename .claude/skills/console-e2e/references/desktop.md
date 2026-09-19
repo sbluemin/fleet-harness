@@ -1,9 +1,4 @@
----
-name: desktop-e2e
-description: Verify Fleet Electron Desktop window behavior, native lifecycle, security boundaries, sidecar ownership, or packaging in the real app. Route SPA-only behavior after Console handoff to console-e2e.
----
-
-# Desktop E2E
+# Console E2E — Desktop route
 
 Verify the thin Electron shell's ownership boundaries. Run only the lanes required by the request, not the entire Console product.
 
@@ -13,10 +8,10 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 
 | Claim | Read before execution |
 |---|---|
-| Setup and ownership for every Desktop run | [Setup](references/setup.md) |
-| Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](references/shell-cdp.md) |
-| Menus, dialogs, tray, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](references/native-and-package.md) |
-| Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](references/platform-automation.md) |
+| Setup and ownership for every Desktop run | [Setup](desktop/setup.md) |
+| Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](desktop/shell-cdp.md) |
+| Menus, dialogs, tray, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
+| Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
 
 ## Execution
 

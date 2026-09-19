@@ -45,7 +45,7 @@ $ab = Join-Path $toolDir "agent-browser-win32-x64.exe"
 & $ab skills get dogfood
 ```
 
-Use `& $ab ...` for all CDP commands. If Windows cannot execute the official x64 asset, mark the Shell/CDP lane blocked. Do not use an unofficial ARM64 build or a different browser tool while reporting that `desktop-e2e` ran.
+Use `& $ab ...` for all CDP commands. If Windows cannot execute the official x64 asset, mark the Shell/CDP lane blocked. Do not use an unofficial ARM64 build or a different browser tool while reporting that the `console-e2e` Desktop route ran.
 
 ## Lane-specific evidence
 
