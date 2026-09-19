@@ -164,20 +164,24 @@
 
 
 /* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Operation 의 정체다 ---- */
-/* brass 는 위치·초점 채널이므로 쓰지 않는다: 영속은 "남는다"는 **상태**라 signal 의 positive 를 든다. */
+/* 글리프 하나로 말한다: 상자도 테두리도 두지 않아 옆의 화면 크기 글리프와 같은 결로 패널에 붙는다.
+   brass 는 위치·초점 채널이므로 쓰지 않는다 — 영속은 "남는다"는 **상태**라 signal 의 positive 를 든다. */
 .op-browser__profile { position: relative; flex: none; align-self: center; }
-.op-browser__pchip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font-family: var(--font-body); font-size: var(--t-xs); line-height: 1; cursor: pointer; white-space: nowrap; transition: color 0.12s, border-color 0.12s, background 0.12s; }
-.op-browser__pchip svg { width: 12px; height: 12px; flex: none; }
-.op-browser__pchip:hover:not(:disabled) { color: var(--text-primary); border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.op-browser__pchip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-.op-browser__pchip:disabled { opacity: 0.35; cursor: default; }
-.op-browser__pchip.is-persistent { color: var(--positive-ink); border-color: var(--positive); background: var(--positive-glow); }
-/* 세션 메뉴는 두 줄짜리 항목이라 뷰포트 메뉴보다 넓다. */
-.op-browser__profile .op-browser__menu { right: 0; min-width: 232px; }
-.op-browser__menu-item strong { display: block; font-weight: var(--weight-medium); }
-.op-browser__menu-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 2px; white-space: normal; line-height: 1.4; }
+.op-browser__pchip.is-persistent { color: var(--positive-ink); }
+.op-browser__pchip.is-persistent:hover:not(:disabled) { color: var(--positive-ink); background: color-mix(in oklch, var(--positive) 12%, transparent); }
+/* 세션 메뉴 — 항목마다 앞에 자기 글리프가 서고, 설명은 한 줄을 넘지 않는다. */
+.op-browser__profile .op-browser__menu { right: 0; min-width: 216px; padding: var(--space-1); }
+.op-browser__menu-item { display: flex; align-items: flex-start; gap: var(--space-2); }
+.op-browser__menu-glyph { flex: none; display: inline-flex; margin-top: 1px; color: var(--text-tertiary); }
+.op-browser__menu-glyph svg { width: 13px; height: 13px; }
+.op-browser__menu-item:hover .op-browser__menu-glyph, .op-browser__menu-item:focus-visible .op-browser__menu-glyph { color: inherit; }
+.op-browser__menu-item[aria-checked="true"] .op-browser__menu-glyph { color: inherit; }
+.op-browser__menu-item:disabled { opacity: 0.4; cursor: default; }
+.op-browser__menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
+.op-browser__menu-body { display: flex; flex-direction: column; min-width: 0; }
+.op-browser__menu-body strong { font-weight: var(--weight-medium); }
+.op-browser__menu-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 1px; white-space: normal; line-height: 1.35; }
 .op-browser__menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--hairline); }
-.op-browser__menu-note { margin: 0; padding: var(--space-1) var(--space-2) var(--space-2); color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1.45; white-space: normal; }
 /* 가져오기 대화상자의 도착지 줄 — 쿠키가 어디에 남는지. */
 .op-browser__dialog-item.is-target { border: 1px solid var(--positive); background: var(--positive-glow); }
 .op-browser__button--danger { border-color: var(--coral); color: var(--coral-ink); }

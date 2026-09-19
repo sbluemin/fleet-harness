@@ -109,6 +109,12 @@ interface OperationBrowser {
   interruptSerial: number;
   /** 에이전트가 누르고 있는 포인터 버튼 — 드래그 동안 mouseMoved 가 버튼을 실어야 한다. */
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
+  /**
+   * 아직 `tabs` 에 들어가지 못한, 만드는 중인 탭의 수. 뷰가 붙기를 기다리는 동안 이 Operation 의 마지막 탭이
+   * 닫히면 「탭이 없다」로 읽혀 컨텍스트가 거둬지고, 붙는 중이던 뷰가 그 자리에서 죽는다. 사람과 에이전트가
+   * 같은 탭을 함께 쓰므로 이 겹침은 실제로 일어난다.
+   */
+  pendingTabs: number;
   agentCalls: Set<AbortController>;
 }
 
@@ -284,7 +290,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null };
+      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
@@ -354,6 +360,7 @@ export class BrowserService {
     op.agentCalls.clear();
     await this.disposeContext(op);
     op.tabs.clear();
+    op.pendingTabs = 0;
     op.activeTabId = null;
   }
 
@@ -440,11 +447,20 @@ export class BrowserService {
     const op = this.operation(operationId);
     if (op.tabs.size >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
     const target = url ? this.admit(op, url, actor) : null;
-    const { client, contextId } = await this.context(op);
-    const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
-    const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
-    op.tabs.set(tab.id, tab);
+    // 뷰가 붙는 동안은 탭이 아직 `tabs` 에 없다 — 그 사이 마지막 탭이 닫혀도 컨텍스트가 거둬지지 않게 세어 둔다.
+    op.pendingTabs += 1;
+    let client: CdpClient;
+    let tab: Tab;
+    try {
+      const context = await this.context(op);
+      client = context.client;
+      const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: context.contextId });
+      const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
+      tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+      op.tabs.set(tab.id, tab);
+    } finally {
+      op.pendingTabs -= 1;
+    }
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
       client.send("Runtime.enable", {}, tab.sessionId),
@@ -454,7 +470,7 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    this.deps.desktop.bindView(created.targetId, op.operationId);
+    this.deps.desktop.bindView(tab.targetId, op.operationId);
     await this.applyViewport(client, tab, op.viewport);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
@@ -475,7 +491,7 @@ export class BrowserService {
     // 마지막 탭이 닫히면 브라우저 컨텍스트도 거둔다. 임시 세션의 약속이 이것이다 — 「탭을 닫으면 로그인이
     // 사라집니다」. 컨텍스트를 그대로 두면 유휴 종료까지의 5분 안에 새 탭을 여는 사람이 같은 파티션과 그
     // 쿠키를 되받는다. 영속 프로필도 같이 거두지만 잃는 것은 없다 — 그 쿠키는 디스크의 프로필에 산다.
-    if (op.tabs.size === 0) await this.disposeContext(op);
+    if (op.tabs.size === 0 && op.pendingTabs === 0) await this.disposeContext(op);
     this.emitState(op);
     this.scheduleIdle();
   }

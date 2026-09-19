@@ -5,7 +5,7 @@ import { Select } from "@fleet-console/sdk/react/browser";
 
 import { getT } from "../agent/i18n/index.js";
 import { pushComposerInbox } from "../agent/chat/composer-inbox.js";
-import { publishBrowserEngine, publishBrowserPanel, useBrowserPanel } from "./browser-panel-store.js";
+import { publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, useBrowserCaptionOverlay, useBrowserPanel } from "./browser-panel-store.js";
 import { subscribeConsoleChannel } from "../operations-sse.js";
 import { themePolarity } from "../store.js";
 import { isDesktopShell } from "../desktop-shell.js";
@@ -212,6 +212,7 @@ const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d=
 /* 세션의 정체 — 남는 것은 방패, 사라지는 것은 가림. 두 글리프의 대비가 표식 한 칸에서 읽혀야 한다. */
 const ProfileGlyph = () => glyph('<path d="M8 1.8 13 3.6v4.1c0 3-2 5.2-5 6.5-3-1.3-5-3.5-5-6.5V3.6z"/>');
 const EphemeralGlyph = () => glyph('<path d="M3 7.4 4.4 3.4h7.2L13 7.4"/><path d="M1.8 7.4h12.4"/><circle cx="5" cy="10.4" r="2"/><circle cx="11" cy="10.4" r="2"/><path d="M7 10.4h2"/>');
+const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
 /** Google Chrome 로고 — 브랜드 색은 브랜드의 것이라 토큰이 아닌 고정값이다. */
 const ChromeGlyph = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
@@ -298,6 +299,11 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
   const importUnavailable = document.documentElement.dataset.desktopPlatform === "win32";
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
+  // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
+  React.useEffect(() => {
+    publishBrowserCaptionOverlay(context.operationId, viewportMenu || profileMenu);
+    return () => publishBrowserCaptionOverlay(context.operationId, false);
+  }, [context.operationId, viewportMenu, profileMenu]);
   const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
@@ -317,19 +323,20 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
         ))}
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
       </div>
-      {/* 세션 표식 — 지금 어떤 세션인지 늘 읽히고, 여기서 바꾼다. 에이전트가 모는 브라우저라 정체가 보여야 한다. */}
+      {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
+          바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
       <div className="op-browser__profile">
         <button
           type="button"
-          className={`op-browser__pchip${persistent ? " is-persistent" : ""}`}
+          className={`op-browser__icon op-browser__pchip${persistent ? " is-persistent" : ""}`}
           aria-haspopup="menu"
           aria-expanded={profileMenu}
+          aria-label={t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}
           data-tip={t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
           disabled={!ready}
           onClick={() => setProfileMenu((open) => !open)}
         >
           {persistent ? <ProfileGlyph /> : <EphemeralGlyph />}
-          <span>{t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</span>
         </button>
         {profileMenu ? (
           <div className="op-browser__menu" role="menu">
@@ -342,20 +349,35 @@ export function BrowserCaption({ context }: { readonly context: OperationRenderC
                 className="op-browser__menu-item"
                 onClick={() => { setProfileMenu(false); panel?.actions.chooseProfile(value); }}
               >
-                <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
-                <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+                <span className="op-browser__menu-glyph" aria-hidden="true">{value ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
+                <span className="op-browser__menu-body">
+                  <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                  <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+                </span>
               </button>
             ))}
             <div className="op-browser__menu-sep" role="separator" />
-            <button type="button" role="menuitem" className="op-browser__menu-item" onClick={() => { setProfileMenu(false); panel?.actions.openClearProfile(); }}>
-              <strong>{t("terminal.browser.profile.clearItem")}</strong>
-              <span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span>
+            <button
+              type="button"
+              role="menuitem"
+              className="op-browser__menu-item"
+              disabled={importUnavailable}
+              title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined}
+              onClick={() => { setProfileMenu(false); panel?.actions.openImport(); }}
+            >
+              <span className="op-browser__menu-glyph" aria-hidden="true"><ImportGlyph /></span>
+              <span className="op-browser__menu-body"><strong>{t("terminal.browser.import.title")}</strong></span>
             </button>
-            <p className="op-browser__menu-note">{t("terminal.browser.profile.sharedNote")}</p>
+            <button type="button" role="menuitem" className="op-browser__menu-item" onClick={() => { setProfileMenu(false); panel?.actions.openClearProfile(); }}>
+              <span className="op-browser__menu-glyph" aria-hidden="true"><EraseGlyph /></span>
+              <span className="op-browser__menu-body">
+                <strong>{t("terminal.browser.profile.clearItem")}</strong>
+                <span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span>
+              </span>
+            </button>
           </div>
         ) : null}
       </div>
-      <button type="button" className="op-browser__icon" title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined} data-tip={t(importUnavailable ? "terminal.browser.import.windowsPending" : "terminal.browser.import.title")} aria-label={t("terminal.browser.import.title")} disabled={!ready || importUnavailable} onClick={() => panel?.actions.openImport()}><ImportGlyph /></button>
       <div className="op-browser__viewport-menu">
         <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
           {presetGlyph(viewport?.preset ?? "responsive")}
@@ -382,6 +404,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const captionOverlay = useBrowserCaptionOverlay(operationId);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<Mode>("none");
@@ -425,7 +448,7 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const post_ = (body: Record<string, unknown>) => { const key = JSON.stringify(body); if (placeRef.current === key) return; placeRef.current = key; void post(operationId, "place", body).catch(() => undefined); };
     const measure = () => {
       const rect = element.getBoundingClientRect();
-      const covered = document.querySelector('[aria-modal="true"]') !== null;
+      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay;
       const shown = activeTab !== null && mode === "none" && !covered && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const visible = shown ? visibleRect(host, rect) : null;
       if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false }); return; }
@@ -439,7 +462,8 @@ export function BrowserPanel({ context }: { readonly context: OperationRenderCon
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
-  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null]);
+  // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
+  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
 
