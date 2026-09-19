@@ -382,6 +382,18 @@ export function applyOperationUpdate(operation: OperationNode): void {
   setState({ operations });
 }
 
+/**
+ * 제거 사건 — 다른 창이나 에이전트가 닫은(삭제 유예에 들어간) Operation 을 재조회 없이 내린다.
+ * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 캔버스가 사라진 카드를 기다린다.
+ */
+export function applyOperationRemoved(operationId: string): void {
+  if (!state.operations.some((operation) => operation.id === operationId)) return;
+  const operations = state.operations.filter((operation) => operation.id !== operationId);
+  const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
+  const activeOperationId = state.activeOperationId === operationId ? null : state.activeOperationId;
+  setState({ operations, operationNotifications, activeOperationId, ...(activeOperationId === null ? { activeOperationAcknowledged: true } : {}) });
+}
+
 export function hydrateGroups(groups: readonly OperationGroup[]): void {
   setState({ groups });
 }

@@ -170,6 +170,10 @@ const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
+const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
+/** 브라우저 스트림의 제거 프레임 — 삭제 유예에 들어간 Operation 의 id 만 싣는다. */
+const OPERATION_REMOVED_SSE_EVENT = "operation:removed";
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 export const PAIRING_IDENTITY = { product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 } as const;
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
@@ -589,7 +593,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     operations,
     theaters,
     save: saveDurableState,
-    publish: publishPluginEvent,
+    // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
+    // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
+    // in-process 채널은 전체 노드를 싣기에 그대로 내보내지 않고, 제거는 id 만·복원은 정화된 DTO 로 낸다.
+    publish: (channel, payload) => {
+      publishPluginEvent(channel, payload);
+      const event = payload as { readonly operationId?: unknown; readonly operation?: unknown };
+      if (channel === OPERATION_DELETED_EVENT_CHANNEL && typeof event.operationId === "string") broadcastOperationRemoved(event.operationId);
+      else if (channel === OPERATION_RESTORED_EVENT_CHANNEL && event.operation && typeof event.operation === "object") broadcastOperationChanged(event.operation as OperationNode);
+    },
     unregisterTheaterWorkspaces: (theaterId) => {
       publishTheaterLifecycle("forgotten", theaterId);
     },
@@ -2740,6 +2752,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function broadcastGroupRemoved(groupId: string, theaterId: string): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("group:removed", { groupId, theaterId });
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+  }
+  function broadcastOperationRemoved(operationId: string): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(OPERATION_REMOVED_SSE_EVENT, { operationId });
     for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
   }
   function broadcastOperationChanged(node: OperationNode): void {

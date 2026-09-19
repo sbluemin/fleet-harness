@@ -2,7 +2,8 @@ import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeCons
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
-import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
+import { forgetTriageOperation } from "./canvas/triage-store.js";
+import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -102,6 +103,19 @@ export function connectOperationsSse(): void {
     try {
       const data = JSON.parse(msg.data) as { readonly operation?: unknown };
       if (isRecord(data.operation)) applyOperationUpdate(data.operation as unknown as OperationNode);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
+  // 삭제 유예에 들어간 Operation — 누른 창은 스스로 다시 조회하지만, 다른 창과 Console Use 의 닫기는 이 프레임으로만 온다.
+  source.addEventListener("operation:removed", (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly operationId?: unknown };
+      if (typeof data.operationId !== "string") return;
+      forgetTriageOperation(data.operationId);
+      applyOperationRemoved(data.operationId);
     } catch {
       // ignore malformed SSE event
     }

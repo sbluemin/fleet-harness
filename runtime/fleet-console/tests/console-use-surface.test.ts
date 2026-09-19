@@ -27,12 +27,17 @@ describe("Console Use surface boundaries", () => {
       { id: "op-human", title: "Human's", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 3, updatedAt: 3 } },
     ];
     const answered: string[] = [];
+    const slept: string[] = [];
     const surface: ConsoleSurface = {
       pendingAsks: (id) => id === "op-child" ? [{ id: "ask-q", form: "question", questions: [] }, { id: "ask-plan", form: "plan", questions: [] }] : id === "op-human" ? [{ id: "ask-h", form: "question", questions: [] }] : [],
       answer: (id, askId) => { answered.push(`${id}:${askId}`); return { ok: true, outcome: "answered" }; },
+      sleep: async (id) => { slept.push(id); return { ok: true, lifecycle: "dormant" }; },
     };
     const deps = { enabled: () => true, directory, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
+    // 관측: 자식은 도는 중, 사람의 것은 유휴 터미널. 휴면은 프로세스를 죽이므로 유휴 터미널만 통과한다.
+    const observation = (activity: "running" | "idle") => ({ activity, lifecycle: "live" as const, observedAt: new Date().toISOString(), source: "host" as const, attention: { kind: "none" as const }, surface: "terminal" as const, supportedActions: [], output: { status: "unavailable" as const, outcome: "unknown" as const } });
+    control.attach({ observe: (id) => id === "op-child" ? observation("running") : id === "op-human" ? observation("idle") : null, execute: async () => { throw new Error("not used"); } });
     let contributedCalls = 0;
     const calls: unknown[] = [];
     const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, experimentEnabled: () => true, language: () => "en", onCall: (event) => calls.push(event) });
@@ -60,6 +65,11 @@ describe("Console Use surface boundaries", () => {
     // 자기 자신은 닫지 못한다. 닫기 어댑터가 없으면 capability_unavailable 로 답한다.
     expect((await call("op-parent", "console_panel", { operationId: "op-parent", action: "close" })).error).toBe("cannot_close_self");
     expect((await call("op-parent", "console_panel", { operationId: "op-child", action: "close" })).error).toBe("capability_unavailable");
+    // 휴면은 프로세스를 끝내는 일이다 — 자기 자신과 도는 중인 Operation 은 거절하고, 유휴 터미널만 재개 가능한 휴면으로 보낸다.
+    expect((await call("op-parent", "console_panel", { operationId: "op-parent", action: "sleep" })).error).toBe("cannot_sleep_self");
+    expect((await call("op-parent", "console_panel", { operationId: "op-child", action: "sleep" })).error).toBe("not_idle");
+    expect(await call("op-parent", "console_panel", { operationId: "op-human", action: "sleep" })).toMatchObject({ action: "sleep", lifecycle: "dormant" });
+    expect(slept).toEqual(["op-human"]);
     // 플러그인이 실은 도구는 같은 게이트를 지난다: 허용된 호출자는 통과, 토글이 없는 호출자는 거부.
     expect(await call("op-parent", "console_repo", { theaterId: "theater-a", view: "status" })).toMatchObject({ ok: true });
     expect((await call("op-human", "console_repo", { theaterId: "theater-a", view: "status" })).error).toBe("console_use_not_authorized");
