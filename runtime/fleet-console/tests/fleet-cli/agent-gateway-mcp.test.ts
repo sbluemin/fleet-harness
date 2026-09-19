@@ -13,22 +13,6 @@ interface McpToolListResponse {
   };
 }
 
-const EXPECTED_WIKI_TOOL_IDS = [
-  "wiki_briefing",
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_orient",
-  "wiki_patch_edit",
-  "wiki_patch_queue",
-  "wiki_compile_source",
-  "wiki_query",
-  "wiki_read",
-  "wiki_resolve",
-  "wiki_schema_list",
-  "wiki_schema_read",
-  "wiki_schema_create",
-] as const;
-
 describe("fleet-cli gateway MCP composition", () => {
   let runtime: FleetCliRuntime | undefined;
   let dataDir: string | undefined;
@@ -40,7 +24,7 @@ describe("fleet-cli gateway MCP composition", () => {
     dataDir = undefined;
   });
 
-  it("exposes exactly Wiki tools and Gateway resources on a gateway-doctrine fleet session", async () => {
+  it("exposes only the Gateway server without injecting Codex Wiki into a fleet session", async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-cli-runtime-"));
     runtime = await createFleetCliRuntime({ dataDir });
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
@@ -52,17 +36,9 @@ describe("fleet-cli gateway MCP composition", () => {
 
     expect(new Set(endpoint.servers.map((server) => new URL(server.url).origin)).size).toBe(1);
     expect(new Set(endpoint.servers.map((server) => new URL(server.url).pathname)).size).toBe(endpoint.servers.length);
-    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-ai-gateway", "fleet-codex"]);
-    expect(tokens.map((token) => token.name)).toEqual(["fleet-ai-gateway", "fleet-codex"]);
-    const fleetServer = endpoint.servers[1]!;
-    const fleetToken = tokens[1]!;
-    const toolNames = await listMcpTools(fleetServer.url, fleetToken.token);
-    const expected = [...EXPECTED_WIKI_TOOL_IDS].sort();
+    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet-ai-gateway"]);
+    expect(tokens.map((token) => token.name)).toEqual(["fleet-ai-gateway"]);
     expect(await listMcpTools(endpoint.servers[0]!.url, tokens[0]!.token)).toEqual(new Set([]));
-
-    expect([...toolNames].sort()).toEqual(expected);
-    expect(toolNames.has("carrier_dispatch")).toBe(false);
-    expect(toolNames.has("carrier_jobs")).toBe(false);
   });
 });
 

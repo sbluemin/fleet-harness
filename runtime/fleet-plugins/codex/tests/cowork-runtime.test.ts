@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "../server/wiki/index.js";
 import { describe, expect, it } from "vitest";
 import { createCoworkTools } from "../server/codex/cowork/index.js";
 import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnectOptions, type CoworkConnector } from "../server/codex/cowork/index.js";

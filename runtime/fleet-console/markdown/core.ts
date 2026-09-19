@@ -38,9 +38,8 @@ interface ExtractedFrontmatter {
   content: string;
 }
 
-// SSoT: packages/fleet-wiki/src/store.ts WIKI_LINK_PATTERN
-// Inlined here because the client (Vite SPA) bundle cannot transitively pull
-// fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
+// 정본: runtime/fleet-plugins/codex/server/wiki/store.ts WIKI_LINK_PATTERN
+// 브라우저 번들에 Node 전용 저장 모듈을 포함하지 않도록 인라인한다. 두 정규식을 함께 유지한다.
 const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
 
 // Leading YAML frontmatter fence: `---` on the first line through a closing

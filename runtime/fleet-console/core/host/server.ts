@@ -11,7 +11,6 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
-import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import { createAiGatewayMcpHost } from "./mcp/ai-gateway.js";
 import { createConsoleControl } from "./mcp/console-control.js";
@@ -487,15 +486,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
     getLiquidGlass: () => consoleSettingsStore.load().general?.liquidGlass ?? true,
-  });
-  const wikiWorkspaceResolver = createWikiWorkspaceResolver({
-    ensureWorkspace: (cwd) => {
-      const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
-      return { cwd: workspace.cwd, path: workspace.path };
-    },
-    withMigrationLock: (workspace, operation) => withDirectoryLock({
-      lockDir: path.join(workspace.path, "knowledge.migration.lock"),
-    }, operation),
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();

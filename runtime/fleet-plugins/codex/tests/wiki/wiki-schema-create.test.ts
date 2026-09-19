@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createMemoryPaths, ensureMemoryRoot } from "../src/paths.js";
-import { createSchemaTemplate, validateSchemaTemplateCreate } from "../src/schema.js";
+import { createMemoryPaths, ensureMemoryRoot } from "../../server/wiki/paths.js";
+import { createSchemaTemplate, validateSchemaTemplateCreate } from "../../server/wiki/schema.js";
 
 describe("schema template creation", () => {
   it("creates a valid custom template directly and exclusively", async () => {

@@ -19,9 +19,9 @@ import {
   readWikiEntry,
   rejectPatch,
   showQueue,
-} from "@dotobokuri/fleet-wiki";
-import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
-import type { BriefingHit, MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
+} from "../wiki/index.js";
+import { PATCH_FILENAME, PATCH_META_FILENAME } from "../wiki/index.js";
+import type { BriefingHit, MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "../wiki/index.js";
 import type { CoworkService } from "./cowork/index.js";
 
 import type {

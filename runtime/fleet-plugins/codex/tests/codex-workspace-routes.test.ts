@@ -3,8 +3,8 @@ import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createMemoryPaths } from "@dotobokuri/fleet-wiki";
-import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createMemoryPaths } from "../server/wiki/index.js";
+import type { MemoryPaths, WikiWorkspaceResolver } from "../server/wiki/index.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCodexGateway } from "../server/codex/gateway.js";

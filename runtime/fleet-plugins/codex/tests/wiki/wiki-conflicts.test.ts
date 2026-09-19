@@ -3,12 +3,12 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createConflict, listConflicts, readConflict, resolveConflict } from "../src/conflicts.js";
-import { approvePatch, showQueue } from "../src/patch.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { buildIngestToolConfig } from "../src/tools/ingest.js";
-import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
-import { computeContentHash, pathExists, readPatchFile, writeWikiEntry } from "../src/store.js";
+import { createConflict, listConflicts, readConflict, resolveConflict } from "../../server/wiki/conflicts.js";
+import { approvePatch, showQueue } from "../../server/wiki/patch.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { buildIngestToolConfig } from "../../server/wiki/tools/ingest.js";
+import { buildPatchQueueToolConfig } from "../../server/wiki/tools/patch-queue.js";
+import { computeContentHash, pathExists, readPatchFile, writeWikiEntry } from "../../server/wiki/store.js";
 
 const cleanupPaths: string[] = [];
 

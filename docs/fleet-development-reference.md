@@ -11,7 +11,7 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
 - `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
-- `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
+- `runtime/fleet-plugins/codex` — Wiki storage, retrieval, approval, MCP tools, and web UI; the standalone Fleet CLI does not inject Codex Wiki.
 - `packages/core-agent` — tool, MCP, and Claude gateway SDK substrate.
 
 ## 2. Where New Work Goes

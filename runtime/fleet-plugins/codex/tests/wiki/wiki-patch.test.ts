@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { listConflicts, readConflict } from "../src/conflicts.js";
-import { buildPatchSetId, writePatchSet } from "../src/patch.js";
-import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../src/patch.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { computeContentHash, pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../src/store.js";
-import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
-import type { PatchMeta } from "../src/types.js";
+import { listConflicts, readConflict } from "../../server/wiki/conflicts.js";
+import { buildPatchSetId, writePatchSet } from "../../server/wiki/patch.js";
+import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../../server/wiki/patch.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { computeContentHash, pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../../server/wiki/store.js";
+import { buildPatchQueueToolConfig } from "../../server/wiki/tools/patch-queue.js";
+import type { PatchMeta } from "../../server/wiki/types.js";
 
 const cleanupPaths: string[] = [];
 

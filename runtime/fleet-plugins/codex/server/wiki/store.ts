@@ -328,7 +328,7 @@ export function stripLeadingFrontmatter(body: string): string {
   for (let pass = 0; pass < MAX_LEADING_FRONTMATTER_STRIP_PASSES; pass += 1) {
     const match = next.match(/^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/);
     if (!match) return stripped ? next : body;
-    const [, rawFrontmatter, rest] = match;
+    const [, rawFrontmatter = "", rest = ""] = match;
     if (!isFrontmatterBlock(rawFrontmatter)) return stripped ? next : body;
     if (rest === next) return stripped ? next : body;
     next = rest;
@@ -445,7 +445,7 @@ async function readMarkdownFile<T>(filePath: string): Promise<T> {
 function parseMarkdown(content: string): { frontmatter: FrontmatterShape; body: string } {
   const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) throw new Error("missing frontmatter");
-  const [, rawFrontmatter, body] = match;
+  const [, rawFrontmatter = "", body = ""] = match;
   const frontmatter: FrontmatterShape = {};
   for (const line of rawFrontmatter.split("\n")) {
     if (!line.trim()) continue;

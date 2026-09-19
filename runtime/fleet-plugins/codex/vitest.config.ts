@@ -15,7 +15,6 @@ export default defineConfig({
       "@dotobokuri/core-ai-gateway": path.join(workspaceRoot, "packages/core-ai-gateway/src"),
       "@dotobokuri/core-infra/workspace-dir": path.join(workspaceRoot, "packages/core-infra/src/workspace-dir/workspace-dir.ts"),
       "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
-      "@dotobokuri/fleet-wiki": path.join(workspaceRoot, "packages/fleet-wiki/src"),
     },
   },
   test: {

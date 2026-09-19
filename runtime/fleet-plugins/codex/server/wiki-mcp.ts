@@ -19,7 +19,7 @@ import {
   buildQueryToolConfig, buildReadToolConfig, buildResolveToolConfig,
   buildSchemaCreateToolConfig, buildSchemaListToolConfig, buildSchemaReadToolConfig,
   type MemoryPaths, type WikiWorkspaceResolver,
-} from "@dotobokuri/fleet-wiki";
+} from "./wiki/index.js";
 
 export interface WikiToolExecutionContext {
   readonly cwd: string;

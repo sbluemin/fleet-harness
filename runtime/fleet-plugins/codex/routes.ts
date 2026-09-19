@@ -5,7 +5,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { createAiGatewaySettingsStore } from "@dotobokuri/core-ai-gateway";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
-import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { createWikiWorkspaceResolver } from "./server/wiki/index.js";
 
 import { createCodexMcpTools } from "./server/wiki-mcp.js";
 

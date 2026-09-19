@@ -31,9 +31,6 @@
       "@dotobokuri/core-infra": [
         "../../../packages/core-infra/dist/index.d.ts"
       ],
-      "@dotobokuri/fleet-wiki": [
-        "../../../packages/fleet-wiki/dist/index.d.ts"
-      ],
       "react": [
         "../../fleet-console/node_modules/@types/react/index.d.ts"
       ],

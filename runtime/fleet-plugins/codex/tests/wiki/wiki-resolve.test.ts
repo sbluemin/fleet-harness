@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { briefingQuery } from "../src/briefing.js";
-import { writeClaims } from "../src/claims.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
-import { buildResolveToolConfig } from "../src/tools/resolve.js";
+import { briefingQuery } from "../../server/wiki/briefing.js";
+import { writeClaims } from "../../server/wiki/claims.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { writeRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";
+import { buildResolveToolConfig } from "../../server/wiki/tools/resolve.js";
 
 const cleanupPaths: string[] = [];
 

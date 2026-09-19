@@ -403,7 +403,6 @@ const PLUGIN_DEV_EXTERNALS = [
   "stream",
   "events",
   "child_process",
-  "@fleet-plugins/*",
 ];
 
 /**

@@ -3,12 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { briefingQuery } from "../src/briefing.js";
-import { showQueue } from "../src/patch.js";
-import { getClaimsFile, writeClaims } from "../src/claims.js";
-import { resolveMemoryPaths } from "../src/paths.js";
-import { listDirectoryNames, pathExists, writeWikiEntry } from "../src/store.js";
-import { buildQueryToolConfig } from "../src/tools/query.js";
+import { briefingQuery } from "../../server/wiki/briefing.js";
+import { showQueue } from "../../server/wiki/patch.js";
+import { getClaimsFile, writeClaims } from "../../server/wiki/claims.js";
+import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { listDirectoryNames, pathExists, writeWikiEntry } from "../../server/wiki/store.js";
+import { buildQueryToolConfig } from "../../server/wiki/tools/query.js";
 
 const cleanupPaths: string[] = [];
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 
-import { getIndexMarkdownFile, resolveMemoryPaths } from "../src/paths.js";
+import { getIndexMarkdownFile, resolveMemoryPaths } from "../../server/wiki/paths.js";
 import {
   computeContentHash,
   loadIndex,
@@ -14,7 +14,7 @@ import {
   stripLeadingFrontmatter,
   writeRawSourceEntry,
   writeWikiEntry,
-} from "../src/store.js";
+} from "../../server/wiki/store.js";
 
 const cleanupPaths: string[] = [];
 
