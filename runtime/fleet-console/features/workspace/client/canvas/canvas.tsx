@@ -1066,7 +1066,11 @@ export function OperationsCanvas({
     const startX = event.clientX;
     const leftStart = bounds.leftStart;
     const target = event.currentTarget;
-    target.setPointerCapture(event.pointerId);
+    // 이 제스처의 주인. 끝 신호를 노드가 아니라 document·window에서 받는 순간 "이 요소에 온
+    // 이벤트"라는 울타리가 사라지므로, 울타리를 포인터 자신이 진다 — 아니면 화면에 얹힌 둘째
+    // 손가락을 떼는 것만으로 첫 손가락의 드래그가 끝난다(실측 재현).
+    const pointerId = event.pointerId;
+    target.setPointerCapture(pointerId);
     target.classList.add("is-dragging");
     // 끄는 동안 본문이 글자를 집지 않게 한다 — 터미널 위를 지나는 제스처가 선택으로 새면
     // 손을 떼는 순간 화면의 절반이 파랗게 남는다.
@@ -1084,7 +1088,7 @@ export function OperationsCanvas({
       if (settled) return;
       settled = true;
       if (clientX !== null) applyCompanionDivider(dividerIndex, leftStart + (clientX - startX), true);
-      if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
       target.classList.remove("is-dragging");
       document.body.removeAttribute("data-companion-resizing");
       target.removeEventListener("pointermove", onMove);
@@ -1094,12 +1098,19 @@ export function OperationsCanvas({
     };
 
     const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       applyCompanionDivider(dividerIndex, leftStart + (moveEvent.clientX - startX), false);
     };
-    const onUp = (upEvent: PointerEvent) => finish(upEvent.clientX);
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      finish(upEvent.clientX);
+    };
     // 캡처를 잃은 자리는 포인터가 어디 있었는지 말해 주지 않는다 — 마지막으로 놓인 폭을 그대로 둔다.
     // 정상 종료에서는 pointerup이 먼저 와 이미 settled이므로 이 경로는 조용히 지나간다.
-    const onLost = () => finish(null);
+    const onLost = (lostEvent: PointerEvent) => {
+      if (lostEvent.pointerId !== pointerId) return;
+      finish(null);
+    };
 
     // 이동만 노드에서 받는다 — 노드가 떨어져 나가면 이동도 그 자리에서 멎어야 한다.
     target.addEventListener("pointermove", onMove);
