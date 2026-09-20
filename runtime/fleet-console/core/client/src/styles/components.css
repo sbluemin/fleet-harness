@@ -14844,7 +14844,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background: var(--surface-pillar);
 }
 
-.command-band-system-menu .command-band-version-row--split .command-band-version-row-refresh { margin-right: 8px; }
+/* 나뉜 행은 패딩을 안쪽 링크에 넘겼으므로, 오른쪽 끝에 서는 ↻·결과 문구는 정적 행과 같은
+   10px 들여쓰기를 직접 갖는다 — 그래야 Console 행의 「최신」과 세로로 맞는다. */
+.command-band-system-menu .command-band-version-row--split .command-band-version-row-refresh,
+.command-band-system-menu .command-band-version-row--split .command-band-version-row-result { margin-right: 10px; }
 
 .command-band-version-row--static { cursor: default; }
 .command-band-version-row-version { color: var(--text-primary); }
