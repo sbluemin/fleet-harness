@@ -25,7 +25,8 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly dataDir?: string;
+  /** 플러그인 트리가 사는 자리 — 호스트의 Console 슬롯. */
+  readonly dataDir: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
   readonly captureSessionHookExec?: FleetHookExec;

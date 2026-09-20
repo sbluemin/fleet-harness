@@ -30,7 +30,7 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
     // Console 설정과 같은 전역 옵션을 읽는다 — 두 런치 표면이 한 스위치를 공유해야
     // 사용자가 고른 값이 터미널을 바꿔도 따라온다. 키가 없으면 주입 기본값(on)이다.
-    const globalOptions = options.runtime.infraServices.globalOptionsService.load();
+    const globalOptions = options.runtime.infraServices.agentOptionsService.load();
     const claudeCodeSystemPrompt = globalOptions.claudeCodeSystemPrompt;
     const injected = await injectAgentCliProfile(profile, {
       dataDir: options.dataDir,

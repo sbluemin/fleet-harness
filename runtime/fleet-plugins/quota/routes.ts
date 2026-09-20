@@ -30,7 +30,7 @@ export default definePlugin({
       ...createAiGatewayQuotaCollectors({
         // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 격리 루트로 띄운 Console이
         // 사용자의 진짜 auth.json을 읽는다.
-        authService: createProviderAuthService({ dataDir: ctx.host.paths.fleetDataDir }),
+        authService: createProviderAuthService({ dataDir: ctx.host.paths.consoleDataDir }),
       }),
     });
     registerRouter(ctx, "summary", async ({ req, res }) => {

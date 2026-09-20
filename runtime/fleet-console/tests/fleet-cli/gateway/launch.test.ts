@@ -46,7 +46,7 @@ describe("launchClaudeGateway", () => {
     const runtime = {
       aiGatewayStore: createAiGatewaySettingsStore({ dataDir }),
       infraServices: {
-        globalOptionsService: { load: () => globalOptions, save: () => globalOptions, update: () => globalOptions },
+        agentOptionsService: { load: () => globalOptions, save: () => globalOptions, update: () => globalOptions },
       },
       dataDir,
       dedicatedMcpSession: {

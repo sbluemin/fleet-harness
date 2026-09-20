@@ -1,3 +1,4 @@
+import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
 
@@ -15,6 +16,8 @@ export interface ConsoleRuntimeContext {
   readonly wsBasePath: string;
   readonly dataDir: string;
   readonly legacyDataDir: string;
+  /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
+  readonly agentOptions: AgentOptionsService;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;

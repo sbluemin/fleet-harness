@@ -1,12 +1,16 @@
-import * as path from "node:path";
-
-import { getFleetDataDir } from "../paths.js";
-import { createDurableJsonStore } from "../../fs-store/json-store.js";
+/**
+ * Agent 실행 옵션의 형태와 정규화 — Fleet 공용 실행 정책이라 foundation이 소유한다.
+ *
+ * **저장은 소유하지 않는다.** 이 값들은 Console 설정 화면에서 고르는 것이라 그 Console
+ * 인스턴스의 슬롯(`console/settings.json`)에 살고, 그 자리를 아는 것은 호스트뿐이다.
+ * 한때 이 모듈이 `<Fleet 루트>/settings.json`을 직접 열었는데, 그 경로가 호스트의 유효
+ * 루트를 거치지 않아 슬롯만 격리한 실행이 사용자의 진짜 파일에 `claudeCodeSkipPermissions`
+ * 같은 값을 쓰는 누수가 있었다. 저장 자리는 주입으로만 건너온다.
+ */
 
 export type ClaudeCodeSystemPromptMode = "on" | "off";
 
-export interface GlobalOptionsData {
-  readonly version: 1;
+export interface AgentOptionsData {
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
   /**
@@ -31,116 +35,34 @@ export interface GlobalOptionsData {
   readonly claudeCodeDisabledAgents?: readonly string[];
 }
 
-export interface GlobalOptionsValidationResult {
-  readonly data: GlobalOptionsData;
+/**
+ * 저장 자리를 향한 포트. 호스트가 자기 슬롯에 붙인 구현을 주입한다 — 이 모듈은 그 구현이
+ * 어떤 파일을 여는지 알지 못한다.
+ */
+export interface AgentOptionsService {
+  readonly load: () => AgentOptionsData;
+  readonly update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => AgentOptionsData;
+}
+
+export interface AgentOptionsValidationResult {
+  readonly data: AgentOptionsData;
   readonly changed: boolean;
 }
 
-export interface GlobalOptionsStore {
-  readonly path: string;
-  readonly load: () => GlobalOptionsData;
-  readonly save: (data: GlobalOptionsData) => void;
-  readonly update: (mutate: (current: GlobalOptionsData) => GlobalOptionsData) => GlobalOptionsData;
-}
-
-export interface GlobalOptionsService {
-  readonly load: () => GlobalOptionsData;
-  readonly save: (data: GlobalOptionsData) => GlobalOptionsData;
-  readonly update: (mutate: (current: GlobalOptionsData) => GlobalOptionsData) => GlobalOptionsData;
-}
-
-interface CreateGlobalOptionsStoreDeps {
-  readonly dataDir?: string;
-  readonly now?: () => number;
-  readonly staleLockMs?: number;
-  readonly timeoutMs?: number;
-}
-
-const GLOBAL_OPTIONS_VERSION = 1;
-const GLOBAL_OPTIONS_FILE_NAME = "settings.json";
-const LOCK_DIR_NAME = "settings.json.lock";
-const LOCK_OWNER_FILE_NAME = "owner";
-const TEMP_FILE_PREFIX = `.tmp-${GLOBAL_OPTIONS_FILE_NAME}-`;
-
-interface CreateGlobalOptionsServiceDeps {
-  readonly store?: GlobalOptionsStore;
-  readonly dataDir?: string;
-}
-
-export function createGlobalOptionsService(deps: CreateGlobalOptionsServiceDeps = {}): GlobalOptionsService {
-  const store = deps.store ?? createGlobalOptionsStore({ dataDir: deps.dataDir });
-
-  return {
-    load: () => store.load(),
-    save: (data) => {
-      store.save(data);
-      return store.load();
-    },
-    update: (mutate) => updateGlobalOptions(store, mutate),
-  };
-}
-
-function updateGlobalOptions(
-  store: GlobalOptionsStore,
-  mutate: (current: GlobalOptionsData) => GlobalOptionsData,
-): GlobalOptionsData {
-  return store.update(mutate);
-}
-
-export function createGlobalOptionsStore(deps: CreateGlobalOptionsStoreDeps = {}): GlobalOptionsStore {
-  const dataDir = deps.dataDir ?? getFleetDataDir();
-  const optionsPath = path.join(dataDir, GLOBAL_OPTIONS_FILE_NAME);
-  const lockDir = path.join(dataDir, LOCK_DIR_NAME);
-
-  const store = createDurableJsonStore<GlobalOptionsData>({
-    filePath: optionsPath,
-    lockDir,
-    lockOwnerFileName: LOCK_OWNER_FILE_NAME,
-    sanitize: (value) => sanitizeGlobalOptionsData(value).data,
-    sensitivity: "sensitive",
-    timeoutMs: deps.timeoutMs,
-    staleLockMs: deps.staleLockMs,
-    tempCleanupPrefix: TEMP_FILE_PREFIX,
-    now: deps.now,
-  });
-
-  return {
-    path: optionsPath,
-    load: () => store.load(),
-    save: (data) => store.save(sanitizeGlobalOptionsData(data).data),
-    update: (mutate) => store.update((current) => sanitizeGlobalOptionsData(mutate(current)).data),
-  };
-}
-
-// 내부 구현용 심볼 — `./data-dir/settings` 서브패스의 공개 표면에 올리지 않는다.
-function createEmptyGlobalOptionsData(): GlobalOptionsData {
-  return {
-    version: GLOBAL_OPTIONS_VERSION,
-  };
-}
-
-export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidationResult {
-  if (!isRecord(value)) {
-    return { data: createEmptyGlobalOptionsData(), changed: true };
-  }
-
-  if (value.version !== GLOBAL_OPTIONS_VERSION) {
-    return { data: createEmptyGlobalOptionsData(), changed: true };
-  }
+export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidationResult {
+  if (!isRecord(value)) return { data: {}, changed: true };
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
   const claudeCodeSkipPermissions = sanitizeClaudeCodeSkipPermissions(value.claudeCodeSkipPermissions);
   const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
-  const data: GlobalOptionsData = {
-    version: GLOBAL_OPTIONS_VERSION,
+  const data: AgentOptionsData = {
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
     ...(claudeCodeSkipPermissions !== undefined ? { claudeCodeSkipPermissions } : {}),
     ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
   };
   const allowedKeys = new Set([
-    "version",
     "agentIdleDormantMinutes",
     "claudeCodeSystemPrompt",
     "claudeCodeSkipPermissions",

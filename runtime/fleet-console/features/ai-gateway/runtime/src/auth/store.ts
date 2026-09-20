@@ -1,23 +1,24 @@
 import * as path from "node:path";
 
-import { createDurableJsonStore, getFleetDataDir } from "@fleet-console/infra";
+import { createDurableJsonStore, createStoreCarryOver, jsonFileExists } from "@fleet-console/infra";
 
 import type { AuthService, AuthStorageData, CreateProviderAuthServiceDeps } from "./types.js";
 
-// 공급자 API 키는 Fleet 데이터 루트의 단일 파일(`<dataDir>/auth.json`)이 소유한다.
+// 공급자 API 키는 Console 슬롯의 단일 파일(`<dataDir>/auth.json`)이 소유한다.
 // 파일명과 저장 키(공급자 id) 문자열은 사용자의 로그인 상태 그 자체다 — 바꾸면 조용히
-// 로그아웃되므로 이 패키지가 옮겨 다녀도 두 값은 고정이다.
+// 로그아웃되므로 이 패키지가 옮겨 다녀도 두 값은 고정이다. 자리를 옮길 때도 마찬가지라,
+// 옛 자리의 값은 `legacyDirs` 승계로 따라온다.
 const PROVIDER_AUTH_FILE_NAME = "auth.json";
 const AUTH_LOCK_OWNER_FILE_NAME = "owner.json";
 const AUTH_LOCK_TIMEOUT_MS = 5_000;
 
 /**
- * `auth.json`의 경로. dataDir가 없으면 **호출 시각**에 Fleet 루트를 읽는다.
- * 모듈 로드 시각에 굳히면 격리 실행이 루트를 정하기 전 값이 박혀, 격리 콘솔이 사용자의
- * 진짜 자격증명을 읽고 덮어쓴다.
+ * `auth.json`의 경로. 자리는 호스트가 정해 넘긴다 — 이 패키지는 데이터 루트를 스스로 찾지
+ * 않는다. 기본값을 두면 자리를 넘기는 것을 잊은 호출자가 조용히 사용자의 다른 자격증명
+ * 파일을 읽고 덮어쓴다.
  */
-export function resolveProviderAuthPath(dataDir?: string): string {
-  return path.join(dataDir ?? getFleetDataDir(), PROVIDER_AUTH_FILE_NAME);
+export function resolveProviderAuthPath(dataDir: string): string {
+  return path.join(dataDir, PROVIDER_AUTH_FILE_NAME);
 }
 
 /**
@@ -27,8 +28,12 @@ export function resolveProviderAuthPath(dataDir?: string): string {
  * core-infra의 durable JSON 원시가 소유한다. 이 모듈은 그 위에 공급자 도메인 —
  * 파일 정체성, 저장 키 네임스페이스, 항목 병합 규칙 — 만 얹는다.
  */
-export function createProviderAuthService(deps: CreateProviderAuthServiceDeps = {}): AuthService {
-  const authPath = deps.authPath ?? resolveProviderAuthPath(deps.dataDir);
+export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): AuthService {
+  const { authPath: explicitPath, dataDir } = deps;
+  if (explicitPath === undefined && dataDir === undefined) {
+    throw new Error("Provider auth store requires either dataDir (the host's Console slot) or an explicit authPath");
+  }
+  const authPath = explicitPath ?? resolveProviderAuthPath(dataDir!);
   const store = createDurableJsonStore<AuthStorageData>({
     filePath: authPath,
     lockDir: `${authPath}.lock`,
@@ -39,10 +44,51 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps = 
     tempCleanupPrefix: `${PROVIDER_AUTH_FILE_NAME}.`,
   });
 
+  const carryOver = createStoreCarryOver<AuthStorageData>({
+    adopted: () => jsonFileExists(authPath),
+    sourcePaths: (deps.legacyDirs ?? []).map((dir) => resolveProviderAuthPath(dir)),
+    // 항목이 하나라도 있으면 그것이 사용자의 로그인 상태다. 키 모양은 보지 않는다 —
+    // 읽는 쪽(`getApiKey`)의 몫이고, 여기서 걸러 내면 승계가 곧 로그아웃이 된다.
+    adopt: (parsed) => {
+      const data = sanitizeAuthStore(parsed);
+      return Object.keys(data).length > 0 ? data : undefined;
+    },
+  });
+
+  /**
+   * 옛 자리를 아직 읽지 못한 상태에서는 쓰지 않는다. 목적지 파일이 생기는 순간 그것이
+   * "승계 끝"의 표식이 되므로, 지금 쓰면 아직 옮기지 못한 자격증명이 영영 고아가 된다 —
+   * 사용자에게는 조용한 로그아웃으로 보인다. 저장은 다시 시도할 수 있지만 그쪽은 아니다.
+   */
+  const update = (mutate: (current: AuthStorageData) => AuthStorageData | undefined): void => {
+    carryOver.probe();
+    if (!carryOver.settled()) {
+      throw new Error(
+        `Provider credentials were not written: a previous auth file (${carryOver.sourcePaths.join(", ")}) `
+        + "could not be read, and writing now would strand it. Make that file readable or remove it, then retry.",
+      );
+    }
+    store.update((current) => mutate(carryOver.base(current)));
+  };
+
+  /** 읽기도 승계를 앞당긴다 — 옮기기 전에는 옛 자리의 값이 곧 현재 로그인 상태다. */
+  const load = (): AuthStorageData => {
+    carryOver.probe();
+    if (carryOver.pending()) {
+      try {
+        store.update(carryOver.base);
+      } catch {
+        // 락 경합·쓰기 실패는 결론이 아니다. 승계된 값으로 이번 읽기에 답하고 다음 접근이 다시 시도한다.
+        return carryOver.base(store.load());
+      }
+    }
+    return store.load();
+  };
+
   return {
     async deleteApiKey(providerId: string): Promise<boolean> {
       let deleted = false;
-      store.update((data) => {
+      update((data) => {
         if (!Object.prototype.hasOwnProperty.call(data, providerId)) return undefined;
         const next = { ...data };
         delete next[providerId];
@@ -53,16 +99,16 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps = 
     },
 
     async getApiKey(providerId: string): Promise<string | undefined> {
-      const entry = store.load()[providerId];
+      const entry = load()[providerId];
       return typeof entry?.key === "string" ? entry.key : undefined;
     },
 
     async listProviderIds(): Promise<string[]> {
-      return Object.keys(store.load()).sort();
+      return Object.keys(load()).sort();
     },
 
     async setApiKey(providerId: string, key: string): Promise<void> {
-      store.update((data) => ({
+      update((data) => ({
         ...data,
         [providerId]: {
           ...(data[providerId] ?? {}),

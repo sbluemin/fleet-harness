@@ -1,3 +1,4 @@
+import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
 import type { RouteRegistry, UpgradeRegistry } from "./route-registry/registry.js";
@@ -8,6 +9,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly host: ConsoleRuntimeHost;
   readonly dataDir: string;
   readonly legacyDataDir: string;
+  readonly agentOptions: AgentOptionsService;
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
@@ -26,6 +28,7 @@ export function createConsoleRuntimeContext(deps: {
     consoleControl: deps.consoleControl,
     dataDir: deps.dataDir,
     legacyDataDir: deps.legacyDataDir,
+    agentOptions: deps.agentOptions,
     basePath,
     wsBasePath,
     registerRouter: (value, handler, catalog) => {

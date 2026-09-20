@@ -10,11 +10,7 @@ import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, res
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
 import { createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
-import {
-  createInfraServices,
-  getFleetDataDir,
-  type GlobalOptionsService,
-} from "@fleet-console/infra";
+import type { AgentOptionsService } from "@fleet-console/infra";
 
 import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSkipPermissions, resolveClaudeCodeSystemPrompt } from "../../../settings/host/execution-settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
@@ -44,8 +40,12 @@ export interface TerminalLaunchResolverDeps {
   readonly platform?: NodeJS.Platform;
   readonly entryPath?: string;
   readonly tsxLoaderPath?: string;
-  readonly dataDir?: string;
-  readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
+  /**
+   * 이 Console 인스턴스의 슬롯. 플러그인 트리와 세션 자산이 그 아래 산다 — 기본값을 두면
+   * 슬롯을 넘기지 않은 호출자가 사용자의 다른 자리에 렌더한다.
+   */
+  readonly dataDir: string;
+  readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -107,7 +107,7 @@ const require = createRequire(import.meta.url);
  * Console CLI를 가리키는 훅 진입점. 세션별 값이 하나도 구워지지 않는다 — 그래서 모든 세션이
  * 렌더한 `hooks.json`이 서로 같고, PTY와 Chat Mode가 한 플러그인 디렉터리를 공유할 수 있다.
  */
-function buildConsoleHookEntry(deps: TerminalLaunchResolverDeps): ConsoleHookCommandEntry {
+function buildConsoleHookEntry(deps: Pick<TerminalLaunchResolverDeps, "entryPath" | "execPath" | "tsxLoaderPath">): ConsoleHookCommandEntry {
   const entryPath = resolveHookEntryPath(deps.entryPath ?? process.argv[1]);
   const execPath = deps.execPath ?? process.execPath;
   const tsxLoaderPath = deps.tsxLoaderPath ?? resolveOptionalPackage("tsx");
@@ -123,7 +123,7 @@ function buildConsoleHookEntry(deps: TerminalLaunchResolverDeps): ConsoleHookCom
  * 트리가 회수되지 않는다.
  */
 export async function prepareChatClaudeSession(
-  deps: TerminalLaunchResolverDeps & {
+  deps: Omit<TerminalLaunchResolverDeps, "infraServices"> & {
     readonly cwd: string;
     readonly origin: ClaudeSessionOrigin;
     readonly claudeCodeSystemPrompt?: "on" | "off";
@@ -131,7 +131,7 @@ export async function prepareChatClaudeSession(
   },
 ): Promise<ClaudeSessionHandle> {
   const hookEntry = buildConsoleHookEntry(deps);
-  const dataDir = deps.dataDir ?? getFleetDataDir();
+  const dataDir = deps.dataDir;
   const gatewaySelection = deps.readAiGatewaySettings
     ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
     : undefined;
@@ -158,13 +158,13 @@ export async function prepareChatClaudeSession(
 
 const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude";
 
-export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
+export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
   const env = deps.env ?? process.env;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const platform = deps.platform ?? process.platform;
-  const dataDir = deps.dataDir ?? getFleetDataDir();
-  const infraServices = deps.infraServices ?? createInfraServices();
+  const dataDir = deps.dataDir;
+  const infraServices = deps.infraServices;
   const agentRuntime = deps.agentRuntime;
   const injectProfile = deps.injectProfile ?? injectAgentCliProfile;
   const resolveProfile = deps.resolveProfile ?? resolveAgentCliProfile;
@@ -259,7 +259,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly env: NodeJS.ProcessEnv;
   readonly prompt?: string;
   readonly hookEntry: ConsoleHookCommandEntry;
-  readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
@@ -326,9 +326,9 @@ async function createAgentCliLaunchSpec(options: {
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
-      claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.globalOptionsService.load()),
-      claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.globalOptionsService.load()),
-      claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(options.infraServices.globalOptionsService.load()),
+      claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.agentOptionsService.load()),
+      claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.agentOptionsService.load()),
+      claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

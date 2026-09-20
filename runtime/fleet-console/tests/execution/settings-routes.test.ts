@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData } from "@fleet-console/infra";
+import type { AgentOptionsData } from "@fleet-console/infra";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import { describe, expect, it } from "vitest";
 
@@ -16,7 +16,7 @@ interface HarnessOptions {
   readonly terminalAuthorized?: boolean;
   readonly body?: unknown;
   readonly bodyNull?: boolean;
-  readonly data?: GlobalOptionsData;
+  readonly data?: AgentOptionsData;
   readonly aiGateway?: AiGatewayStoredSettings;
   readonly wireLogEnabled?: boolean;
   readonly applyError?: boolean;
@@ -25,7 +25,7 @@ interface HarnessOptions {
 describe("terminal settings routes", () => {
   it("GET /api/v1/agent/settings returns terminal settings", async () => {
     const harness = createRouteHarness({
-      data: { version: 1 },
+      data: {},
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
@@ -46,33 +46,33 @@ describe("terminal settings routes", () => {
   it("PUT /api/v1/agent/settings stores the Claude Code permission opt-in", async () => {
     const harness = createRouteHarness({
       body: { claudeCodeSkipPermissions: true },
-      data: { version: 1 },
+      data: {},
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSkipPermissions: true });
-    expect(harness.currentData()).toEqual({ version: 1, claudeCodeSkipPermissions: true });
+    expect(harness.currentData()).toEqual({ claudeCodeSkipPermissions: true });
   });
 
   it("PUT /api/v1/agent/settings stores the built-in subagent opt-out and clears it on an empty list", async () => {
     const harness = createRouteHarness({
       body: { claudeCodeDisabledAgents: ["Explore", " Plan ", "", "Agent(x)", "Explore"] },
-      data: { version: 1 },
+      data: {},
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     // 저장소와 같은 정화기 — 공백은 다듬고, 빈 이름·규칙 구분자·중복은 버린다.
     expect(harness.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: ["Explore", "Plan"] });
-    expect(harness.currentData()).toEqual({ version: 1, claudeCodeDisabledAgents: ["Explore", "Plan"] });
+    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore", "Plan"] });
 
     const cleared = createRouteHarness({
       body: { claudeCodeDisabledAgents: [] },
-      data: { version: 1, claudeCodeDisabledAgents: ["Explore"] },
+      data: { claudeCodeDisabledAgents: ["Explore"] },
     });
     await cleared.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(cleared.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: [] });
     // 빈 목록은 키를 지운다 — "전부 켜짐"은 저장된 값이 아니라 키의 부재다.
-    expect(cleared.currentData()).toEqual({ version: 1 });
+    expect(cleared.currentData()).toEqual({});
   });
 
   it("PUT /api/v1/agent/settings rejects payloads with unknown extra keys", async () => {
@@ -93,7 +93,7 @@ describe("terminal settings routes", () => {
 function createRouteHarness(options: HarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
   const routers = new Map<string, Parameters<ConsoleRuntimeContext["registerRouter"]>[1]>();
-  let data = options.data ?? { version: 1 };
+  let data: AgentOptionsData = options.data ?? {};
   let aiGateway: AiGatewayStoredSettings = options.aiGateway ?? { version: 1 };
   let updateCalls = 0;
   const applied: boolean[] = [];
@@ -120,10 +120,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
     },
   } as unknown as ConsoleRuntimeContext;
   registerTerminalSettingsRoutes(ctx, {
-    globalOptionsService: {
+    agentOptionsService: {
       load: () => data,
-      save: (next) => { data = next; return data; },
-      update: (mutate) => { updateCalls += 1; data = mutate(data); return data; },
+      update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => { updateCalls += 1; data = mutate(data); return data; },
     },
     aiGatewayStore: {
       path: "/test/ai-gateway.json",

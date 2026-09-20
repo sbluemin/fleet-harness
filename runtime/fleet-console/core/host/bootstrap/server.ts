@@ -19,7 +19,8 @@ import { createConsoleRuntimeContext } from "../transport/runtime-context.js";
 import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.js";
 
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
-import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
+import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
+import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
@@ -50,6 +51,7 @@ import { createRemoteEndpointStore } from "../../../features/remote-access/host/
 import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/remote-access/host/remote-hosts.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
+import { createAgentOptionsService } from "../../../features/settings/host/agent-options.js";
 import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
@@ -452,7 +454,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   const operations = createOperationStore();
   const folderGrants = createFolderGrantStore();
-  const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   // 플러그인 fleet 루트: 명시 dataDir → (FLEET_DATA_DIR 부재 시) 콘솔 슬롯 override → getFleetDataDir.
   // Fleet 데이터 루트는 fleet-cli·Desktop과 공유하는 전역 상태라 채널 분기는 적용하지 않는다.
@@ -468,6 +469,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
+  // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
+  // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
+  const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
+  // 워크스페이스 지식과 하네스 트리는 파일이 아니라 디렉터리라 승계 판정기가 다루지 않는다.
+  // 전자는 옮기고(내용이 사용자 자산이다), 후자는 렌더 산출물이라 걷기만 한다.
+  adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
+  reclaimLegacyTrees(fleetDataDir);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
     getLiquidGlass: () => consoleSettingsStore.load().general?.liquidGlass ?? true,
@@ -847,12 +855,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     paths: {
       fleetDataDir,
+      consoleDataDir: durablePaths.dir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
       ensureWorkspaceDirectory: (cwd: string) => {
-        const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
+        const workspace = ensureWorkspaceDirectory(durablePaths.dir, cwd);
         return { path: workspace.path, id: workspaceHash(workspace.cwd) };
       },
       withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
@@ -2088,6 +2097,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
+          agentOptions,
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
         }), consoleActions);
         coreLaunchKinds = execution.launchKinds;

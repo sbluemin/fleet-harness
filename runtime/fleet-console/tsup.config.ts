@@ -50,7 +50,6 @@ export default defineConfig([
         "@fleet-console/process": path.join(workspaceRoot, "runtime/fleet-console/foundation/process/src"),
         "@fleet-console/agent-runtime/fleet": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/fleet"),
         "@fleet-console/analyst": path.join(workspaceRoot, "runtime/fleet-console/features/analyst/runtime/src"),
-        "@fleet-console/infra/data-dir/settings": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/settings/store.ts"),
         "@fleet-console/infra/data-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/data-dir/paths.ts"),
         "@fleet-console/infra/workspace-dir": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src/workspace-dir/workspace-dir.ts"),
         "@fleet-console/infra": path.join(workspaceRoot, "runtime/fleet-console/foundation/infra/src"),

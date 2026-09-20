@@ -57,13 +57,16 @@ function createFakeInfraServices(globalOptions: {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},
-    globalOptionsService: {
+    agentOptionsService: {
       load: () => data,
       save: () => data,
       update: () => data,
     },
   };
 }
+
+/** 런치가 플러그인 트리를 렌더할 자리. 실제 렌더는 스텁이 가로채므로 값 자체는 쓰이지 않는다. */
+const launchDataDir = "/tmp/fleet-console-test/console";
 
 describe("createDefaultTerminalLaunchResolver", () => {
   afterEach(() => {
@@ -83,6 +86,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       return { ...profile, args: [...profile.args, "--fleet"] };
     });
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: runtime as never,
@@ -121,6 +125,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
     });
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      infraServices: createFakeInfraServices() as never,
       cwd: "/work",
       entryPath: "/console/cli.ts",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -182,6 +188,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     // 스코프 id를 적은 호출자와 같은 모델로 통과해야 한다.
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime(() => undefined) as never,
@@ -219,6 +226,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const cleanup = vi.fn();
     const runtimeCleanup = vi.fn(async () => undefined);
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      infraServices: createFakeInfraServices() as never,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime(undefined, runtimeCleanup) as never,

@@ -1,4 +1,7 @@
 import { createProviderAuthService } from "@fleet-console/ai-gateway";
+import { getFleetDataDir } from "@fleet-console/infra";
+
+import { createConsoleDataPaths } from "../core/host/bootstrap/paths.js";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
@@ -11,7 +14,11 @@ const status = await dispatchFleetArgv(process.argv.slice(2), {
   stderr: process.stderr,
   env: process.env,
   runApp,
-  createAuthService: () => createProviderAuthService(),
+  // 자격증명은 Console 슬롯에 산다. 옛 자리(Fleet 루트)는 승계 출처로만 넘긴다.
+  createAuthService: () => createProviderAuthService({
+    dataDir: createConsoleDataPaths().dir,
+    legacyDirs: [getFleetDataDir()],
+  }),
   dispatchAuthCommand,
   dispatchUpdateCommand,
   siblingCliPath: resolveSiblingConsoleCliPath(import.meta.url),

@@ -92,6 +92,10 @@ export {
   type AgentCliPlugin,
   type CreateAgentCliPluginOptions,
 } from "./agent-cli/plugin/index.js";
+export {
+  reclaimLegacyTrees,
+  type LegacyMarketplaceReclaimDeps,
+} from "./agent-cli/plugin/legacy-trees.js";
 
 
 

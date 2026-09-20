@@ -16,31 +16,45 @@ import {
 import { createFleetGatewayAgentRuntimeLifecycle, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
 import { parseGatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
 import {
-  createInfraServices,
   getFleetDataDir,
-  type InfraServices,
+  type AgentOptionsService,
 } from "@fleet-console/infra";
+
+import { createConsoleDataPaths } from "../../core/host/bootstrap/paths.js";
+import { createAgentOptionsService } from "../../features/settings/host/agent-options.js";
+import { createConsoleSettingsStore } from "../../features/settings/host/settings-domain.js";
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;
   readonly authService: AuthService;
   readonly dataDir: string;
-  readonly infraServices: InfraServices;
+  readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
 }
 
 export interface CreateFleetCliRuntimeOptions {
+  /**
+   * 이 실행이 쓸 Console 슬롯. 생략하면 Console 서버가 쓰는 것과 같은 규칙으로 푼다 —
+   * 같은 설치에서 나온 두 프로세스가 같은 자리를 보아야 `fleet`이 Console에 로그인한
+   * 자격증명과 선별을 그대로 읽는다.
+   */
   readonly dataDir?: string;
 }
 
 export async function createFleetCliRuntime(
   options: CreateFleetCliRuntimeOptions = {},
 ): Promise<FleetCliRuntime> {
-  const dataDir = options.dataDir ?? getFleetDataDir();
-  const infraServices = createInfraServices();
-  // 자격증명도 게이트웨이 설정과 같은 Fleet 루트에 산다. dataDir를 넘기지 않으면 격리 실행이
-  // 자기 루트를 정해 두고도 사용자의 진짜 auth.json을 읽는다.
-  const authService = createProviderAuthService({ dataDir });
-  const aiGatewayStore = createAiGatewaySettingsStore({ dataDir });
+  const consolePaths = createConsoleDataPaths();
+  const dataDir = options.dataDir ?? consolePaths.dir;
+  const fleetRoot = getFleetDataDir();
+  // 설정·자격증명·Agent 옵션은 모두 Console 슬롯에 산다. 옛 자리(Fleet 루트)는 승계 출처로만
+  // 넘긴다 — CLI가 먼저 떠서 빈 파일을 만들어 버리면 Console이 승계할 값을 잃는다.
+  const legacyDirs = [fleetRoot];
+  const authService = createProviderAuthService({ dataDir, legacyDirs });
+  const aiGatewayStore = createAiGatewaySettingsStore({ dataDir, legacyDirs });
+  const agentOptionsService = createAgentOptionsService({
+    store: createConsoleSettingsStore({ paths: consolePaths }),
+    legacyDirs,
+  });
   const quotaService = createQuotaService({
     platform: process.platform,
     // CLI에는 Console의 연결 토글이 없다 — 프로브가 직접 상태를 판정한다.
@@ -79,7 +93,7 @@ export async function createFleetCliRuntime(
       aiGatewayStore,
       authService,
       dataDir,
-      infraServices,
+      infraServices: { agentOptionsService },
       async cleanup() {
         if (cleaned) return;
         cleaned = true;

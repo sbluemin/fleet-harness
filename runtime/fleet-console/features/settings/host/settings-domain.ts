@@ -5,6 +5,8 @@ import path from "node:path";
 
 import {
   createDurableJsonStore,
+  sanitizeAgentOptionsData,
+  type AgentOptionsData,
   type CreateDurableJsonStoreDeps,
   type DurableJsonStore,
 } from "@fleet-console/infra";
@@ -149,6 +151,11 @@ export interface ConsoleSettingsData {
   readonly version: 1;
   readonly general?: ConsoleGeneralSettings;
   readonly execution?: Record<string, unknown>;
+  /**
+   * Agent 실행 옵션. 형태와 정규화는 foundation의 공용 실행 정책이 소유하고, 이 파일은
+   * 자리만 제공한다 — 같은 설정 화면이 고르는 값이 두 축으로 갈리지 않도록 여기 함께 산다.
+   */
+  readonly agent?: AgentOptionsData;
   readonly plugins?: Record<string, Record<string, unknown>>;
 }
 
@@ -219,11 +226,13 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   const plugins = readConsolePluginSettings(value.plugins);
   const execution = isRecord(value.execution) ? value.execution : plugins?.terminal;
   if (plugins) delete plugins.terminal;
+  const agent = sanitizeAgentOptionsData(value.agent).data;
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
     plugins: plugins ?? {},
     ...(execution ? { execution } : {}),
+    ...(Object.keys(agent).length > 0 ? { agent } : {}),
   };
 }
 

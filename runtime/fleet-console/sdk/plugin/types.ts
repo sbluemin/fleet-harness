@@ -699,7 +699,16 @@ export interface PluginWorkspaceDirectory {
 }
 
 export interface FleetPluginPathsHost {
+  /**
+   * Fleet 데이터 루트. 호스트 공용 디렉터리(`desktop/`·`computer-use/`)가 사는 자리다.
+   * 사용자가 Console에서 고르는 값은 여기가 아니라 `consoleDataDir`에 산다.
+   */
   readonly fleetDataDir: string;
+  /**
+   * 이 Console 인스턴스의 슬롯. 설정·자격증명·워크스페이스처럼 그 인스턴스와 수명을
+   * 같이하는 것이 사는 자리이고, 채널·체크아웃·override마다 다르다.
+   */
+  readonly consoleDataDir: string;
   pluginDataDir(pluginId: string): string;
   resolveTheaterPath(theaterId: string): string | null;
   canonicalizeTheaterPath(cwd: string): string;
