@@ -1247,6 +1247,36 @@
   opacity: var(--control-disabled-opacity);
 }
 
+/* 서비스 자격증명 — 모델 팔레트 밖에 서는 로그인 줄. 모델 행과 같은 칸 리듬을 쓰되
+   순위·추론 강도 같은 모델 전용 손잡이가 없어 더 조용하다. */
+.ai-gateway-service-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ai-gateway-service {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ai-gateway-service-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ai-gateway-service-name {
+  font-weight: var(--weight-medium);
+}
+
+.ai-gateway-service-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 @container (max-width: 720px) {
   .ai-gateway-rows {
     grid-template-columns: auto minmax(0, 1fr);

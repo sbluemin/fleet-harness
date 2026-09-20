@@ -2,7 +2,7 @@ import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provid
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
-import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
+import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 export const aiGatewaySettingsSection = defineSettingsSection({
@@ -692,9 +692,72 @@ function AiGatewayModelsCard() {
         )}
         </div>
       </section>
+      <AiGatewayServiceCredentials
+        services={auth.state?.providers.filter((entry) => entry.kind === "service") ?? []}
+        busyProvider={auth.busyProvider}
+      />
     </>
   );
 }
+
+/**
+ * 라우팅되는 모델이 없는 서비스의 자격증명. 모델 팔레트는 카탈로그 공급자에만 로그인
+ * 자리를 주므로, 카탈로그 밖 자격증명은 여기 선다. 목록이 비면 섹션 자체가 나타나지
+ * 않는다 — 호스트가 서비스를 하나도 선언하지 않았다는 뜻이다.
+ */
+function AiGatewayServiceCredentials({ services, busyProvider }: {
+  readonly services: readonly ModelAuthProviderState[];
+  readonly busyProvider: string | null;
+}) {
+  const t = getT(useTerminalLocale());
+  if (services.length === 0) return null;
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayServices")}>
+      <div className="agent-cli-head">
+        <p className="global-settings-resp-title">
+          {t("terminal.settings.aiGatewayServices")}
+          <SettingsHelp title={t("terminal.settings.aiGatewayServices")}>
+            <p>{t("terminal.settings.aiGatewayServicesHelp")}</p>
+          </SettingsHelp>
+        </p>
+      </div>
+      <div className="ai-gateway-service-list">
+        {services.map((service) => {
+          const busy = busyProvider === service.provider;
+          const blurb = AI_GATEWAY_SERVICE_BLURB_KEYS[service.provider];
+          return (
+            <div className="ai-gateway-service" key={service.provider}>
+              <div className="ai-gateway-service-head">
+                <span className="ai-gateway-service-name">{service.displayName}</span>
+                {service.signedIn ? (
+                  <span className="ai-gateway-service-controls">
+                    <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayServiceSignedIn")}</span>
+                    <button
+                      type="button"
+                      className="ai-gateway-key-signout"
+                      disabled={busy}
+                      aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
+                      onClick={() => void signOutModel(service.provider)}
+                    >
+                      {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+              {blurb ? <p className="global-settings-help">{t(blurb)}</p> : null}
+              {service.signedIn ? null : <AiGatewayKeyForm provider={service} busy={busy} />}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** 서비스가 무엇을 해 주는지 한 줄. 키가 없는 서비스는 설명 없이 로그인 줄만 선다. */
+const AI_GATEWAY_SERVICE_BLURB_KEYS: Readonly<Record<string, TerminalMessageKey | undefined>> = {
+  typesafe: "terminal.settings.aiGatewayServiceTypesafe",
+};
 
 /** 컨텍스트 변형의 id 접미사 — `-524k`, `-1m`, `-256k`. 이름 쪽은 대소문자만 다르다. */
 const AI_GATEWAY_CONTEXT_SUFFIX = /-(\d+[km])$/i;

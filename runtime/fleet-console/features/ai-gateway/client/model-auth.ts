@@ -1,5 +1,12 @@
+/**
+ * 자격증명이 무엇에 쓰이는지. 호스트가 실어 보내므로 브라우저가 공급자 id를 외워 두고
+ * 갈라 볼 필요가 없다. 모르는 값이 와도 모델 공급자로 보아 기존 자리에 남긴다.
+ */
+export type ModelAuthProviderKind = "model-provider" | "service";
+
 export interface ModelAuthProviderState {
   readonly provider: string;
+  readonly kind: ModelAuthProviderKind;
   readonly displayName: string;
   readonly signedIn: boolean;
 }
@@ -87,6 +94,7 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
   }
   return {
     provider: payload.provider,
+    kind: payload.kind === "service" ? "service" : "model-provider",
     displayName: payload.displayName,
     signedIn: payload.signedIn,
   };

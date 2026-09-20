@@ -7,7 +7,10 @@ export {
   formatAuthValidationFailureMessage,
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
+  validateApiKeyByProbe,
 } from "./validation.js";
+
+export type { AuthProbeRequest } from "./validation.js";
 
 export type {
   AuthService,

@@ -13,12 +13,15 @@ import {
 const AUTH_HELP_TEXT = `fleet gateway auth — AI Gateway provider authentication
 
 Usage:
-  fleet gateway auth login [kimi|opencode]
+  fleet gateway auth login [kimi|opencode|typesafe]
   fleet gateway auth list
-  fleet gateway auth logout [kimi|opencode]
+  fleet gateway auth logout [kimi|opencode|typesafe]
 
 Codex, Cursor, and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
+
+TypeSafe holds no routable model: its key lets Console features ask Jev
+for structured decisions, and signing out only disables those features.
 `;
 
 export async function dispatchAuthCommand(

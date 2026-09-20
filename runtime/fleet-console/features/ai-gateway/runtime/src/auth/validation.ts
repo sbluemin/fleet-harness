@@ -10,8 +10,19 @@ import type {
 // valid keys (observed on OpenCode Go / minimax-m3) before they can be stored.
 export const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 20_000;
 
-export async function validateAnthropicCompatibleApiKey(
-  request: AuthValidationRequest,
+export interface AuthProbeRequest {
+  readonly providerId: string;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * 키 검증의 공급자 중립 기구: 시간 예산, 본문 폐기, 상태 판정을 소유한다. 어떤 HTTP
+ * 요청이 그 키를 증명하는지는 공급자 좌표이므로 호출자가 `send`로 주입한다 — 이
+ * 모듈은 어떤 공급자도 알지 못한 채로 남는다.
+ */
+export async function validateApiKeyByProbe(
+  request: AuthProbeRequest,
+  send: (signal: AbortSignal) => Promise<Response>,
 ): Promise<AuthValidationResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -19,25 +30,7 @@ export async function validateAnthropicCompatibleApiKey(
   }, request.timeoutMs ?? DEFAULT_AUTH_VALIDATION_TIMEOUT_MS);
 
   try {
-    const response = await fetch(buildMessagesUrl(request.baseUrl), {
-      method: "POST",
-      headers: {
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "x-api-key": request.apiKey,
-      },
-      body: JSON.stringify({
-        model: request.model ?? "claude-3-5-haiku-20241022",
-        max_tokens: 1,
-        messages: [
-          {
-            role: "user",
-            content: "ping",
-          },
-        ],
-      }),
-      signal: controller.signal,
-    });
+    const response = await send(controller.signal);
     // Status alone decides validity; drop the body so a slow token stream cannot
     // keep the socket (or the provider generation) alive after we already know.
     // cancel() can reject after a dropped connection — absorb so cleanup never
@@ -77,6 +70,32 @@ export async function validateAnthropicCompatibleApiKey(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function validateAnthropicCompatibleApiKey(
+  request: AuthValidationRequest,
+): Promise<AuthValidationResult> {
+  return validateApiKeyByProbe(request, (signal) =>
+    fetch(buildMessagesUrl(request.baseUrl), {
+      method: "POST",
+      headers: {
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        "x-api-key": request.apiKey,
+      },
+      body: JSON.stringify({
+        model: request.model ?? "claude-3-5-haiku-20241022",
+        max_tokens: 1,
+        messages: [
+          {
+            role: "user",
+            content: "ping",
+          },
+        ],
+      }),
+      signal,
+    }),
+  );
 }
 
 export function isAuthValidationSuccess(
