@@ -29,11 +29,14 @@ import {
 import {
   AGENT_CHAT_ASK_TOOLS,
   agentChatAskFromToolInput,
+  chatActualModelFromTranscript,
   chatEventsFromSdkMessage,
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentIdentity,
   chatSubagentTrailFromTranscript,
+  chatWorkflowAgentSlots,
+  overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
   type AgentChatCatalog,
@@ -325,6 +328,24 @@ const JOB_TAIL_READ_BYTES = 256 * 1024;
  * 상한이 아니라 창 때문에 조용히 짧아진다.
  */
 const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
+/**
+ * 모델 id는 assistant 레코드 앞쪽에 있다. 마지막 줄이 창보다 크면 256KiB 꼬리는 그 줄의
+ * 뒷부분만 쥐고 JSON이 깨진다. cwd 읽기와 같이 창을 넓히되, 발자국 전사록 상한(4MiB)에서 멈춘다.
+ */
+const JOB_MODEL_READ_WINDOWS: readonly number[] = [256 * 1024, 1024 * 1024, JOB_TRANSCRIPT_READ_BYTES];
+const AGENT_COORD_RE = /^[A-Za-z0-9_-]{1,128}$/;
+/** 세션 하나의 자식 전사록 읽기 동시성. 잡마다 곱하지 않는다. */
+const WORKFLOW_READ_CONCURRENCY = 4;
+
+interface WorkflowJobModelState {
+  /** fold와 같은 그룹·cap 순서의 CLI `workflow_agent.index` 키. 키 없는 칸은 잇지 않는다. */
+  keys: readonly (string | undefined)[];
+  readonly idsByKey: Map<string, string>;
+  readonly models: Map<string, string>;
+  readonly files: Map<string, string>;
+  readonly bytes: Map<string, number>;
+  readonly reading: Set<string>;
+}
 
 /**
  * 잡 상세가 지나는 문. 자격증명 마스킹은 그대로고 경로만 원문으로 나간다 — 이 표면이 답하는
@@ -590,6 +611,15 @@ class AgentChatSession {
    * (실측: config dir이 아니라 CLI의 temp 뿌리) 우리가 재구성할 수 있는 값이 아니다.
    */
   private readonly jobOutputs = new Map<string, string>();
+  /**
+   * 워크플로 잡 하나의 실제 모델 상태. 잡 id가 주인이라 에이전트 수가 JOB_KIND_CAP을 넘어도
+   * 같은 잡의 칸을 밀어내지 않고, 원장에 그 잡이 더 이상 없으면 함께 버린다.
+   */
+  private readonly workflowJobs = new Map<string, WorkflowJobModelState>();
+  private workflowReadsActive = 0;
+  private readonly workflowReadWaiters: Array<() => void> = [];
+  /** `subagents/workflows` 한 번의 목록. 에이전트마다 readdir하지 않는다. */
+  private workflowRunListing: { readonly root: string; readonly names: readonly string[] } | null = null;
   /**
    * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
    * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
@@ -1195,6 +1225,9 @@ class AgentChatSession {
     // 오지 않을 `command_lifecycle`을 영원히 기다린다.
     for (const hosted of this.hostedDispatches.values()) hosted.onSettled?.("unknown");
     this.hostedDispatches.clear();
+    this.workflowJobs.clear();
+    this.workflowRunListing = null;
+    for (const wake of this.workflowReadWaiters.splice(0)) wake();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
@@ -1432,6 +1465,196 @@ class AgentChatSession {
     if (window === null) return null;
     const tail = chatShellTailFromOutput(window.text, JOB_DETAIL_OPTIONS(this.seed.cwd));
     return { kind: "shell", tail: tail.tail, truncated: tail.truncated || window.headCut };
+  }
+
+  /**
+   * 워크플로 맥박을 원장에 싣기 전에, 이미 아는 실제 모델을 얹고 아직 모르는 칸은 자식
+   * 전사록에서 읽는다. 요청·부모 핀은 매퍼가 이미 버렸다.
+   */
+  private ingestWorkflowProgress(
+    event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
+    message: ClaudeGatewayMessage,
+    options: ChatEventMapOptions,
+  ): void {
+    const slots = chatWorkflowAgentSlots(message.workflow_progress, options);
+    if (slots.length > 0) {
+      const job = this.ensureWorkflowJob(event.id);
+      job.keys = slots.map((slot) => slot.key);
+      for (const slot of slots) {
+        if (slot.key === undefined || slot.agentId === undefined) continue;
+        job.idsByKey.set(slot.key, slot.agentId);
+      }
+    }
+    this.ingest(this.paintWorkflowModels(event));
+    void this.enrichWorkflowProgress(event.id);
+  }
+
+  private ensureWorkflowJob(jobId: string): WorkflowJobModelState {
+    const held = this.workflowJobs.get(jobId);
+    if (held) return held;
+    const created = {
+      keys: [] as readonly (string | undefined)[],
+      idsByKey: new Map<string, string>(),
+      models: new Map<string, string>(),
+      files: new Map<string, string>(),
+      bytes: new Map<string, number>(),
+      reading: new Set<string>(),
+    };
+    this.workflowJobs.set(jobId, created);
+    return created;
+  }
+
+  private workflowAgentIds(job: WorkflowJobModelState): readonly (string | undefined)[] {
+    return job.keys.map((key) => (key === undefined ? undefined : job.idsByKey.get(key)));
+  }
+
+  private paintWorkflowModels(
+    event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
+  ): Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }> {
+    if (event.stages === undefined || event.stages.length === 0) return event;
+    const job = this.workflowJobs.get(event.id);
+    if (job === undefined || job.keys.length === 0) return event;
+    const stages = overlayWorkflowActualModels(event.stages, this.workflowAgentIds(job), job.models);
+    return stages === event.stages ? event : { ...event, stages };
+  }
+
+  /**
+   * 원장에 더 이상 없는 잡의 모델 좌표를 버린다. 읽고 있는 잡은 끝까지 두고, 살아 있는 잡과
+   * 저널이 아직 재생할 잡은 남긴다.
+   */
+  private pruneWorkflowJobs(): void {
+    const retained = new Set<string>(this.liveJobs);
+    for (const { event } of this.journal) {
+      if (event.kind === "job" || event.kind === "job-progress" || event.kind === "job-end") retained.add(event.id);
+    }
+    for (const [jobId, job] of this.workflowJobs) {
+      if (retained.has(jobId) || job.reading.size > 0) continue;
+      this.workflowJobs.delete(jobId);
+    }
+  }
+
+  /**
+   * 자식 전사록 꼬리에서 실제 응답 모델을 읽는다. 파일을 못 찾으면 다음 맥박이 다시 시도한다.
+   * 이미 아는 칸도 파일이 커졌으면 다시 읽는다 — fallback이 마지막 assistant.model을 바꾸기 때문이다.
+   */
+  private async enrichWorkflowProgress(jobId: string): Promise<void> {
+    if (this.disposed) return;
+    const job = this.workflowJobs.get(jobId);
+    if (job === undefined) return;
+    const pending: string[] = [];
+    for (const id of this.workflowAgentIds(job)) {
+      if (id === undefined || !AGENT_COORD_RE.test(id)) continue;
+      if (job.reading.has(id)) continue;
+      pending.push(id);
+    }
+    if (pending.length === 0) return;
+    for (const id of pending) job.reading.add(id);
+    try {
+      await Promise.all(pending.map((id) => this.withWorkflowReadSlot(async () => {
+        const file = await this.locateWorkflowAgentTranscript(jobId, id);
+        if (file === null || this.disposed) return;
+        const held = this.workflowJobs.get(jobId);
+        if (held === undefined) return;
+        const size = await fs.stat(file).then((info) => info.size).catch(() => null);
+        if (size === null) return;
+        if (size === held.bytes.get(id) && held.models.has(id)) return;
+        const model = await this.readActualModelFromTranscript(file);
+        held.bytes.set(id, size);
+        if (model === undefined) return;
+        held.models.set(id, model);
+      })));
+    } finally {
+      const held = this.workflowJobs.get(jobId);
+      if (held) for (const id of pending) held.reading.delete(id);
+    }
+    if (this.disposed) return;
+    this.republishWorkflowProgress(jobId);
+    this.pruneWorkflowJobs();
+  }
+
+  private republishWorkflowProgress(jobId: string): void {
+    const held = this.journal.findLast((entry) => entry.event.kind === "job-progress" && entry.event.id === jobId);
+    if (held === undefined || held.event.kind !== "job-progress") return;
+    const painted = this.paintWorkflowModels(held.event);
+    if (painted === held.event) return;
+    this.ingest(painted);
+  }
+
+  private async withWorkflowReadSlot<T>(work: () => Promise<T>): Promise<T> {
+    while (!this.disposed && this.workflowReadsActive >= WORKFLOW_READ_CONCURRENCY) {
+      await new Promise<void>((resolve) => {
+        this.workflowReadWaiters.push(resolve);
+      });
+    }
+    this.workflowReadsActive += 1;
+    try {
+      return await work();
+    } finally {
+      this.workflowReadsActive -= 1;
+      this.workflowReadWaiters.shift()?.();
+    }
+  }
+
+  /**
+   * 꼬리에서 완전한 assistant 레코드를 찾을 때까지 창만 넓힌다. 파일 전체를 올리지는 않는다.
+   */
+  private async readActualModelFromTranscript(file: string): Promise<string | undefined> {
+    for (const windowBytes of JOB_MODEL_READ_WINDOWS) {
+      const window = await readFileTail(file, windowBytes);
+      if (window === null) return undefined;
+      const model = chatActualModelFromTranscript(window.text);
+      if (model !== undefined || !window.headCut) return model;
+    }
+    return undefined;
+  }
+
+  /**
+   * 워크플로 에이전트 전사록. 일반 서브에이전트는 `subagents/agent-<id>.jsonl`이고, 워크플로
+   * 자식은 `subagents/workflows/<run>/agent-<id>.jsonl`에 앉는다(Claude Code 실측). 경로 자체는
+   * 브라우저로 나가지 않는다.
+   */
+  private async locateWorkflowAgentTranscript(jobId: string, agentId: string): Promise<string | null> {
+    const job = this.workflowJobs.get(jobId);
+    const cached = job?.files.get(agentId);
+    if (cached !== undefined && await isExistingFile(cached)) return cached;
+    const dir = await this.resolveJobSessionDir();
+    if (dir === null) return null;
+    const subagents = path.join(dir, "subagents");
+    const direct = path.join(subagents, `agent-${agentId}.jsonl`);
+    if (await isExistingFile(direct)) {
+      this.workflowJobs.get(jobId)?.files.set(agentId, direct);
+      return direct;
+    }
+    const found = await this.findWorkflowRunTranscript(subagents, agentId);
+    if (found !== null) this.workflowJobs.get(jobId)?.files.set(agentId, found);
+    return found;
+  }
+
+  private async findWorkflowRunTranscript(subagents: string, agentId: string): Promise<string | null> {
+    const root = path.join(subagents, "workflows");
+    const names = await this.listWorkflowRunDirs(root);
+    for (const name of names) {
+      const candidate = path.join(root, name, `agent-${agentId}.jsonl`);
+      if (await isExistingFile(candidate)) return candidate;
+    }
+    if (this.workflowRunListing?.root === root) {
+      this.workflowRunListing = null;
+      const refreshed = await this.listWorkflowRunDirs(root);
+      for (const name of refreshed) {
+        const candidate = path.join(root, name, `agent-${agentId}.jsonl`);
+        if (await isExistingFile(candidate)) return candidate;
+      }
+    }
+    return null;
+  }
+
+  private async listWorkflowRunDirs(root: string): Promise<readonly string[]> {
+    if (this.workflowRunListing?.root === root) return this.workflowRunListing.names;
+    const runs = await fs.readdir(root, { withFileTypes: true }).catch(() => null);
+    if (runs === null) return [];
+    const names = runs.filter((run) => run.isDirectory() && AGENT_COORD_RE.test(run.name)).map((run) => run.name);
+    this.workflowRunListing = { root, names };
+    return names;
   }
 
   /**
@@ -1689,6 +1912,7 @@ class AgentChatSession {
     }
     this.journal.push(entry);
     if (this.journal.length > JOURNAL_CAP) this.journal.splice(0, this.journal.length - JOURNAL_CAP);
+    this.pruneWorkflowJobs();
     for (const listener of this.listeners) listener(entry);
   }
 
@@ -2036,11 +2260,16 @@ class AgentChatSession {
         this.rememberJobKinds(message);
         this.rememberToolTitles(message);
         this.trackLiveContext(message);
-        for (const event of chatEventsFromSdkMessage(message, {
+        const mapOptions: ChatEventMapOptions = {
           cwd: this.seed.cwd,
           toolNames: this.toolNames,
           toolTitles: this.toolTitles,
-        })) {
+        };
+        for (const event of chatEventsFromSdkMessage(message, mapOptions)) {
+          if (event.kind === "job-progress") {
+            this.ingestWorkflowProgress(event, message, mapOptions);
+            continue;
+          }
           this.ingest(event);
         }
       }
@@ -2125,6 +2354,7 @@ class AgentChatSession {
     // 떠 있게 된다.
     this.journal = this.journal.filter(({ event }) =>
       (event.kind === "job" || event.kind === "job-progress") && this.liveJobs.has(event.id));
+    this.pruneWorkflowJobs();
     this.push({ kind: "cleared", at: Date.now() });
   }
 

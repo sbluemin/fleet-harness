@@ -103,12 +103,30 @@ describe("summarizeToolResult", () => {
   });
 });
 
-// 클라이언트 union은 서버 union의 손 복제다 — 서버가 내보내는 모든 kind를 클라이언트 해석기가
-// 그대로 받아들이는지 왕복으로 못 박는다.
-
-/**
- * 잡 하나를 열었을 때 읽어 오는 상세.
- *
- * 서브에이전트는 자기가 **말하기로 고른** 보고만 원장에 남긴다 — 발자국은 그 옆에서 실제로
- * 한 일을 말한다. 셸에는 아예 보고랄 것이 없고 출력이 곧 산출물이다.
- */
+describe("chat SDK job mapping", () => {
+  it("does not treat a workflow_progress model pin as the actual model", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system",
+      subtype: "task_progress",
+      task_id: "wf-1",
+      description: "running",
+      usage: { total_tokens: 12, tool_uses: 1, duration_ms: 40 },
+      workflow_progress: [{
+        type: "workflow_agent",
+        label: "composer-run",
+        phaseTitle: "Measure",
+        model: "claude-gateway--xai--grok-4",
+        agentId: "a1b2c3d4e5f6a7b8",
+        state: "done",
+      }],
+    })).toEqual([{
+      kind: "job-progress",
+      id: "wf-1",
+      note: "running",
+      tokens: 12,
+      tools: 1,
+      durationMs: 40,
+      stages: [{ title: "Measure", agents: [{ label: "composer-run", state: "done" }] }],
+    }]);
+  });
+});

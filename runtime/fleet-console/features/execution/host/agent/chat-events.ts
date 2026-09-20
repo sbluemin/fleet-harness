@@ -59,10 +59,14 @@ export type AgentChatJobKind = "agent" | "shell" | "workflow" | "other";
 /** 잡의 결말. SDK `task_notification.status`를 그대로 옮긴 축이다. */
 export type AgentChatJobStatus = "completed" | "failed" | "stopped";
 
-/** 워크플로 한 단계 안에서 돈 에이전트 하나. 값은 전부 `task_progress`가 실어 온다. */
+/** 워크플로 한 단계 안에서 돈 에이전트 하나. 단계·사용량은 `task_progress`가 실어 온다. */
 export interface AgentChatJobAgent {
   readonly label: string;
-  /** 이 에이전트가 핀된 신원. Fleet이 이 표면을 만드는 이유다. */
+  /**
+   * 이 에이전트가 **실제로 응답한** 신원. `workflow_progress[].model`은 요청·부모 핀이라
+   * 여기 두지 않는다 — 자식 전사록 `assistant.message.model`만 확정 값이다. 아직 못 읽었으면
+   * 비워 화면이 확정하지 않은 채 "—"를 그리게 둔다.
+   */
   readonly model?: string;
   readonly state: string;
   readonly tokens?: number;
@@ -936,7 +940,7 @@ function jobProgressEvent(message: Readonly<Record<string, unknown>>, caller: Ch
   if (id === undefined) return [];
   const options = jobSurfaceOptions(caller);
   const usage = message.usage as { readonly total_tokens?: unknown; readonly tool_uses?: unknown; readonly duration_ms?: unknown } | undefined;
-  const stages = readWorkflowStages(message.workflow_progress, options);
+  const stages = foldWorkflowProgress(message.workflow_progress, options).stages;
   const note = readString(message.description);
   const lastTool = readString(message.last_tool_name);
   return [{
@@ -1007,16 +1011,36 @@ function jobsChangedEvent(message: Readonly<Record<string, unknown>>): readonly 
  * `task_progress.workflow_progress`를 단계 트리로 접는다. 이 배열은 SDK 타입 선언에는 없고
  * 전선에서만 관측된다(2026-08-16 실측) — 그래서 읽어낸 만큼만 쓰고, 못 읽으면 빈 배열을 돌려
  * 워크플로 카드가 단계 없이도 완결되게 둔다. 여기서 던지면 맥박 하나가 통째로 사라진다.
+ *
+ * `row.model`은 요청·부모 핀이다(실측: 워크플로 표가 Astra로 고정되는 이유). 확정 모델은
+ * 자식 전사록만 말하므로 여기서는 싣지 않는다. 서버 좌표는 CLI가 행을 가르는
+ * `workflow_agent.index`이며 브라우저 DTO에는 나가지 않는다.
  */
-function readWorkflowStages(value: unknown, options: ChatEventMapOptions): readonly AgentChatJobStage[] {
-  if (!Array.isArray(value)) return [];
+export interface ChatWorkflowAgentSlot {
+  /** CLI `hUn`과 같은 `${type}:${index}`. index가 없으면 칸만 있고 좌표는 없다. */
+  readonly key?: string;
+  readonly agentId?: string;
+}
+
+function workflowAgentRowKey(row: Readonly<Record<string, unknown>>): string | undefined {
+  const index = readCount(row.index);
+  return index === undefined ? undefined : `workflow_agent:${index}`;
+}
+
+function foldWorkflowProgress(
+  value: unknown,
+  options: ChatEventMapOptions,
+): { readonly stages: readonly AgentChatJobStage[]; readonly slots: readonly ChatWorkflowAgentSlot[] } {
+  if (!Array.isArray(value)) return { stages: [], slots: [] };
   const order: string[] = [];
   const byTitle = new Map<string, AgentChatJobAgent[]>();
+  const slotsByTitle = new Map<string, ChatWorkflowAgentSlot[]>();
   const ensure = (title: string): AgentChatJobAgent[] => {
     let bucket = byTitle.get(title);
     if (!bucket) {
       bucket = [];
       byTitle.set(title, bucket);
+      slotsByTitle.set(title, []);
       order.push(title);
     }
     return bucket;
@@ -1039,15 +1063,85 @@ function readWorkflowStages(value: unknown, options: ChatEventMapOptions): reado
     const result = readString(row.resultPreview);
     bucket.push({
       label: label === undefined ? "" : safeJobText(label, options, MAX_JOB_AGENT_LABEL_CHARS),
-      ...(readString(row.model) !== undefined ? { model: capTo(readString(row.model) as string, MAX_JOB_AGENT_LABEL_CHARS) } : {}),
       state: readString(row.state) ?? "unknown",
       ...(readCount(row.tokens) !== undefined ? { tokens: readCount(row.tokens) as number } : {}),
       ...(readCount(row.toolCalls) !== undefined ? { tools: readCount(row.toolCalls) as number } : {}),
       ...(readCount(row.durationMs) !== undefined ? { durationMs: readCount(row.durationMs) as number } : {}),
       ...(result !== undefined ? { result: safeJobText(result, options, MAX_TOOL_RESULT_CHARS) } : {}),
     });
+    const key = workflowAgentRowKey(row);
+    const agentId = readString(row.agentId);
+    slotsByTitle.get(title)?.push({
+      ...(key === undefined ? {} : { key }),
+      ...(agentId === undefined ? {} : { agentId }),
+    });
   }
-  return order.slice(0, MAX_JOB_STAGES).map((title) => ({ title, agents: byTitle.get(title) ?? [] }));
+  return {
+    stages: order.slice(0, MAX_JOB_STAGES).map((title) => ({ title, agents: byTitle.get(title) ?? [] })),
+    slots: order.slice(0, MAX_JOB_STAGES).flatMap((title) => slotsByTitle.get(title) ?? []),
+  };
+}
+
+/**
+ * 단계 트리와 같은 순서로, CLI index 키와 자식 세션 좌표. 표시 단계와 같은 문
+ * (`jobProgressEvent`의 jobSurfaceOptions)을 지나지 않으면 경로 제목이 접혀 칸이 섞인다.
+ */
+export function chatWorkflowAgentSlots(
+  value: unknown,
+  options: ChatEventMapOptions = {},
+): readonly ChatWorkflowAgentSlot[] {
+  return foldWorkflowProgress(value, jobSurfaceOptions(options)).slots;
+}
+
+/**
+ * 자식 전사록에서 실제로 응답한 모델을 읽는다. 마지막 assistant 줄의 `message.model`이 권위다 —
+ * 요청 핀·부모 신원·최상위 필드가 아니다. 없으면 확정하지 않는다.
+ */
+export function chatActualModelFromTranscript(raw: string): string | undefined {
+  let model: string | undefined;
+  for (const line of raw.split("\n")) {
+    if (line.trim().length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    const record = parsed as { readonly type?: unknown; readonly message?: unknown };
+    if (record.type !== "assistant") continue;
+    const message = record.message;
+    if (!message || typeof message !== "object") continue;
+    const id = (message as { readonly model?: unknown }).model;
+    if (typeof id === "string" && id.length > 0) model = capTo(id, MAX_JOB_AGENT_LABEL_CHARS);
+  }
+  return model;
+}
+
+/**
+ * 이미 아는 실제 모델을 단계 트리에 얹는다. 모르는 칸은 비워 두고, 이미 확정한 칸은 좌표가
+ * 빠져도 지우지 않는다 — 뒤 맥박이 agentId 없이 오면 아는 것을 잊지 않기 위해서다.
+ */
+export function overlayWorkflowActualModels(
+  stages: readonly AgentChatJobStage[],
+  agentIds: readonly (string | undefined)[],
+  models: ReadonlyMap<string, string>,
+): readonly AgentChatJobStage[] {
+  let index = 0;
+  let changed = false;
+  const next = stages.map((stage) => {
+    let stageChanged = false;
+    const agents = stage.agents.map((agent) => {
+      const id = agentIds[index++];
+      const model = id === undefined ? undefined : models.get(id);
+      if (model === undefined || model === agent.model) return agent;
+      stageChanged = true;
+      changed = true;
+      return { ...agent, model };
+    });
+    return stageChanged ? { ...stage, agents } : stage;
+  });
+  return changed ? next : stages;
 }
 
 function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
