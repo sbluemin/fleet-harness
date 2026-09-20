@@ -33,7 +33,8 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Reduce Gateway loop requests with the same prompt | ai-gateway-loop-optimization; standalone when caller/host is irrelevant, frozen before/after workload |
 | Consolidate package micro-files and proxies | clean-code; public consumers and approved batches, no file-count-only deletion |
 | Plugin colors look disjoint across Console | design-sweep; quick=candidates, full=three-theme measurements |
-| Choose a new Console recovery UX | product-proposal; live evidence and interactive options, stop before implementation |
+| Choose a new Console recovery UX (quick or full) | product-proposal; scoped live evidence, labeled unknowns, verified interactive options open in a selected task-owned Fleet Browser tab; preserve user tabs and retain proposal resources, stop before implementation |
+| Deliver a visual proposal with Fleet Browser unavailable | product-proposal; report blocker and available URL, do not claim Browser handoff or visual proposal completion |
 | Create a work checkout / target path already exists | git-worktree create; canary base and internal install, no overwrite on collision |
 | Remove current checkout / it is main or a protected branch | git-worktree remove; stop before actual removal |
 | Rebase a topic with sync_local_base=no | rebase-on-canary; preview/rebase/verification all use origin/canary, no push |
