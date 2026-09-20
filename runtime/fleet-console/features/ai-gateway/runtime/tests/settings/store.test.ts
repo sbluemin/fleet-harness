@@ -173,8 +173,26 @@ describe("ai-gateway settings store", () => {
     });
     // 승계는 새 축에 실제로 안착해야 한다 — 매 부팅 과거 파일을 다시 읽는 상태로 남으면 안 된다.
     expect(existsSync(store.path)).toBe(true);
-    // 과거 파일은 지우지 않는다. 예전 호스트로 되돌아가는 경로를 파괴하지 않기 위해서다.
-    expect(existsSync(path.join(legacyDir, "ai-gateway.json"))).toBe(true);
+    // 값을 옮긴 뒤 과거 파일은 걷는다. 남겨 두면 아무도 읽지 않는 파일이 사용자의 데이터
+    // 루트에 영구히 남고, 어느 쪽이 사실인지 눈으로 구분할 수 없다.
+    expect(existsSync(path.join(legacyDir, "ai-gateway.json"))).toBe(false);
+  });
+
+  it("never consumes its own file when the slot and the previous root are the same directory", () => {
+    // 호스트 설정에 따라 둘이 같은 디렉터리로 풀린다(`FLEET_CONSOLE_DATA_DIR`만 지정한 실행).
+    // 자기 자신을 승계했다고 판정하면 옛 파일을 걷는 동작이 살아 있는 선별을 지운다.
+    const dataDir = createDataDir();
+    writeFileSync(
+      path.join(dataDir, "ai-gateway.json"),
+      JSON.stringify({ version: 1, models: [{ id: "cursor--auto" }] }),
+      "utf-8",
+    );
+
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [dataDir] });
+    store.writeCursorDiagnosticsEnabled(true);
+
+    expect(existsSync(store.path)).toBe(true);
+    expect(store.read().models).toEqual([{ id: "cursor--auto" }]);
   });
 
   it("performs no adoption when no host directory is given", () => {

@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * 저장 자리를 옮긴 파일의 승계 판정기.
@@ -21,6 +22,13 @@ export interface CreateStoreCarryOverDeps<T> {
    */
   readonly adopted: () => boolean;
   /**
+   * 승계의 목적지 경로. 옛 자리 후보 중 **이것과 같은 파일**은 후보에서 제외한다 —
+   * 호스트 설정에 따라 슬롯과 옛 루트가 같은 디렉터리로 풀릴 수 있고(`FLEET_CONSOLE_DATA_DIR`만
+   * 지정한 실행이 그렇다), 그때 자기 자신을 "옮겼다"고 판정하면 `consume()`이 살아 있는 파일을
+   * 지운다. 값을 지키는 장치가 값을 지우는 경로다.
+   */
+  readonly destinationPath: string;
+  /**
    * 옛 자리 후보들. 앞에서부터 보고 값이 있는 첫 자리를 승계한다 — 가장 최근에 살던 자리를
    * 앞에 둔다. 앞자리를 읽지 못하면 뒷자리로 넘어가지 않는다: 읽히지 않은 앞자리에 더 새로운
    * 값이 있을 수 있고, 그 경우 뒷자리 승계는 사용자의 최신 값을 옛 값으로 덮는다.
@@ -39,6 +47,13 @@ export interface StoreCarryOver<T> {
   readonly pending: () => boolean;
   /** 조사로 찾아낸 승계 대상. 아직 조사 전이거나 옮길 것이 없으면 `undefined`. */
   readonly carried: () => T | undefined;
+  /**
+   * 값을 옮겨 담은 뒤 옛 파일을 걷는다. **목적지에 값이 실린 것을 확인한 뒤에만** 지운다.
+   * 호출자는 승계가 포함된 쓰기가 성공한 직후에 부른다 — 쓰기 전에 부르면 값이 사라진다.
+   * best-effort라 지우지 못해도 실패로 보지 않는다: 목적지가 이미 사실이므로 남은 파일은
+   * 아무도 읽지 않는 잔해일 뿐이다.
+   */
+  readonly consume: () => void;
   /** 잠금 안에서 이번 갱신의 시작점을 고른다. */
   readonly base: (current: T) => T;
   readonly sourcePaths: readonly string[];
@@ -61,22 +76,27 @@ type SourceProbe<T> =
 
 export function createStoreCarryOver<T>(deps: CreateStoreCarryOverDeps<T>): StoreCarryOver<T> {
   let carried: T | undefined;
+  let carriedFrom: string | undefined;
+  const destination = path.resolve(deps.destinationPath);
+  const sourcePaths = deps.sourcePaths.filter((candidate) => path.resolve(candidate) !== destination);
   // 후보가 없으면 승계할 과거 자체가 없다. 조사는 처음부터 끝나 있다.
-  let settled = deps.sourcePaths.length === 0;
+  let settled = sourcePaths.length === 0;
 
   const probe = (): void => {
     if (settled) return;
-    for (const sourcePath of deps.sourcePaths) {
+    for (const sourcePath of sourcePaths) {
       const probed = readSource<T>(sourcePath, deps.adopt);
       // 결론 보류 — 다음 접근이 다시 조사한다.
       if (probed.kind === "unavailable") return;
       if (probed.kind === "adopt") {
         carried = probed.value;
+        carriedFrom = sourcePath;
         settled = true;
         return;
       }
     }
     carried = undefined;
+    carriedFrom = undefined;
     settled = true;
   };
 
@@ -85,8 +105,20 @@ export function createStoreCarryOver<T>(deps: CreateStoreCarryOverDeps<T>): Stor
     settled: () => settled,
     pending: () => carried !== undefined && !deps.adopted(),
     carried: () => carried,
+    consume: () => {
+      // 목적지와 같은 파일은 애초에 후보에서 걸렀지만, 지우기 직전에 한 번 더 확인한다.
+      if (carriedFrom === undefined || !deps.adopted()) return;
+      if (path.resolve(carriedFrom) === destination) return;
+      try {
+        fs.rmSync(carriedFrom, { force: true });
+      } catch {
+        // 지우지 못해도 목적지가 사실이다. 남은 파일은 다음 조사에서 읽히지 않는다.
+      }
+      carriedFrom = undefined;
+      carried = undefined;
+    },
     base: (current) => (carried !== undefined && !deps.adopted() ? carried : current),
-    sourcePaths: deps.sourcePaths,
+    sourcePaths,
   };
 }
 

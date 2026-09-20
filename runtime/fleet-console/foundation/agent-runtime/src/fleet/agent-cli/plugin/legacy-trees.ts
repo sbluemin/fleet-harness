@@ -1,8 +1,7 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { removePrivatePath } from "./fs.js";
-import type { LegacyMarketplaceReclaimDeps } from "../types.js";
 
 /**
  * Fleet이 예전에 플러그인을 렌더하던 자리. 지금은 아무것도 읽거나 쓰지 않는다.
@@ -30,15 +29,12 @@ const FLEET_RENDERED_ENTRIES = [
 ] as const;
 const FLEET_RENDERED_PLUGIN_DIRS = ["fleet-gateway"] as const;
 /**
- * 최근에 렌더된 흔적이 있으면 손대지 않는 창.
- *
- * 이 트리를 쥔 구버전 세션이 살아 있는지 물어볼 방법이 없다 — 구버전은 홀더를 남기지 않는다.
- * 대신 그 세션이 남긴 유일한 신호를 읽는다: 렌더 시각. 구버전 CLI는 런치할 때마다 이 트리를
- * 다시 쓰므로, 오래 전 흔적만 남았다는 것은 그동안 구버전 런치가 없었다는 뜻이다.
+ * 옛 자리는 지금 자리를 아는 버전이 뜨는 순간 잔해다. 렌더 시각을 보고 기다리던 유예는
+ * 없앴다 — 그 유예는 같은 기계에서 구버전 Console이 계속 돌고 있다는 전제 위에 있었고,
+ * Fleet Console을 직접 개발하지 않는 사용자에게는 구버전을 계속 쓸 동선이 없다. 기다리는
+ * 동안 사용자는 자기 데이터 루트에서 아무도 읽지 않는 트리 두 벌을 본다.
  */
-const LEGACY_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type { LegacyMarketplaceReclaimDeps } from "../types.js";
 
 /**
  * 레거시 트리에서 Fleet이 쓴 것만 걷는다. best-effort이며 어떤 실패도 런치를 막지 않는다.
@@ -58,54 +54,29 @@ export type { LegacyMarketplaceReclaimDeps } from "../types.js";
  * 부모. 두 자리 모두 같은 staleness 창을 쓴다: 그 트리를 쥔 구버전 세션이 살아 있는지 물어볼
  * 방법이 없으므로 마지막 렌더 시각으로 대신 판단한다.
  */
-export function reclaimLegacyTrees(
-  legacyRoot: string,
-  deps: LegacyMarketplaceReclaimDeps = {},
-): void {
-  reclaimLegacyHarness(legacyRoot, deps);
-  reclaimLegacyMarketplace(legacyRoot, deps);
+export function reclaimLegacyTrees(legacyRoot: string): void {
+  reclaimLegacyHarness(legacyRoot);
+  reclaimLegacyMarketplace(legacyRoot);
 }
 
 /**
  * 하네스 트리가 루트에 남아 있던 자리를 걷는다. 통째로 Fleet 렌더라 항목을 가려 지우지 않지만,
  * 구버전 Console이 아직 여기에 렌더하고 있을 수 있으므로 같은 staleness 창을 지킨다.
  */
-function reclaimLegacyHarness(
-  legacyRoot: string,
-  deps: LegacyMarketplaceReclaimDeps,
-): void {
-  const now = deps.now ?? Date.now;
-  const staleAfterMs = deps.staleAfterMs ?? LEGACY_STALE_AFTER_MS;
+function reclaimLegacyHarness(legacyRoot: string): void {
   try {
     const harnessRoot = path.join(legacyRoot, LEGACY_HARNESS_DIR_NAME);
     if (!existsSync(harnessRoot)) return;
-    let newest = 0;
-    for (const entry of readdirSync(harnessRoot, { withFileTypes: true })) {
-      try {
-        newest = Math.max(newest, statSync(path.join(harnessRoot, entry.name)).mtimeMs);
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
-        // 있는데 읽을 수 없으면 지금 렌더된 것으로 취급한다 — 불확실을 삭제로 해소하지 않는다.
-        return;
-      }
-    }
-    if (now() - newest <= staleAfterMs) return;
     removeBestEffort(harnessRoot, legacyRoot);
   } catch {
     return;
   }
 }
 
-function reclaimLegacyMarketplace(
-  fleetRoot: string,
-  deps: LegacyMarketplaceReclaimDeps,
-): void {
-  const now = deps.now ?? Date.now;
-  const staleAfterMs = deps.staleAfterMs ?? LEGACY_STALE_AFTER_MS;
+function reclaimLegacyMarketplace(fleetRoot: string): void {
   try {
     const marketplaceRoot = path.join(fleetRoot, MARKETPLACE_DIR_NAME);
     if (!existsSync(marketplaceRoot)) return;
-    if (now() - lastRenderedAt(marketplaceRoot) <= staleAfterMs) return;
     for (const entry of FLEET_RENDERED_ENTRIES) {
       removeBestEffort(path.join(marketplaceRoot, entry), marketplaceRoot);
     }
@@ -120,30 +91,6 @@ function reclaimLegacyMarketplace(
   } catch {
     return;
   }
-}
-
-/**
- * Fleet이 이 트리를 마지막으로 렌더한 시각.
- *
- * 없는 항목은 건너뛴다 — 하나도 없으면 0이 되어 "아주 오래됨"으로 읽히고, 실제로 걷을 것도
- * 남은 껍데기뿐이다. 반대로 **있는데 읽을 수 없는** 항목은 지금 렌더된 것으로 취급한다:
- * 불확실을 삭제로 해소하지 않는다.
- */
-function lastRenderedAt(marketplaceRoot: string): number {
-  const candidates = [
-    ...FLEET_RENDERED_ENTRIES.map((entry) => path.join(marketplaceRoot, entry)),
-    ...FLEET_RENDERED_PLUGIN_DIRS.map((entry) => path.join(marketplaceRoot, MARKETPLACE_PLUGINS_DIR_NAME, entry)),
-  ];
-  let newest = 0;
-  for (const candidate of candidates) {
-    try {
-      newest = Math.max(newest, statSync(candidate).mtimeMs);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
-      return Number.POSITIVE_INFINITY;
-    }
-  }
-  return newest;
 }
 
 function removeBestEffort(targetPath: string, rootBase: string): void {

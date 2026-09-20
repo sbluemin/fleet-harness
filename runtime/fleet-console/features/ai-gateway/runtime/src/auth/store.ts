@@ -45,6 +45,7 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): 
   });
 
   const carryOver = createStoreCarryOver<AuthStorageData>({
+    destinationPath: authPath,
     adopted: () => jsonFileExists(authPath),
     sourcePaths: (deps.legacyDirs ?? []).map((dir) => resolveProviderAuthPath(dir)),
     // 항목이 하나라도 있으면 그것이 사용자의 로그인 상태다. 키 모양은 보지 않는다 —
@@ -69,6 +70,7 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): 
       );
     }
     store.update((current) => mutate(carryOver.base(current)));
+    carryOver.consume();
   };
 
   /** 읽기도 승계를 앞당긴다 — 옮기기 전에는 옛 자리의 값이 곧 현재 로그인 상태다. */
@@ -77,6 +79,7 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): 
     if (carryOver.pending()) {
       try {
         store.update(carryOver.base);
+        carryOver.consume();
       } catch {
         // 락 경합·쓰기 실패는 결론이 아니다. 승계된 값으로 이번 읽기에 답하고 다음 접근이 다시 시도한다.
         return carryOver.base(store.load());

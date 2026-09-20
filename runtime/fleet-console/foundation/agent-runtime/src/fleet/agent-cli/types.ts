@@ -151,11 +151,6 @@ export interface CreateAgentCliPluginOptions {
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
 }
 
-export interface LegacyMarketplaceReclaimDeps {
-  readonly now?: () => number;
-  readonly staleAfterMs?: number;
-}
-
 export interface AgentCliPlugin {
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];

@@ -75,6 +75,7 @@ export function createAiGatewaySettingsStore(
   });
 
   const carryOver = createStoreCarryOver<AiGatewayStoredSettings>({
+    destinationPath: settingsPath,
     adopted: () => jsonFileExists(settingsPath),
     sourcePaths: (deps.legacyDirs ?? []).map((dir) => path.join(dir, AI_GATEWAY_SETTINGS_FILE_NAME)),
     adopt: (parsed) => {
@@ -100,7 +101,9 @@ export function createAiGatewaySettingsStore(
         + "could not be read, and writing now would strand it. Make that file readable or remove it, then retry.",
       );
     }
-    return store.update((current) => mutate(carryOver.base(current)));
+    const next = store.update((current) => mutate(carryOver.base(current)));
+    carryOver.consume();
+    return next;
   };
 
   return {
@@ -110,6 +113,7 @@ export function createAiGatewaySettingsStore(
       if (carryOver.pending()) {
         try {
           store.update(carryOver.base);
+          carryOver.consume();
         } catch {
           // 락 경합·쓰기 실패는 결론이 아니다. 이번 읽기는 미구성으로 답하고 다음 접근이 다시 시도한다.
         }

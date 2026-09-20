@@ -37,6 +37,7 @@ export interface CreateAgentOptionsServiceDeps {
 export function createAgentOptionsService(deps: CreateAgentOptionsServiceDeps): AgentOptionsService {
   const { store } = deps;
   const carryOver = createStoreCarryOver<AgentOptionsData>({
+    destinationPath: store.path,
     adopted: () => store.load().agent !== undefined,
     sourcePaths: (deps.legacyDirs ?? []).map((dir) => path.join(dir, LEGACY_OPTIONS_FILE_NAME)),
     adopt: (parsed) => {
@@ -45,14 +46,16 @@ export function createAgentOptionsService(deps: CreateAgentOptionsServiceDeps): 
     },
   });
 
-  const commit = (mutate: (current: AgentOptionsData) => AgentOptionsData): AgentOptionsData => (
-    store.update((current) => ({
+  const commit = (mutate: (current: AgentOptionsData) => AgentOptionsData): AgentOptionsData => {
+    const next = store.update((current) => ({
       ...current,
       // 잠금 안에서 시작점을 고른다. 이미 `agent`가 있으면 그쪽이 사실이고, 없으면 승계할 값이
       // 시작점이다 — 둘을 나누면 승계 직전의 부분 갱신이 옛 값을 고아로 만든다.
       agent: sanitizeAgentOptionsData(mutate(current.agent ?? carryOver.carried() ?? {})).data,
-    })).agent ?? {}
-  );
+    }));
+    carryOver.consume();
+    return next.agent ?? {};
+  };
 
   return {
     load: () => {
