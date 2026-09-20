@@ -20,7 +20,48 @@
  * 깨지고, 철자를 파서로 판정하다 멀쩡한 디스패치를 막던 옛 게이트의 실패로 돌아간다.
  * 여기서 하는 일은 레지스트리 조회와 표 참조뿐이다.
  */
-import type { ElementTable, EngineInterface, Register } from "claude-code";
+/**
+ * 이 Mod가 실제로 부르는 것만 적은 좁은 시야의 타입.
+ *
+ * 완전한 계약은 Claude Code가 `/plugin-types`로 내보내는 `claude-code.d.ts`에 있고,
+ * 보통은 그 모듈에서 타입을 import 한다. 여기서 그러지 않는 이유는 이 파일이 Console
+ * 번들 안에 문자열로 실려 나가기 때문이다 — 번들 텍스트에 남은 그 모듈 지정자를
+ * 패키징 게이트가 게시 매니페스트로 해석할 수 없는 의존성으로 읽고 빌드를 세운다
+ * (scripts/check-dist-published-externals.mjs). 타입 전용 import는 런타임에 어차피
+ * 비어 있으므로, 쓰는 만큼만 여기 적어 자산을 자기완결적으로 둔다.
+ */
+interface PaneElements {
+  readonly Box: unknown;
+  readonly Text: unknown;
+}
+
+interface Engine {
+  readonly ui: {
+    readonly notice: (toolUseId: string, text: string | undefined) => void;
+    readonly open: (pane: { id: string; title?: string; rows?: number }) => Promise<void>;
+    readonly panes: () => Promise<readonly { id: string; isPlaced: boolean }[]>;
+    readonly status: (text: string | undefined) => void;
+    readonly invalidate: (event: string) => void;
+    readonly log: (text: string, options?: { to: "transcript" | "debug" }) => void;
+    readonly resolve: (event: unknown) => PaneElements;
+  };
+  readonly command: {
+    readonly register: (spec: { name: string; description: string; immediate?: true }) => Promise<unknown>;
+  };
+  readonly clock: {
+    readonly every: (ms: number, fn: () => void) => { cancel: () => void };
+  };
+}
+
+/** 한 훅. `next(e)`는 나머지 플러그인과 엔진 자신의 동작으로 이어진다. */
+type Hook<E, R> = ($: Engine, e: E, next: (event: E) => Promise<R> | R) => Promise<R> | R;
+
+interface On {
+  <E, R>(pattern: string, hook: Hook<E, R>): { readonly catch: (handler: Hook<E, R>) => void };
+  <E, R>(pattern: string, matcher: object, hook: Hook<E, R>): { readonly catch: (handler: Hook<E, R>) => void };
+}
+
+type Register = (on: On, options?: unknown) => unknown;
 
 /** 한 좌석: 역할 하나와 그 역할을 태울 정체성. */
 interface Seat {
@@ -152,7 +193,7 @@ export const register: Register = (on) => {
   });
 
   on("command.run", { command: COMMAND_NAME }, async ($, e, next) => {
-    await openPane($);
+    await openPane($, true);
     return { text: summaryLine() };
   });
 
@@ -339,28 +380,51 @@ function decide(subagentType: string, fork: boolean): Decision {
 
 function summaryLine(): string {
   if (ledger.length === 0) return "No delegated run yet this session.";
-  const decided = offHost + onHost;
   const runs = `${ledger.length} ${ledger.length === 1 ? "run" : "runs"}`;
-  const kept = decided === 0 ? "seating" : `${offHost} of ${decided} kept off the session model`;
-  return `${runs} · ${kept} · seats from roster ${SEAT_TABLE.revision}`;
+  // "세션 모델을 피했다"가 아니라 "상속했는가"가 세는 축이다. 세션 자신이 게이트웨이 모델로
+  // 도는 경우 좌석이 같은 모델을 고를 수도 있어서, 전자로 적으면 거짓이 된다.
+  const split = offHost + onHost === 0 ? "seating" : `${offHost} seated, ${onHost} inherited`;
+  return `${runs} · ${split} · seats from roster ${SEAT_TABLE.revision}`;
 }
 
-async function openPane($: EngineInterface): Promise<void> {
-  if (paneOpen) return;
+/**
+ * 판을 연다.
+ *
+ * `asked`는 사람이 직접 부른 열기다. 엔진은 요청 없는 열기를 144칸 미만에서 자리 잡지 않고
+ * 보류하지만 요청된 열기는 110칸까지 받아 주고, 그 판정을 **열 때마다 새로** 한다. 그래서
+ * 모듈 플래그로 두 번째 열기를 건너뛰면 좁은 터미널에서 판이 영원히 안 나온다 — 첫 자동
+ * 열기가 플래그만 세우고 그려지지는 않은 채로 끝나기 때문이다.
+ *
+ * 자동 경로도 플래그가 아니라 엔진의 기록(`isPlaced`)을 믿는다. 모듈이 다시 실렸거나 창이
+ * 넓어진 뒤라면 다시 열어야 자리를 잡는다.
+ */
+async function openPane($: Engine, asked = false): Promise<void> {
+  if (!asked && paneOpen && (await isPlaced($))) return;
   try {
     await $.ui.open({ id: PANE_ID, title: PANE_TITLE, rows: 12 });
     paneOpen = true;
   } catch {
-    // 판이 열리지 않아도 알림줄과 상태줄은 남는다.
+    // 판이 열리지 않아도 알림줄은 남는다.
   }
 }
 
-function redraw($: EngineInterface): void {
-  $.ui.status(ledger.length === 0 ? undefined : summaryLine());
+async function isPlaced($: Engine): Promise<boolean> {
+  try {
+    return (await $.ui.panes()).some((pane) => pane.id === PANE_ID && pane.isPlaced);
+  } catch {
+    return false;
+  }
+}
+
+function redraw($: Engine): void {
+  // 프롬프트 아래 고정 줄을 엔진은 경고 표식과 함께 그린다. 그러니 경고할 일이 있을 때만
+  // 건다 — 좌석이 제대로 배정된 세션에서 판과 같은 문장을 두 번 말할 이유가 없고,
+  // 중립적인 사실에 붙은 경고 표식은 읽는 사람을 잘못 이끈다.
+  $.ui.status(onHost === 0 ? undefined : `fleet: ${onHost} of ${offHost + onHost} inherited the session model`);
   if (paneOpen) $.ui.invalidate("ui.render");
 }
 
-function startTicker($: EngineInterface): void {
+function startTicker($: Engine): void {
   if (ticker !== undefined) return;
   ticker = $.clock.every(1000, () => {
     if (paneOpen) $.ui.invalidate("ui.render");
@@ -388,7 +452,7 @@ const COLOR: Record<RowState, string> = {
   denied: "red",
 };
 
-function drawPane(t: ElementTable, bodyColumns: number): unknown {
+function drawPane(t: PaneElements, bodyColumns: number): unknown {
   const { Box, Text } = t;
   const now = Date.now();
   const width = Math.max(28, bodyColumns);
