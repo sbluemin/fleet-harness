@@ -4,9 +4,8 @@ import { FLEET_GATEWAY_HOST_PROMPT } from "../host-prompt.js";
 import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
 import { buildClaudeAgentDenyRules } from "./claude-agent-rules.js";
-import { createAgentCliPlugin } from "./plugin/index.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
-import type { ClaudeSessionCoordinate, CreateAgentCliPluginOptions } from "./types.js";
+import type { AgentCliPlugin, ClaudeSessionCoordinate, FleetHookExec } from "./types.js";
 
 /**
  * 이 런치가 여는 Claude 세션이 어디서 시작하는가.
@@ -67,8 +66,17 @@ export interface ClaudeSessionHandle {
   readonly sdk: ClaudeSessionSdkProjection;
 }
 
-export interface PrepareClaudeSessionOptions
-  extends CreateAgentCliPluginOptions {
+export interface PrepareClaudeSessionOptions {
+  readonly cliId: string;
+  readonly cwd: string;
+  /**
+   * 호스트가 기동에 한 번 렌더해 둔 플러그인 트리. 세션마다 다시 렌더하지 않는다 — 내용이
+   * 같아 디스크는 그대로지만, 매 런치가 저장소 락을 잡고 트리 전체를 다시 읽는 비용은 남고,
+   * 여러 Operation을 동시에 여는 순간 그 락에서 직렬화된다.
+   */
+  readonly plugin: AgentCliPlugin;
+  /** SDK 표면의 cwd 훅. 트리에 실리지 않고 세션 투영에만 들어간다. */
+  readonly workspaceHookExec?: FleetHookExec;
   readonly origin: ClaudeSessionOrigin;
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략하면 `on`.
@@ -101,7 +109,7 @@ export async function prepareClaudeSession(
   const claudeCodeDisabledAgents = [...new Set(options.claudeCodeDisabledAgents ?? [])];
   const agentDenyRules = buildClaudeAgentDenyRules(claudeCodeDisabledAgents);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-  const plugin = await createAgentCliPlugin(options);
+  const plugin = options.plugin;
   return {
     sessionId: coordinate.sessionId,
     coordinate,

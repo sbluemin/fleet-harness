@@ -13,7 +13,7 @@ import {
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
-import { createFleetGatewayAgentRuntimeLifecycle, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
+import { createAgentCliPlugin, createFleetGatewayAgentRuntimeLifecycle, type AgentCliPlugin, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
 import { parseGatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
 import {
   getFleetDataDir,
@@ -29,6 +29,8 @@ export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly authService: AuthService;
   readonly dataDir: string;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
+  /** 이 실행이 쓸 플러그인 트리. 런타임 생성에 한 번 렌더한다. */
+  readonly agentCliPlugin: AgentCliPlugin;
 }
 
 export interface CreateFleetCliRuntimeOptions {
@@ -51,6 +53,9 @@ export async function createFleetCliRuntime(
   const legacyDirs = [fleetRoot];
   const authService = createProviderAuthService({ dataDir, legacyDirs });
   const aiGatewayStore = createAiGatewaySettingsStore({ dataDir, legacyDirs });
+  // `fleet` 런처도 트리를 한 번만 렌더한다. Console 훅은 이 프로세스에 없으므로 내용이 다르고,
+  // 그래서 같은 슬롯을 쓰더라도 Console이 발행한 트리를 덮어쓴다 — 두 호스트가 번갈아 쓰는 자리다.
+  const agentCliPlugin = await createAgentCliPlugin({ dataDir });
   const agentOptionsService = createAgentOptionsService({
     store: createConsoleSettingsStore({ paths: consolePaths }),
     legacyDirs,
@@ -94,6 +99,7 @@ export async function createFleetCliRuntime(
       authService,
       dataDir,
       infraServices: { agentOptionsService },
+    agentCliPlugin,
       async cleanup() {
         if (cleaned) return;
         cleaned = true;

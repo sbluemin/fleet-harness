@@ -244,6 +244,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
     ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
     dataDir: ctx.host.paths.consoleDataDir,
+    plugin: ctx.agentCliPlugin,
     infraServices: deps,
     readAgentCliPaths,
     onRuntimeSessionStart: (session) => {
@@ -1988,6 +1989,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         resolveClaudeSession: () => prepareChatClaudeSession({
           cwd,
           dataDir: ctx.host.paths.consoleDataDir,
+          plugin: ctx.agentCliPlugin,
           claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           origin: sessionOrigin.kind === "resume"

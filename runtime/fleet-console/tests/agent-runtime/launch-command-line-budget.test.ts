@@ -24,6 +24,8 @@ afterEach(() => {
 const CMD_WRAPPED_PREFIX_ARGS = ["/d", "/s", "/c", "call", "C:\\Users\\a\\AppData\\Roaming\\npm\\claude.cmd "] as const;
 const CMD_SHIM_LIMIT: LaunchCommandLineLimit = { maxChars: WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS, via: "cmd-shim" };
 
+const pluginStub = { pluginRoot: "/tmp/fleet-plugin-stub", pluginRoots: ["/tmp/fleet-plugin-stub"] };
+
 describe("resolveLaunchCommandLineLimit", () => {
   it("declares no limit on POSIX", () => {
     expect(resolveLaunchCommandLineLimit([], "darwin")).toBeUndefined();
@@ -147,7 +149,7 @@ function cmdShimProfile(root: string, overrides: {
 
 function injectOptions(root: string, released?: { token: boolean }): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    dataDir: path.join(root, "data"),
+    plugin: pluginStub,
     dedicatedMcpSession: {
       async getEndpoint() {
         return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };

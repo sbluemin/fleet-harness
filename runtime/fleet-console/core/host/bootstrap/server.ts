@@ -20,6 +20,7 @@ import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.
 
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
+import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
@@ -2098,12 +2099,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
         await rehydrateDurableState();
+        // 플러그인 트리는 기동에 한 번만 렌더한다 — 세션마다 같은 내용이라 런치가 반복할
+        // 이유가 없고, 반복하면 저장소 락이 동시 런치의 직렬화 지점이 된다.
+        const agentCliPlugin = await renderConsoleAgentCliPlugin({ dataDir: durablePaths.dir });
         const execution = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           agentOptions,
+          agentCliPlugin,
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
         }), consoleActions);
         coreLaunchKinds = execution.launchKinds;

@@ -129,10 +129,12 @@ export interface FleetHookExec {
 
 export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
 
+/**
+ * 트리 한 벌을 렌더하는 데 필요한 전부. 세션 좌표는 들어오지 않는다 — 렌더 결과가 세션마다
+ * 같기 때문이고, 그래서 호스트는 기동에 한 번만 렌더해 모든 세션에 같은 트리를 넘긴다.
+ */
 export interface CreateAgentCliPluginOptions {
   readonly captureSessionHookExec?: FleetHookExec;
-  readonly cliId: string;
-  readonly cwd: string;
   /** 플러그인 트리가 사는 자리 — 호스트의 Console 슬롯. 이 패키지는 자리를 스스로 찾지 않는다. */
   readonly dataDir: string;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.

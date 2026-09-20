@@ -165,6 +165,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
+    agentCliPlugin: { pluginRoot: path.join(fleetDataDir, "harness", "claude"), pluginRoots: [path.join(fleetDataDir, "harness", "claude")] },
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },

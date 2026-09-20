@@ -18,6 +18,7 @@ import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
+  AgentCliPlugin,
   AgentCliInjectionContext,
   AgentCliMcpServerArg,
   AgentCliProfile,
@@ -25,8 +26,8 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  /** 플러그인 트리가 사는 자리 — 호스트의 Console 슬롯. */
-  readonly dataDir: string;
+  /** 호스트가 기동에 한 번 렌더해 둔 플러그인 트리. */
+  readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
   readonly captureSessionHookExec?: FleetHookExec;
@@ -139,7 +140,6 @@ export async function injectAgentCliProfile(
     const session = await prepareClaudeSession({
       cliId: profile.id,
       cwd: profile.cwd,
-      dataDir: options.dataDir,
       // 이 프로필의 인자가 이미 세션 좌표를 들고 있으면 우리 것을 얹지 않는다 — 호스트가
       // 무엇을 의도했든 자식은 두 좌표를 함께 받으면 거부한다(`fleet --resume <id>` 등).
       origin: profileCarriesSessionCoordinate(profile.args)
@@ -147,13 +147,8 @@ export async function injectAgentCliProfile(
         : options.origin ?? { kind: "new" },
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
-      captureSessionHookExec: options.captureSessionHookExec,
-      turnStartHookExec: options.turnStartHookExec,
-      turnEndHookExec: options.turnEndHookExec,
-      workspaceHookExec: options.workspaceHookExec,
-      inputWaitingHookExec: options.inputWaitingHookExec,
-      backgroundReportHookExec: options.backgroundReportHookExec,
-      autoNameHookExec: options.autoNameHookExec,
+      plugin: options.plugin,
+      ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
     });
     const cleanup = createOnceCleanup(() => {

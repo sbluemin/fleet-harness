@@ -77,7 +77,7 @@ function options(input: {
   readonly cwd: string;
   readonly dataDir: string;
 }): CreateAgentCliPluginOptions {
-  return { cliId: "claude", cwd: input.cwd, dataDir: input.dataDir };
+  return { dataDir: input.dataDir };
 }
 
 function createRoots(prefix: string): { readonly dataDir: string; readonly cwd: string } {

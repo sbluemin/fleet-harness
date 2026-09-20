@@ -1,3 +1,4 @@
+import type { AgentCliPlugin } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
@@ -18,6 +19,8 @@ export interface ConsoleRuntimeContext {
   readonly legacyDataDir: string;
   /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
   readonly agentOptions: AgentOptionsService;
+  /** 기동에 한 번 렌더한 Claude 플러그인 트리. 런치는 이것을 쓰기만 한다. */
+  readonly agentCliPlugin: AgentCliPlugin;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;

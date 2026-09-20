@@ -42,9 +42,10 @@ describe("launchClaudeGateway", () => {
     const releaseSessionToken = vi.fn();
     const runtimeCleanup = vi.fn(async () => {});
     const serverClose = vi.fn(async () => {});
-    const globalOptions = { version: 1 as const, claudeCodeSystemPrompt: "off" as const };
+    const globalOptions = { claudeCodeSystemPrompt: "off" as const };
     const runtime = {
       aiGatewayStore: createAiGatewaySettingsStore({ dataDir }),
+      agentCliPlugin: { pluginRoot: `${dataDir}/harness/claude`, pluginRoots: [`${dataDir}/harness/claude`] },
       infraServices: {
         agentOptionsService: { load: () => globalOptions, save: () => globalOptions, update: () => globalOptions },
       },
