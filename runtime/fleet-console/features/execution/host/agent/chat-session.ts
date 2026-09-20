@@ -1,4 +1,5 @@
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -249,6 +250,20 @@ interface QueuedDispatch {
   readonly attachments: readonly ChatAttachment[];
 }
 
+/**
+ * 도는 턴에 건네 두고 자식이 집어가기를 기다리는 말 하나.
+ *
+ * `queueId`를 함께 드는 이유는 화면의 칩이 그 좌표로 서 있기 때문이다 — 자식이 집어갔다고
+ * 말하는 순간 그 칩을 내리려면 어느 칩인지 알아야 한다.
+ */
+interface HostedDispatch {
+  readonly queueId: string;
+  readonly display: string;
+  readonly attachments: readonly ChatAttachment[];
+  readonly by?: ChatOrigin;
+  readonly onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void;
+}
+
 /** `send`가 받는 표시 문면 한 벌 — 자식에게 갈 프롬프트와 갈라서 다룬다. */
 export interface ChatDispatchPresentation {
   readonly display?: string;
@@ -422,6 +437,15 @@ class AgentChatSession {
    */
   private readonly queuedDispatches = new Map<string, QueuedDispatch>();
   private queueSeq = 0;
+  /**
+   * 이미 자식에게 건넨 말(자식의 좌표 → 이 세션의 좌표와 표시 문면).
+   *
+   * `queuedDispatches`와 다른 맵인 이유는 **누가 붙들고 있는가**가 다르기 때문이다. 저쪽은
+   * 아직 우리 손에 있어 취소가 닿지만, 이쪽은 이미 건네서 돌려받을 수 없다 — 자식의
+   * `command_lifecycle`만이 그 말이 어디에 있는지 말해 준다. 두 맵을 합치면 취소 버튼이
+   * 돌려받을 수 없는 말 위에도 서게 된다.
+   */
+  private readonly hostedDispatches = new Map<string, HostedDispatch>();
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -844,6 +868,9 @@ class AgentChatSession {
   send(text: string, presentation: ChatDispatchPresentation = {}, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): void {
     if (this.disposed) { onSettled?.("unknown"); return; }
     const id = `q${++this.queueSeq}`;
+    // 턴이 도는 동안 보낸 말은 그 턴이 집어간다 — Claude Code CLI와 같은 자리다. 앞 턴이 닫히기를
+    // 기다리는 줄에 세우면 사용자가 방향을 고쳐 준 말이 이미 끝난 일에 대고 도착한다.
+    if (this.handOverToRunningTurn(id, text, presentation, onSettled, by)) return;
     this.pendingTurns += 1;
     this.queuedDispatches.set(id, { text, display: presentation.display ?? text, attachments: presentation.attachments ?? [] });
     // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
@@ -874,6 +901,99 @@ class AgentChatSession {
   }
 
   /**
+   * 도는 턴에 말 하나를 건넨다. 건넸으면 `true` — 부른 쪽은 줄 세우기를 그만둔다.
+   *
+   * [왜 줄을 세우지 않나] 자식은 이 말을 **다음 도구 라운드 경계에서** 집어가 같은 턴 안에서
+   * 방향을 고친다(0.3.269 실측, `priority:"next"`). Claude Code CLI가 사람이 친 말에 쓰는
+   * 자리와 같다. 앞 턴이 닫히기를 기다리게 하면 그 말은 이미 끝난 일에 대고 도착한다.
+   *
+   * [왜 여기서 원장에 세우지 않나] 지금 세우면 거짓말이 될 수 있다. 자식이 이 말을 도는 턴에
+   * 집어갈지, 아니면 그 사이 턴이 닫혀 제 턴으로 설지는 자식만 안다 — 원장은 자식이
+   * `command_lifecycle: started`로 말해 준 뒤에 선다(`trackHandover`).
+   *
+   * [무엇이 이 문을 닫나] 정비 명령(`/compact` 등)은 자기 줄 하나가 지시와 결말을 함께 지므로
+   * 도는 턴에 얹을 자리가 없고, 중지를 정산하는 중이거나 아직 자식에게 닿지 않은 턴은 "도는
+   * 턴"이 아니다.
+   */
+  private handOverToRunningTurn(
+    id: string,
+    text: string,
+    presentation: ChatDispatchPresentation,
+    onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void,
+    by?: ChatOrigin,
+  ): boolean {
+    if (readChatCommandLaneName(text) !== null) return false;
+    if (this.commandLane !== null) return false;
+    if (!this.turnOpen || this.settlingStoppedTurn || !this.turnReachedChild) return false;
+    const session = this.session;
+    if (session === null) return false;
+    const display = presentation.display ?? text;
+    const attachments = presentation.attachments ?? [];
+    // 칩은 그대로 선다. 다만 이 칩은 "아직 우리 손에 있다"가 아니라 "건넸고 곧 집혀간다"이므로
+    // 취소가 닿지 않는다 — `cancelQueued`가 이 좌표를 보지 못하는 것이 그 계약이다.
+    const messageId = randomUUID();
+    this.hostedDispatches.set(messageId, {
+      queueId: id,
+      display,
+      attachments,
+      ...(by ? { by } : {}),
+      ...(onSettled ? { onSettled } : {}),
+    });
+    this.queuedDispatches.set(id, { text, display, attachments });
+    this.pushQueue();
+    try {
+      session.send(text, { messageId });
+    } catch {
+      // 건네지 못했으면 건넨 척하지 않는다. 칩을 걷고 거짓을 남기지 않은 채 실패를 말한다.
+      this.hostedDispatches.delete(messageId);
+      this.queuedDispatches.delete(id);
+      this.pushQueue();
+      onSettled?.("failed");
+      return true;
+    }
+    return true;
+  }
+
+  /**
+   * 자식이 건네받은 말의 행방을 말해 온다 — 이 세션이 그 말을 원장에 세우는 유일한 근거다.
+   *
+   * `started`가 곧 "도는 턴이 집어갔다"이고, 그때 칩을 내리고 그 턴 안에 사람의 말을 세운다.
+   * 그 사이 턴이 닫혔다면 자식은 이 말을 제 턴으로 세운 것이므로 평소의 `dispatch`로 돌아간다 —
+   * 한 자리에서 두 모양을 가르는 것이 아니라, 자식이 무엇을 했는지 받아 적는 것이다.
+   */
+  private trackHandover(message: ClaudeGatewayMessage): void {
+    if (message.type !== "command_lifecycle") return;
+    const messageId = message["command_uuid"];
+    const state = message["state"];
+    if (typeof messageId !== "string" || typeof state !== "string") return;
+    const hosted = this.hostedDispatches.get(messageId);
+    if (hosted === undefined) return;
+    if (state === "started") {
+      this.hostedDispatches.delete(messageId);
+      this.queuedDispatches.delete(hosted.queueId);
+      this.pushQueue();
+      const attachments = hosted.attachments.length > 0 ? { attachments: hosted.attachments } : {};
+      const by = hosted.by ? { by: hosted.by } : {};
+      if (this.turnOpen) {
+        this.push({ kind: "turn-inject", text: hosted.display, ...attachments, at: Date.now(), ...by });
+      } else {
+        // 건네는 사이 턴이 닫혔다. 자식은 이 말로 제 턴을 세우므로 원장도 그렇게 선다.
+        this.push({ kind: "dispatch", text: hosted.display, ...attachments, at: Date.now(), ...by });
+        this.openTurn({ dispatched: true });
+      }
+      // 결말은 도는 턴의 것이다 — 이 말만의 `turn-end`는 오지 않으므로 여기서 정산한다.
+      hosted.onSettled?.("succeeded");
+      return;
+    }
+    if (state === "cancelled") {
+      this.hostedDispatches.delete(messageId);
+      this.queuedDispatches.delete(hosted.queueId);
+      this.pushQueue();
+      hosted.onSettled?.("interrupted");
+    }
+  }
+
+  /**
    * 아직 시작하지 않은 예약 지시 하나를 사용자가 거둔다.
    *
    * 이 문이 닿는 것은 **시작 전**의 지시뿐이다. 이미 도는 턴은 `stopTurn`의 몫이고, 자기 차례에
@@ -884,6 +1004,9 @@ class AgentChatSession {
    */
   cancelQueued(id: string): boolean {
     if (this.disposed) return false;
+    // 이미 자식에게 건넨 말은 돌려받을 수 없다. 칩만 지우면 화면에서는 거둔 것처럼 보이고
+    // 모델은 그 말을 읽는다 — 그 한 줄의 거짓이 이 가드가 있는 이유다.
+    for (const hosted of this.hostedDispatches.values()) if (hosted.queueId === id) return false;
     if (!this.queuedDispatches.delete(id)) return false;
     this.pushQueue();
     return true;
@@ -1068,6 +1191,10 @@ class AgentChatSession {
     // 아직 시작하지 않은 예약은 여기서 거둔다. 남겨 두면 접는 도중에 자기 차례가 와 새 턴을
     // 세우고, dispose는 그 턴의 완주를 기다리며 Operation 삭제·셧다운을 그만큼 붙든다.
     this.queuedDispatches.clear();
+    // 건넨 말의 결말은 자식이 말해 주는데, 그 자식을 지금 접는다. 기다리는 쪽을 풀어 주지 않으면
+    // 오지 않을 `command_lifecycle`을 영원히 기다린다.
+    for (const hosted of this.hostedDispatches.values()) hosted.onSettled?.("unknown");
+    this.hostedDispatches.clear();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
@@ -1902,6 +2029,7 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
+        this.trackHandover(message);
         this.rememberSkillNames(message);
         this.invalidateCatalog(message);
         this.rememberJobOutput(message);
@@ -2224,6 +2352,16 @@ class AgentChatSession {
       session.close();
     } catch {
       // 이미 접힌 세션을 다시 닫는 것은 무해하다(계약상 멱등).
+    }
+    // 건넨 말의 행방을 말해 줄 자식이 사라졌다. 칩을 걷고 기다리는 쪽을 풀어 준다 — 남겨 두면
+    // 오지 않을 `command_lifecycle`을 기다리며 화면에 집혀가지 않는 칩이 영원히 선다.
+    if (this.hostedDispatches.size > 0) {
+      for (const [messageId, hosted] of this.hostedDispatches) {
+        this.queuedDispatches.delete(hosted.queueId);
+        this.hostedDispatches.delete(messageId);
+        hosted.onSettled?.("unknown");
+      }
+      this.pushQueue();
     }
     for (const id of [...this.liveJobs]) this.push({ kind: "job-end", id, status: "stopped" });
     this.liveJobs.clear();

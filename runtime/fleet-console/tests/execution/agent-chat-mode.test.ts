@@ -193,7 +193,14 @@ describe("agent chat mode routes", () => {
     }
   });
 
-  it.each(["exit", "resume"])("%s interrupts streaming chat and cancels queued turns before relaunching the cli", async (action) => {
+  /**
+   * 모드를 떠나면 자식과 함께 그 대화의 일감이 끝난다 — 전환 **뒤에** 새로 도는 것은 없다.
+   *
+   * 예전에는 "두 번째 메시지가 자식에게 닿지 않는다"가 그 보증의 기계장치였다. 지금은 턴이 도는
+   * 동안 보낸 말이 곧바로 자식에게 건너가므로(Claude Code CLI와 같은 계약) 그 장치는 사라졌고,
+   * 남는 보증은 하나다: 전환은 자식을 닫고, 닫힌 뒤로는 아무것도 보내지지 않는다.
+   */
+  it.each(["exit", "resume"])("%s closes the chat child so nothing runs after switching", async (action) => {
     const harness = await createHarness({ holdChatTurn: true });
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
@@ -201,17 +208,21 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "message", { text: "stream until interrupted" });
     await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted"]));
-    await harness.post(sessionId, "message", { text: "must not run after switching" });
+    // 턴이 도는 동안 보낸 말은 기다리지 않고 건너간다 — 도는 턴이 다음 도구 라운드에서 집어간다.
+    await harness.post(sessionId, "message", { text: "handed to the running turn" });
+    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted", "handed to the running turn"]));
     expect((await harness.sessions()).find((session) => session.sessionId === sessionId)?.modelActivity).toBe("working");
     if (action === "exit") {
       await harness.del(sessionId, "chat");
       expect(harness.responses.at(-1)?.status).toBe(200);
       expect(harness.closeChat).toHaveBeenCalled();
     }
+    const before = harness.sends.length;
     await harness.post(sessionId, "resume");
 
     expect(harness.closeChat).toHaveBeenCalled();
-    expect(harness.sends).toEqual(["stream until interrupted"]);
+    // 전환 뒤로는 한 마디도 나가지 않는다. 자식이 닫혔으므로 남은 일감도 함께 거둬진다.
+    expect(harness.sends).toHaveLength(before);
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({

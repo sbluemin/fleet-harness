@@ -67,7 +67,7 @@ type FakeCatalog = {
   readonly failCommandsFor?: number;
 };
 
-function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
+function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string, options?: { readonly messageId?: string }) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
   const queue: Record<string, unknown>[] = [];
   let waiting: (() => void) | null = null;
   let closed = false;
@@ -80,8 +80,8 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
   let lastConsumed: FakeTurn | null = null;
   let commandAttempts = 0;
   return {
-    send(text: string): void {
-      hooks.onSend?.(text);
+    send(text: string, options?: { readonly messageId?: string }): void {
+      hooks.onSend?.(text, options);
       const script = turns.shift() ?? { messages: [] };
       lastConsumed = script;
       const upTo = script.failAfter ?? script.messages.length;
@@ -450,6 +450,65 @@ describe("AgentChatRegistry — stopping a turn", () => {
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-stop-3", () => seedFor(transcriptPath));
     expect(session.stopTurn()).toBe(false);
+    await registry.disposeAll();
+  });
+
+  /**
+   * 턴이 도는 동안 보낸 말은 그 턴이 집어간다 — Claude Code CLI와 같은 자리다.
+   *
+   * 이 셋이 한 계약이다: 말은 **기다리지 않고** 자식에게 건너가고, 자식이 집어갔다고 말하기
+   * 전까지는 **원장에 서지 않으며**, 건넨 뒤에는 **거둘 수 없다**. 마지막 하나가 특히 중요하다 —
+   * 칩만 지우고 성공을 돌려주면 화면은 거뒀다고 말하고 모델은 그 말을 읽는다.
+   */
+  it("hands a mid-turn message to the child at once and seats it inside the running turn", async () => {
+    const transcriptPath = writeTranscript("sess-inject", []);
+    const configDir = tempDir("chat-inject-");
+    const sends: { readonly text: string; readonly messageId?: string }[] = [];
+    let child: ReturnType<typeof fakeSession> | null = null;
+    const openSession = vi.fn(async () => {
+      child = fakeSession([], { onSend: (text, options) => sends.push({ text, ...(options?.messageId ? { messageId: options.messageId } : {}) }) });
+      return child;
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      openSession,
+      dispose: vi.fn(async () => {}),
+    }));
+    const registry = new AgentChatRegistry(factory as never);
+    const session = await registry.ensure("op-inject-1", () => seedFor(transcriptPath));
+
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("첫 지시");
+    // 자식에게 닿은 뒤라야 "도는 턴"이다 — 닿기 전의 턴은 아직 건넬 자리가 없다.
+    await vi.waitFor(() => {
+      expect(kinds(seen)).toContain("turn-start");
+      expect(sends).toHaveLength(1);
+    });
+
+    session.send("방향을 바꿔줘");
+    // 앞 턴이 닫히기를 기다리지 않는다. 기다리면 사용자가 고쳐 준 말이 이미 끝난 일에 도착한다.
+    await vi.waitFor(() => { expect(sends).toHaveLength(2); });
+    expect(sends[1]?.text).toBe("방향을 바꿔줘");
+    // 좌표 없이 건네면 자식이 그 말의 행방을 말해 줄 길이 없다.
+    const messageId = sends[1]?.messageId;
+    expect(typeof messageId).toBe("string");
+    // 아직 원장에는 서지 않는다 — 도는 턴이 집어갈지 제 턴으로 설지는 자식만 안다.
+    expect(kinds(seen)).not.toContain("turn-inject");
+    // 건넨 말은 거둘 수 없다. 칩 좌표가 있어도 취소는 거절이어야 한다 — 칩만 지우고 성공을
+    // 돌려주면 화면은 거뒀다고 말하고 모델은 그 말을 읽는다.
+    const queued = latestQueue(seen);
+    expect(queued).toHaveLength(1);
+    expect(session.cancelQueued(queued[0]!.id)).toBe(false);
+
+    // 자식이 집어갔다고 말한다. 이제서야 원장에 서고, 새 턴은 열리지 않는다.
+    child!.emit({ type: "command_lifecycle", state: "started", command_uuid: messageId });
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-inject"); });
+    expect(kinds(seen).filter((kind) => kind === "turn-start")).toHaveLength(1);
+    expect(latestQueue(seen)).toHaveLength(0);
+
     await registry.disposeAll();
   });
 });

@@ -1199,6 +1199,9 @@ function Ledger({
                   />
                 );
               }
+              if (part.item.type === "inject") {
+                return <InjectLine key={at} item={part.item} language={language} />;
+              }
               return part.item.type === "ask" && part.item.ask
                 ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />
                 : <Step key={at} item={part.item} language={language} live={live} />;
@@ -1214,6 +1217,31 @@ function Ledger({
       {pending && segments.length === 0
         ? <Tally groups={[]} folded={[]} language={language} live tails={[]} thinking />
         : null}
+    </div>
+  );
+}
+
+/**
+ * 도는 턴이 도중에 집어간 사용자의 말 한 줄.
+ *
+ * 턴을 여는 말풍선과 같은 모양을 쓰지 않는다 — 그 모양은 "여기서 턴이 시작했다"는 뜻이고,
+ * 이 말은 이미 돌던 턴이 읽은 것이다. 원장 폭에 맞춰 서되 캡션 하나가 그 차이를 말한다.
+ *
+ * 색은 중립이다. 신호 채널(aurora·coral)은 상태를 말하는 자리이고, 사용자가 말을 보탠 것은
+ * 상태가 아니다 — 그 자리를 빌리면 이 줄이 경보로 읽힌다.
+ */
+function InjectLine({
+  item,
+  language,
+}: {
+  readonly item: AgentChatTurnItem;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  return (
+    <div className="agent-chat-turn-inject">
+      <span className="agent-chat-turn-inject-caption">{t("terminal.chat.injectCaption")}</span>
+      <div className="agent-chat-turn-inject-body">{item.text ?? ""}</div>
     </div>
   );
 }

@@ -3685,3 +3685,37 @@
 .agent-chat-history:not([hidden]) + * {
   margin-top: var(--space-4);
 }
+
+/* 도는 턴이 도중에 집어간 사용자의 말.
+
+   턴을 여는 말풍선과 같은 모양을 쓰지 않는 이유는 뜻이 다르기 때문이다 — 그 모양은 "여기서
+   턴이 시작했다"이고, 이 줄은 "이미 돌던 턴이 여기서 이 말을 읽었다"이다. 같게 그리면 원장이
+   턴을 하나 더 세운 것처럼 읽힌다.
+
+   색은 중립이다. aurora·coral은 상태를 말하는 신호 채널이고, 사람이 말을 보탠 것은 상태가
+   아니다 — 그 자리를 빌리면 이 줄이 경보가 된다. 왼쪽 강조 띠도 쓰지 않는다(계약). */
+.agent-chat-turn-inject {
+  align-self: stretch;
+  max-width: var(--agent-chat-measure);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+}
+
+.agent-chat-turn-inject-caption {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-turn-inject-body {
+  font-size: var(--t-md);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

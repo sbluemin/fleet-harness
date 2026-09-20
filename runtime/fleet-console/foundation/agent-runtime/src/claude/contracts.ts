@@ -419,6 +419,19 @@ export interface ClaudeGatewayRun extends AsyncIterable<ClaudeGatewayMessage> {
  * 메시지가 말한다 — 백그라운드 작업이 끝나면 자식이 모델을 다시 깨우므로, 한 세션에서 `result`는
  * 보낸 프롬프트 수보다 많을 수 있다.
  */
+/**
+ * 보내는 말 하나에 붙이는 좌표.
+ *
+ * 좌표가 없으면 "그 말이 지금 어디에 있는가"를 물을 길이 없다. 자식은 `messageId`를
+ * `command_lifecycle` 프레임의 `command_uuid`로 그대로 되돌려 주며, 그것이 큐에 머무는
+ * 동안(`queued`)과 도는 턴이 집어간 순간(`started`)과 결말(`completed`·`cancelled`)을
+ * 말해 주는 유일한 join key다.
+ */
+export interface ClaudeGatewaySendOptions {
+  /** 자식이 `command_lifecycle.command_uuid`로 되돌려 줄 좌표. UUID 문자열이어야 한다. */
+  readonly messageId?: string;
+}
+
 export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage> {
   /**
    * 자식에게 사용자 메시지 하나를 밀어 넣는다. 반환은 큐 등록이며, 진행은 스트림으로만 온다.
@@ -426,7 +439,7 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
    * 자식이 자기 큐를 갖고 있으므로 턴 중에 보내도 잃지 않는다. 호출자가 턴을 직렬화하고 싶다면
    * 그 규율은 호출자의 것이다 — 이 계약은 순서만 보장한다.
    */
-  send(text: string): void;
+  send(text: string, options?: ClaudeGatewaySendOptions): void;
   /**
    * 도는 턴을 끊는다. 자식은 살아남고 백그라운드 작업도 그대로다 — 프로세스를 죽이는 `close()`와
    * 다른 물건이다.

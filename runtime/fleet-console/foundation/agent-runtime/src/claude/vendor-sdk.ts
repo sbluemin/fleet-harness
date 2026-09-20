@@ -23,6 +23,7 @@ import type {
   ClaudeGatewayMcpServer,
   ClaudeGatewayMessage,
   ClaudeGatewayRun,
+  ClaudeGatewaySendOptions,
   ClaudeGatewaySession,
   ClaudeGatewayTool,
   ClaudeGatewayToolExtras,
@@ -317,13 +318,26 @@ class VendorInputQueue implements AsyncIterable<unknown> {
  * 사용자 메시지 하나. 모양은 vendor가 **문자열 프롬프트에 대해 스스로 만드는 것**을 그대로 옮긴
  * 것이다(0.3.212 확인): `session_id`는 빈 문자열이고 본문은 text 블록 하나다. 지어내지 않고
  * 베낀 이유는, 이 모양이 어긋나면 자식이 조용히 프롬프트를 잃기 때문이다.
+ *
+ * `priority`는 사람이 친 말이 **언제 도착하는가**를 정한다(0.3.269 실측):
+ *
+ * - `"next"` — 도는 턴이 **다음 도구 라운드 경계에서** 집어간다. 턴은 끊기지 않고 결말도
+ *   하나이며, `result.user_message_uuids`에 두 말이 함께 선다.
+ * - `"now"` — 도는 턴을 취소하고 새 턴으로 즉시 답한다. 그것은 중지이지 개입이 아니다.
+ * - `"later"` — 턴이 완전히 끝날 때까지 어느 경계에서도 집혀가지 않는다.
+ *
+ * `"next"`를 고른 이유는 Claude Code CLI가 사람이 친 말에 쓰는 값이기 때문이다(2.1.278 번들
+ * 확인: 대화형 사용자 메시지 생성부가 이 값으로 고정되어 있고, `"now"`는 한 번도 쓰이지 않으며
+ * `"later"`는 시스템 알림 전용이다). 이 값을 바꾸면 Console이 CLI와 다른 제품이 된다.
  */
-function vendorUserMessage(text: string): Record<string, unknown> {
+function vendorUserMessage(text: string, messageId?: string): Record<string, unknown> {
   return {
     type: "user",
     session_id: "",
     message: { role: "user", content: [{ type: "text", text }] },
     parent_tool_use_id: null,
+    priority: "next",
+    ...(messageId === undefined ? {} : { uuid: messageId }),
   };
 }
 
@@ -380,9 +394,9 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
 
   let closed = false;
   return {
-    send(text: string): void {
+    send(text: string, options?: ClaudeGatewaySendOptions): void {
       if (closed) return;
-      queue.push(vendorUserMessage(text));
+      queue.push(vendorUserMessage(text, options?.messageId));
     },
     async interrupt(): Promise<void> {
       if (closed || typeof run.interrupt !== "function") return;

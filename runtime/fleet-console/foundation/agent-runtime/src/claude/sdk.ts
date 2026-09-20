@@ -201,7 +201,7 @@ export async function createClaudeGatewaySdk(
         // 세션의 슬롯은 `close()`로만 돌아온다. 턴과 달리 스트림이 스스로 끝나지 않기 때문이며,
         // 자식이 먼저 죽어 스트림이 끝나는 경우에도 소유자가 close를 부르는 것이 정상 경로다.
         const tracked: ClaudeGatewaySession = {
-          send: (text) => session.send(text),
+          send: (text, options) => session.send(text, options),
           interrupt: () => session.interrupt(),
           stopTask: (taskId) => session.stopTask(taskId),
           backgroundTasks: (toolUseId) => session.backgroundTasks(toolUseId),
