@@ -1347,6 +1347,13 @@ export interface AgentChatStepGroup {
 export const AGENT_CHAT_THINK_FAMILY = "think";
 
 /**
+ * 백그라운드 잡을 낳은 호출이 접히는 계열 이름. 도구 계열이 아니라 **그 호출이 무엇을 낳았는가**에서
+ * 온다 — 같은 Bash 호출이라도 배경으로 띄운 것은 셸 절이 아니라 이 절로 간다. 한 잡이 어느 종류인지
+ * (셸·위임·워크플로)는 작업 면이 지고, 원장은 "이 구간이 잡 N건을 낳았다"까지만 말한다.
+ */
+export const AGENT_CHAT_JOB_FAMILY = "job";
+
+/**
  * 구간을 이루는 한 조각. 구간은 이 조각들의 **순서 있는** 목록이다 — 순서가 곧 시간이다.
  *
  * 조각을 순서로 두기 전에는 접힌 것이 전부 집계 한 줄로 구간 맨 위에 서고 접히지 않은 것이
@@ -1354,10 +1361,14 @@ export const AGENT_CHAT_THINK_FAMILY = "think";
  * "파일 5개 읽음" 다음에 잡이 서는 모양으로 그려졌다 — 원장이 일어난 순서를 뒤집은 셈이다.
  */
 export type AgentChatLedgerPart =
-  /** 이웃한 완료 스텝을 한 줄로 접은 집계. 접히지 않는 조각이 오면 이 집계는 거기서 닫힌다. */
+  /**
+   * 이웃한 완료 스텝을 한 줄로 접은 집계. 접히지 않는 조각이 오면 이 집계는 거기서 닫힌다.
+   *
+   * 잡을 낳은 호출도 여기로 접힌다. 예전에는 그 호출만 앵커 한 줄로 남았고, 완료한 잡이 많은
+   * 턴은 원장의 꼬리가 결말 칩의 목록이 됐다 — ✓ 옆에 「완료」를 적는 줄이 잡마다 하나씩.
+   * 지금은 같은 집계 문장 안의 한 절이 그 수를 말하고, 그 잡으로 가는 문은 이 집계를 펼치면 선다.
+   */
   | { readonly kind: "tally"; readonly groups: readonly AgentChatStepGroup[]; readonly folded: readonly AgentChatTurnItem[] }
-  /** 백그라운드 잡을 낳은 호출. 접지 않는다 — 접히면 그 잡으로 가는 문이 사라진다. */
-  | { readonly kind: "job"; readonly item: AgentChatTurnItem }
   /** 줄을 지키는 그 밖의 스텝 — 확인되지 않은 호출, 지금 도는 호출, 그리고 질문 카드. */
   | { readonly kind: "step"; readonly item: AgentChatTurnItem };
 
@@ -1440,21 +1451,22 @@ function foldSegment(
   for (const step of steps) {
     // 카드는 접지 않는다 — 접힌 질문은 답할 수 없고, 답한 뒤의 한 줄도 그 턴이 무엇으로
     // 갈렸는지 말하는 증거라 집계에 삼켜지면 안 된다.
-    // 잡을 낳은 호출도 접지 않는다. 접으면 그 잡으로 가는 문이 사라지고, 구간 밖으로 꺼내면
-    // 자기를 부른 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다.
     // 결과 없이 닫힌 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를
     // 원장이 다시 했다고 말하는 셈이다 — 확인되지 않은 것과 지금 도는 것은 줄을 지킨다.
     // 생각의 흔적은 사용자에게 보이지 않는다. 자기 줄이나 집계 절을 만들지 않고 건너뛰되,
     // 이웃한 완료 스텝의 집계는 끊지 않는다.
     const thought = step.type === "thought";
     if (thought) continue;
-    const job = !thought && step.type !== "ask" && hasJob?.(step) === true;
-    const foldable = thought || (step.type !== "ask" && !job && (step.state === "ok" || step.state === "fail"));
+    // 잡을 낳은 호출은 결과를 기다리지 않고 접힌다. 호출 자체는 잡을 띄우자마자 돌아오므로
+    // 그 상태가 무엇이든(`ok`·`done`·아직 `running`) 원장이 말할 것은 하나다: 여기서 잡이 태어났다.
+    // 그 잡이 어떻게 끝났는지는 호출의 상태가 아니라 잡 자신의 결말이고, 그 결말은 절이 진다.
+    const job = step.type !== "ask" && hasJob?.(step) === true;
+    const foldable = step.type !== "ask" && (job || step.state === "ok" || step.state === "fail");
     if (!foldable) {
       groups = null;
       folded = null;
       seen = null;
-      parts.push(job ? { kind: "job", item: step } : { kind: "step", item: step });
+      parts.push({ kind: "step", item: step });
       continue;
     }
     if (groups === null || folded === null || seen === null) {
@@ -1464,7 +1476,10 @@ function foldSegment(
       parts.push({ kind: "tally", groups, folded });
     }
     folded.push(step);
-    const family = agentChatToolFamily(step.name);
+    // 잡을 낳은 호출은 자기 도구의 계열로 가지 않는다. 배경으로 띄운 Bash를 "셸 N회 실행"에
+    // 더하면 앞에서 돌아 끝난 셸과 아직 도는 잡이 같은 숫자에 섞여, 그 숫자가 무엇을 세는지가
+    // 사라진다 — 잡은 잡의 절에서 자기 결말과 함께 센다.
+    const family = job ? AGENT_CHAT_JOB_FAMILY : agentChatToolFamily(step.name);
     // 계열 하나가 한 절인 것이 기본이지만, 두 계열은 주어를 따로 센다: `other`는 도구 이름이,
     // `mcp`는 서버가 그 절의 주어다.
     const subject = family === "other"

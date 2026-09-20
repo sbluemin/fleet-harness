@@ -157,6 +157,7 @@ function clipComposerName(name: string): string {
 export function AgentChatComposer({
   context,
   coordinate,
+  ledge,
   meter,
   tourAnchor,
   turnRunning,
@@ -171,6 +172,15 @@ export function AgentChatComposer({
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
   readonly coordinate: React.ReactNode;
+  /**
+   * 백그라운드 작업 선반 — 표시줄의 **가운데 칸**에 선다. 좌표(왼쪽)와 폭 글리프(오른쪽)
+   * 사이에서 비어 있던 자리이고, 선반이 자기 행을 따로 세우던 시절 대화가 내주던 33px이
+   * 여기로 들어온다. 잡이 없는 세션은 넘기지 않으며 그때 가운데 칸은 그냥 빈다.
+   *
+   * 노드가 아니라 함수인 이유는 이 줄의 폭 사정을 표시줄만 알기 때문이다 — 오류 알림이 좌표
+   * 자리를 빌리는 동안에는 축약해 달라고 선반에 알린다.
+   */
+  readonly ledge?: (compact: boolean) => React.ReactNode;
   /**
    * 문맥 미터 — 읽는 계기이지 컨트롤이 아니다. 발사 버튼 바로 왼쪽에 앉아, 보내기 직전에
    * "이 창에 얼마나 남았는가"가 손이 가는 자리에서 읽힌다.
@@ -550,10 +560,14 @@ export function AgentChatComposer({
     <div className="agent-chat-composer" ref={composerRef}>
       {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
           좌표 자리를 잠시 빌린다(Cowork·Analyst의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
+      {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 폭 글리프. 양 끝은 자기 크기만큼만 쓰고
+          가운데가 남는 폭을 전부 가져간다 — 그래서 선반의 제목은 이 줄에서 가장 먼저 줄어드는
+          글자이고, 좌표와 글리프의 과녁은 폭이 어떻든 움직이지 않는다. */}
       <div className="agent-chat-composer-meta">
         {notice !== null ? (
           <span className="agent-chat-composer-error" role="alert">{notice}</span>
         ) : coordinate}
+        {ledge !== undefined ? ledge(notice !== null) : <span className="agent-chat-composer-gap" aria-hidden="true" />}
         {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
             이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
             물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면
