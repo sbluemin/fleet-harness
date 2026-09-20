@@ -1,6 +1,6 @@
 ---
 name: console-e2e
-description: Reproduce and verify Fleet Console in a real browser or Electron Desktop, including native lifecycle, security, sidecar ownership, and packaging. Use Fleet Browser first for browser runs and agent-browser as fallback; keep Electron CDP/native workflows for Desktop. Use console-handoff to prepare an instance for the user to try.
+description: Reproduce and verify Fleet Console in a real browser or Electron Desktop. Use Fleet Browser first for browser runs and agent-browser as fallback; keep Electron CDP/native workflows for Desktop. Use console-handoff when the user will try the instance themselves.
 ---
 
 # Console E2E
@@ -41,4 +41,4 @@ Do not load agent-browser for a supported Fleet Browser run. Do not switch an El
 4. For a fix, establish fresh diagnostics and repeat the exact scenario plus relevant inverse. Repair task-induced regressions and verify again. Leave unsupported OS/native/signing claims unverified.
 5. Clean up on success and failure using the selected route: Fleet Browser closes only owned tabs; standalone agent-browser verifies session/PID disappearance with its helper; Desktop closes its owned CDP session/app and verifies the owned child/lock disappear. Stop only the owned isolated runtime. Never use global closes/kills, unknown PID signals, live-lock deletion, external CDP, or token output.
 
-Finish when the requested verification and cleanup are confirmed. Report runtime/driver, fallback reason if any, build and actual headed/headless mode, actions, expected/actual values, screenshot locations, failure classification, cleanup, and unverified scope. Environment or authentication blocks are not success. A URL for the user to try belongs to `console-handoff`, whose instance stays running.
+Finish when the requested verification and cleanup are confirmed. Report runtime/driver, fallback reason if any, build and actual headed/headless mode, actions, expected/actual values, screenshot locations, failure classification, cleanup, and unverified scope. Environment or authentication blocks are not success. A Console for the user to try belongs to `console-handoff`, which opens Fleet Browser and leaves the instance and tab running.

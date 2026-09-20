@@ -13,7 +13,7 @@ Default `<scope>` is core client styles plus all `runtime/fleet-plugins/*` CSS; 
 
 ## Execution
 
-1. Read the scoped current `theme.css`, `instrument-design-contract.test.ts`, applicable `CLAUDE.md`, and adjacent CSS doctrine comments. Actual tokens/contracts/exceptions outrank historical figures in [Detectors and classification](references/detectors.md).
+1. Consult the scoped current tokens, `instrument-design-contract.test.ts`, and doctrine comments on the files you touch. Actual tokens/contracts/exceptions outrank historical figures in [Detectors and classification](references/detectors.md).
 2. Use exact patterns to find raw chromatic colors, decorative signal use, brass-role drift, identity leaks into state/borders, and typography/height/radius candidates. Exclude approved near-achromatic depth effects and other sanctioned exceptions. Investigate real regressions even in test-pinned areas, but do not report their mere existence as defects.
 3. For `full`, invoke `console-e2e` on an isolated build and measure affected screens in instrument/maritime/carbon. Confirm static candidates and code-invisible drift through real interactions and screenshots. Mark `quick` results as visually unverified candidates, not confirmed visual defects.
 4. Classify confirmed findings as channel inversion / chroma jump / theme invariance / grammar drift. Include `file:line`, screenshot, and a role diagnosis.

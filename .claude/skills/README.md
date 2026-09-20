@@ -7,7 +7,7 @@ This directory owns repository-work skills. It is separate from what Fleet embed
 - Preserve directory names and `name` unless an explicitly requested merge or rename requires updating their callers; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` unsupported by the Console parser and descriptions longer than 500 characters.
 - Keep inputs, execution decisions, authority boundaries, and completion/stop conditions in the entrypoint. Leave judgment-dependent ordering flexible; retain order required by dependencies or side effects.
 - Put long commands and platform/mode-specific procedures once in `references/`. Link them with **when and why to read**, not a requirement to preload everything.
-- Do not duplicate procedures owned by another skill or `CLAUDE.md`. Add a skill only for a distinct recurring task.
+- Do not duplicate procedures owned by another skill or `CLAUDE.md`. Do not copy harness or MCP tool contracts; name the destination and the boundaries those contracts do not state. Add a skill only for a distinct recurring task.
 - Continue reversible local checks within authorized scope. Automatic selection does not authorize commits, external publication, deployment, or permanent Wiki approval. Model-performance claims do not relax product-direction, deletion-ownership, credential, or required-check boundaries.
 
 ## Validation
@@ -28,7 +28,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Escape from a Console modal reaches a background shortcut | console-e2e browser route; Fleet Browser, setup/verification, actual focus and shortcut checks |
 | Browser verification with Fleet Browser unavailable or explicit headless/pre-navigation instrumentation required | console-e2e browser fallback; record reason, agent-browser init/owned-session cleanup, no permission bypass |
 | Verify a Console modal inside Electron | console-e2e Desktop route; keep owned CDP renderer for SPA checks, do not substitute a browser tab |
-| Give me a URL to try this branch myself | console-handoff; verify seed/PID, leave server running, do not open the browser for the user |
+| Give me a URL to try this branch myself | console-handoff; verify seed/PID, open in this Operation's Fleet Browser, leave server and tab running |
 | Reopen a closed Windows Desktop window from the tray | console-e2e Desktop native lane; Windows headed evidence, not macOS/CDP substitution |
 | Reduce Gateway loop requests with the same prompt | ai-gateway-loop-optimization; standalone when caller/host is irrelevant, frozen before/after workload |
 | Consolidate package micro-files and proxies | clean-code; public consumers and approved batches, no file-count-only deletion |
@@ -43,6 +43,6 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Capture recurring learning from this task | learning-harvest; recurrence/cost/generality, no encoding before candidate approval |
 | Implement an approved single CSS fix or edit docs only | Do not expand into unrelated proposal/sweep/PR/release workflows |
 
-## Revision basis and limits
+## Limits
 
-The 2026-09-05 revision applies narrow activation conditions, progressive disclosure, removal of unnecessary standing procedures, and explicit finish lines from the user-supplied [ExplainX guide](https://www.explainx.ai/blog/gpt-6-astra-skills-agents-md-prompting-guide-2026). It is a secondary source; this repository has not verified its model-performance, release, or behavior claims. An asserted model improvement is not grounds to remove tests, ownership checks, or publication approval.
+An asserted model improvement is not grounds to remove tests, ownership checks, or publication approval.
