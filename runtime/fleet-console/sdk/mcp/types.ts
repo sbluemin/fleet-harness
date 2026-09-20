@@ -102,7 +102,7 @@ export interface ConsoleUseMcpHost {
   /**
    * 플러그인이 자기 영역의 읽기 도구를 `fleet-console-use`에 싣는다. 이름은 `console_` 접두사여야 하고
    * 호스트 기본 도구와 겹칠 수 없다. 기여한 도구는 모든 Console Use 연결에 실리며 호스트 기본 도구와
-   * **같은 게이트**(실험 옵트인 AND 호출자 Operation의 콘솔 사용 토글)를 지난다 — 플러그인이 자기
+   * **같은 게이트**(호출자 Operation의 콘솔 사용 토글, 또는 부관 grant)를 지난다 — 플러그인이 자기
    * 게이트를 따로 두지 않는다. 쓰기(커밋·파일 변경)는 여기로 열지 않는다: 그것은 그 Theater의
    * Operation에 시키는 일이다. 반환값은 등록 해제다.
    */
@@ -112,11 +112,11 @@ export interface ConsoleUseMcpHost {
     readonly tools: readonly ConsoleUseToolId[];
     readonly snapshot?: () => ConsoleUseSnapshot | null;
     readonly enabled?: () => boolean;
-    /** 제어 도구는 명시적으로 요청하며 호스트가 호출자와 콘솔 사용 옵트인을 검증한다. */
+    /** 제어 도구는 명시적으로 요청하며 호스트가 호출자와 Operation 토글·부관 grant를 검증한다. */
     readonly allowControl?: boolean;
     /**
-     * 이 연결의 호출자는 Operation이다. 호출마다 호출자 Operation을 풀어 실험 옵트인과 그
-     * Operation의 콘솔 사용 토글을 함께 확인하고, 읽기를 포함한 모든 도구를 거부할 수 있다.
+     * 이 연결의 호출자는 Operation이다. 호출마다 호출자 Operation을 풀어 그 Operation의
+     * 콘솔 사용 토글을 확인하고, 읽기를 포함한 모든 도구를 거부할 수 있다.
      * 플러그인 소유 연결은 Operation을 갖지 않으므로 이 축을 쓰지 않는다.
      */
     readonly operationCallers?: boolean;

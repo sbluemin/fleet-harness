@@ -340,7 +340,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     stop: async () => {},
   };
-  const consoleControl = createConsoleControl({ enabled: () => true, directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }] });
+  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }] });
   lifecycleCleanups.push(() => consoleControl.dispose());
   const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
   const ctx = {

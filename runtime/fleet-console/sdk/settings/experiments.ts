@@ -17,9 +17,9 @@ export function isComputerUseBackendId(value: unknown): value is ComputerUseBack
   return value === "sky-computer-use" || value === "cua-driver";
 }
 
-export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "consoleControl" | "computerUse";
+export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "computerUse";
 
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "consoleControl", "computerUse"];
+export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "computerUse"];
 
 /** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
 export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
@@ -47,8 +47,6 @@ export interface ConsoleExperimentSettings {
   /** Operation마다 켜는 세션 분석가 관찰. */
   readonly sessionWatch: boolean;
   readonly sessionWatchModel: string;
-  /** 켜져 있는 동안 Console MCP 실행과 제한된 자동 운영을 포괄 승인한다. */
-  readonly consoleControl: boolean;
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
@@ -77,7 +75,6 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   promptRefineModel: DEFAULT_EXPERIMENT_MODELS.promptRefine,
   sessionWatch: false,
   sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
-  consoleControl: false,
   computerUse: false,
   computerUseBackend: "sky-computer-use",
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
@@ -145,7 +142,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     promptRefineModel: model("promptRefine"),
     sessionWatch: record.sessionWatch === true,
     sessionWatchModel: model("sessionWatch"),
-    consoleControl: record.consoleControl === true,
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),

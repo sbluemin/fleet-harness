@@ -33,14 +33,14 @@ describe("Console Use surface boundaries", () => {
       answer: (id, askId) => { answered.push(`${id}:${askId}`); return { ok: true, outcome: "answered" }; },
       sleep: async (id) => { slept.push(id); return { ok: true, lifecycle: "dormant" }; },
     };
-    const deps = { enabled: () => true, directory, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
+    const deps = { directory, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
     // 관측: 자식은 도는 중, 사람의 것은 유휴 터미널. 휴면은 프로세스를 죽이므로 유휴 터미널만 통과한다.
     const observation = (activity: "running" | "idle") => ({ activity, lifecycle: "live" as const, observedAt: new Date().toISOString(), source: "host" as const, attention: { kind: "none" as const }, surface: "terminal" as const, supportedActions: [], output: { status: "unavailable" as const, outcome: "unknown" as const } });
     control.attach({ observe: (id) => id === "op-child" ? observation("running") : id === "op-human" ? observation("idle") : null, execute: async () => { throw new Error("not used"); } });
     let contributedCalls = 0;
     const calls: unknown[] = [];
-    const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, experimentEnabled: () => true, language: () => "en", onCall: (event) => calls.push(event) });
+    const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, language: () => "en", onCall: (event) => calls.push(event) });
     const repoSurface = { panelId: "repository", describe: (args: Record<string, unknown>) => ({ theaterId: String(args.theaterId), summary: "저장소 상태 봄", view: "status" }) };
     const releaseContribution = hostWithCalls.forPlugin("repository").contribute!([{ name: "console_repo", description: "status", inputSchema: { type: "object", properties: { theaterId: { type: "string" }, view: { type: "string" } }, required: ["theaterId"], additionalProperties: false }, surface: repoSurface, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } }]);
     // 자리(레일 패널)를 선언하지 않은 기여는 Console Use 가 아니다. 기본 도구 이름은 차지할 수 없다.
