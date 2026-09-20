@@ -226,7 +226,6 @@ describe("fleet-console-use gateway roster", () => {
 
 		const [serverToken] = lifecycle.issueSessionToken({
 			label: "gateway-host",
-			registeredAgentNames: ["fleet:cursor-grok-4-5-high"],
 			cwd: process.cwd(),
 			includeTool: (toolId) => isHostSessionToolAllowed(toolId),
 		});
@@ -284,7 +283,11 @@ describe("fleet-console-use gateway roster", () => {
 		const loadout = await readLoadout();
 		expect(Object.keys(loadout.providers)).toEqual(["cursor", "antigravity"]);
 		expect(loadout.providers.cursor?.models).toHaveLength(1);
-		expect(loadout.providers.cursor?.models[0]).toMatchObject({ execution: { high: { availableNow: true, requiresNewSession: false }, low: { availableNow: false, requiresNewSession: true } } });
+		// 로스터는 디스패치할 이름을 싣지 않는다. 모델은 실행이 시작될 때 Fleet이 배정하므로,
+		// 남는 것은 그 모델을 알아보고 자기 allowance에 대조할 수 있는 값 하나다.
+		expect(loadout.providers.cursor?.models[0]).toMatchObject({ modelId: expect.stringContaining("claude-gateway--cursor--") });
+		expect(loadout.providers.cursor?.models[0]).not.toHaveProperty("execution");
+		expect(loadout.providers.cursor?.models[0]).not.toHaveProperty("agentTypes");
 		expect(loadout.providers.cursor?.quota).toMatchObject({ windows: [{ pressure: "critical" }] });
 		expect(loadout.providers.antigravity?.quota.status).toBe("unsupported");
 		expect(loadout.quotaConsumptionPriority).toEqual({

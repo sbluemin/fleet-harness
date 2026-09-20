@@ -36,7 +36,7 @@ Three constraint fields answer three different questions, and none implies anoth
 
 ## Names
 
-`agentTypes` maps each exposed reasoning rung to the name that selects the identity (`none` when the model has no effort control), and `modelId` is the model as a value for a field that takes a model rather than a name — including matching the session's own model back to the roster. The names are candidate selectors, not proof of registration: they are derived live from the exposure while the agent registry froze at session start, so confirm a name is one this session actually carries before dispatching on it. Which dispatch field takes which spelling is the resource description's contract; take both verbatim from the reading, never reconstructed.
+Nothing in this payload is a name to dispatch with. Fleet assigns a delegated run's model when the run starts, from this same exposure, so a model reaches a run by being enabled here rather than by being named in a call. `modelId` is the model as a value — use it to match a running session's own model back to a row, and to read a row against the allowance it sits under. A dispatch that spells out a model, a provider, or an agent type is not honored: the assignment replaces it.
 
 ## Gotchas
 
@@ -48,6 +48,6 @@ Three constraint fields answer three different questions, and none implies anoth
   **Action:** Read the window whose `scope` matches the model's `quotaScope`, not the provider's combined figure.
   **Why:** One subscription can bill through separate pools; the `isAggregate` sum reads comfortable while the pool the model draws from is nearly spent.
 
-- **Symptom:** A model just enabled in the Console appears in the reading, but dispatching to it fails with an unknown name.
-  **Action:** Select it by `modelId` where the dispatching surface takes a model as a value; a registered *name* for it exists only in a new session.
-  **Why:** The tool's own description carries the registration rule — the roster re-reads live while names are frozen at session start — so the gap is a name-registration boundary, not a stale roster and not an unreachable model; `modelId` exists in the payload precisely for this case.
+- **Symptom:** A model was just enabled in the Console and the next delegated run still went elsewhere.
+  **Action:** Read the roster again and check the model's own allowance and `capabilityClass`; nothing needs to be named, and no new session is required.
+  **Why:** The assignment reads the exposure at the moment a run starts, so a change lands on the next dispatch. Which model a run receives depends on the weight the dispatch asked for and on what the allowance permits — being newly enabled makes a model a candidate, not the choice.

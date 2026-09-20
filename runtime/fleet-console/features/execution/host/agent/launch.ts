@@ -1,4 +1,3 @@
-import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -152,7 +151,6 @@ export async function prepareChatClaudeSession(
     autoNameHookExec: buildConsoleAutoNameHookCommand(hookEntry),
     ...(gatewaySelection
       ? {
-        gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
       }
       : {}),
   });
@@ -339,7 +337,6 @@ async function createAgentCliLaunchSpec(options: {
       ...(gatewaySelection
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
-          gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
           }
         : {}),
     });

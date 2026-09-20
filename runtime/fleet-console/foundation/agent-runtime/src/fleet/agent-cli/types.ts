@@ -1,7 +1,4 @@
 /** 이 세션이 들고 가는 게이트웨이 정체성의 등록 이름. */
-export interface FleetAgentRegistration {
-  readonly name: string;
-}
 export const FLEET_PLUGIN_NAME = "fleet";
 
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
@@ -150,7 +147,6 @@ export interface CreateAgentCliPluginOptions {
   // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
   readonly autoNameHookExec?: FleetHookExec;
   /** Gateway가 렌더링한 파일과 등록 이름. 파일 내용과 호출 허용 이름은 같은 투영이다. */
-  readonly gatewayAgents?: readonly FleetAgentRegistration[];
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
   readonly legacyReclaimDeps?: LegacyMarketplaceReclaimDeps;
 }

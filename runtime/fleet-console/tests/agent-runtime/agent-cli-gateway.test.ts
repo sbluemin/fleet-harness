@@ -1,4 +1,3 @@
-import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -195,7 +194,6 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly gatewayDelegationModels?: Parameters<typeof buildFleetAgentRegistrations>[0];
     readonly captureSessionHookExec?: FleetHookExec;
     readonly claudeCodeSystemPrompt?: "on" | "off";
     readonly claudeCodeSkipPermissions?: boolean;
@@ -219,6 +217,5 @@ function baseInjectOptions(
       releaseSessionToken() {},
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.gatewayDelegationModels ? { gatewayAgents: buildFleetAgentRegistrations(overrides.gatewayDelegationModels) } : {}),
   };
 }

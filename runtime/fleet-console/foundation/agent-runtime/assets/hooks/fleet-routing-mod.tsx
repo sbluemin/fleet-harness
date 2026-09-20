@@ -41,6 +41,9 @@ interface Engine {
       init?: { method?: string; headers?: Record<string, string> },
     ) => Promise<{ ok: boolean; status: number; text: string }>;
   };
+  readonly agent: {
+    readonly register: (spec: { name: string; description: string; prompt: string }) => Promise<unknown>;
+  };
   readonly command: {
     readonly register: (spec: { name: string; description: string; immediate?: true }) => Promise<unknown>;
   };
@@ -144,6 +147,24 @@ function tierOf(model: string | undefined, subagentType: string): Tier {
   return "work";
 }
 
+/**
+ * 이 세션이 올리는 단 하나의 정체성. 모델을 고르는 이름이 아니라 **실행 계약을 나르는 그릇**이다.
+ *
+ * 정체성을 모델마다 등록하던 시절에는 그 정의가 Fleet의 실행 프롬프트를 날랐다. 등록을
+ * 없애면 위임이 내장 general-purpose의 "search broadly / Be thorough" 기본값으로 돌아가는데,
+ * 그 기본값을 버리는 것이 Fleet 정의의 존재 이유였다. 스폰의 `prompt`를 덮어쓰는 방법도
+ * 있지만 그 글은 도구 파라미터로 되읽혀 트랜스크립트에 상주한다. `agent.offer`로 감추는
+ * 방법은 성립하지 않는다 — 감춰진 agent는 디스패치 가능 집합에서도 빠져 스폰이 거부된다
+ * (측정: `subagentType rewritten by a hook` 직후 거부).
+ *
+ * 그래서 하나만, 보이게 올린다. 호스트가 이 이름을 부르든 부르지 않든 모델은 아래가 정하므로,
+ * 목록에 뜨는 한 줄이 잘못된 선택을 부를 여지가 없다.
+ */
+const EXECUTION_AGENT = "execute";
+const EXECUTION_AGENT_TYPE = `fleet:${EXECUTION_AGENT}`;
+/** 실행 계약을 실은 정체성이 이 세션에 실제로 올라갔는가. 실패하면 종류를 바꾸지 않는다. */
+let executionAgentReady = false;
+
 const PANE_ID = "fleet-routing";
 const PANE_TITLE = "Fleet Routing";
 const COMMAND_NAME = "fleet-routing";
@@ -220,6 +241,22 @@ export const register: Register = (on) => {
   // 세션이 준비되면 판을 여는 커맨드를 등록한다. 후보 조회는 여기서 하지 않는다 — 세션
   // 시작에 읽어 두면 그 순간의 노출에 갇히고, 그 고정이 바로 등록 방식의 결함이었다.
   on("session.start", async ($, e, next) => {
+    // 실행 계약은 노출에 의존하지 않는 상수라, 여기서 한 번 올려도 낡지 않는다. 후보 조회만
+    // 배정 시점으로 미룬다.
+    try {
+      const table = await fetchRoutingTable($);
+      if (table.prompt.length > 0) {
+        await $.agent.register({
+          name: EXECUTION_AGENT,
+          description: "Fleet execution agent. Fleet assigns its model; naming it is never required.",
+          prompt: table.prompt,
+        });
+        executionAgentReady = true;
+      }
+    } catch (error) {
+      // 계약을 못 실어도 위임은 산다. 내장 정의로 돌 뿐이다.
+      $.ui.log(`could not register the execution agent: ${String(error)}`, { to: "debug" });
+    }
     try {
       await $.command.register({
         name: COMMAND_NAME,
@@ -304,7 +341,18 @@ export const register: Register = (on) => {
     );
     redraw($);
 
-    const result = await next(decision.model === undefined ? e : { ...e, model: decision.model });
+    const result = await next(
+      decision.model === undefined
+        ? e
+        : {
+            ...e,
+            model: decision.model,
+            // 이미 Fleet 정체성이면 그대로 둔다. 남의 플러그인 agent는 decide가 이미 걸러냈다.
+            ...(executionAgentReady && e.subagentType !== EXECUTION_AGENT_TYPE
+              ? { subagentType: EXECUTION_AGENT_TYPE }
+              : {}),
+          },
+    );
 
     if (result.deny !== undefined) {
       row.state = "denied";

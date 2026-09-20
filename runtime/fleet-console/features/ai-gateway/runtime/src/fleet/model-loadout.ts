@@ -16,7 +16,6 @@ import { createHash } from "node:crypto";
 
 import {
   exposedEffortLadder,
-  toGatewayAgentSelector,
   type GatewayEffortExposure,
 } from "./gateway-agents.js";
 
@@ -79,14 +78,6 @@ export interface GatewayLoadoutProviderQuota {
 export type GatewayQuotaSnapshot = Readonly<Record<string, GatewayProviderQuota>>;
 
 /**
- * The registered names this identity answers to, keyed by the reasoning level
- * each one carries. A model with an effort ladder registers one name per rung,
- * so the key set is exactly `constraints.effortLadder`; a model without effort
- * control registers a single name under `none`.
- */
-export type GatewayAgentTypeSelectors = Readonly<Record<string, string>>;
-
-/**
  * Routing facts minus the provider, which the grouping key already states. The
  * roster carries each model under its provider so a model and the allowance it
  * spends are read together; repeating the provider inside would invite a reader
@@ -96,18 +87,9 @@ export type GatewayLoadoutConstraints = Omit<GatewayModelConstraints, "provider"
 
 export interface GatewayLoadoutModel {
   /**
-   * Names that select this identity, one per reasoning level it advertises.
-   * Selecting by name carries the level with it, so nothing further pins effort;
-   * an entry here is reachable only if this session registered it at startup.
-   */
-  readonly agentTypes: GatewayAgentTypeSelectors;
-  /**
-   * The model itself, for a field that takes a model as a value rather than by
-   * name. It is not a second spelling of `agentTypes` and cannot be derived from
-   * one: that transform collapses `.`, `[1m]`, and `--` all into `-`, which no
-   * inverse recovers. Reach for it when no registered name exists — a model
-   * exposed mid-session has none — and to match a running session's own model
-   * back to this roster.
+   * The model itself. Nothing in this roster is a name to dispatch by: Fleet
+   * assigns the model when a run starts, so a reader uses this to understand
+   * what is exposed and to match a running session's own model back to a row.
    */
   readonly modelId: string;
   readonly constraints: GatewayLoadoutConstraints;
@@ -205,28 +187,9 @@ function toLoadoutModel(
     ...(benchmark && effortLadder.includes(benchmark.effort) ? { benchmark } : {}),
   };
   return {
-    agentTypes: toAgentTypeSelectors(modelId, constraints),
     modelId,
     constraints,
   };
-}
-
-/**
- * Derive the selectors from the same transform that registers the agents, so the
- * roster cannot drift from the names a session actually carries. Reachability is
- * still the host's check: registration is frozen at session start while this
- * roster is re-read live, and the two diverge the moment exposure changes.
- */
-function toAgentTypeSelectors(
-  id: string,
-  constraints: GatewayLoadoutConstraints,
-): GatewayAgentTypeSelectors {
-  if (!constraints.effortSupported) {
-    return Object.freeze({ none: toGatewayAgentSelector(id) });
-  }
-  return Object.freeze(Object.fromEntries(
-    constraints.effortLadder.map((effort) => [effort, toGatewayAgentSelector(id, effort)]),
-  ));
 }
 
 function buildProviders(

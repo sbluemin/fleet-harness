@@ -145,11 +145,6 @@ export {
 export {
   FLEET_PLUGIN_NAME,
   GENERAL_PURPOSE_AGENT_PROMPT,
-  buildGatewayCustomAgents,
-  toGatewayAgentName,
-  toGatewayAgentSelector,
-  type ClaudeCustomAgentDefinition,
-  type ClaudeCustomAgents,
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
@@ -163,4 +158,3 @@ export {
   type GatewayRoutingTier,
 } from "./fleet/routing-table.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
-export { buildFleetAgentRegistrations } from "./fleet/gateway-agents.js";

@@ -16,7 +16,6 @@ import {
 } from "./prompt.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { type FleetAgentRegistration } from "./types.js";
 import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
   AgentCliInjectionContext,
@@ -59,7 +58,6 @@ export interface InjectAgentCliProfileOptions {
   /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
   readonly origin?: ClaudeSessionOrigin;
   /** Gateway가 노출 정책에 따라 미리 렌더링한 위임 정체성. 모델 의미를 여기서 다시 해석하지 않는다. */
-  readonly gatewayAgents?: readonly FleetAgentRegistration[];
 }
 
 /** 주입이 끝난 프로필과, 그 프로필이 열게 될 세션의 확정된 좌표. */
@@ -74,7 +72,6 @@ interface DedicatedMcpSession {
     readonly cwd: string;
     readonly signal?: AbortSignal;
     readonly includeTool?: (toolId: string) => boolean;
-    readonly registeredAgentNames?: readonly string[];
   }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
   releaseSessionToken(label: string): void;
 }
@@ -105,7 +102,6 @@ export async function injectAgentCliProfile(
     // 이 세션에 허용된 호스트 도구만 세션 MCP에 노출한다.
     includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     label: tokenLabel,
-    registeredAgentNames: (options.gatewayAgents ?? []).map((agent) => agent.name),
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const tempCleanups: Array<() => void> = [];
@@ -158,7 +154,6 @@ export async function injectAgentCliProfile(
       backgroundReportHookExec: options.backgroundReportHookExec,
       autoNameHookExec: options.autoNameHookExec,
       // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
-      gatewayAgents: options.gatewayAgents,
     });
     const cleanup = createOnceCleanup(() => {
       for (const tempCleanup of tempCleanups) {
