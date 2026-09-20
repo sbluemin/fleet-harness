@@ -500,10 +500,6 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
   const now = Date.now();
   const width = Math.max(28, bodyColumns);
 
-  const timeWidth = 6;
-  const nameWidth = Math.max(10, Math.min(28, Math.floor((width - timeWidth - 4) * 0.42)));
-  const carriedWidth = Math.max(10, width - timeWidth - nameWidth - 6);
-
   if (ledger.length === 0) {
     return (
       <Box flexDirection="column" paddingX={1}>
@@ -513,20 +509,20 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
     );
   }
 
+  const timeWidth = 5;
+  const body = Math.max(12, width - 2);
+  const nameWidth = Math.max(8, Math.min(30, Math.floor((body - timeWidth - 3) * 0.45)));
+  const carriedWidth = Math.max(8, Math.min(34, body - nameWidth - timeWidth - 3));
+
   const rows = ledger.slice(-12);
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box>
-        <Text bold>{pad("WHAT", nameWidth + 2)}</Text>
-        <Text bold>{pad("CARRIED BY", carriedWidth)}</Text>
-        <Text bold>{pad("", timeWidth)}</Text>
-      </Box>
       {rows.map((row) => (
         <Box flexDirection="column" key={row.key}>
           <Box>
             <Text color={COLOR[row.state]}>{`${GLYPH[row.state]} `}</Text>
             <Text>{pad(clip(row.description, nameWidth), nameWidth)}</Text>
-            <Text dimColor>{"  "}</Text>
+            <Text>{" "}</Text>
             <Text color={row.carried === "session model" ? "yellow" : undefined} dimColor={row.state === "done"}>
               {pad(clip(row.carried ?? "seating…", carriedWidth), carriedWidth)}
             </Text>
@@ -535,28 +531,63 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
           {row.because === undefined ? null : (
             <Box>
               <Text dimColor>
-                {`  ${clip(row.asked === undefined ? row.because : `${row.asked} → ${row.because}`, width - 4)}`}
+                {`  ${clip(row.asked === undefined ? row.because : `${row.asked} → ${row.because}`, body - 2)}`}
               </Text>
             </Box>
           )}
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text color="green" dimColor>{clip(summaryLine(), width - 2)}</Text>
+        <Text color="green" dimColor>{clip(summaryLine(), body)}</Text>
       </Box>
     </Box>
   );
 }
 
+function cellWidth(code: number): number {
+  if (code === 0x200d) return 0;
+  if (code >= 0x0300 && code <= 0x036f) return 0;
+  if (code >= 0xfe00 && code <= 0xfe0f) return 0;
+  const wide = (code >= 0x1100 && code <= 0x115f)
+    || code === 0x2329 || code === 0x232a
+    || (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f)
+    || (code >= 0xac00 && code <= 0xd7a3)
+    || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe30 && code <= 0xfe6f)
+    || (code >= 0xff00 && code <= 0xff60)
+    || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x1f300 && code <= 0x1f64f)
+    || (code >= 0x1f900 && code <= 0x1f9ff)
+    || (code >= 0x20000 && code <= 0x3fffd);
+  return wide ? 2 : 1;
+}
+
+function displayWidth(text: string): number {
+  let total = 0;
+  for (const character of text) total += cellWidth(character.codePointAt(0) ?? 0);
+  return total;
+}
+
 function clip(text: string, width: number): string {
   if (width <= 1) return "";
-  return text.length <= width ? text : `${text.slice(0, width - 1)}…`;
+  if (displayWidth(text) <= width) return text;
+  let out = "";
+  let used = 0;
+  for (const character of text) {
+    const next = used + cellWidth(character.codePointAt(0) ?? 0);
+    if (next > width - 1) break;
+    out += character;
+    used = next;
+  }
+  return `${out}…`;
 }
 
 function pad(text: string, width: number): string {
-  return text.length >= width ? text : text + " ".repeat(width - text.length);
+  const used = displayWidth(text);
+  return used >= width ? text : text + " ".repeat(width - used);
 }
 
 function padStart(text: string, width: number): string {
-  return text.length >= width ? text : " ".repeat(width - text.length) + text;
+  const used = displayWidth(text);
+  return used >= width ? text : " ".repeat(width - used) + text;
 }
