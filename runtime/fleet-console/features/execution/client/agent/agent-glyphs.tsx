@@ -15,7 +15,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  */
 export type AgentGlyphName =
   | "read" | "write" | "edit" | "run" | "inspect" | "search" | "fetch" | "delegate"
-  | "workflow" | "stop" | "plan" | "ask" | "propose" | "mcp" | "other" | "think" | "artifact"
+  | "workflow" | "stop" | "plan" | "ask" | "propose" | "mcp" | "skill" | "other" | "think" | "artifact"
   | "reset" | "close" | "export" | "clear";
 
 interface GlyphStroke {
@@ -56,6 +56,13 @@ const GLYPHS: Readonly<Record<AgentGlyphName, readonly GlyphStroke[]>> = {
   propose: [{ d: "M9 18h6" }, { d: "M10 22h4" }, { d: "M8.5 14.5A6 6 0 1 1 15.5 14.5c-.6.6-1 1.4-1 2.5h-5c0-1.1-.4-1.9-1-2.5Z" }],
   // MCP 서버는 꽂는 것이다 — 플러그 하나가 "Fleet 밖에서 들여온 능력"을 점 하나보다 정확히 말한다.
   mcp: [{ d: "M9 3v5" }, { d: "M15 3v5" }, { d: "M6 8h12v3.5a6 6 0 0 1-12 0z" }, { d: "M12 17.5V21" }],
+  // 스킬은 이 Theater가 실어 준 절차다 — 펼친 책이 "읽어서 따라 하는 것"을 문서(read)와
+  // 섞이지 않고 말한다. 두 획이 각자 한 면을 닫으면서 맞닿는 변이 책등을 겸하므로, 13px에서도
+  // 실루엣이 문서의 직사각형과 갈린다.
+  skill: [
+    { d: "M12 7.8C9.8 6.2 7 5.7 4 6.1v11.6c3-.4 5.8.1 8 1.7z" },
+    { d: "M12 7.8c2.2-1.6 5-2.1 8-1.7v11.6c-3-.4-5.8.1-8 1.7z" },
+  ],
   other: [{ d: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4", fill: true }],
   think: [{ d: RING, dash: "4 3.6" }],
   artifact: [{ d: DOC }, { d: DOC_FOLD }, { d: "m9 15 2 2 4-4" }],
