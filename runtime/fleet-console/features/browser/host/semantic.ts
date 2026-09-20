@@ -7,6 +7,7 @@ export interface BrowserElementState { tag: string; type: string | null; editabl
 
 /** 조건 대기는 관측만 반복한다. 시간 초과나 후속 관측 실패 때문에 입력을 다시 보내지 않는다. */
 export async function waitForBrowser(service: BrowserService, operationId: string, condition: BrowserCondition, tabId: string | null | undefined, signal: AbortSignal, timeoutMs = 5000) {
+  if ((condition.attribute !== undefined) !== (condition.equals !== undefined) || condition.attribute === "") throw new BrowserPolicyError("browser_condition_invalid", "attribute and equals must be supplied together, with a non-empty attribute name.");
   const started = Date.now();
   const deadline = started + Math.min(30000, Math.max(0, timeoutMs));
   let last: unknown = null;
