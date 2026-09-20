@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { FLEET_GATEWAY_HOST_PROMPT } from "../host-prompt.js";
 
 import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
@@ -135,9 +134,8 @@ export async function prepareClaudeSession(
         // 콜백 첫 줄에서 그대로 허용된다. 여기서 모드만 내리면 화면은 승인제라고 말하고
         // 실제로는 전부 통과하므로, 그 게이트가 실제로 설 때까지 이 값은 bypass로 남는다.
         permissionMode: "bypassPermissions",
-        systemPrompt: claudeCodeSystemPrompt === "on"
-          ? { mode: "append", text: FLEET_GATEWAY_HOST_PROMPT }
-          : { mode: "replace", text: FLEET_GATEWAY_HOST_PROMPT },
+        // 사용자가 기본 프롬프트를 껐을 때만 손댄다. 덧붙일 Fleet 지침이 더는 없다.
+        ...(claudeCodeSystemPrompt === "on" ? {} : { systemPrompt: { mode: "replace", text: "" } }),
         // 옵트아웃한 내장 서브에이전트는 SDK 표면에서도 같은 규칙으로 빠진다.
         ...(agentDenyRules.length > 0 ? { disallowedTools: agentDenyRules } : {}),
       },

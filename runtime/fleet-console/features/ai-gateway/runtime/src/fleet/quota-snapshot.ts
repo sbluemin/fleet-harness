@@ -8,7 +8,7 @@
  * mirror the quota contract.
  */
 
-import type { GatewayQuotaSnapshot } from "./model-loadout.js";
+import type { QuotaWindowPressure } from "../quota/pressure.js";
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -61,6 +61,45 @@ function toWindowAmounts(value: unknown): { used: string; limit: string } | unde
   if (!AMOUNT_PATTERN.test(used) || !AMOUNT_PATTERN.test(limit)) return undefined;
   return { used, limit };
 }
+
+/** A provider allowance reading, shaped by the host that took it. */
+export interface GatewayQuotaWindow {
+  readonly id: string;
+  /** Sub-pool this window measures; absent when it covers the whole allowance. */
+  readonly scope?: string;
+  /** Human-readable subject of the window, e.g. the model a scoped limit binds. */
+  readonly label?: string;
+  readonly usedPercent: number;
+  readonly resetsAt?: number;
+  /**
+   * The window's time boundary, with the provenance of each figure. Without a
+   * length, `usedPercent` values from windows that reset on different clocks
+   * (5h vs weekly vs monthly) are incomparable.
+   */
+  readonly period?: {
+    readonly durationMs: number;
+    /** `upstream` = provider-stated; `catalog` = Fleet product knowledge. */
+    readonly durationBasis: string;
+    readonly startsAt?: number;
+    /** `upstream` = provider-stated; `derived` = reset minus duration. */
+    readonly startsAtBasis?: string;
+  };
+  /** The window sums sibling scoped pools; exclude it from headroom math. */
+  readonly isAggregate?: boolean;
+  /** Absolute usage in plain counts, as decimal strings. Never money. */
+  readonly amounts?: { readonly used: string; readonly limit: string };
+}
+
+export type GatewayWindowPressure = QuotaWindowPressure;
+
+export interface GatewayProviderQuota {
+  readonly status: string;
+  readonly windows?: readonly GatewayQuotaWindow[];
+  readonly fetchedAt?: number;
+}
+
+/** 공급자별 quota 원본. 배정은 모델이 무는 공급자의 항목만 읽는다. */
+export type GatewayQuotaSnapshot = Readonly<Record<string, GatewayProviderQuota>>;
 
 export function parseGatewayQuotaSnapshot(value: unknown): GatewayQuotaSnapshot | undefined {
   const providers = record(record(value)?.providers);

@@ -172,10 +172,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
-  const aiGatewayMcp = ctx.host.aiGatewayMcp.connect();
-  ctx.host.lifecycle.registerCleanup(() => aiGatewayMcp.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, aiGatewayMcp, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
+    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,

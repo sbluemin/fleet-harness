@@ -11,7 +11,7 @@
 
 import { deriveQuotaWindowRisk, type QuotaWindowPressure } from "../quota/pressure.js";
 import type { GatewayModelConstraints } from "../models.js";
-import type { GatewayQuotaSnapshot, GatewayProviderQuota } from "./model-loadout.js";
+import type { GatewayQuotaSnapshot, GatewayProviderQuota } from "./quota-snapshot.js";
 
 /** 압박이 센 순서. 한 모델을 여러 창이 묶으면 가장 restrictive한 평결이 이긴다. */
 const SEVERITY: Readonly<Record<QuotaWindowPressure, number>> = { ok: 0, elevated: 1, critical: 2 };

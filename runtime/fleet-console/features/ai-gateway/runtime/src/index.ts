@@ -162,21 +162,12 @@ export {
   writeGatewayModelCacheForHome,
   type AiGatewayLaunchEnvOptions,
 } from "./fleet/launch-env.js";
-export { FLEET_AI_GATEWAY_INSTRUCTIONS, buildGatewayPolicyResources } from "./fleet/mcp-resources.js";
 export {
-  buildGatewayLoadout,
-  type GatewayLoadout,
-  type GatewayLoadoutModel,
-  type GatewayLoadoutProvider,
-  type GatewayLoadoutProviderQuota,
-  type GatewayLoadoutQuotaWindow,
+  parseGatewayQuotaSnapshot,
   type GatewayProviderQuota,
   type GatewayQuotaSnapshot,
   type GatewayQuotaWindow,
   type GatewayWindowPressure,
-} from "./fleet/model-loadout.js";
-export {
-  parseGatewayQuotaSnapshot,
 } from "./fleet/quota-snapshot.js";
 export {
   FLEET_PLUGIN_NAME,

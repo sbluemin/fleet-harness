@@ -49,14 +49,12 @@ Forbidden patterns:
 ## 4. Operational Guidance For Agents
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
-2. Keep shared Fleet execution policy under `runtime/fleet-console/foundation/agent-runtime/src/fleet/`, and Gateway model exposure and delegation identities under `runtime/fleet-console/features/ai-gateway/runtime/src/fleet/`. Their `assets/hooks/` and `assets/ai-gateway/` trees are authoring sources only: hooks ship inside the launched plugin, routing guidance ships as on-demand MCP resources.
+2. Keep shared Fleet execution policy under `runtime/fleet-console/foundation/agent-runtime/src/fleet/`, and Gateway model exposure and the routing decision under `runtime/fleet-console/features/ai-gateway/runtime/src/fleet/`. `assets/hooks/` is an authoring source only: its hooks and the routing mod ship inside the launched plugin.
 3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
-4. Use the embedded `professional-pushback` skill when a requested approach has a material technical flaw and `delegation` to plan the smallest useful evidence graph and integrate its results.
-5. Keep Fleet pin syntax out of the semantic skill, but require the roster lookup there: the skill's preflight makes the host call `gateway_models` itself, and per-dispatch identity choice is the skill's semantic policy — no pre-dispatch hook judges a pin. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.
-6. Keep graph mechanics in the live Workflow tool contract rather than repeating them in the skill; after meaningful returns, prune branches that can no longer change the host decision.
-7. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
-8. Keep Workflow-receipt handling in the model guard hook; do not duplicate it in a skill.
-9. For mutating runs, inspect actual diffs and changed files against the settled host decisions before acceptance.
+4. Keep the routing decision in Console, not in a prompt or a hook: the mod posts a dispatch's facts to `/v1/fleet/routing/assign` and applies the answer, and no pre-dispatch hook judges a pin. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.
+5. Keep graph mechanics in the live Workflow tool contract rather than restating them in Fleet documentation; after meaningful returns, prune branches that can no longer change the host decision.
+6. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
+7. For mutating runs, inspect actual diffs and changed files against the settled host decisions before acceptance.
 
 ## 5. Compatibility Invariants
 

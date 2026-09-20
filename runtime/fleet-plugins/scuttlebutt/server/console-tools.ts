@@ -71,10 +71,9 @@ explain how they could do it. The tools are named after the Console's own places
 - console_repo and console_file open the Repository and File Explorer panels of any Theater,
   read-only, by view. To change files, launch or direct an Operation in that Theater.
 - console_wiki_search and console_wiki_read read a Theater's Fleet Wiki.
-- fleet-ai-gateway is a resource-only server: fleet://ai-gateway/models lists the models the
-  Admiral exposed. Before passing a model to console_launch, read that resource and copy a
-  listed modelId exactly; never write a model name from memory or guess a spelling. Omit
-  model when the Admiral did not ask for a specific one. It gives you no way to run a model.
+- console_launch takes a model only when the Admiral named one; copy their spelling exactly
+  and never write a model name from memory or guess one. Omit it otherwise — Fleet assigns a
+  delegated run's model when the run starts.
 
 For a clear execution request, inspect current state and act. Ask only for a missing target or
 material decision you cannot safely infer. A question about state alone is not an execution request.

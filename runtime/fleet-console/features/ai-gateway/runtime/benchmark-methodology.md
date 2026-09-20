@@ -69,6 +69,6 @@ LiveBench 사이트는 CC-BY-SA-4.0을 표시한다. `benchmarks.json`의 LiveBe
 1. 원자료·출처 계약을 다시 읽고 동일 source/metric/effort 교집합을 확정한다. 불완전한 원자료는 normalized 결과와 섞지 않는다.
 2. `benchmarks.json`의 source provenance, `models` 원점수, `normalized`, `excluded`, `sourceAudit`를 함께 갱신한다. `models.json`의 명시적 `benchmarkKey`도 같은 변경에서 맞춘다. 기존 공급자 기능을 제거하는 작업으로 확장하지 않는다.
 3. `src/models.ts`의 파서가 동일 matrix, 미지 source/metric, finite 값, 중복·고아 join, 위 산식의 재계산 결과를 검증한다. raw 변경·가중치·멤버 변경은 전체 cohort를 다시 계산하고 내용 기반 스탬프를 바꿔야 한다.
-4. Gateway `typecheck`, `test`, `build`를 수행하고 Admiral의 `gateway_models` payload와 판독 지침을 확인한다. 공개 API 경계에서 실제 점수·effort가 전달되는지 검증하며, source 문자열을 pin하는 테스트를 추가하지 않는다.
-5. Admiral 지침 원본을 바꿨다면 생성기를 실행하고 해당 테스트·빌드를 확인한다. Console UI를 바꾸지 않았어도 consumer build를 실행한다. UI 동작이 바뀌면 `console-e2e`를 따른다.
+4. Gateway `typecheck`, `test`, `build`를 수행한다. 공개 API 경계에서 실제 점수·effort가 전달되는지 검증하며, source 문자열을 pin하는 테스트를 추가하지 않는다.
+5. Console UI를 바꾸지 않았어도 consumer build를 실행한다. UI 동작이 바뀌면 `console-e2e`를 따른다.
 6. 결과에는 채택/제외 source, 정규화 모델 수, exact effort, 보간 없음, 데이터가 없는 모델의 처리, 실행하지 않은 검증을 분리해서 기록한다. 외부 추론을 실행하지 않았다면 해당 모델의 실제 공급자 성능을 검증했다고 쓰지 않는다.

@@ -23,14 +23,13 @@ import type {
 // 계층만이 "지금 고를 수 있는 모델·강도"를 판정할 수 있기 때문이다. 호스트는 저장 위치와 HTTP
 // 표면만 배선하고, 구 카탈로그가 남긴 stale id는 소비 시점에 여기서 걸러낸다.
 
-/** 저장되는 모델 항목. `efforts` 부재 = 그 모델의 사다리 전체를 정체성으로 내보낸다. */
+/** 저장되는 모델 항목. `efforts` 부재 = 그 모델의 사다리 전체를 노출한다. */
 export interface AiGatewayStoredModel {
   readonly id: string;
   readonly efforts?: readonly string[];
   /**
    * true면 모델은 와이어(`/v1/models`, `/v1/messages` 노출 게이트, 실행 선택기)에 남지만
-   * 위임 정체성을 등록하지 않고 `fleet://ai-gateway/models` 로스터에서도 제외한다. 부재는 위임 가능이며,
-   * 저장 정규형은 true만 보존한다.
+   * 위임 배정 후보에서는 빠진다. 부재는 위임 가능이며, 저장 정규형은 true만 보존한다.
    */
   readonly hostOnly?: boolean;
 }

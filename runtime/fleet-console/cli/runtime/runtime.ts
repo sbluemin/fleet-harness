@@ -1,6 +1,4 @@
-import { createMcpHttpTransport } from "../../core/host/transport/mcp-http.js";
 import path from "node:path";
-import { createAiGatewayMcpHost } from "../../features/ai-gateway/host/mcp.js";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
@@ -8,13 +6,11 @@ import {
   createAiGatewaySettingsStore,
   createProviderAuthService,
   createQuotaService,
-  resolveAiGatewaySelection,
   setWireLogTarget,
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
 import { createAgentCliPlugin, createFleetGatewayAgentRuntimeLifecycle, type AgentCliPlugin, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
-import { parseGatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
 import {
   getFleetDataDir,
   type AgentOptionsService,
@@ -60,38 +56,9 @@ export async function createFleetCliRuntime(
     store: createConsoleSettingsStore({ paths: consolePaths }),
     legacyDirs,
   });
-  const quotaService = createQuotaService({
-    platform: process.platform,
-    // CLI에는 Console의 연결 토글이 없다 — 프로브가 직접 상태를 판정한다.
-    isClaudeConnected: async () => true,
-    isCursorConnected: async () => true,
-    ...createAiGatewayQuotaCollectors({ authService }),
-  });
-  const mcpHttp = createMcpHttpTransport();
-  const aiGatewayMcp = createAiGatewayMcpHost({ transport: mcpHttp.transport,
-    readSelection: () => {
-      const selection = resolveAiGatewaySelection(aiGatewayStore.read());
-      return {
-        // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
-        models: selection.delegationModels,
-        effortExposure: selection.effortExposure,
-        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
-      };
-    },
-    readQuota: async () => {
-      try {
-        return parseGatewayQuotaSnapshot(await quotaService.getSummary());
-      } catch {
-        return undefined;
-      }
-    },
-  });
-
   applyStoredWireLog(aiGatewayStore, dataDir);
   try {
-    const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({
-      additionalMcpSessions: [aiGatewayMcp.connect()],
-    });
+    const agentRuntime = await createFleetGatewayAgentRuntimeLifecycle({});
     let cleaned = false;
     return {
       ...agentRuntime,
@@ -104,12 +71,11 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        try { await agentRuntime.cleanup(); } finally { try { await aiGatewayMcp.dispose(); } finally { await mcpHttp.dispose(); } }
+        await agentRuntime.cleanup();
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
-    try { await aiGatewayMcp.dispose(); } finally { await mcpHttp.dispose(); }
     throw error;
   }
 }

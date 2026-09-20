@@ -1,6 +1,6 @@
 # Repository Task Skills
 
-This directory owns repository-work skills. It is separate from what Fleet embeds into a launched agent session — hooks and delegation identities from `runtime/fleet-console/foundation/agent-runtime/assets/`, and routing guidance served as MCP resources from `runtime/fleet-console/features/ai-gateway/runtime/assets/ai-gateway/`. Do not vendor installed external skills here.
+This directory owns repository-work skills. It is separate from what Fleet embeds into a launched agent session — the hooks and the single execution identity rendered from `runtime/fleet-console/foundation/agent-runtime/assets/`. Do not vendor installed external skills here.
 
 ## Authoring
 

@@ -3,7 +3,7 @@ import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
 
-export type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "aiGatewayMcp" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
+export type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
   readonly admiralMcp: Pick<FleetPluginHostCapabilities["admiralMcp"], "connect">;
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeOperation(operationId: string): void };
   readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeOperation(operationId: string): void; interruptOperation(operationId: string): number; bindTerminalPaste(paste: (operationId: string) => boolean): () => void; endAgentSession(operationId: string): void };

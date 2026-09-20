@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const consoleRoot = path.join(repoRoot, "runtime/fleet-console");
 const runtimeRoot = path.join(consoleRoot, "foundation/agent-runtime");
-const gatewayRoot = path.join(consoleRoot, "features/ai-gateway/runtime");
 const { version } = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
 if (typeof version !== "string" || !version) throw new Error("fleet-harness package version is missing");
 
@@ -21,7 +20,6 @@ function generate(root, source, output, name, withVersion = false) {
 }
 
 generate(runtimeRoot, "assets/hooks", "src/fleet/agent-cli/assets.generated.ts", "EMBEDDED_AGENT_CLI_HOOK_ASSETS", true);
-generate(gatewayRoot, "assets/ai-gateway", "src/fleet/assets.generated.ts", "EMBEDDED_AI_GATEWAY_ASSETS");
 
 function listFiles(root) {
   const files = [];

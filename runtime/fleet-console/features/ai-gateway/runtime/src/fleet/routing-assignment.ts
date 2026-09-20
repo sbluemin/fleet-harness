@@ -17,7 +17,7 @@
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 
 import type { GatewayModel, GatewayEffortExposure, GatewayProvider } from "../models.js";
-import type { GatewayQuotaSnapshot } from "./model-loadout.js";
+import type { GatewayQuotaSnapshot } from "./quota-snapshot.js";
 import { modelPressure } from "./routing-allowance.js";
 import {
   buildGatewayRoutingTable,

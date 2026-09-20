@@ -25,7 +25,6 @@ import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withD
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
-import { createAiGatewayMcpHost } from "../../../features/ai-gateway/host/mcp.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
@@ -755,19 +754,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
-  const aiGatewayMcp = createAiGatewayMcpHost({
-    transport: mcpHttp.transport,
-      readSelection: () => {
-        const selection = resolveAiGatewaySelection(gatewaySettings.read());
-        return { models: selection.delegationModels, effortExposure: selection.effortExposure, providerPriority: selection.providerPriority };
-      },
-      readQuota: () => readConsoleQuotaSnapshot(pluginHostCapabilities.server.origin()),
-  });
   const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,
-    aiGatewayMcp,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
@@ -927,7 +917,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), aiGatewayMcp, computerUseMcp });
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },
@@ -1732,7 +1722,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
     consoleControl.dispose();
-    try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), aiGatewayMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
