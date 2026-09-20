@@ -65,7 +65,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     const stale = shot.staleViewport
       ? " WARNING: stored viewport disagreed with page layout before this capture — prior screenshot coordinates may be stale; take a fresh screenshot before clicking by coordinate."
       : "";
-    const geometry = `Screenshot capture ${shot.width}x${shot.height} CSS px. ${viewportLine} ${layoutLine}${stale} Coordinates for computer actions are these capture pixels; the origin is the top-left of the capture.`;
+    const origin = clip ? `Capture offset in the viewport is [${clip.x}, ${clip.y}]; add this offset to points measured in the cropped image.` : "Capture offset in the viewport is [0, 0].";
+    const geometry = `Screenshot capture ${shot.width}x${shot.height} CSS px. ${viewportLine} ${layoutLine}${stale} ${origin} Coordinates for computer actions are CSS pixels relative to the top-left of the viewport, not the crop.`;
     // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
     // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
     if (signal.aborted) return [{ type: "text", text: geometry }];
@@ -86,10 +87,10 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels of the last screenshot capture (viewport origin). Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
+  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
     type: "object", properties: {
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
-      coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in CSS pixels from the latest screenshot capture." },
+      coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in viewport CSS pixels. Add the capture offset when using a zoom crop." },
       start_coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Drag start for left_click_drag." },
       text: { type: "string", description: "Text for type, or the key chord for key." },
       scroll_direction: { type: "string", enum: ["up", "down", "left", "right"] },
