@@ -61,6 +61,8 @@ interface LiveView {
   readonly view: WebContentsView;
   readonly spec: DesktopBrowserView;
   attached: boolean;
+  /** 마지막 표시 크기 — 주차 중 창에 맞춘 일시적인 축소로 덮어쓰지 않는다. */
+  parkViewport: ParkViewport;
   lastBounds: { x: number; y: number; width: number; height: number } | null;
 }
 
@@ -143,17 +145,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale: deps.scaleFactor() }] });
   };
 
-  /** Parked viewport: last native DIP first — closed ops must not track Console zoom via spec.bounds CSS. */
-  const parkViewport = (entry: LiveView, panelBounds: ReturnType<typeof dipBounds>, content: { x: number; y: number; width: number; height: number }): ParkViewport => {
-    if (entry.lastBounds && entry.lastBounds.width > 0 && entry.lastBounds.height > 0) {
-      return { width: entry.lastBounds.width, height: entry.lastBounds.height };
-    }
-    if (panelBounds && panelBounds.width > 0 && panelBounds.height > 0) {
-      return { width: panelBounds.width, height: panelBounds.height };
-    }
-    return defaultParkViewport(content);
-  };
-
   const place = (entry: LiveView): void => {
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
@@ -162,9 +153,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const hasPanelSize = panelBounds !== null && panelBounds.width > 0 && panelBounds.height > 0;
     // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다.
     const presented = entry.spec.visible && hasPanelSize;
+    if (presented && panelBounds) entry.parkViewport = { width: panelBounds.width, height: panelBounds.height };
     const nextBounds = presented && panelBounds
       ? panelBounds
-      : parkedNativeBounds(parkViewport(entry, panelBounds, contentBounds), contentBounds);
+      : parkedNativeBounds(entry.parkViewport, contentBounds);
     const boundsChanged = entry.lastBounds === null
       || entry.lastBounds.x !== nextBounds.x
       || entry.lastBounds.y !== nextBounds.y
@@ -195,11 +187,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
     const contentBounds = shell.stack.layoutConsole();
-    const entry: LiveView = { view, spec, attached: false, lastBounds: null };
-    const viewport = parkViewport(entry, dipBounds(spec), contentBounds);
+    const panelBounds = dipBounds(spec);
+    const parkViewport = panelBounds && panelBounds.width > 0 && panelBounds.height > 0
+      ? { width: panelBounds.width, height: panelBounds.height }
+      : defaultParkViewport(contentBounds);
+    const entry: LiveView = { view, spec, attached: false, parkViewport, lastBounds: null };
     live.set(spec.id, entry);
     const contents = view.webContents;
-    const initialBounds = parkedNativeBounds(viewport, contentBounds);
+    const initialBounds = parkedNativeBounds(parkViewport, contentBounds);
     view.setBounds(initialBounds);
     entry.lastBounds = initialBounds;
     view.setVisible(true);
