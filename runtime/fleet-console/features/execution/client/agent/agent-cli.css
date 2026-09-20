@@ -1436,7 +1436,8 @@
 }
 
 /* 내장 서브에이전트 — Claude Code 카드 안의 하위 목록. 머리 행은 카드 행 문법을 그대로 쓰고,
-   항목은 그 아래 한 단 들여 선다. 이름은 Claude Code가 보고한 철자 그대로라 mono로 둔다. */
+   항목은 묶음별로 선다. 컨트롤은 체크박스다: 이 자리는 설정 하나를 켜는 곳이 아니라 쓸 수 있는
+   것 중에서 고르는 곳이고, 같은 카드의 승인 게이트만 스위치로 남아 위험을 혼자 말한다. */
 .claude-agents {
   display: grid;
   gap: var(--space-3);
@@ -1448,26 +1449,30 @@
   align-items: center;
 }
 
+/* 로스터를 읽지 못한 채 꺼 둔 이름만 보여 주는 상태의 각주. 경고가 아니라 사정 설명이라
+   coral이 아니라 warn 잉크가 진다. */
+.claude-agents-degraded {
+  color: var(--warn-ink);
+}
+
+.claude-agent-group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.claude-agent-group + .claude-agent-group {
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 40%, transparent);
+}
+
+/* 항목은 묶음 머리의 상자 아래가 아니라 그 글자 아래에 선다 — 상자(16px)와 간격(12px)만큼
+   들여야 묶음과 항목이 부모/자식으로 읽힌다. */
 .claude-agent-list {
   display: grid;
-  gap: var(--space-2);
+  gap: 0;
   margin: 0;
-  padding: 0 0 0 var(--space-4);
+  padding-inline-start: calc(16px + var(--space-3));
   list-style: none;
-}
-
-.claude-agent-row {
-  align-items: center;
-}
-
-.claude-agent-row + .claude-agent-row {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.claude-agent-row .global-settings-resp-title {
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
 }
 
 /* 고대비(forced-colors) — 워시·잉크 워시가 걷히는 환경에서는 켜짐을 시스템 선택색으로 말한다. */

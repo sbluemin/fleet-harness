@@ -1799,9 +1799,12 @@
 .remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-mono); font-size: var(--t-sm); }
 
 /* 폼 선택 컨트롤은 브라우저 기본 외형을 빌리지 않는다 — 같은 Console 안에서 OS마다
-   checkbox/radio의 크기·stroke·focus가 갈리면 나머지 instrument 문법과 한 제품으로 읽히지 않는다. */
+   checkbox/radio의 크기·stroke·focus가 갈리면 나머지 instrument 문법과 한 제품으로 읽히지 않는다.
+   SDK의 `SettingsCheckbox`(.fc-settings-check__input)도 같은 레시피를 쓴다 — 체크박스가 표면마다
+   자기 모양을 발명하면 스위치가 한 모양으로 통일되기 전의 분산이 체크박스 쪽에서 재발한다. */
 .remote-acknowledgment input[type="checkbox"],
 .remote-monitoring input[type="checkbox"],
+.fc-settings-check__input,
 .remote-port-control input[type="radio"] {
   appearance: none;
   flex: none;
@@ -1817,27 +1820,45 @@
 }
 
 .remote-acknowledgment input[type="checkbox"],
-.remote-monitoring input[type="checkbox"] { border-radius: calc(var(--radius-xs) - 2px); }
+.remote-monitoring input[type="checkbox"],
+.fc-settings-check__input { border-radius: calc(var(--radius-xs) - 2px); }
 .remote-port-control input[type="radio"] { border-radius: var(--radius-pill); }
 
 .remote-acknowledgment input[type="checkbox"]:hover:not(:disabled):not(:checked),
 .remote-monitoring input[type="checkbox"]:hover:not(:disabled):not(:checked),
+.fc-settings-check__input:hover:not(:disabled):not(:checked):not(:indeterminate),
 .remote-port-control input[type="radio"]:hover:not(:disabled):not(:checked) {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
 }
 
+/* 체크 표시는 두 획이다 — 왼쪽 짧은 내림획(`\`)과 오른쪽 긴 오름획(`/`). 두 각도가 뒤바뀌면
+   같은 두 조각이 위로 꺾인 `∧`을 그리고, 그것이 실제로 출하돼 있었다(실측: brass 면 위 꺾쇠).
+   그래서 각 gradient의 각도는 그 획이 향하는 방향을 뜻으로 읽고 고른다: 45deg의 띠는 `\`,
+   135deg의 띠는 `/`로 눕는다. */
 .remote-acknowledgment input[type="checkbox"]:checked,
+.fc-settings-check__input:checked,
 .remote-monitoring input[type="checkbox"]:checked {
   border-color: var(--brass);
   background:
-    linear-gradient(135deg, transparent 45%, var(--text-on-brass) 45% 55%, transparent 55%) 2px 4px / 5px 8px no-repeat,
-    linear-gradient(45deg, transparent 38%, var(--text-on-brass) 38% 54%, transparent 54%) 6px 1px / 8px 11px no-repeat,
+    linear-gradient(45deg, transparent 45%, var(--text-on-brass) 45% 55%, transparent 55%) 2px 4px / 5px 8px no-repeat,
+    linear-gradient(135deg, transparent 38%, var(--text-on-brass) 38% 54%, transparent 54%) 6px 1px / 8px 11px no-repeat,
     var(--brass);
+}
+
+/* 묶음 머리의 혼합 상태 — 아래가 일부만 골라졌다. 체크 표시와 같은 brass 면 위에 가로 막대를
+   올리지 않고, 테두리만 brass로 서고 안쪽에 막대 하나가 선다. 채워진 면은 "전부"를 뜻하므로
+   그 자리를 혼합이 빌리면 두 상태가 같은 무게로 읽힌다. */
+.fc-settings-check__input:indeterminate {
+  border-color: var(--brass);
+  background:
+    linear-gradient(var(--brass), var(--brass)) center / 8px 2px no-repeat,
+    color-mix(in oklab, var(--ink-deep) 82%, transparent);
 }
 
 .remote-acknowledgment input[type="checkbox"]:active:not(:disabled),
 .remote-monitoring input[type="checkbox"]:active:not(:disabled),
+.fc-settings-check__input:active:not(:disabled),
 .remote-port-control input[type="radio"]:active:not(:disabled) {
   transform: translateY(1px);
 }
@@ -1857,7 +1878,50 @@
 @media (forced-colors: active) {
     .remote-acknowledgment input[type="checkbox"],
   .remote-monitoring input[type="checkbox"],
+  .fc-settings-check__input,
   .remote-port-control input[type="radio"] { appearance: auto; }
+}
+
+/* 목록에서 고르는 한 줄 — 상자와 글이 한 과녁이라 <label> 전체가 누를 수 있는 면이다.
+   설명은 코어의 다른 각주(.global-settings-help)와 같은 모노 티어를 쓴다. */
+.fc-settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.fc-settings-check:hover:not(:has(.fc-settings-check__input:disabled)) { background: var(--control-hover-fill); }
+.fc-settings-check:has(.fc-settings-check__input:disabled) { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+.fc-settings-check:has(.fc-settings-check__input:focus-visible) {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+/* 상자가 첫 줄 글자의 중심에 서도록 한 단 내린다 — flex-start만으로는 글자 위에 뜬다. */
+.fc-settings-check__input { margin-top: 3px; }
+
+.fc-settings-check__copy { display: grid; gap: 2px; min-width: 0; }
+
+.fc-settings-check__label {
+  color: var(--text-primary);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+}
+
+.fc-settings-check__label.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
+.fc-settings-check__desc {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.6;
 }
 
 /* 켬/끔은 콘솔 전체에서 이 한 모양이다. 그리는 컴포넌트도 하나 — SDK의 SettingsToggle이 코어의

@@ -18,7 +18,7 @@ import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser
 import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { React, defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsCheckbox, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
@@ -1148,9 +1148,44 @@ function ClaudeCodeHarnessCard() {
 }
 
 /**
- * 내장 서브에이전트 옵트아웃 행들. 목록은 설치된 Claude Code가 보고한 것이라 여기에 이름을
- * 적지 않는다 — 업데이트로 늘거나 준 항목이 그대로 따라온다. 저장되는 것은 끈 이름뿐이므로
- * 로스터에서 사라진 이름은 조용히 남았다가, 사용자가 다른 항목을 만질 때 함께 정리된다.
+ * Fleet이 아는 내장 서브에이전트의 역할과 설명 키. **이 표는 카탈로그가 아니다** — 목록 자체는
+ * 설치된 Claude Code가 보고한 것이고, 여기 있는 것은 그 이름에 붙이는 주석뿐이다. CLI는 로스터에
+ * 이름만 싣고(`system/init`의 `agents`) 설명을 주는 표면이 따로 없어서, 뜻은 Fleet이 진다.
+ *
+ * 그래서 표에 없는 이름도 화면에는 선다 — 업데이트가 새 이름을 들고 오면 설명 없이 "분류 없음"에
+ * 서고, 사용자는 그것도 끌 수 있다. 표를 늘리는 일이 목록을 늘리는 일이 되어서는 안 된다.
+ * (문구 근거: 설치본이 각 Agent 정의에 싣는 `whenToUse`. 실측 2.1.278.)
+ */
+const CLAUDE_BUILT_IN_AGENT_NOTES: Readonly<Record<string, { readonly role: "work" | "guide"; readonly descriptionKey: TerminalMessageKey }>> = {
+  "claude": { role: "work", descriptionKey: "terminal.settings.builtInAgentClaude" },
+  "general-purpose": { role: "work", descriptionKey: "terminal.settings.builtInAgentGeneralPurpose" },
+  "Explore": { role: "work", descriptionKey: "terminal.settings.builtInAgentExplore" },
+  "Plan": { role: "work", descriptionKey: "terminal.settings.builtInAgentPlan" },
+  "fork": { role: "work", descriptionKey: "terminal.settings.builtInAgentFork" },
+  "claude-code-guide": { role: "guide", descriptionKey: "terminal.settings.builtInAgentCodeGuide" },
+  "statusline-setup": { role: "guide", descriptionKey: "terminal.settings.builtInAgentStatuslineSetup" },
+};
+
+/** 묶음은 화면 순서이기도 하다 — 매 세션 쓰이는 것이 먼저 서고, 모르는 이름이 끝에 남는다. */
+const CLAUDE_BUILT_IN_AGENT_GROUPS = [
+  { id: "work", titleKey: "terminal.settings.builtInAgentsGroupWork" },
+  { id: "guide", titleKey: "terminal.settings.builtInAgentsGroupGuide" },
+  { id: "other", titleKey: "terminal.settings.builtInAgentsGroupOther" },
+] as const satisfies readonly { readonly id: string; readonly titleKey: TerminalMessageKey }[];
+
+type ClaudeBuiltInAgentGroupId = (typeof CLAUDE_BUILT_IN_AGENT_GROUPS)[number]["id"];
+
+function claudeBuiltInAgentGroup(name: string): ClaudeBuiltInAgentGroupId {
+  return CLAUDE_BUILT_IN_AGENT_NOTES[name]?.role ?? "other";
+}
+
+/**
+ * 내장 서브에이전트 선택. 컨트롤은 체크박스다 — 스위치가 아니다. 이 자리가 묻는 것은 "이 설정
+ * 하나를 켜는가"가 아니라 "쓸 수 있는 것 중 무엇을 남기는가"이고, 같은 카드에 선 승인 게이트가
+ * 스위치라서 목록에까지 스위치를 세우면 위험한 단일 설정과 목록 한 줄이 같은 무게로 읽힌다.
+ *
+ * 저장되는 것은 끈 이름뿐이므로 로스터에서 사라진 이름도 목록에 남는다 — 되돌릴 길이 없으면
+ * 규칙만 살아남는다.
  */
 function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
   readonly disabled: readonly string[];
@@ -1186,46 +1221,73 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
   const disabledSet = new Set(disabled);
   // 현재 로스터에서 빠진 제외 항목도 사용자가 다시 허용할 수 있어야 한다.
   const agentNames = [...new Set([...(roster?.agents ?? []), ...disabled])];
-  const toggle = (name: string, enabled: boolean) => {
+  const select = (names: readonly string[], enabled: boolean) => {
     // 실행 조건이나 CLI 버전 때문에 로스터에서 빠진 Agent의 제외 설정도 유지한다.
-    const next = disabled.filter((entry) => entry !== name);
-    if (!enabled) next.push(name);
+    const next = disabled.filter((entry) => !names.includes(entry));
+    if (!enabled) next.push(...names);
     onChange(next);
   };
+
+  const groups = CLAUDE_BUILT_IN_AGENT_GROUPS
+    .map((group) => ({ ...group, names: agentNames.filter((name) => claudeBuiltInAgentGroup(name) === group.id) }))
+    .filter((group) => group.names.length > 0);
 
   let body: React.ReactNode;
   if (loadError) {
     body = <p className="global-settings-error" role="alert">{loadError}</p>;
   } else if (!roster) {
     body = <p className="global-settings-help">{t("terminal.settings.builtInAgentsLoading")}</p>;
-  } else if (!roster.available) {
+  } else if (agentNames.length === 0) {
     body = (
       <p className="global-settings-help">
-        {t(roster.error === "cli_not_found" ? "terminal.settings.builtInAgentsNotFound" : "terminal.settings.builtInAgentsFailed")}
+        {roster.available
+          ? t("terminal.settings.builtInAgentsEmpty")
+          : t(roster.error === "cli_not_found" ? "terminal.settings.builtInAgentsNotFound" : "terminal.settings.builtInAgentsFailed")}
       </p>
     );
-  } else if (agentNames.length === 0) {
-    body = <p className="global-settings-help">{t("terminal.settings.builtInAgentsEmpty")}</p>;
   } else {
     body = (
-      <ul className="claude-agent-list" aria-label={t("terminal.settings.builtInAgentsTitle")}>
-        {agentNames.map((name) => {
-          const labelId = `claude-agent-${name}-label`;
+      <>
+        {/* 로스터를 못 읽어도 꺼 둔 이름은 남는다 — 규칙은 계속 실리는데 화면에서만 사라지면
+            사용자는 자기가 건 제약을 되돌릴 수 없다. */}
+        {roster.available ? null : (
+          <p className="global-settings-help claude-agents-degraded" role="status">
+            {t("terminal.settings.builtInAgentsDegraded")}
+          </p>
+        )}
+        {groups.map((group) => {
+          const enabledCount = group.names.filter((name) => !disabledSet.has(name)).length;
+          const groupChecked = enabledCount === 0 ? false : enabledCount === group.names.length ? true : "mixed";
           return (
-            <li key={name} className="global-settings-row claude-agent-row" role="group" aria-labelledby={labelId}>
-              <div className="global-settings-row-text">
-                <p className="global-settings-resp-title"><span id={labelId} className="claude-agent-name">{name}</span></p>
-              </div>
-              <SettingsToggle
-                checked={!disabledSet.has(name)}
-                disabled={saving}
-                ariaLabel={name}
-                onChange={(enabled) => toggle(name, enabled)}
+            <div className="claude-agent-group" key={group.id}>
+              <SettingsCheckbox
+                checked={groupChecked}
+                label={t(group.titleKey)}
+                // 혼합 상태에서 누르면 전부 끈다 — 일부만 골라진 묶음을 정리하는 쪽이 의도에 가깝다.
+                onChange={(enabled) => select(group.names, enabled && groupChecked !== "mixed")}
               />
-            </li>
+              <div className="claude-agent-list">
+                {group.names.map((name) => {
+                  const note = CLAUDE_BUILT_IN_AGENT_NOTES[name];
+                  const missing = roster.available && !roster.agents.includes(name);
+                  return (
+                    <SettingsCheckbox
+                      key={name}
+                      checked={!disabledSet.has(name)}
+                      label={name}
+                      monoLabel
+                      description={missing
+                        ? t("terminal.settings.builtInAgentMissing")
+                        : t(note?.descriptionKey ?? "terminal.settings.builtInAgentUnknown")}
+                      onChange={(enabled) => select([name], enabled)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
-      </ul>
+      </>
     );
   }
 
@@ -1237,9 +1299,18 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
             <span id="claude-code-built-in-agents-label">{t("terminal.settings.builtInAgentsTitle")}</span>
             <SettingsHelp title={t("terminal.settings.builtInAgentsTitle")}>{t("terminal.settings.builtInAgentsHelp")}</SettingsHelp>
           </p>
-          {roster?.version ? (
-            <p className="global-settings-help claude-agents-version">{t("terminal.settings.builtInAgentsVersion", { version: roster.version })}</p>
-          ) : null}
+          {/* 꺼진 개수와 적용 시점은 누르는 자리에 선다 — 카드 제목 팁 안에만 있으면 화면 밖이다.
+              저장 중에도 목록은 잠그지 않는다: 연달아 누르는 것이 이 컨트롤의 정상 사용이고,
+              들어온 조작은 진행 중인 저장이 이어 보낸다. 그래서 진행은 비활성이 아니라 글로 말한다. */}
+          <p className="global-settings-help claude-agents-version" aria-live="polite">
+            {roster?.version ? `${t("terminal.settings.builtInAgentsVersion", { version: roster.version })} · ` : ""}
+            {saving
+              ? t("terminal.settings.builtInAgentsSaving")
+              : t("terminal.settings.builtInAgentsSummary", {
+                off: String(disabledSet.size),
+                total: String(agentNames.length),
+              })}
+          </p>
         </div>
         <button
           type="button"
@@ -1247,7 +1318,7 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
           disabled={reading}
           onClick={() => { void read(undefined, true); }}
         >
-          {t("terminal.settings.builtInAgentsRefresh")}
+          {reading ? t("terminal.settings.builtInAgentsReading") : t("terminal.settings.builtInAgentsRefresh")}
         </button>
       </div>
       {body}
