@@ -35,7 +35,7 @@ import {
   chatShellTailFromOutput,
   chatSubagentIdentity,
   chatSubagentTrailFromTranscript,
-  chatWorkflowAgentIds,
+  chatWorkflowAgentSlots,
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
@@ -329,14 +329,16 @@ const JOB_TAIL_READ_BYTES = 256 * 1024;
  */
 const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
 /**
- * 워크플로 에이전트 전사록에서 모델 id만 읽을 때의 창. 발자국 전량보다 훨씬 작다 — 권위는
- * assistant 줄의 `message.model` 한 필드이고, 꼬리에 마지막 응답이 있으면 그것으로 충분하다.
+ * 모델 id는 assistant 레코드 앞쪽에 있다. 마지막 줄이 창보다 크면 256KiB 꼬리는 그 줄의
+ * 뒷부분만 쥐고 JSON이 깨진다. cwd 읽기와 같이 창을 넓히되, 발자국 전사록 상한(4MiB)에서 멈춘다.
  */
-const JOB_MODEL_READ_BYTES = 256 * 1024;
+const JOB_MODEL_READ_WINDOWS: readonly number[] = [256 * 1024, 1024 * 1024, JOB_TRANSCRIPT_READ_BYTES];
 const AGENT_COORD_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 interface WorkflowJobModelState {
-  agentIds: readonly (string | undefined)[];
+  /** fold와 같은 그룹·cap 순서의 CLI `workflow_agent.index` 키. 키 없는 칸은 잇지 않는다. */
+  keys: readonly (string | undefined)[];
+  readonly idsByKey: Map<string, string>;
   readonly models: Map<string, string>;
   readonly files: Map<string, string>;
   readonly bytes: Map<string, number>;
@@ -1465,8 +1467,15 @@ class AgentChatSession {
     event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
     message: ClaudeGatewayMessage,
   ): void {
-    const ids = chatWorkflowAgentIds(message.workflow_progress);
-    if (ids.length > 0) this.ensureWorkflowJob(event.id).agentIds = ids;
+    const slots = chatWorkflowAgentSlots(message.workflow_progress);
+    if (slots.length > 0) {
+      const job = this.ensureWorkflowJob(event.id);
+      job.keys = slots.map((slot) => slot.key);
+      for (const slot of slots) {
+        if (slot.key === undefined || slot.agentId === undefined) continue;
+        job.idsByKey.set(slot.key, slot.agentId);
+      }
+    }
     this.ingest(this.paintWorkflowModels(event));
     void this.enrichWorkflowProgress(event.id);
   }
@@ -1475,7 +1484,8 @@ class AgentChatSession {
     const held = this.workflowJobs.get(jobId);
     if (held) return held;
     const created = {
-      agentIds: [] as readonly (string | undefined)[],
+      keys: [] as readonly (string | undefined)[],
+      idsByKey: new Map<string, string>(),
       models: new Map<string, string>(),
       files: new Map<string, string>(),
       bytes: new Map<string, number>(),
@@ -1485,13 +1495,17 @@ class AgentChatSession {
     return created;
   }
 
+  private workflowAgentIds(job: WorkflowJobModelState): readonly (string | undefined)[] {
+    return job.keys.map((key) => (key === undefined ? undefined : job.idsByKey.get(key)));
+  }
+
   private paintWorkflowModels(
     event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
   ): Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }> {
     if (event.stages === undefined || event.stages.length === 0) return event;
     const job = this.workflowJobs.get(event.id);
-    if (job === undefined || job.agentIds.length === 0) return event;
-    const stages = overlayWorkflowActualModels(event.stages, job.agentIds, job.models);
+    if (job === undefined || job.keys.length === 0) return event;
+    const stages = overlayWorkflowActualModels(event.stages, this.workflowAgentIds(job), job.models);
     return stages === event.stages ? event : { ...event, stages };
   }
 
@@ -1519,7 +1533,7 @@ class AgentChatSession {
     const job = this.workflowJobs.get(jobId);
     if (job === undefined) return;
     const pending: string[] = [];
-    for (const id of job.agentIds) {
+    for (const id of this.workflowAgentIds(job)) {
       if (id === undefined || !AGENT_COORD_RE.test(id)) continue;
       if (job.reading.has(id)) continue;
       pending.push(id);
@@ -1535,10 +1549,8 @@ class AgentChatSession {
         const size = await fs.stat(file).then((info) => info.size).catch(() => null);
         if (size === null) return;
         if (size === held.bytes.get(id) && held.models.has(id)) return;
-        const window = await readFileTail(file, JOB_MODEL_READ_BYTES);
-        if (window === null) return;
+        const model = await this.readActualModelFromTranscript(file);
         held.bytes.set(id, size);
-        const model = chatActualModelFromTranscript(window.text);
         if (model === undefined) return;
         held.models.set(id, model);
       }));
@@ -1557,6 +1569,19 @@ class AgentChatSession {
     const painted = this.paintWorkflowModels(held.event);
     if (painted === held.event) return;
     this.ingest(painted);
+  }
+
+  /**
+   * 꼬리에서 완전한 assistant 레코드를 찾을 때까지 창만 넓힌다. 파일 전체를 올리지는 않는다.
+   */
+  private async readActualModelFromTranscript(file: string): Promise<string | undefined> {
+    for (const windowBytes of JOB_MODEL_READ_WINDOWS) {
+      const window = await readFileTail(file, windowBytes);
+      if (window === null) return undefined;
+      const model = chatActualModelFromTranscript(window.text);
+      if (model !== undefined || !window.headCut) return model;
+    }
+    return undefined;
   }
 
   /**

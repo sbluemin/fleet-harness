@@ -1013,23 +1013,34 @@ function jobsChangedEvent(message: Readonly<Record<string, unknown>>): readonly 
  * 워크플로 카드가 단계 없이도 완결되게 둔다. 여기서 던지면 맥박 하나가 통째로 사라진다.
  *
  * `row.model`은 요청·부모 핀이다(실측: 워크플로 표가 Astra로 고정되는 이유). 확정 모델은
- * 자식 전사록만 말하므로 여기서는 싣지 않는다. `agentIds`는 그 전사록을 찾기 위한 서버 좌표이며
- * 브라우저 DTO에는 나가지 않는다.
+ * 자식 전사록만 말하므로 여기서는 싣지 않는다. 서버 좌표는 CLI가 행을 가르는
+ * `workflow_agent.index`이며 브라우저 DTO에는 나가지 않는다.
  */
+export interface ChatWorkflowAgentSlot {
+  /** CLI `hUn`과 같은 `${type}:${index}`. index가 없으면 칸만 있고 좌표는 없다. */
+  readonly key?: string;
+  readonly agentId?: string;
+}
+
+function workflowAgentRowKey(row: Readonly<Record<string, unknown>>): string | undefined {
+  const index = readCount(row.index);
+  return index === undefined ? undefined : `workflow_agent:${index}`;
+}
+
 function foldWorkflowProgress(
   value: unknown,
   options: ChatEventMapOptions,
-): { readonly stages: readonly AgentChatJobStage[]; readonly agentIds: readonly (string | undefined)[] } {
-  if (!Array.isArray(value)) return { stages: [], agentIds: [] };
+): { readonly stages: readonly AgentChatJobStage[]; readonly slots: readonly ChatWorkflowAgentSlot[] } {
+  if (!Array.isArray(value)) return { stages: [], slots: [] };
   const order: string[] = [];
   const byTitle = new Map<string, AgentChatJobAgent[]>();
-  const idsByTitle = new Map<string, (string | undefined)[]>();
+  const slotsByTitle = new Map<string, ChatWorkflowAgentSlot[]>();
   const ensure = (title: string): AgentChatJobAgent[] => {
     let bucket = byTitle.get(title);
     if (!bucket) {
       bucket = [];
       byTitle.set(title, bucket);
-      idsByTitle.set(title, []);
+      slotsByTitle.set(title, []);
       order.push(title);
     }
     return bucket;
@@ -1058,17 +1069,22 @@ function foldWorkflowProgress(
       ...(readCount(row.durationMs) !== undefined ? { durationMs: readCount(row.durationMs) as number } : {}),
       ...(result !== undefined ? { result: safeJobText(result, options, MAX_TOOL_RESULT_CHARS) } : {}),
     });
-    idsByTitle.get(title)?.push(readString(row.agentId));
+    const key = workflowAgentRowKey(row);
+    const agentId = readString(row.agentId);
+    slotsByTitle.get(title)?.push({
+      ...(key === undefined ? {} : { key }),
+      ...(agentId === undefined ? {} : { agentId }),
+    });
   }
   return {
     stages: order.slice(0, MAX_JOB_STAGES).map((title) => ({ title, agents: byTitle.get(title) ?? [] })),
-    agentIds: order.slice(0, MAX_JOB_STAGES).flatMap(title => idsByTitle.get(title) ?? []),
+    slots: order.slice(0, MAX_JOB_STAGES).flatMap((title) => slotsByTitle.get(title) ?? []),
   };
 }
 
-/** 단계 트리와 같은 순서로, 각 에이전트의 자식 세션 좌표. 못 읽은 칸은 비운다. */
-export function chatWorkflowAgentIds(value: unknown): readonly (string | undefined)[] {
-  return foldWorkflowProgress(value, {}).agentIds;
+/** 단계 트리와 같은 순서로, CLI index 키와 자식 세션 좌표. 키 없는 칸은 잇지 않는다. */
+export function chatWorkflowAgentSlots(value: unknown): readonly ChatWorkflowAgentSlot[] {
+  return foldWorkflowProgress(value, {}).slots;
 }
 
 /**
