@@ -51,6 +51,7 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import {
   CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS,
+  getSystemPromptSettingsStoreState,
   loadSystemPromptSettings,
   setSystemPromptSettingsField,
   useSystemPromptSettingsStore,
@@ -1158,7 +1159,8 @@ function claudeSystemPromptCaptionKey(mode: ClaudeCodeSystemPromptMode, body: st
 }
 
 /**
- * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 적용을 눌러야 PUT이 나간다.
+ * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 포커스가 떠날 때 PUT이 나간다.
+ * 저장 성공 후에는 서버가 정규화한 본문을 초안의 기준으로 삼아, trim 때문에 dirty가 남지 않게 한다.
  */
 function ClaudeCodeSystemPromptRow({
   mode,
@@ -1175,14 +1177,37 @@ function ClaudeCodeSystemPromptRow({
   const t = getT(locale);
   const promptId = React.useId();
   const countId = React.useId();
+  const statusId = React.useId();
+  const hintId = React.useId();
   const overLimitId = React.useId();
   const [draft, setDraft] = React.useState(savedPrompt);
+  const [showSaved, setShowSaved] = React.useState(false);
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
   const limit = CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
   const overLimit = draft.length > limit;
-  const dirty = draft !== savedPrompt;
-  const canApply = dirty && !savingPrompt && !overLimit;
   const showEditor = mode === "append" || mode === "off";
   const formatCount = (value: number) => value.toLocaleString(locale === "ko" ? "ko-KR" : "en-US");
+  const describedBy = [
+    countId,
+    hintId,
+    savingPrompt || showSaved ? statusId : null,
+    overLimit ? overLimitId : null,
+  ].filter((id): id is string => id !== null).join(" ");
+
+  const commitPrompt = () => {
+    if (overLimit) return;
+    // 서버 기준값과 같을 때는 보내지 않는다 — 로컬 초안끼리 비교하면 trim 이후 재저장이 돈다.
+    if (draft === savedPrompt) return;
+    const sent = draft;
+    void setSystemPromptSettingsField("claudeCodeCustomSystemPrompt", sent).then((ok) => {
+      if (!ok) return;
+      const canonical = getSystemPromptSettingsStoreState().state?.claudeCodeCustomSystemPrompt ?? "";
+      if (draftRef.current !== sent) return;
+      setDraft(canonical);
+      setShowSaved(true);
+    });
+  };
 
   return (
     <div className="global-settings-row is-stack" role="group" aria-labelledby="claude-code-system-prompt-label">
@@ -1216,10 +1241,13 @@ function ClaudeCodeSystemPromptRow({
             className="ai-gateway-routing-task"
             rows={8}
             value={draft}
-            disabled={savingPrompt}
             aria-invalid={overLimit}
-            aria-describedby={overLimit ? `${countId} ${overLimitId}` : countId}
-            onChange={(event) => { setDraft(event.target.value); }}
+            aria-describedby={describedBy}
+            onChange={(event) => {
+              setShowSaved(false);
+              setDraft(event.target.value);
+            }}
+            onBlur={commitPrompt}
           />
           <div className="agent-cli-path-actions">
             <p id={countId} className="global-settings-help">
@@ -1228,16 +1256,17 @@ function ClaudeCodeSystemPromptRow({
                 limit: formatCount(limit),
               })}
             </p>
-            <button
-              type="button"
-              className="agent-cli-path-button is-primary"
-              disabled={!canApply}
-              aria-busy={savingPrompt}
-              onClick={() => { void setSystemPromptSettingsField("claudeCodeCustomSystemPrompt", draft); }}
-            >
-              {savingPrompt ? t("terminal.settings.claudeSystemPromptApplying") : t("terminal.settings.claudeSystemPromptApply")}
-            </button>
+            {savingPrompt ? (
+              <p id={statusId} className="global-settings-help" aria-live="polite">
+                {t("terminal.settings.claudeSystemPromptSaving")}
+              </p>
+            ) : showSaved ? (
+              <p id={statusId} className="global-settings-help" aria-live="polite">
+                {t("terminal.settings.claudeSystemPromptSaved")}
+              </p>
+            ) : null}
           </div>
+          <p id={hintId} className="global-settings-help">{t("terminal.settings.claudeSystemPromptSaveHint")}</p>
           {overLimit ? (
             <p id={overLimitId} className="agent-cli-path-error" role="alert">
               {t("terminal.settings.claudeSystemPromptOverLimit", { limit: formatCount(limit) })}

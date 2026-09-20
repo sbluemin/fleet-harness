@@ -122,8 +122,9 @@ function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptM
 /**
  * The user's text survives as written, minus the characters that would break the surfaces
  * carrying it: this body travels as an argv file on one surface and a JSON option on the
- * other, so NUL and the other C0 controls go, while newlines and tabs stay — they are the
- * instruction's own shape.
+ * other, so NUL and the other C0 controls go, while newlines, tabs and surrounding
+ * whitespace stay — they are the instruction's own shape, and a sanitizer that tidies them
+ * hands the editor back something other than what was typed.
  *
  * A body past the ceiling drops the key rather than being silently truncated: half an
  * instruction is a different instruction. The route refuses it before it ever reaches here.
@@ -134,9 +135,11 @@ export function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | u
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-    .trim();
-  if (normalized.length === 0) return undefined;
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  // 공백뿐인 본문은 지침이 아니라 빈 입력이므로 키를 지운다. 그 판정에만 `trim`을 쓰고
+  // 저장하는 값은 손대지 않는다 — 편집기가 되돌려받는 값이 방금 친 글과 달라지면, 저장에
+  // 성공하고도 화면은 계속 저장되지 않은 것처럼 보인다.
+  if (normalized.trim().length === 0) return undefined;
   return normalized.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS ? undefined : normalized;
 }
 
