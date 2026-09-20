@@ -123,6 +123,10 @@ export function companionSlotWeightsFor(
  * 최소폭은 희망이지 물리가 아니다. 모든 슬롯의 바닥을 합쳐도 아레나에 못 담기는 좁은 창에서 바닥을
  * 그대로 지키면 슬롯이 화면 밖으로 밀려난다. 그럴 때는 바닥도 비율을 지키며 함께 물러난다 —
  * 확대 표면의 fitMinimums, Formation의 calculateGridSlots와 같은 규칙이다.
+ *
+ * 자리가 있을 때는 그 양보를 하지 않는다. 바닥에 못 미치는 슬롯만 바닥에 고정하고 **남은 폭을
+ * 나머지가 비율대로** 나눈다. 바닥까지 올린 뒤 전체를 함께 줄이면, 방금 올린 그 슬롯이 다시
+ * 바닥 밑으로 내려가 약속한 하한이 자리가 충분한 창에서도 깨진다.
  */
 export function resolveCompanionSlotWidths(arenaWidth: number, slotWeights: readonly number[]): readonly number[] {
   const count = slotWeights.length;
@@ -130,14 +134,34 @@ export function resolveCompanionSlotWidths(arenaWidth: number, slotWeights: read
   const content = Math.max(0, arenaWidth - COMPANION_SLOT_GAP_PX * (count - 1));
   if (content <= 0) return slotWeights.map(() => 0);
 
-  const floor = Math.min(COMPANION_MIN_SLOT_PX, content / count);
   const safe = slotWeights.map((weight) => (Number.isFinite(weight) && weight > 0 ? weight : 1));
   const total = safe.reduce((sum, weight) => sum + weight, 0);
-  const raised = safe.map((weight) => Math.max(floor, (content * weight) / total));
-  const raisedTotal = raised.reduce((sum, width) => sum + width, 0);
-  if (raisedTotal <= content + 0.5) return raised;
-  const scale = content / raisedTotal;
-  return raised.map((width) => width * scale);
+  if (content < COMPANION_MIN_SLOT_PX * count) {
+    return safe.map((weight) => (content * weight) / total);
+  }
+
+  // 바닥에 고정할 슬롯을 굳힌다. 하나를 고정하면 남는 폭이 줄어 다음 슬롯이 바닥 밑으로
+  // 내려갈 수 있으므로, 더 고정할 것이 없을 때까지 돈다.
+  const pinned = safe.map(() => false);
+  for (;;) {
+    const freeWidth = content - pinned.filter(Boolean).length * COMPANION_MIN_SLOT_PX;
+    const freeWeight = safe.reduce((sum, weight, index) => (pinned[index] ? sum : sum + weight), 0);
+    let settled = true;
+    for (let index = 0; index < count; index += 1) {
+      if (pinned[index]) continue;
+      if ((freeWidth * safe[index]!) / freeWeight < COMPANION_MIN_SLOT_PX) {
+        pinned[index] = true;
+        settled = false;
+      }
+    }
+    if (settled) break;
+  }
+
+  const pinnedCount = pinned.filter(Boolean).length;
+  if (pinnedCount === count) return safe.map(() => COMPANION_MIN_SLOT_PX);
+  const freeWidth = content - pinnedCount * COMPANION_MIN_SLOT_PX;
+  const freeWeight = safe.reduce((sum, weight, index) => (pinned[index] ? sum : sum + weight), 0);
+  return safe.map((weight, index) => (pinned[index] ? COMPANION_MIN_SLOT_PX : (freeWidth * weight) / freeWeight));
 }
 
 function readStoredWeights(): Readonly<Record<string, number>> {

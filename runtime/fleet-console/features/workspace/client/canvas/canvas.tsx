@@ -1041,7 +1041,17 @@ export function OperationsCanvas({
     const bounds = companionDividerPair(dividerIndex);
     if (bounds === null) return;
     const left = Math.max(bounds.floor, Math.min(bounds.pair - bounds.floor, desiredLeft));
-    setCompanionSlotWeights({ [bounds.leftId]: left, [bounds.rightId]: bounds.pair - left }, persist);
+    // 끈 쌍만 적으면 안 된다. 기억된 가중치는 그때 그 아레나의 픽셀 눈금이고 지금 보이는 폭은
+    // 이번 아레나의 눈금이라, 둘을 섞어 두면 정규화가 손대지도 않은 패널을 끌고 가고 분할선은
+    // 포인터에서 멀어진다. 지금 보이는 폭 전부를 한 눈금으로 다시 적는다 — 확대 표면의
+    // 분할선이 페인 배열을 통째로 넘기는 것과 같은 계약이다.
+    const ids = companionSlotIdsRef.current;
+    const widths = companionSlotWidthsRef.current;
+    const next: Record<string, number> = {};
+    ids.forEach((slotId, index) => { next[slotId] = widths[index] ?? 0; });
+    next[bounds.leftId] = left;
+    next[bounds.rightId] = bounds.pair - left;
+    setCompanionSlotWeights(next, persist);
   }
 
   function beginCompanionDividerDrag(dividerIndex: number, event: React.PointerEvent<HTMLDivElement>): void {

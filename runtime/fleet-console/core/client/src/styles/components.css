@@ -5099,6 +5099,13 @@ body[data-companion-resizing="true"] {
   cursor: col-resize;
 }
 
+/* 같은 이유로 geometry 글라이드도 끊는다(is-dragging·side-bar-animating 선례).
+   분할선은 포인터를 즉시 따라가는데 양옆 패널은 --duration-slow 이징을 매 프레임 새로 시작하므로,
+   끊지 않으면 경계가 분할선 뒤로 처져 분할선이 본문 위에 얹힌 것처럼 보인다. */
+body[data-companion-resizing="true"] .canvas-operation {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas-companion-divider-grip {
     transition: none;
