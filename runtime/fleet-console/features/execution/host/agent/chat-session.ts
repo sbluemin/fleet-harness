@@ -81,6 +81,8 @@ export interface AgentChatSessionSeed {
   readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
   readonly compactHookToken?: string;
+  /** 라우팅 Mod가 정체성을 물을 때 쓰는 자격. 없으면 이 채팅 세션은 게이트웨이 정체성을 얻지 못한다. */
+  readonly modHookToken?: string;
   readonly model: string;
   /**
    * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 자식은 좌표가 둘뿐이라
@@ -1635,6 +1637,14 @@ class AgentChatSession {
               FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
               ...(this.seed.compactHookToken
                 ? { FLEET_COMPACT_HOOK_TOKEN: this.seed.compactHookToken }
+                : {}),
+              // 정체성은 Mod가 올린다. PTY 런치는 prepareAiGatewayLaunchProfile이 같은 값을
+              // 싣는데, 채팅은 자기 env를 따로 조립하므로 여기서 다시 실어야 한다 — 빠지면
+              // 이 세션에는 게이트웨이 서브에이전트가 하나도 없다.
+              CLAUDE_CODE_ENABLE_FUNCTION_HOOKS:
+                process.env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS ?? "1",
+              ...(this.seed.modHookToken
+                ? { FLEET_MOD_BASE_URL: this.seed.baseUrl, FLEET_MOD_TOKEN: this.seed.modHookToken }
                 : {}),
             },
           });
