@@ -12,7 +12,6 @@ import {
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const CURSOR_SCOPE_PREFIX = "cursor--";
-const MODES = new Set(["standard", "max", "both"]);
 const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
 const HELP = `Usage:
@@ -22,12 +21,9 @@ const HELP = `Usage:
 Options:
   --model <id>       Cursor catalog base, scoped, or upstream model id; repeatable
   --all              Probe every Cursor catalog model (explicit quota-consuming opt-in)
-  --mode <mode>      standard, max, or both (default: standard)
   --effort <effort>  low, medium, high, xhigh, max, or ultra
   --timeout-ms <ms>  Positive per-probe timeout in milliseconds (default: 60000)
   --help              Show this help without accessing credentials or the network
-
-Modes are probed sequentially. "both" runs standard and Max Mode once per model.
 `;
 
 class UsageError extends Error {
@@ -52,29 +48,23 @@ async function main() {
   }
 
   const selections = resolveSelections(options);
-  const probeModes = options.mode === "both" ? ["standard", "max"] : [options.mode];
   const accessToken = resolveCursorAccessToken();
   const observedAt = new Date().toISOString();
   const results = [];
 
   for (const selection of selections) {
-    for (const mode of probeModes) {
+    process.stderr.write(`[cursor-context-probe] probing ${selection.requestedModel}\n`);
+    const result = await probeCursorContextWindow({
+      accessToken,
+      effort: options.effort,
+      selection,
+      timeoutMs: options.timeoutMs,
+    });
+    results.push(result);
+    if (result.error) {
       process.stderr.write(
-        `[cursor-context-probe] probing ${selection.requestedModel} in ${mode} mode\n`,
+        `[cursor-context-probe] ${selection.requestedModel} failed: ${result.error}\n`,
       );
-      const result = await probeCursorContextWindow({
-        accessToken,
-        effort: options.effort,
-        mode,
-        selection,
-        timeoutMs: options.timeoutMs,
-      });
-      results.push(result);
-      if (result.error) {
-        process.stderr.write(
-          `[cursor-context-probe] ${selection.requestedModel} (${mode}) failed: ${result.error}\n`,
-        );
-      }
     }
   }
 
@@ -88,7 +78,6 @@ function parseArguments(argv) {
     all: false,
     effort: null,
     help: false,
-    mode: "standard",
     models: [],
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -106,16 +95,6 @@ function parseArguments(argv) {
       case "--model": {
         const value = readOptionValue(normalizedArgv, index, argument);
         options.models.push(value);
-        index += 1;
-        break;
-      }
-      case "--mode": {
-        rejectDuplicateOption(seen, argument);
-        const value = readOptionValue(normalizedArgv, index, argument);
-        if (!MODES.has(value)) {
-          throw new UsageError(`Unknown mode ${JSON.stringify(value)}; expected standard, max, or both`);
-        }
-        options.mode = value;
         index += 1;
         break;
       }
@@ -237,11 +216,9 @@ function resolveCursorAccessToken() {
 async function probeCursorContextWindow({
   accessToken,
   effort,
-  mode,
   selection,
   timeoutMs,
 }) {
-  const maxMode = mode === "max";
   const controller = new AbortController();
   let checkpoint = null;
   let timeoutTriggered = false;
@@ -249,7 +226,6 @@ async function probeCursorContextWindow({
 
   const adapter = new CursorAdapter({
     idleTimeoutMs: timeoutMs,
-    maxMode,
     diagnostics: (event) => {
       if (
         wireModel === null
@@ -281,8 +257,6 @@ async function probeCursorContextWindow({
     requestedModel: selection.requestedModel,
     wireModel,
     effort,
-    mode,
-    maxMode,
     contextTokens: checkpoint?.contextTokens ?? null,
     contextWindow: checkpoint?.contextWindow ?? null,
   });

@@ -100,8 +100,6 @@ export interface CursorAdapterOptions {
   readonly origin?: string;
   readonly clientVersion?: string;
   readonly idleTimeoutMs?: number;
-  /** Opt in to Cursor Max Mode for this adapter instance. Omitted by default. */
-  readonly maxMode?: boolean;
   /**
    * 테스트용 conversationId 덮어쓰기. 운영 경로에서는 `metadata.user_id`에서 유도한 값을 쓴다.
    */
@@ -413,12 +411,10 @@ interface CursorRunRequestContext {
 interface CursorRunPreparation {
   readonly preflight: CursorRunPreflight;
   readonly context: CursorRunRequestContext;
-  readonly maxMode: boolean;
 }
 
 function prepareCursorRun(
   request: CanonicalResponseRequest,
-  options: { readonly maxMode?: boolean } = {},
 ): CursorRunPreparation {
   const modelSelection = resolveCursorModelSelection(request.model, request.reasoning?.effort);
   const wireModelId = modelSelection.upstreamModelId;
@@ -484,7 +480,6 @@ function prepareCursorRun(
       activeMessage,
       isToolContinuation,
     },
-    maxMode: options.maxMode ?? modelSelection.maxMode,
   };
 }
 
@@ -493,7 +488,7 @@ function buildPreparedCursorRunPlan(
   conversationId: string,
   preparation: CursorRunPreparation,
 ): CursorRunPlan {
-  const { context, maxMode, preflight } = preparation;
+  const { context, preflight } = preparation;
   const blobs = new BlobStore();
   const rootIds = context.roots.map((entry) => blobs.putSerialized(entry.serialized));
   const turnIds = buildCursorConversationTurns(
@@ -534,7 +529,6 @@ function buildPreparedCursorRunPlan(
       displayModelId: preflight.wireModelId,
       displayName: preflight.wireModelId,
       displayNameShort: preflight.wireModelId,
-      ...(maxMode ? { maxMode: true } : {}),
     },
   };
   if (context.toolBudget.tools.length > 0) {
@@ -554,12 +548,11 @@ function buildPreparedCursorRunPlan(
 export function buildCursorRunPlan(
   request: CanonicalResponseRequest,
   conversationId: string,
-  options: { readonly maxMode?: boolean } = {},
 ): CursorRunPlan {
   return buildPreparedCursorRunPlan(
     request,
     conversationId,
-    prepareCursorRun(request, options),
+    prepareCursorRun(request),
   );
 }
 
@@ -1286,7 +1279,6 @@ export class CursorAdapter implements AiGatewayAdapter {
   private readonly origin: string;
   private readonly clientVersion: string;
   private readonly idleTimeoutMs: number;
-  private readonly maxMode: boolean | undefined;
   private readonly connect: typeof http2.connect;
   private readonly toolFinalizeGraceMs: number;
   private readonly clientHeartbeatMs: number;
@@ -1305,7 +1297,6 @@ export class CursorAdapter implements AiGatewayAdapter {
     this.origin = options.origin ?? CURSOR_API_ORIGIN;
     this.clientVersion = options.clientVersion ?? CURSOR_CLIENT_VERSION;
     this.idleTimeoutMs = options.idleTimeoutMs ?? 180_000;
-    this.maxMode = options.maxMode;
     this.connect = options.connect ?? http2.connect;
     this.toolFinalizeGraceMs = options.toolFinalizeGraceMs ?? CURSOR_TOOL_FINALIZE_GRACE_MS;
     this.clientHeartbeatMs = options.clientHeartbeatMs ?? CURSOR_CLIENT_HEARTBEAT_MS;
@@ -1360,7 +1351,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     const results = trailingCursorToolResults(request.input);
     let preparation: CursorRunPreparation;
     try {
-      preparation = prepareCursorRun(request, { maxMode: this.maxMode });
+      preparation = prepareCursorRun(request);
     } catch (error) {
       const pending = this.pendingLiveRuns.get(conversationStateKey);
       if (pending && this.claimPendingLiveRun(pending)) {

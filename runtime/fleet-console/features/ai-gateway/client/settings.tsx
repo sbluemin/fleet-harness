@@ -1339,7 +1339,6 @@ export function AiGatewayModelRow({
         <span className="ai-gateway-model-name">{model.name}</span>
         {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
         {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
-        {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}
         {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}
       </span>
       <span className="ai-gateway-model-controls">
