@@ -175,7 +175,7 @@ function createStubDesktop(options: StubOptions = {}) {
         case "Page.getLayoutMetrics":
           return { cssLayoutViewport: { clientWidth: layout.width, clientHeight: layout.height } } as T;
         case "Page.captureScreenshot":
-          return { data: Buffer.alloc(32, 1).toString("base64") } as T;
+          return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=" } as T;
         case "DOM.resolveNode":
           if (options.resolveNode === "detached") throw new CdpError(method, -32000, "Node with given id does not belong to the document (detached)");
           return { object: { objectId: "obj-1" } } as T;
@@ -320,7 +320,9 @@ describe("operation browser tool target admission", () => {
     const calls: Array<{ name: string; signalAborted: boolean }> = [];
     const service = {
       agentCall: (_id: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<unknown>) => run(signal ?? new AbortController().signal),
-      screenshot: () => Promise.resolve(screenshotResult()),
+      screenshot: () => { throw new Error("Input must not capture without opt-in"); },
+      targetRef: async () => "ref_1",
+      evaluate: async () => ({ value: "https://actual.test/", error: null }),
       clickAt: async (_op: string, _x: number, _y: number, options: { signal?: AbortSignal }) => {
         calls.push({ name: "clickAt", signalAborted: options.signal?.aborted === true });
         return { dispatched: true as const, x: 1, y: 2, button: "left" as const, clickCount: 1, ref: null, hit: null, note: null };
@@ -340,5 +342,13 @@ describe("operation browser tool target admission", () => {
     const byRef = await computer.execute({ action: "left_click", ref: "ref_1" }, { sessionLabel: OPERATION, signal: new AbortController().signal } as never) as { isError: boolean };
     expect(byRef.isError).toBe(false);
     expect(calls.some((call) => call.name === "clickRef" && call.signalAborted === false)).toBe(true);
+    // 후속 조건 시간 초과는 제출을 다시 보내거나 자동 캡처를 만드는 이유가 아니다.
+    const act = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "act")!;
+    const before = calls.length;
+    const result = await act.execute({ action: "click", target: { ref: "ref_1" }, expect: { url: "https://expected.test/" }, timeout_ms: 0 }, { sessionLabel: OPERATION, signal: new AbortController().signal } as never) as { isError: boolean; content: { text: string }[] };
+    expect(result.isError).toBe(false);
+    expect(calls.length - before).toBe(1);
+    expect(JSON.parse(result.content[0]!.text).verification.matched).toBe(false);
+    screenshots.cleanup();
   });
 });
