@@ -448,7 +448,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
    is-collapsed 페인트 게이트)은 전면 해도 개편에서 원자적으로 퇴역했다. 사이드바가 부유
    카드로 내려가 밴드 아래로 이어질 열 자체가 사라졌기 때문이다. 좌측은 이제 순수한 흐름
    클러스터이고 재질은 밴드 루트 ::before(--glass-tint-band) 한 장이 전부 진다.
-   darwin 신호등 인셋(88px)은 캡 페인트가 아니라 window-policy 계약이라 그대로 남는다. */
+   darwin 신호등 자리는 캡 페인트가 아니라 window-policy 계약이라 그대로 남는다. */
 .command-band-left {
   grid-column: 1;
   width: fit-content;
@@ -541,7 +541,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   color: var(--warn-ink);
 }
 
-/* macOS Desktop은 traffic-light 인셋(좌측 88px)이 첫 트랙 폭을 잠식하므로
+/* macOS Desktop은 traffic-light 자리(좌측 76 DIP + 12px)가 첫 트랙 폭을 잠식하므로
    local 칩을 컴팩트하게 줄여 사이드바 경계(280px) 침범을 막는다. */
 :root[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-local-chip {
   gap: 4px;
@@ -924,7 +924,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
 .command-band-mode-tool:active:not(:disabled) { transform: translateY(1px); }
 .command-band-mode-tool:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
-/* window-policy.ts와 합의한 44px 밴드/76px 신호등 인셋 — 변경 시 데스크톱 셸과 동기한다. */
+/* window-policy.ts와 합의한 36px 밴드/76px 신호등 자리 — 변경 시 데스크톱 셸과 동기한다. */
 html[data-desktop-shell="true"] .command-band {
   -webkit-app-region: drag;
 }
@@ -936,13 +936,19 @@ html[data-desktop-shell="true"] .command-band input {
   -webkit-app-region: no-drag;
 }
 
-/* 신호등 인셋은 신호등이 있을 때만 뜻이 있다. macOS 네이티브 전체화면은 신호등을 거두므로
-   그 88px은 아무도 쓰지 않는 빈 칸이 된다 — 브랜드와 로컬 칩이 한 몸으로 그 자리까지
+/* 신호등이 차지한 76 DIP를 비우고 그 오른쪽 12px에 브랜드를 세운다. 신호등은 네이티브라
+   줌을 타지 않으므로 예약분만 줌으로 나눠 DIP로 되돌린다 — 그러지 않으면 확대에서 브랜드가
+   신호등과 멀어지고 축소에서 그 위로 올라탄다(--desktop-zoom은 셸에서만 심긴다). 간격 12px는
+   줌을 함께 타야 한다: 밴드의 다른 간격과 같은 단위로 읽혀야 하기 때문이다.
+   세로 중앙 정렬은 셸이 신호등을 밴드 중앙으로 옮겨 맡는다(window-policy.ts).
+
+   신호등 자리는 신호등이 있을 때만 뜻이 있다. macOS 네이티브 전체화면은 신호등을 거두므로
+   그 자리는 아무도 쓰지 않는 빈 칸이 된다 — 브랜드와 로컬 칩이 한 몸으로 그 자리까지
    활주해 들어간다(좌측 클러스터의 결합을 유지하려고 transform이 아니라 패딩을 움직인다:
    transform은 레이아웃을 바꾸지 않아 중앙 여백 하한의 실측이 옛 자리를 읽는다).
    브라우저 전체화면은 신호등이 없으므로 이 규칙의 대상이 아니다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {
-  padding-inline-start: 88px;
+  padding-inline-start: calc(76px / var(--desktop-zoom, 1) + var(--space-3));
 }
 
 /* 전이는 들어갈 때만 선언한다 — 전이는 도착 상태의 transition을 쓰므로, 클래스가 붙을 때는

@@ -40,7 +40,7 @@ import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from ".
 import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
-import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY } from "./window-policy.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
@@ -161,6 +161,16 @@ async function boot(): Promise<void> {
   const remotePins = shellNetwork.pins;
   const consoleFetch = shellNetwork.fetch;
   let overlayRefresher: TitleBarOverlayRefresher | null = null;
+  /**
+   * 줌·모니터가 바뀌면 네이티브 크롬의 기하를 다시 맞춘다. Windows는 캡션 버튼 스트립의
+   * 높이를, macOS는 신호등의 세로 자리를 — 둘 다 페이지 줌을 스스로 따라가지 못한다.
+   * 한 창에서 둘 중 하나만 산다.
+   */
+  const refreshNativeChrome = (): void => {
+    overlayRefresher?.refresh();
+    if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
+    window.setWindowButtonPosition(trafficLightPosition(window.webContents.getZoomFactor()));
+  };
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
       fetch: consoleFetch,
@@ -393,18 +403,18 @@ async function boot(): Promise<void> {
         });
         createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.webContents, zoomDirection);
-          overlayRefresher?.refresh();
+          refreshNativeChrome();
           browserViews.refresh();
         });
         // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
         createdWindow.on("resize", () => browserViews.refresh());
-        // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 보정 높이를 재확인한다.
-        createdWindow.webContents.on("did-finish-load", () => overlayRefresher?.refresh());
+        // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
+        createdWindow.webContents.on("did-finish-load", () => refreshNativeChrome());
         // 스냅·최대화 전환(Win+Shift+화살표 등)은 moved 없이 모니터를 건널 수 있다 — 게이트가
         // no-op이므로 상태 전환마다 배율 정합을 재확인해도 비용이 없다.
-        createdWindow.on("maximize", () => overlayRefresher?.refresh());
-        createdWindow.on("unmaximize", () => overlayRefresher?.refresh());
-        createdWindow.on("restore", () => overlayRefresher?.refresh());
+        createdWindow.on("maximize", () => refreshNativeChrome());
+        createdWindow.on("unmaximize", () => refreshNativeChrome());
+        createdWindow.on("restore", () => refreshNativeChrome());
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);
         return createdWindow;
@@ -461,9 +471,9 @@ async function boot(): Promise<void> {
     show: () => { void lifecycle.show(); },
     quit: () => { void lifecycle.quit(); },
     diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); },
-    zoomIn: () => { controls.zoomIn(); overlayRefresher?.refresh(); },
-    zoomOut: () => { controls.zoomOut(); overlayRefresher?.refresh(); },
-    actualSize: () => { controls.actualSize(); overlayRefresher?.refresh(); },
+    zoomIn: () => { controls.zoomIn(); refreshNativeChrome(); },
+    zoomOut: () => { controls.zoomOut(); refreshNativeChrome(); },
+    actualSize: () => { controls.actualSize(); refreshNativeChrome(); },
     reloadConsole: () => controls.reloadConsole(),
     consoleReady: () => controls.consoleReady(),
     updates,

@@ -344,7 +344,43 @@ export function applyDesktopShellMarker(): void {
         ? "darwin"
         : "linux";
     document.documentElement.setAttribute("data-desktop-platform", platform);
+    if (platform === "darwin") trackDesktopZoomFactor();
   }
+}
+
+/**
+ * macOS 신호등은 네이티브라 페이지 줌을 타지 않는다 — 창 모서리에서 76 DIP를 차지한 자리에
+ * 그대로 머문다. 그런데 그 자리를 비워 두는 좌측 클러스터의 예약 폭은 CSS px이라 줌에 비례해
+ * 자라고 줄었다: 확대하면 브랜드가 신호등에서 떨어져 나가고(실측 131%에서 40 DIP), 축소하면
+ * 신호등 위로 올라탔다(76%에서 8.5 DIP 겹침).
+ *
+ * 창 폭(outerWidth, DIP)과 뷰포트 폭(innerWidth, CSS px)의 비가 곧 줌이다 — 신호등을 가진
+ * hiddenInset 창에는 웹 콘텐츠 밖의 크롬이 없어 두 값이 같은 창을 잰다. 그 비를 문서에 심어
+ * 예약 폭을 DIP로 되돌리면 브랜드는 어느 줌에서든 신호등 오른쪽 같은 자리에 선다.
+ * 세로 정렬은 이 축의 몫이 아니다 — 셸이 신호등을 밴드 중앙으로 옮겨 맡는다(window-policy.ts).
+ */
+function trackDesktopZoomFactor(): void {
+  const apply = (): void => {
+    const factor = window.outerWidth > 0 && window.innerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
+    document.documentElement.style.setProperty("--desktop-zoom", `${factor}`);
+  };
+  /**
+   * 다시 재는 신호는 resize가 아니라 devicePixelRatio의 변화다. 줌이 바뀌면 둘 다 오지만,
+   * resize는 줌과 무관한 전환에서도 오고 그중 네이티브 전체화면 전환은 두 값이 서로 다른
+   * 프레임에 갱신된다 — 실측에서 innerWidth는 이미 전체화면인데 outerWidth는 아직 창
+   * 크기여서, 줌 1.31인 창이 0.64로 기록됐다(전체화면은 이 여백을 쓰지 않아 눈에 띄지 않을 뿐
+   * 그대로 남는 거짓값이다). devicePixelRatio는 줌이 실제로 바뀔 때만 움직이고, 그 순간
+   * 창 폭은 건드려지지 않으므로 두 값이 언제나 같은 창을 가리킨다.
+   *
+   * 배율이 다른 모니터로 건너가도 이 신호가 오지만, 그때 두 폭은 그대로라 같은 줌이 다시
+   * 계산될 뿐이다. 미디어 쿼리는 현재 배율에서만 참이므로 한 번 울릴 때마다 다시 건다.
+   */
+  const watch = (): void => {
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    query.addEventListener("change", () => { apply(); watch(); }, { once: true });
+  };
+  apply();
+  watch();
 }
 
 export function applyUiFontToDocument(uiFont: UiFontSettings): void {
