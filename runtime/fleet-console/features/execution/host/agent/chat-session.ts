@@ -335,6 +335,14 @@ const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
 const JOB_MODEL_READ_BYTES = 256 * 1024;
 const AGENT_COORD_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
+interface WorkflowJobModelState {
+  agentIds: readonly (string | undefined)[];
+  readonly models: Map<string, string>;
+  readonly files: Map<string, string>;
+  readonly bytes: Map<string, number>;
+  readonly reading: Set<string>;
+}
+
 /**
  * 잡 상세가 지나는 문. 자격증명 마스킹은 그대로고 경로만 원문으로 나간다 — 이 표면이 답하는
  * 질문이 "그 작업이 무엇을 건드렸나"이고, 접힌 좌표로는 답이 되지 않기 때문이다(제품 결정).
@@ -600,18 +608,10 @@ class AgentChatSession {
    */
   private readonly jobOutputs = new Map<string, string>();
   /**
-   * 워크플로 에이전트 id → 자식 전사록에서 읽은 실제 응답 모델. 브라우저에는 모델 문자열만
-   * 나가고 이 좌표는 서버에 남는다.
+   * 워크플로 잡 하나의 실제 모델 상태. 잡 id가 주인이라 에이전트 수가 JOB_KIND_CAP을 넘어도
+   * 같은 잡의 칸을 밀어내지 않고, 원장에 그 잡이 더 이상 없으면 함께 버린다.
    */
-  private readonly actualWorkflowModels = new Map<string, string>();
-  /** 잡 id → 그 맥박의 에이전트와 같은 순서의 자식 세션 좌표. */
-  private readonly workflowAgentIds = new Map<string, readonly (string | undefined)[]>();
-  /** 같은 에이전트 전사록을 맥박마다 겹쳐 읽지 않기 위한 비행 표. */
-  private readonly workflowModelReads = new Set<string>();
-  /** agentId → 찾아 둔 전사록 경로. 런 디렉터리를 맥박마다 다시 훑지 않는다. */
-  private readonly workflowTranscriptFiles = new Map<string, string>();
-  /** agentId → 마지막으로 읽은 파일 크기. 커져야 다시 읽어 fallback 응답을 반영한다. */
-  private readonly workflowTranscriptBytes = new Map<string, number>();
+  private readonly workflowJobs = new Map<string, WorkflowJobModelState>();
   /**
    * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
    * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
@@ -1217,6 +1217,7 @@ class AgentChatSession {
     // 오지 않을 `command_lifecycle`을 영원히 기다린다.
     for (const hosted of this.hostedDispatches.values()) hosted.onSettled?.("unknown");
     this.hostedDispatches.clear();
+    this.workflowJobs.clear();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
@@ -1465,28 +1466,47 @@ class AgentChatSession {
     message: ClaudeGatewayMessage,
   ): void {
     const ids = chatWorkflowAgentIds(message.workflow_progress);
-    if (ids.length > 0) this.workflowAgentIds.set(event.id, ids);
+    if (ids.length > 0) this.ensureWorkflowJob(event.id).agentIds = ids;
     this.ingest(this.paintWorkflowModels(event));
     void this.enrichWorkflowProgress(event.id);
+  }
+
+  private ensureWorkflowJob(jobId: string): WorkflowJobModelState {
+    const held = this.workflowJobs.get(jobId);
+    if (held) return held;
+    const created = {
+      agentIds: [] as readonly (string | undefined)[],
+      models: new Map<string, string>(),
+      files: new Map<string, string>(),
+      bytes: new Map<string, number>(),
+      reading: new Set<string>(),
+    };
+    this.workflowJobs.set(jobId, created);
+    return created;
   }
 
   private paintWorkflowModels(
     event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
   ): Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }> {
     if (event.stages === undefined || event.stages.length === 0) return event;
-    const ids = this.workflowAgentIds.get(event.id);
-    if (ids === undefined) return event;
-    const stages = overlayWorkflowActualModels(event.stages, ids, this.actualWorkflowModels);
+    const job = this.workflowJobs.get(event.id);
+    if (job === undefined || job.agentIds.length === 0) return event;
+    const stages = overlayWorkflowActualModels(event.stages, job.agentIds, job.models);
     return stages === event.stages ? event : { ...event, stages };
   }
 
-  private rememberActualWorkflowModel(agentId: string, model: string): void {
-    this.actualWorkflowModels.set(agentId, model);
-    if (this.actualWorkflowModels.size <= JOB_KIND_CAP) return;
-    for (const oldest of this.actualWorkflowModels.keys()) {
-      if (oldest === agentId) continue;
-      this.actualWorkflowModels.delete(oldest);
-      return;
+  /**
+   * 원장에 더 이상 없는 잡의 모델 좌표를 버린다. 읽고 있는 잡은 끝까지 두고, 살아 있는 잡과
+   * 저널이 아직 재생할 잡은 남긴다.
+   */
+  private pruneWorkflowJobs(): void {
+    const retained = new Set<string>(this.liveJobs);
+    for (const { event } of this.journal) {
+      if (event.kind === "job" || event.kind === "job-progress" || event.kind === "job-end") retained.add(event.id);
+    }
+    for (const [jobId, job] of this.workflowJobs) {
+      if (retained.has(jobId) || job.reading.size > 0) continue;
+      this.workflowJobs.delete(jobId);
     }
   }
 
@@ -1496,35 +1516,39 @@ class AgentChatSession {
    */
   private async enrichWorkflowProgress(jobId: string): Promise<void> {
     if (this.disposed) return;
-    const ids = this.workflowAgentIds.get(jobId);
-    if (ids === undefined) return;
+    const job = this.workflowJobs.get(jobId);
+    if (job === undefined) return;
     const pending: string[] = [];
-    for (const id of ids) {
+    for (const id of job.agentIds) {
       if (id === undefined || !AGENT_COORD_RE.test(id)) continue;
-      if (this.workflowModelReads.has(id)) continue;
+      if (job.reading.has(id)) continue;
       pending.push(id);
     }
     if (pending.length === 0) return;
-    for (const id of pending) this.workflowModelReads.add(id);
+    for (const id of pending) job.reading.add(id);
     try {
       await Promise.all(pending.map(async (id) => {
-        const file = await this.locateWorkflowAgentTranscript(id);
+        const file = await this.locateWorkflowAgentTranscript(jobId, id);
         if (file === null || this.disposed) return;
+        const held = this.workflowJobs.get(jobId);
+        if (held === undefined) return;
         const size = await fs.stat(file).then((info) => info.size).catch(() => null);
         if (size === null) return;
-        if (size === this.workflowTranscriptBytes.get(id) && this.actualWorkflowModels.has(id)) return;
+        if (size === held.bytes.get(id) && held.models.has(id)) return;
         const window = await readFileTail(file, JOB_MODEL_READ_BYTES);
         if (window === null) return;
-        this.workflowTranscriptBytes.set(id, size);
+        held.bytes.set(id, size);
         const model = chatActualModelFromTranscript(window.text);
         if (model === undefined) return;
-        this.rememberActualWorkflowModel(id, model);
+        held.models.set(id, model);
       }));
     } finally {
-      for (const id of pending) this.workflowModelReads.delete(id);
+      const held = this.workflowJobs.get(jobId);
+      if (held) for (const id of pending) held.reading.delete(id);
     }
     if (this.disposed) return;
     this.republishWorkflowProgress(jobId);
+    this.pruneWorkflowJobs();
   }
 
   private republishWorkflowProgress(jobId: string): void {
@@ -1540,15 +1564,16 @@ class AgentChatSession {
    * 자식은 `subagents/workflows/<run>/agent-<id>.jsonl`에 앉는다(Claude Code 실측). 경로 자체는
    * 브라우저로 나가지 않는다.
    */
-  private async locateWorkflowAgentTranscript(agentId: string): Promise<string | null> {
-    const cached = this.workflowTranscriptFiles.get(agentId);
+  private async locateWorkflowAgentTranscript(jobId: string, agentId: string): Promise<string | null> {
+    const job = this.workflowJobs.get(jobId);
+    const cached = job?.files.get(agentId);
     if (cached !== undefined && await isExistingFile(cached)) return cached;
     const dir = await this.resolveJobSessionDir();
     if (dir === null) return null;
     const subagents = path.join(dir, "subagents");
     const direct = path.join(subagents, `agent-${agentId}.jsonl`);
     if (await isExistingFile(direct)) {
-      this.workflowTranscriptFiles.set(agentId, direct);
+      this.workflowJobs.get(jobId)?.files.set(agentId, direct);
       return direct;
     }
     const runs = await fs.readdir(path.join(subagents, "workflows"), { withFileTypes: true }).catch(() => null);
@@ -1557,7 +1582,7 @@ class AgentChatSession {
       if (!run.isDirectory() || !AGENT_COORD_RE.test(run.name)) continue;
       const candidate = path.join(subagents, "workflows", run.name, `agent-${agentId}.jsonl`);
       if (await isExistingFile(candidate)) {
-        this.workflowTranscriptFiles.set(agentId, candidate);
+        this.workflowJobs.get(jobId)?.files.set(agentId, candidate);
         return candidate;
       }
     }
@@ -1819,6 +1844,7 @@ class AgentChatSession {
     }
     this.journal.push(entry);
     if (this.journal.length > JOURNAL_CAP) this.journal.splice(0, this.journal.length - JOURNAL_CAP);
+    this.pruneWorkflowJobs();
     for (const listener of this.listeners) listener(entry);
   }
 
@@ -2259,6 +2285,7 @@ class AgentChatSession {
     // 떠 있게 된다.
     this.journal = this.journal.filter(({ event }) =>
       (event.kind === "job" || event.kind === "job-progress") && this.liveJobs.has(event.id));
+    this.pruneWorkflowJobs();
     this.push({ kind: "cleared", at: Date.now() });
   }
 

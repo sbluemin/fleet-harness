@@ -581,6 +581,68 @@ describe("AgentChatRegistry — background jobs", () => {
     });
     await registry.disposeAll();
   });
+
+  it("keeps every agent model in a workflow larger than the job-kind cap", async () => {
+    const sessionId = "sess-wf-wide";
+    const transcriptPath = writeTranscript(sessionId, []);
+    const childDir = path.join(path.dirname(transcriptPath), sessionId, "subagents", "workflows", "run1");
+    mkdirSync(childDir, { recursive: true });
+    const agentCount = 201;
+    const requested = "claude-gateway--xai--grok-4";
+    const agents = Array.from({ length: agentCount }, (_, index) => {
+      const agentId = `ag${String(index).padStart(3, "0")}`;
+      const model = `claude-gateway--cursor--composer-${index}`;
+      writeFileSync(path.join(childDir, `agent-${agentId}.jsonl`), `${JSON.stringify({
+        type: "assistant",
+        message: { model, content: [{ type: "text", text: "ok" }] },
+      })}\n`);
+      return {
+        type: "workflow_agent",
+        index: index + 1,
+        label: `run-${index}`,
+        phaseTitle: `Stage-${Math.floor(index / 64)}`,
+        agentId,
+        model: requested,
+        state: "done",
+      };
+    });
+    const { factory } = createFakeSdkFactory([{
+      messages: [
+        { type: "system", subtype: "task_started", task_id: "wf-wide", task_type: "local_workflow", description: "wide" },
+        {
+          type: "system",
+          subtype: "task_progress",
+          task_id: "wf-wide",
+          description: "running",
+          usage: { total_tokens: agentCount, tool_uses: 0, duration_ms: 10 },
+          workflow_progress: agents,
+        },
+        { type: "system", subtype: "task_notification", task_id: "wf-wide", status: "completed", summary: "wide" },
+        { type: "result", subtype: "success", is_error: false, duration_ms: 20 },
+      ],
+    }]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-wf-wide", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+    session.send("run");
+    await drainTurn(registry, "op-wf-wide");
+    await vi.waitFor(() => {
+      const progress = [...seen].reverse().find((entry) => entry.event.kind === "job-progress");
+      expect(progress?.event.kind).toBe("job-progress");
+      if (progress?.event.kind !== "job-progress") return;
+      const painted = progress.event.stages?.flatMap((stage) => stage.agents) ?? [];
+      expect(painted).toHaveLength(agentCount);
+      expect(painted[0]?.model).toBe("claude-gateway--cursor--composer-0");
+      expect(painted[200]?.model).toBe("claude-gateway--cursor--composer-200");
+      expect(painted.some((agent) => agent.model === undefined || agent.model === requested)).toBe(false);
+    });
+    let log = initialAgentChatLogState;
+    for (const entry of seen) log = reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at });
+    expect(log.jobs[0]).toMatchObject({ id: "wf-wide", open: false, status: "completed" });
+    expect(log.jobs[0]?.stages.flatMap((stage) => stage.agents)).toHaveLength(agentCount);
+    await registry.disposeAll();
+  });
 });
 
 /**
