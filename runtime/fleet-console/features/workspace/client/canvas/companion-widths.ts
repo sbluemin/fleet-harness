@@ -26,6 +26,15 @@ export const COMPANION_SLOT_GAP_PX = 8;
  */
 export const COMPANION_MIN_SLOT_PX = 320;
 
+/**
+ * 바닥을 세울 자리가 없는 쌍에서 한 슬롯이 지키는 최소 몫.
+ *
+ * 좁은 배치에서 바닥을 "쌍의 절반"으로 낮추면 분할선의 허용 범위가 한 점으로 붙어 아예 움직이지
+ * 않는다 — 1100px 창의 3분할(쌍 475px)에서 실측상 조작이 얼어붙고 첫 입력이 쌍을 등분으로
+ * 튕겼다. 바닥이 물러날 때도 가운데 절반은 travel로 남겨야 조작이 살아 있다.
+ */
+export const COMPANION_CRAMPED_SLOT_RATIO = 0.25;
+
 /** 키보드로 분할선을 미는 한 걸음. 확대 표면의 분할선과 같은 값이다. */
 export const COMPANION_KEYBOARD_STEP_PX = 24;
 

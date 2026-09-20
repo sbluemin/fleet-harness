@@ -36,7 +36,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { companionSlotWeightsFor, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
+import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
 import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
@@ -1032,9 +1032,14 @@ export function OperationsCanvas({
     const leftStart = widths[dividerIndex] ?? 0;
     const pair = leftStart + (widths[dividerIndex + 1] ?? 0);
     if (pair <= 0) return null;
-    // 두 슬롯을 합쳐도 두 바닥을 못 담으면 바닥도 함께 물러난다 — 아니면 분할선이 통째로 얼어붙어
-    // 사용자에게는 고장으로 읽힌다.
-    return { leftId, rightId, leftStart, pair, floor: Math.min(COMPANION_MIN_SLOT_PX, pair / 2) };
+    // 쌍이 두 바닥을 담을 수 있으면 바닥은 그대로 320이다. 담지 못할 때만 물러나는데, 그때도
+    // "쌍의 절반"까지 내리면 허용 범위가 한 점이 되어 분할선이 아예 안 움직이고 첫 입력이 쌍을
+    // 등분으로 튕긴다 — 실측상 1100px 창의 3분할(쌍 475px)에서 조작이 죽었다. 가운데 절반은
+    // travel로 남긴다.
+    const floor = pair >= COMPANION_MIN_SLOT_PX * 2
+      ? COMPANION_MIN_SLOT_PX
+      : pair * COMPANION_CRAMPED_SLOT_RATIO;
+    return { leftId, rightId, leftStart, pair, floor };
   }
 
   function applyCompanionDivider(dividerIndex: number, desiredLeft: number, persist: boolean): void {
@@ -1067,21 +1072,40 @@ export function OperationsCanvas({
     // 손을 떼는 순간 화면의 절반이 파랗게 남는다.
     document.body.setAttribute("data-companion-resizing", "true");
 
-    const onMove = (moveEvent: PointerEvent) => {
-      applyCompanionDivider(dividerIndex, leftStart + (moveEvent.clientX - startX), false);
-    };
-    const onUp = (upEvent: PointerEvent) => {
-      applyCompanionDivider(dividerIndex, leftStart + (upEvent.clientX - startX), true);
-      target.releasePointerCapture(event.pointerId);
+    // 제스처를 거두는 길은 하나여야 한다.
+    //
+    // 끌던 중 분할선이 사라지면(Alt+T로 모드가 바뀌거나 마지막 companion이 닫히면) 떼어진 노드에는
+    // 끝 이벤트가 오지 않아 전역 플래그가 남고, 앱 전체가 선택 불가·col-resize 커서로 굳는다 —
+    // 실측으로 재현했다. 그때 브라우저가 실제로 보내는 것은 **document의 lostpointercapture**이고
+    // (요소가 아니다), 이어지는 pointerup은 커서 아래의 다른 요소에서 window까지 버블한다.
+    // 그래서 끝 신호는 노드가 아니라 document·window에서 받는다.
+    let settled = false;
+    const finish = (clientX: number | null) => {
+      if (settled) return;
+      settled = true;
+      if (clientX !== null) applyCompanionDivider(dividerIndex, leftStart + (clientX - startX), true);
+      if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
       target.classList.remove("is-dragging");
       document.body.removeAttribute("data-companion-resizing");
       target.removeEventListener("pointermove", onMove);
-      target.removeEventListener("pointerup", onUp);
-      target.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("lostpointercapture", onLost);
     };
+
+    const onMove = (moveEvent: PointerEvent) => {
+      applyCompanionDivider(dividerIndex, leftStart + (moveEvent.clientX - startX), false);
+    };
+    const onUp = (upEvent: PointerEvent) => finish(upEvent.clientX);
+    // 캡처를 잃은 자리는 포인터가 어디 있었는지 말해 주지 않는다 — 마지막으로 놓인 폭을 그대로 둔다.
+    // 정상 종료에서는 pointerup이 먼저 와 이미 settled이므로 이 경로는 조용히 지나간다.
+    const onLost = () => finish(null);
+
+    // 이동만 노드에서 받는다 — 노드가 떨어져 나가면 이동도 그 자리에서 멎어야 한다.
     target.addEventListener("pointermove", onMove);
-    target.addEventListener("pointerup", onUp);
-    target.addEventListener("pointercancel", onUp);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    document.addEventListener("lostpointercapture", onLost);
   }
 
   function nudgeCompanionDivider(dividerIndex: number, deltaPx: number): void {
