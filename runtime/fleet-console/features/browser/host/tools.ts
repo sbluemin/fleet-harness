@@ -60,7 +60,12 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
    */
   const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<TextBlock[]> => {
     const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg" });
-    const geometry = `Screenshot ${shot.width}x${shot.height} CSS px. Coordinates for computer actions are these pixels; the origin is the top-left of the viewport.`;
+    const viewportLine = `Reported viewport ${shot.viewport.width}x${shot.viewport.height} (${shot.viewport.preset}${shot.viewport.followsPane ? ", follows pane" : ", emulated"}).`;
+    const layoutLine = shot.layout ? `Page layout metrics ${shot.layout.width}x${shot.layout.height}.` : "Page layout metrics unavailable.";
+    const stale = shot.staleViewport
+      ? " WARNING: stored viewport disagreed with page layout before this capture — prior screenshot coordinates may be stale; take a fresh screenshot before clicking by coordinate."
+      : "";
+    const geometry = `Screenshot capture ${shot.width}x${shot.height} CSS px. ${viewportLine} ${layoutLine}${stale} Coordinates for computer actions are these capture pixels; the origin is the top-left of the capture.`;
     // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
     // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
     if (signal.aborted) return [{ type: "text", text: geometry }];
@@ -81,15 +86,15 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels of the last screenshot (viewport origin). Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find (scroll_to) before coordinate clicks. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
+  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels of the last screenshot capture (viewport origin). Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
     type: "object", properties: {
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
-      coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in CSS pixels." },
+      coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in CSS pixels from the latest screenshot capture." },
       start_coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Drag start for left_click_drag." },
       text: { type: "string", description: "Text for type, or the key chord for key." },
       scroll_direction: { type: "string", enum: ["up", "down", "left", "right"] },
       scroll_amount: { type: "number", description: "Wheel notches (default 3)." },
-      ref: { type: "string", description: "Element ref (ref_N) for scroll_to." },
+      ref: { type: "string", description: "Element ref (ref_N) for scroll_to or click actions." },
       duration: { type: "number", description: "Seconds for wait (max 10)." },
       region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4, description: "[x, y, width, height] for zoom." },
       tabId: TAB_ID,
@@ -97,12 +102,22 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   }, async (args, operationId, signal) => {
     const tabId = args.tabId ?? null;
     const xy = (value: unknown): { x: number; y: number } => { if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === "number" && Number.isFinite(n))) throw new BrowserPolicyError("browser_coordinate_invalid", "coordinate must be [x, y] numbers from the latest screenshot."); return { x: value[0], y: value[1] }; };
+    let dispatchSummary: string | null = null;
     switch (args.action) {
       case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal), isError: false };
       case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }), isError: false }; }
       case "left_click": case "right_click": case "double_click": case "triple_click": {
-        const { x, y } = xy(args.coordinate);
-        await service.click(operationId, x, y, { button: args.action === "right_click" ? "right" : "left", clickCount: args.action === "double_click" ? 2 : args.action === "triple_click" ? 3 : 1 }, tabId);
+        const button = args.action === "right_click" ? "right" as const : "left" as const;
+        const clickCount = args.action === "double_click" ? 2 : args.action === "triple_click" ? 3 : 1;
+        const hasRef = typeof args.ref === "string" && args.ref.length > 0;
+        const hasCoordinate = Array.isArray(args.coordinate);
+        if (hasRef && hasCoordinate) throw new BrowserPolicyError("browser_click_target_ambiguous", "Pass either ref or coordinate for click actions, not both.");
+        if (!hasRef && !hasCoordinate) throw new BrowserPolicyError("browser_click_target_required", "Click actions require ref (from read_page/find) or coordinate from the latest screenshot.");
+        const dispatched = hasRef
+          ? await service.clickRef(operationId, String(args.ref), { button, clickCount, signal }, tabId)
+          : await service.clickAt(operationId, xy(args.coordinate).x, xy(args.coordinate).y, { button, clickCount, signal }, tabId);
+        const hit = dispatched.hit ? ` hit=${dispatched.hit.selector || dispatched.hit.tag}${dispatched.hit.disabled ? " disabled=true" : ""}${dispatched.hit.text ? ` text=${JSON.stringify(dispatched.hit.text)}` : ""}` : " hit=(none)";
+        dispatchSummary = `${args.action}: input dispatched at [${Math.round(dispatched.x)}, ${Math.round(dispatched.y)}]${dispatched.ref ? ` ref=${dispatched.ref}` : ""}${hit}.${dispatched.note ? ` ${dispatched.note}` : ""} This reports pointer dispatch only — confirm with the screenshot or page state; do not assume the control activated.`;
         break;
       }
       case "hover": { const { x, y } = xy(args.coordinate); await service.mouse(operationId, { type: "move", x, y }, tabId); break; }
@@ -121,10 +136,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
-    return { content: [{ type: "text", text: `${args.action} done.` }, ...await screenshotBlock(operationId, tabId, signal)], isError: false };
+    const summary = dispatchSummary ?? `${args.action}: input dispatched. Confirm with the screenshot or page state; do not assume success.`;
+    return { content: [{ type: "text", text: summary }, ...await screenshotBlock(operationId, tabId, signal)], isError: false };
   });
 
-  const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry [ref_N] ids for form_input, computer scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
+  const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry [ref_N] ids for form_input, computer clicks/scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
     type: "object", properties: { filter: { type: "string", enum: ["interactive", "all"] }, max_chars: { type: "number" }, tabId: TAB_ID }, additionalProperties: false,
   }, async (args, operationId) => { const page = await service.readPage(operationId, { tabId: args.tabId ?? null, filter: args.filter, maxChars: typeof args.max_chars === "number" ? args.max_chars : undefined }); return text(page.text || "(empty page)"); });
 
@@ -155,11 +171,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     type: "object", properties: { code: { type: "string", minLength: 1, maxLength: 20_000 }, tabId: TAB_ID }, required: ["code"], additionalProperties: false,
   }, async (args, operationId) => { const result = await service.evaluate(operationId, String(args.code), args.tabId ?? null); return result.error ? text({ error: "javascript_failed", message: result.error }, true) : text(result.value === undefined ? "undefined" : result.value); });
 
-  const resizeWindow = spec("resize_window", "Emulate a viewport size in the Browser pane tab. Presets: mobile (375x812), tablet (768x1024), or desktop (returns to the pane's responsive size). Optionally emulate prefers-color-scheme. The user sees the same size and a “set by agent” mark.", {
-    type: "object", properties: { preset: { type: "string", enum: ["mobile", "tablet", "desktop"] }, width: { type: "number" }, height: { type: "number" }, colorScheme: { type: "string", enum: ["light", "dark", "system"] }, tabId: TAB_ID }, additionalProperties: false,
+  const resizeWindow = spec("resize_window", "Set the Browser pane tab viewport. Presets: mobile (375x812), tablet (768x1024), or desktop (clears emulation and follows the native pane size). Arbitrary width/height emulates that CSS size (not the previous preset). Optionally emulate prefers-color-scheme. The user sees the same size and a “set by agent” mark.", {
+    type: "object", properties: { preset: { type: "string", enum: ["mobile", "tablet", "desktop"] }, width: { type: "number", description: "CSS px width to emulate. With desktop/responsive, this locks an emulated size instead of the native pane." }, height: { type: "number", description: "CSS px height to emulate." }, colorScheme: { type: "string", enum: ["light", "dark", "system"] }, tabId: TAB_ID }, additionalProperties: false,
   }, async (args, operationId) => {
     const preset = args.preset === "desktop" ? "responsive" : args.preset;
-    const viewport = await service.setViewport(operationId, { preset, width: args.width, height: args.height, colorScheme: args.colorScheme === "system" ? null : args.colorScheme }, "agent");
+    const viewport = await service.setViewport(operationId, { preset, width: typeof args.width === "number" ? args.width : undefined, height: typeof args.height === "number" ? args.height : undefined, colorScheme: args.colorScheme === "system" ? null : args.colorScheme }, "agent");
     return text({ viewport });
   });
 

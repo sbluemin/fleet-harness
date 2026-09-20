@@ -103,6 +103,13 @@ interface OperationBrowser {
   tabs: Map<string, Tab>;
   activeTabId: string | null;
   viewport: BrowserViewport;
+  /**
+   * 셸이 놓은 네이티브 뷰의 실제 CSS px. 에뮬레이션(프리셋·임의 크기)과 분리한다 — 반응형으로 돌아올 때
+   * 직전 모바일/태블릿 숫자를 붙잡지 않도록 항상 갱신한다.
+   */
+  pane: { width: number; height: number; scale: number } | null;
+  /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
+  viewportFollowsPane: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null } | null;
   /** 「중단」이 눌린 횟수 — 배치처럼 여러 호출로 이어지는 실행이 중단을 건너뛰지 못하게 세대를 비교한다. */
@@ -116,6 +123,47 @@ interface OperationBrowser {
    */
   pendingTabs: number;
   agentCalls: Set<AbortController>;
+}
+
+/** 클릭이 CDP 로 나갔다는 사실과 그 좌표의 히트 진단. 성공(페이지가 반응했는지)을 추정하지 않는다. */
+export interface BrowserClickDispatch {
+  readonly dispatched: true;
+  readonly x: number;
+  readonly y: number;
+  readonly button: "left" | "right" | "middle";
+  readonly clickCount: number;
+  readonly ref: string | null;
+  readonly hit: { readonly tag: string; readonly id: string | null; readonly text: string; readonly disabled: boolean; readonly selector: string } | null;
+  readonly note: string | null;
+}
+
+/**
+ * resize_window / 패널 프리셋이 논리 뷰포트 크기를 어떻게 정할지. pane(실측)과 에뮬레이션을 섞지 않는다.
+ * - mobile/tablet → 고정 프리셋, 에뮬레이션
+ * - responsive + width/height → 요청 크기 에뮬레이션(실측 pane 과 무관)
+ * - responsive 단독 → 네이티브 pane(없으면 현재 값 유지), 에뮬레이션 해제
+ */
+export function resolveBrowserViewportSize(input: {
+  readonly preset: ViewportPreset;
+  readonly width?: number;
+  readonly height?: number;
+  readonly current: { readonly width: number; readonly height: number };
+  readonly pane: { readonly width: number; readonly height: number } | null;
+}): { readonly width: number; readonly height: number; readonly followsPane: boolean } {
+  if (input.preset === "mobile" || input.preset === "tablet") {
+    const preset = PRESETS[input.preset];
+    return { width: preset.width, height: preset.height, followsPane: false };
+  }
+  if (input.width !== undefined || input.height !== undefined) {
+    return {
+      width: clamp(input.width ?? input.current.width, 320, 3840),
+      height: clamp(input.height ?? input.current.height, 240, 2400),
+      followsPane: false,
+    };
+  }
+  const pane = input.pane;
+  if (pane) return { width: Math.max(1, Math.round(pane.width)), height: Math.max(1, Math.round(pane.height)), followsPane: true };
+  return { width: input.current.width, height: input.current.height, followsPane: true };
 }
 
 /** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 사람이 무엇을 해야 하는지 말한다. */
@@ -290,7 +338,7 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
+      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
@@ -471,7 +519,7 @@ export class BrowserService {
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
     this.deps.desktop.bindView(tab.targetId, op.operationId);
-    await this.applyViewport(client, tab, op.viewport);
+    await this.applyViewport(client, tab, op);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
     return this.state(operationId).tabs.find((entry) => entry.id === tab.id)!;
@@ -684,9 +732,15 @@ export class BrowserService {
     const p = event.params as Record<string, any>;
     switch (event.method) {
       case "Fleet.viewResized": {
-        // 셸이 놓은 뷰의 실제 크기가 곧 뷰포트다(반응형일 때). 좌표·스크린샷 클립이 이 값을 기준으로 한다.
-        if (op.viewport.preset !== "responsive") return;
+        // 셸이 놓은 네이티브 뷰 실측. 에뮬레이션 중에도 pane 은 갱신하고, 반응형일 때만 논리 뷰포트에 반영한다.
         const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
+        const paneSame = op.pane !== null && width === op.pane.width && height === op.pane.height && scale === op.pane.scale;
+        op.pane = { width, height, scale };
+        if (!op.viewportFollowsPane) {
+          if (scale !== op.viewport.scale) { op.viewport = { ...op.viewport, scale }; this.emitState(op); }
+          else if (!paneSame) this.emitState(op);
+          return;
+        }
         if (width === op.viewport.width && height === op.viewport.height && scale === op.viewport.scale) return;
         op.viewport = { ...op.viewport, width, height, scale };
         this.emitState(op);
@@ -715,7 +769,7 @@ export class BrowserService {
         this.emitState(op);
         // 교차 출처 항해로 렌더러가 바뀌면 페이지의 innerWidth 는 그대로여도 컴포지터가 창 표면(1280×657)으로
         // 되돌아가 스크린캐스트 프레임이 창 크기로 온다. 에뮬레이션을 다시 걸어야 프레임이 뷰포트를 따른다.
-        if (this.client) void this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
+        if (this.client) void this.applyViewport(this.client, tab, op).catch(() => undefined);
         return;
       }
       case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
@@ -725,7 +779,7 @@ export class BrowserService {
         tab.loading = false;
         const client = this.client;
         if (client) void this.refreshTab(client, tab).then(() => this.emitState(op));
-        if (client) void this.applyViewport(client, tab, op.viewport).catch(() => undefined);
+        if (client) void this.applyViewport(client, tab, op).catch(() => undefined);
         return;
       }
       case "Runtime.consoleAPICalled": {
@@ -764,25 +818,66 @@ export class BrowserService {
 
   // ---------- 뷰포트 ----------
 
-  /** 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋만 뷰 안에서 흉내 낸다. */
-  private async applyViewport(client: CdpClient, tab: Tab, viewport: BrowserViewport): Promise<void> {
-    const preset = viewport.preset === "responsive" ? null : PRESETS[viewport.preset];
-    if (preset) await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile: preset.mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
-    else await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
+  /** 네이티브 pane 실측 — 셸 이벤트 또는 활성 뷰에 이미 기록된 크기. */
+  private paneOf(op: OperationBrowser): { width: number; height: number; scale: number } | null {
+    if (op.pane) return op.pane;
+    if (!op.activeTabId) return null;
+    const tab = op.tabs.get(op.activeTabId);
+    if (!tab) return null;
+    const size = this.deps.desktop.viewSize(tab.targetId);
+    if (!size) return null;
+    op.pane = { width: size.width, height: size.height, scale: size.scale };
+    return op.pane;
+  }
+
+  /** 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다. */
+  private async applyViewport(client: CdpClient, tab: Tab, op: OperationBrowser): Promise<void> {
+    const viewport = op.viewport;
+    if (op.viewportFollowsPane) {
+      await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
+    } else {
+      const mobile = viewport.preset === "mobile" || viewport.preset === "tablet";
+      await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
+    }
     await client.send("Emulation.setEmulatedMedia", { features: viewport.colorScheme ? [{ name: "prefers-color-scheme", value: viewport.colorScheme }] : [] }, tab.sessionId);
   }
 
   async setViewport(operationId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
     const op = this.operation(operationId);
     const preset = request.preset ?? (request.width || request.height ? "responsive" : op.viewport.preset);
-    const size = preset === "responsive"
-      ? { width: clamp(request.width ?? op.viewport.width, 320, 3840), height: clamp(request.height ?? op.viewport.height, 240, 2400) }
-      : PRESETS[preset];
     // 색 구성만 맞추는 요청(테마 따라가기)은 표시 동기화지 뷰포트 결정이 아니다 — 에이전트가 정한 프리셋의 소유권을 지우지 않는다.
     const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined;
-    const setBy = displayOnly ? op.viewport.setBy : actor;
-    op.viewport = { width: size.width, height: size.height, scale: op.viewport.scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
-    if (this.client) for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op.viewport).catch(() => undefined);
+    if (displayOnly) {
+      op.viewport = { ...op.viewport, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
+      if (this.client) for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op).catch(() => undefined);
+      this.emitState(op);
+      return op.viewport;
+    }
+    const resolved = resolveBrowserViewportSize({
+      preset,
+      width: request.width,
+      height: request.height,
+      current: op.viewport,
+      pane: this.paneOf(op),
+    });
+    const setBy = actor;
+    const scale = op.pane?.scale ?? op.viewport.scale;
+    op.viewportFollowsPane = resolved.followsPane;
+    op.viewport = { width: resolved.width, height: resolved.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? op.viewport.colorScheme : request.colorScheme };
+    if (this.client) {
+      for (const tab of op.tabs.values()) await this.applyViewport(this.client, tab, op).catch(() => undefined);
+      // 반응형 복귀 직후 셸 size 이벤트가 다시 안 올 수 있다(pane 자리는 그대로). 레이아웃 실측으로 논리 크기를 맞춘다.
+      if (op.viewportFollowsPane) {
+        const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
+        if (active) {
+          const layout = await this.layoutViewport(this.client, active);
+          if (layout && (layout.width !== op.viewport.width || layout.height !== op.viewport.height)) {
+            op.viewport = { ...op.viewport, width: layout.width, height: layout.height };
+            if (!op.pane) op.pane = { width: layout.width, height: layout.height, scale: op.viewport.scale };
+          }
+        }
+      }
+    }
     this.emitState(op);
     return op.viewport;
   }
@@ -812,6 +907,95 @@ export class BrowserService {
   async click(operationId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number } = {}, tabId?: string | null): Promise<void> {
     await this.mouse(operationId, { type: "move", x, y }, tabId);
     for (let i = 1; i <= (options.clickCount ?? 1); i += 1) await this.mouse(operationId, { type: "click", x, y, button: options.button, clickCount: i }, tabId);
+  }
+
+  /** 좌표 클릭 — 기존 `click` 과 동일하게 CDP 포인터를 보내고, 맞은 요소 진단만 덧붙인다(성공 추정 없음). */
+  async clickAt(operationId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
+    const button = options.button ?? "left";
+    const clickCount = options.clickCount ?? 1;
+    this.throwIfAborted(options.signal);
+    const hit = await this.probePoint(operationId, x, y, tabId);
+    this.throwIfAborted(options.signal);
+    await this.click(operationId, x, y, { button, clickCount }, tabId);
+    const note = hit?.disabled ? "Hit target reports disabled=true; input was still dispatched." : null;
+    return { dispatched: true, x, y, button, clickCount, ref: null, hit, note };
+  }
+
+  /**
+   * ref 클릭 — scrollIntoView → 기하 안정화 → 히트 테스트 → 실제 CDP 포인터.
+   * stale / disabled / occluded 는 명확히 거절하고, 보낸 뒤에는 성공을 추정하지 않는다.
+   */
+  async clickRef(operationId: string, ref: string, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
+    const op = this.operation(operationId);
+    const tab = this.tab(op, tabId);
+    const client = await this.engineClient();
+    const signal = options.signal;
+    this.throwIfAborted(signal);
+    const { objectId, backendNodeId } = await this.resolveRef(client, tab, ref);
+    const button = options.button ?? "left";
+    const clickCount = options.clickCount ?? 1;
+    try {
+      const connected = await client.send<{ result: { value?: boolean } }>("Runtime.callFunctionOn", { objectId, functionDeclaration: "function(){ return this.isConnected; }", returnByValue: true }, tab.sessionId);
+      if (connected.result.value === false) throw new BrowserPolicyError("browser_ref_unknown", `${ref} no longer points at a live element. Call read_page or find again and use a fresh ref.`, { ref });
+      await client.send("Runtime.callFunctionOn", { objectId, functionDeclaration: "function(){ this.scrollIntoView({block:'center', inline:'center'}); }" }, tab.sessionId);
+      this.throwIfAborted(signal);
+      const center = await this.stableBoxCenter(client, tab, backendNodeId, signal);
+      this.throwIfAborted(signal);
+      const probe = await client.send<{ result: { value?: { ok: boolean; reason?: string; x: number; y: number; disabled: boolean; hit: { tag: string; id: string | null; text: string; disabled: boolean; selector: string } | null } } }>("Runtime.callFunctionOn", {
+        objectId,
+        returnByValue: true,
+        functionDeclaration: HIT_TEST_FUNCTION,
+      }, tab.sessionId);
+      const value = probe.result.value;
+      if (!value) throw new BrowserPolicyError("browser_ref_unresolved", `${ref} could not be hit-tested. Call read_page again and use a fresh ref.`);
+      if (value.reason === "not_visible") throw new BrowserPolicyError("browser_ref_not_visible", `${ref} has no visible box after scrolling into view.`, { ref });
+      if (value.reason === "disabled" || value.disabled) throw new BrowserPolicyError("browser_ref_disabled", `${ref} is disabled.`, { ref, hit: value.hit });
+      if (value.reason === "occluded" || value.reason === "no_hit") throw new BrowserPolicyError("browser_ref_occluded", `${ref} is not the topmost element at its center${value.hit ? ` (hit ${value.hit.selector || value.hit.tag})` : ""}.`, { ref, hit: value.hit, x: value.x, y: value.y });
+      if (!value.ok) throw new BrowserPolicyError("browser_ref_unresolved", `${ref} could not be clicked (${value.reason ?? "unknown"}).`, { ref });
+      const x = Number.isFinite(value.x) ? value.x : center.x;
+      const y = Number.isFinite(value.y) ? value.y : center.y;
+      this.throwIfAborted(signal);
+      await this.click(operationId, x, y, { button, clickCount }, tabId);
+      return { dispatched: true, x, y, button, clickCount, ref, hit: value.hit, note: null };
+    } catch (error) {
+      this.rethrowStaleRef(ref, error);
+      throw error;
+    }
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new Error("browser_call_interrupted");
+  }
+
+  private rethrowStaleRef(ref: string, error: unknown): void {
+    if (error instanceof BrowserPolicyError) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/detached|could not find node|node with given id|backend node|no node|object.*not found|cannot find object/i.test(message)) {
+      throw new BrowserPolicyError("browser_ref_unknown", `${ref} no longer points at a live element (detached or replaced). Call read_page or find again and use a fresh ref.`, { ref, cause: message });
+    }
+  }
+
+  private async stableBoxCenter(client: CdpClient, tab: Tab, backendNodeId: number, signal?: AbortSignal): Promise<{ x: number; y: number }> {
+    let previous: { x: number; y: number } | null = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      this.throwIfAborted(signal);
+      const box = await client.send<{ model: { content: number[] } }>("DOM.getBoxModel", { backendNodeId }, tab.sessionId);
+      const q = box.model.content;
+      const next = { x: (q[0]! + q[2]! + q[4]! + q[6]!) / 4, y: (q[1]! + q[3]! + q[5]! + q[7]!) / 4 };
+      if (previous && Math.abs(previous.x - next.x) < 0.5 && Math.abs(previous.y - next.y) < 0.5) return next;
+      previous = next;
+      this.throwIfAborted(signal);
+      await client.send("Runtime.evaluate", { expression: "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))", awaitPromise: true }, tab.sessionId).catch(() => undefined);
+    }
+    if (!previous) throw new BrowserPolicyError("browser_ref_not_visible", "Element box model was empty after scrolling into view.");
+    return previous;
+  }
+
+  private async probePoint(operationId: string, x: number, y: number, tabId?: string | null): Promise<BrowserClickDispatch["hit"]> {
+    const info = await this.inspectAt(operationId, x, y, tabId);
+    if (!info) return null;
+    const disabled = await this.evaluate<boolean>(operationId, `(() => { const el = document.elementFromPoint(${Math.round(x)}, ${Math.round(y)}); if (!el) return false; const node = el; return !!(node.disabled || node.getAttribute?.('aria-disabled') === 'true' || node.closest?.('[disabled], [aria-disabled="true"]')); })()`, tabId);
+    return { tag: info.tag, id: info.id, text: info.text.slice(0, 120), disabled: disabled.value === true, selector: info.selector };
   }
 
   async drag(operationId: string, from: { x: number; y: number }, to: { x: number; y: number }, tabId?: string | null): Promise<void> {
@@ -856,13 +1040,44 @@ export class BrowserService {
 
   // ---------- 관찰 ----------
 
-  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg" } = {}): Promise<{ data: string; mimeType: string; width: number; height: number }> {
+  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg" } = {}): Promise<{ data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
     const op = this.operation(operationId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
-    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...(options.clip ?? { x: 0, y: 0, width: op.viewport.width, height: op.viewport.height }), scale: 1 / op.viewport.scale }, captureBeyondViewport: false }, tab.sessionId);
-    return { data: result.data, mimeType: format === "png" ? "image/png" : "image/jpeg", width: options.clip?.width ?? op.viewport.width, height: options.clip?.height ?? op.viewport.height };
+    const layout = await this.layoutViewport(client, tab);
+    // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
+    const storedBeforeHeal = { width: op.viewport.width, height: op.viewport.height };
+    const staleViewport = !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
+    if (op.viewportFollowsPane && layout && (layout.width !== op.viewport.width || layout.height !== op.viewport.height)) {
+      op.viewport = { ...op.viewport, width: layout.width, height: layout.height };
+      this.emitState(op);
+    }
+    // 캡처는 실제 페이지 layout(또는 명시 clip)을 쓴다 — 저장된 논리 크기와 어긋나도 잘리지 않게.
+    const clip = options.clip ?? { x: 0, y: 0, width: layout?.width ?? op.viewport.width, height: layout?.height ?? op.viewport.height };
+    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / op.viewport.scale }, captureBeyondViewport: false }, tab.sessionId);
+    return {
+      data: result.data,
+      mimeType: format === "png" ? "image/png" : "image/jpeg",
+      width: clip.width,
+      height: clip.height,
+      viewport: { width: op.viewport.width, height: op.viewport.height, preset: op.viewport.preset, followsPane: op.viewportFollowsPane },
+      layout,
+      staleViewport,
+    };
+  }
+
+  private async layoutViewport(client: CdpClient, tab: Tab): Promise<{ width: number; height: number } | null> {
+    try {
+      const metrics = await client.send<{ cssLayoutViewport?: { clientWidth?: number; clientHeight?: number }; cssVisualViewport?: { clientWidth?: number; clientHeight?: number }; layoutViewport?: { clientWidth?: number; clientHeight?: number } }>("Page.getLayoutMetrics", {}, tab.sessionId);
+      const box = metrics.cssLayoutViewport ?? metrics.cssVisualViewport ?? metrics.layoutViewport;
+      const width = Math.round(Number(box?.clientWidth) || 0);
+      const height = Math.round(Number(box?.clientHeight) || 0);
+      if (width < 1 || height < 1) return null;
+      return { width, height };
+    } catch {
+      return null;
+    }
   }
 
   async evaluate<T = unknown>(operationId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {
@@ -927,8 +1142,13 @@ export class BrowserService {
   private async resolveRef(client: CdpClient, tab: Tab, ref: string): Promise<{ objectId: string; backendNodeId: number }> {
     const backendNodeId = tab.refs.get(ref);
     if (backendNodeId === undefined) throw new BrowserPolicyError("browser_ref_unknown", `${ref} is not a current element reference. Call read_page or find again and use a fresh ref.`);
-    const resolved = await client.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId }, tab.sessionId);
-    return { objectId: resolved.object.objectId, backendNodeId };
+    try {
+      const resolved = await client.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId }, tab.sessionId);
+      return { objectId: resolved.object.objectId, backendNodeId };
+    } catch (error) {
+      this.rethrowStaleRef(ref, error);
+      throw error;
+    }
   }
 
   async refCenter(operationId: string, ref: string, tabId?: string | null): Promise<{ x: number; y: number }> {
@@ -1026,6 +1246,32 @@ export interface ElementInfo {
   readonly source: string | null;
   readonly styles: Record<string, string>;
 }
+
+/** ref 클릭 직전 — 가운데 점이 자신(또는 자손)인지, disabled 인지. */
+const HIT_TEST_FUNCTION = `function () {
+  const el = this.nodeType === 3 ? this.parentElement : this;
+  if (!el || !el.getBoundingClientRect) return { ok: false, reason: 'not_visible', x: 0, y: 0, disabled: false, hit: null };
+  const r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return { ok: false, reason: 'not_visible', x: 0, y: 0, disabled: false, hit: null };
+  const desc = (node) => {
+    if (!node || !node.tagName) return null;
+    const id = node.id || null;
+    const cls = node.classList ? Array.from(node.classList).slice(0, 2) : [];
+    const selector = node.tagName.toLowerCase() + (id ? '#' + id : (cls.length ? '.' + cls.join('.') : ''));
+    const text = ((node.innerText || node.value || node.getAttribute?.('aria-label') || '') + '').trim().slice(0, 120);
+    const disabled = !!(node.disabled || node.getAttribute?.('aria-disabled') === 'true' || node.closest?.('[disabled], [aria-disabled="true"]'));
+    return { tag: node.tagName.toLowerCase(), id, text, disabled, selector };
+  };
+  const disabled = !!(el.disabled || el.getAttribute?.('aria-disabled') === 'true' || el.closest?.('[disabled], [aria-disabled="true"]'));
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const top = document.elementFromPoint(x, y);
+  if (!top) return { ok: false, reason: 'no_hit', x, y, disabled, hit: null };
+  const within = el === top || el.contains(top);
+  const hit = desc(top);
+  if (!within) return { ok: false, reason: 'occluded', x, y, disabled, hit };
+  if (disabled) return { ok: false, reason: 'disabled', x, y, disabled: true, hit };
+  return { ok: true, x, y, disabled: false, hit };
+}`;
 
 /** 페이지 안에서 실행 — 셀렉터, React 파이버의 컴포넌트 이름과 개발 빌드의 소스 위치를 읽는다. */
 const INSPECT_FUNCTION = `function () {
