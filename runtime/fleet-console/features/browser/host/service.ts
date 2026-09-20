@@ -914,7 +914,8 @@ export class BrowserService {
     const button = options.button ?? "left";
     const clickCount = options.clickCount ?? 1;
     this.throwIfAborted(options.signal);
-    const hit = await this.probePoint(operationId, x, y, tabId);
+    // 진단 중 노드가 교체돼도 기존 저수준 좌표 입력을 막지 않는다. 중단은 아래에서 별도로 확인한다.
+    const hit = await this.probePoint(operationId, x, y, tabId).catch(() => null);
     this.throwIfAborted(options.signal);
     await this.click(operationId, x, y, { button, clickCount }, tabId);
     const note = hit?.disabled ? "Hit target reports disabled=true; input was still dispatched." : null;
@@ -1264,7 +1265,14 @@ const HIT_TEST_FUNCTION = `function () {
   };
   const disabled = !!(el.disabled || el.getAttribute?.('aria-disabled') === 'true' || el.closest?.('[disabled], [aria-disabled="true"]'));
   const x = r.left + r.width / 2, y = r.top + r.height / 2;
-  const top = document.elementFromPoint(x, y);
+  let top = document.elementFromPoint(x, y);
+  // 바깥 문서의 가림 판정을 보존하며 대상의 shadow root 경로만 따라간다(닫힌 root 포함).
+  const roots = [];
+  for (let root = el.getRootNode(); root && root.host; root = root.host.getRootNode()) roots.unshift(root);
+  for (const root of roots) {
+    if (top !== root.host) break;
+    top = root.elementFromPoint(x, y);
+  }
   if (!top) return { ok: false, reason: 'no_hit', x, y, disabled, hit: null };
   const within = el === top || el.contains(top);
   const hit = desc(top);
