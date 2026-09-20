@@ -1331,6 +1331,26 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   // 재생 구간에서만 이 이름들이 스텝으로 온다 — 라이브에서는 카드가 그 자리를 대신한다.
   AskUserQuestion: "ask",
   ExitPlanMode: "propose",
+  // 이 Theater가 실어 준 절차를 부르는 호출 — 자기 계열을 가진다. 실측에서 14일 915회로 내장
+  // 도구 6위였는데, 표에 없다는 이유만으로 "그 밖"의 점 하나로 서고 있었다.
+  Skill: "skill",
+  // 아래는 계열을 새로 만들지 않고 이미 있는 글자로 읽히는 이름들이다. 표에 없는 이름이 전부
+  // 같은 점으로 떨어지면 그 점은 "모르는 것"이 아니라 "아직 안 적은 것"을 뜻하게 되고,
+  // 그러면 점 자체가 아무 말도 하지 않는다.
+  //
+  // [무엇을 싣고 무엇을 남기는가] 계열은 글리프만이 아니라 **문장**을 정한다. 그래서 글리프가
+  // 맞아도 그 계열의 문장이 거짓이 되는 이름은 여기 싣지 않는다 — `SendMessage`를 delegate에
+  // 두면 줄이 "1건 위임"이라 말하는데 실제로는 이미 도는 상대에게 말을 건 것이고,
+  // `ScheduleWakeup`을 plan에 두면 "계획 갱신"이 된다. 그런 이름은 점으로 남는 편이 정확하다:
+  // `other`는 도구 이름을 그대로 세우므로 "SendMessage 2회"는 적어도 참이다.
+  ToolSearch: "search",
+  ListMcpResourcesTool: "search",
+  // MCP 리소스를 가져오는 호출은 파일 읽기가 아니라 바깥에서 들여오는 일이다 — WebFetch와 같은 절.
+  ReadMcpResourceTool: "fetch",
+  // 글자는 이미 그려져 있었는데 어느 이름에도 걸려 있지 않았다.
+  Artifact: "artifact",
+  // 배경에서 도는 것을 지켜보는 호출 — BashOutput·TaskOutput과 같은 절이다.
+  Monitor: "inspect",
 };
 
 /**
