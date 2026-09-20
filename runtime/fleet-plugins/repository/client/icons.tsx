@@ -53,3 +53,17 @@ export function Icon({ name, size = 14, className, ...rest }: { readonly name: R
 export function remoteHostIcon(host: string | null | undefined): RepositoryIconName {
   return host === "github.com" ? "github" : "cloud";
 }
+
+/**
+ * 진행 글리프 슬롯 — 유휴·물결·완료 세 겹이 같은 자리를 쓴다.
+ * 물결은 유휴 글리프 위를 crest 사본이 마스크로 지나가는 것이라 글리프의 형태·방향이 흔들리지 않는다.
+ * 회전을 쓰지 않는 이유가 여기 있다: ⇩ ⇧ 서랍 구름은 방향과 형태가 의미의 전부다.
+ * settled를 넘기지 않는 표면(되읽기·새로고침)은 ✓ 겹을 만들지 않는다 — 그 동사에는 완료 문면이 없다.
+ */
+export function GlyphSlot({ name, size = 14, settled }: { readonly name: RepositoryIconName; readonly size?: number; readonly settled?: boolean }) {
+  return <span className={`repository-glyph-slot${settled ? " is-settled" : ""}`} style={size === 14 ? undefined : { width: size, height: size }} aria-hidden="true">
+    <span className="repository-glyph repository-glyph-idle"><Icon name={name} size={size} /></span>
+    <span className="repository-glyph repository-glyph-sweep"><Icon name={name} size={size} /></span>
+    {settled !== undefined && <span className="repository-glyph repository-glyph-settled"><Icon name="check" size={size} /></span>}
+  </span>;
+}

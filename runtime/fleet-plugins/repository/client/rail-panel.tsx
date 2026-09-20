@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
-import { Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
+import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -111,7 +111,7 @@ function verbCountText(raw: unknown, verb: "pull" | "push", t: T): string {
 }
 
 /**
- * 툴바 동사 버튼 — 동기화 버튼과 같은 부품으로 조립한다: 진행 중 회전, 성공 시 ✓ 체류,
+ * 툴바 동사 버튼 — 동기화 버튼과 같은 부품으로 조립한다: 진행 중 물결, 성공 시 ✓ 체류,
  * 결과 말풍선, 실패 점. 결과 표면이 버튼 안에 있으므로 어떤 답도 패널 본문을 밀어내지 않는다.
  */
 function VerbToolbarButton({ icon, label, title, count, disabled, busy, outcome, settled, hinting, failedTitle, onClick }: {
@@ -128,11 +128,8 @@ function VerbToolbarButton({ icon, label, title, count, disabled, busy, outcome,
   readonly onClick: () => void;
 }) {
   return (
-    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-syncing" : ""}`} title={title} disabled={disabled} onClick={onClick}>
-      <span className={`repository-sync-icon${settled ? " is-settled" : ""}`} aria-hidden="true">
-        <span className="repository-sync-glyph repository-sync-glyph-idle"><Icon name={icon} /></span>
-        <span className="repository-sync-glyph repository-sync-glyph-settled"><Icon name="check" /></span>
-      </span>
+    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-busy" : ""}`} title={title} disabled={disabled} onClick={onClick}>
+      <GlyphSlot name={icon} settled={settled} />
       <span className="repository-verb-label">{label}</span>
       {count}
       {outcome?.kind === "error" && <span className="repository-sync-dot" title={failedTitle} aria-hidden="true" />}
@@ -890,7 +887,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{syncNoticeMessage ?? ""}</span>
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked || verbBusy !== null ? undefined : handlePull} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           {/* 탐색은 소스 트리, Git 실행과 기록 필터는 한 도구막대에 둔다. */}
@@ -906,14 +903,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
               verbClusterRef.current?.querySelector<HTMLButtonElement>(".repository-verb-more")?.focus();
             }}>
               <span className="repository-verb-inline">
-                <button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle"><Icon name="fetch" /></span><span className="repository-sync-glyph repository-sync-glyph-settled"><Icon name="check" /></span></span><span className="repository-verb-label">{t("repository.sync.button")}</span>{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button>
+                <button type="button" className={`repository-sync-button${syncing ? " is-busy" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><GlyphSlot name="fetch" settled={syncSettled} /><span className="repository-verb-label">{t("repository.sync.button")}</span>{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button>
                 <VerbToolbarButton icon="pull" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={pullCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
                 <VerbToolbarButton icon="push" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={pushCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
                 <VerbToolbarButton icon="stash" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
               </span>
               <span className="repository-verb-overflow">
-                <button type="button" className={`repository-quiet-button repository-verb-more${syncing || verbBusy?.surface === "button" ? " is-syncing" : ""}`} aria-label={t("repository.verb.more")} title={t("repository.verb.more")} aria-haspopup="menu" aria-expanded={verbMenuOpen} onClick={() => setVerbMenuOpen((value) => !value)}>
-                  <Icon name="more" />
+                <button type="button" className={`repository-quiet-button repository-verb-more${syncing || verbBusy?.surface === "button" ? " is-busy" : ""}`} aria-label={t("repository.verb.more")} title={t("repository.verb.more")} aria-haspopup="menu" aria-expanded={verbMenuOpen} onClick={() => setVerbMenuOpen((value) => !value)}>
+                  <GlyphSlot name="more" />
                   {(syncFailed || verbFailed) && <span className="repository-sync-dot" title={t("repository.verb.lastFailed")} aria-hidden="true" />}
                 </button>
                 {verbMenuOpen && <div className="repository-verb-menu" role="menu" aria-label={t("repository.verb.menu")}>
@@ -965,6 +962,9 @@ interface WorkspaceTreeProps {
   readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
   /** 현재 브랜치 행의 behind 계기에서 바로 Pull — 잠금 중이면 건네지 않는다. */
   readonly onPull?: () => void;
+  /** Pull이 도는 동안 행의 동사는 사라지지 않는다 — 누른 자리가 답하는 자리다. */
+  readonly pullBusy?: boolean;
+  readonly pullDisabled?: boolean;
 }
 
 /** ahead/behind 계기 — 두 수가 모두 0이면 비운다(계기가 "동기화됨"을 말하는 자리는 아니다). */
@@ -977,7 +977,7 @@ function AheadBehind({ t, row }: { readonly t: T; readonly row: RepositoryRefRow
   </span>;
 }
 
-export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, onRepository, contextDisabled, refs, refsError, reloading = false, source, refFilter, onReloadState, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, onRepository, contextDisabled, refs, refsError, reloading = false, source, refFilter, onReloadState, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull, pullBusy = false, pullDisabled = false }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -1023,7 +1023,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     </button>
     <AheadBehind t={t} row={row} />
     <span className="repository-ws-tree-hover">
-      {row.current && row.behind && onPull ? <button type="button" className="repository-tree-action" title={t("repository.verb.pullTitle")} aria-label={t("repository.verb.pull")} onClick={onPull}><Icon name="pull" size={13} /></button> : null}
+      {row.current && row.behind && onPull ? <button type="button" className={`repository-tree-action${pullBusy ? " is-busy" : ""}`} title={t("repository.verb.pullTitle")} aria-label={t("repository.verb.pull")} aria-busy={pullBusy || undefined} disabled={pullDisabled} onClick={onPull}><GlyphSlot name="pull" size={13} /></button> : null}
       {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}
     </span>
   </div>;
@@ -1054,7 +1054,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
       <Icon name="search" size={13} className="repository-discovery-glyph" />
       <input className="repository-filter-input" aria-label={t("repository.refs.search")} placeholder={t("repository.refs.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
       {query && <button type="button" className="repository-quiet-button repository-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}
-      <button type="button" className={`repository-quiet-button repository-reload-state${reloading ? " is-syncing" : ""}`} aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} aria-busy={reloading || undefined} onClick={onReloadState}><Icon name="refresh" /></button>
+      <button type="button" className={`repository-quiet-button repository-reload-state${reloading ? " is-busy" : ""}`} aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} aria-busy={reloading || undefined} onClick={onReloadState}><GlyphSlot name="refresh" /></button>
     </div>
     <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${refRowCount}:${remoteRowCount}:${collapsedSections.size}`}>
       {(worktrees.length > 0 || worktreesError) && section("worktrees", worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktreeRows.length ? worktreeRows.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row is-worktree${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} disabled={contextDisabled} onClick={() => onRepository(worktree)}>
