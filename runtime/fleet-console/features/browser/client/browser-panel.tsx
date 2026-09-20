@@ -136,7 +136,14 @@ interface Rect { readonly x: number; readonly y: number; readonly width: number;
  * 이분 탐색으로 잘라 낸다. 안쪽이 덮였거나 너무 많이 잘리면 통째로 감춘다(null).
  */
 function visibleRect(host: HTMLElement, rect: DOMRect): Rect | null {
-  const inside = (x: number, y: number): boolean => { const hit = document.elementFromPoint(x, y); return hit !== null && host.contains(hit); };
+  const inside = (x: number, y: number): boolean => {
+    let hit = document.elementFromPoint(x, y);
+    // 투명한 클릭 캐처만 건너뛴다. 그 자식인 메뉴 카드는 여전히 네이티브 뷰를 가린다.
+    if (hit?.hasAttribute("data-native-browser-transparent")) {
+      hit = document.elementsFromPoint(x, y).find((element) => !element.hasAttribute("data-native-browser-transparent")) ?? null;
+    }
+    return hit !== null && host.contains(hit);
+  };
   const xs = Array.from({ length: OCCLUSION_COLUMNS }, (_, i) => rect.left + (i + 0.5) * rect.width / OCCLUSION_COLUMNS);
   const ys = Array.from({ length: OCCLUSION_ROWS }, (_, i) => rect.top + (i + 0.5) * rect.height / OCCLUSION_ROWS);
   const covered: { x: number; y: number }[] = [];
