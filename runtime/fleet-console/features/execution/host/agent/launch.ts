@@ -1,4 +1,4 @@
-import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
+import { buildFleetAgentRegistrations, buildFleetSeatsJson } from "@fleet-console/ai-gateway";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -151,6 +151,11 @@ export async function prepareChatClaudeSession(
     ...(gatewaySelection
       ? {
         gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
+        gatewaySeatsJson: buildFleetSeatsJson({
+          exposed: gatewaySelection.delegationModels,
+          ...(gatewaySelection.effortExposure ? { effortExposure: gatewaySelection.effortExposure } : {}),
+          ...(gatewaySelection.providerPriority ? { providerPriority: gatewaySelection.providerPriority } : {}),
+        }),
       }
       : {}),
   });
@@ -338,6 +343,11 @@ async function createAgentCliLaunchSpec(options: {
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
           gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
+          gatewaySeatsJson: buildFleetSeatsJson({
+            exposed: gatewaySelection.delegationModels,
+            ...(gatewaySelection.effortExposure ? { effortExposure: gatewaySelection.effortExposure } : {}),
+            ...(gatewaySelection.providerPriority ? { providerPriority: gatewaySelection.providerPriority } : {}),
+          }),
         }
         : {}),
     });

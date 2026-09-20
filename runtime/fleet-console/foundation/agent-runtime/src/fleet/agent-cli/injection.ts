@@ -60,6 +60,8 @@ export interface InjectAgentCliProfileOptions {
   readonly origin?: ClaudeSessionOrigin;
   /** Gateway가 노출 정책에 따라 미리 렌더링한 위임 정체성. 모델 의미를 여기서 다시 해석하지 않는다. */
   readonly gatewayAgents?: readonly FleetAgentRegistration[];
+  /** 같은 노출에서 나온 좌석표 JSON. 라우팅 Mod가 읽는다. */
+  readonly gatewaySeatsJson?: string;
 }
 
 /** 주입이 끝난 프로필과, 그 프로필이 열게 될 세션의 확정된 좌표. */
@@ -159,6 +161,7 @@ export async function injectAgentCliProfile(
       autoNameHookExec: options.autoNameHookExec,
       // 게이트웨이 정체성은 플러그인이 파일로 싣는다 — argv에는 이미 있던 플러그인 경로만 남는다.
       gatewayAgents: options.gatewayAgents,
+      gatewaySeatsJson: options.gatewaySeatsJson,
     });
     const cleanup = createOnceCleanup(() => {
       for (const tempCleanup of tempCleanups) {

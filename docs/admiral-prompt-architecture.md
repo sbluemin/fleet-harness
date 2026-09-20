@@ -23,8 +23,10 @@ This document is the operational reference for the Admiral's delegation-policy
 surface and runtime lifecycle model. Fleet appends one concise
 `<fleet_gateway_routing>` entrypoint to host sessions; detailed policy and live
 model state remain on-demand MCP resources. Fleet does not distribute delegation
-skills or inject per-turn runtime-context tags. This is behavioral guidance, not
-a code-enforced delegation gate. Live state is consumed through public leaf
+skills or inject per-turn runtime-context tags. That entrypoint is behavioral
+guidance. Seat assignment itself is code: the routing mod described in section
+2.1 decides it per dispatch, and the entrypoint remains the only routing surface
+wherever that mod cannot load. Live state is consumed through public leaf
 package APIs and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
@@ -69,6 +71,52 @@ SessionStart version stamp, selected by its first argument:
 |---|---|---|---|
 | `plugin-version` | SessionStart | — | Records the rendered Fleet plugin version in session context. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
+
+## 2.1 Routing Mod
+
+`runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-routing-mod.tsx` is a
+Claude Code function-hooks module (a "mod"), rendered into the Fleet plugin at
+`hooks/fleet-routing-mod.tsx` and named by `hooks/hooks.json`'s `modules`. It is a different
+surface from the command hooks beside it: it runs inside the session, hooks events, and draws.
+`prepareAiGatewayLaunchProfile` sets `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` for gateway launches,
+preserving an operator's own value; the surface is otherwise off by default and rollout-gated,
+and a restricted session or a locked `hooks` surface still refuses it.
+
+The mod hooks `agent.spawn`, the one door both the Agent tool and a Workflow's stage agents
+pass through, so one decision point covers Agent and dynamic Workflow alike. Per dispatch it
+resolves a seat and passes the rewrite on through `next`:
+
+| The call names | What happens |
+|---|---|
+| a concrete `fleet:` identity | passed through; an explicit host choice stands |
+| a `fleet:<role>` seat name | retyped to that seat's registered identity |
+| nothing, `general-purpose`, `Explore` | retyped to the inherited seat, `model` cleared |
+| a fork | passed through; a fork inherits by definition |
+| anything, with no seat table | passed through; the mod records and draws only |
+
+It retypes only to a name `agent.offer` has confirmed this call can dispatch, because a
+`subagentType` naming an undispatchable agent refuses the whole spawn. Where the seated
+identity is not registered this session it sets `model` instead, which carries the model
+without its effort, and says so in the pane. Nothing is inferred from a prompt or a
+description: this is a registry lookup and a table read, never the pseudo-parser that retired
+`gate-delegation`. A failed hook falls back to `next(e)` unchanged.
+
+The seat table is decided by `buildFleetSeatTable`
+(`runtime/fleet-console/features/ai-gateway/runtime/src/fleet/seat-table.ts`) from the same
+loadout the models resource reports, and rendered into the mod's source at snapshot assembly,
+so a seat change is a content-hash change and a new snapshot. Judgment seats (`review`,
+`judge`, `propose`) take the top measured quality band; mechanical seats (`recon`, `scan`,
+`verify`, `implement`) spread across providers in the user's spend order. Host-lineage
+(`homolineage`) models are demoted out of contention and seated only when no other model is
+reachable, since independence from the host's own lineage is half of why a run is delegated.
+An empty exposure yields an empty table, and the mod then observes without rerouting.
+Launch-time seats carry no quota reading, so allowance pressure narrows the field only where a
+caller supplies one.
+
+`$.ui.notice` puts the decision under the dispatch's own row, and the `Fleet Routing` pane
+(`/fleet-routing`) carries the ledger: what was asked, which identity carried it, why, and how
+many runs stayed off the session model. The pane opens with the first dispatch. Diagnosis goes
+to `$.ui.log(..., { to: "debug" })`, never the transcript.
 
 There is no PreToolUse dispatch gate. The retired `gate-delegation` hook could judge only
 a pin's spelling — whether a name resolves was always the dispatcher's judgment — and its

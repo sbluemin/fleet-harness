@@ -156,3 +156,5 @@ export {
 } from "./fleet/gateway-agents.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 export { buildFleetAgentRegistrations } from "./fleet/gateway-agents.js";
+export { buildFleetSeatTable, buildFleetSeatsJson, FLEET_SEAT_ROLES } from "./fleet/seat-table.js";
+export type { FleetSeat, FleetSeatRole, FleetSeatTable } from "./fleet/seat-table.js";

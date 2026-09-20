@@ -1,4 +1,4 @@
-import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
+import { buildFleetAgentRegistrations, buildFleetSeatsJson } from "@fleet-console/ai-gateway";
 import { spawn } from "node:child_process";
 
 import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
@@ -46,6 +46,11 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
       gatewayAgents: buildFleetAgentRegistrations(selection.delegationModels, selection.effortExposure),
+      gatewaySeatsJson: buildFleetSeatsJson({
+        exposed: selection.delegationModels,
+        ...(selection.effortExposure ? { effortExposure: selection.effortExposure } : {}),
+        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
+      }),
       onCleanup: (cleanup) => profileCleanups.push(cleanup),
     });
     const launchProfile = prepareAiGatewayLaunchProfile(injected, {
