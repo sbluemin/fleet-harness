@@ -1158,9 +1158,14 @@ function claudeSystemPromptCaptionKey(mode: ClaudeCodeSystemPromptMode, body: st
     : "terminal.settings.claudeSystemPromptCaptionOff";
 }
 
+function promptDraftNeedsSave(draft: string, saved: string): boolean {
+  return draft !== saved && draft.length <= CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
+}
+
 /**
- * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 포커스가 떠날 때 PUT이 나간다.
- * 저장 성공 후에는 서버가 정규화한 본문을 초안의 기준으로 삼아, trim 때문에 dirty가 남지 않게 한다.
+ * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 포커스가 떠나거나
+ * 편집 영역이 언마운트될 때 PUT이 나간다. 저장 성공 후에는 서버가 정규화한 본문을
+ * 초안의 기준으로 삼아, trim 때문에 dirty가 남지 않게 한다.
  */
 function ClaudeCodeSystemPromptRow({
   mode,
@@ -1183,7 +1188,11 @@ function ClaudeCodeSystemPromptRow({
   const [draft, setDraft] = React.useState(savedPrompt);
   const [showSaved, setShowSaved] = React.useState(false);
   const draftRef = React.useRef(draft);
+  const savedPromptRef = React.useRef(savedPrompt);
+  const inFlightRef = React.useRef<string | null>(null);
+  const mountedRef = React.useRef(true);
   draftRef.current = draft;
+  savedPromptRef.current = savedPrompt;
   const limit = CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
   const overLimit = draft.length > limit;
   const showEditor = mode === "append" || mode === "off";
@@ -1195,19 +1204,31 @@ function ClaudeCodeSystemPromptRow({
     overLimit ? overLimitId : null,
   ].filter((id): id is string => id !== null).join(" ");
 
-  const commitPrompt = () => {
-    if (overLimit) return;
-    // 서버 기준값과 같을 때는 보내지 않는다 — 로컬 초안끼리 비교하면 trim 이후 재저장이 돈다.
-    if (draft === savedPrompt) return;
-    const sent = draft;
+  const flushPrompt = React.useCallback(() => {
+    const sent = draftRef.current;
+    if (!promptDraftNeedsSave(sent, savedPromptRef.current)) return;
+    // 같은 초안이 이미 나가는 중이면 다시 보내지 않는다(blur 직후 언마운트).
+    if (sent === inFlightRef.current) return;
+    inFlightRef.current = sent;
     void setSystemPromptSettingsField("claudeCodeCustomSystemPrompt", sent).then((ok) => {
-      if (!ok) return;
+      if (inFlightRef.current === sent) inFlightRef.current = null;
+      if (!ok || !mountedRef.current) return;
       const canonical = getSystemPromptSettingsStoreState().state?.claudeCodeCustomSystemPrompt ?? "";
       if (draftRef.current !== sent) return;
       setDraft(canonical);
       setShowSaved(true);
     });
-  };
+  }, []);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!showEditor) return;
+    return () => { flushPrompt(); };
+  }, [showEditor, flushPrompt]);
 
   return (
     <div className="global-settings-row is-stack" role="group" aria-labelledby="claude-code-system-prompt-label">
@@ -1244,10 +1265,12 @@ function ClaudeCodeSystemPromptRow({
             aria-invalid={overLimit}
             aria-describedby={describedBy}
             onChange={(event) => {
+              const next = event.target.value;
+              draftRef.current = next;
               setShowSaved(false);
-              setDraft(event.target.value);
+              setDraft(next);
             }}
-            onBlur={commitPrompt}
+            onBlur={flushPrompt}
           />
           <div className="agent-cli-path-actions">
             <p id={countId} className="global-settings-help">
