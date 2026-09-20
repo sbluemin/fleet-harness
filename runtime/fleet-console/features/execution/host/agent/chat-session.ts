@@ -44,6 +44,7 @@ import {
   type AgentChatQuestion,
   type AgentChatQueueEntry,
   type AgentChatStreamEvent,
+  type ChatAttachment,
   type ChatEventMapOptions,
   type ChatOrigin,
 } from "./chat-events.js";
@@ -130,6 +131,11 @@ export interface AgentChatSessionSeed {
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
+  /**
+   * 트랜스크립트에 적힌 첨부 경로를 미리보기 id로 되돌린다. 재생만 쓰며, 이 훅이 없으면 지난
+   * 턴의 첨부는 바이트 없는 자리로 그려진다 — 경로는 어느 쪽이든 브라우저로 가지 않는다.
+   */
+  readonly resolveAttachmentId?: (filePath: string) => string | null;
   readonly cancelComputerUse?: () => void;
   readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
@@ -237,6 +243,14 @@ const QUEUE_PREVIEW_CHARS = 200;
 interface QueuedDispatch {
   readonly text: string;
   readonly display: string;
+  /** 함께 보낸 이미지의 미리보기 좌표. 말풍선이 썸네일을 그리는 근거이며 경로는 싣지 않는다. */
+  readonly attachments: readonly ChatAttachment[];
+}
+
+/** `send`가 받는 표시 문면 한 벌 — 자식에게 갈 프롬프트와 갈라서 다룬다. */
+export interface ChatDispatchPresentation {
+  readonly display?: string;
+  readonly attachments?: readonly ChatAttachment[];
 }
 
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
@@ -631,7 +645,7 @@ class AgentChatSession {
       const raw = await fs.readFile(transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
-        const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames });
+        const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) });
         for (const event of mapped.events) {
           if (event.kind === "turn-start") {
             // 묶음의 첫 줄만 시작 시각으로 남긴다.
@@ -813,11 +827,11 @@ class AgentChatSession {
     return value;
   }
 
-  send(text: string, display: string = text, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): void {
+  send(text: string, presentation: ChatDispatchPresentation = {}, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): void {
     if (this.disposed) { onSettled?.("unknown"); return; }
     const id = `q${++this.queueSeq}`;
     this.pendingTurns += 1;
-    this.queuedDispatches.set(id, { text, display });
+    this.queuedDispatches.set(id, { text, display: presentation.display ?? text, attachments: presentation.attachments ?? [] });
     // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
     // 소유하는 이유다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이 따로 말하게 된다.
     this.pushQueue();
@@ -833,7 +847,7 @@ class AgentChatSession {
         // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
         this.pushQueue();
         const before = this.seq;
-        return this.dispatch(text, by).then(() => {
+        return this.dispatch(text, { display: presentation.display ?? text, attachments: presentation.attachments ?? [] }, by).then(() => {
           const endingKind = readChatCommandLaneName(text) === null ? "turn-end" : "command-end";
           const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === endingKind)?.event;
           onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : end?.kind === "command-end" ? end.ok ? "succeeded" : "failed" : "unknown");
@@ -2211,7 +2225,7 @@ class AgentChatSession {
    * 기다리는 이유는 자식의 사정이 아니라 화면의 사정이다 — 자식은 자기 큐를 갖고 있어 턴 중에
    * 받아도 잃지 않지만, 원장은 턴 하나씩 그리므로 앞 턴이 닫힌 뒤 다음 디스패치를 세운다.
    */
-  private async dispatch(text: string, by?: ChatOrigin): Promise<void> {
+  private async dispatch(text: string, presentation: { readonly display: string; readonly attachments: readonly ChatAttachment[] }, by?: ChatOrigin): Promise<void> {
     if (this.disposed) return;
     // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
     // "실패가 아니라 중지"라는 판정이다.
@@ -2225,7 +2239,15 @@ class AgentChatSession {
     // 정비 명령은 말풍선도 턴도 세우지 않는다 — 자기 줄 하나가 지시와 진행과 결말을 함께 진다.
     const lane = readChatCommandLaneName(text);
     if (lane === null) {
-      this.push({ kind: "dispatch", text, at: Date.now(), ...(by ? { by } : {}) });
+      // 원장에 서는 것은 사람이 쓴 문면과 첨부 좌표뿐이다 — 자식에게 갈 `text`에는 첨부의 호스트
+      // 절대 경로가 붙어 있고, 그 경로는 브라우저 DTO에 오르지 않는다(예약 칩과 같은 계약).
+      this.push({
+        kind: "dispatch",
+        text: presentation.display,
+        ...(presentation.attachments.length > 0 ? { attachments: presentation.attachments } : {}),
+        at: Date.now(),
+        ...(by ? { by } : {}),
+      });
     } else {
       this.commandLane = { name: lane };
       this.push({ kind: "command", name: lane, at: Date.now() });

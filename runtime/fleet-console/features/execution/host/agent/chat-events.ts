@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 
 import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command-policy.js";
+import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /**
  * Chat Mode의 브라우저行 이벤트 어휘와, 두 원천(트랜스크립트 JSONL·SDK 메시지 스트림)을
@@ -15,6 +16,13 @@ import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
 /** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
 export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+
+/**
+ * 사용자가 함께 보낸 이미지 하나. 브라우저에 가는 것은 미리보기 라우트의 좌표(id)뿐이고 호스트
+ * 경로는 서버에 남는다. `lapsed`는 지시 줄은 남았지만 바이트가 이미 회수된 자리다 — 지난
+ * 프로세스의 재생이 여기로 온다(스토어는 기동 때 자기 네임스페이스를 비운다).
+ */
+export type ChatAttachment = { readonly id: string } | { readonly lapsed: true };
 
 export interface AgentChatChange {
   readonly file: string;
@@ -124,7 +132,7 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Operation 이 보낸 지시. 없으면 사람이 친 것이다. */
-  | { readonly kind: "dispatch"; readonly text: string; readonly at?: number; readonly by?: ChatOrigin }
+  | { readonly kind: "dispatch"; readonly text: string; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 자식이 문맥을 비웠다(`/clear`). 서버가 이 신호를 받아 저널을 비우고 `cleared`를 낸다 —
    * 이 이벤트 자체는 원장에 남지 않는다.
@@ -400,6 +408,11 @@ export interface ChatEventMapOptions {
    * 흘렀으므로, 사본을 받아 적는 대신 원본을 되찾는다.
    */
   readonly toolTitles?: ReadonlyMap<string, string>;
+  /**
+   * 재생이 만난 첨부 경로를 미리보기 id로 되돌린다. 경로 자체는 어떤 경우에도 이벤트에 오르지
+   * 않는다 — 이 훅이 없거나 null을 돌려주면 바이트 없는 자리(`lapsed`)로 그려진다.
+   */
+  readonly resolveAttachmentId?: (filePath: string) => string | null;
 }
 
 /**
@@ -462,7 +475,15 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     // 경계까지 지우면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 갈아치우므로, 말풍선 없는
     // 여는 이벤트만 남긴다. 그 이벤트가 실제로 턴이 될지는 재생 루프가 정한다(지연 발행).
     if (isInjectedCarrier(line, text)) return [{ kind: "turn-start", ...atField }];
-    return [{ kind: "dispatch", text, ...atField }];
+    // 이 줄이 첨부와 함께 보낸 턴이면, 서버가 합성한 경로 지시가 그대로 적혀 있다. 재생에서도
+    // 문면과 첨부를 갈라 세운다 — 그러지 않으면 새로고침 한 번이 걷어낸 경로를 도로 불러온다.
+    const attached = splitLaunchAttachmentInstructions(text);
+    if (attached.paths.length === 0) return [{ kind: "dispatch", text, ...atField }];
+    const attachments = attached.paths.map((filePath): ChatAttachment => {
+      const id = options.resolveAttachmentId?.(filePath) ?? null;
+      return id === null ? { lapsed: true } : { id };
+    });
+    return [{ kind: "dispatch", text: attached.text, attachments, ...atField }];
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);

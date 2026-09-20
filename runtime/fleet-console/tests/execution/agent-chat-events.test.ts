@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,6 +13,7 @@ import {
   summarizeToolResult,
   type AgentChatStreamEvent,
 } from "../../features/execution/host/agent/chat-events.js";
+import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX } from "../../features/execution/host/agent/launch-attachments.js";
 import { readChatJournalEvent } from "../../features/execution/client/agent/chat/chat-events.js";
 
 describe("chat transcript mapping", () => {
@@ -20,6 +24,25 @@ describe("chat transcript mapping", () => {
       message: { role: "user", content: "tighten the refund path" },
     }));
     expect(events).toEqual([{ kind: "dispatch", text: "tighten the refund path", at: Date.parse("2026-08-14T01:00:00.000Z") }]);
+  });
+
+  it("keeps the attachment path out of the ledger and carries a preview coordinate instead", () => {
+    const filePath = path.join(os.tmpdir(), "fleet-attachments-abc123", "attachment-xyz", "image.png");
+    const line = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: `look at this\n\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}` },
+    });
+
+    expect(chatEventsFromTranscriptLine(line, { resolveAttachmentId: () => "att-1" }))
+      .toEqual([{ kind: "dispatch", text: "look at this", attachments: [{ id: "att-1" }] }]);
+    // 스토어가 모르는 경로(지난 프로세스가 만든 것)도 경로를 되살리지 않는다 — 자리만 남는다.
+    expect(chatEventsFromTranscriptLine(line))
+      .toEqual([{ kind: "dispatch", text: "look at this", attachments: [{ lapsed: true }] }]);
+    // 사람이 같은 문장을 친 경우는 첨부가 아니다 — 보관소 경로일 때만 걷는다.
+    expect(chatEventsFromTranscriptLine(JSON.stringify({
+      type: "user",
+      message: { role: "user", content: `${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}/tmp/notes/image.png` },
+    }))).toEqual([{ kind: "dispatch", text: `${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}/tmp/notes/image.png` }]);
   });
 
   it("maps a tool_result carrier to the step's outcome", () => {
