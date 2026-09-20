@@ -40,12 +40,13 @@ import { TerminalSurface } from "../terminal/shared/index.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalInactiveFlush, setTerminalRenderer, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
+import { BROWSER_COMPANION_ID } from "./browser-companion.js";
+import { createChatLinkInterceptor, useLinkOpenChoice } from "./link-open.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
-const BROWSER_COMPANION_ID = "browser";
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "../../../settings/client/execution-settings.js";
@@ -773,6 +774,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   // 떠버린다. "직접 연 순간에만"은 quick-launch-pin 투어와 같은 판정이다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
+  // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
+  const linkOpen = useLinkOpenChoice(context);
+  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose), [linkOpen.choose]);
 
   if (chatMode) {
     // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
@@ -786,9 +790,10 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
       );
     }
     return (
-      <div className="agent-stream-host">
+      <div className="agent-stream-host" onClick={onChatLinkClick}>
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
         <ComputerScreenShare operationId={context.operationId} />
+        {linkOpen.card}
       </div>
     );
   }
@@ -816,9 +821,11 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
+        onOpenLink={linkOpen.choose}
         onExit={() => removeSession(session.sessionId)}
       />
       <ComputerScreenShare operationId={context.operationId} />
+      {linkOpen.card}
     </div>
   );
 }
