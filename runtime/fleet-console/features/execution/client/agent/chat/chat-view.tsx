@@ -48,6 +48,28 @@ const SLEEP_ARM_WINDOW_MS = 8_000;
 /** 이것만 눌린 상태는 아직 조합 중이다 — Ctrl+C 무장을 거두지 않는다. */
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock"]);
 
+/** 이 키가 제 것이 아님을 말하는 자리들 — 남의 입력창과 그 위에 선 면. */
+const FOREIGN_KEY_SURFACES = "input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [role='menu'], [role='listbox'], dialog";
+
+/**
+ * 이 채팅 패널이 이 키를 자기 것으로 읽어도 되는가.
+ *
+ * 초점이 컴포저에 있을 때만 듣는 것으로는 부족하다 — 사람이 패널을 눌러 활성으로 만들었을 뿐
+ * 초점은 본문이나 캔버스에 있는 것이 보통이고, 그때도 이 Operation이 키보드의 주인이다. 그래서
+ * 문서에서 듣되 **남의 것**만 걸러낸다: 다른 Operation의 프레임 안, 그리고 어디에 있든 남의
+ * 입력창·대화상자·메뉴. 이 패널 안에서 난 키는 컴포저를 포함해 언제나 이 패널의 것이다.
+ */
+function ownsChatKeyboardEvent(panel: HTMLElement | null, operationId: string, target: EventTarget | null): boolean {
+  if (!(target instanceof Node)) return true;
+  if (panel?.contains(target)) return true;
+  const element = target instanceof Element ? target : target.parentElement;
+  if (!element) return true;
+  if (element.closest(FOREIGN_KEY_SURFACES)) return false;
+  const frame = element.closest<HTMLElement>("[data-operation-id]");
+  if (frame) return frame.dataset.operationId === operationId;
+  return true;
+}
+
 /**
  * 지금 Ctrl+C가 복사해야 할 선택이 있는가.
  *
@@ -129,6 +151,8 @@ export function AgentChatView({
   // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
   const ledgeToggleRef = React.useRef<HTMLButtonElement>(null);
   const workSheetRef = React.useRef<HTMLElement>(null);
+  /** 이 패널의 뿌리 — 어떤 키가 이 패널 안에서 났는지 가리는 좌표다. */
+  const panelRef = React.useRef<HTMLElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -404,29 +428,7 @@ export function AgentChatView({
   // Esc까지 삼키고, capture 단계면 컴포저의 더 구체적인 덱 닫기보다 먼저 시트를 접는다. 자식이
   // 이미 소비한 Esc와 IME 조합 중 Esc는 그대로 두고, 남은 일반 Esc만 시트를 닫는다.
   const onPanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
-    // Ctrl+C는 이 패널 안에서 생긴 것만 듣는다(핸들러가 패널에 걸려 있다). 두 번 눌러야 확정되며,
-    // 길게 누른 반복 입력으로는 확정되지 않는다 — 무장과 확정이 한 번의 누름으로 이어지면
-    // 안전장치가 아니다. 선택이 서 있으면 복사가 이긴다: Windows·Linux에서 이 키는 복사다.
-    if (event.key === "c" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
-      if (event.repeat || hasCopyableSelection()) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (sleepArmed) {
-        setSleepArmed(false);
-        void sleepChat();
-        return;
-      }
-      setSleepFailed(false);
-      setSleepArmed(true);
-      return;
-    }
-    if (event.key !== "Escape") {
-      // 다른 키를 눌렀다면 사용자는 이미 다음 일을 하고 있다 — 무장은 그 순간 풀린다. 수식키만
-      // 누른 상태는 아직 Ctrl+C를 조합하는 중이므로 그대로 둔다.
-      if (sleepArmed && !MODIFIER_KEYS.has(event.key)) setSleepArmed(false);
-      return;
-    }
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.key !== "Escape") return;
     // 무장을 풀 길은 Esc가 먼저다 — 작업 면이 열려 있어도, 지금 서 있는 안내부터 거둔다.
     if (sleepArmed) {
       event.preventDefault();
@@ -439,7 +441,46 @@ export function AgentChatView({
     event.stopPropagation();
     collapseWork();
     ledgeToggleRef.current?.focus();
-  }, [workOpen, collapseWork, sleepArmed, sleepChat]);
+  }, [workOpen, collapseWork, sleepArmed]);
+
+  /**
+   * Ctrl+C 제스처. 듣는 자리는 문서이고, 듣는 조건은 **이 Operation이 활성일 때**다 — 사람이
+   * 패널을 눌러 활성으로 만들었다면 초점이 컴포저에 있든 본문에 있든 이 패널이 키보드의 주인이다.
+   * 남의 프레임·입력창·대화상자에서 난 키는 ownsChatKeyboardEvent가 걸러낸다.
+   */
+  React.useEffect(() => {
+    if (!context.active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "c" || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        // 다른 키를 눌렀다면 사용자는 이미 다음 일을 하고 있다 — 무장은 그 순간 풀린다. 수식키만
+        // 누른 상태는 아직 Ctrl+C를 조합하는 중이므로 그대로 둔다.
+        if (!MODIFIER_KEYS.has(event.key)) setSleepArmed(false);
+        return;
+      }
+      // 두 번 눌러야 확정되며, 길게 누른 반복 입력으로는 확정되지 않는다 — 무장과 확정이 한 번의
+      // 누름으로 이어지면 안전장치가 아니다. 선택이 서 있으면 복사가 이긴다(Windows·Linux의 복사 키).
+      if (event.repeat || hasCopyableSelection()) return;
+      if (!ownsChatKeyboardEvent(panelRef.current, context.operationId, event.target)) return;
+      event.preventDefault();
+      setSleepArmed((armed) => {
+        if (armed) {
+          void sleepChat();
+          return false;
+        }
+        setSleepFailed(false);
+        return true;
+      });
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); };
+  }, [context.active, context.operationId, sleepChat]);
+
+  // 활성에서 물러나면 무장도 함께 거둔다 — 다른 패널을 보다 돌아온 사람에게 예전 무장이 남아
+  // 있으면, 첫 Ctrl+C가 안내 없이 곧바로 휴면으로 간다.
+  React.useEffect(() => {
+    if (!context.active) setSleepArmed(false);
+  }, [context.active]);
 
   // 시트가 덮지 않은 대화 위를 누르면 시트가 물러난다 — 콘솔의 팝오버와 같은 문법이다. 원장의
   // 잡 앵커는 예외다: 그것은 시트를 여는 문이라, 누르는 순간 닫히면 문이 스스로를 지운다.
@@ -451,6 +492,7 @@ export function AgentChatView({
 
   return (
     <section
+      ref={panelRef}
       className="agent-chat"
       data-reading-width={readingWidth}
       /* 터미널 글꼴을 Chat 로컬 토큰으로만 흘린다 — 전역 --font-mono를 덮으면 Codex·파일 탐색기·
