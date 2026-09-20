@@ -472,7 +472,9 @@ function usage(value: unknown): CanonicalUsage {
  * would have accepted them.
  *
  * `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/codex/responses/adapter.ts` carries the same rule for
- * the same wire contract; a change here belongs there too.
+ * the same wire contract; `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/opencode-go/chat-completions/adapter.ts`
+ * carries the same drop for this provider's Chat Completions wire. A change to the refused
+ * syntax belongs in all three.
  */
 const UNREADABLE_PATTERN = /\(\?[=!<]|\\[pP]\{|\\[0-9]/u;
 

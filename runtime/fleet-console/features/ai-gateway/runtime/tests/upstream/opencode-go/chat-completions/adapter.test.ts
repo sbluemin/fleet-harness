@@ -204,6 +204,49 @@ describe("chat completions request translation", () => {
     const generic = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(generic).toHaveProperty("tools");
   });
+
+  it("drops the tool patterns the OpenCode backend refuses and keeps the ones it reads", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    const tools: CanonicalResponseRequest["tools"] = [{
+      type: "function",
+      name: "Artifact",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          // A backslash-digit escape: DeepSeek refuses it as not valid under `anyOf`, which
+          // fails the whole request rather than the one tool.
+          file_paths: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 1024, pattern: "^[^\\0]*$" },
+          },
+          asset_id: { type: "string", pattern: "^[0-9a-f]{32}$" },
+        },
+        required: ["file_paths", "asset_id"],
+      },
+    }];
+
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      tools,
+      tool_choice: "auto",
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ function: { parameters: { properties: Record<string, Record<string, unknown>> } } }>;
+    };
+    const properties = body.tools[0]!.function.parameters.properties;
+    expect(properties.file_paths!.items).not.toHaveProperty("pattern");
+    expect(properties.file_paths!.items).toHaveProperty("maxLength", 1024);
+    expect(properties.asset_id).toHaveProperty("pattern", "^[0-9a-f]{32}$");
+
+    fetchMock.mockClear();
+    await adapter(fetchMock).stream(request({ tools, tool_choice: "auto" }), { apiKey: "k" });
+    const generic = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ function: { parameters: { properties: Record<string, Record<string, unknown>> } } }>;
+    };
+    expect(generic.tools[0]!.function.parameters.properties.file_paths!.items)
+      .toHaveProperty("pattern", "^[^\\0]*$");
+  });
 });
 
 describe("opencode go wire routing", () => {
