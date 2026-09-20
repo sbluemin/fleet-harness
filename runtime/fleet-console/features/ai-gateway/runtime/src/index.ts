@@ -145,16 +145,15 @@ export {
 export {
   FLEET_PLUGIN_NAME,
   GENERAL_PURPOSE_AGENT_PROMPT,
-  buildGatewayAgentFiles,
+  buildGatewayAgentSpecs,
+  buildGatewayAgentSpecsJson,
   buildGatewayCustomAgents,
   toGatewayAgentName,
   toGatewayAgentSelector,
   type ClaudeCustomAgentDefinition,
   type ClaudeCustomAgents,
-  type GatewayAgentFile,
+  type GatewayAgentSpecs,
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 export { buildFleetAgentRegistrations } from "./fleet/gateway-agents.js";
-export { buildFleetSeatTable, buildFleetSeatsJson, FLEET_SEAT_ROLES } from "./fleet/seat-table.js";
-export type { FleetSeat, FleetSeatRole, FleetSeatTable } from "./fleet/seat-table.js";

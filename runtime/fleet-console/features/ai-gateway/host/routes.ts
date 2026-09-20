@@ -30,12 +30,12 @@ export { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
   "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken">>;
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readAgentSpecs">>;
 
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
-): { readonly compactHookToken: string } {
+): { readonly compactHookToken: string; readonly modHookToken: string } {
   const ownedDiagnostics = deps.cursorDiagnostics
     ? undefined
     : createCursorDiagnosticLog(path.join(
@@ -54,6 +54,7 @@ export function registerAiGatewayRoutes(
         ),
       });
   const compactHookToken = randomUUID();
+  const modHookToken = randomUUID();
   const compactionStore = createClaudeCodexCompactionStore({
     directory: path.join(ctx.dataDir, "ai-gateway"),
   });
@@ -62,6 +63,9 @@ export function registerAiGatewayRoutes(
     originator: "fleet-console",
     compactionStore,
     compactionHookToken: compactHookToken,
+    modHookToken,
+    // 호출 시점의 노출을 읽는다 — 스냅숏이 아니라 지금 켜져 있는 모델이 답이 된다.
+    readAgentSpecs: deps.readAgentSpecs,
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
@@ -83,6 +87,7 @@ export function registerAiGatewayRoutes(
     { method: "*", path: "/v1/models", summary: "Proxy the AI Gateway model listing.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
     { method: "POST", path: "/v1/messages", summary: "Proxy an Anthropic Messages request through the AI Gateway.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
     { method: "POST", path: "/v1/compact-events", summary: "Receive a Claude compact lifecycle event.", category: "Console Execution", gate: "lock-token", transport: "http" },
+    { method: "GET", path: "/v1/fleet/agents", summary: "Serve the gateway identities this session should register.", category: "Console Execution", gate: "lock-token", transport: "http" },
   ]);
-  return { compactHookToken };
+  return { compactHookToken, modHookToken };
 }

@@ -61,12 +61,6 @@ export interface ClaudeCustomAgentDefinition {
 /** Agent 이름(스코프 없는 파일 stem) → 정의. */
 export type ClaudeCustomAgents = Readonly<Record<string, ClaudeCustomAgentDefinition>>;
 
-/** 플러그인 `agents/` 아래에 놓일 파일 하나. */
-export interface GatewayAgentFile {
-  readonly fileName: string;
-  readonly content: string;
-}
-
 /**
  * Scoped gateway 모델 id(`kimi--k3-256k`) → 사용자가 정체성으로 내보낸 강도들.
  * 항목이 없으면 그 모델의 사다리 전체를 뜻한다. 정의는 선별을 소유하는
@@ -135,30 +129,47 @@ export function buildGatewayCustomAgents(
 }
 
 /**
- * 플러그인 `agents/`에 그대로 쓸 파일들. frontmatter의 `name`은 스코프 없는 stem이다 —
- * Claude Code는 `:`를 스코프 구분자로 예약해 두어, 이름에 넣으면 그 파일을 아예 읽지 않는다.
+ * 라우팅 Mod가 `$.agent.register`로 세션에 올릴 정체성 명세.
  *
- * 값은 전부 JSON 문자열로 적는다. JSON은 YAML 1.2의 부분집합이라 따옴표·백슬래시·개행이
- * 그대로 살고, `[1m]`처럼 흐름 시퀀스로 읽힐 수 있는 모델 id도 스칼라로 고정된다.
+ * 한때는 같은 정의를 플러그인 `agents/*.md` 파일로 구웠다. 파일은 Mods 표면이 없어도
+ * 동작하지만 정체성마다 1.9KB짜리 파일이 하나씩 생기고, 프롬프트가 20벌 복제되며,
+ * 등록 시점을 런치에 묶는다. 런타임 등록은 프로세스 안에서 한 번에 끝난다.
+ *
+ * 프롬프트는 한 번만 싣는다 — 정체성마다 같은 1.5KB를 복제하면 스냅숏이 그만큼 불어나고,
+ * 그 사본은 전부 같은 문자열이라 어느 하나도 고유한 정보를 담지 않는다.
  */
-export function buildGatewayAgentFiles(
+export interface GatewayAgentSpecs {
+  /** 모든 정체성이 공유하는 실행 프롬프트. */
+  readonly prompt: string;
+  readonly agents: readonly {
+    readonly name: string;
+    readonly description: string;
+    readonly model: string;
+    readonly effort?: GatewayReasoningEffort;
+  }[];
+}
+
+export function buildGatewayAgentSpecs(
   exposed: readonly GatewayModel[],
   exposure?: GatewayEffortExposure,
-): readonly GatewayAgentFile[] {
-  return Object.entries(buildGatewayCustomAgents(exposed, exposure)).map(([name, definition]) => ({
-    fileName: `${name}.md`,
-    content: [
-      "---",
-      `name: ${JSON.stringify(name)}`,
-      `description: ${JSON.stringify(definition.description)}`,
-      `model: ${JSON.stringify(definition.model)}`,
-      ...(definition.effort === undefined ? [] : [`effort: ${JSON.stringify(definition.effort)}`]),
-      "---",
-      "",
-      definition.prompt,
-      "",
-    ].join("\n"),
-  }));
+): GatewayAgentSpecs {
+  return {
+    prompt: GENERAL_PURPOSE_AGENT_PROMPT,
+    agents: Object.entries(buildGatewayCustomAgents(exposed, exposure)).map(([name, definition]) => ({
+      name,
+      description: definition.description,
+      model: definition.model,
+      ...(definition.effort === undefined ? {} : { effort: definition.effort }),
+    })),
+  };
+}
+
+/** Mod 자산에 심을 JSON. foundation은 이 문자열을 해석하지 않고 그대로 나른다. */
+export function buildGatewayAgentSpecsJson(
+  exposed: readonly GatewayModel[],
+  exposure?: GatewayEffortExposure,
+): string {
+  return JSON.stringify(buildGatewayAgentSpecs(exposed, exposure));
 }
 
 /**
@@ -206,7 +217,11 @@ function gatewayAgentDescription(input: {
   return input.effort === undefined ? label : `${label} @${input.effort}`;
 }
 
+/**
+ * 이 세션이 들고 갈 등록 이름들. 로스터의 `execution` 블록이 "이 이름이 지금 닿는가"를
+ * 이 목록으로 답하므로, 정체성을 만드는 변환과 같은 자리에서 뽑아야 둘이 어긋나지 않는다.
+ */
 export function buildFleetAgentRegistrations(models: readonly GatewayModel[], exposure?: GatewayEffortExposure) {
-  const files = buildGatewayAgentFiles(models, exposure);
-  return files.map((file) => ({ ...file, name: `${FLEET_PLUGIN_NAME}:${file.fileName.replace(/\.md$/, "")}` }));
+  return buildGatewayAgentSpecs(models, exposure).agents
+    .map((agent) => ({ name: `${FLEET_PLUGIN_NAME}:${agent.name}` }));
 }

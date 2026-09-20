@@ -1,6 +1,5 @@
+/** 이 세션이 들고 가는 게이트웨이 정체성의 등록 이름. */
 export interface FleetAgentRegistration {
-  readonly fileName: string;
-  readonly content: string;
   readonly name: string;
 }
 export const FLEET_PLUGIN_NAME = "fleet";
@@ -152,12 +151,6 @@ export interface CreateAgentCliPluginOptions {
   readonly autoNameHookExec?: FleetHookExec;
   /** Gateway가 렌더링한 파일과 등록 이름. 파일 내용과 호출 허용 이름은 같은 투영이다. */
   readonly gatewayAgents?: readonly FleetAgentRegistration[];
-  /**
-   * 좌석표 JSON. 라우팅 Mod가 역할을 정체성으로 옮길 때 읽는다. foundation은 이 문자열의
-   * 내용을 해석하지 않고 스냅숏에 그대로 심는다 — 좌석의 의미는 게이트웨이 feature가 갖는다.
-   * 생략하면 Mod는 아무것도 재배정하지 않고 디스패치를 기록만 한다.
-   */
-  readonly gatewaySeatsJson?: string;
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
   readonly legacyReclaimDeps?: LegacyMarketplaceReclaimDeps;
 }

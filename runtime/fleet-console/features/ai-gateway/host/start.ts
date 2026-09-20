@@ -1,5 +1,5 @@
 import path from "node:path";
-import { DEFAULT_WIRE_LOG_MAX_BYTES, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { DEFAULT_WIRE_LOG_MAX_BYTES, buildGatewayAgentSpecs, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 interface GatewayStartContext {
@@ -61,6 +61,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
   registerTerminalModelAuthRoutes(ctx, { authService });
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     readAiGatewaySettings: aiGatewayStore.read,
+    // 호출 시점의 노출을 읽어 정체성 명세를 만든다. 세션 중에 모델을 켜고 끄면 다음 조회부터
+    // 반영된다 — 스냅숏에 구워 두면 그 변화가 새 트리 발행을 강제한다.
+    readAgentSpecs: () => {
+      const selection = resolveAiGatewaySelection(aiGatewayStore.read());
+      return buildGatewayAgentSpecs(selection.delegationModels, selection.effortExposure);
+    },
     readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });

@@ -18,10 +18,6 @@ const COMPACT_EVENT_SCRIPT_NAME = "fleet-compact-event.mjs";
  * 싣는다. 명령 훅(.mjs)과 달리 세션 안에서 돌며 `agent.spawn`을 가로채고 판을 그린다.
  */
 const ROUTING_MOD_SCRIPT_NAME = "fleet-routing-mod.tsx";
-/** Mod 자산이 좌석표 자리에 들고 있는 문자열 리터럴. 스냅숏 조립이 여기를 채운다. */
-const SEATS_PLACEHOLDER = '"@@FLEET_SEATS@@"';
-/** 좌석표가 없을 때 심는 표. Mod는 재배정 없이 디스패치를 기록만 한다. */
-const UNSEATED_TABLE = '{"revision":"unseated","seats":{}}';
 
 /** 스냅숏에 들어갈 파일 하나. relativePath는 `/` 구분의 스냅숏 루트 상대 경로다. */
 export interface AssetPluginFile {
@@ -46,11 +42,8 @@ export function buildAssetPluginFiles(
   const compactAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === COMPACT_EVENT_SCRIPT_NAME);
   if (!compactAsset) throw new Error(`Missing embedded ${COMPACT_EVENT_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${COMPACT_EVENT_SCRIPT_NAME}`, content: compactAsset.content });
-  files.push({ relativePath: `hooks/${ROUTING_MOD_SCRIPT_NAME}`, content: routingModSource(options.gatewaySeatsJson) });
+  files.push({ relativePath: `hooks/${ROUTING_MOD_SCRIPT_NAME}`, content: routingModSource() });
   files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, version)) });
-  for (const file of options.gatewayAgents ?? []) {
-    files.push({ relativePath: `agents/${file.fileName}`, content: file.content });
-  }
   return files;
 }
 
@@ -59,20 +52,14 @@ function toJsonContent(value: unknown): string {
 }
 
 /**
- * 라우팅 Mod 원본에 이 런치의 좌석표를 심는다. 치환은 문자열 리터럴 하나를 다른
- * 문자열 리터럴로 바꾸는 일이라, 좌석표가 바뀌면 스냅숏 해시가 바뀌고 새 트리가 발행된다.
- *
- * 자산에 자리표시자가 없으면 좌석을 심을 곳이 없다는 뜻이므로 즉시 멈춘다. 조용히 지나가면
- * Mod가 평생 `unseated`로 돌면서 아무것도 재배정하지 않는데, 그 실패는 런타임에서
- * 라우팅이 안 되는 증상으로만 보여 원인을 찾기 어렵다.
+ * 라우팅 Mod 원본. 치환하지 않는다 — 스냅숏은 내용 해시로 발행되는 공유 트리라, 노출 목록을
+ * 여기 구워 넣으면 모델을 하나 켤 때마다 새 트리가 발행된다. 어떤 정체성을 올릴지는 Mod가
+ * 세션 시작에 Console에 물어 정한다.
  */
-function routingModSource(seatsJson: string | undefined): string {
+function routingModSource(): string {
   const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === ROUTING_MOD_SCRIPT_NAME);
   if (!asset) throw new Error(`Missing embedded ${ROUTING_MOD_SCRIPT_NAME} hook asset`);
-  if (!asset.content.includes(SEATS_PLACEHOLDER)) {
-    throw new Error(`${ROUTING_MOD_SCRIPT_NAME} carries no ${SEATS_PLACEHOLDER} seat placeholder`);
-  }
-  return asset.content.replace(SEATS_PLACEHOLDER, JSON.stringify(seatsJson ?? UNSEATED_TABLE));
+  return asset.content;
 }
 
 /**

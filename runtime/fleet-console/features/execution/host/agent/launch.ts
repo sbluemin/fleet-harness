@@ -1,4 +1,4 @@
-import { buildFleetAgentRegistrations, buildFleetSeatsJson } from "@fleet-console/ai-gateway";
+import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -33,6 +33,8 @@ export interface AiGatewayLaunchBinding {
   origin(): string | null;
   /** Process-local credential accepted only by the compact lifecycle endpoint. */
   readonly compactHookToken?: string;
+  /** 라우팅 Mod가 정체성을 물을 때 쓰는 자격. */
+  readonly modHookToken?: string;
 }
 
 export interface TerminalLaunchResolverDeps {
@@ -151,11 +153,6 @@ export async function prepareChatClaudeSession(
     ...(gatewaySelection
       ? {
         gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
-        gatewaySeatsJson: buildFleetSeatsJson({
-          exposed: gatewaySelection.delegationModels,
-          ...(gatewaySelection.effortExposure ? { effortExposure: gatewaySelection.effortExposure } : {}),
-          ...(gatewaySelection.providerPriority ? { providerPriority: gatewaySelection.providerPriority } : {}),
-        }),
       }
       : {}),
   });
@@ -343,12 +340,7 @@ async function createAgentCliLaunchSpec(options: {
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
           gatewayAgents: buildFleetAgentRegistrations(gatewaySelection.delegationModels, gatewaySelection.effortExposure),
-          gatewaySeatsJson: buildFleetSeatsJson({
-            exposed: gatewaySelection.delegationModels,
-            ...(gatewaySelection.effortExposure ? { effortExposure: gatewaySelection.effortExposure } : {}),
-            ...(gatewaySelection.providerPriority ? { providerPriority: gatewaySelection.providerPriority } : {}),
-          }),
-        }
+          }
         : {}),
     });
     options.onRuntimeSessionStart?.({
@@ -372,6 +364,7 @@ async function createAgentCliLaunchSpec(options: {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
         compactHookToken: options.aiGateway.compactHookToken,
+        ...(options.aiGateway.modHookToken ? { modHookToken: options.aiGateway.modHookToken } : {}),
       });
     }
     const workspaceHook = options.bindWorkspaceHook?.(options.sessionId, injectedProfile.session.sessionId);

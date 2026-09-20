@@ -80,56 +80,36 @@ Claude Code function-hooks module (a "mod"), rendered into the Fleet plugin at
 surface from the command hooks beside it: it runs inside the session, hooks events, and draws.
 `prepareAiGatewayLaunchProfile` sets `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` for gateway launches,
 preserving an operator's own value; the surface is otherwise off by default and rollout-gated,
-and a restricted session or a locked `hooks` surface still refuses it.
+and a restricted session or a locked `hooks` surface still refuses it. Gateway identities exist
+only where it loads, so that gate is now an availability boundary for delegation itself.
 
-The mod hooks `agent.spawn`, which the Agent tool raises. A dynamic Workflow's stage agents do
-**not** raise it: they run as the built-in `workflow-subagent` type, dispatched by the workflow
-runtime, and a measured run shows zero `agent.spawn` events beside four `turn.complete` ones.
-Seating therefore reaches the Agent tool only; for a Workflow, the script the host wrote is the
-routing decision, which is one reason the appended prompt's Workflow guidance stays. The mod
-still records those runs — see **Observed runs** below. Per Agent-tool dispatch it resolves a
-seat and passes the rewrite on through `next`:
+**Identities.** At `session.start` the mod asks the host which gateway models are exposed and
+registers one identity per model and effort rung through `$.agent.register`, which carries both
+`model` and `effort`. The plugin no longer ships `agents/*.md`. The snapshot is a shared tree
+published by content hash, so a roster baked into it would force a new tree on every model the
+user enables; keeping the snapshot static and asking at session start breaks that coupling, and
+the shared execution prompt travels once instead of once per identity. `GET /v1/fleet/agents`
+on the gateway route serves the specs from `resolveAiGatewaySelection` read at call time, gated
+on `modHookToken` — a credential distinct from the compact hook's, so revoking one does not cut
+the other — and reaches the session as `FLEET_MOD_BASE_URL` / `FLEET_MOD_TOKEN`. A missing
+credential or a failed read registers nothing and leaves the session on Claude Code's built-in
+models. `gatewayAgents` still carries the registered names, which the loadout's `execution`
+block answers reachability with.
 
-| The call names | What happens |
-|---|---|
-| a concrete `fleet:` identity | passed through; an explicit host choice stands |
-| a `fleet:<role>` seat name | retyped to that seat's registered identity |
-| nothing, `general-purpose`, `Explore` | retyped to the inherited seat, `model` cleared |
-| a fork | passed through; a fork inherits by definition |
-| anything, with no seat table | passed through; the mod records and draws only |
-
-It retypes only to a name `agent.offer` has confirmed this call can dispatch, because a
-`subagentType` naming an undispatchable agent refuses the whole spawn. Where the seated
-identity is not registered this session it sets `model` instead, which carries the model
-without its effort, and says so in the pane. Nothing is inferred from a prompt or a
-description: this is a registry lookup and a table read, never the pseudo-parser that retired
-`gate-delegation`. A failed hook falls back to `next(e)` unchanged.
-
-The seat table is decided by `buildFleetSeatTable`
-(`runtime/fleet-console/features/ai-gateway/runtime/src/fleet/seat-table.ts`) from the same
-loadout the models resource reports, and rendered into the mod's source at snapshot assembly,
-so a seat change is a content-hash change and a new snapshot. Judgment seats (`review`,
-`judge`, `propose`) take the top measured quality band; mechanical seats (`recon`, `scan`,
-`verify`, `implement`) spread across providers in the user's spend order. Host-lineage
-(`homolineage`) models are demoted out of contention and seated only when no other model is
-reachable, since independence from the host's own lineage is half of why a run is delegated.
-An empty exposure yields an empty table, and the mod then observes without rerouting.
-Launch-time seats carry no quota reading, so allowance pressure narrows the field only where a
-caller supplies one.
-
-**Observed runs.** A streaming `turn.step` hook (an async generator; the event takes no other
-form) sees every loop with an `agentId`, which includes a Workflow's stages, and carries that
-step's `model` and `effort`. A loop the mod never seated becomes a row marked `not routed`,
-closed by `turn.complete`, whose `usage.model` settles which model actually answered. Recording
-is deliberately not gated on the `claude-gateway--` prefix: that spelling decides how the label
-is drawn, and gating on it would silently drop a run whenever the id is spelled otherwise. The
-ledger's tally keeps seated and observed runs in separate counts, because merging them would
-report Fleet as routing more than it does.
-
-`$.ui.notice` puts the decision under the dispatch's own row, and the `Fleet Routing` pane
-(`/fleet-routing`) carries the ledger: what was asked, which identity carried it, why, and how
-many runs stayed off the session model. The pane opens with the first dispatch. Diagnosis goes
-to `$.ui.log(..., { to: "debug" })`, never the transcript.
+**The ledger.** The mod does not choose models. Which model runs a delegated task is the host's
+decision, made from the roster under the appended prompt's guidance; the mod records what that
+decision was, because otherwise the only way to ask whether a run inherited the session model is
+to ask the model. `agent.spawn` records each Agent-tool dispatch — what was named, what carried
+it — and `$.ui.notice` puts that under the dispatch's own row. A dynamic Workflow's stages do
+not raise `agent.spawn`: they run as the built-in `workflow-subagent` type, and a measured run
+shows zero `agent.spawn` events beside four `turn.complete` ones. A streaming `turn.step` hook
+(an async generator; the event takes no other form) sees every loop carrying an `agentId`,
+stages included, and records the ones the Agent tool never announced, closed by `turn.complete`
+whose `usage.model` settles which model answered. Recording is not gated on the
+`claude-gateway--` prefix: that spelling decides how a label is drawn, and gating on it would
+drop a run whenever an id is spelled otherwise. The `Fleet Routing` pane (`/fleet-routing`)
+carries the ledger, counting named, inherited, and not-from-the-Agent-tool runs separately.
+Diagnosis goes to `$.ui.log(..., { to: "debug" })`, never the transcript.
 
 There is no PreToolUse dispatch gate. The retired `gate-delegation` hook could judge only
 a pin's spelling — whether a name resolves was always the dispatcher's judgment — and its

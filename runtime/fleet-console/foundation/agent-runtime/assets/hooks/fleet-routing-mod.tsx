@@ -1,39 +1,22 @@
 /**
- * fleet-routing-mod — 게이트웨이 좌석 배정을 코드로 수행하고 그 과정을 보여주는 Claude Code Mod.
+ * fleet-routing-mod — 게이트웨이 정체성을 세션에 올리고, 위임이 무엇으로 돌았는지 보여주는
+ * Claude Code Mod.
  *
- * 이 모듈은 호스트 프롬프트가 설득으로만 쥐고 있던 두 가지를 가져온다.
+ * 두 가지 일을 한다.
  *
- * `agent.spawn`은 Agent 도구만 지난다. 다이나믹 Workflow의 스테이지는 내장 `workflow-subagent`
- * 로 돌면서 이 이벤트를 발화하지 않으므로 **재배정할 수 없다** — 그 경우 라우팅 결정은 호스트가
- * 쓴 워크플로우 스크립트가 쥔다. 대신 turn 이벤트로 관측해 원장에는 남긴다. 좌석 배정이 닿는
- * 범위와 원장이 보는 범위가 다르다는 사실 자체가 판이 말해야 하는 것이다.
+ *   1. 등록. 세션이 시작되면 Console에 지금 노출된 게이트웨이 모델을 묻고, 모델×강도마다
+ *      정체성 하나를 `$.agent.register`로 올린다. 한때는 같은 정의를 플러그인 `agents/*.md`
+ *      파일로 구웠다. 플러그인 스냅숏은 내용 해시로 발행되는 공유 트리라, 노출 목록이 거기
+ *      들어가면 모델을 하나 켤 때마다 새 트리가 발행된다. 스냅숏을 정적으로 두고 목록은
+ *      호출 시점에 묻는 편이 그 결합을 끊는다.
  *
- *   1. 배정. 호스트는 역할 이름(`fleet:recon`)만 고르고, 어느 모델이 그 역할을 태울지는
- *      런치 시점에 확정된 좌석표가 정한다. 이름을 고르지 않은 디스패치 — Agent 도구의
- *      `subagent_type` 생략, Workflow 스테이지의 `agentType` 생략 — 는 세션 모델을 상속하는데,
- *      그 경로를 기본 좌석으로 끌어온다. 상속은 호스트가 도는 allowance를 한 번 더 태우면서
- *      로스터가 줄 수 있는 것을 아무것도 가져오지 않는다.
+ *   2. 원장. 위임 하나하나가 무엇을 요청했고 무엇으로 돌았는지 `Fleet Routing` 판에 적는다.
+ *      어느 모델을 쓸지는 호스트가 로스터를 읽고 정한다 — 이 모듈은 그 결정을 대신하지 않고,
+ *      결정이 실제로 무엇이었는지 사후에 확인할 수 있게 만든다. 판이 없으면 "상속했는가"를
+ *      물어볼 방법이 모델에게 묻는 것밖에 없다.
  *
- *   2. 해명. 배정이 코드가 되면 "무엇이 무엇을 태웠는가"를 모델에게 물어볼 필요가 없다.
- *      `Fleet Routing` 판이 디스패치마다 요청·좌석·모델·상태를 그대로 적는다.
- *
- * 좌석표는 스냅숏 조립 때 주입된다(SEAT_TABLE_JSON). 주입이 없거나 깨지면 좌석이 비고,
- * 모듈은 아무것도 재배정하지 않은 채 관측만 한다 — 판은 그대로 뜨므로, 라우팅이 꺼져 있다는
- * 사실 자체가 화면에 남는다.
- *
- * 재작성 규칙은 추론하지 않는다. prompt나 description에서 역할을 유추하는 순간 결정론이
- * 깨지고, 철자를 파서로 판정하다 멀쩡한 디스패치를 막던 옛 게이트의 실패로 돌아간다.
- * 여기서 하는 일은 레지스트리 조회와 표 참조뿐이다.
- */
-/**
- * 이 Mod가 실제로 부르는 것만 적은 좁은 시야의 타입.
- *
- * 완전한 계약은 Claude Code가 `/plugin-types`로 내보내는 `claude-code.d.ts`에 있고,
- * 보통은 그 모듈에서 타입을 import 한다. 여기서 그러지 않는 이유는 이 파일이 Console
- * 번들 안에 문자열로 실려 나가기 때문이다 — 번들 텍스트에 남은 그 모듈 지정자를
- * 패키징 게이트가 게시 매니페스트로 해석할 수 없는 의존성으로 읽고 빌드를 세운다
- * (scripts/check-dist-published-externals.mjs). 타입 전용 import는 런타임에 어차피
- * 비어 있으므로, 쓰는 만큼만 여기 적어 자산을 자기완결적으로 둔다.
+ * 주소와 자격은 런치가 환경변수로 넘긴다(FLEET_MOD_BASE_URL·FLEET_MOD_TOKEN). 둘이 없거나
+ * 조회가 실패하면 아무 정체성도 올리지 않고 관측만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
  */
 interface PaneElements {
   readonly Box: unknown;
@@ -49,6 +32,24 @@ interface Engine {
     readonly invalidate: (event: string) => void;
     readonly log: (text: string, options?: { to: "transcript" | "debug" }) => void;
     readonly resolve: (event: unknown) => PaneElements;
+  };
+  readonly env: {
+    readonly get: (name: string) => Promise<string | undefined>;
+  };
+  readonly http: {
+    readonly fetch: (
+      url: string,
+      init?: { method?: string; headers?: Record<string, string> },
+    ) => Promise<{ ok: boolean; status: number; text: string }>;
+  };
+  readonly agent: {
+    readonly register: (spec: {
+      name: string;
+      description: string;
+      prompt: string;
+      model?: string;
+      effort?: string | number;
+    }) => Promise<unknown>;
   };
   readonly command: {
     readonly register: (spec: { name: string; description: string; immediate?: true }) => Promise<unknown>;
@@ -75,46 +76,38 @@ interface On {
 
 type Register = (on: On, options?: unknown) => unknown;
 
-/** 한 좌석: 역할 하나와 그 역할을 태울 정체성. */
-interface Seat {
-  /** 호스트가 부르는 역할 이름의 스코프 없는 부분(`recon`). */
-  readonly role: string;
-  /** 디스패치에 실제로 실릴 등록된 Agent 이름(`fleet:cursor-grok-4-6-fast-medium`). */
-  readonly agentType: string;
-  /** 판에 적을 사람이 읽는 이름(`cursor/grok-4.6-fast @medium`). */
-  readonly label: string;
-  /** 이름이 등록되지 않았을 때 쓰는 모델 id. 강도는 따라오지 않는다. */
-  readonly modelId: string;
-  /** 이 좌석이 그 역할을 얻은 이유 한 줄. */
-  readonly because: string;
+/** 세션에 올릴 정체성 하나. */
+interface AgentSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly model: string;
+  readonly effort?: string;
 }
 
-interface SeatTable {
-  /** 좌석표를 만든 로스터의 revision. 판의 각주로만 쓴다. */
-  readonly revision: string;
-  /** 역할 이름 → 좌석. */
-  readonly seats: Readonly<Record<string, Seat>>;
-  /** 이름 없는 디스패치가 앉을 좌석의 역할 이름. 없으면 상속을 막지 않는다. */
-  readonly inherited?: string;
+interface AgentSpecs {
+  /** 모든 정체성이 공유하는 실행 프롬프트. */
+  readonly prompt: string;
+  readonly agents: readonly AgentSpec[];
 }
 
-const EMPTY_SEATS: SeatTable = { revision: "unseated", seats: {} };
+const NO_SPECS: AgentSpecs = { prompt: "", agents: [] };
 
-/** 스냅숏 조립이 이 문자열 리터럴을 세션의 좌석표 JSON으로 바꾼다. */
-const SEAT_TABLE_JSON = "@@FLEET_SEATS@@";
-
-const SEAT_TABLE: SeatTable = readSeatTable();
-
-function readSeatTable(): SeatTable {
-  try {
-    const parsed: unknown = JSON.parse(SEAT_TABLE_JSON);
-    if (parsed === null || typeof parsed !== "object") return EMPTY_SEATS;
-    const table = parsed as SeatTable;
-    return table.seats && typeof table.seats === "object" ? table : EMPTY_SEATS;
-  } catch {
-    // 주입 전 자산 그대로거나 좌석표가 깨졌다. 재배정 없이 관측만 한다.
-    return EMPTY_SEATS;
-  }
+/**
+ * 이 세션이 올릴 정체성을 Console에 묻는다. 실패는 전부 빈 명세로 접는다 — 정체성을 못
+ * 올리는 것은 세션을 못 여는 것과 다르고, 무엇이 왜 비었는지는 호출부가 로그로 남긴다.
+ */
+async function fetchAgentSpecs($: Engine): Promise<AgentSpecs> {
+  const base = await $.env.get("FLEET_MOD_BASE_URL");
+  const token = await $.env.get("FLEET_MOD_TOKEN");
+  if (!base || !token) return NO_SPECS;
+  const response = await $.http.fetch(`${base.replace(/\/+$/, "")}/v1/fleet/agents`, {
+    headers: { "x-fleet-mod-token": token },
+  });
+  if (!response.ok) throw new Error(`identities unavailable (${response.status})`);
+  const parsed: unknown = JSON.parse(response.text);
+  if (parsed === null || typeof parsed !== "object") return NO_SPECS;
+  const specs = parsed as AgentSpecs;
+  return Array.isArray(specs.agents) ? specs : NO_SPECS;
 }
 
 const PANE_ID = "fleet-routing";
@@ -157,8 +150,8 @@ interface Row {
 
 /** 이 세션에서 본 디스패치. 새 것이 뒤에 붙는다. */
 const ledger: Row[] = [];
-/** `agent.offer`가 실제로 내준 이름들. 재배정 대상은 여기 있는 것만 고른다. */
-const offered = new Set<string>();
+/** 이 세션에 실제로 올라간 정체성 이름. 등록이 거절되면 여기 들어오지 않는다. */
+const registered = new Set<string>();
 /** Agent 도구 호출 중 아직 spawn이 오지 않은 것: tool_use_id → 행. */
 const awaitingSpawn = new Map<string, Row>();
 /** 살아 있는 subagent: agentId → 행. */
@@ -189,23 +182,33 @@ function elapsed(row: Row, now: number): string {
   return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
 }
 
-/**
- * 한 디스패치의 좌석을 고른다. 추론은 없다 — 호스트가 부른 이름을 표에서 찾거나,
- * 아무 이름도 부르지 않았으면 상속 좌석을 쓴다.
- */
-function seatFor(subagentType: string): Seat | undefined {
-  const seats = SEAT_TABLE.seats;
-  const bare = subagentType.startsWith("fleet:") ? subagentType.slice("fleet:".length) : subagentType;
-  const named = seats[bare];
-  if (named) return named;
-  if (!INHERITING_TYPES.has(subagentType)) return undefined;
-  const fallback = SEAT_TABLE.inherited;
-  return fallback === undefined ? undefined : seats[fallback];
-}
-
 export const register: Register = (on) => {
-  // 세션이 준비되면 판을 여는 커맨드를 올린다. 판 자체는 첫 디스패치에 뜬다.
+  // 세션이 준비되면 정체성을 올리고 판을 여는 커맨드를 등록한다. 이 훅은 첫 프롬프트 전에
+  // 기다려지므로, 여기서 올린 정체성은 첫 턴의 목록에 들어간다.
   on("session.start", async ($, e, next) => {
+    let specs: AgentSpecs = NO_SPECS;
+    try {
+      specs = await fetchAgentSpecs($);
+    } catch (error) {
+      $.ui.log(`could not read the exposed identities: ${String(error)}`, { to: "debug" });
+    }
+    for (const agent of specs.agents) {
+      try {
+        await $.agent.register({
+          name: agent.name,
+          description: agent.description,
+          prompt: specs.prompt,
+          model: agent.model,
+          ...(agent.effort === undefined ? {} : { effort: agent.effort }),
+        });
+        registered.add(`fleet:${agent.name}`);
+      } catch (error) {
+        // 하나가 거절돼도 나머지는 올린다. 정체성 하나가 빠진 세션이 정체성이 전혀 없는
+        // 세션보다 낫고, 무엇이 빠졌는지는 아래 한 줄이 남긴다.
+        $.ui.log(`agent.register refused ${agent.name}: ${String(error)}`, { to: "debug" });
+      }
+    }
+    $.ui.log(`registered ${registered.size} of ${specs.agents.length} gateway identities`, { to: "debug" });
     try {
       await $.command.register({
         name: COMMAND_NAME,
@@ -221,13 +224,6 @@ export const register: Register = (on) => {
   on("command.run", { command: COMMAND_NAME }, async ($, e, next) => {
     await openPane($, true);
     return { text: summaryLine() };
-  });
-
-  // 내준 이름을 적어 둔다. 재배정은 여기 있는 이름으로만 한다 —
-  // 이 호출이 디스패치할 수 없는 이름을 돌려주면 엔진이 spawn 자체를 거절한다.
-  on("agent.offer", ($, e, next) => {
-    offered.add(e.agent);
-    return next(e);
   });
 
   // 호스트가 Agent 도구를 집은 순간. spawn보다 먼저 와서, 판이 빈 자리를 먼저 그린다.
@@ -260,8 +256,8 @@ export const register: Register = (on) => {
   });
 
   /**
-   * 라우팅이 실제로 일어나는 유일한 자리. Agent 도구가 지나고, Workflow 스테이지는 지나지
-   * 않는다 — 그쪽은 내장 workflow-subagent로 돌아 재배정할 수 없다.
+   * Agent 도구의 디스패치를 기록하는 자리. Workflow 스테이지는 지나지 않는다 — 그쪽은
+   * 내장 workflow-subagent로 돌아 아래 turn.step이 관측 행으로 받는다.
    * 어느 분기에서도 반드시 next로 흘려보낸다 — 여기서 답해 버리면 subagent가 시작되지 않는다.
    */
   on("agent.spawn", async ($, e, next) => {
@@ -279,25 +275,21 @@ export const register: Register = (on) => {
     row.description = e.description || row.description;
     row.asked = e.fork ? "fork" : e.subagentType || "inherit";
 
-    const decision = decide(e.subagentType, e.fork);
+    const reading = read(e.subagentType, e.fork);
     row.state = "seated";
-    row.carried = decision.carried;
-    row.because = decision.because;
-    // 호스트가 직접 고른 게이트웨이 정체성도 세션 모델을 아낀 디스패치다.
-    // 재배정 여부가 아니라 "세션 모델을 탔는가"가 집계의 축이다.
-    if (decision.inheritsHost) onHost += 1;
+    row.carried = reading.carried;
+    row.because = reading.because;
+    // 세는 축은 "세션 모델을 탔는가" 하나다. 호스트가 게이트웨이 정체성을 지목했으면
+    // 세션 할당을 아낀 것이고, 이름을 대지 않았으면 태운 것이다.
+    if (reading.inheritsHost) onHost += 1;
     else offHost += 1;
-    $.ui.notice(e.tool_use_id, `Fleet: ${decision.carried} — ${decision.because}`);
-    // 결정을 디버그 로그에만 남긴다. 사람이 보는 자리는 판이고, 이 줄은 사후 진단용이라
-    // 트랜스크립트(기본 목적지)에 실으면 디스패치마다 한 줄씩 대화를 어지럽힌다.
-    $.ui.log(
-      `seat: asked=${row.asked} carried=${decision.carried} retyped=${decision.retyped}` +
-        ` subagentType=${decision.input?.subagentType ?? "(kept)"} model=${decision.input?.model ?? "(kept)"}`,
-      { to: "debug" },
-    );
+    $.ui.notice(e.tool_use_id, `Fleet: ${reading.carried} — ${reading.because}`);
+    // 사람이 보는 자리는 판이고, 이 줄은 사후 진단용이라 디버그 로그에만 남긴다.
+    $.ui.log(`dispatch: asked=${row.asked} carried=${reading.carried}`, { to: "debug" });
     redraw($);
 
-    const result = await next(decision.input === undefined ? e : { ...e, ...decision.input });
+    // 아무것도 바꾸지 않고 흘려보낸다.
+    const result = await next(e);
 
     if (result.deny !== undefined) {
       row.state = "denied";
@@ -346,7 +338,7 @@ export const register: Register = (on) => {
       // 온다. 구별할 방법이 없으므로 아는 것만 적는다 — 이 루프의 주소.
       description: `run ${agentId.slice(0, 6)}`,
       carried: modelLabel(e.model, e.effort),
-      because: "chosen by its caller, not by a Fleet seat",
+      because: "its caller chose this model",
       state: "running",
       startedAt: Date.now(),
       agentId,
@@ -388,64 +380,48 @@ export const register: Register = (on) => {
   });
 };
 
-interface Decision {
-  /** next에 실을 덮어쓸 필드. 없으면 원본 그대로. */
-  readonly input?: { subagentType?: string; model?: string };
+interface Reading {
+  /** 이 실행이 무엇으로 돌았는지, 사람이 읽는 이름. */
   readonly carried: string;
+  /** 왜 그것이 됐는지 한 줄. */
   readonly because: string;
-  readonly retyped: boolean;
+  /** 세션 자신의 모델을 물려받았는가. */
   readonly inheritsHost: boolean;
 }
 
-function decide(subagentType: string, fork: boolean): Decision {
+/**
+ * 디스패치 하나를 읽는다. **아무것도 바꾸지 않는다** — 어느 모델로 보낼지는 호스트가
+ * 로스터를 읽고 정하고, 이 모듈은 그 결정이 무엇이었는지만 기록한다.
+ *
+ * 한때는 여기서 좌석표를 보고 `subagentType`을 갈아 끼웠다. 그 방식은 호스트의 판단을
+ * 대신하면서도 세션 시작에 고정된 표만 볼 수 있어, 쿼터가 움직이는 축을 놓쳤다.
+ */
+function read(subagentType: string, fork: boolean): Reading {
   if (fork) {
     return {
       carried: "session model",
       because: "a fork inherits the parent's context and model",
-      retyped: false,
       inheritsHost: true,
     };
   }
-  if (subagentType.startsWith("fleet:") && SEAT_TABLE.seats[subagentType.slice("fleet:".length)] === undefined) {
-    // 호스트가 구체 정체성을 직접 지목했다. 명시적 선택은 존중한다.
+  if (subagentType.startsWith("fleet:")) {
+    const name = subagentType.slice("fleet:".length);
     return {
-      carried: subagentType.slice("fleet:".length),
-      because: "named by the host",
-      retyped: false,
+      carried: name,
+      because: registered.has(subagentType) ? "named by the host" : "named by the host, but not registered this session",
       inheritsHost: false,
     };
   }
-  const seat = seatFor(subagentType);
-  if (seat === undefined) {
-    const because =
-      Object.keys(SEAT_TABLE.seats).length === 0
-        ? "no seat table in this snapshot"
-        : "no seat for this name";
-    // 좌석이 없는 이름 중 상속 경로만 세션 모델로 간다. 그 외에는 그 에이전트가
-    // 자기 정의의 모델로 도는 것이므로, 세션 모델이라고 적으면 거짓이 된다.
-    const inheritsHost = INHERITING_TYPES.has(subagentType);
+  if (INHERITING_TYPES.has(subagentType)) {
     return {
-      carried: inheritsHost ? "session model" : `${subagentType} (own definition)`,
-      because,
-      retyped: false,
-      inheritsHost,
+      carried: "session model",
+      because: "no identity named, so the session's own model runs it",
+      inheritsHost: true,
     };
   }
-  if (offered.has(seat.agentType)) {
-    return {
-      input: { subagentType: seat.agentType, model: undefined },
-      carried: seat.label,
-      because: `${seat.role} · ${seat.because}`,
-      retyped: true,
-      inheritsHost: false,
-    };
-  }
-  // 이름이 이 세션에 등록되지 않았다. 모델만 실어 보낸다 — 강도는 따라오지 않는다.
   return {
-    input: { model: seat.modelId },
-    carried: `${seat.label} (model only)`,
-    because: `${seat.role} · name not registered this session`,
-    retyped: true,
+    carried: `${subagentType} (own definition)`,
+    because: "this agent's definition chooses its model",
     inheritsHost: false,
   };
 }
@@ -458,10 +434,10 @@ function summaryLine(): string {
   // 관측만 한 실행은 따로 센다. 좌석을 준 실행과 같은 칸에 넣으면 Fleet이 라우팅한 범위를
   // 실제보다 넓게 읽히게 한다.
   const parts: string[] = [];
-  if (offHost + onHost > 0) parts.push(`${offHost} seated, ${onHost} inherited`);
-  if (observed > 0) parts.push(`${observed} not routed`);
-  const tally = parts.length === 0 ? "seating" : parts.join(" · ");
-  return `${runs} · ${tally} · seats from roster ${SEAT_TABLE.revision}`;
+  if (offHost + onHost > 0) parts.push(`${offHost} named, ${onHost} inherited`);
+  if (observed > 0) parts.push(`${observed} not from the Agent tool`);
+  const tally = parts.length === 0 ? "reading" : parts.join(" · ");
+  return `${runs} · ${tally} · ${registered.size} identities`;
 }
 
 /**
@@ -495,8 +471,8 @@ async function isPlaced($: Engine): Promise<boolean> {
 
 function redraw($: Engine): void {
   // 프롬프트 아래 고정 줄을 엔진은 경고 표식과 함께 그린다. 그러니 경고할 일이 있을 때만
-  // 건다 — 좌석이 제대로 배정된 세션에서 판과 같은 문장을 두 번 말할 이유가 없고,
-  // 중립적인 사실에 붙은 경고 표식은 읽는 사람을 잘못 이끈다.
+  // 건다 — 중립적인 사실에 붙은 경고 표식은 읽는 사람을 잘못 이끈다. 세션 모델을 물려받은
+  // 위임이 생겼을 때가 그 한 경우다.
   $.ui.status(onHost === 0 ? undefined : `fleet: ${onHost} of ${offHost + onHost} inherited the session model`);
   if (paneOpen) $.ui.invalidate("ui.render");
 }
