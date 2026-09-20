@@ -658,10 +658,9 @@ describe("Instrument core design contract", () => {
     expect(tipReveal).toContain(":has(:focus-visible)");
     expect(tipReveal).not.toContain(":focus-within");
 
-    // 폭을 아는 것은 밴드다 — 뜻이 사라지는 컨트롤은 캡션 컨테이너 질의로 물러난다.
+    // 좁은 밴드에서 무엇이 먼저 물러나는지는 폭을 아는 쪽이 정한다 — 그 폭을 아는 것은 밴드다.
     const titlebar = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebar).toContain("container-type: inline-size;");
-    expect(components).toMatch(/@container \(max-width: 721px\) \{[\s\S]{0,300}?data-caption-action="reading-width"/);
   });
 
   it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
@@ -2748,7 +2747,7 @@ describe("Instrument core design contract", () => {
     expect(ledgeBlock).not.toContain("position: absolute");
     // 선반과 composer frame은 같은 measure와 가운데 좌표를 공유한다. 선반만 패널 전폭으로
     // 돌아가면 두 표면이 다시 갈라져 보이므로, 좁은 패널 gutter까지 이 계약에 포함한다.
-    expect(ledgeBlock).toContain("width: min(var(--agent-chat-composer-measure), calc(100% - var(--space-3) - var(--space-3)));");
+    expect(ledgeBlock).toContain("width: min(var(--agent-chat-measure), calc(100% - var(--space-3) - var(--space-3)));");
     expect(ledgeBlock).toContain("margin-inline: auto;");
     // 한 줄 컴포저 — 입력은 30px 한 줄에서 시작해 여섯 줄까지 자란다(위아래 5px 패딩 포함). rows=3이면
     // 첫 입력 순간 SDK의 scrollHeight가 되튀어 하한이 무효다.
@@ -3064,34 +3063,20 @@ describe("Instrument core design contract", () => {
     // 컴포저 상한은 읽기 폭 변수를 그대로 받는다: 넓게 읽는 사람이 정작 긴 지시를 좁은 창에
     // 쓰게 되면 여섯 줄이라는 가시 상한이 그만큼 빨리 닫힌다.
     const composerFrameBlock = chat.match(/^\.agent-chat-composer-frame \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerFrameBlock).toContain("max-width: var(--agent-chat-composer-measure);");
+    expect(composerFrameBlock).toContain("max-width: var(--agent-chat-measure);");
     expect(composerFrameBlock).toContain("margin-inline: auto;");
-    const chatRootMeasure = chatRootBlock.match(/--agent-chat-composer-measure: ([^;]+);/)?.[1] ?? "";
-    expect(chatRootMeasure).toBe("var(--agent-chat-measure)");
+    // 폭은 값 하나다 — 대화와 입력창을 가르는 두 번째 축을 두면 두 상한이 서로를 덮는 순서 싸움이 된다.
+    expect(chat).not.toContain("--agent-chat-composer-measure");
+    expect(chat).not.toContain("data-composer-width");
     for (const preset of ["wide", "full"]) {
       const presetBlock = chat.match(new RegExp(`\\.agent-chat\\[data-reading-width="${preset}"\\] \\{[^}]*\\}`))?.[0] ?? "";
       expect(presetBlock, preset).toContain("--agent-chat-measure:");
-      // 프리셋은 읽기 폭 변수 하나만 갈고, 컴포저는 그 변수를 경유해 따라온다 — 상한을 두 곳에서
-      // 쓰면 프리셋과 오버라이드가 서로를 덮는 순서 싸움이 된다.
-      expect(presetBlock, preset).not.toContain("--agent-chat-composer-measure");
     }
-    // 연동을 끊는 것은 사용자가 고른 오버라이드 하나뿐이고, 그것은 로그 컬럼을 건드리지 않는다.
-    const composerOverrideBlock = chat.match(/\.agent-chat\[data-composer-width="panel"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(composerOverrideBlock).toContain("--agent-chat-composer-measure: 100%;");
-    expect(composerOverrideBlock).not.toContain("--agent-chat-measure:");
     // 폭 글리프는 첨부·작업과 같은 또래다 — 같은 상자(30px)와 같은 문법(투명 바탕·tertiary 잉크).
     // 상자를 못박지 않으면 한 줄에 선 글리프들이 서로 다른 클릭 과녁을 갖는다.
     const composerWidthBlock = chat.match(/^\.agent-chat-composer-width \{[^}]*\}/m)?.[0] ?? "";
     for (const decl of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;", "width: 30px;", "height: 30px;"]) {
       expect(composerWidthBlock, decl).toContain(decl);
-    }
-    // 불리언 ON은 컨트롤 워시 + brass 글리프다(theme.css 컨트롤 문법) — 폭은 상태가 아니므로
-    // signal token(aurora/warn/coral/positive)을 빌리지 않는다.
-    const composerWidthOnBlock = chat.match(/\.agent-chat-composer-width\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(composerWidthOnBlock).toContain("background: var(--control-wash);");
-    expect(composerWidthOnBlock).toContain("color: var(--brass-ink);");
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive"]) {
-      expect(composerWidthOnBlock, signal).not.toContain(signal);
     }
     // 실행 중에는 현재 턴의 중지와 다음 턴의 예약을 분리해 함께 세운다. 중지는 행동이지 오류
     // 상태가 아니므로 중립 잉크를 쓰고, signal token은 빌리지 않는다.

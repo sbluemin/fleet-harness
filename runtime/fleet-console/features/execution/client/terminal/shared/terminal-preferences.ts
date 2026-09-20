@@ -20,9 +20,12 @@ export function isTerminalInactiveFlush(value: unknown): value is TerminalInacti
   return value === "saving" || value === "balanced" || value === "instant";
 }
 
-// 채팅 로그 컬럼의 읽기 폭 프리셋. 값은 chat.css의 data-reading-width 오버라이드와 한 벌이다 —
-// reading이 기존의 100ch 중앙 컬럼이고, 폰트처럼 서버 영속(플러그인 설정)이라 콘솔을 따라다닌다.
+// 채팅 폭 프리셋. 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, chat.css의 data-reading-width
+// 오버라이드와 한 벌이다 — reading이 기존의 100ch 중앙 컬럼이다. 폰트처럼 서버 영속(플러그인
+// 설정)이라 콘솔을 따라다닌다.
 export type ChatReadingWidth = "reading" | "wide" | "full";
+
+export const CHAT_READING_WIDTHS = ["reading", "wide", "full"] as const satisfies readonly ChatReadingWidth[];
 
 export const DEFAULT_CHAT_READING_WIDTH: ChatReadingWidth = "reading";
 
@@ -30,24 +33,21 @@ export function isChatReadingWidth(value: unknown): value is ChatReadingWidth {
   return value === "reading" || value === "wide" || value === "full";
 }
 
-export function nextChatReadingWidth(width: ChatReadingWidth): ChatReadingWidth {
-  return width === "reading" ? "wide" : width === "wide" ? "full" : "reading";
-}
-
-// 컴포저(입력창) 폭. 기본은 읽기 폭을 그대로 따라간다 — 읽는 폭과 쓰는 폭이 갈리면 시선이
-// 매 줄 끝에서 되돌아온다. panel은 그 연동을 끊고 패널 전폭까지 넓히는 수동 오버라이드이며,
-// 컴포저 바의 폭 글리프 하나가 이 값을 진다(설정 표면은 두지 않는다). 읽기 폭과 같은 자리에
-// 서버 영속하므로 콘솔을 따라다닌다.
-export type ChatComposerWidth = "follow" | "panel";
-
-export const DEFAULT_CHAT_COMPOSER_WIDTH: ChatComposerWidth = "follow";
-
-export function isChatComposerWidth(value: unknown): value is ChatComposerWidth {
-  return value === "follow" || value === "panel";
-}
-
-export function nextChatComposerWidth(width: ChatComposerWidth): ChatComposerWidth {
-  return width === "follow" ? "panel" : "follow";
+/**
+ * 순환의 다음 단계.
+ *
+ * `choices`는 지금 이 판면에서 **서로 다른 폭으로 그려지는** 프리셋만 담은 목록이다. 좁은
+ * 패널에서는 100ch·140ch·전체가 같은 폭으로 접히므로, 그대로 세 단을 돌리면 눌러도 아무 일이
+ * 없는 단계가 생긴다. 무엇이 접히는지는 판면의 실제 폭을 아는 쪽(컴포저)이 재서 건넨다.
+ */
+export function nextChatReadingWidth(
+  width: ChatReadingWidth,
+  choices: readonly ChatReadingWidth[] = CHAT_READING_WIDTHS,
+): ChatReadingWidth {
+  const list = choices.length > 0 ? choices : CHAT_READING_WIDTHS;
+  const index = list.indexOf(width);
+  // 현재 값이 접혀 목록에 없으면(저장된 넓게가 이 폭에서 전체와 같을 때) 첫 단으로 돌아간다.
+  return list[(index + 1) % list.length] ?? DEFAULT_CHAT_READING_WIDTH;
 }
 
 export type TerminalFontId = "cascadia" | "jetbrains" | "fira-code" | "source-code-pro";
@@ -251,7 +251,6 @@ interface TerminalPrefsState {
   readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
   readonly chatReadingWidth: ChatReadingWidth;
-  readonly chatComposerWidth: ChatComposerWidth;
 }
 
 type Listener = () => void;
@@ -268,7 +267,6 @@ let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let fontWriteEpoch = 0;
 let chatReadingWidthWriteEpoch = 0;
-let chatComposerWidthWriteEpoch = 0;
 let terminalSettingsWriteFlight: Promise<void> | null = null;
 
 export function migrateLegacyTerminalPrefs(): void {
@@ -294,7 +292,6 @@ export function connectTerminalSettings(settings: ClientSettingsCapability): voi
   // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
   fontWriteEpoch += 1;
   chatReadingWidthWriteEpoch += 1;
-  chatComposerWidthWriteEpoch += 1;
   settingsCapability = settings;
   void hydrateTerminalSettingsFromServer();
 }
@@ -309,10 +306,6 @@ export function useTerminalPrefs(): TerminalPrefsState {
 
 export function useChatReadingWidth(): ChatReadingWidth {
   return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
-}
-
-export function useChatComposerWidth(): ChatComposerWidth {
-  return useSyncExternalStore(subscribe, () => state.chatComposerWidth, () => state.chatComposerWidth);
 }
 
 /* Chat은 터미널 뷰와 같은 Operation의 다른 얼굴이다 — 같은 세션을 CLI로 보다 Chat으로 넘어왔을 때
@@ -372,28 +365,18 @@ export function setChatReadingWidth(width: ChatReadingWidth): void {
   void pushChatReadingWidthToServer(width);
 }
 
-export function setChatComposerWidth(width: ChatComposerWidth): void {
-  chatComposerWidthWriteEpoch += 1;
-  patchState({ chatComposerWidth: width });
-  void pushChatComposerWidthToServer(width);
-}
-
 async function hydrateTerminalSettingsFromServer(): Promise<void> {
   if (!settingsCapability) return;
   const epoch = fontWriteEpoch;
   const widthEpoch = chatReadingWidthWriteEpoch;
-  const composerWidthEpoch = chatComposerWidthWriteEpoch;
   try {
     const value = await settingsCapability.read(null);
     if (value !== null) {
-      // 읽기 폭은 서버 값이 전부다 — 새 선호라 폰트 같은 localStorage 시드 마이그레이션이 없다.
+      // 채팅 폭은 서버 값이 전부다 — 새 선호라 폰트 같은 localStorage 시드 마이그레이션이 없다.
+      // 퇴역한 chatComposerWidth 가 남아 있어도 읽지 않는다: 입력창은 이제 이 값을 그대로 따른다.
       const storedWidth = value["chatReadingWidth"];
       if (isChatReadingWidth(storedWidth) && widthEpoch === chatReadingWidthWriteEpoch) {
         patchState({ chatReadingWidth: storedWidth });
-      }
-      const storedComposerWidth = value["chatComposerWidth"];
-      if (isChatComposerWidth(storedComposerWidth) && composerWidthEpoch === chatComposerWidthWriteEpoch) {
-        patchState({ chatComposerWidth: storedComposerWidth });
       }
     }
     if (value !== null) {
@@ -439,16 +422,6 @@ async function pushChatReadingWidthToServer(width: ChatReadingWidth): Promise<vo
   if (!settings) return;
   try {
     await mergeTerminalSettingsRecord(settings, { chatReadingWidth: width });
-  } catch {
-    // best-effort — write 실패 시 조용히 무시한다.
-  }
-}
-
-async function pushChatComposerWidthToServer(width: ChatComposerWidth): Promise<void> {
-  const settings = settingsCapability;
-  if (!settings) return;
-  try {
-    await mergeTerminalSettingsRecord(settings, { chatComposerWidth: width });
   } catch {
     // best-effort — write 실패 시 조용히 무시한다.
   }
@@ -535,8 +508,8 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatComposerWidth: DEFAULT_CHAT_COMPOSER_WIDTH };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
   }
   migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatComposerWidth: DEFAULT_CHAT_COMPOSER_WIDTH };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
 }
