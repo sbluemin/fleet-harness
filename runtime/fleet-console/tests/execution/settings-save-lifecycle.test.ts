@@ -12,6 +12,8 @@ const BASE: SystemPromptSettingsState = {
   cursorDiagnosticsEnabled: false,
   wireLogEnabled: false,
   delegationRoutingEnabled: true,
+  delegationRoutingModel: null,
+  delegationRoutingMode: "model",
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",
 };

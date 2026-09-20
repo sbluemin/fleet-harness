@@ -46,6 +46,44 @@ interface On {
 
 type Register = (on: On, options?: unknown) => unknown;
 
+interface TurnStepInput {
+  readonly turnId: string;
+  readonly index: number;
+  readonly model: string;
+  readonly effort?: string;
+  readonly messageCount: number;
+  readonly agentId?: string;
+}
+
+const MAX_ROWS = 64;
+const MAX_ASSIGNED = MAX_ROWS * 4;
+const MAX_RUNNING = MAX_ROWS * 2;
+
+function recordAssignment(agentId: string, decision: Decision): void {
+  assigned.set(agentId, decision);
+  if (assigned.size > MAX_ASSIGNED) {
+    const oldest = assigned.keys().next().value;
+    if (oldest !== undefined) assigned.delete(oldest);
+  }
+}
+
+function pruneDoneRunning(): void {
+  if (running.size <= MAX_RUNNING) return;
+  for (const [id, row] of running.entries()) {
+    if (row.state === "done" || row.state === "denied") {
+      running.delete(id);
+      if (running.size <= MAX_ROWS) break;
+    }
+  }
+}
+
+function isAnyAgentRunning(): boolean {
+  for (const row of running.values()) {
+    if (row.state === "running" || row.state === "asked" || row.state === "seated") return true;
+  }
+  return false;
+}
+
 interface SpawnInput {
   readonly tool_use_id: string;
   readonly description: string;
@@ -154,8 +192,6 @@ let offHost = 0;
 let onHost = 0;
 
 let observed = 0;
-
-const MAX_ROWS = 64;
 
 function addRow(row: Row): Row {
   ledger.push(row);
@@ -278,8 +314,8 @@ export const register: Register = (on) => {
       if (result.agentId !== undefined) {
         row.agentId = result.agentId;
         running.set(result.agentId, row);
-
-        if (decision.model !== undefined) assigned.set(result.agentId, decision);
+        recordAssignment(result.agentId, decision);
+        pruneDoneRunning();
       }
       startTicker($);
     }
@@ -289,57 +325,67 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on("turn.step", async function* ($, e, next) {
+  on("turn.step", async function* ($, e: TurnStepInput, next) {
     const agentId = e.agentId;
 
     if (agentId === undefined) return yield* next(e);
-    const known = running.get(agentId);
-    if (known !== undefined) {
-      const seat = assigned.get(agentId);
 
-      if (seat !== undefined) {
-        return yield* next({
-          ...e,
-          model: seat.model,
-          ...(seat.effort === undefined ? {} : { effort: seat.effort }),
-        });
+    const seat = assigned.get(agentId);
+    if (seat !== undefined) {
+      const known = running.get(agentId);
+      if (known !== undefined && (known.state === "done" || known.endedAt !== undefined)) {
+        known.state = "running";
+        known.endedAt = undefined;
+        startTicker($);
+        redraw($);
       }
-      if (known.observed === undefined && e.model.startsWith(GATEWAY_PREFIX)) {
-        known.carried = modelLabel(e.model, e.effort);
+      if (seat.model === undefined) {
+        return yield* next(e);
       }
-      return yield* next(e);
+      return yield* next({
+        ...e,
+        model: seat.model,
+        ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+      });
     }
 
-    const seat = await assignStage($, e.model);
+    const stageDecision = await assignStage($, e.model, e.effort);
+    const decision: Decision = stageDecision ?? {
+      carried: modelLabel(e.model, e.effort),
+      because: "its caller chose this model",
+    };
+    recordAssignment(agentId, decision);
+
     const row = addRow({
       key: `turn:${agentId}`,
       surface: "workflow",
 
       description: `run ${agentId.slice(0, 6)}`,
-      carried: seat?.carried ?? modelLabel(e.model, e.effort),
-      because: seat?.because ?? "its caller chose this model",
+      carried: decision.carried,
+      because: decision.because,
       state: "running",
       startedAt: Date.now(),
       agentId,
-      ...(seat === undefined ? { observed: true as const } : {}),
+      ...(stageDecision === undefined ? { observed: true as const } : {}),
     });
     running.set(agentId, row);
-    if (seat === undefined) observed += 1;
+    pruneDoneRunning();
+
+    if (stageDecision === undefined) observed += 1;
     else {
-      assigned.set(agentId, seat);
       offHost += 1;
     }
     startTicker($);
     void openPane($);
     redraw($);
     $.ui.log(
-      `stage: agentId=${agentId} saw=${e.model} carried=${seat?.carried ?? "(unchanged)"}`,
+      `stage: agentId=${agentId} saw=${e.model} carried=${decision.carried}`,
       { to: "debug" },
     );
     return yield* next(
-      seat === undefined
+      decision.model === undefined
         ? e
-        : { ...e, model: seat.model as string, ...(seat.effort === undefined ? {} : { effort: seat.effort }) },
+        : { ...e, model: decision.model, ...(decision.effort === undefined ? {} : { effort: decision.effort }) },
     );
   });
 
@@ -351,9 +397,7 @@ export const register: Register = (on) => {
 
       const model = e.usage?.model;
       if (model !== undefined) row.carried = modelLabel(model);
-      running.delete(e.agentId as string);
-      assigned.delete(e.agentId as string);
-      if (running.size === 0) stopTicker();
+      if (!isAnyAgentRunning()) stopTicker();
       redraw($);
     }
     return next(e);
@@ -411,11 +455,12 @@ async function assignSpawn($: Engine, e: SpawnInput): Promise<Decision> {
   }
 }
 
-async function assignStage($: Engine, current: string): Promise<Decision | undefined> {
+async function assignStage($: Engine, current: string, effort?: string): Promise<Decision | undefined> {
   try {
     const assignment = await requestAssignment($, {
       surface: "stage",
       requestedModel: current,
+      ...(effort === undefined ? {} : { requestedEffort: effort }),
       unreachable: [...unreachable],
     });
     if (assignment.model === undefined) return undefined;

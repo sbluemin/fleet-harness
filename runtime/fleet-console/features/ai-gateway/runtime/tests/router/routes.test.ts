@@ -17,6 +17,8 @@ import type {
 import type { GatewayFailureRecord } from "../../src/index.js";
 import type { GatewayHttpHandlerContext } from "../../src/router/types.js";
 import { createHash } from "node:crypto";
+import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -28,11 +30,17 @@ import {
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
-  decideGatewayRoutingAssignment,
+  fallbackGatewayRoutingAssignment as decideGatewayRoutingAssignment,
+  decideGatewayRoutingAssignment as decideGatewayRoutingAssignmentWithJev,
   errorMessage,
   findGatewayModel,
   parseGatewayAssignmentRequest,
+  SystemOneClient,
+  SystemOneError,
 } from "../../src/index.js";
+import {
+  pickSeat,
+} from "../../src/fleet/routing-fallback.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -111,6 +119,18 @@ describe("delegation assignment", () => {
     }));
     return res;
   };
+
+  it("uses local fallback without invoking an AI when routing is off", async () => {
+    const choose = vi.fn(async () => { throw new Error("must not call AI"); });
+    const decision = await decideGatewayRoutingAssignmentWithJev(
+      { surface: "agent", prompt: "review this code" },
+      { ...exposure, delegationRoutingEnabled: false, delegationRoutingMode: "model" },
+      { choose },
+    );
+    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(decision.because).toContain("fallback");
+    expect(choose).not.toHaveBeenCalled();
+  });
 
   it("refuses an assignment request that carries no mod credential", async () => {
     const res = await assign({ surface: "agent", prompt: "secret host prompt" }, null);
@@ -251,6 +271,380 @@ describe("delegation assignment", () => {
     const decision = JSON.parse(res.body) as Record<string, unknown>;
     expect(decision).not.toHaveProperty("model");
     expect(decision.label).toBe("session model");
+  });
+
+  it("gives Jev the complete model data and falls back without double-counting load", async () => {
+    const providerLoad = new Map<string, number>();
+    const jevExposure = {
+      delegationRoutingEnabled: true,
+      delegationRoutingMode: "jev",
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      providerLoad,
+      providerPriority: ["cursor", "xai"],
+    } satisfies GatewayAssignmentExposure;
+    const request = {
+      surface: "agent" as const,
+      description: "map surfaces",
+      prompt: "map the delegation surfaces",
+      subagentType: "general-purpose",
+      providerPlugin: "engine",
+    };
+
+    const picking = new SystemOneClient({
+      readApiKey: async () => "tsv_test",
+      maxAttempts: 1,
+      timeoutMs: 2_000,
+      fetch: async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.state).not.toHaveProperty("tier");
+        expect(body.state.prompt).toBe(request.prompt);
+        expect(body.state.gateway_models.providers.cursor.models[0].constraints).toHaveProperty("effortLadder");
+        expect(body.state.gateway_models.providers.xai.quota.status).toBe("unsupported");
+        expect(body.state.gateway_models.quotaConsumptionPriority.providers[0].provider).toBe("cursor");
+        expect(body.state.candidates).toHaveLength(2);
+        return new Response(JSON.stringify({
+        model: "jev-latest",
+        answers: {
+          seat: {
+            type: "choice",
+            choice: "c1",
+            confidence: 0.91,
+            probabilities: { c0: 0.09, c1: 0.91 },
+          },
+        },
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }), { status: 200 });
+      },
+    });
+    const picked = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: picking });
+    expect(picked.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
+    expect(picked.because).toContain("· jev");
+    expect(providerLoad.get("xai")).toBe(1);
+    expect(providerLoad.get("cursor")).toBeUndefined();
+
+    const unsigned = new SystemOneClient({
+      readApiKey: async () => undefined,
+      maxAttempts: 1,
+      timeoutMs: 2_000,
+      fetch: async () => {
+        throw new Error("TypeSafe must not be called while signed out");
+      },
+    });
+    const fallback = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: unsigned });
+    expect(fallback.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(fallback.because).toContain("fallback: routing decision failed: not signed in");
+    expect(providerLoad.get("cursor")).toBe(1);
+    expect(providerLoad.get("xai")).toBe(1);
+
+    // await 중 host-only로 바뀌면 옛 후보로 결정론 확정하지 않는다.
+    const refreshed = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
+      client: unsigned,
+      refreshExposure: () => ({
+        delegationRoutingEnabled: true,
+        delegationRoutingMode: "jev",
+        delegationModels: [requireGatewayModel("xai--grok-composer-2.5-fast")],
+        providerLoad,
+      }),
+    });
+    expect(refreshed.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
+    expect(refreshed.because).toContain("fallback: routing decision failed: not signed in");
+    expect(refreshed.because).not.toContain("· jev");
+    expect(providerLoad.get("xai")).toBe(2);
+
+    // 정규화되지 않은 확률·choice 불일치는 수락하지 않고 결정론으로 접는다.
+    const invalid = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure,
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+    }, {
+      client: new SystemOneClient({
+        readApiKey: async () => "tsv_test",
+        maxAttempts: 1,
+        timeoutMs: 2_000,
+        fetch: async () => new Response(JSON.stringify({
+          model: "jev-latest",
+          answers: {
+            seat: {
+              type: "choice",
+              choice: "c0",
+              confidence: 0.8,
+              probabilities: { c0: 0, c1: 0 },
+            },
+          },
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }), { status: 200 }),
+      }),
+    });
+    expect(invalid.because).toContain("fallback: routing decision failed: invalid probabilities");
+    expect(invalid.because).not.toContain("· jev");
+
+    // 좌석이 하나면 Jev를 부르지 않으므로 원장도 그렇게 말한다.
+    const sole = await decideGatewayRoutingAssignmentWithJev(request, {
+      delegationRoutingEnabled: true,
+      delegationRoutingMode: "jev",
+      delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+      providerLoad: new Map(),
+    }, {
+      client: new SystemOneClient({
+        readApiKey: async () => "tsv_test",
+        fetch: async () => {
+          throw new Error("Jev must not run for a sole candidate");
+        },
+      }),
+    });
+    expect(sole.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(sole.because).toContain("· sole candidate");
+    expect(sole.because).not.toContain("· jev");
+
+    const abort = new AbortController();
+    abort.abort();
+    const cancelled = new SystemOneClient({
+      readApiKey: async () => "tsv_test",
+      maxAttempts: 1,
+      timeoutMs: 2_000,
+      fetch: async () => {
+        throw new Error("fetch must not run after caller abort");
+      },
+    });
+    await expect(decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
+      client: cancelled,
+      signal: abort.signal,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    // unsigned + invalid-probabilities 두 결정론 fallback이 cursor를 올렸다.
+    expect(providerLoad.get("cursor")).toBe(2);
+    expect(providerLoad.get("xai")).toBe(2);
+  });
+
+  it("falls back for a stage that carries no work text instead of guessing quietly", async () => {
+    const providerLoad = new Map<string, number>();
+    const decision = await decideGatewayRoutingAssignmentWithJev(
+      { surface: "stage", requestedModel: "claude-gateway--xai--grok-composer-2.5-fast" },
+      {
+        delegationRoutingEnabled: true,
+        delegationRoutingMode: "jev",
+        delegationModels: [
+          requireGatewayModel("cursor--composer-2.5"),
+          requireGatewayModel("xai--grok-composer-2.5-fast"),
+        ],
+        providerLoad,
+      },
+      {
+        client: new SystemOneClient({
+          readApiKey: async () => "tsv_test",
+          fetch: async () => {
+            throw new SystemOneError("Jev must not be called without stage work text", undefined);
+          },
+        }),
+      },
+    );
+
+    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(decision.because).toContain("fallback: Workflow stage");
+    expect(providerLoad.get("cursor")).toBe(1);
+  });
+
+  it("preserves deterministic spend order with providerPriority even under critical quota", () => {
+    const reachable = [
+      {
+        model: "claude-gateway--cursor--composer-2.5",
+        provider: "cursor" as const,
+        label: "composer",
+      },
+      {
+        model: "claude-gateway--xai--grok-composer-2.5-fast",
+        provider: "xai" as const,
+        label: "grok",
+      },
+    ];
+    const exposure: GatewayAssignmentExposure = {
+      delegationRoutingEnabled: true,
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      providerPriority: ["cursor", "xai"],
+      quota: {
+        cursor: {
+          status: "ok",
+          windows: [{ id: "monthly", usedPercent: 100 }],
+        },
+      },
+    };
+
+    // 결정론 pickSeat: 소진 순서가 압박 예측을 이겨 critical인 cursor를 그대로 집는다.
+    const seat = pickSeat(reachable, exposure);
+    expect(seat.model.provider).toBe("cursor");
+    expect(seat.suffix).toBe(" · spend order");
+
+
+  });
+
+  it("spreads provider load across concurrent Jev assignments resolving at the same barrier", async () => {
+    const providerLoad = new Map<string, number>();
+    const jevExposure = {
+      delegationRoutingEnabled: true,
+      delegationRoutingMode: "jev",
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      providerLoad,
+    } satisfies GatewayAssignmentExposure;
+
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+
+    let inFlight = 0;
+    const barrierClient = new SystemOneClient({
+      readApiKey: async () => "tsv_test",
+      maxAttempts: 1,
+      timeoutMs: 5_000,
+      fetch: async () => {
+        inFlight++;
+        await barrier;
+        throw new Error("simulated barrier fallback");
+      },
+    });
+
+    const req1 = { surface: "agent" as const, prompt: "task 1", description: "work 1" };
+    const req2 = { surface: "agent" as const, prompt: "task 2", description: "work 2" };
+
+    const p1 = decideGatewayRoutingAssignmentWithJev(req1, jevExposure, { client: barrierClient });
+    const p2 = decideGatewayRoutingAssignmentWithJev(req2, jevExposure, { client: barrierClient });
+
+    while (inFlight < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+
+    releaseBarrier();
+
+    const [d1, d2] = await Promise.all([p1, p2]);
+    expect(d1.model).not.toBe(d2.model);
+    expect(providerLoad.get("cursor")).toBe(1);
+    expect(providerLoad.get("xai")).toBe(1);
+  });
+
+  it("completes a normal POST assign request without premature abort during delayed Jev", async () => {
+    let seenSignal: AbortSignal | undefined;
+    const router = createAiGatewayRouter({
+      readAuth,
+      modHookToken: MOD_TOKEN,
+      assignRouting: async (_request, options) => {
+        seenSignal = options?.signal;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          model: "claude-gateway--cursor--composer-2.5",
+          label: "composer",
+          because: "test · jev",
+        };
+      },
+    });
+
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      void router.handle({ req, res, pathname: url.pathname });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}${BASE}/v1/fleet/routing/assign`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-fleet-mod-token": MOD_TOKEN,
+        },
+        body: JSON.stringify({
+          surface: "agent",
+          prompt: "map the delegation surfaces",
+          description: "map surfaces",
+          subagentType: "general-purpose",
+          providerPlugin: "engine",
+        }),
+      });
+
+      expect(resp.status).toBe(200);
+      const data = (await resp.json()) as Record<string, unknown>;
+      expect(data.model).toBe("claude-gateway--cursor--composer-2.5");
+      expect(data.because).toBe("test · jev");
+      expect(seenSignal?.aborted).toBe(false);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("aborts an in-flight Jev assign on real HTTP disconnect", async () => {
+    let seenSignal: AbortSignal | undefined;
+    let abortPromiseResolve!: () => void;
+    const abortPromise = new Promise<void>((resolve) => {
+      abortPromiseResolve = resolve;
+    });
+
+    const router = createAiGatewayRouter({
+      readAuth,
+      modHookToken: MOD_TOKEN,
+      assignRouting: async (_request, options) => {
+        seenSignal = options?.signal;
+        options?.signal?.addEventListener("abort", () => {
+          abortPromiseResolve();
+        }, { once: true });
+        await new Promise<never>((_resolve, reject) => {
+          if (options?.signal?.aborted) {
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+            return;
+          }
+          options?.signal?.addEventListener("abort", () => {
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+          }, { once: true });
+        });
+      },
+    });
+
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      void router.handle({ req, res, pathname: url.pathname });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const payload = JSON.stringify({
+        surface: "agent",
+        prompt: "map the delegation surfaces",
+        description: "map surfaces",
+        subagentType: "general-purpose",
+        providerPlugin: "engine",
+      });
+
+      const client = net.connect({ port, host: "127.0.0.1" }, () => {
+        client.write(
+          `POST ${BASE}/v1/fleet/routing/assign HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${port}\r\n` +
+          `x-fleet-mod-token: ${MOD_TOKEN}\r\n` +
+          `Content-Type: application/json\r\n` +
+          `Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n` +
+          payload,
+        );
+        const check = setInterval(() => {
+          if (seenSignal !== undefined) {
+            clearInterval(check);
+            client.destroy();
+          }
+        }, 10);
+      });
+
+      await abortPromise;
+      expect(seenSignal?.aborted).toBe(true);
+    } finally {
+      server.close();
+    }
   });
 });
 
@@ -541,6 +935,7 @@ interface ResponseStub {
   write(chunk: Uint8Array | string): boolean;
   end(body?: string): void;
   once(event: string, listener: () => void): void;
+  off?(event: string, listener: () => void): void;
 }
 
 function response(): ResponseStub {
@@ -565,6 +960,7 @@ function response(): ResponseStub {
     once() {
       /* backpressure is never exercised by the stub writer */
     },
+    off() {},
   };
 }
 

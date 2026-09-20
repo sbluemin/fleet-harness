@@ -1,4 +1,5 @@
 import type { FetchLike } from "../../transport/upstream-sse.js";
+import { linkAbortSignal } from "../../transport/upstream-sse.js";
 import {
   SYSTEM_ONE_MAX_CHOICE_OPTIONS,
   SYSTEM_ONE_MAX_SCORE_LEVELS,
@@ -42,6 +43,11 @@ export interface SystemOneClientDeps {
   readonly baseUrl?: string;
   readonly defaultModel?: string;
   readonly maxAttempts?: number;
+  /**
+   * 요청 시작부터 응답 **본문**을 읽기까지 포함한 전체 deadline.
+   * fetch headers만 돌아오고 body가 늘어지는 경우를 끊기 위해 헤더 수신에서 타이머를
+   * 풀지 않는다.
+   */
   readonly timeoutMs?: number;
   /** 물러나는 시간을 호출자가 지정한다(테스트가 실제로 기다리지 않도록). */
   readonly sleep?: (ms: number) => Promise<void>;
@@ -125,40 +131,46 @@ export class SystemOneClient {
 
     let lastError: SystemOneError | undefined;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
-      const response = await this.sendOnce(path, init, apiKey);
-      if (response.ok) {
-        return await response.json();
+      try {
+        return await this.sendAttempt(path, init, apiKey);
+      } catch (error) {
+        lastError = error instanceof SystemOneError
+          ? error
+          : new SystemOneError(
+            error instanceof Error ? error.message : String(error),
+            undefined,
+            error,
+          );
+        if (isAbortLike(error) || attempt === this.maxAttempts) {
+          throw lastError;
+        }
+        if (lastError.status === undefined || !RETRYABLE_STATUSES.has(lastError.status)) {
+          throw lastError;
+        }
+        // 지수 물러남. 공급자 문서가 429/529에 즉시 재시도를 금한다.
+        await this.sleep(DEFAULT_BACKOFF_MS * 2 ** (attempt - 1));
       }
-      const detail = await readErrorDetail(response);
-      lastError = new SystemOneError(
-        `TypeSafe request failed with HTTP ${response.status}`,
-        response.status,
-        detail,
-      );
-      if (!RETRYABLE_STATUSES.has(response.status) || attempt === this.maxAttempts) {
-        throw lastError;
-      }
-      // 지수 물러남. 공급자 문서가 429/529에 즉시 재시도를 금한다.
-      await this.sleep(DEFAULT_BACKOFF_MS * 2 ** (attempt - 1));
     }
     throw lastError ?? new SystemOneError("TypeSafe request failed", undefined);
   }
 
-  private async sendOnce(
+  /**
+   * fetch 헤더와 본문 읽기를 하나의 deadline 아래에서 수행한다. 이미 abort된 외부 signal도
+   * 즉시 반영하고, listener는 항상 해제한다.
+   */
+  private async sendAttempt(
     path: string,
     init: { method: string; body?: string; signal?: AbortSignal },
     apiKey: string,
-  ): Promise<Response> {
+  ): Promise<unknown> {
     const controller = new AbortController();
+    const timeoutError = createTimeoutError(this.timeoutMs);
     const timeout = setTimeout(() => {
-      controller.abort();
+      controller.abort(timeoutError);
     }, this.timeoutMs);
-    const onAbort = () => {
-      controller.abort();
-    };
-    init.signal?.addEventListener("abort", onAbort, { once: true });
+    const unlink = linkAbortSignal(init.signal, controller);
     try {
-      return await this.fetchImpl(`${this.baseUrl}${path}`, {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method: init.method,
         headers: {
           authorization: `Bearer ${apiKey}`,
@@ -167,7 +179,17 @@ export class SystemOneClient {
         body: init.body,
         signal: controller.signal,
       });
+      if (!response.ok) {
+        const detail = await readBodyUnderSignal(response, controller.signal);
+        throw new SystemOneError(
+          `TypeSafe request failed with HTTP ${response.status}`,
+          response.status,
+          detail,
+        );
+      }
+      return await readJsonUnderSignal(response, controller.signal);
     } catch (error) {
+      if (error instanceof SystemOneError) throw error;
       throw new SystemOneError(
         error instanceof Error ? error.message : String(error),
         undefined,
@@ -175,18 +197,84 @@ export class SystemOneClient {
       );
     } finally {
       clearTimeout(timeout);
-      init.signal?.removeEventListener("abort", onAbort);
+      unlink();
     }
   }
 }
 
-async function readErrorDetail(response: Response): Promise<unknown> {
-  try {
-    const body = (await response.json()) as { detail?: unknown };
-    return body.detail ?? body;
-  } catch {
-    return undefined;
+function createTimeoutError(timeoutMs: number): DOMException {
+  return new DOMException(`TypeSafe request timed out after ${timeoutMs}ms`, "TimeoutError");
+}
+
+function isAbortLike(error: unknown): boolean {
+  if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
+    return true;
   }
+  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+    return true;
+  }
+  if (error instanceof SystemOneError) {
+    return isAbortLike(error.detail) || /aborted|abort|timed out|timeout/i.test(error.message);
+  }
+  return false;
+}
+
+async function readJsonUnderSignal(response: Response, signal: AbortSignal): Promise<unknown> {
+  const detail = await readBodyUnderSignal(response, signal);
+  if (detail === undefined || typeof detail === "string") {
+    throw new SystemOneError("TypeSafe response body was not JSON", response.status, detail);
+  }
+  return detail;
+}
+
+async function readBodyUnderSignal(response: Response, signal: AbortSignal): Promise<unknown> {
+  if (signal.aborted) throw abortReason(signal);
+  try {
+    const text = await raceWithAbort(response.text(), signal);
+    if (text === "") return undefined;
+    try {
+      const body = JSON.parse(text) as { detail?: unknown };
+      return body.detail ?? body;
+    } catch {
+      return text;
+    }
+  } catch (error) {
+    if (signal.aborted) throw abortReason(signal);
+    throw error;
+  }
+}
+
+function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  // abort가 이긴 뒤에도 body promise가 나중에 reject될 수 있다. 그 늦은 거절을
+  // unhandled rejection으로 남기지 않는다.
+  const ignoreLateRejection = () => {
+    void promise.catch(() => undefined);
+  };
+  if (signal.aborted) {
+    ignoreLateRejection();
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      ignoreLateRejection();
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("Aborted", "AbortError");
 }
 
 function assertQuestionsWithinLimits(questions: SystemOneQuestions): void {
