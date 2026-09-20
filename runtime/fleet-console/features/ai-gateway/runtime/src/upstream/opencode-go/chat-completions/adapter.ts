@@ -145,7 +145,14 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
       : reasoningEffortPolicy.get(this)?.(request.model, requestedEffort);
     const replayReasoning = request.model.startsWith("deepseek-v4-")
       || (reasoningReplayPolicy.has(this) && request.model === "deepseek-v4.1-flash");
-    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools, reasoningEffort, replayReasoning);
+    const payload = forChatCompletionsBackend(
+      request,
+      supportsImageInput,
+      omitTools,
+      reasoningEffort,
+      replayReasoning,
+      readablePatternPolicy.has(this),
+    );
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
 
@@ -220,6 +227,12 @@ const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 const toolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 
 /**
+ * OpenCode 인스턴스는 백엔드가 거절하는 `pattern`을 outbound catalog에서 뺀다.
+ * 이 drop은 provider 실측에 근거하므로 generic class에는 결합하지 않는다.
+ */
+const readablePatternPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
+
+/**
  * 어떤 instance가 canonical effort를 wire에 싣는지, 그리고 어떤 모델에 어떤 단으로 싣는지.
  *
  * Chat Completions 규격에는 reasoning 파라미터가 없으므로 generic instance는 계속 아무것도
@@ -271,6 +284,9 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
     // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
     argumentPruningPolicy.set(this, true);
+    // Artifact `file_paths`의 `\0` 패턴이 DeepSeek 백엔드를 요청 전체 400으로 쓰러뜨린다.
+    // Responses 어댑터와 같은 drop이며, generic class의 호환 동작은 바꾸지 않는다.
+    readablePatternPolicy.set(this, true);
     // no-tools 조건은 Suggestion Mode에 더해 `tool_choice: "none"`까지 wire에서 catalog를
     // 뺀다 — generic class의 호환 동작은 바꾸지 않고 provider instance에만 결합한다.
     toolOmissionPolicy.set(this, true);
@@ -335,6 +351,7 @@ function forChatCompletionsBackend(
   omitTools = false,
   reasoningEffort: ReasoningEffort | undefined,
   replayReasoning: boolean,
+  dropUnreadablePatterns = false,
 ): ChatWireRequest {
   const messages: ChatWireMessage[] = [];
   if (request.instructions !== undefined && request.instructions.length > 0) {
@@ -419,7 +436,9 @@ function forChatCompletionsBackend(
     function: {
       name: tool.name,
       ...(tool.description === undefined ? {} : { description: tool.description }),
-      parameters: tool.parameters,
+      parameters: dropUnreadablePatterns
+        ? readablePatternParameters(tool.parameters)
+        : tool.parameters,
     },
   }));
   if (tools.length > 0) {
@@ -853,6 +872,70 @@ function nonNegativeOrZero(value: unknown): number {
 
 function optionalNonNegative(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * `pattern` values this Chat Completions backend refuses.
+ *
+ * This is not a strict-mode rewrite. That wire accepts `strict: true` and ignores it, so
+ * optional-argument pollution is handled inbound and tools otherwise keep their original
+ * schemas. Dropping an unreadable `pattern` is a different transform: the keyword only
+ * advises the model, nothing downstream enforces it, and a backend that cannot compile one
+ * refuses the whole request before any output reaches the client.
+ *
+ * Observed 2026-09-20 against `deepseek-v4.1-flash`: Claude Code's `Artifact` tool spells
+ * `file_paths` as `^[^\0]*$`, and the backend returns `Invalid schema for function
+ * 'Artifact': {"type":"string","minLength":1,"maxLength":1024,"pattern":"^[^\0]*$"} is
+ * not valid under any of the schemas listed in the 'anyOf' keyword`. The same
+ * `file_paths` pattern took every Muse-Spark turn down on the Responses wire (2026-09-19);
+ * that adapter's comment holds the rest of the refused-syntax union this copy keeps in
+ * lockstep — lookaround, Unicode property escapes, and backslash-digit — because a copy
+ * that lags costs a whole turn, and dropping an advisory pattern a backend would have
+ * accepted costs nothing observable.
+ *
+ * Bound to the OpenCode Go instance, never the public generic class: the measurement is
+ * this provider's, and a generic instance can be constructed against any Chat Completions
+ * endpoint.
+ *
+ * `runtime/fleet-console/features/ai-gateway/runtime/src/upstream/opencode-go/responses/adapter.ts`
+ * carries the same drop for this provider's Responses wire; a change to the refused syntax
+ * belongs there too.
+ */
+const UNREADABLE_PATTERN = /\(\?[=!<]|\\[pP]\{|\\[0-9]/u;
+
+function readablePatternParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = readablePatternSchema(schema);
+  return isRecord(converted) ? converted : schema;
+}
+
+/**
+ * Drops the `pattern` constraints a backend refuses and keeps every one it reads.
+ *
+ * Walks the value generically rather than following JSON Schema keywords: the offending
+ * patterns sit wherever the tool author put them, and a keyword walk would have to be widened
+ * for each new nesting shape. Only a **string** under a `pattern` key is dropped, so a property
+ * that happens to be named `pattern` keeps its subschema. Unchanged nodes are returned by
+ * identity so a tool with no refused pattern reaches the wire as the object it already was.
+ */
+function readablePatternSchema(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const next = value.map(readablePatternSchema);
+    return next.some((entry, index) => entry !== value[index]) ? next : value;
+  }
+  if (!isRecord(value)) return value;
+
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "pattern" && typeof entry === "string" && UNREADABLE_PATTERN.test(entry)) {
+      changed = true;
+      continue;
+    }
+    const converted = readablePatternSchema(entry);
+    if (converted !== entry) changed = true;
+    next[key] = converted;
+  }
+  return changed ? next : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
