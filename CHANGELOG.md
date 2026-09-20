@@ -5,6 +5,35 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.103.0] - 2026-09-20
+
+### fleet-cli
+
+#### Added
+- `fleet gateway auth login typesafe` signs in to TypeSafe from the terminal, and `fleet doctor` now reports whether it is signed in.
+
+### fleet-console
+
+#### Added
+- Choose TypeSafe Jev or an AI model to assign models to delegated Agent runs using task, benchmark, and quota information, and try routing with editable example tasks in Settings. Disabled AI routing, failed decisions, and Workflow stages retain rule-based assignment.
+- Sign in to TypeSafe from Add model in AI Gateway settings so Console features can ask its Jev models for structured decisions. They are marked apart from chat models and never appear in the /model picker or the launch menu, and signing out only turns off the features that use them.
+
+#### Changed
+- Agents can click Browser elements by reference and receive clearer feedback when a target cannot be clicked, without confusing input delivery with a successful page action.
+- Browser agents can target named controls, inspect only the state they need, and wait for explicit outcomes without repeating an action. Screenshots are now requested explicitly instead of being generated after every computer input.
+- Browser captures wait for the native pane geometry and report actual image dimensions and coordinate conversion, with optional stale-geometry checks before coordinate input.
+- Chat messages you send while the agent is working now reach it during that same turn instead of waiting for the turn to finish, so you can correct course without stopping the agent.
+- Delegated runs now spread across your providers instead of all landing on one, and skip a provider whose allowance is nearly spent.
+- Console use is always available. Turn it on per Operation or aide; the Settings experiment switch is gone.
+
+#### Fixed
+- Operation Browser desktop resize follows the live pane again, so screenshots and click coordinates stop using a leftover mobile or tablet size.
+- Delegated runs that named Fleet's own execution agent no longer fall back to the session model instead of a gateway model.
+- The routing pane and the line under the prompt read correctly again: no doubled `fleet:` prefix, and a Korean run name no longer pushes the elapsed time onto a line of its own.
+
+#### Removed
+- Fleet no longer adds routing instructions to an agent session or serves the routing guides and model roster it read them from; Fleet picks each delegated run's model on its own.
+
 ## [1.102.0] - 2026-09-20
 
 ### fleet-cli
