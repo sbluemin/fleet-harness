@@ -82,9 +82,13 @@ surface from the command hooks beside it: it runs inside the session, hooks even
 preserving an operator's own value; the surface is otherwise off by default and rollout-gated,
 and a restricted session or a locked `hooks` surface still refuses it.
 
-The mod hooks `agent.spawn`, the one door both the Agent tool and a Workflow's stage agents
-pass through, so one decision point covers Agent and dynamic Workflow alike. Per dispatch it
-resolves a seat and passes the rewrite on through `next`:
+The mod hooks `agent.spawn`, which the Agent tool raises. A dynamic Workflow's stage agents do
+**not** raise it: they run as the built-in `workflow-subagent` type, dispatched by the workflow
+runtime, and a measured run shows zero `agent.spawn` events beside four `turn.complete` ones.
+Seating therefore reaches the Agent tool only; for a Workflow, the script the host wrote is the
+routing decision, which is one reason the appended prompt's Workflow guidance stays. The mod
+still records those runs — see **Observed runs** below. Per Agent-tool dispatch it resolves a
+seat and passes the rewrite on through `next`:
 
 | The call names | What happens |
 |---|---|
@@ -112,6 +116,15 @@ reachable, since independence from the host's own lineage is half of why a run i
 An empty exposure yields an empty table, and the mod then observes without rerouting.
 Launch-time seats carry no quota reading, so allowance pressure narrows the field only where a
 caller supplies one.
+
+**Observed runs.** A streaming `turn.step` hook (an async generator; the event takes no other
+form) sees every loop with an `agentId`, which includes a Workflow's stages, and carries that
+step's `model` and `effort`. A loop the mod never seated becomes a row marked `not routed`,
+closed by `turn.complete`, whose `usage.model` settles which model actually answered. Recording
+is deliberately not gated on the `claude-gateway--` prefix: that spelling decides how the label
+is drawn, and gating on it would silently drop a run whenever the id is spelled otherwise. The
+ledger's tally keeps seated and observed runs in separate counts, because merging them would
+report Fleet as routing more than it does.
 
 `$.ui.notice` puts the decision under the dispatch's own row, and the `Fleet Routing` pane
 (`/fleet-routing`) carries the ledger: what was asked, which identity carried it, why, and how

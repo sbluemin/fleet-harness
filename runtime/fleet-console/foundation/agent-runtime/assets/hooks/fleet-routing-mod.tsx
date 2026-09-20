@@ -3,6 +3,11 @@
  *
  * 이 모듈은 호스트 프롬프트가 설득으로만 쥐고 있던 두 가지를 가져온다.
  *
+ * `agent.spawn`은 Agent 도구만 지난다. 다이나믹 Workflow의 스테이지는 내장 `workflow-subagent`
+ * 로 돌면서 이 이벤트를 발화하지 않으므로 **재배정할 수 없다** — 그 경우 라우팅 결정은 호스트가
+ * 쓴 워크플로우 스크립트가 쥔다. 대신 turn 이벤트로 관측해 원장에는 남긴다. 좌석 배정이 닿는
+ * 범위와 원장이 보는 범위가 다르다는 사실 자체가 판이 말해야 하는 것이다.
+ *
  *   1. 배정. 호스트는 역할 이름(`fleet:recon`)만 고르고, 어느 모델이 그 역할을 태울지는
  *      런치 시점에 확정된 좌석표가 정한다. 이름을 고르지 않은 디스패치 — Agent 도구의
  *      `subagent_type` 생략, Workflow 스테이지의 `agentType` 생략 — 는 세션 모델을 상속하는데,
@@ -56,7 +61,14 @@ interface Engine {
 /** 한 훅. `next(e)`는 나머지 플러그인과 엔진 자신의 동작으로 이어진다. */
 type Hook<E, R> = ($: Engine, e: E, next: (event: E) => Promise<R> | R) => Promise<R> | R;
 
+/**
+ * `turn.step`만 스트리밍이다. 훅은 async generator여야 하고, `yield* next(e)`가 아래 스트림을
+ * 흘려보내면서 그 단계의 결과로 평가된다. 일반 함수로 걸면 모듈이 실리지 않는다.
+ */
+type StreamHook<E, R> = ($: Engine, e: E, next: (event: E) => AsyncGenerator<unknown, R>) => AsyncGenerator<unknown, R>;
+
 interface On {
+  <E, R>(pattern: "turn.step", hook: StreamHook<E, R>): { readonly catch: (handler: StreamHook<E, R>) => void };
   <E, R>(pattern: string, hook: Hook<E, R>): { readonly catch: (handler: Hook<E, R>) => void };
   <E, R>(pattern: string, matcher: object, hook: Hook<E, R>): { readonly catch: (handler: Hook<E, R>) => void };
 }
@@ -113,6 +125,16 @@ const INHERITING_TYPES = new Set(["", "general-purpose", "task", "Explore", "Pla
 
 type RowState = "asked" | "seated" | "running" | "done" | "denied";
 
+/** 게이트웨이 모델 id의 접두사. 이 표식이 붙은 모델만 Fleet이 중계한다. */
+const GATEWAY_PREFIX = "claude-gateway--";
+
+/** `claude-gateway--cursor--grok-4.6-fast` → `cursor/grok-4.6-fast`. 게이트웨이가 아니면 그대로. */
+function modelLabel(model: string, effort?: string): string {
+  if (!model.startsWith(GATEWAY_PREFIX)) return model;
+  const scoped = model.slice(GATEWAY_PREFIX.length).replace("--", "/");
+  return effort === undefined ? scoped : `${scoped} @${effort}`;
+}
+
 interface Row {
   readonly key: string;
   /** Agent 도구 호출인지 Workflow 스테이지인지. */
@@ -129,6 +151,8 @@ interface Row {
   startedAt: number;
   endedAt?: number;
   agentId?: string;
+  /** Fleet이 좌석을 준 실행이 아니라 turn 이벤트로 발견한 실행. */
+  observed?: true;
 }
 
 /** 이 세션에서 본 디스패치. 새 것이 뒤에 붙는다. */
@@ -146,6 +170,8 @@ let ticker: { cancel: () => void } | undefined;
 let offHost = 0;
 /** 세션 모델을 상속한 디스패치 수. */
 let onHost = 0;
+/** Fleet이 배정하지 않았지만 게이트웨이 모델로 돈 실행 수(워크플로우 스테이지 등). */
+let observed = 0;
 
 const MAX_ROWS = 64;
 
@@ -291,12 +317,56 @@ export const register: Register = (on) => {
     return next(e);
   });
 
+  /**
+   * 모델 요청 하나마다 발화한다. `agent.spawn`이 닿지 않는 실행 — 다이나믹 Workflow의
+   * 스테이지가 그렇다 — 을 여기서 발견한다. 그 실행은 재배정할 수 없지만, 게이트웨이
+   * 모델을 쓴 이상 원장에는 있어야 한다. 원장이 "Fleet이 배정한 것"만 담으면 실제로 무엇이
+   * 무엇으로 돌았는지 묻는 사람에게 절반만 답하는 셈이다.
+   */
+  on("turn.step", async function* ($, e, next) {
+    const agentId = e.agentId;
+    // agentId가 없으면 메인 루프, 곧 호스트 자신의 턴이다. 위임이 아니므로 세지 않는다.
+    if (agentId === undefined) return yield* next(e);
+    const known = running.get(agentId);
+    if (known !== undefined) {
+      // 좌석을 준 실행. 실제로 어느 모델이 답했는지로 이름을 확정한다.
+      if (known.observed === undefined && e.model.startsWith(GATEWAY_PREFIX)) {
+        known.carried = modelLabel(e.model, e.effort);
+      }
+      return yield* next(e);
+    }
+    // 모델 id 철자로 기록 여부를 가르지 않는다. 게이트웨이 표식이 붙는지는 표시 형식의
+    // 문제일 뿐이고, 그 추측에 기록을 걸면 철자가 어긋나는 순간 실행이 조용히 사라진다.
+    // 위임된 실행(agentId가 있는 루프)은 무엇으로 돌든 원장에 남는다.
+    const row = addRow({
+      key: `turn:${agentId}`,
+      surface: "workflow",
+      description: "workflow stage",
+      asked: "not routed by Fleet",
+      carried: modelLabel(e.model, e.effort),
+      because: "dispatched outside agent.spawn, so no seat applied",
+      state: "running",
+      startedAt: Date.now(),
+      agentId,
+      observed: true,
+    });
+    running.set(agentId, row);
+    observed += 1;
+    startTicker($);
+    void openPane($);
+    redraw($);
+    return yield* next(e);
+  });
+
   // subagent가 끝나면 그 행을 닫는다.
   on("turn.complete", ($, e, next) => {
     const row = e.agentId === undefined ? undefined : running.get(e.agentId);
     if (row) {
       row.state = "done";
       row.endedAt = Date.now();
+      // 마지막 응답의 모델이 실제로 무엇이었는지가 여기서 확정된다.
+      const model = e.usage?.model;
+      if (model !== undefined) row.carried = modelLabel(model);
       running.delete(e.agentId as string);
       if (running.size === 0) stopTicker();
       redraw($);
@@ -383,8 +453,13 @@ function summaryLine(): string {
   const runs = `${ledger.length} ${ledger.length === 1 ? "run" : "runs"}`;
   // "세션 모델을 피했다"가 아니라 "상속했는가"가 세는 축이다. 세션 자신이 게이트웨이 모델로
   // 도는 경우 좌석이 같은 모델을 고를 수도 있어서, 전자로 적으면 거짓이 된다.
-  const split = offHost + onHost === 0 ? "seating" : `${offHost} seated, ${onHost} inherited`;
-  return `${runs} · ${split} · seats from roster ${SEAT_TABLE.revision}`;
+  // 관측만 한 실행은 따로 센다. 좌석을 준 실행과 같은 칸에 넣으면 Fleet이 라우팅한 범위를
+  // 실제보다 넓게 읽히게 한다.
+  const parts: string[] = [];
+  if (offHost + onHost > 0) parts.push(`${offHost} seated, ${onHost} inherited`);
+  if (observed > 0) parts.push(`${observed} not routed`);
+  const tally = parts.length === 0 ? "seating" : parts.join(" · ");
+  return `${runs} · ${tally} · seats from roster ${SEAT_TABLE.revision}`;
 }
 
 /**
