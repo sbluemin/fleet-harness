@@ -13,18 +13,19 @@ export const aiGatewaySettingsSection = defineSettingsSection({
     (locale) => [
       getT(locale)("terminal.settings.aiGatewayModels"),
       getT(locale)("terminal.settings.compactTiming"),
+      getT(locale)("terminal.settings.aiGatewayRouting"),
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor opencode xai kimi diagnostics wire log compact",
-    "게이트웨이 공급자 모델 키 진단 와이어 로그 압축",
+    "gateway provider model api key codex cursor opencode xai kimi routing delegation subagent workflow diagnostics wire log compact",
+    "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
 });
 
 function AiGatewaySection() {
   useLoadSystemPromptSettings();
-  return <><AiGatewayModelsCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
+  return <><AiGatewayModelsCard /><AiGatewayRoutingCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
 }
 const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
@@ -306,6 +307,48 @@ function AiGatewayCompactTimingCard() {
   );
 }
 
+/**
+ * 배정 카드. 모델 카드 바로 아래에 놓는다 — 여기서 켜는 것은 그 위에서 노출한 모델을
+ * 쓰는 방식이고, 노출을 정하기 전에 배정을 묻는 순서는 읽는 사람에게 거꾸로다.
+ */
+function AiGatewayRoutingCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingFields;
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayRouting")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayRouting")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayRouting")}>
+      <p className="global-settings-resp-title">
+        {t("terminal.settings.aiGatewayRouting")}
+        <SettingsHelp title={t("terminal.settings.aiGatewayRouting")}>
+          <p>{t("terminal.settings.aiGatewayRoutingHelp")}</p>
+        </SettingsHelp>
+      </p>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      <SettingToggleRow
+        title={t("terminal.settings.aiGatewayDelegationRouting")}
+        help={t("terminal.settings.aiGatewayDelegationRoutingHelp")}
+        value={state.delegationRoutingEnabled}
+        disabled={saving.has("delegationRoutingEnabled")}
+        onToggle={() => void setSystemPromptSettingsField(
+          "delegationRoutingEnabled",
+          !state.delegationRoutingEnabled,
+        )}
+      />
+    </section>
+  );
+}
+
 function AiGatewayDiagnosticsCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
@@ -332,16 +375,6 @@ function AiGatewayDiagnosticsCard() {
         onToggle={() => void setSystemPromptSettingsField(
           "cursorDiagnosticsEnabled",
           !state.cursorDiagnosticsEnabled,
-        )}
-      />
-      <SettingToggleRow
-        title={t("terminal.settings.aiGatewayDelegationRouting")}
-        help={t("terminal.settings.aiGatewayDelegationRoutingHelp")}
-        value={state.delegationRoutingEnabled}
-        disabled={saving.has("delegationRoutingEnabled")}
-        onToggle={() => void setSystemPromptSettingsField(
-          "delegationRoutingEnabled",
-          !state.delegationRoutingEnabled,
         )}
       />
       <SettingToggleRow
