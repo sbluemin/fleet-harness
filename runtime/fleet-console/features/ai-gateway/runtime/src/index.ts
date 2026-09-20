@@ -117,10 +117,46 @@ export {
   OPENCODE_AUTH_PROVIDER_ID,
   OPENCODE_GO_API_BASE_URL,
   OPENCODE_GO_MODEL,
+  TYPESAFE_API_BASE_URL,
+  TYPESAFE_AUTH_PROVIDER_ID,
+  TYPESAFE_DEFAULT_MODEL,
+  TYPESAFE_MODELS,
   validateKimiAuthKey,
   validateOpencodeGoAuthKey,
+  validateTypesafeAuthKey,
 } from "./fleet/auth.js";
 export type { AuthKeyValidationResult } from "./fleet/auth.js";
+
+// TypeSafe System One — 라우터를 거치지 않고 Fleet 코드가 직접 부르는 공급자 wire.
+export {
+  SystemOneClient,
+  SystemOneError,
+  choice,
+  defineDecision,
+  noul,
+  runDecision,
+  score,
+} from "./upstream/typesafe/index.js";
+export type {
+  AnswerFor,
+  AnswersFor,
+  ChoiceAnswer,
+  ChoiceQuestion,
+  NoulAnswer,
+  NoulQuestion,
+  ScoreAnswer,
+  ScoreQuestion,
+  SystemOneAskInput,
+  SystemOneClientDeps,
+  SystemOneDecision,
+  SystemOneDecisionOutcome,
+  SystemOneModelCard,
+  SystemOneQuestion,
+  SystemOneQuestions,
+  SystemOneResult,
+  SystemOneState,
+  SystemOneUsage,
+} from "./upstream/typesafe/index.js";
 export {
   prepareAiGatewayLaunchProfile,
   writeGatewayModelCacheForHome,

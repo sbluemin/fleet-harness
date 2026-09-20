@@ -146,6 +146,7 @@
   /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
   --provider-claude: oklch(78% 0.15 62);
   --provider-kimi: oklch(75% 0.15 315);
+  --provider-typesafe: oklch(74% 0.15 339);
   --provider-codex: oklch(78% 0.035 248);
   --provider-cursor: oklch(72% 0.13 238);
   --provider-opencode: oklch(72% 0.07 165);
@@ -811,6 +812,7 @@
 
   --provider-claude: oklch(54% 0.135 62);
   --provider-kimi: oklch(52% 0.135 315);
+  --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
   --provider-cursor: oklch(50% 0.115 238);
   --provider-opencode: oklch(48% 0.08 165);

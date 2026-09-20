@@ -17,6 +17,7 @@ interface RouterHarnessOptions {
 const BASE_PATH = "/api/v1";
 const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 const OPENCODE_PROVIDER_ID = "Claude Code with OpenCode Go";
+const TYPESAFE_PROVIDER_ID = "Fleet Console with TypeSafe System One";
 const KIMI_PATH = `${BASE_PATH}/model-auth/providers/kimi`;
 const OPENCODE_PATH = `${BASE_PATH}/model-auth/providers/opencode`;
 
@@ -29,14 +30,18 @@ describe("terminal model auth routes", () => {
       status: 200,
       body: {
         providers: [
-          { provider: "kimi", displayName: "Kimi for AI Gateway", signedIn: true },
-          { provider: "opencode", displayName: "OpenCode Go for AI Gateway", signedIn: false },
+          { provider: "kimi", kind: "model-provider", displayName: "Kimi for AI Gateway", signedIn: true },
+          { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go for AI Gateway", signedIn: false },
+          // 라우팅되는 모델이 없는 서비스 자격증명도 같은 상태에 실린다. `kind`가 그
+          // 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
+          { provider: "typesafe", kind: "service", displayName: "TypeSafe", signedIn: false },
         ],
       },
     });
     const serialized = JSON.stringify(harness.writes);
     expect(serialized).not.toContain(KIMI_PROVIDER_ID);
     expect(serialized).not.toContain(OPENCODE_PROVIDER_ID);
+    expect(serialized).not.toContain(TYPESAFE_PROVIDER_ID);
     expect(serialized).not.toContain("stored-key");
   });
 

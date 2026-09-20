@@ -143,6 +143,26 @@ export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: Laun
   return <CodexGlyph size={size} />;
 }
 
+/**
+ * 실행할 수 있는 provider가 아니라 자격증명만 갖는 서비스의 마크. 모델 밴드로 묶일 일이
+ * 없으므로 위의 launch 유니온과 섞지 않는다 — 그 유니온은 "띄울 수 있는 것"을 뜻한다.
+ */
+export type ServiceGlyphId = "typesafe";
+
+export function serviceGlyph(service: ServiceGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
+  if (service === "typesafe") return <TypesafeGlyph size={size} />;
+  return null;
+}
+
+/** TypeSafe의 맞물린 아이소메트릭 큐브. 공식 마크에서 그대로 옮겨온 윤곽이다. */
+function TypesafeGlyph({ size }: LaunchProviderGlyphProps) {
+  return (
+    <svg viewBox="0 0 206 300" {...size} aria-hidden="true">
+      <path fillRule="evenodd" d="M102 0 159 36 159 88 206 118 206 233 104 300 47 264 47 210 0 180 0 67ZM93 30 19 77 19 156 47 139 47 88 93 59ZM114 30 113 59 140 75 140 47ZM103 75 74 93 101 112 132 94ZM67 112 66 140 93 157 93 128ZM139 112 113 129 113 180 66 210 66 240 140 193ZM160 112 159 192 187 210 187 129ZM56 156 28 176 58 193 85 174ZM150 209 75 259 104 277 175 231 178 229 177 226Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function launchEtcGlyph(): ReactNode {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

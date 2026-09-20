@@ -1,7 +1,21 @@
+/**
+ * 자격증명이 무엇에 쓰이는지. 호스트가 실어 보내므로 브라우저가 공급자 id를 외워 두고
+ * 갈라 볼 필요가 없다. 모르는 값이 와도 모델 공급자로 보아 기존 자리에 남긴다.
+ */
+export type ModelAuthProviderKind = "model-provider" | "service";
+
+/** 서비스 자격증명이 열어 주는 모델 한 줄. 고를 수 있는 항목이 아니다. */
+export interface ModelAuthServiceModel {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface ModelAuthProviderState {
   readonly provider: string;
+  readonly kind: ModelAuthProviderKind;
   readonly displayName: string;
   readonly signedIn: boolean;
+  readonly models?: readonly ModelAuthServiceModel[];
 }
 
 export interface ModelAuthState {
@@ -68,6 +82,11 @@ function assertMutationResult(value: unknown, status: number): ModelAuthMutation
   return { state: assertModelAuthState(payload.state, status) };
 }
 
+function isServiceModel(value: unknown): value is ModelAuthServiceModel {
+  const entry = value as Partial<ModelAuthServiceModel> | null;
+  return entry !== null && typeof entry === "object" && typeof entry.id === "string" && typeof entry.name === "string";
+}
+
 function assertModelAuthState(value: unknown, status: number): ModelAuthState {
   const payload = value as { readonly providers?: unknown };
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.providers)) {
@@ -87,8 +106,10 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
   }
   return {
     provider: payload.provider,
+    kind: payload.kind === "service" ? "service" : "model-provider",
     displayName: payload.displayName,
     signedIn: payload.signedIn,
+    ...(Array.isArray(payload.models) ? { models: payload.models.filter(isServiceModel) } : {}),
   };
 }
 

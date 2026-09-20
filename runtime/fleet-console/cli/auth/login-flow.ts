@@ -1,6 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import type { AuthService } from "@fleet-console/ai-gateway";
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, validateKimiAuthKey, validateOpencodeGoAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateKimiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;
@@ -11,7 +11,7 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "kimi" | "opencode";
+export type AuthCliId = "kimi" | "opencode" | "typesafe";
 
 interface AuthCliDefinition {
   readonly label: string;
@@ -33,6 +33,12 @@ export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>
     shortName: "OpenCode Go",
     providerId: OPENCODE_AUTH_PROVIDER_ID,
     validate: validateOpencodeGoAuthKey,
+  },
+  typesafe: {
+    label: "TypeSafe System One",
+    shortName: "TypeSafe",
+    providerId: TYPESAFE_AUTH_PROVIDER_ID,
+    validate: validateTypesafeAuthKey,
   },
 };
 
@@ -87,7 +93,9 @@ export function resolveAuthCliId(
   if (value === undefined) return undefined;
   const parsed = parseAuthCliId(value);
   if (parsed) return parsed;
-  io.stderr.write(`Unknown fleet gateway auth provider: ${value}\nUse kimi or opencode.\n`);
+  // 목록을 정의에서 세운다 — 손으로 적은 목록은 공급자가 늘 때 조용히 낡는다.
+  const known = (Object.keys(AUTH_CLI_DEFINITIONS) as AuthCliId[]).join(", ");
+  io.stderr.write(`Unknown fleet gateway auth provider: ${value}\nUse one of: ${known}.\n`);
   return "invalid";
 }
 

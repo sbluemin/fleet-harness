@@ -72,6 +72,7 @@ export async function buildFleetDoctorText(deps: DoctorDeps): Promise<string> {
     formatRow("binary", binary),
     formatRow("kimi", signedIn.has(AUTH_CLI_DEFINITIONS.kimi.providerId) ? "signed in" : "signed out"),
     formatRow("opencode", signedIn.has(AUTH_CLI_DEFINITIONS.opencode.providerId) ? "signed in" : "signed out"),
+    formatRow("typesafe", signedIn.has(AUTH_CLI_DEFINITIONS.typesafe.providerId) ? "signed in" : "signed out"),
     formatRow("console", stripConsolePrefix(consoleLine)),
     formatRow("lock", lockFile),
   ].join("\n");
