@@ -29,11 +29,14 @@ import {
 import {
   AGENT_CHAT_ASK_TOOLS,
   agentChatAskFromToolInput,
+  chatActualModelFromTranscript,
   chatEventsFromSdkMessage,
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentIdentity,
   chatSubagentTrailFromTranscript,
+  chatWorkflowAgentIds,
+  overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
   type AgentChatCatalog,
@@ -325,6 +328,12 @@ const JOB_TAIL_READ_BYTES = 256 * 1024;
  * 상한이 아니라 창 때문에 조용히 짧아진다.
  */
 const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
+/**
+ * 워크플로 에이전트 전사록에서 모델 id만 읽을 때의 창. 발자국 전량보다 훨씬 작다 — 권위는
+ * assistant 줄의 `message.model` 한 필드이고, 꼬리에 마지막 응답이 있으면 그것으로 충분하다.
+ */
+const JOB_MODEL_READ_BYTES = 256 * 1024;
+const AGENT_COORD_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
  * 잡 상세가 지나는 문. 자격증명 마스킹은 그대로고 경로만 원문으로 나간다 — 이 표면이 답하는
@@ -590,6 +599,19 @@ class AgentChatSession {
    * (실측: config dir이 아니라 CLI의 temp 뿌리) 우리가 재구성할 수 있는 값이 아니다.
    */
   private readonly jobOutputs = new Map<string, string>();
+  /**
+   * 워크플로 에이전트 id → 자식 전사록에서 읽은 실제 응답 모델. 브라우저에는 모델 문자열만
+   * 나가고 이 좌표는 서버에 남는다.
+   */
+  private readonly actualWorkflowModels = new Map<string, string>();
+  /** 잡 id → 그 맥박의 에이전트와 같은 순서의 자식 세션 좌표. */
+  private readonly workflowAgentIds = new Map<string, readonly (string | undefined)[]>();
+  /** 같은 에이전트 전사록을 맥박마다 겹쳐 읽지 않기 위한 비행 표. */
+  private readonly workflowModelReads = new Set<string>();
+  /** agentId → 찾아 둔 전사록 경로. 런 디렉터리를 맥박마다 다시 훑지 않는다. */
+  private readonly workflowTranscriptFiles = new Map<string, string>();
+  /** agentId → 마지막으로 읽은 파일 크기. 커져야 다시 읽어 fallback 응답을 반영한다. */
+  private readonly workflowTranscriptBytes = new Map<string, number>();
   /**
    * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
    * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
@@ -1435,6 +1457,114 @@ class AgentChatSession {
   }
 
   /**
+   * 워크플로 맥박을 원장에 싣기 전에, 이미 아는 실제 모델을 얹고 아직 모르는 칸은 자식
+   * 전사록에서 읽는다. 요청·부모 핀은 매퍼가 이미 버렸다.
+   */
+  private ingestWorkflowProgress(
+    event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
+    message: ClaudeGatewayMessage,
+  ): void {
+    const ids = chatWorkflowAgentIds(message.workflow_progress);
+    if (ids.length > 0) this.workflowAgentIds.set(event.id, ids);
+    this.ingest(this.paintWorkflowModels(event));
+    void this.enrichWorkflowProgress(event.id);
+  }
+
+  private paintWorkflowModels(
+    event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
+  ): Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }> {
+    if (event.stages === undefined || event.stages.length === 0) return event;
+    const ids = this.workflowAgentIds.get(event.id);
+    if (ids === undefined) return event;
+    const stages = overlayWorkflowActualModels(event.stages, ids, this.actualWorkflowModels);
+    return stages === event.stages ? event : { ...event, stages };
+  }
+
+  private rememberActualWorkflowModel(agentId: string, model: string): void {
+    this.actualWorkflowModels.set(agentId, model);
+    if (this.actualWorkflowModels.size <= JOB_KIND_CAP) return;
+    for (const oldest of this.actualWorkflowModels.keys()) {
+      if (oldest === agentId) continue;
+      this.actualWorkflowModels.delete(oldest);
+      return;
+    }
+  }
+
+  /**
+   * 자식 전사록 꼬리에서 실제 응답 모델을 읽는다. 파일을 못 찾으면 다음 맥박이 다시 시도한다.
+   * 이미 아는 칸도 파일이 커졌으면 다시 읽는다 — fallback이 마지막 assistant.model을 바꾸기 때문이다.
+   */
+  private async enrichWorkflowProgress(jobId: string): Promise<void> {
+    if (this.disposed) return;
+    const ids = this.workflowAgentIds.get(jobId);
+    if (ids === undefined) return;
+    const pending: string[] = [];
+    for (const id of ids) {
+      if (id === undefined || !AGENT_COORD_RE.test(id)) continue;
+      if (this.workflowModelReads.has(id)) continue;
+      pending.push(id);
+    }
+    if (pending.length === 0) return;
+    for (const id of pending) this.workflowModelReads.add(id);
+    try {
+      await Promise.all(pending.map(async (id) => {
+        const file = await this.locateWorkflowAgentTranscript(id);
+        if (file === null || this.disposed) return;
+        const size = await fs.stat(file).then((info) => info.size).catch(() => null);
+        if (size === null) return;
+        if (size === this.workflowTranscriptBytes.get(id) && this.actualWorkflowModels.has(id)) return;
+        const window = await readFileTail(file, JOB_MODEL_READ_BYTES);
+        if (window === null) return;
+        this.workflowTranscriptBytes.set(id, size);
+        const model = chatActualModelFromTranscript(window.text);
+        if (model === undefined) return;
+        this.rememberActualWorkflowModel(id, model);
+      }));
+    } finally {
+      for (const id of pending) this.workflowModelReads.delete(id);
+    }
+    if (this.disposed) return;
+    this.republishWorkflowProgress(jobId);
+  }
+
+  private republishWorkflowProgress(jobId: string): void {
+    const held = this.journal.findLast((entry) => entry.event.kind === "job-progress" && entry.event.id === jobId);
+    if (held === undefined || held.event.kind !== "job-progress") return;
+    const painted = this.paintWorkflowModels(held.event);
+    if (painted === held.event) return;
+    this.ingest(painted);
+  }
+
+  /**
+   * 워크플로 에이전트 전사록. 일반 서브에이전트는 `subagents/agent-<id>.jsonl`이고, 워크플로
+   * 자식은 `subagents/workflows/<run>/agent-<id>.jsonl`에 앉는다(Claude Code 실측). 경로 자체는
+   * 브라우저로 나가지 않는다.
+   */
+  private async locateWorkflowAgentTranscript(agentId: string): Promise<string | null> {
+    const cached = this.workflowTranscriptFiles.get(agentId);
+    if (cached !== undefined && await isExistingFile(cached)) return cached;
+    const dir = await this.resolveJobSessionDir();
+    if (dir === null) return null;
+    const subagents = path.join(dir, "subagents");
+    const direct = path.join(subagents, `agent-${agentId}.jsonl`);
+    if (await isExistingFile(direct)) {
+      this.workflowTranscriptFiles.set(agentId, direct);
+      return direct;
+    }
+    const runs = await fs.readdir(path.join(subagents, "workflows"), { withFileTypes: true }).catch(() => null);
+    if (runs === null) return null;
+    for (const run of runs) {
+      if (!run.isDirectory() || !AGENT_COORD_RE.test(run.name)) continue;
+      const candidate = path.join(subagents, "workflows", run.name, `agent-${agentId}.jsonl`);
+      if (await isExistingFile(candidate)) {
+        this.workflowTranscriptFiles.set(agentId, candidate);
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /**
    * 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리.
    *
    * 트랜스크립트가 앉은 자리를 그대로 따라간다 — 공유 홈에는 남의 세션도 함께 살아서
@@ -2041,6 +2171,10 @@ class AgentChatSession {
           toolNames: this.toolNames,
           toolTitles: this.toolTitles,
         })) {
+          if (event.kind === "job-progress") {
+            this.ingestWorkflowProgress(event, message);
+            continue;
+          }
           this.ingest(event);
         }
       }
