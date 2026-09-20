@@ -20,6 +20,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const pluginStub = { pluginRoot: "/tmp/fleet-plugin-stub", pluginRoots: ["/tmp/fleet-plugin-stub"] };
+
 describe("claude-gateway profile", () => {
   it("is the only published Agent CLI and normalizes exact retired aliases", () => {
     expect(getAgentCliIds()).toEqual(["claude"]);
@@ -106,14 +108,14 @@ describe("claude-gateway argument composition", () => {
     const session = await prepareClaudeSession({
       cliId: "claude",
       cwd: root,
-      dataDir: path.join(root, "data"),
+      plugin: pluginStub,
       origin: { kind: "new" },
       claudeCodeDisabledAgents: ["Explore"],
     });
     expect(session.sdk.request.disallowedTools).toEqual(["Agent(Explore)"]);
 
     // 옵트아웃이 없으면 규칙 키 자체가 실리지 않는다.
-    const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, dataDir: path.join(root, "data"), origin: { kind: "new" } });
+    const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
     expect(untouched.sdk.request).not.toHaveProperty("disallowedTools");
   });
 });
@@ -201,7 +203,7 @@ function baseInjectOptions(
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    dataDir: path.join(root, "data"),
+    plugin: pluginStub,
     ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
     ...(overrides.claudeCodeSkipPermissions !== undefined
       ? { claudeCodeSkipPermissions: overrides.claudeCodeSkipPermissions }

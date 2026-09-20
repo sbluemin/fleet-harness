@@ -44,6 +44,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   },
   server: { origin: () => null },
   paths: {
+    consoleDataDir: "/tmp/fleet-console-test/console",
     fleetDataDir: "/tmp/fleet-console-test",
     pluginDataDir: (pluginId) => `/tmp/fleet-console-test/plugins/${pluginId}`,
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),

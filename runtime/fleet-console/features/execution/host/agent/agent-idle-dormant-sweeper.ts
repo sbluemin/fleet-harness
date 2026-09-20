@@ -1,4 +1,4 @@
-import type { GlobalOptionsData } from "@fleet-console/infra";
+import type { AgentOptionsData } from "@fleet-console/infra";
 
 import type { AgentTerminalSessionInfo } from "./types.js";
 import { resolveAgentIdleDormantMinutes } from "../../../settings/host/execution-settings-routes.js";
@@ -6,7 +6,7 @@ import { resolveAgentIdleDormantMinutes } from "../../../settings/host/execution
 const AGENT_IDLE_DORMANT_SWEEP_INTERVAL_MS = 60_000;
 
 export interface IdleAgentDormantSweepDeps {
-  readonly loadGlobalOptions: () => GlobalOptionsData;
+  readonly loadGlobalOptions: () => AgentOptionsData;
   readonly listTerminalSessions: () => readonly AgentTerminalSessionInfo[];
   readonly getSessionLastActivityAt: (sessionId: string) => number | null;
   readonly hasProviderSessionCapture: (sessionId: string) => boolean;

@@ -10,7 +10,7 @@ interface ExecutionSettingsContext {
 }
 import type http from "node:http";
 
-import { sanitizeClaudeCodeDisabledAgents, type ClaudeCodeSystemPromptMode, type GlobalOptionsData, type GlobalOptionsService } from "@fleet-console/infra";
+import { sanitizeClaudeCodeDisabledAgents, type ClaudeCodeSystemPromptMode, type AgentOptionsData, type AgentOptionsService } from "@fleet-console/infra";
 
 import {
   buildAiGatewayCatalog,
@@ -27,7 +27,7 @@ import {
 } from "@fleet-console/ai-gateway";
 
 interface TerminalSettingsRouteDeps {
-  readonly globalOptionsService: GlobalOptionsService;
+  readonly agentOptionsService: AgentOptionsService;
   readonly aiGatewayStore: AiGatewaySettingsStore;
   readonly wireLogRuntime: {
     readonly enabled: () => boolean;
@@ -85,7 +85,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       // 원격 리스너에서 온 GET도 여기 닿고, 원격 세션은 이 콘솔의 설정 화면을 그리는 주체이므로
       // 그래야 한다. 플러그인 컨텍스트에는 콘솔 포트가 없어 여기서 Host를 다시 볼 수도 없다.
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-        deps.globalOptionsService.load(),
+        deps.agentOptionsService.load(),
         deps.aiGatewayStore.read(),
         deps.wireLogRuntime.enabled(),
       ));
@@ -110,7 +110,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
         // AI Gateway 선별은 Fleet 전역 옵션이 아니라 core-ai-gateway가 소유하는 자기 축이다.
         const stored = deps.aiGatewayStore.write(update.aiGateway);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
@@ -119,14 +119,14 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
           update.cursorDiagnosticsEnabled,
         );
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
       if ("delegationRoutingEnabled" in update) {
         const stored = deps.aiGatewayStore.writeDelegationRoutingEnabled(update.delegationRoutingEnabled);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
@@ -148,25 +148,25 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
           return true;
         }
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
       if ("compactCeiling" in update) {
         const stored = deps.aiGatewayStore.writeCompactCeiling(update.compactCeiling);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
       if ("xaiEndpoint" in update) {
         const stored = deps.aiGatewayStore.writeXaiEndpoint(update.xaiEndpoint);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
-      const updated = deps.globalOptionsService.update((current) => {
+      const updated = deps.agentOptionsService.update((current) => {
         if ("claudeCodeDisabledAgents" in update && update.claudeCodeDisabledAgents === undefined) {
           const { claudeCodeDisabledAgents: _cleared, ...rest } = current;
           return rest;
@@ -187,7 +187,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
 }
 
 function toTerminalSettingsState(
-  data: GlobalOptionsData,
+  data: AgentOptionsData,
   aiGateway: AiGatewayStoredSettings,
   wireLogEnabled: boolean,
 ): TerminalSettingsState {
@@ -216,7 +216,7 @@ function toTerminalSettingsState(
 }
 
 /** 키가 없으면 켜진 것으로 읽는다 — 플래그 없는 런치가 이미 하는 일이다. */
-export function resolveClaudeCodeSystemPrompt(data: GlobalOptionsData): ClaudeCodeSystemPromptMode {
+export function resolveClaudeCodeSystemPrompt(data: AgentOptionsData): ClaudeCodeSystemPromptMode {
   return data.claudeCodeSystemPrompt ?? "on";
 }
 
@@ -224,16 +224,16 @@ export function resolveClaudeCodeSystemPrompt(data: GlobalOptionsData): ClaudeCo
  * 키가 없으면 꺼진 것으로 읽는다 — 승인 게이트를 건너뛰는 것은 사용자가 명시적으로 켠
  * 경우에만 참이어야 하고, 저장된 적 없는 상태가 그 동의를 대신할 수는 없다.
  */
-export function resolveClaudeCodeSkipPermissions(data: GlobalOptionsData): boolean {
+export function resolveClaudeCodeSkipPermissions(data: AgentOptionsData): boolean {
   return data.claudeCodeSkipPermissions === true;
 }
 
 /** 키가 없으면 빈 목록 — 규칙 없는 런치가 이미 하는 일이다. */
-export function resolveClaudeCodeDisabledAgents(data: GlobalOptionsData): readonly string[] {
+export function resolveClaudeCodeDisabledAgents(data: AgentOptionsData): readonly string[] {
   return data.claudeCodeDisabledAgents ?? [];
 }
 
-export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
+export function resolveAgentIdleDormantMinutes(data: AgentOptionsData): number | null {
   return data.agentIdleDormantMinutes === undefined
     ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
     : data.agentIdleDormantMinutes;

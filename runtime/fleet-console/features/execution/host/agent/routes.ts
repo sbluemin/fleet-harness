@@ -7,7 +7,7 @@ import process from "node:process";
 import { buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@fleet-console/agent-runtime/fleet";
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
-import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@fleet-console/infra";
+import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
 import { CONSOLE_CONTROL_TOOLS, type ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
@@ -62,7 +62,7 @@ type OperationRenamedEvent = {
 };
 interface AgentRouteDeps {
   readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
-  readonly globalOptionsService: GlobalOptionsService;
+  readonly agentOptionsService: AgentOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
@@ -207,7 +207,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       userPaths: await readAgentCliPaths(),
     }).resolved,
   });
-  const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.fleetDataDir });
+  const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.consoleDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
@@ -243,7 +243,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
     ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
-    dataDir: ctx.host.paths.fleetDataDir,
+    dataDir: ctx.host.paths.consoleDataDir,
+    plugin: ctx.agentCliPlugin,
     infraServices: deps,
     readAgentCliPaths,
     onRuntimeSessionStart: (session) => {
@@ -563,7 +564,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
-    loadGlobalOptions: () => deps.globalOptionsService.load(),
+    loadGlobalOptions: () => deps.agentOptionsService.load(),
     listTerminalSessions: () => observability.listTerminalSessions(),
     getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
     hasProviderSessionCapture: (sessionId) => readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined,
@@ -1930,7 +1931,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
     // admiral이 정한다 — CLI는 끌 때만 플래그를 싣고 SDK는 켤 때만 preset을 싣는, 서로 뒤집힌
     // 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
-    const chatGlobalOptions = deps.globalOptionsService.load();
+    const chatGlobalOptions = deps.agentOptionsService.load();
     const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(chatGlobalOptions);
     const chatClaudeCodeDisabledAgents = resolveClaudeCodeDisabledAgents(chatGlobalOptions);
     const mcpTokenLabel = `chat:${node.id}`;
@@ -1987,7 +1988,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
         resolveClaudeSession: () => prepareChatClaudeSession({
           cwd,
-          dataDir: ctx.host.paths.fleetDataDir,
+          dataDir: ctx.host.paths.consoleDataDir,
+          plugin: ctx.agentCliPlugin,
           claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           origin: sessionOrigin.kind === "resume"

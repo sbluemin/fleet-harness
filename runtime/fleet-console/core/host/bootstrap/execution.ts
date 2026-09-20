@@ -3,7 +3,6 @@ import { startAiGateway } from "../../../features/ai-gateway/host/start.js";
 /** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
 const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
 
-import { createInfraServices } from "@fleet-console/infra";
 import type { ConsoleRuntimeContext } from "../../../features/execution/host/context.js";
 import { registerWsHandler } from "../../../features/execution/host/context.js";
 
@@ -19,10 +18,9 @@ export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitl
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">) {
-  const infraServices = createInfraServices();
   const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime } = startAiGateway(ctx);
   registerTerminalSettingsRoutes(ctx, {
-    globalOptionsService: infraServices.globalOptionsService,
+    agentOptionsService: ctx.agentOptions,
     aiGatewayStore,
     wireLogRuntime: wireLog,
   });
@@ -55,7 +53,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const sessionWatch = registerExperimentRoutes(ctx, {});
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
-    globalOptionsService: infraServices.globalOptionsService,
+    agentOptionsService: ctx.agentOptions,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {
       routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,

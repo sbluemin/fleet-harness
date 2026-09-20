@@ -10,6 +10,8 @@ export type {
 } from "./types.js";
 
 export { createDurableJsonStore } from "./json-store.js";
+export { createStoreCarryOver, jsonFileExists } from "./carry-over.js";
+export type { CreateStoreCarryOverDeps, StoreCarryOver } from "./carry-over.js";
 export { withDirectoryLock } from "./directory-lock.js";
 export {
   NOFOLLOW_FLAG,

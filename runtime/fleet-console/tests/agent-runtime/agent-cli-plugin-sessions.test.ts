@@ -30,7 +30,6 @@ describe("agent CLI shared plugin store", () => {
     expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
     expect(existsSync(path.join(dataDir, "workspaces"))).toBe(false);
   });
 
@@ -52,20 +51,23 @@ describe("agent CLI shared plugin store", () => {
     expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
   });
 
-  it("replaces a tree whose agents directory was swapped for a symlink", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-shared-agents-link-");
+  it("replaces a tree whose hook file was swapped for a symlink", async () => {
+    // 훅은 이벤트마다 이 자리에서 다시 읽힌다. 링크로 바뀐 트리를 "같다"고 승인하면 그 세션은
+    // 남이 가리킨 파일을 자기 정책으로 실행한다.
+    const { dataDir, cwd } = createRoots("fleet-admiral-shared-hook-link-");
 
     const first = await createAgentCliPlugin(options({ cwd, dataDir }));
-    const agentsPath = path.join(first.pluginRoot, "agents");
-    const outside = path.join(dataDir, "outside-agents");
-    mkdirSync(outside, { recursive: true });
-    rmSync(agentsPath, { recursive: true, force: true });
-    symlinkSync(outside, agentsPath, "junction");
+    const hooksPath = path.join(first.pluginRoot, "hooks", "hooks.json");
+    const outside = path.join(dataDir, "outside-hooks.json");
+    writeFileSync(outside, "{}\n");
+    rmSync(hooksPath, { force: true });
+    symlinkSync(outside, hooksPath);
 
     const second = await createAgentCliPlugin(options({ cwd, dataDir }));
 
-    const restored = readdirSync(second.pluginRoot, { withFileTypes: true }).find((entry) => entry.name === "agents");
-    expect(restored?.isDirectory()).toBe(true);
+    const restored = readdirSync(path.join(second.pluginRoot, "hooks"), { withFileTypes: true })
+      .find((entry) => entry.name === "hooks.json");
+    expect(restored?.isFile()).toBe(true);
     expect(restored?.isSymbolicLink()).toBe(false);
   });
 
@@ -75,7 +77,7 @@ function options(input: {
   readonly cwd: string;
   readonly dataDir: string;
 }): CreateAgentCliPluginOptions {
-  return { cliId: "claude", cwd: input.cwd, dataDir: input.dataDir };
+  return { dataDir: input.dataDir };
 }
 
 function createRoots(prefix: string): { readonly dataDir: string; readonly cwd: string } {

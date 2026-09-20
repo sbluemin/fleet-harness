@@ -1,3 +1,4 @@
+import type { AgentOptionsService } from "@fleet-console/infra";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -162,9 +163,12 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
   };
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-attachments-"));
   cleanups.push(() => rmSync(fleetDataDir, { recursive: true, force: true }));
+  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
   const ctx = {
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,
+    agentOptions: agentOptionsStub,
+    agentCliPlugin: { pluginRoot: path.join(fleetDataDir, "harness", "claude"), pluginRoots: [path.join(fleetDataDir, "harness", "claude")] },
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
@@ -220,6 +224,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
       server: { origin: () => null },
       paths: {
         fleetDataDir,
+        consoleDataDir: fleetDataDir,
         resolveTheaterPath: (theaterId: string) => (theaterId === "theater-1" ? fleetDataDir : null),
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
@@ -251,11 +256,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   await registerAgentRoutes(ctx, terminalRuntime, {
-    globalOptionsService: {
-      load: () => ({ version: 1, agentIdleDormantMinutes: null }),
-      save: (data) => data,
-      update: (mutate) => mutate({ version: 1 }),
-    },
+    agentOptionsService: agentOptionsStub,
   });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;

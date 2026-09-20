@@ -33,11 +33,6 @@
       "import": "./dist/data-dir/paths.js",
       "require": "./dist/data-dir/paths.cjs"
     },
-    "./data-dir/settings": {
-      "types": "./dist/data-dir/settings/store.d.ts",
-      "import": "./dist/data-dir/settings/store.js",
-      "require": "./dist/data-dir/settings/store.cjs"
-    },
     "./fs-store": {
       "types": "./dist/fs-store/index.d.ts",
       "import": "./dist/fs-store.js",
@@ -53,9 +48,6 @@
     "*": {
       "data-dir": [
         "dist/data-dir/paths.d.ts"
-      ],
-      "data-dir/settings": [
-        "dist/data-dir/settings/store.d.ts"
       ],
       "fs-store": [
         "dist/fs-store/index.d.ts"

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@fleet-console/agent-runtime/fleet";
 
+import { renderConsoleAgentCliPlugin } from "../features/execution/host/agent/host-hooks.js";
 import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../features/execution/host/agent/launch.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../features/execution/host/terminal/pty.js";
 import type { TerminalLaunchSpec } from "../features/execution/host/terminal/terminal-types.js";
@@ -57,13 +58,18 @@ function createFakeInfraServices(globalOptions: {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},
-    globalOptionsService: {
+    agentOptionsService: {
       load: () => data,
       save: () => data,
       update: () => data,
     },
   };
 }
+
+/** 런치가 플러그인 트리를 렌더할 자리. 실제 렌더는 스텁이 가로채므로 값 자체는 쓰이지 않는다. */
+const launchDataDir = "/tmp/fleet-console-test/console";
+/** 기동에 렌더된 트리를 대신한다 — 런치는 경로만 읽는다. */
+const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
 
 describe("createDefaultTerminalLaunchResolver", () => {
   afterEach(() => {
@@ -77,12 +83,13 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const runtime = createFakeRuntime((event) => events.push(event));
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile, options) => {
-      expect(options.captureSessionHookExec).toMatchObject({ command: process.execPath });
-      expect(options.captureSessionHookExec?.args).toContain("capture-session");
-      expect(options.captureSessionHookExec?.args).toContain("claude");
+      // 런치는 기동에 렌더된 트리를 그대로 넘긴다 — 훅을 여기서 다시 조립하지 않는다.
+      expect(options.plugin).toBe(launchPluginStub);
       return { ...profile, args: [...profile.args, "--fleet"] };
     });
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: runtime as never,
@@ -121,6 +128,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
     });
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      infraServices: createFakeInfraServices() as never,
       cwd: "/work",
       entryPath: "/console/cli.ts",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -140,7 +150,24 @@ describe("createDefaultTerminalLaunchResolver", () => {
     // 재개는 좌표로 넘어간다. 대역이 아니라 실제 주입이 읽는 필드여야 한다 — 예전 이름을
     // 그대로 두면 주입이 그것을 무시한 채 매번 새 세션을 열고, 대화가 조용히 끊긴다.
     expect(injectedOptions[0]?.origin).toEqual({ kind: "resume", sessionId: "provider-session-a" });
-    expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
+  });
+
+  it("bakes the capture hook into the tree it renders at startup", async () => {
+    // 세션 포착은 이제 런치가 아니라 기동의 렌더가 싣는다. 명령이 Console CLI 진입점을
+    // 가리키지 않으면 자식의 세션이 어느 Operation의 것인지 호스트가 영영 알지 못한다.
+    const dataDir = makeTempDir("fleet-render-capture-");
+    const plugin = await renderConsoleAgentCliPlugin({
+      dataDir,
+      entryPath: "/console/cli.ts",
+      execPath: "/node",
+      tsxLoaderPath: "/loader/tsx.mjs",
+    });
+
+    const hooks = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+      hooks: { UserPromptSubmit: { hooks: { command: string; args: string[] }[] }[] };
+    };
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]).toEqual({
+      type: "command",
       command: "/node",
       args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "claude"],
     });
@@ -151,6 +178,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: root,
       dataDir: root,
+      plugin: launchPluginStub,
       env: {
         CLAUDE_BIN: process.execPath,
         CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
@@ -182,6 +210,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
     // 스코프 id를 적은 호출자와 같은 모델로 통과해야 한다.
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime(() => undefined) as never,
@@ -219,6 +249,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const cleanup = vi.fn();
     const runtimeCleanup = vi.fn(async () => undefined);
     const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      infraServices: createFakeInfraServices() as never,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime(undefined, runtimeCleanup) as never,

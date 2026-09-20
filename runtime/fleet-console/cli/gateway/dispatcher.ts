@@ -10,6 +10,8 @@ import {
 import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
+import { createConsoleDataPaths } from "../../core/host/bootstrap/paths.js";
+
 import { buildGatewayHelpText } from "./help.js";
 import { runGatewayInteractive } from "./interactive.js";
 import { GATEWAY_SET_KEYS, applyGatewaySetting, isGatewaySetKey } from "./policy.js";
@@ -98,8 +100,9 @@ export async function dispatchGatewayCommand(
     });
   }
 
-  const dataDir = deps.dataDir ?? getFleetDataDir();
-  const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir })))(dataDir);
+  const slot = resolveGatewaySlot(deps.dataDir);
+  const dataDir = slot.dataDir;
+  const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir, legacyDirs: slot.legacyDirs })))(dataDir);
 
   if (dispatch.kind === "auth") {
     const authService = resolveAuthService(deps);
@@ -192,11 +195,18 @@ async function probe(read: () => Promise<unknown>): Promise<"present" | "absent"
 }
 
 function resolveAuthService(deps: GatewayCommandDeps): AuthService {
-  // 자격증명은 게이트웨이 설정과 같은 루트에 산다 — `--data-dir`로 옮긴 실행이 설정만
-  // 격리하고 auth.json은 실사용자 루트에서 읽어 오는 어긋남을 만들지 않는다.
-  return (deps.createAuthService ?? (() => createProviderAuthService(
-    deps.dataDir === undefined ? {} : { dataDir: deps.dataDir },
-  )))();
+  // 자격증명은 게이트웨이 설정과 같은 자리에 산다 — `--data-dir`로 옮긴 실행이 설정만
+  // 격리하고 auth.json은 다른 자리에서 읽어 오는 어긋남을 만들지 않는다.
+  const slot = resolveGatewaySlot(deps.dataDir);
+  return (deps.createAuthService ?? (() => createProviderAuthService(slot)))();
+}
+
+/**
+ * 이 실행이 쓸 Console 슬롯과 그 옛 자리. Console 서버와 같은 규칙으로 풀어야 `fleet`이
+ * Console에서 고른 선별과 로그인을 그대로 읽는다.
+ */
+function resolveGatewaySlot(explicit: string | undefined): { readonly dataDir: string; readonly legacyDirs: readonly string[] } {
+  return { dataDir: explicit ?? createConsoleDataPaths().dir, legacyDirs: [getFleetDataDir()] };
 }
 
 function hasJsonFlag(argv: readonly string[]): boolean {

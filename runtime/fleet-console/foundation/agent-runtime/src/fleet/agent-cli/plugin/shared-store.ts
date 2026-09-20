@@ -1,4 +1,4 @@
-import { lstatSync, mkdtempSync, readFileSync, readdirSync, renameSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, renameSync, lstatSync } from "node:fs";
 import path from "node:path";
 
 import { cleanupPrivateRoot, ensurePrivateDir, writePrivateFile } from "./fs.js";
@@ -31,8 +31,6 @@ export function publishSharedPlugin(
   let previousMoved = false;
   try {
     ensurePrivateDir(stagedPluginRoot, stageRoot);
-    // 빈 로스터에서도 agents/는 존재해야 한다 — 소비자는 디렉터리 부재와 정체성 0개를 구분하지 않는다.
-    ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stageRoot);
     for (const file of files) {
       writePrivateFile(path.join(stagedPluginRoot, ...file.relativePath.split("/")), file.content, stageRoot);
     }
@@ -56,15 +54,13 @@ export function publishSharedPlugin(
 /**
  * 디스크의 트리가 이 렌더와 정확히 같은가. 같으면 교체를 건너뛴다.
  *
- * 스탬프 파일 하나로 비교하지 않고 실제 바이트를 읽는다. 파일이 다섯 개뿐이라 값이 싸고,
+ * 스탬프 파일 하나로 비교하지 않고 실제 바이트를 읽는다. 파일이 넷뿐이라 값이 싸고,
  * 무엇보다 손상된 트리를 그대로 승인하지 않는다 — 스탬프만 맞으면 통과시키는 비교는
- * 누가 `agents/`를 심볼릭 링크로 바꿔 놓아도 눈치채지 못한다.
+ * 누가 트리 안의 파일을 심볼릭 링크로 바꿔 놓아도 눈치채지 못한다. 링크는 `listRegularFiles`가
+ * 목록을 오염시켜 걸러 낸다.
  */
 function treeAlreadyMatches(pluginRoot: string, files: readonly AssetPluginFile[]): boolean {
   try {
-    // 빈 로스터에서도 존재해야 하는 디렉터리. 링크로 바뀌었으면 다시 깐다.
-    const agents = lstatSync(path.join(pluginRoot, "agents"));
-    if (!agents.isDirectory()) return false;
     const expected = new Map(files.map((file) => [file.relativePath, file.content]));
     const present = listRegularFiles(pluginRoot, "");
     if (present.length !== expected.size) return false;

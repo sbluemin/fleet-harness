@@ -7,7 +7,7 @@ interface GatewayStartContext {
   readonly dataDir: string;
   readonly legacyDataDir: string;
   readonly host: {
-    readonly paths: Pick<FleetPluginHostCapabilities["paths"], "fleetDataDir">;
+    readonly paths: Pick<FleetPluginHostCapabilities["paths"], "consoleDataDir" | "fleetDataDir">;
     readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
     readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
     readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
@@ -45,15 +45,17 @@ function applyStoredWireLog(ctx: GatewayStartContext, read: () => AiGatewayStore
 }
 
 export function startAiGateway(ctx: GatewayStartContext) {
-  const authService = createProviderAuthService({ dataDir: ctx.host.paths.fleetDataDir });
-  // AI Gateway 선별의 저장 형태·검증·승계는 core-ai-gateway가 소유한다. 호스트는 이 설정이
-  // 예전에 살던 자기 소유 디렉터리만 알려 주고(플러그인 데이터 슬롯), 그 승계 판단은 하지 않는다.
+  // 선별과 자격증명은 이 Console 인스턴스의 슬롯에 산다. 호스트는 자리와 옛 자리만 알려 주고,
+  // 저장 형태·검증·승계 판단은 core-ai-gateway가 소유한다.
+  const authService = createProviderAuthService({
+    dataDir: ctx.host.paths.consoleDataDir,
+    legacyDirs: [ctx.host.paths.fleetDataDir],
+  });
   // Apply the stored target before registering routes so no request can observe an uninitialized mode.
-  // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 core가 실제 홈(`~/.fleet`)으로 떨어져,
-  // 격리 루트로 띄운 Console이 사용자의 진짜 설정을 읽고 덮어쓴다.
   const aiGatewayStore = createAiGatewaySettingsStore({
-    dataDir: ctx.host.paths.fleetDataDir,
-    legacyDir: ctx.legacyDataDir,
+    dataDir: ctx.host.paths.consoleDataDir,
+    // 가장 최근 자리(Fleet 루트)를 앞에, 그 이전의 플러그인 데이터 슬롯을 뒤에 둔다.
+    legacyDirs: [ctx.host.paths.fleetDataDir, ctx.legacyDataDir],
   });
   const wireLog = createWireLogRuntime(ctx);
   applyStoredWireLog(ctx, aiGatewayStore.read);

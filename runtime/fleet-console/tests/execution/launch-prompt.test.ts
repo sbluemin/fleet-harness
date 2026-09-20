@@ -39,9 +39,17 @@ function createFakeRuntime() {
   };
 }
 
+/** 런치가 플러그인 트리를 렌더할 자리. 실제 렌더는 스텁이 가로채므로 값 자체는 쓰이지 않는다. */
+const launchDataDir = "/tmp/fleet-console-test/console";
+/** 기동에 렌더된 트리를 대신한다 — 런치는 경로만 읽는다. */
+const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
+
 describe("createAgentTerminalLaunchResolver launch environment", () => {
   it("advertises truecolor without replacing the compatible TERM entry", async () => {
     const resolve = createAgentTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      infraServices: { agentOptionsService: { load: () => ({}), update: (mutate) => mutate({}) } },
       cwd: "/work",
       env: {
         COLORTERM: "256color",
@@ -75,6 +83,9 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createAgentTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      infraServices: { agentOptionsService: { load: () => ({}), update: (mutate) => mutate({}) } },
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
@@ -107,6 +118,9 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createAgentTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      infraServices: { agentOptionsService: { load: () => ({}), update: (mutate) => mutate({}) } },
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,

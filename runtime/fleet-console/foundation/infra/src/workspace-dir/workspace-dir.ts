@@ -189,3 +189,28 @@ function isWorkspaceDirectoryIdentity(value: unknown): value is WorkspaceDirecto
   const record = value as Record<string, unknown>;
   return typeof record.cwd === "string" && record.cwd.length > 0;
 }
+
+/**
+ * 워크스페이스 디렉터리가 예전 자리에 남아 있으면 새 자리로 한 번 옮긴다.
+ *
+ * 승계 판정기(`createStoreCarryOver`)가 다루는 것은 JSON 파일 하나지만 이쪽은 프로젝트별
+ * 지식이 쌓인 디렉터리 트리라, 값을 읽어 합치는 대신 통째로 옮긴다. 새 자리에 이미 디렉터리가
+ * 있으면 그쪽이 사실이므로 손대지 않는다 — 두 자리를 합치려 들면 같은 프로젝트의 지식이
+ * 어느 쪽 것인지 판정할 근거가 없다.
+ *
+ * best-effort다. 옮기지 못해도 옛 자리는 그대로 남으므로 잃는 것은 없고, 새 자리는 빈 채로
+ * 시작한다. 파일시스템이 다르면(local 채널 슬롯이 다른 볼륨인 경우) rename이 EXDEV로 실패하는데,
+ * 그때 반쯤 복사된 트리를 남기느니 옮기지 않는 편이 낫다.
+ */
+export function adoptLegacyWorkspaces(legacyDataDir: string, dataDir: string): void {
+  try {
+    const source = getWorkspaceDirectoryRoot(legacyDataDir);
+    const destination = getWorkspaceDirectoryRoot(dataDir);
+    if (source === destination) return;
+    if (safeLstat(destination) || !safeLstat(source)?.isDirectory()) return;
+    ensureSafeDirectory(path.resolve(dataDir));
+    fs.renameSync(source, destination);
+  } catch {
+    // 옮기지 못한 것은 결론이 아니다. 옛 자리가 그대로 남아 다음 기동이 다시 시도한다.
+  }
+}

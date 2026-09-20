@@ -1,28 +1,13 @@
-import { createGlobalOptionsService, type GlobalOptionsService } from "./data-dir/settings/store.js";
-
-export interface InfraServices {
-  globalOptionsService: GlobalOptionsService;
-}
-
 export * from "./data-dir/paths.js";
 export * from "./fs-store/index.js";
 export * from "./workspace-dir/workspace-dir.js";
 export {
-  createGlobalOptionsService,
-  createGlobalOptionsStore,
+  sanitizeAgentOptionsData,
   sanitizeClaudeCodeDisabledAgents,
-  sanitizeGlobalOptionsData,
-} from "./data-dir/settings/store.js";
+} from "./agent-options/schema.js";
 export type {
+  AgentOptionsData,
+  AgentOptionsService,
+  AgentOptionsValidationResult,
   ClaudeCodeSystemPromptMode,
-  GlobalOptionsData,
-  GlobalOptionsService,
-  GlobalOptionsStore,
-  GlobalOptionsValidationResult,
-} from "./data-dir/settings/store.js";
-
-export function createInfraServices(): InfraServices {
-  return {
-    globalOptionsService: createGlobalOptionsService(),
-  };
-}
+} from "./agent-options/schema.js";

@@ -30,6 +30,8 @@ afterEach(() => {
   }
 });
 
+const pluginStub = { pluginRoot: path.join("/tmp/fleet-plugin-stub", "harness", "claude"), pluginRoots: [path.join("/tmp/fleet-plugin-stub", "harness", "claude")] };
+
 describe("agent CLI session resume and capture hooks", () => {
   it("places Claude --resume before Fleet injection flags", async () => {
     const root = createTempRoot("fleet-admiral-claude-resume-");
@@ -105,26 +107,14 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly autoNameHookExec?: FleetHookExec;
-    readonly backgroundReportHookExec?: FleetHookExec;
-    readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
-    readonly inputWaitingHookExec?: FleetHookExec;
     readonly origin?: Parameters<typeof injectAgentCliProfile>[1]["origin"];
-    readonly turnEndHookExec?: FleetHookExec;
-    readonly turnStartHookExec?: FleetHookExec;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    dataDir: path.join(root, "data"),
+    plugin: pluginStub,
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
-    ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
-    ...(overrides.backgroundReportHookExec ? { backgroundReportHookExec: overrides.backgroundReportHookExec } : {}),
-    ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.inputWaitingHookExec ? { inputWaitingHookExec: overrides.inputWaitingHookExec } : {}),
     ...(overrides.origin ? { origin: overrides.origin } : {}),
-    ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
-    ...(overrides.turnStartHookExec ? { turnStartHookExec: overrides.turnStartHookExec } : {}),
   };
 }
 

@@ -56,7 +56,7 @@ export default definePlugin({
 
     // Gateway 선별 파일은 Fleet 루트의 것이다 — Console이 구성한 공통 설정을 읽기만 한다.
     // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
-    const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.fleetDataDir });
+    const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.consoleDataDir });
     const gateway = createCodexGateway({
       host: "127.0.0.1",
       version: "1",
@@ -79,7 +79,7 @@ export default definePlugin({
         isWriteAdmitted: (request) => ctx.host.security.isWriteAdmitted(request),
       },
       wikiWorkspaceResolver,
-      dataDir: ctx.host.paths.fleetDataDir,
+      dataDir: ctx.host.paths.consoleDataDir,
       // Theater id와 워크스페이스 id는 같은 해시다 — 모르는 워크스페이스는 Theater로 되찾는다.
       resolveWorkspaceRoot: (workspaceId) => ctx.host.paths.resolveTheaterPath(workspaceId),
       whenRegistrationsSettle: () => registrations.then(() => undefined),

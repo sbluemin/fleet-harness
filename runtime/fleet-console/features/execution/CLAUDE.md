@@ -5,7 +5,7 @@ Agent and Terminal are one execution feature, not plugins. AI Gateway is a separ
 ## Constraints
 
 - Console owns Agent and Terminal bodies, session lifecycle, preferences, and terminal assets.
-- Agent prompt settings use Fleet global settings. Terminal font is server-durable Console state; renderer choice is browser-local.
+- Agent prompt settings live in the Console slot's settings file (`agent` section), injected as a port; execution never resolves that path itself. Terminal font is server-durable Console state; renderer choice is browser-local.
 - System-font choices are host-classified and consumed through the shared Font Picker boundary.
 - Agent text and thought frames are deltas. Replay and live frames share monotonic event semantics, and thought content must not become the public output tail.
 - Activity has one authority per axis: OSC titles own PTY working, with hook turn state as the fallback for an unrecognized title; input-waiting hooks own awaiting, and PTY hook lists or the Chat live job ledger own background-pending. Pending prevents false idle and idle dormancy without claiming working. Unknown PTY titles or unreadable lists remain opinionless, never idle.

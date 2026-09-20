@@ -1,4 +1,7 @@
 import { createProviderAuthService, type AuthService } from "@fleet-console/ai-gateway";
+import { getFleetDataDir } from "@fleet-console/infra";
+
+import { createConsoleDataPaths } from "../core/host/bootstrap/paths.js";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
@@ -66,7 +69,10 @@ export async function dispatchFleetArgv(
 ): Promise<number> {
   const env = options.env ?? process.env;
   const runAppImpl = options.runApp ?? runApp;
-  const createAuth = options.createAuthService ?? (() => createProviderAuthService());
+  const createAuth = options.createAuthService ?? (() => createProviderAuthService({
+    dataDir: createConsoleDataPaths().dir,
+    legacyDirs: [getFleetDataDir()],
+  }));
   const auth = options.dispatchAuthCommand ?? dispatchAuthCommand;
   const update = options.dispatchUpdateCommand ?? dispatchUpdateCommand;
   const io = { stdout: options.stdout, stderr: options.stderr };
