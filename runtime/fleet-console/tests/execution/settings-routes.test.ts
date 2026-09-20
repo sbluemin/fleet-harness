@@ -154,6 +154,14 @@ function createRouteHarness(options: HarnessOptions = {}) {
         });
         return aiGateway;
       },
+      writeDelegationRoutingEnabled: (enabled) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          delegationRoutingEnabled: enabled,
+        });
+        return aiGateway;
+      },
       writeCursorDiagnosticsEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({
