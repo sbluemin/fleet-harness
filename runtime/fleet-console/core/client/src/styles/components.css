@@ -7830,16 +7830,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transition-delay: 0s;
 }
 
-/* 판면이 100ch(reading 상한)보다 좁으면 읽기 폭 프리셋 사이에 그려질 차이가 없다 — 뜻이 없어진
-   컨트롤은 밴드에서 물린다. 가르는 것은 뷰포트가 아니라 이 패널의 폭이고, 그 폭을 아는 것은
-   캡션 자신이다(본문의 컨테이너는 캡션 밖에 있다). 임계는 본문 폭 719px + 보더 2px. */
-@container (max-width: 721px) {
-  .canvas-operation-caption-actions .fleet-caption-action[data-caption-action="reading-width"],
-  .mobile-session-caption-actions .fleet-caption-action[data-caption-action="reading-width"] {
-    display: none;
-  }
-}
-
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {
   flex: none;
   width: auto;

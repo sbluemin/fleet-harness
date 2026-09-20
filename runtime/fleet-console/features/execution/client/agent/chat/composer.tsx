@@ -15,14 +15,75 @@ import {
   syncComposerHighlight,
 } from "@fleet-console/sdk/composer";
 
+import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
+
 import { getT } from "../i18n/index.js";
-import { nextChatComposerWidth, setChatComposerWidth, useChatComposerWidth, useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
+import type { TerminalMessageKey } from "../i18n/index.js";
+import { CHAT_READING_WIDTHS, nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
+import type { ChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import type { ChatConsoleCommand } from "./composer-deck.js";
 import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
+
+// 폭 글리프의 말풍선과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
+const READING_WIDTH_LABEL_KEY = {
+  reading: "terminal.chat.readingWidth.reading",
+  wide: "terminal.chat.readingWidth.wide",
+  full: "terminal.chat.readingWidth.full",
+} as const satisfies Record<ChatReadingWidth, TerminalMessageKey>;
+
+/* 140ch ÷ 100ch. chat.css의 프리셋 두 값과 한 벌이고, 프로브 하나(100ch)로 두 폭을 모두
+   얻으려고 둔다 — 프리셋을 바꾸면 이 비율도 함께 바꾼다. */
+const WIDE_OVER_READING = 1.4;
+
+/**
+ * 지금 이 판면에서 **서로 다른 폭으로 그려지는** 프리셋만 추린다.
+ *
+ * 프리셋은 상한이지 고정폭이 아니라, 판면이 좁으면 100ch·140ch·전체가 같은 폭으로 접힌다.
+ * 그대로 세 단을 돌리면 눌러도 화면이 그대로인 단계가 생기므로, 접히는 단계는 순환에서 뺀다.
+ * 재는 자리는 컴포저의 content box다 — 로그 컬럼보다 좌우 여백이 좁아, 여기서 접히면 두 면이
+ * 모두 접힌 것이다.
+ */
+function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | null>): readonly ChatReadingWidth[] {
+  const [choices, setChoices] = React.useState<readonly ChatReadingWidth[]>(CHAT_READING_WIDTHS);
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (host === null || typeof ResizeObserver === "undefined") return;
+    // 100ch를 px로 돌려주는 자. 흐름에서 빠져 있어 컴포저 레이아웃에 영향을 주지 않고,
+    // 타이포그래피 설정이 바뀌면 스스로 폭이 변해 아래 관찰자가 다시 잰다.
+    const probe = document.createElement("span");
+    probe.setAttribute("aria-hidden", "true");
+    probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:100ch;pointer-events:none";
+    host.appendChild(probe);
+    const read = () => {
+      const style = window.getComputedStyle(host);
+      // 레이아웃 px로만 잰다. 캔버스는 패널에 scale 변환을 걸어 두므로 getBoundingClientRect는 줌이
+      // 곱해진 값을 돌려주고, clientWidth/offsetWidth는 곱해지지 않은 값을 돌려준다. 둘을 섞으면
+      // 줌이 1이 아닌 순간 프리셋 비교가 통째로 틀어진다 — 컨테이너 질의가 보는 단위도 이쪽이다.
+      const available = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const reading = probe.offsetWidth;
+      if (!(available > 0) || !(reading > 0)) return;
+      const drawn = [Math.min(reading, available), Math.min(reading * WIDE_OVER_READING, available), available];
+      // 값이 커지는 순서라 바로 뒤 단계와만 비교하면 된다. 같은 폭이 겹치면 **나중 단**을 남긴다:
+      // 140ch가 판면에 잘려 전체와 같아졌다면 사용자가 얻은 것은 「전체」이고, 그 이름으로 저장해야
+      // 패널을 더 넓혔을 때 판면을 계속 채운다(「넓게」로 저장하면 그때 140ch로 되돌아간다).
+      const next = CHAT_READING_WIDTHS.filter((_, index) => index === CHAT_READING_WIDTHS.length - 1 || Math.round(drawn[index] ?? 0) !== Math.round(drawn[index + 1] ?? 0));
+      setChoices((current) => (current.length === next.length && current.every((value, index) => value === next[index]) ? current : next));
+    };
+    const observer = new ResizeObserver(read);
+    observer.observe(host);
+    observer.observe(probe);
+    read();
+    return () => {
+      observer.disconnect();
+      probe.remove();
+    };
+  }, [hostRef]);
+  return choices;
+}
 
 /**
  * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 Quick Launch).
@@ -139,12 +200,13 @@ export function AgentChatComposer({
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
-  /* 입력창 폭 — 기본은 읽기 폭을 따르고, 이 글리프가 그 연동을 끊어 패널 전폭으로 넓힌다.
-     읽기 폭이 이미 전체면 두 값이 같은 폭이 되므로, 문을 지우는 대신 켜진 채로 물러나 세운다. */
+  /* 채팅 폭 — 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, 이 글리프가 그 유일한 문이다
+     (설정에도 같은 값을 고르는 Select가 선다). 글리프가 현재 값을 그리고, 누르면 다음 단으로
+     간다 — 이 폭에서 같은 폭이 되는 단은 건너뛴다. */
   const readingWidth = useChatReadingWidth();
-  const composerWidth = useChatComposerWidth();
-  const composerWidthLocked = readingWidth === "full";
-  const composerWidthOn = composerWidthLocked || composerWidth === "panel";
+  const composerRef = React.useRef<HTMLDivElement | null>(null);
+  const widthChoices = useDistinctChatWidths(composerRef);
+  const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
@@ -485,35 +547,33 @@ export function AgentChatComposer({
     : `${t("terminal.chat.composerHintEnter")} · ${t("terminal.chat.composerHintNewline")}`;
 
   return (
-    <div className="agent-chat-composer">
-      {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 상자 폭을 바꾸는 토글이 여기 선다; 오류 알림은
+    <div className="agent-chat-composer" ref={composerRef}>
+      {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
           좌표 자리를 잠시 빌린다(Cowork·Analyst의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
       <div className="agent-chat-composer-meta">
         {notice !== null ? (
           <span className="agent-chat-composer-error" role="alert">{notice}</span>
         ) : coordinate}
-        {/* 입력창 폭 글리프 — 쓰는 자리에서 폭을 정하는 유일한 문이다(설정에는 표면이 없다).
-            기본은 읽기 폭 따름이고, 켜면 이 콘솔의 모든 채팅 입력창이 패널 전폭으로 선다
-            — 읽기 폭 선호와 같은 자리에 서버 영속하는 전역 값이기 때문이다. */}
+        {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
+            이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
+            물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면
+            문을 지우는 대신 물러나 세운다 — 왜 아무 일도 없는지를 말풍선이 말한다. */}
         <button
           type="button"
           className="agent-chat-composer-width"
           onClick={() => {
-            if (composerWidthLocked) return;
-            setChatComposerWidth(nextChatComposerWidth(composerWidth));
+            if (widthCollapsed) return;
+            setChatReadingWidth(nextChatReadingWidth(readingWidth, widthChoices));
           }}
-          aria-pressed={composerWidthOn}
-          aria-disabled={composerWidthLocked}
-          aria-label={t(composerWidthLocked
-            ? "terminal.chat.composerWidthLockedAria"
-            : composerWidthOn ? "terminal.chat.composerWidthFollowAria" : "terminal.chat.composerWidthPanelAria")}
-          title={t(composerWidthLocked
-            ? "terminal.chat.composerWidthLocked"
-            : composerWidthOn ? "terminal.chat.composerWidthFollow" : "terminal.chat.composerWidthPanel")}
+          aria-disabled={widthCollapsed || undefined}
+          aria-label={widthCollapsed
+            ? t("terminal.chat.widthSame")
+            : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+          title={widthCollapsed
+            ? t("terminal.chat.widthSame")
+            : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
         >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-            <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25M2.5 8h11" />
-          </svg>
+          <CaptionReadingWidthGlyph preset={readingWidth} />
         </button>
       </div>
       <div

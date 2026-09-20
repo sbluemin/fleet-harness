@@ -8,7 +8,6 @@ CaptionBrowserUseGlyph,
 CaptionChatGlyph,
 CaptionComputerUseGlyph,
 CaptionConsoleUseGlyph,
-CaptionReadingWidthGlyph,
 CaptionTerminalGlyph,
 CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
@@ -39,7 +38,7 @@ import { gestureCallerLabel, getOperationWrap, readLaunchAttribution, subscribeC
 import { fontCjkScripts, type CjkScript } from "../terminal/shared/cjk-coverage.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
-import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalInactiveFlush, setTerminalRenderer, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
+import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalInactiveFlush, setTerminalRenderer, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
@@ -51,7 +50,7 @@ const BROWSER_COMPANION_ID = "browser";
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "../../../settings/client/execution-settings.js";
 import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
-import { AgentChatView, READING_WIDTH_LABEL_KEY } from "./chat/chat-view.js";
+import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, ClaudeBuiltInAgentsState, SessionInfo } from "./types.js";
@@ -494,7 +493,6 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
-  const readingWidth = useChatReadingWidth();
   const { terminalPending } = useViewSwitchState(context.operationId);
   const chatMode = context.operation.payload.chatMode === true;
   const analystOpen = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
@@ -595,18 +593,6 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     </CaptionActionButton>
   );
 
-  // 읽기 폭은 대화 면의 선호다 — 터미널 뷰에는 맞출 판면이 없으므로 서지 않는다.
-  // 좁은 패널에서 물러나는 판정은 CSS(캡션 컨테이너 질의)가 진다: 폭을 아는 것은 밴드다.
-  const readingWidthAction = !chatMode ? null : (
-    <CaptionActionButton
-      actionId="reading-width"
-      label={t("terminal.chat.readingWidthAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
-      onClick={() => { setChatReadingWidth(nextChatReadingWidth(readingWidth)); }}
-    >
-      <CaptionReadingWidthGlyph preset={readingWidth} />
-    </CaptionActionButton>
-  );
-
   // 세션 관찰의 결과 말풍선 — 스위치는 ··· 메뉴로 갔지만 결과는 여전히 여기서 알린다. 선반 끝에
   // 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다. 산 이벤트에만 뜬다(지난 결과는 다시 튀어나오지 않는다).
   const experiments = useExperimentsSnapshot();
@@ -637,7 +623,6 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
       {analyst}
       {browser}
       {viewSwitch}
-      {readingWidthAction}
       {watchBubble}
     </>
   );
@@ -1326,7 +1311,7 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
   );
 }
 
-/** 채팅 읽기 폭 — 채팅 판면의 폭 칩과 같은 선호를 읽고 쓰는 설정 표면. */
+/** 채팅 폭 — 컴포저의 폭 글리프와 같은 선호를 읽고 쓰는 설정 표면. */
 function ChatReadingWidthSettingsCard() {
   const t = getT(useTerminalLocale());
   const width = useChatReadingWidth();
