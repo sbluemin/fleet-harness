@@ -16,7 +16,8 @@
  * 통째로 막히면 아래 등급으로 흘러내린다 — 위임을 죽이는 것보다 낫다.
  */
 
-import type { GatewayModel, GatewayProvider } from "../models.js";
+import { buildGatewayModelConstraints, type GatewayEffortExposure, type GatewayModel, type GatewayProvider, type GatewayReasoningEffort } from "../models.js";
+import { exposedEffortLadder } from "./gateway-agents.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import { GENERAL_PURPOSE_AGENT_PROMPT } from "./gateway-agents.js";
 
@@ -34,6 +35,16 @@ export const GATEWAY_ROUTING_TIERS: readonly GatewayRoutingTier[] = ["scan", "wo
 export interface GatewayRoutingCandidate {
   /** Claude Code가 보내는 철자 그대로의 모델 id. */
   readonly model: string;
+  /**
+   * 이 등급이 이 모델에 요청할 추론 강도. 강도를 지원하지 않는 모델에는 없다.
+   *
+   * 모델 id에 싣지 않고 따로 두는 이유: 강도는 요청 본문의 필드이고 `turn.step`이 그 필드를
+   * 재작성해 준다(측정: `effort=medium`이 실려 오고 재작성이 받아들여진다). 한때는 게이트웨이
+   * id에 `--effort-high` 접미를 붙여 나르려 했는데, 그러면 디스커버리가 광고하지 않는 철자를
+   * 모델 해석 경로가 받아 주는지에 배정이 걸린다 — `[1m]` 표식이 활성 검사에서 떨어져 403을
+   * 냈던 것과 같은 자리다. 필드로 나르면 그 위험이 통째로 없다.
+   */
+  readonly effort?: GatewayReasoningEffort;
   /** 사람이 읽는 이름. 판과 알림줄이 그대로 쓴다. */
   readonly label: string;
 }
@@ -101,23 +112,27 @@ const FALLBACK: Readonly<Record<GatewayRoutingTier, readonly GatewayRoutingTier[
 export function buildGatewayRoutingTable(
   exposed: readonly GatewayModel[],
   options?: {
+    readonly effortExposure?: GatewayEffortExposure;
     readonly providerPriority?: readonly GatewayProvider[];
   },
 ): GatewayRoutingTable {
   if (exposed.length === 0) return EMPTY_GATEWAY_ROUTING_TABLE;
   const ordered = sortByProviderPriority(exposed, options?.providerPriority);
-  const members = new Map<GatewayRoutingTier, GatewayRoutingCandidate[]>(
+  const members = new Map<GatewayRoutingTier, GatewayModel[]>(
     GATEWAY_ROUTING_TIERS.map((tier) => [tier, []]),
   );
-  for (const model of ordered) {
-    members.get(tierOf(model))?.push(toCandidate(model));
-  }
+  for (const model of ordered) members.get(tierOf(model))?.push(model);
   const tiers = Object.fromEntries(GATEWAY_ROUTING_TIERS.map((tier) => {
     // 자기 등급을 먼저, 그다음 대체 순서. 같은 모델이 두 번 들어가지 않게 걸러낸다.
+    //
+    // 강도는 **요청한 등급**이 정한다. 모델이 어느 등급에 속하는지와 그 실행에 얼마나
+    // 생각하게 할지는 다른 질문이다 — `work`가 빌려 온 flagship에 `deep`의 강도를 요청하면
+    // 요청한 적 없는 비용을 쓴다.
     const seen = new Set<string>();
     const list: GatewayRoutingCandidate[] = [];
     for (const source of FALLBACK[tier]) {
-      for (const candidate of members.get(source) ?? []) {
+      for (const model of members.get(source) ?? []) {
+        const candidate = toCandidate(model, tier, options?.effortExposure);
         if (seen.has(candidate.model)) continue;
         seen.add(candidate.model);
         list.push(candidate);
@@ -128,9 +143,49 @@ export function buildGatewayRoutingTable(
   return { prompt: GENERAL_PURPOSE_AGENT_PROMPT, tiers: Object.freeze(tiers) };
 }
 
-function toCandidate(model: GatewayModel): GatewayRoutingCandidate {
+/**
+ * 등급이 바라는 강도. 사다리가 이 값을 그대로 갖고 있지 않으면 가장 가까운 단을 쓴다 —
+ * 사용자가 노출을 좁혀 두었을 때 요청을 사다리 밖으로 밀지 않기 위해서다.
+ */
+const TIER_EFFORT: Readonly<Record<GatewayRoutingTier, GatewayReasoningEffort>> = {
+  scan: "low",
+  work: "medium",
+  deep: "high",
+};
+
+/** 카탈로그 사다리의 순서. 가까움은 이 축 위의 거리로 잰다. */
+const EFFORT_ORDER: readonly GatewayReasoningEffort[] = ["low", "medium", "high", "xhigh", "max"];
+
+function nearestRung(
+  ladder: readonly GatewayReasoningEffort[],
+  target: GatewayReasoningEffort,
+): GatewayReasoningEffort | undefined {
+  if (ladder.length === 0) return undefined;
+  const wanted = EFFORT_ORDER.indexOf(target);
+  // 같은 거리면 낮은 쪽을 쓴다. 요청하지 않은 비용을 올리는 쪽으로 기울지 않는다.
+  return [...ladder].sort((a, b) => {
+    const da = Math.abs(EFFORT_ORDER.indexOf(a) - wanted);
+    const db = Math.abs(EFFORT_ORDER.indexOf(b) - wanted);
+    return da - db || EFFORT_ORDER.indexOf(a) - EFFORT_ORDER.indexOf(b);
+  })[0];
+}
+
+function toCandidate(
+  model: GatewayModel,
+  tier: GatewayRoutingTier,
+  exposure: GatewayEffortExposure | undefined,
+): GatewayRoutingCandidate {
   const modelId = toClaudeGatewayModelId(model);
-  return { model: modelId, label: toRoutingLabel(modelId) };
+  const constraints = buildGatewayModelConstraints(model);
+  const effort = constraints.effortSupported
+    ? nearestRung(exposedEffortLadder(model.id, constraints.effortLadder, exposure), TIER_EFFORT[tier])
+    : undefined;
+  const label = toRoutingLabel(modelId);
+  return {
+    model: modelId,
+    ...(effort === undefined ? {} : { effort }),
+    label: effort === undefined ? label : `${label} @${effort}`,
+  };
 }
 
 /** `claude-gateway--xai--grok-4.6` → `xai/grok-4.6`. 게이트웨이 모델이 아니면 그대로. */

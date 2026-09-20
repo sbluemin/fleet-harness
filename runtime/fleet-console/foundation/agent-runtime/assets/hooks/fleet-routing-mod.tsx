@@ -90,6 +90,8 @@ type Tier = "scan" | "work" | "deep";
 /** 한 등급의 후보 하나. 앞에 있을수록 먼저 시도한다. */
 interface Candidate {
   readonly model: string;
+  /** 이 등급이 이 모델에 요청할 강도. 강도를 지원하지 않는 모델에는 없다. */
+  readonly effort?: string;
   readonly label: string;
 }
 
@@ -212,14 +214,17 @@ const awaitingSpawn = new Map<string, Row>();
 /** 살아 있는 subagent: agentId → 행. */
 const running = new Map<string, Row>();
 /**
- * `agent.spawn`을 지나지 않은 실행에 배정한 모델: agentId → 모델 id.
+ * 이 세션이 배정한 실행: agentId → 후보.
  *
- * 스폰이 실어 준 모델은 그 실행 내내 이어지지만, `turn.step`에서 실은 모델은 이어지지
+ * 스폰이 실어 준 **모델**은 그 실행 내내 이어지지만 `turn.step`에서 실은 모델은 이어지지
  * 않는다 — 엔진은 스텝마다 세션 모델로 다시 해석한다(측정: 네 스텝 모두 `saw=` 가 부모
- * 모델이었고 `usage.model` 만 재작성된 값이었다). 그래서 한 번 정한 값을 여기 붙잡아
- * 두고 매 스텝 다시 싣는다. 스텝마다 새로 고르면 한 실행이 모델을 갈아탄다.
+ * 모델이었고 `usage.model` 만 재작성된 값이었다). 그래서 한 번 정한 값을 여기 붙잡아 두고
+ * 매 스텝 다시 싣는다. 스텝마다 새로 고르면 한 실행이 모델을 갈아탄다.
+ *
+ * **강도**는 스폰이 아예 나르지 못한다 — `agent.spawn`에 그 필드가 없다. 그래서 스폰이
+ * 배정한 실행도 여기 들어온다: 모델은 이미 실려 있고, 강도만 매 스텝 얹는다.
  */
-const stageModels = new Map<string, string>();
+const assigned = new Map<string, Candidate>();
 
 let paneOpen = false;
 let ticker: { cancel: () => void } | undefined;
@@ -375,6 +380,8 @@ export const register: Register = (on) => {
       if (result.agentId !== undefined) {
         row.agentId = result.agentId;
         running.set(result.agentId, row);
+        // 모델은 스폰이 실었다. 강도는 실을 자리가 없었으므로 turn.step이 얹는다.
+        if (decision.seat !== undefined) assigned.set(result.agentId, decision.seat);
       }
       startTicker($);
     }
@@ -397,9 +404,16 @@ export const register: Register = (on) => {
     if (agentId === undefined) return yield* next(e);
     const known = running.get(agentId);
     if (known !== undefined) {
-      const enforced = stageModels.get(agentId);
-      // 여기서 배정한 실행은 매 스텝 다시 실어야 한다. 스폰이 배정한 실행은 이어지므로 둔다.
-      if (enforced !== undefined) return yield* next({ ...e, model: enforced });
+      const seat = assigned.get(agentId);
+      // 배정한 실행은 매 스텝 다시 싣는다 — 모델은 스폰이 실었으면 같은 값이라 무해하고,
+      // 강도는 여기서만 실을 수 있어 매번 필요하다.
+      if (seat !== undefined) {
+        return yield* next({
+          ...e,
+          model: seat.model,
+          ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+        });
+      }
       if (known.observed === undefined && e.model.startsWith(GATEWAY_PREFIX)) {
         known.carried = modelLabel(e.model, e.effort);
       }
@@ -426,7 +440,7 @@ export const register: Register = (on) => {
     running.set(agentId, row);
     if (seat === undefined) observed += 1;
     else {
-      stageModels.set(agentId, seat.model);
+      assigned.set(agentId, seat);
       offHost += 1;
     }
     startTicker($);
@@ -436,7 +450,11 @@ export const register: Register = (on) => {
       `stage: agentId=${agentId} saw=${e.model} carried=${seat?.label ?? "(unchanged)"}`,
       { to: "debug" },
     );
-    return yield* next(seat === undefined ? e : { ...e, model: seat.model });
+    return yield* next(
+      seat === undefined
+        ? e
+        : { ...e, model: seat.model, ...(seat.effort === undefined ? {} : { effort: seat.effort }) },
+    );
   });
 
   // subagent가 끝나면 그 행을 닫는다.
@@ -449,6 +467,7 @@ export const register: Register = (on) => {
       const model = e.usage?.model;
       if (model !== undefined) row.carried = modelLabel(model);
       running.delete(e.agentId as string);
+      assigned.delete(e.agentId as string);
       if (running.size === 0) stopTicker();
       redraw($);
     }
@@ -470,6 +489,8 @@ export const register: Register = (on) => {
 interface Decision {
   /** 실어 줄 모델 id. `undefined`면 아무것도 바꾸지 않는다. */
   readonly model?: string;
+  /** 고른 후보 그대로. 강도는 스폰이 못 나르므로 turn.step이 이것을 보고 얹는다. */
+  readonly seat?: Candidate;
   /** 읽은 등급. 배정하지 않은 실행에서는 그 이유가 등급 자리에 온다. */
   readonly tier: string;
   /** 이 실행이 무엇으로 도는지, 사람이 읽는 이름. */
@@ -517,6 +538,7 @@ async function decide($: Engine, e: SpawnInput): Promise<Decision> {
   }
   return {
     model: seat.model,
+    seat,
     tier,
     carried: seat.label,
     because: `${describeAsk(e.model, e.subagentType)} → ${tier}`,

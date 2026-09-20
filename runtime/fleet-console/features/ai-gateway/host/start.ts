@@ -67,6 +67,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readRoutingTable: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return buildGatewayRoutingTable(selection.delegationModels, {
+        effortExposure: selection.effortExposure,
         ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
       });
     },
