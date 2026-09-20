@@ -1,42 +1,56 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalLinkHandler, TERMINAL_OPTIONS } from "../../features/execution/client/terminal/shared/terminal-options.js";
+import { createTerminalLinkRoute } from "../../features/execution/client/terminal/shared/terminal-options.js";
 
-describe("TERMINAL_OPTIONS", () => {
+/** 링크 경로 하나가 OSC 8 하이퍼링크와 출력에서 찾아낸 맨 URL을 함께 받는다. */
+function route(chooseTarget: (url: string, event: MouseEvent) => boolean) {
+  const openWindow = vi.fn();
+  const confirmNavigation = vi.fn(() => true);
+  return { activate: createTerminalLinkRoute({ chooseTarget, openWindow, confirmNavigation }), openWindow, confirmNavigation };
+}
 
-  it("opens OSC 8 HTTP links with the URL in the initial popup request", () => {
-    const openWindow = vi.fn();
-    const confirmNavigation = vi.fn(() => true);
-    const handler = createTerminalLinkHandler(openWindow, confirmNavigation);
+describe("terminal link route", () => {
+  it("hands a web link to the surface's chooser instead of opening it", () => {
+    const chooseTarget = vi.fn(() => true);
+    const { activate, openWindow, confirmNavigation } = route(chooseTarget);
 
-    handler.activate({} as MouseEvent, "http://127.0.0.1:4173/preview");
-    handler.activate({} as MouseEvent, "https://fleet.example/docs");
+    activate({} as MouseEvent, "https://fleet.example/docs");
 
-    expect(openWindow).toHaveBeenNthCalledWith(1, "http://127.0.0.1:4173/preview", "_blank", "noopener,noreferrer");
-    expect(openWindow).toHaveBeenNthCalledWith(2, "https://fleet.example/docs", "_blank", "noopener,noreferrer");
-    expect(confirmNavigation).toHaveBeenNthCalledWith(1, "http://127.0.0.1:4173/preview");
-    expect(confirmNavigation).toHaveBeenNthCalledWith(2, "https://fleet.example/docs");
-  });
-
-  it("rejects non-web and malformed OSC 8 links", () => {
-    const openWindow = vi.fn();
-    const confirmNavigation = vi.fn(() => true);
-    const handler = createTerminalLinkHandler(openWindow, confirmNavigation);
-
-    handler.activate({} as MouseEvent, "file:///tmp/secret");
-    handler.activate({} as MouseEvent, "javascript:alert('unsafe')");
-    handler.activate({} as MouseEvent, "not a url");
-
+    expect(chooseTarget).toHaveBeenCalledWith("https://fleet.example/docs", expect.anything());
     expect(openWindow).not.toHaveBeenCalled();
     expect(confirmNavigation).not.toHaveBeenCalled();
   });
 
-  it("does not open an OSC 8 link when navigation is declined", () => {
-    const openWindow = vi.fn();
-    const handler = createTerminalLinkHandler(openWindow, () => false);
+  it("confirms and opens in a new window when the surface has no chooser", () => {
+    const { activate, openWindow, confirmNavigation } = route(() => false);
 
-    handler.activate({} as MouseEvent, "https://fleet.example/docs");
+    activate({} as MouseEvent, "http://127.0.0.1:4173/preview");
+
+    expect(confirmNavigation).toHaveBeenCalledWith("http://127.0.0.1:4173/preview");
+    // xterm's default OSC 8 handler opens about:blank first; sandboxed Desktop denies that blank
+    // popup, so the validated URL travels in the initial request.
+    expect(openWindow).toHaveBeenCalledWith("http://127.0.0.1:4173/preview", "_blank", "noopener,noreferrer");
+  });
+
+  it("does not open a link when navigation is declined", () => {
+    const openWindow = vi.fn();
+    const activate = createTerminalLinkRoute({ chooseTarget: () => false, openWindow, confirmNavigation: () => false });
+
+    activate({} as MouseEvent, "https://fleet.example/docs");
 
     expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-web and malformed links before anything can open them", () => {
+    const chooseTarget = vi.fn(() => true);
+    const { activate, openWindow, confirmNavigation } = route(chooseTarget);
+
+    activate({} as MouseEvent, "file:///tmp/secret");
+    activate({} as MouseEvent, "javascript:alert('unsafe')");
+    activate({} as MouseEvent, "not a url");
+
+    expect(chooseTarget).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(confirmNavigation).not.toHaveBeenCalled();
   });
 });

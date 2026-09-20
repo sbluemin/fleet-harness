@@ -2,6 +2,7 @@ import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -14,7 +15,7 @@ import { createTerminalConnection, type TerminalConnection, type TerminalConnect
 import { describeTerminalFailure } from "./terminal-failure.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
-import { TERMINAL_OPTIONS } from "./terminal-options.js";
+import { createTerminalLinkHandler, createTerminalLinkRoute, TERMINAL_OPTIONS } from "./terminal-options.js";
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
@@ -50,6 +51,12 @@ export interface TerminalSurfaceProps {
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
   readonly onStatusDetail?: (detail: string) => void;
+  /**
+   * 본문의 http(s) 링크를 눌렀을 때 — OSC 8 하이퍼링크든 출력에서 찾아낸 맨 URL이든 — 이 표면 대신
+   * 열 곳을 정하는 쪽. 그 링크를 맡았으면 true를 돌려준다. 넘기지 않은 표면(전역 Shell)과 맡지 않은
+   * 링크는 확인을 받은 뒤 새 창으로 연다.
+   */
+  readonly onOpenLink?: (url: string, at: { readonly x: number; readonly y: number }) => boolean;
   /** 관전 배지 문구용. 넘기지 않으면 영어로 떨어진다 — 배지 외의 동작에는 영향이 없다. */
   readonly locale?: ConsoleLocale;
 }
@@ -186,7 +193,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -234,6 +241,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   onExitRef.current = onExit;
   const onStatusDetailRef = useRef(onStatusDetail);
   onStatusDetailRef.current = onStatusDetail;
+  // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
+  const onOpenLinkRef = useRef(onOpenLink);
+  onOpenLinkRef.current = onOpenLink;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -320,8 +330,16 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       if (disposed) return;
 
       const terminalTheme = terminalThemeFor(activeTheme, surface);
+      // 링크 하나에 문 하나 — OSC 8 하이퍼링크(linkHandler)와 출력에서 찾아낸 맨 URL(WebLinksAddon)이
+      // 같은 경로를 지난다. 그 경로가 이 표면에 고르는 문이 있는지 매번 다시 본다(ref).
+      const linkRoute = createTerminalLinkRoute({
+        chooseTarget: (url, event) => onOpenLinkRef.current?.(url, { x: event.clientX, y: event.clientY }) === true,
+        openWindow: (url, target, features) => window.open(url, target, features),
+        confirmNavigation: (url) => window.confirm(`Do you want to navigate to ${url}?\n\nWARNING: This link could potentially be dangerous`),
+      });
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
+        linkHandler: createTerminalLinkHandler(linkRoute),
         fontFamily: terminalFontSettings.family,
         fontSize: terminalFontSettings.size * appliedZoom * touchFontScaleRef.current,
         theme: terminalTheme,
@@ -332,6 +350,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       const fitAddon = new FitAddon();
       fitAddonRef.current = fitAddon;
       terminal.loadAddon(fitAddon);
+      // CLI가 뱉는 주소는 대개 맨 텍스트다(하이퍼링크를 지원하지 않는 터미널로 보므로). 그 텍스트를
+      // 링크로 세우는 일은 이 addon이 진다 — 줄바꿈으로 갈린 URL까지 한 링크로 잇는다.
+      terminal.loadAddon(new WebLinksAddon(linkRoute));
       terminal.open(container);
       syncTerminalViewportBackground(container, terminalTheme);
       const xtermScreen = container.querySelector<HTMLElement>(".xterm-screen");

@@ -4,7 +4,7 @@ import { CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-ac
 import { Select } from "@fleet-console/sdk/react/browser";
 
 import { getT } from "./i18n.js";
-import { publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, useBrowserCaptionOverlay, useBrowserPanel } from "./browser-panel-store.js";
+import { dropBrowserOpenRequest, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -732,6 +732,20 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
   }, [operationId, state, busy, available]);
   React.useEffect(() => () => publishBrowserPanel(operationId, null), [operationId]);
+
+  // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
+  // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
+  // 사람이 보던 페이지를 링크 하나가 밀어내지 않게.
+  const openRequest = useBrowserOpenRequest(operationId);
+  React.useEffect(() => {
+    if (!openRequest || !available) return;
+    takeBrowserOpenRequest(operationId, openRequest.serial);
+    const intoActiveTab = activeTab === null || activeTab.url === "about:blank";
+    void run(intoActiveTab ? "navigate" : "tabs", intoActiveTab ? { url: openRequest.url } : { action: "create", url: openRequest.url });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 탭 상태는 요청이 도착한 그 순간의 것으로 읽는다; 탭이 바뀔 때마다 다시 열지 않는다.
+  }, [openRequest?.serial, available, operationId]);
+  // 패널을 닫으면 아직 못 연 요청도 함께 거둔다 — 다음에 여는 브라우저가 옛 링크로 열리지 않게.
+  React.useEffect(() => () => dropBrowserOpenRequest(operationId), [operationId]);
 
   const highlightBox = (element: ElementInfo | null) => {
     const factor = layoutScale();

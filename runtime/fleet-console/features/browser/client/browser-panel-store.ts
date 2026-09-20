@@ -45,6 +45,51 @@ export function useBrowserPanel(operationId: string): BrowserPanelSnapshot | nul
   return React.useSyncExternalStore(subscribe, () => snapshots.get(operationId) ?? null, () => null);
 }
 
+// ---------- 밖에서 온 주소 ----------
+
+/**
+ * CLI·채팅에서 고른 주소 한 개 — 「Fleet 브라우저에서 열기」가 여기 놓고 companion 을 연다.
+ *
+ * 패널이 아직 없을 수도 있고(문을 여는 그 순간 마운트된다), 엔진이 뜨는 동안일 수도 있으므로
+ * 요청은 패널이 실제로 열 수 있게 될 때까지 남는다. 여는 일은 언제나 패널의 것이다 — 실패·거부의
+ * 문장을 가진 쪽이 패널이기 때문이다.
+ */
+export interface BrowserOpenRequest { readonly url: string; readonly serial: number }
+
+const openRequests = new Map<string, BrowserOpenRequest>();
+const openRequestListeners = new Map<string, Set<() => void>>();
+let openRequestSerial = 0;
+
+function notifyOpenRequest(operationId: string): void {
+  for (const listener of openRequestListeners.get(operationId) ?? []) listener();
+}
+
+export function requestBrowserOpen(operationId: string, url: string): void {
+  openRequests.set(operationId, { url, serial: ++openRequestSerial });
+  notifyOpenRequest(operationId);
+}
+
+/** 패널이 요청을 집어 든다. 그사이 더 새 요청이 들어왔으면 그것은 남는다(직렬 번호로 판정). */
+export function takeBrowserOpenRequest(operationId: string, serial: number): void {
+  if (openRequests.get(operationId)?.serial !== serial) return;
+  openRequests.delete(operationId);
+  notifyOpenRequest(operationId);
+}
+
+export function dropBrowserOpenRequest(operationId: string): void {
+  if (!openRequests.delete(operationId)) return;
+  notifyOpenRequest(operationId);
+}
+
+export function useBrowserOpenRequest(operationId: string): BrowserOpenRequest | null {
+  const subscribe = React.useCallback((listener: () => void) => {
+    const set = openRequestListeners.get(operationId) ?? new Set<() => void>();
+    set.add(listener); openRequestListeners.set(operationId, set);
+    return () => { set.delete(listener); if (set.size === 0) openRequestListeners.delete(operationId); };
+  }, [operationId]);
+  return React.useSyncExternalStore(subscribe, () => openRequests.get(operationId) ?? null, () => null);
+}
+
 // ---------- 캡션이 띄운 것 ----------
 
 /**
