@@ -129,7 +129,7 @@ export function createAiGatewaySettingsStore(
       ...(current.delegationRoutingModel ? { delegationRoutingModel: current.delegationRoutingModel } : {}),
       ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
       ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
-      ...(current.delegationRoutingEnabled === false ? { delegationRoutingEnabled: false } : {}),
+      ...(current.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
       ...((current.delegationRoutingMode === "jev" || current.delegationRoutingMode === "model") ? { delegationRoutingMode: current.delegationRoutingMode } : {}),
       // 우선순위는 이 update 계약이 나르지 않는 별도 표면의 설정이다. 이월하지 않으면
       // 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.

@@ -67,7 +67,7 @@ export interface SystemPromptSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
-  /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
+  /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
   readonly delegationRoutingEnabled: boolean;
   readonly delegationRoutingMode: DelegationRoutingMode;
   readonly delegationRoutingModel: string | null;

@@ -38,7 +38,7 @@ describe("terminal settings routes", () => {
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      delegationRoutingEnabled: true,
+      delegationRoutingEnabled: false,
       delegationRoutingMode: "model",
       compactCeiling: null,
     });
@@ -179,8 +179,8 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
             : {}),
-          ...(aiGateway.delegationRoutingEnabled === false
-            ? { delegationRoutingEnabled: false }
+          ...(aiGateway.delegationRoutingEnabled === true
+            ? { delegationRoutingEnabled: true }
             : {}),
           ...(aiGateway.providerPriority
             ? { providerPriority: aiGateway.providerPriority }

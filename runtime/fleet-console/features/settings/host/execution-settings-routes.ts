@@ -79,9 +79,9 @@ export interface TerminalSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
-  /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
+  /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
   readonly delegationRoutingEnabled: boolean;
-  /** 위임 배정 방식. Off일 때도 읽기 값은 deterministic이다. */
+  /** 활성화했을 때 사용할 AI 판단 방식. */
   readonly delegationRoutingMode: DelegationRoutingMode;
   readonly delegationRoutingModel: string | null;
   readonly compactCeiling: CompactCeiling | null;
@@ -231,7 +231,7 @@ function toTerminalSettingsState(
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
-    delegationRoutingEnabled: aiGateway.delegationRoutingEnabled !== false,
+    delegationRoutingEnabled: aiGateway.delegationRoutingEnabled === true,
     delegationRoutingModel: aiGateway.delegationRoutingModel ?? null,
     delegationRoutingMode: aiGateway.delegationRoutingMode ?? "model",
     compactCeiling: aiGateway.compactCeiling ?? null,

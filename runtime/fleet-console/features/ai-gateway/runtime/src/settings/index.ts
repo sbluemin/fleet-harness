@@ -47,15 +47,7 @@ export interface AiGatewayStoredSettings {
    * 토글이 꺼지지 않는 결함이 된다.
    */
   readonly wireLogEnabled?: boolean;
-  /**
-   * Whether Fleet assigns a model to delegated runs. Absent means on.
-   *
-   * Off hands delegation back to the harness: the routing table is served empty,
-   * so the mod rewrites nothing and a subagent runs on whatever Claude Code would
-   * have given it. `false` is kept in the normalized form rather than folded away —
-   * absence is the default, and folding would turn every Off back on at the next
-   * write.
-   */
+  /** AI 판단은 명시적으로 켠 경우에만 사용한다. 부재·false는 로컬 규칙 기반 fallback이다. */
   readonly delegationRoutingEnabled?: boolean;
   /**
    * How delegated runs are assigned a model when {@link delegationRoutingEnabled}
@@ -161,7 +153,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
-    ...(value.delegationRoutingEnabled === false ? { delegationRoutingEnabled: false } : {}),
+    ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
@@ -210,7 +202,7 @@ export interface AiGatewaySelection {
   readonly effortExposure: GatewayEffortExposure;
   /** Opt-in provider allowance spend order; absent means no preference. */
   readonly providerPriority: readonly GatewayProvider[] | undefined;
-  /** Whether Fleet assigns a model to delegated runs. Off leaves them to the harness. */
+  /** AI 판단 활성화 여부. Off여도 로컬 fallback은 모델을 배정한다. */
   readonly delegationRoutingEnabled: boolean;
   /** Resolved routing mode when delegation is on. Absent stored value uses the AI model. */
   readonly delegationRoutingMode: DelegationRoutingMode;
@@ -239,7 +231,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
     delegationModels,
     effortExposure,
     providerPriority: settings?.providerPriority,
-    delegationRoutingEnabled: settings?.delegationRoutingEnabled !== false,
+    delegationRoutingEnabled: settings?.delegationRoutingEnabled === true,
     delegationRoutingMode: settings?.delegationRoutingMode ?? "model",
   };
 }
