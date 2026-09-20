@@ -1,15 +1,7 @@
 ---
-branch: fleet-routing-mod
+kind: added
 ---
 
-### fleet-cli
-#### Added
-- Gateway models you enable now reach a session as delegation identities without a plugin rebuild, so turning one on or off takes effect on the next session rather than after the plugin tree is republished.
-  ko: 활성화한 게이트웨이 모델이 플러그인 재생성 없이 세션의 위임 정체성으로 올라오므로, 모델을 켜고 끄면 플러그인 트리가 다시 발행되기를 기다리지 않고 다음 세션부터 반영됩니다.
-- A Fleet Routing panel shows each delegated run from the moment it starts: what was requested, which model carried it, and why that model was chosen. Workflow stages appear too, marked as runs Fleet did not route. Open it any time with `/fleet-routing`.
-  ko: Fleet Routing 판이 위임 실행을 시작 시점부터 보여줍니다 — 무엇을 요청했고, 어느 모델이 실행했으며, 그 모델이 선택된 이유가 표시됩니다. 워크플로우 단계도 Fleet이 배정하지 않은 실행으로 표시되어 함께 나타납니다. `/fleet-routing`으로 언제든 열 수 있습니다.
+en: Delegated work now runs on gateway models without the host naming one. Fleet assigns each run's model as it starts — subagents and dynamic Workflow stages alike — reading the current exposure per dispatch, so enabling a model in Settings takes effect on the next run instead of the next session.
 
-### fleet-console
-#### Added
-- Gateway models you enable now reach a session as delegation identities without a plugin rebuild, so turning one on or off takes effect on the next session rather than after the plugin tree is republished.
-  ko: 활성화한 게이트웨이 모델이 플러그인 재생성 없이 세션의 위임 정체성으로 올라오므로, 모델을 켜고 끄면 플러그인 트리가 다시 발행되기를 기다리지 않고 다음 세션부터 반영됩니다.
+ko: 위임한 작업이 호스트가 모델을 지목하지 않아도 게이트웨이 모델에서 돈다. 서브에이전트든 다이나믹 Workflow 스테이지든 실행이 시작될 때 Fleet이 모델을 배정하고, 배정할 때마다 지금의 노출을 읽으므로 Settings에서 모델을 켜면 다음 세션이 아니라 다음 실행부터 반영된다.

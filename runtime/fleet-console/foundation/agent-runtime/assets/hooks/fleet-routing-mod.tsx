@@ -211,6 +211,15 @@ const unreachable = new Set<string>();
 const awaitingSpawn = new Map<string, Row>();
 /** 살아 있는 subagent: agentId → 행. */
 const running = new Map<string, Row>();
+/**
+ * `agent.spawn`을 지나지 않은 실행에 배정한 모델: agentId → 모델 id.
+ *
+ * 스폰이 실어 준 모델은 그 실행 내내 이어지지만, `turn.step`에서 실은 모델은 이어지지
+ * 않는다 — 엔진은 스텝마다 세션 모델로 다시 해석한다(측정: 네 스텝 모두 `saw=` 가 부모
+ * 모델이었고 `usage.model` 만 재작성된 값이었다). 그래서 한 번 정한 값을 여기 붙잡아
+ * 두고 매 스텝 다시 싣는다. 스텝마다 새로 고르면 한 실행이 모델을 갈아탄다.
+ */
+const stageModels = new Map<string, string>();
 
 let paneOpen = false;
 let ticker: { cancel: () => void } | undefined;
@@ -384,38 +393,50 @@ export const register: Register = (on) => {
    */
   on("turn.step", async function* ($, e, next) {
     const agentId = e.agentId;
-    // agentId가 없으면 메인 루프, 곧 호스트 자신의 턴이다. 위임이 아니므로 세지 않는다.
+    // agentId가 없으면 메인 루프, 곧 호스트 자신의 턴이다. 위임이 아니므로 손대지 않는다.
     if (agentId === undefined) return yield* next(e);
     const known = running.get(agentId);
     if (known !== undefined) {
-      // 좌석을 준 실행. 실제로 어느 모델이 답했는지로 이름을 확정한다.
+      const enforced = stageModels.get(agentId);
+      // 여기서 배정한 실행은 매 스텝 다시 실어야 한다. 스폰이 배정한 실행은 이어지므로 둔다.
+      if (enforced !== undefined) return yield* next({ ...e, model: enforced });
       if (known.observed === undefined && e.model.startsWith(GATEWAY_PREFIX)) {
         known.carried = modelLabel(e.model, e.effort);
       }
       return yield* next(e);
     }
-    // 모델 id 철자로 기록 여부를 가르지 않는다. 게이트웨이 표식이 붙는지는 표시 형식의
-    // 문제일 뿐이고, 그 추측에 기록을 걸면 철자가 어긋나는 순간 실행이 조용히 사라진다.
-    // 위임된 실행(agentId가 있는 루프)은 무엇으로 돌든 원장에 남는다.
+
+    // 처음 보는 루프. `agent.spawn`이 닿지 않는 실행이 여기로 온다 — 다이나믹 Workflow의
+    // 스테이지가 그렇다(측정: 스테이지 둘에 스폰 0건, turn.step 발화 확인). 엔진 자신의
+    // fork(압축·메모리)도 같은 모양으로 오지만 그쪽은 이미 게이트웨이 모델을 달고 오거나
+    // 호스트 문맥을 물려받은 실행이라, 아래 판정이 함께 걸러낸다.
+    const seat = await seatStage($, e.model);
     const row = addRow({
       key: `turn:${agentId}`,
       surface: "workflow",
-      // 워크플로우 스테이지가 대부분이지만 엔진 자신의 fork(압축·메모리)도 같은 모양으로
-      // 온다. 구별할 방법이 없으므로 아는 것만 적는다 — 이 루프의 주소.
+      // 스테이지인지 엔진 fork인지 구별할 방법이 없으므로 아는 것만 적는다 — 이 루프의 주소.
       description: `run ${agentId.slice(0, 6)}`,
-      carried: modelLabel(e.model, e.effort),
-      because: "its caller chose this model",
+      carried: seat?.label ?? modelLabel(e.model, e.effort),
+      because: seat === undefined ? "its caller chose this model" : "not from the Agent tool → work",
       state: "running",
       startedAt: Date.now(),
       agentId,
-      observed: true,
+      ...(seat === undefined ? { observed: true as const } : {}),
     });
     running.set(agentId, row);
-    observed += 1;
+    if (seat === undefined) observed += 1;
+    else {
+      stageModels.set(agentId, seat.model);
+      offHost += 1;
+    }
     startTicker($);
     void openPane($);
     redraw($);
-    return yield* next(e);
+    $.ui.log(
+      `stage: agentId=${agentId} saw=${e.model} carried=${seat?.label ?? "(unchanged)"}`,
+      { to: "debug" },
+    );
+    return yield* next(seat === undefined ? e : { ...e, model: seat.model });
   });
 
   // subagent가 끝나면 그 행을 닫는다.
@@ -500,6 +521,26 @@ async function decide($: Engine, e: SpawnInput): Promise<Decision> {
     carried: seat.label,
     because: `${describeAsk(e.model, e.subagentType)} → ${tier}`,
   };
+}
+
+/**
+ * `agent.spawn`을 지나지 않은 실행에 모델을 고른다. 작업 내용을 볼 수 없으므로 — 이 훅이
+ * 싣는 것은 루프의 주소뿐이다 — 등급을 읽지 않고 기본 등급으로 보낸다.
+ *
+ * 이미 게이트웨이 모델을 달고 있으면 누군가 이미 정한 것이라 두고, 표를 못 읽으면 아무것도
+ * 바꾸지 않는다. 판정을 못 했다는 것과 상속해도 된다는 것은 다르지만, 여기서 틀린 모델을
+ * 강제하는 것보다 원장에 상속으로 남기는 편이 읽는 사람을 덜 오도한다.
+ */
+async function seatStage($: Engine, current: string): Promise<Candidate | undefined> {
+  if (current.startsWith(GATEWAY_PREFIX)) return undefined;
+  let table: RoutingTable = NO_TABLE;
+  try {
+    table = await fetchRoutingTable($);
+  } catch (error) {
+    $.ui.log(`could not read the routing table for a stage: ${String(error)}`, { to: "debug" });
+    return undefined;
+  }
+  return table.tiers.work.find((candidate) => !unreachable.has(candidate.model));
 }
 
 /** 호스트가 실제로 무엇을 말했는지, 판에 적을 만큼 짧게. */
