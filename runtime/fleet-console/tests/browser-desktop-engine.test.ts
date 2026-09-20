@@ -26,9 +26,12 @@ describe("desktop native browser engine", () => {
     engine.subscriberOpened("remote-guest");
     engine.relay("remote-guest", { attached: [pendingView!.id] });
     expect(published.at(-1)?.views[0]?.id).toBe(pendingView!.id);
-    engine.relay("local", { attached: [pendingView!.id] });
+    engine.relay("local", { attached: [pendingView!.id], sizes: [{ viewId: pendingView!.id, width: 1440, height: 900, scale: 2 }] });
     const { targetId } = await creating;
     expect(targetId).toBe(pendingView!.id);
+    // Companion 이 없어도 생성 직후 sizes 가 그 뷰의 실행 크기이고, 0×0 창으로 말하지 않는다.
+    expect(engine.viewSize(targetId)).toEqual({ width: 1440, height: 900, scale: 2 });
+    await expect(engine.send("Browser.getWindowForTarget", { targetId })).resolves.toMatchObject({ bounds: { width: 1440, height: 900 } });
     engine.bindView(targetId, "op-1");
     const { sessionId } = await engine.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
     expect(sessionId).toBe(targetId);
@@ -37,6 +40,10 @@ describe("desktop native browser engine", () => {
     await engine.send("Target.activateTarget", { targetId });
     engine.place("op-1", { bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true });
     expect(published.at(-1)?.views[0]).toMatchObject({ visible: true, bounds: { x: 10, y: 20, width: 300, height: 200 } });
+    // Companion 을 닫아도 placement 크기(실행 뷰포트)는 남고 presentation 만 내린다.
+    engine.place("op-1", null);
+    expect(published.at(-1)?.views[0]).toMatchObject({ visible: false, bounds: { x: 10, y: 20, width: 300, height: 200 } });
+    engine.place("op-1", { bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true });
     const evaluating = engine.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "1+1", browserContextId: "stripped" }, sessionId);
     const command = published.at(-1)?.commands[0];
     expect(command).toMatchObject({ viewId: targetId, method: "Runtime.evaluate", params: { expression: "1+1" } });

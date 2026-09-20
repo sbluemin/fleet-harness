@@ -1,4 +1,6 @@
-import type { BrowserWindow, WebContents, WebContentsView } from "electron";
+import type { WebContents, WebContentsView } from "electron";
+
+import type { DesktopShellWindow } from "./shell-window.js";
 
 /**
  * 집의 호스트 목록을 지금 보고 있는 콘솔 위에 그대로 펼치는 덮개.
@@ -12,7 +14,7 @@ import type { BrowserWindow, WebContents, WebContentsView } from "electron";
  */
 export interface HostPickerViewDeps {
   readonly createView: () => WebContentsView;
-  readonly window: () => BrowserWindow | null;
+  readonly shell: () => DesktopShellWindow | null;
   /** 이 contents의 항해 울타리. 세션에는 손대지 않는다(window-policy 참조). */
   readonly confine: (contents: WebContents) => void;
   /** 여기서 고른 콘솔을 메인 창으로 보내는 다리. */
@@ -49,12 +51,12 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
     // 먼저 비운다 — 아래 정리 중에 다시 불려도 두 번 걷지 않는다.
     current = null;
     closedAt = now();
-    const window = deps.window();
-    try { window?.off("resize", open.onResize); } catch { /* 이미 사라진 창은 뗄 리스너도 없다. */ }
-    try { window?.contentView.removeChildView(open.view); } catch { /* 창이 먼저 닫힌 경우. */ }
+    const shell = deps.shell();
+    try { shell?.base.off("resize", open.onResize); } catch { /* 이미 사라진 창은 뗄 리스너도 없다. */ }
+    try { if (shell && !shell.isDestroyed()) shell.stack.removePicker(open.view); } catch { /* 창이 먼저 닫힌 경우. */ }
     try { open.view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
     // 덮개가 걷히면 손은 원래 보던 콘솔로 돌아가야 한다.
-    try { if (window && !window.isDestroyed()) window.webContents.focus(); } catch { /* 창이 없으면 돌려줄 포커스도 없다. */ }
+    try { if (shell && !shell.isDestroyed()) shell.consoleContents.focus(); } catch { /* 창이 없으면 돌려줄 포커스도 없다. */ }
   }
 
   return {
@@ -63,8 +65,8 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
     close,
 
     async open(url: string): Promise<void> {
-      const window = deps.window();
-      if (!window || window.isDestroyed()) throw new Error("remote_bridge_no_picker");
+      const shell = deps.shell();
+      if (!shell || shell.isDestroyed()) throw new Error("remote_bridge_no_picker");
       if (current) {
         // 이미 떠 있으면 하나 더 만들지 않는다.
         try { current.view.webContents.focus(); } catch { /* 포커스는 부가 동작이다. */ }
@@ -78,20 +80,19 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
       const view = deps.createView();
       const contents = view.webContents;
       const applyBounds = (): void => {
-        const target = deps.window();
+        const target = deps.shell();
         if (!target || target.isDestroyed()) return;
-        const { width, height } = target.getContentBounds();
-        view.setBounds({ x: 0, y: 0, width, height });
+        view.setBounds(target.stack.layoutConsole());
       };
       const onResize = (): void => applyBounds();
       const open: OpenPicker = { view, onResize };
       current = open;
 
-      window.contentView.addChildView(view);
+      shell.stack.presentPicker(view);
       // 목록이 그려지기 전에는 보이지 않는다 — 빈 판을 먼저 보여 주면 목록이 사라진 것처럼 읽힌다.
       view.setVisible(false);
       applyBounds();
-      window.on("resize", onResize);
+      shell.base.on("resize", onResize);
 
       deps.confine(contents);
       deps.attachBridge(contents);

@@ -1,4 +1,4 @@
-import type { BrowserWindow, Menu, MenuItemConstructorOptions } from "electron";
+import type { Menu, MenuItemConstructorOptions } from "electron";
 
 import type { NativeUpdateActions } from "./update-controller.js";
 
@@ -14,15 +14,20 @@ export interface ApplicationMenuActions {
   readonly updates: NativeUpdateActions;
 }
 
-export function installApplicationMenu(MenuCtor: typeof Menu, actions: ApplicationMenuActions, platform: NodeJS.Platform, window?: BrowserWindow): void {
+interface MenuBarHost {
+  setMenu?(menu: Menu): void;
+  setMenuBarVisibility?(visible: boolean): void;
+}
+
+export function installApplicationMenu(MenuCtor: typeof Menu, actions: ApplicationMenuActions, platform: NodeJS.Platform, window?: MenuBarHost): void {
   if (platform !== "darwin") {
     const menu = MenuCtor.buildFromTemplate([{
       label: "Fleet Console",
       submenu: nonDarwinConsoleActions(actions),
     }]);
     MenuCtor.setApplicationMenu(menu);
-    window?.setMenu(menu);
-    window?.setMenuBarVisibility(false);
+    window?.setMenu?.(menu);
+    window?.setMenuBarVisibility?.(false);
     return;
   }
   const template: MenuItemConstructorOptions[] = [

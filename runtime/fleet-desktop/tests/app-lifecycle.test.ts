@@ -6,7 +6,7 @@ describe("desktop lifecycle", () => {
   it("focuses the existing window for a second launch and only stops on explicit quit", async () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const app = { on: vi.fn((event: string, listener: (...args: unknown[]) => void) => listeners.set(event, listener)), quit: vi.fn() };
-    const window = { on: vi.fn(), isDestroyed: () => false, show: vi.fn(), focus: vi.fn() };
+    const window = { base: { on: vi.fn() }, isDestroyed: () => false, show: vi.fn(), focus: vi.fn() };
     const stop = vi.fn(async () => undefined);
     const lifecycle = createDesktopLifecycle(app as never, async () => window as never, stop);
 
@@ -26,7 +26,7 @@ describe("desktop lifecycle", () => {
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     try {
       let close: ((event: { preventDefault(): void }) => void) | undefined;
-      const window = { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }), isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
+      const window = { base: { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }) }, isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
       const lifecycle = createDesktopLifecycle({ on: vi.fn(), quit: vi.fn() } as never, async () => new Promise(() => undefined) as never, async () => undefined);
       lifecycle.attachWindow(window as never);
       const event = { preventDefault: vi.fn() };
@@ -44,7 +44,7 @@ describe("desktop lifecycle", () => {
     try {
       let close: ((event: { preventDefault(): void }) => void) | undefined;
       let finishStop: (() => void) | undefined;
-      const window = { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }), isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
+      const window = { base: { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }) }, isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
       const lifecycle = createDesktopLifecycle({ on: vi.fn(), quit: vi.fn() } as never, async () => window as never, () => new Promise<void>((resolve) => { finishStop = resolve; }));
       lifecycle.attachWindow(window as never);
       const preparation = lifecycle.prepareToQuit();
@@ -64,7 +64,7 @@ describe("desktop lifecycle", () => {
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
     try {
       let close: ((event: { preventDefault(): void }) => void) | undefined;
-      const window = { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }), isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
+      const window = { base: { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }) }, isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
       const lifecycle = createDesktopLifecycle({ on: vi.fn(), quit: vi.fn() } as never, async () => window as never, async () => undefined);
       lifecycle.attachWindow(window as never);
       const event = { preventDefault: vi.fn() };

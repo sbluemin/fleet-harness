@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 
@@ -40,7 +40,8 @@ import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from ".
 import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
-import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { desktopFullscreenHost, type DesktopShellWindow } from "./shell-window.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
@@ -142,7 +143,7 @@ async function boot(): Promise<void> {
     serviceVersion: initialServiceVersion,
     log: logger,
   });
-  let window: BrowserWindow | null = null;
+  let window: DesktopShellWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
   // 창이 지금 보고 있는 콘솔. 셸 갱신 상태는 이 주소에 게시하고 명령도 이 주소에서 듣는다 —
@@ -169,7 +170,7 @@ async function boot(): Promise<void> {
   const refreshNativeChrome = (): void => {
     overlayRefresher?.refresh();
     if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
-    window.setWindowButtonPosition(trafficLightPosition(window.webContents.getZoomFactor()));
+    window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor()));
   };
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
@@ -234,21 +235,21 @@ async function boot(): Promise<void> {
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserViews = createDesktopBrowserViews({
-    window: () => window,
+    shell: () => window,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Operation 의 메모리 파티션에 뷰를 연다.
     createView: (partition, profile) => new WebContentsView({
       webPreferences: {
         ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),
-        focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
+        focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: () => window?.webContents.getZoomFactor() ?? 1,
+    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
     scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
-    userAgent: () => (window?.webContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
+    userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
     fetch: consoleFetch,
     log: (message) => logger.info(message),
     /**
@@ -347,13 +348,13 @@ async function boot(): Promise<void> {
   const picker = createHostPickerView({
     createView: () => {
       const view = new WebContentsView({
-        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
       });
       // 덮개는 아래 콘솔 위에 합성된다 — 목록을 보는 동안에도 어느 콘솔에 서 있었는지가 남아야 한다.
       view.setBackgroundColor("#00000000");
       return view;
     },
-    window: () => window,
+    shell: () => window,
     confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
     attachBridge: (contents) => bridge.attachPicker(contents),
     log: (message) => logger.error(message),
@@ -361,17 +362,17 @@ async function boot(): Promise<void> {
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
-        const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
+        const createdWindow = createSecureShellWindow(BaseWindow, WebContentsView, { iconPath: desktopResources.iconPath, platform: process.platform });
         window = createdWindow;
-        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow, { fetch: consoleFetch });
+        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });
         overlayRefresher = process.platform === "win32"
-          ? createTitleBarOverlayRefresher(createdWindow, {
+          ? createTitleBarOverlayRefresher(createdWindow.base, {
             screen,
             initialOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
-            getZoomFactor: () => createdWindow.webContents.getZoomFactor(),
+            getZoomFactor: () => createdWindow.consoleContents.getZoomFactor(),
           })
           : null;
-        createdWindow.once("closed", () => {
+        createdWindow.base.once("closed", () => {
           themeSynchronizer?.stop();
           updateSynchronizer.stop();
           browserViews.stop();
@@ -380,13 +381,19 @@ async function boot(): Promise<void> {
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
+          // BaseWindow closed does not destroy child WebContentsView renderers — close explicitly.
+          try {
+            if (!createdWindow.consoleContents.isDestroyed()) createdWindow.consoleContents.close();
+          } catch { /* already torn down */ }
+          window = null;
+          policy = null;
         });
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
-        policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
-        installComputerCapture(createdWindow.webContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
-        bridge.attach(createdWindow.webContents);
-        createdWindow.webContents.on("did-navigate", (_event, url) => {
+        policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external));
+        installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
+        bridge.attach(createdWindow.consoleContents);
+        createdWindow.consoleContents.on("did-navigate", (_event, url) => {
           // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
           picker.close();
           // 셸이 넘긴 항해는 도착 전에 게시했다. 그 밖의 도착 — 새로고침, 재기동한 콘솔로 화면이 스스로
@@ -401,20 +408,23 @@ async function boot(): Promise<void> {
             if (outcome !== "accepted") logger.error(`shell home republish after arrival ended outcome=${outcome} origin=${origin}`);
           });
         });
-        createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
-          controls.zoomChanged(createdWindow.webContents, zoomDirection);
+        createdWindow.consoleContents.on("zoom-changed", (_event, zoomDirection) => {
+          controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
           browserViews.refresh();
         });
         // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
-        createdWindow.on("resize", () => browserViews.refresh());
+        createdWindow.base.on("resize", () => {
+          createdWindow.stack.layoutConsole();
+          browserViews.refresh();
+        });
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
-        createdWindow.webContents.on("did-finish-load", () => refreshNativeChrome());
+        createdWindow.consoleContents.on("did-finish-load", () => refreshNativeChrome());
         // 스냅·최대화 전환(Win+Shift+화살표 등)은 moved 없이 모니터를 건널 수 있다 — 게이트가
         // no-op이므로 상태 전환마다 배율 정합을 재확인해도 비용이 없다.
-        createdWindow.on("maximize", () => refreshNativeChrome());
-        createdWindow.on("unmaximize", () => refreshNativeChrome());
-        createdWindow.on("restore", () => refreshNativeChrome());
+        createdWindow.base.on("maximize", () => refreshNativeChrome());
+        createdWindow.base.on("unmaximize", () => refreshNativeChrome());
+        createdWindow.base.on("restore", () => refreshNativeChrome());
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);
         return createdWindow;
@@ -434,7 +444,7 @@ async function boot(): Promise<void> {
       pushEntry: pushEntrySnapshot,
       startOrAdopt: () => supervisor.startOrAdopt(),
     });
-    return launch.start() as Promise<BrowserWindow>;
+    return launch.start() as Promise<DesktopShellWindow>;
   }, async () => { bridge.dispose(); await supervisor.stop(); });
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
@@ -480,7 +490,7 @@ async function boot(): Promise<void> {
   };
   trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {
-    installApplicationMenu(Menu, actions, process.platform, window ?? undefined);
+    installApplicationMenu(Menu, actions, process.platform, window && !window.isDestroyed() ? window.base : undefined);
     // macOS에서는 context menu가 좌클릭을 가로채므로, 클릭으로 창을 표시하는 트레이에 메뉴를 절대 붙이지 않는다.
     if (shouldConfigureTray(process.platform) && trayHolder.current) configureTray(trayHolder.current, Menu, actions);
   };

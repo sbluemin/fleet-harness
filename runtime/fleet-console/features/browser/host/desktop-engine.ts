@@ -99,6 +99,7 @@ export class DesktopEngine implements CdpClient {
   snapshot(): DesktopBrowserSnapshot {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
       const placement = this.placements.get(view.operationId) ?? null;
+      // `visible` 은 Companion presentation. 자리(bounds)는 숨겨도 남겨 셸이 parking 때 마지막 유효 크기를 지키게 한다.
       const visible = view.active && placement !== null && placement.visible;
       return { id: view.id, operationId: view.operationId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
@@ -108,13 +109,24 @@ export class DesktopEngine implements CdpClient {
   /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
   emptySnapshot(): DesktopBrowserSnapshot { return { generation: this.generation, views: [], commands: [] }; }
 
-  /** 패널이 알려 준 자기 자리. Operation 의 활성 탭 뷰가 이 자리에 놓인다. */
+  /**
+   * Companion 자리. `null` 은 presentation 만 내린다 — 마지막 양수 bounds 는 남겨 실행 크기와 자리를 분리한다.
+   * 활성 탭만 `visible: true` 로 그려지고, 같은 Operation 의 다른 탭은 그 bounds 크기로 parking 된다.
+   */
   place(operationId: string, placement: Placement | null): void {
-    if (placement) this.placements.set(operationId, placement); else this.placements.delete(operationId);
+    if (placement) this.placements.set(operationId, placement);
+    else {
+      const previous = this.placements.get(operationId);
+      if (previous && previous.bounds.width >= 1 && previous.bounds.height >= 1) {
+        this.placements.set(operationId, { bounds: previous.bounds, visible: false });
+      } else {
+        this.placements.delete(operationId);
+      }
+    }
     this.publish();
   }
 
-  /** 셸이 알려 준 뷰의 실제 크기 — 서비스가 뷰포트로 삼는다. */
+  /** 셸이 알려 준 **그 뷰**의 실제 크기 — 다른 탭 pane 과 섞지 않는다. */
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
   viewOperation(viewId: string): string | null { return this.views.get(viewId)?.operationId ?? null; }
 
@@ -137,9 +149,9 @@ export class DesktopEngine implements CdpClient {
     }
     for (const size of body.sizes ?? []) {
       const view = this.views.get(size.viewId);
-      if (!view) continue;
-      view.size = { width: size.width, height: size.height, scale: size.scale };
-      this.emit({ method: "Fleet.viewResized", params: { width: size.width, height: size.height, scale: size.scale }, sessionId: size.viewId });
+      if (!view || size.width < 1 || size.height < 1) continue;
+      view.size = { width: size.width, height: size.height, scale: size.scale > 0 ? size.scale : 1 };
+      this.emit({ method: "Fleet.viewResized", params: { width: view.size.width, height: view.size.height, scale: view.size.scale }, sessionId: size.viewId });
     }
     for (const entry of body.results ?? []) {
       const waiting = this.pending.get(entry.id);
@@ -193,7 +205,7 @@ export class DesktopEngine implements CdpClient {
       }
       case "Browser.getWindowForTarget": {
         const view = this.views.get(String(params.targetId ?? ""));
-        const size = view?.size ?? { width: 0, height: 0 };
+        const size = view?.size && view.size.width >= 1 && view.size.height >= 1 ? view.size : { width: 0, height: 0 };
         return { windowId: 1, bounds: { left: 0, top: 0, width: size.width, height: size.height, windowState: "normal" } } as T;
       }
       case "Browser.setWindowBounds": return {} as T;

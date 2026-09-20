@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, isAllowedConsoleUrl } from "../src/window-policy.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, isAllowedConsoleUrl } from "../src/window-policy.js";
 
 const HOME = "http://127.0.0.1:4310";
 
@@ -36,10 +36,35 @@ describe("host picker view confinement", () => {
 });
 
 describe("secure window policy", () => {
-  it("creates a renderer without Node or preload privilege", () => {
-    const Ctor = vi.fn();
-    createSecureWindow(Ctor as never, { iconPath: "/assets/icon.png", platform: "darwin" });
-    expect(Ctor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 11 }, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  it("creates a BaseWindow shell with sandboxed Console view and no Node privilege", () => {
+    const baseCtor = vi.fn(function BaseWindow(this: Record<string, unknown>) {
+      this.getContentBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });
+      this.contentView = { addChildView: vi.fn(), removeChildView: vi.fn() };
+    });
+    const viewCtor = vi.fn(function WebContentsView(this: Record<string, unknown>) {
+      this.setBackgroundColor = vi.fn();
+      this.setBounds = vi.fn();
+      this.webContents = {};
+    });
+    const shell = createSecureShellWindow(baseCtor as never, viewCtor as never, { iconPath: "/assets/icon.png", platform: "darwin" });
+    expect(baseCtor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 11 } });
+    expect(viewCtor).toHaveBeenCalledWith({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false } });
+    expect(shell.consoleView.setBackgroundColor).toHaveBeenCalledWith("#010204");
+  });
+
+  it("applies Windows title-bar overlay on the BaseWindow shell", () => {
+    const baseCtor = vi.fn(function BaseWindow(this: Record<string, unknown>) {
+      this.getContentBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });
+      this.contentView = { addChildView: vi.fn(), removeChildView: vi.fn() };
+    });
+    const viewCtor = vi.fn(function WebContentsView(this: Record<string, unknown>) {
+      this.setBackgroundColor = vi.fn();
+      this.setBounds = vi.fn();
+      this.webContents = {};
+    });
+    createSecureShellWindow(baseCtor as never, viewCtor as never, { iconPath: "/assets/icon.png", platform: "win32" });
+    expect(baseCtor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY });
+    expect(viewCtor).toHaveBeenCalledWith({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false } });
   });
 
   it("allows only exact-origin Console routes", () => {

@@ -1,4 +1,4 @@
-import type { BrowserWindow, WebContentsView } from "electron";
+import type { WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
@@ -13,6 +13,7 @@ import {
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
+import { defaultParkViewport, parkedNativeBounds, type DesktopShellWindow, type ParkViewport } from "./shell-window.js";
 
 /**
  * Operation 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
@@ -31,7 +32,7 @@ const RELAY_RETRY_MS = 500;
 const RELAY_MAX_EVENTS = 400;
 
 export interface DesktopBrowserViewsDeps {
-  readonly window: () => BrowserWindow | null;
+  readonly shell: () => DesktopShellWindow | null;
   /** `profile` 이 있으면 그 영속 프로필의 디스크 세션에, `null` 이면 `partition` 의 메모리 세션에 뷰를 연다. */
   readonly createView: (partition: string, profile: string | null) => WebContentsView;
   /** 콘솔 창 렌더러의 줌 배율 — 패널이 알린 CSS px 를 DIP 로 바꾼다. */
@@ -137,28 +138,72 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     return { x: Math.round(spec.bounds.x * factor), y: Math.round(spec.bounds.y * factor), width: Math.max(0, Math.round(spec.bounds.width * factor)), height: Math.max(0, Math.round(spec.bounds.height * factor)) };
   };
 
-  const place = (entry: LiveView): void => {
-    const window = deps.window();
-    if (!window || window.isDestroyed()) return;
-    const bounds = dipBounds(entry.spec);
-    const visible = entry.spec.visible && bounds !== null && bounds.width > 0 && bounds.height > 0;
-    if (bounds && (entry.lastBounds === null || entry.lastBounds.x !== bounds.x || entry.lastBounds.y !== bounds.y || entry.lastBounds.width !== bounds.width || entry.lastBounds.height !== bounds.height)) {
-      entry.view.setBounds(bounds);
-      entry.lastBounds = bounds;
-      push({ sizes: [{ viewId: entry.spec.id, width: bounds.width, height: bounds.height, scale: deps.scaleFactor() }] });
+  /** 콘솔 엔진은 attach 직후 viewSize 가 필요하다 — viewId 별 실제 DIP 만 올린다. */
+  const reportSize = (viewId: string, bounds: { width: number; height: number }): void => {
+    push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale: deps.scaleFactor() }] });
+  };
+
+  /** Parked viewport: last native DIP first — closed ops must not track Console zoom via spec.bounds CSS. */
+  const parkViewport = (entry: LiveView, panelBounds: ReturnType<typeof dipBounds>, content: { x: number; y: number; width: number; height: number }): ParkViewport => {
+    if (entry.lastBounds && entry.lastBounds.width > 0 && entry.lastBounds.height > 0) {
+      return { width: entry.lastBounds.width, height: entry.lastBounds.height };
     }
-    entry.view.setVisible(visible);
+    if (panelBounds && panelBounds.width > 0 && panelBounds.height > 0) {
+      return { width: panelBounds.width, height: panelBounds.height };
+    }
+    return defaultParkViewport(content);
+  };
+
+  const place = (entry: LiveView): void => {
+    const shell = deps.shell();
+    if (!shell || shell.isDestroyed()) return;
+    const contentBounds = shell.stack.layoutConsole();
+    const panelBounds = dipBounds(entry.spec);
+    const hasPanelSize = panelBounds !== null && panelBounds.width > 0 && panelBounds.height > 0;
+    // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다.
+    const presented = entry.spec.visible && hasPanelSize;
+    const nextBounds = presented && panelBounds
+      ? panelBounds
+      : parkedNativeBounds(parkViewport(entry, panelBounds, contentBounds), contentBounds);
+    const boundsChanged = entry.lastBounds === null
+      || entry.lastBounds.x !== nextBounds.x
+      || entry.lastBounds.y !== nextBounds.y
+      || entry.lastBounds.width !== nextBounds.width
+      || entry.lastBounds.height !== nextBounds.height;
+    const viewportChanged = entry.lastBounds === null
+      || entry.lastBounds.width !== nextBounds.width
+      || entry.lastBounds.height !== nextBounds.height;
+    if (boundsChanged) {
+      entry.view.setBounds(nextBounds);
+      entry.lastBounds = nextBounds;
+      // x/y-only parking moves must not bump Fleet.viewResized / geometry_version.
+      if (viewportChanged) reportSize(entry.spec.id, nextBounds);
+    }
+    // 이 통합에서는 hidden/0×0 대신 visible + z-order parking — macOS CDP 실험에서 더 안정적이었다.
+    entry.view.setVisible(true);
+    const reclaimConsoleFocus = !presented && entry.view.webContents.isFocused();
+    if (presented) shell.stack.presentBrowser(entry.view);
+    else shell.stack.parkBrowser(entry.view);
+    // Parked behind Console but still holding focus leaves keyboard input on an invisible page.
+    if (reclaimConsoleFocus) {
+      try { shell.consoleContents.focus(); } catch { /* window gone */ }
+    }
   };
 
   const create = (spec: DesktopBrowserView): void => {
-    const window = deps.window();
-    if (!window || window.isDestroyed()) return;
+    const shell = deps.shell();
+    if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
+    const contentBounds = shell.stack.layoutConsole();
     const entry: LiveView = { view, spec, attached: false, lastBounds: null };
+    const viewport = parkViewport(entry, dipBounds(spec), contentBounds);
     live.set(spec.id, entry);
     const contents = view.webContents;
-    window.contentView.addChildView(view);
-    view.setVisible(false);
+    const initialBounds = parkedNativeBounds(viewport, contentBounds);
+    view.setBounds(initialBounds);
+    entry.lastBounds = initialBounds;
+    view.setVisible(true);
+    shell.stack.parkBrowser(view);
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
     contents.on("render-process-gone", () => drop(spec.id, true));
@@ -173,6 +218,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.debugger.on("detach", (_event, reason) => { log(`browser view debugger detached: ${reason}`); drop(spec.id, true); });
       entry.attached = true;
       push({ attached: [spec.id] });
+      reportSize(spec.id, initialBounds);
     } catch (error) {
       log(`browser view debugger attach failed: ${error instanceof Error ? error.message : "unknown"}`);
       drop(spec.id, true);
@@ -186,8 +232,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const entry = live.get(id);
     if (!entry) return;
     live.delete(id);
-    const window = deps.window();
-    try { if (window && !window.isDestroyed()) window.contentView.removeChildView(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
+    const shell = deps.shell();
+    try { if (shell && !shell.isDestroyed()) shell.stack.removeBrowser(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
     try { entry.view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
     if (report) push({ detached: [id] });

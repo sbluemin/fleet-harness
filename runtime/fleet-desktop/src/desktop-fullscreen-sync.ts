@@ -1,13 +1,14 @@
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
-import type { BrowserWindow, WebContents } from "electron";
+import type { WebContents } from "electron";
 
 const DESKTOP_FULLSCREEN_PATH = "/api/v1/desktop/fullscreen";
 const MAX_TRANSIENT_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 1_000;
 
-export interface DesktopFullscreenWindow extends Pick<BrowserWindow, "isFullScreen"> {
-  on(event: "enter-full-screen" | "leave-full-screen", listener: () => void): this;
-  removeListener(event: "enter-full-screen" | "leave-full-screen", listener: () => void): this;
+export interface DesktopFullscreenWindow {
+  isFullScreen(): boolean;
+  on(event: "enter-full-screen" | "leave-full-screen", listener: () => void): void;
+  removeListener(event: "enter-full-screen" | "leave-full-screen", listener: () => void): void;
   readonly webContents: Pick<WebContents, "on" | "removeListener">;
 }
 
