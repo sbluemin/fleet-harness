@@ -1082,9 +1082,15 @@ function foldWorkflowProgress(
   };
 }
 
-/** 단계 트리와 같은 순서로, CLI index 키와 자식 세션 좌표. 키 없는 칸은 잇지 않는다. */
-export function chatWorkflowAgentSlots(value: unknown): readonly ChatWorkflowAgentSlot[] {
-  return foldWorkflowProgress(value, {}).slots;
+/**
+ * 단계 트리와 같은 순서로, CLI index 키와 자식 세션 좌표. 표시 단계와 같은 문
+ * (`jobProgressEvent`의 jobSurfaceOptions)을 지나지 않으면 경로 제목이 접혀 칸이 섞인다.
+ */
+export function chatWorkflowAgentSlots(
+  value: unknown,
+  options: ChatEventMapOptions = {},
+): readonly ChatWorkflowAgentSlot[] {
+  return foldWorkflowProgress(value, jobSurfaceOptions(options)).slots;
 }
 
 /**

@@ -779,6 +779,21 @@ describe("AgentChatRegistry — background jobs", () => {
         { type: "result", subtype: "success", is_error: false, duration_ms: 20 },
       ],
     }]);
+    const open = nodeFs.open.bind(nodeFs);
+    const stat = nodeFs.stat.bind(nodeFs);
+    let inflight = 0;
+    let maxInflight = 0;
+    const track = async <T,>(work: () => Promise<T>): Promise<T> => {
+      inflight += 1;
+      maxInflight = Math.max(maxInflight, inflight);
+      try {
+        return await work();
+      } finally {
+        inflight -= 1;
+      }
+    };
+    const openSpy = vi.spyOn(nodeFs, "open").mockImplementation((...args) => track(() => open(...args)));
+    const statSpy = vi.spyOn(nodeFs, "stat").mockImplementation((...args) => track(() => stat(...args)));
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-wf-wide", () => seedFor(transcriptPath));
     const seen: AgentChatJournalEvent[] = [];
@@ -795,10 +810,72 @@ describe("AgentChatRegistry — background jobs", () => {
       expect(painted[200]?.model).toBe("claude-gateway--cursor--composer-200");
       expect(painted.some((agent) => agent.model === undefined || agent.model === requested)).toBe(false);
     });
+    expect(maxInflight).toBeLessThanOrEqual(4);
     let log = initialAgentChatLogState;
     for (const entry of seen) log = reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at });
     expect(log.jobs[0]).toMatchObject({ id: "wf-wide", open: false, status: "completed" });
     expect(log.jobs[0]?.stages.flatMap((stage) => stage.agents)).toHaveLength(agentCount);
+    openSpy.mockRestore();
+    statSpy.mockRestore();
+    await registry.disposeAll();
+  });
+
+  it("keeps models when stage titles are absolute paths the abbreviator would collapse", async () => {
+    const sessionId = "sess-wf-paths";
+    const transcriptPath = writeTranscript(sessionId, []);
+    const childDir = path.join(path.dirname(transcriptPath), sessionId, "subagents", "workflows", "run1");
+    mkdirSync(childDir, { recursive: true });
+    writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6a7b1.jsonl"), `${JSON.stringify({
+      type: "assistant",
+      message: { model: "claude-gateway--cursor--composer-1.5", content: [{ type: "text", text: "a1" }] },
+    })}\n`);
+    writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6b7c1.jsonl"), `${JSON.stringify({
+      type: "assistant",
+      message: { model: "claude-gateway--deepseek--v3.1", content: [{ type: "text", text: "b1" }] },
+    })}\n`);
+    const { factory } = createFakeSdkFactory([{
+      messages: [
+        { type: "system", subtype: "task_started", task_id: "wf-paths", task_type: "local_workflow", description: "paths" },
+        {
+          type: "system",
+          subtype: "task_progress",
+          task_id: "wf-paths",
+          description: "running",
+          usage: { total_tokens: 3, tool_uses: 0, duration_ms: 10 },
+          workflow_progress: [
+            { type: "workflow_agent", index: 1, label: "A1", phaseTitle: "/one/common/stage", agentId: "a1b2c3d4e5f6a7b1", model: "claude-gateway--xai--grok-4", state: "done" },
+            { type: "workflow_agent", index: 2, label: "B1", phaseTitle: "/two/common/stage", agentId: "a1b2c3d4e5f6b7c1", model: "claude-gateway--xai--grok-4", state: "done" },
+            { type: "workflow_agent", index: 3, label: "A2", phaseTitle: "/one/common/stage", model: "claude-gateway--xai--grok-4", state: "start" },
+          ],
+        },
+        { type: "system", subtype: "task_notification", task_id: "wf-paths", status: "completed", summary: "paths" },
+        { type: "result", subtype: "success", is_error: false, duration_ms: 20 },
+      ],
+    }]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-wf-paths", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+    session.send("run");
+    await drainTurn(registry, "op-wf-paths");
+    await vi.waitFor(() => {
+      const progress = [...seen].reverse().find((entry) => entry.event.kind === "job-progress");
+      expect(progress?.event).toMatchObject({
+        kind: "job-progress",
+        stages: [
+          {
+            title: "/one/common/stage",
+            agents: [
+              { label: "A1", model: "claude-gateway--cursor--composer-1.5" },
+              { label: "A2", state: "start" },
+            ],
+          },
+          { title: "/two/common/stage", agents: [{ label: "B1", model: "claude-gateway--deepseek--v3.1" }] },
+        ],
+      });
+      if (progress?.event.kind !== "job-progress") return;
+      expect(progress.event.stages?.[0]?.agents[1]?.model).toBeUndefined();
+    });
     await registry.disposeAll();
   });
 });

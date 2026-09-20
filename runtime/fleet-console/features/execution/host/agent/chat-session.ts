@@ -334,6 +334,8 @@ const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
  */
 const JOB_MODEL_READ_WINDOWS: readonly number[] = [256 * 1024, 1024 * 1024, JOB_TRANSCRIPT_READ_BYTES];
 const AGENT_COORD_RE = /^[A-Za-z0-9_-]{1,128}$/;
+/** 세션 하나의 자식 전사록 읽기 동시성. 잡마다 곱하지 않는다. */
+const WORKFLOW_READ_CONCURRENCY = 4;
 
 interface WorkflowJobModelState {
   /** fold와 같은 그룹·cap 순서의 CLI `workflow_agent.index` 키. 키 없는 칸은 잇지 않는다. */
@@ -614,6 +616,10 @@ class AgentChatSession {
    * 같은 잡의 칸을 밀어내지 않고, 원장에 그 잡이 더 이상 없으면 함께 버린다.
    */
   private readonly workflowJobs = new Map<string, WorkflowJobModelState>();
+  private workflowReadsActive = 0;
+  private readonly workflowReadWaiters: Array<() => void> = [];
+  /** `subagents/workflows` 한 번의 목록. 에이전트마다 readdir하지 않는다. */
+  private workflowRunListing: { readonly root: string; readonly names: readonly string[] } | null = null;
   /**
    * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
    * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
@@ -1220,6 +1226,8 @@ class AgentChatSession {
     for (const hosted of this.hostedDispatches.values()) hosted.onSettled?.("unknown");
     this.hostedDispatches.clear();
     this.workflowJobs.clear();
+    this.workflowRunListing = null;
+    for (const wake of this.workflowReadWaiters.splice(0)) wake();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
@@ -1466,8 +1474,9 @@ class AgentChatSession {
   private ingestWorkflowProgress(
     event: Extract<AgentChatStreamEvent, { readonly kind: "job-progress" }>,
     message: ClaudeGatewayMessage,
+    options: ChatEventMapOptions,
   ): void {
-    const slots = chatWorkflowAgentSlots(message.workflow_progress);
+    const slots = chatWorkflowAgentSlots(message.workflow_progress, options);
     if (slots.length > 0) {
       const job = this.ensureWorkflowJob(event.id);
       job.keys = slots.map((slot) => slot.key);
@@ -1541,7 +1550,7 @@ class AgentChatSession {
     if (pending.length === 0) return;
     for (const id of pending) job.reading.add(id);
     try {
-      await Promise.all(pending.map(async (id) => {
+      await Promise.all(pending.map((id) => this.withWorkflowReadSlot(async () => {
         const file = await this.locateWorkflowAgentTranscript(jobId, id);
         if (file === null || this.disposed) return;
         const held = this.workflowJobs.get(jobId);
@@ -1553,7 +1562,7 @@ class AgentChatSession {
         held.bytes.set(id, size);
         if (model === undefined) return;
         held.models.set(id, model);
-      }));
+      })));
     } finally {
       const held = this.workflowJobs.get(jobId);
       if (held) for (const id of pending) held.reading.delete(id);
@@ -1569,6 +1578,21 @@ class AgentChatSession {
     const painted = this.paintWorkflowModels(held.event);
     if (painted === held.event) return;
     this.ingest(painted);
+  }
+
+  private async withWorkflowReadSlot<T>(work: () => Promise<T>): Promise<T> {
+    while (!this.disposed && this.workflowReadsActive >= WORKFLOW_READ_CONCURRENCY) {
+      await new Promise<void>((resolve) => {
+        this.workflowReadWaiters.push(resolve);
+      });
+    }
+    this.workflowReadsActive += 1;
+    try {
+      return await work();
+    } finally {
+      this.workflowReadsActive -= 1;
+      this.workflowReadWaiters.shift()?.();
+    }
   }
 
   /**
@@ -1601,17 +1625,36 @@ class AgentChatSession {
       this.workflowJobs.get(jobId)?.files.set(agentId, direct);
       return direct;
     }
-    const runs = await fs.readdir(path.join(subagents, "workflows"), { withFileTypes: true }).catch(() => null);
-    if (runs === null) return null;
-    for (const run of runs) {
-      if (!run.isDirectory() || !AGENT_COORD_RE.test(run.name)) continue;
-      const candidate = path.join(subagents, "workflows", run.name, `agent-${agentId}.jsonl`);
-      if (await isExistingFile(candidate)) {
-        this.workflowJobs.get(jobId)?.files.set(agentId, candidate);
-        return candidate;
+    const found = await this.findWorkflowRunTranscript(subagents, agentId);
+    if (found !== null) this.workflowJobs.get(jobId)?.files.set(agentId, found);
+    return found;
+  }
+
+  private async findWorkflowRunTranscript(subagents: string, agentId: string): Promise<string | null> {
+    const root = path.join(subagents, "workflows");
+    const names = await this.listWorkflowRunDirs(root);
+    for (const name of names) {
+      const candidate = path.join(root, name, `agent-${agentId}.jsonl`);
+      if (await isExistingFile(candidate)) return candidate;
+    }
+    if (this.workflowRunListing?.root === root) {
+      this.workflowRunListing = null;
+      const refreshed = await this.listWorkflowRunDirs(root);
+      for (const name of refreshed) {
+        const candidate = path.join(root, name, `agent-${agentId}.jsonl`);
+        if (await isExistingFile(candidate)) return candidate;
       }
     }
     return null;
+  }
+
+  private async listWorkflowRunDirs(root: string): Promise<readonly string[]> {
+    if (this.workflowRunListing?.root === root) return this.workflowRunListing.names;
+    const runs = await fs.readdir(root, { withFileTypes: true }).catch(() => null);
+    if (runs === null) return [];
+    const names = runs.filter((run) => run.isDirectory() && AGENT_COORD_RE.test(run.name)).map((run) => run.name);
+    this.workflowRunListing = { root, names };
+    return names;
   }
 
   /**
@@ -2217,13 +2260,14 @@ class AgentChatSession {
         this.rememberJobKinds(message);
         this.rememberToolTitles(message);
         this.trackLiveContext(message);
-        for (const event of chatEventsFromSdkMessage(message, {
+        const mapOptions: ChatEventMapOptions = {
           cwd: this.seed.cwd,
           toolNames: this.toolNames,
           toolTitles: this.toolTitles,
-        })) {
+        };
+        for (const event of chatEventsFromSdkMessage(message, mapOptions)) {
           if (event.kind === "job-progress") {
-            this.ingestWorkflowProgress(event, message);
+            this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
           }
           this.ingest(event);
