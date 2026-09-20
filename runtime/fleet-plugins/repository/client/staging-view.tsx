@@ -90,6 +90,8 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     writeCommitDraft(ctx.theaterId ?? "", repoRel, { subject, body: bodyText, amend, amendHeadSha });
   }, [ctx.theaterId, repoRel, subject, bodyText, amend, amendHeadSha]);
   const [busy, setBusy] = useState(false);
+  // 어느 표면이 일하는지까지 알아야 그 버튼이 제자리에서 답한다 — busy 하나로는 줄 전체가 침묵한다.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => () => onBusyChange(false), [onBusyChange]);
   const [notice, setNotice] = useState<StagingNotice | null>(null);
@@ -180,9 +182,10 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   // 실패한 동사는 저장소를 바꾸지 않았다 — 상태 목록만 다시 읽고, 전역 갱신(기록·refs 재적재)은
   // 성공한 변이에만 지불한다. 오류 코드는 raw fetch로 읽는다(assertSafeResponse는 payload를 버린다).
-  const runVerb = useCallback(async (route: string, body: Record<string, unknown>, mutation: "local" | "history", mapError?: (code: string) => string | null): Promise<Record<string, unknown> | null> => {
+  const runVerb = useCallback(async (key: string, route: string, body: Record<string, unknown>, mutation: "local" | "history", mapError?: (code: string) => string | null): Promise<Record<string, unknown> | null> => {
     if (!ctx.theaterId || busy) return null;
     setBusy(true);
+    setPendingKey(key);
     try {
       const response = await fetch(`/plugins/repository/${route}`, {
         method: "POST",
@@ -214,20 +217,23 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       return null;
     } finally {
       setBusy(false);
+      setPendingKey(null);
     }
   }, [busy, ctx.theaterId, onMutated, reloadStatus, repoRel, selection, showNotice, status, t]);
 
-  const stagePaths = useCallback((paths: readonly string[]) => { void runVerb("stage", { paths }, "local"); }, [runVerb]);
-  const stageAll = useCallback(() => { void runVerb("stage", { all: true }, "local"); }, [runVerb]);
+  const stagePaths = useCallback((paths: readonly string[]) => { void runVerb(`stage:${paths.join("\u0000")}`, "stage", { paths }, "local"); }, [runVerb]);
+  const stageAll = useCallback(() => { void runVerb("stage:all", "stage", { all: true }, "local"); }, [runVerb]);
   // 리네임(R)은 새 경로만 내리면 옛 경로의 스테이지된 삭제가 남는다 — oldPath를 함께 내린다.
   const unstageEntries = useCallback((entries: readonly DiffFileEntry[]) => {
     const paths = entries.flatMap((entry) => entry.oldPath ? [entry.path, entry.oldPath] : [entry.path]);
-    void runVerb("unstage", { paths }, "local");
+    void runVerb(`unstage:${paths.join("\u0000")}`, "unstage", { paths }, "local");
   }, [runVerb]);
-  const unstageAll = useCallback(() => { void runVerb("unstage", { all: true }, "local"); }, [runVerb]);
+  const unstageAll = useCallback(() => { void runVerb("unstage:all", "unstage", { all: true }, "local"); }, [runVerb]);
+  const stageKeyOf = useCallback((entry: DiffFileEntry) => `stage:${entry.path}`, []);
+  const unstageKeyOf = useCallback((entry: DiffFileEntry) => `unstage:${(entry.oldPath ? [entry.path, entry.oldPath] : [entry.path]).join("\u0000")}`, []);
   const discardEntry = useCallback((entry: DiffFileEntry) => {
     const body = entry.status === "U" && !entry.conflicted ? { untrackedPaths: [entry.path] } : { paths: [entry.path] };
-    void runVerb("discard", body, "local");
+    void runVerb(`discard:${entry.path}`, "discard", body, "local");
   }, [runVerb]);
 
   const armOrDiscard = useCallback((entry: DiffFileEntry) => {
@@ -274,7 +280,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const commit = useCallback(async () => {
     const trimmedSubject = subject.trim();
     if (trimmedSubject === "" || !amendReady) return;
-    const payload = await runVerb("commit-create", {
+    const payload = await runVerb("commit", "commit-create", {
       subject: trimmedSubject,
       ...(bodyText.trim() ? { message: bodyText.trim() } : {}),
       ...(amend ? { amend: true } : {}),
@@ -367,6 +373,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             actionLabel={t("repository.staging.stageAll")}
             actionDisabled={busy || writeLocked || unstaged.length === 0}
             onAction={stageAll}
+            actionBusy={pendingKey === "stage:all"}
             selectedPath={selection?.axis === "unstaged" ? selection.entry.path : null}
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
             rowActions={(entry) => <>
@@ -375,7 +382,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
                   두 번째 클릭이 파일을 지운다는 사실이 어디에도 적혀 있지 않다. */}
               {!entry.conflicted && <button
                 type="button"
-                className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}`}
+                className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}${pendingKey === `discard:${entry.path}` ? " is-busy" : ""}`}
                 aria-label={entry.status === "U"
                   ? t("repository.staging.deleteUntracked", { path: entry.path })
                   : t("repository.staging.discardFile", { path: entry.path })}
@@ -386,15 +393,16 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
                 onClick={(event) => { event.stopPropagation(); armOrDiscard(entry); }}
               >{armedDiscard === entry.path
                 ? t(entry.status === "U" ? "repository.staging.deleteArm" : "repository.staging.discardArm")
-                : <><span aria-hidden="true">⌫</span><span className="repository-stage-action-text">{t(entry.status === "U" ? "repository.staging.actionDelete" : "repository.staging.actionDiscard")}</span></>}</button>}
+                : <span className={`repository-sweep-text${pendingKey === `discard:${entry.path}` ? " is-busy" : ""}`}><span aria-hidden="true">⌫</span><span className="repository-stage-action-text">{t(entry.status === "U" ? "repository.staging.actionDelete" : "repository.staging.actionDiscard")}</span></span>}</button>}
               <button
                 type="button"
-                className="repository-stage-action"
+                className={`repository-stage-action${pendingKey === stageKeyOf(entry) ? " is-busy" : ""}`}
                 aria-label={t("repository.staging.stageFile", { path: entry.path })}
                 title={t("repository.staging.stageFile", { path: entry.path })}
+                aria-busy={pendingKey === stageKeyOf(entry) || undefined}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); stagePaths([entry.path]); }}
-              ><span aria-hidden="true">+</span><span className="repository-stage-action-text">{t("repository.staging.actionStage")}</span></button>
+              ><span className={`repository-sweep-text${pendingKey === stageKeyOf(entry) ? " is-busy" : ""}`}><span aria-hidden="true">+</span><span className="repository-stage-action-text">{t("repository.staging.actionStage")}</span></span></button>
             </>}
           />
           <StagingSection
@@ -406,16 +414,18 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             actionLabel={t("repository.staging.unstageAll")}
             actionDisabled={busy || writeLocked || staged.length === 0}
             onAction={unstageAll}
+            actionBusy={pendingKey === "unstage:all"}
             selectedPath={selection?.axis === "staged" ? selection.entry.path : null}
             onSelect={(entry) => setSelection({ axis: "staged", entry })}
             rowActions={(entry) => <button
               type="button"
-              className="repository-stage-action"
+              className={`repository-stage-action${pendingKey === unstageKeyOf(entry) ? " is-busy" : ""}`}
               aria-label={t("repository.staging.unstageFile", { path: entry.path })}
                 title={t("repository.staging.unstageFile", { path: entry.path })}
+              aria-busy={pendingKey === unstageKeyOf(entry) || undefined}
               disabled={busy || writeLocked}
               onClick={(event) => { event.stopPropagation(); unstageEntries([entry]); }}
-            ><span aria-hidden="true">−</span><span className="repository-stage-action-text">{t("repository.staging.actionUnstage")}</span></button>}
+            ><span className={`repository-sweep-text${pendingKey === unstageKeyOf(entry) ? " is-busy" : ""}`}><span aria-hidden="true">−</span><span className="repository-stage-action-text">{t("repository.staging.actionUnstage")}</span></span></button>}
           />
         </>}
       </div>
@@ -455,15 +465,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           {t("repository.staging.amend")}
         </label>
         {workstate?.headBranch && <span className="repository-commit-target">→ {workstate.headBranch}</span>}
-        <button type="button" className="repository-commit-button" disabled={commitDisabled} onClick={() => void commit()}>
-          {amend ? t("repository.staging.commitAmend") : t(commitCount === 1 ? "repository.staging.commit_one" : "repository.staging.commit_other", { count: commitCount })}
+        <button type="button" className={`repository-commit-button${pendingKey === "commit" ? " is-busy" : ""}`} aria-busy={pendingKey === "commit" || undefined} disabled={commitDisabled} onClick={() => void commit()}>
+          <span className={`repository-sweep-text${pendingKey === "commit" ? " is-busy" : ""}`}>{amend ? t("repository.staging.commitAmend") : t(commitCount === 1 ? "repository.staging.commit_one" : "repository.staging.commit_other", { count: commitCount })}</span>
         </button>
       </div>
     </div>}
   </div>;
 }
 
-function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, selectedPath, onSelect, rowActions }: {
+function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, actionBusy, selectedPath, onSelect, rowActions }: {
   readonly t: T;
   readonly view: FilesViewMode;
   readonly label: string;
@@ -472,6 +482,7 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
   readonly actionLabel: string;
   readonly actionDisabled: boolean;
   readonly onAction: () => void;
+  readonly actionBusy: boolean;
   readonly selectedPath: string | null;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly rowActions: (entry: DiffFileEntry) => React.ReactNode;
@@ -480,7 +491,7 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
     <div className="repository-staging-head">
       <span>{label}</span>
       <i>{files.length}</i>
-      <button type="button" className="repository-staging-bulk" disabled={actionDisabled} onClick={onAction}>{actionLabel}</button>
+      <button type="button" className={`repository-staging-bulk${actionBusy ? " is-busy" : ""}`} aria-busy={actionBusy || undefined} disabled={actionDisabled} onClick={onAction}><span className={`repository-sweep-text${actionBusy ? " is-busy" : ""}`}>{actionLabel}</span></button>
     </div>
     <div className="repository-staging-rows">
       {files.length === 0

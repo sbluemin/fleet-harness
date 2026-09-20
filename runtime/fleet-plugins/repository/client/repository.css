@@ -1168,15 +1168,9 @@
    brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
 /* 패널의 주 동사(가져오기·Pull·Push·Stash) — 완전 투명 rest는 "시각 신호 0개"로 실측 기각됐다.
    rest부터 워시+헤어라인의 2-cue로 서고, hover는 한 단 무거워질 뿐 문법이 바뀌지 않는다. */
-/* 아이콘은 ↻와 ✓를 같은 자리에 겹쳐 두는 13px 슬롯이다 — 글리프를 교체하면 버튼 폭이 흔들려
-   옆의 라벨이 밀린다. 회전은 계속 슬롯 자체에 걸어 두 글리프가 같은 축을 돈다. */
+/* 아이콘은 유휴·물결·✓를 같은 자리에 겹쳐 두는 슬롯이다 — 글리프를 교체하면 버튼 폭이 흔들려
+   옆의 라벨이 밀린다. 진행 문법은 repository-glyph-slot 블록이 소유한다. */
 /* ✓는 "가져올 것이 없었다"는 상태이므로 positive 신호 채널을 쓴다 — brass(위치·포커스)를 쓰면 채널이 섞인다. */
-.repository-sync-button.is-syncing .repository-sync-icon { animation: repository-sync-spin 800ms linear infinite; }
-@keyframes repository-sync-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .repository-sync-button.is-syncing .repository-sync-icon { animation: none; }
-  /* 상태 전이 자체는 남기고 전이 연출만 걷는다 — ✓가 아예 뜨지 않으면 결과를 잃는다. */
-}
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
 /* 현재 체크아웃 마크 = 위치 채널 */
@@ -1990,6 +1984,7 @@
 
 /* ── 2층 · 조용한 아이콘 버튼 ── */
 .repository-quiet-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2127,16 +2122,104 @@
 .repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim-strong); background: var(--control-rest-hover); color: var(--text-primary); }
 .repository-sync-button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-sync-button:disabled { cursor: default; opacity: .55; }
-/* 아이콘 슬롯은 유휴·완료 글리프를 같은 14px 자리에 겹친다 — 교체 시 버튼 폭이 흔들리지 않는다. */
-.repository-sync-icon { position: relative; display: inline-block; width: 14px; height: 14px; flex: none; }
-.repository-sync-glyph { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.72); transition: opacity 150ms ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
-.repository-sync-glyph-settled { color: var(--positive-ink); }
-.repository-sync-icon:not(.is-settled) .repository-sync-glyph-idle,
-.repository-sync-icon.is-settled .repository-sync-glyph-settled { opacity: 1; transform: none; }
-.repository-sync-button.is-syncing .repository-sync-icon,
-.repository-verb-more.is-syncing .repository-icon,
-.repository-reload-state.is-syncing .repository-icon,
-.history-refresh.is-syncing .repository-icon { animation: repository-sync-spin 800ms linear infinite; }
+/* ── 진행 문법 · 물결 착지 ─────────────────────────────────────────────
+   누른 것이 접수됐다 → 일하는 중이다 → 끝났고 결과는 이것이다를 글리프 한 칸에서 잇는다.
+   회전은 폐기했다. ⇩ ⇧ 서랍 구름 ⋯ 는 방향과 형태가 의미의 전부라 돌리면 뜻이 무너지고,
+   실측 왕복(가져오기 420–540ms · Pull 668ms)은 한 바퀴 800ms를 채우지 못해 늘 임의의 각도에서 잘렸다.
+   물결은 Console 공용 live-sweep(채팅·Analyst·Cowork)과 같은 이동량(200%→0%)·같은 두 색이라
+   Repository만의 새 문법이 아니다. 진행은 상태이므로 brass(위치·포커스)를 쓰지 않고
+   무채 텍스트 채널만 쓴다 — 신호 채널은 착지 ✓의 positive 하나다. */
+/* 아이콘 슬롯은 유휴·물결·완료 글리프를 같은 14px 자리에 겹친다 — 교체 시 버튼 폭이 흔들리지 않는다. */
+.repository-glyph-slot { position: relative; display: inline-block; width: 14px; height: 14px; flex: none; transition: transform 190ms var(--ease-spring); }
+.repository-glyph { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.72); transition: opacity 150ms ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
+.repository-glyph-settled { color: var(--positive-ink); }
+.repository-glyph-slot:not(.is-settled) .repository-glyph-idle,
+.repository-glyph-slot.is-settled .repository-glyph-settled { opacity: 1; transform: none; }
+
+/* 물결 겹은 유휴 글리프의 crest 사본이다 — 마스크가 지나가는 동안 그 획만 밝아진다.
+   착지한 슬롯에는 걸지 않는다: ✓가 떠 있는 동안 물결이 겹치면 두 답이 동시에 보인다. */
+.repository-glyph-sweep { color: var(--live-sweep-crest); }
+.is-busy .repository-glyph-slot:not(.is-settled) .repository-glyph-idle { color: var(--live-sweep-trough); }
+.is-busy .repository-glyph-slot:not(.is-settled) .repository-glyph-sweep {
+  opacity: 1;
+  transform: none;
+  -webkit-mask-image: linear-gradient(100deg, transparent 0%, transparent 34%, #000 50%, transparent 66%, transparent 100%);
+  mask-image: linear-gradient(100deg, transparent 0%, transparent 34%, #000 50%, transparent 66%, transparent 100%);
+  -webkit-mask-size: 200% 100%;
+  mask-size: 200% 100%;
+  animation: repository-glyph-sweep 1.3s linear infinite;
+}
+@keyframes repository-glyph-sweep {
+  from { -webkit-mask-position: 200% 0; mask-position: 200% 0; }
+  to { -webkit-mask-position: 0% 0; mask-position: 0% 0; }
+}
+
+/* 14px 안의 물결만으로는 진폭이 작다 — 버튼 밑변 1px 자가 "이 버튼이 일하는 중"을 글리프 밖에서 말한다. */
+.repository-sync-button.is-busy::after,
+.repository-quiet-button.is-busy::after,
+.repository-tree-action.is-busy::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  height: 1px;
+  background: var(--ink-fog);
+  opacity: .75;
+}
+
+/* 글자 동사(스테이징 ＋ − ⌫ · 커밋)는 글리프가 문자라 사본을 겹칠 수 없다 —
+   Console의 텍스트 물결과 같은 background-clip: text 경로를 쓴다.
+   일하는 버튼은 줄 전체의 disabled 감광에서 빠진다 — 흐려지면 물결이 보이지 않고,
+   "기다리는 버튼"과 "일하는 버튼"이 같은 얼굴이 된다. */
+.repository-stage-action.is-busy:disabled,
+.repository-staging-bulk.is-busy:disabled,
+.repository-commit-button.is-busy:disabled { opacity: 1; }
+.repository-sweep-text.is-busy {
+  background-image: linear-gradient(
+    100deg,
+    var(--live-sweep-trough) 0%,
+    var(--live-sweep-trough) 34%,
+    var(--live-sweep-crest) 50%,
+    var(--live-sweep-trough) 66%,
+    var(--live-sweep-trough) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: repository-text-sweep 1.3s linear infinite;
+}
+@keyframes repository-text-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
+/* 커밋은 brass로 채운 면이라 텍스트 채널의 두 색이 바탕과 섞인다 — 그 면의 잉크 안에서 물결을 낸다. */
+.repository-commit-button .repository-sweep-text.is-busy {
+  --live-sweep-trough: color-mix(in oklab, var(--text-on-brass) 55%, transparent);
+  --live-sweep-crest: var(--text-on-brass);
+}
+
+/* 누름 — 접수됐다는 답은 왕복보다 먼저 와야 한다. 눌린 것이 줄었다가 스프링으로 돌아온다.
+   글리프 버튼은 글리프가, 글자 버튼은 버튼이 줄어든다. */
+.repository-sync-button:active:not(:disabled) .repository-glyph-slot,
+.repository-quiet-button:active:not(:disabled) .repository-glyph-slot,
+.repository-quiet-button:active:not(:disabled) .repository-icon,
+.repository-tree-action:active:not(:disabled) .repository-glyph-slot,
+.repository-tree-action:active:not(:disabled) .repository-icon,
+.repository-verb-menu-item:active:not(:disabled) .repository-glyph-slot,
+.repository-verb-menu-item:active:not(:disabled) .repository-icon { transform: scale(.9); }
+.repository-stage-action:active:not(:disabled),
+.repository-staging-bulk:active:not(:disabled),
+.repository-commit-button:active:not(:disabled),
+.repository-refresh-btn:active:not(:disabled) { transform: scale(.97); }
+.repository-quiet-button .repository-icon,
+.repository-tree-action .repository-icon,
+.repository-verb-menu-item .repository-icon,
+.repository-stage-action,
+.repository-staging-bulk,
+.repository-commit-button,
+.repository-refresh-btn { transition: transform 190ms var(--ease-spring); }
 
 /* ── 재조회 중의 옛 내용 ──
    목록·diff·본문은 새 답이 올 때까지 제자리에 남고 흐려지기만 한다 — 비웠다 다시 채우면 매 갱신마다 깜빡인다.
@@ -2191,11 +2274,20 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .repository-sync-hint { transition-duration: 1ms; }
-  .repository-sync-glyph { transition-duration: 1ms; }
-  .repository-sync-button.is-syncing .repository-sync-icon,
-  .repository-verb-more.is-syncing .repository-icon,
-  .repository-reload-state.is-syncing .repository-icon,
-  .history-refresh.is-syncing .repository-icon { animation: none; }
+  .repository-glyph, .repository-glyph-slot { transition-duration: 1ms; }
+  /* 연출만 걷고 상태는 남긴다 — 물결을 멈추되 trough로 내려앉은 글리프와 밑변 자가
+     "일하는 중"을 계속 말한다. 옛 회전은 여기서 통째로 사라져 진행 표시가 없었다. */
+  .is-busy .repository-glyph-slot:not(.is-settled) .repository-glyph-sweep,
+  .repository-sweep-text.is-busy { animation: none; }
+  .is-busy .repository-glyph-slot:not(.is-settled) .repository-glyph-sweep { opacity: 0; }
+  .repository-sweep-text.is-busy { background-image: none; color: var(--live-sweep-trough); }
+  .repository-quiet-button .repository-icon,
+  .repository-tree-action .repository-icon,
+  .repository-verb-menu-item .repository-icon,
+  .repository-stage-action,
+  .repository-staging-bulk,
+  .repository-commit-button,
+  .repository-refresh-btn { transition-duration: .01ms; }
   .repository-ws-context, .history-inspector-body, .repository-hunk-wrap, .history-files-scroll { transition-duration: .01ms; }
 }
 /* 더 보기 — 가장 좁은 단에서만 선다. 동사 네 개가 라벨 있는 메뉴로 접힌다. */
@@ -2499,7 +2591,7 @@
 .repository-ws-tree-gauge.is-gone { color: var(--coral-ink); }
 .repository-ws-tree-hover { display: none; gap: 2px; margin-left: auto; flex: none; }
 .repository-ws-tree-gauge + .repository-ws-tree-hover { margin-left: 0; }
-.repository-tree-action { width: 22px; height: 22px; }
+.repository-tree-action { position: relative; width: 22px; height: 22px; }
 @media (hover: hover) {
   .repository-ws-tree-row:hover > .repository-ws-tree-hover:has(.repository-tree-action),
   .repository-ws-tree-row:focus-within > .repository-ws-tree-hover:has(.repository-tree-action) { display: inline-flex; }
