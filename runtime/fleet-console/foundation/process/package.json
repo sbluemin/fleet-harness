@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/process",
-  "version": "1.101.0",
+  "version": "1.102.0",
   "private": true,
   "type": "module",
   "types": "./dist/index.d.ts",

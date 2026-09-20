@@ -5,6 +5,54 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.102.0] - 2026-09-20
+
+### fleet-cli
+
+#### Changed
+- `fleet console` and `fleet update` no longer launch a browser for you: the console starts and prints its address, and you open it wherever you want.
+
+#### Fixed
+- Muse-Spark and DeepSeek turns no longer fail at the first message with an invalid tool schema error.
+
+### fleet-console
+
+#### Added
+- Put a chat Operation to sleep with two presses of Ctrl+C, and resume it later with its conversation intact.
+- Delegated work runs on your gateway models without the agent having to name one. Fleet assigns each subagent and workflow stage a model as it starts, and the weight the agent asks for also sets how hard that run thinks, within the reasoning levels you exposed.
+- A new Routing card under Settings, AI Gateway turns the assignment off and leaves delegation to Claude Code.
+- Clicking a link in an Operation's CLI or chat now asks where to open it, and choosing Fleet Browser opens that Operation's browser panel on the page. Plain web addresses printed by the CLI are clickable too.
+
+#### Changed
+- Settings now lists Claude Code's built-in subagents as a grouped checklist with a one-line description of what each one does, instead of a column of switches with bare names.
+- Chat Operations now rest like terminal ones: they come back dormant after the console restarts, and the idle timeout can put them to sleep.
+- Images you send in a chat now stay in the conversation as thumbnails you can click to enlarge, instead of turning into a line of file-path text next to your message.
+- Sent images are kept for as long as the Operation is running; after Fleet restarts the message says the images are no longer kept.
+- One glyph above the chat message box now sets the width of the whole conversation, cycling through the widths that actually look different at your panel size; the separate message-box width toggle is gone and the message box always matches the conversation.
+- Background work in chat now fits where you are reading it: the running-jobs line moved into the row above the message box instead of taking a row of its own, finished jobs fold into the step summary that already counts the turn's work, and the work panel lists jobs one per line under collapsible groups for subagents, shells and workflows, with any failures still named on the collapsed group.
+- Expanding a step summary now shows the calls as a single time-ordered tree instead of stacked boxes, so a long turn stays readable.
+- Updating from inside the Console no longer pops open a browser window; if the console could not reclaim its old address, `fleet console status` shows where it moved.
+- Enabling a gateway model now reaches delegated runs on the next run instead of the next session.
+- Repository buttons now answer the moment you press them and show a quiet light passing over the icon while the work runs, instead of spinning the icon.
+- Staging, commit, and the Pull action on a branch row now show their own progress where you pressed them.
+
+#### Fixed
+- Turning several subagents on or off in a row no longer drops the ones you picked while the previous change was still saving.
+- Subagents you turned off stay visible and reversible even when Fleet cannot read the installed Claude Code.
+- Checkboxes now show a check mark instead of an upward chevron.
+- The finished section of the work panel said "Done" while it also held failed, stopped and unknown jobs; it now says "Ended".
+- Cursor models no longer waste a turn reaching for their own file reader before using the file tools your agent actually offers, so answers arrive sooner.
+- Tool calls no longer lose their arguments on turns the agent sends without streaming, so those tools run on what the model actually asked for.
+- A gateway model no longer fails the request when the caller sends its system prompt as plain text instead of a list of blocks.
+
+#### Removed
+- Cursor's Gateway lineup now keeps Auto, Composer, and Grok. Claude, GPT, Gemini, and Kimi seats that spent the API pool no longer appear in the picker or the model roster.
+
+### fleet-desktop
+
+#### Fixed
+- On macOS, the Fleet mark and the window buttons stay aligned at every zoom level, instead of drifting apart when you zoom in or overlapping when you zoom out.
+
 ## [1.101.0] - 2026-09-19
 
 ### fleet-console
