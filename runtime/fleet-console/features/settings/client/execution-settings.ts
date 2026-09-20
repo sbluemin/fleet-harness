@@ -64,6 +64,8 @@ export interface SystemPromptSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
+  readonly delegationRoutingEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -76,6 +78,7 @@ export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
+  | { readonly delegationRoutingEnabled: boolean }
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -133,6 +136,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
+    || typeof payload.delegationRoutingEnabled !== "boolean"
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
   ) {
@@ -147,6 +151,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
+    delegationRoutingEnabled: payload.delegationRoutingEnabled,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
   };
@@ -186,7 +191,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -312,6 +317,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
+  }
+  if (field === "delegationRoutingEnabled") {
+    return { delegationRoutingEnabled: state.delegationRoutingEnabled };
   }
   if (field === "compactCeiling") {
     return { compactCeiling: state.compactCeiling };

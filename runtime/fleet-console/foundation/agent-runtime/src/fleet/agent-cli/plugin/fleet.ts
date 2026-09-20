@@ -11,7 +11,6 @@ export const assetBundle: AssetPluginBundle = {
   source: "asset",
 };
 
-const MODEL_GUARD_SCRIPT_NAME = "fleet-gateway-model-guard.mjs";
 const COMPACT_EVENT_SCRIPT_NAME = "fleet-compact-event.mjs";
 /**
  * 라우팅 Mod. hooks.json의 `modules`가 이 파일을 지목하면 Claude Code가 함수 훅 모듈로
@@ -36,9 +35,6 @@ export function buildAssetPluginFiles(
 ): readonly AssetPluginFile[] {
   const files: AssetPluginFile[] = [];
   files.push({ relativePath: ".claude-plugin/plugin.json", content: toJsonContent(claudeManifest(bundle, version)) });
-  const guardAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
-  if (!guardAsset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
-  files.push({ relativePath: `hooks/${MODEL_GUARD_SCRIPT_NAME}`, content: guardAsset.content });
   const compactAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === COMPACT_EVENT_SCRIPT_NAME);
   if (!compactAsset) throw new Error(`Missing embedded ${COMPACT_EVENT_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${COMPACT_EVENT_SCRIPT_NAME}`, content: compactAsset.content });
@@ -63,14 +59,20 @@ function routingModSource(): string {
 }
 
 /**
- * 모델 가드 훅 실행 사양. 스냅숏은 내용 해시가 이름인 디렉터리로 발행되므로 절대 경로를
- * 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 그 세션이
- * 런치한 스냅숏 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
+ * 세션 시작에 렌더된 플러그인 버전을 문맥으로 올리는 훅. 스크립트 자산을 렌더하지 않고
+ * hooks.json이 답을 직접 들고 있다 — 판정할 입력이 없고 출력이 렌더 시점에 이미 정해진
+ * 상수라, 파일 하나를 스냅숏에 싣고 그것을 읽어 실행할 이유가 없다.
+ *
+ * 응답 본문은 인자로 넘긴다. `-e` 코드에 끼워 넣으면 버전 문자열이 JS 소스가 되므로,
+ * 코드는 고정하고 페이로드는 argv로만 흐르게 한다. exec 형식이라 셸 토크나이징도 없다.
  */
-function modelGuardHook(subcommand: string, ...args: readonly string[]): FleetHookExec {
+function pluginVersionHook(version: string): FleetHookExec {
+  const response = JSON.stringify({
+    hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: `Fleet plugin version: ${version}` },
+  });
   return {
     command: process.execPath,
-    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand, ...args],
+    args: ["-e", "process.stdout.write(process.argv[1])", response],
   };
 }
 
@@ -101,18 +103,13 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
   const preToolUse = inputWaitingExec
     ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
     : [];
-  const postToolUse = [{
-    // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
-    matcher: "Workflow",
-    hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
-  }];
   return {
     // 함수 훅 모듈(Mod). 명령 훅과 같은 파일이 선언하지만 다른 표면이다 — 이쪽은 세션
     // 안에서 돌며 이벤트를 가로채고 화면을 그린다.
     modules: [`./${ROUTING_MOD_SCRIPT_NAME}`],
     hooks: {
       SessionStart: [{
-        hooks: [claudeCommandHook(modelGuardHook("plugin-version", version))],
+        hooks: [claudeCommandHook(pluginVersionHook(version))],
       }],
       ...(userPromptSubmitExecs.length > 0 ? {
         UserPromptSubmit: [{
@@ -125,7 +122,6 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
         }],
       } : {}),
       ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
-      PostToolUse: postToolUse,
       ...(inputWaitingExec ? {
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",

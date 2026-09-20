@@ -11,6 +11,7 @@ const BASE: SystemPromptSettingsState = {
   aiGatewayCatalog: { providers: [] },
   cursorDiagnosticsEnabled: false,
   wireLogEnabled: false,
+  delegationRoutingEnabled: true,
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",
 };

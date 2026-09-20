@@ -62,15 +62,12 @@ selection, execution surfaces, and task-specific guides. The models resource
 owns live roster spellings, constraints, and execution availability. There is
 no `gateway_models` tool or `fleet:delegation` skill.
 
-The command hook at
-`runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, handles Workflow receipts and the
-SessionStart version stamp, selected by its first argument:
-
-| Subcommand | Event | Matcher | Effect |
-|---|---|---|---|
-| `plugin-version` | SessionStart | — | Records the rendered Fleet plugin version in session context. |
-| `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
+The SessionStart version stamp carries no script. `hooks/hooks.json` holds the response
+itself: an exec-form command hook that writes the rendered
+`{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Fleet plugin version: <version>"}}`
+straight to stdout, with the payload passed as an argument rather than embedded in the
+evaluated code. The PostToolUse `Workflow` receipt hook was retired along with the
+`fleet-gateway-model-guard.mjs` asset that served both.
 
 ## 2.1 Routing Mod
 
@@ -158,7 +155,7 @@ once per identity would put the same table in the session window twenty times ov
 
 Runtime state is read through direct owners:
 
-- Workflow receipt and version stamp: `runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- Rendered hook assets: `runtime/fleet-console/foundation/agent-runtime/assets/hooks/`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`. The version stamp needs no asset — `src/agent-cli/plugin/fleet.ts` writes its response into `hooks/hooks.json`.
 - On-demand policy assets: `runtime/fleet-console/features/ai-gateway/runtime/assets/ai-gateway/`, generated into `EMBEDDED_AI_GATEWAY_ASSETS` and served through `buildGatewayPolicyResources`. These resources own detailed routing doctrine; no Fleet skills are rendered.
 - Model facts: `runtime/fleet-console/core/host/mcp/gateway-models.ts`, served as `fleet://ai-gateway/models` by `fleet-ai-gateway`. The host reads the live roster directly, with no hook receipt.
 - Executor/session/model state: `@fleet-console/agent-runtime`
