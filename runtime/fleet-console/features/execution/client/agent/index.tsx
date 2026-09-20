@@ -1186,7 +1186,7 @@ function ClaudeCodeSystemPromptRow({
   const hintId = React.useId();
   const overLimitId = React.useId();
   const [draft, setDraft] = React.useState(savedPrompt);
-  const [showSaved, setShowSaved] = React.useState(false);
+  const [edited, setEdited] = React.useState(false);
   const draftRef = React.useRef(draft);
   const savedPromptRef = React.useRef(savedPrompt);
   const inFlightRef = React.useRef<string | null>(null);
@@ -1195,12 +1195,17 @@ function ClaudeCodeSystemPromptRow({
   savedPromptRef.current = savedPrompt;
   const limit = CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
   const overLimit = draft.length > limit;
+  // 「저장됨」은 이 행이 기억하는 사실이 아니라 저장소가 말하는 사실이다. 저장이 도는 중에
+  // 다시 편집해 두 번째 쓰기가 큐에 들어가면 그 호출은 결과를 기다리지 않고 참을 돌려주므로,
+  // 그 값을 믿고 표식을 세우면 뒤늦게 실패한 저장까지 성공으로 보고하게 된다. 실패한 쓰기는
+  // 저장소가 이전 값으로 되감으므로, 초안이 저장된 값과 같은지만 보면 거짓말이 끼어들 자리가 없다.
+  const promptSaved = edited && !savingPrompt && draft === savedPrompt;
   const showEditor = mode === "append" || mode === "off";
   const formatCount = (value: number) => value.toLocaleString(locale === "ko" ? "ko-KR" : "en-US");
   const describedBy = [
     countId,
     hintId,
-    savingPrompt || showSaved ? statusId : null,
+    savingPrompt || promptSaved ? statusId : null,
     overLimit ? overLimitId : null,
   ].filter((id): id is string => id !== null).join(" ");
 
@@ -1216,7 +1221,6 @@ function ClaudeCodeSystemPromptRow({
       const canonical = getSystemPromptSettingsStoreState().state?.claudeCodeCustomSystemPrompt ?? "";
       if (draftRef.current !== sent) return;
       setDraft(canonical);
-      setShowSaved(true);
     });
   }, []);
 
@@ -1267,7 +1271,7 @@ function ClaudeCodeSystemPromptRow({
             onChange={(event) => {
               const next = event.target.value;
               draftRef.current = next;
-              setShowSaved(false);
+              setEdited(true);
               setDraft(next);
             }}
             onBlur={flushPrompt}
@@ -1283,7 +1287,7 @@ function ClaudeCodeSystemPromptRow({
               <p id={statusId} className="global-settings-help" aria-live="polite">
                 {t("terminal.settings.claudeSystemPromptSaving")}
               </p>
-            ) : showSaved ? (
+            ) : promptSaved ? (
               <p id={statusId} className="global-settings-help" aria-live="polite">
                 {t("terminal.settings.claudeSystemPromptSaved")}
               </p>
