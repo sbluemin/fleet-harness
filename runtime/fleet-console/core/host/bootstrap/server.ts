@@ -637,7 +637,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
-  const gatewaySettings = createAiGatewaySettingsStore({ dataDir: fleetDataDir });
+  // MCP 로스터가 읽는 선별. 설정 화면이 쓰는 자리와 **같은 파일**이어야 한다 — 자리가
+  // 갈리면 사용자가 켠 모델이 위임 로스터에 영영 나타나지 않는다. 같은 파일을 두 스토어가
+  // 보지만 락과 승계 표식(목적지 파일의 존재)이 같아 서로를 덮지 않는다.
+  const gatewaySettings = createAiGatewaySettingsStore({
+    dataDir: durablePaths.dir,
+    legacyDirs: [fleetDataDir, path.join(durablePaths.dir, "plugins", "terminal")],
+  });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
