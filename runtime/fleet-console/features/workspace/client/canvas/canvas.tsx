@@ -21,7 +21,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -36,6 +36,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
+import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
 import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
@@ -135,6 +136,11 @@ export function OperationsCanvas({
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
   const companionPanelVisibilityOverrides = useCompanionPanelVisibilityOverrides(companionOperationId);
+  const companionSlotWeights = useCompanionSlotWeights();
+  // 분할선 제스처는 렌더 트리 밖(포인터 리스너)에서 폭을 읽는다 — 시작 시점의 값으로 굳히면
+  // 끌던 중 창이 바뀔 때 이전 좌표계로 계속 자른다.
+  const companionSlotIdsRef = useRef<readonly string[]>([]);
+  const companionSlotWidthsRef = useRef<readonly number[]>([]);
   const lastValidCompanionRef = useRef<{ readonly operation: OperationNode; readonly descriptor: OperationKindDescriptor } | null>(null);
   const minimized = useMinimized();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
@@ -1004,6 +1010,125 @@ export function OperationsCanvas({
   // resize를 fan-out하지 않기 위한 핵심 계약이다.
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
   const companionSlotCount = visibleCompanionPanels.length + 1;
+  // 슬롯 id는 Operation 본체 + 보이는 companion 순서다. 이 배열이 폭의 키이자 분할선의 좌표계다.
+  const companionSlotIds = [COMPANION_SESSION_SLOT_ID, ...visibleCompanionPanels.map((panel) => panel.id)];
+  const companionSlotWidths = resolveCompanionSlotWidths(
+    arena.width,
+    companionSlotWeightsFor(companionSlotIds, companionSlotWeights),
+  );
+  // 분할선은 Cruise companion 배치에만 선다. Tactical/War Room은 자기 격자가 폭을 정하고,
+  // 그 격자를 여기서 갈라 놓으면 모드가 약속한 정렬이 깨진다.
+  const companionDividersActive = panelCompanion !== null && !formationView && !triageActive && companionSlotIds.length > 1;
+  companionSlotIdsRef.current = companionSlotIds;
+  companionSlotWidthsRef.current = companionSlotWidths;
+
+  /** 분할선 한 칸이 주고받을 수 있는 경계. 이웃한 두 슬롯 밖으로는 폭이 새지 않는다. */
+  function companionDividerPair(dividerIndex: number): { readonly leftId: string; readonly rightId: string; readonly leftStart: number; readonly pair: number; readonly floor: number } | null {
+    const ids = companionSlotIdsRef.current;
+    const widths = companionSlotWidthsRef.current;
+    const leftId = ids[dividerIndex];
+    const rightId = ids[dividerIndex + 1];
+    if (leftId === undefined || rightId === undefined) return null;
+    const leftStart = widths[dividerIndex] ?? 0;
+    const pair = leftStart + (widths[dividerIndex + 1] ?? 0);
+    if (pair <= 0) return null;
+    // 쌍이 두 바닥을 담을 수 있으면 바닥은 그대로 320이다. 담지 못할 때만 물러나는데, 그때도
+    // "쌍의 절반"까지 내리면 허용 범위가 한 점이 되어 분할선이 아예 안 움직이고 첫 입력이 쌍을
+    // 등분으로 튕긴다 — 실측상 1100px 창의 3분할(쌍 475px)에서 조작이 죽었다. 가운데 절반은
+    // travel로 남긴다.
+    const floor = pair >= COMPANION_MIN_SLOT_PX * 2
+      ? COMPANION_MIN_SLOT_PX
+      : pair * COMPANION_CRAMPED_SLOT_RATIO;
+    return { leftId, rightId, leftStart, pair, floor };
+  }
+
+  function applyCompanionDivider(dividerIndex: number, desiredLeft: number, persist: boolean): void {
+    const bounds = companionDividerPair(dividerIndex);
+    if (bounds === null) return;
+    const left = Math.max(bounds.floor, Math.min(bounds.pair - bounds.floor, desiredLeft));
+    // 끈 쌍만 적으면 안 된다. 기억된 가중치는 그때 그 아레나의 픽셀 눈금이고 지금 보이는 폭은
+    // 이번 아레나의 눈금이라, 둘을 섞어 두면 정규화가 손대지도 않은 패널을 끌고 가고 분할선은
+    // 포인터에서 멀어진다. 지금 보이는 폭 전부를 한 눈금으로 다시 적는다 — 확대 표면의
+    // 분할선이 페인 배열을 통째로 넘기는 것과 같은 계약이다.
+    const ids = companionSlotIdsRef.current;
+    const widths = companionSlotWidthsRef.current;
+    const next: Record<string, number> = {};
+    ids.forEach((slotId, index) => { next[slotId] = widths[index] ?? 0; });
+    next[bounds.leftId] = left;
+    next[bounds.rightId] = bounds.pair - left;
+    setCompanionSlotWeights(next, persist);
+  }
+
+  function beginCompanionDividerDrag(dividerIndex: number, event: React.PointerEvent<HTMLDivElement>): void {
+    const bounds = companionDividerPair(dividerIndex);
+    if (bounds === null) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const leftStart = bounds.leftStart;
+    const target = event.currentTarget;
+    // 이 제스처의 주인. 끝 신호를 노드가 아니라 document·window에서 받는 순간 "이 요소에 온
+    // 이벤트"라는 울타리가 사라지므로, 울타리를 포인터 자신이 진다 — 아니면 화면에 얹힌 둘째
+    // 손가락을 떼는 것만으로 첫 손가락의 드래그가 끝난다(실측 재현).
+    const pointerId = event.pointerId;
+    target.setPointerCapture(pointerId);
+    target.classList.add("is-dragging");
+    // 끄는 동안 본문이 글자를 집지 않게 한다 — 터미널 위를 지나는 제스처가 선택으로 새면
+    // 손을 떼는 순간 화면의 절반이 파랗게 남는다.
+    document.body.setAttribute("data-companion-resizing", "true");
+
+    // 제스처를 거두는 길은 하나여야 한다.
+    //
+    // 끌던 중 분할선이 사라지면(Alt+T로 모드가 바뀌거나 마지막 companion이 닫히면) 떼어진 노드에는
+    // 끝 이벤트가 오지 않아 전역 플래그가 남고, 앱 전체가 선택 불가·col-resize 커서로 굳는다 —
+    // 실측으로 재현했다. 그때 브라우저가 실제로 보내는 것은 **document의 lostpointercapture**이고
+    // (요소가 아니다), 이어지는 pointerup은 커서 아래의 다른 요소에서 window까지 버블한다.
+    // 그래서 끝 신호는 노드가 아니라 document·window에서 받는다.
+    let settled = false;
+    const finish = (clientX: number | null) => {
+      if (settled) return;
+      settled = true;
+      if (clientX !== null) applyCompanionDivider(dividerIndex, leftStart + (clientX - startX), true);
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+      target.classList.remove("is-dragging");
+      document.body.removeAttribute("data-companion-resizing");
+      target.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("lostpointercapture", onLost);
+    };
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      applyCompanionDivider(dividerIndex, leftStart + (moveEvent.clientX - startX), false);
+    };
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      finish(upEvent.clientX);
+    };
+    // 캡처를 잃은 자리는 포인터가 어디 있었는지 말해 주지 않는다 — 마지막으로 놓인 폭을 그대로 둔다.
+    // 정상 종료에서는 pointerup이 먼저 와 이미 settled이므로 이 경로는 조용히 지나간다.
+    const onLost = (lostEvent: PointerEvent) => {
+      if (lostEvent.pointerId !== pointerId) return;
+      finish(null);
+    };
+
+    // 이동만 노드에서 받는다 — 노드가 떨어져 나가면 이동도 그 자리에서 멎어야 한다.
+    target.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    document.addEventListener("lostpointercapture", onLost);
+  }
+
+  function nudgeCompanionDivider(dividerIndex: number, deltaPx: number): void {
+    const bounds = companionDividerPair(dividerIndex);
+    if (bounds === null) return;
+    applyCompanionDivider(dividerIndex, bounds.leftStart + deltaPx, true);
+  }
+
+  /** 기억을 지우는 것이 곧 등분으로 되돌리는 것이다. */
+  function resetCompanionDividers(): void {
+    resetCompanionSlotWeights(companionSlotIdsRef.current);
+  }
   // 전환 제목의 낭독 문장 — 시각 요소와 같은 문자열을 상시 status 영역에 싣는다.
   const modeTitleAnnouncement = formationEntering
     ? `${t("canvas.formation.modeTitle")} — ${t("canvas.formation.modeBody", { count: formationOperationIds.length })}`
@@ -1137,7 +1262,7 @@ export function OperationsCanvas({
             : operationCompanion
             ? formationView
               ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
-              : companionGeometryFor(arena, 0, companionSlotCount, topPanelZIndex)
+              : companionGeometryFor(arena, 0, companionSlotWidths, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
@@ -1176,7 +1301,7 @@ export function OperationsCanvas({
                     ? triageStageGeometryFor(modeArena, topPanelZIndex, index + 1, companionSlotCount)
                     : formationView
                       ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
-                      : companionGeometryFor(arena, index + 1, companionSlotCount, topPanelZIndex);
+                      : companionGeometryFor(arena, index + 1, companionSlotWidths, topPanelZIndex);
                   // 세 배치 모두 캡션 높이만큼 아래에서 시작한다(캡션이 그 위 띠를 채운다는 전제).
                   // 캡션 없는 companion은 그 띠가 빈 채 남으므로 본문에 돌려준다 — 프레임 꼭대기가
                   // 이웃 Operation의 캡션 꼭대기와 나란히 선다.
@@ -1252,6 +1377,16 @@ export function OperationsCanvas({
             },
           });
         })}
+        {companionDividersActive ? companionSlotIds.slice(0, -1).map((slotId, index) => (
+          <CompanionDivider
+            key={`companion-divider-${slotId}`}
+            geometry={companionDividerGeometryFor(arena, index, companionSlotWidths, topPanelZIndex + 1)}
+            label={t("canvas.companion.dividerAria")}
+            onPointerDown={(event) => beginCompanionDividerDrag(index, event)}
+            onNudge={(delta) => nudgeCompanionDivider(index, delta)}
+            onReset={resetCompanionDividers}
+          />
+        )) : null}
       </div>
       {fleetMapActive || fleetMapLeaving ? (
         <FleetMap
@@ -1426,19 +1561,94 @@ function maximizedGeometryFor(arena: { readonly x: number; readonly y: number; r
   };
 }
 
-// Companion layout은 world transform이 none인 전용 화면 레이아웃이다. Operation과 companion panel이
-// 동일한 슬롯 폭을 사용하므로 Map의 geometry/viewport를 변경하지 않고 EXIT 시 원상 복원된다.
-function companionGeometryFor(arena: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, slotIndex: number, slotCount: number, zIndex: number): OperationGeometry {
-  const count = Math.max(1, slotCount);
-  const gap = 8;
-  const width = Math.max(0, (arena.width - gap * (count - 1)) / count);
+// Companion layout은 world transform이 none인 전용 화면 레이아웃이다. Map의 geometry/viewport를
+// 변경하지 않으므로 EXIT 시 원상 복원된다.
+//
+// 폭은 더 이상 등분이 아니다 — 슬롯마다 사용자가 나눈 몫을 갖고, 그 몫은 companion-widths가 푼다.
+// 여기서는 이미 풀린 폭 배열을 받아 x만 누적한다.
+function companionGeometryFor(
+  arena: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  slotIndex: number,
+  slotWidths: readonly number[],
+  zIndex: number,
+): OperationGeometry {
+  let x = arena.x;
+  for (let index = 0; index < slotIndex; index += 1) x += (slotWidths[index] ?? 0) + COMPANION_SLOT_GAP_PX;
   return {
-    x: arena.x + slotIndex * (width + gap),
+    x,
     y: arena.y + TITLEBAR_OUTSET_PX,
-    width,
+    width: Math.max(0, slotWidths[slotIndex] ?? 0),
     height: Math.max(0, arena.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
+}
+
+/**
+ * 두 슬롯 사이 틈의 좌표 — 분할선이 서는 자리.
+ *
+ * 세로 범위는 Operation 본체의 띠를 쓴다. 캡션 없는 companion은 그 위 32px을 본문으로 되찾지만,
+ * 분할선까지 따라 올라가면 이웃 Operation의 캡션과 같은 줄에서 캡션 버튼을 가로막는다.
+ */
+function companionDividerGeometryFor(
+  arena: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  dividerIndex: number,
+  slotWidths: readonly number[],
+  zIndex: number,
+): OperationGeometry {
+  let x = arena.x;
+  for (let index = 0; index <= dividerIndex; index += 1) x += (slotWidths[index] ?? 0) + (index === dividerIndex ? 0 : COMPANION_SLOT_GAP_PX);
+  return {
+    x,
+    y: arena.y + TITLEBAR_OUTSET_PX,
+    width: COMPANION_SLOT_GAP_PX,
+    height: Math.max(0, arena.height - TITLEBAR_OUTSET_PX),
+    zIndex,
+  };
+}
+
+/**
+ * Companion 배치의 분할선.
+ *
+ * 슬롯이 아니라 캔버스가 그린다 — 이 선은 두 슬롯 사이의 경계이지 어느 한쪽의 부속이 아니다.
+ * 조작 문법은 확대 표면의 분할선과 같다: 끌기, ←/→ 한 걸음, 그리고 더블클릭으로 등분 복귀.
+ */
+function CompanionDivider({ geometry, label, onPointerDown, onNudge, onReset }: {
+  readonly geometry: OperationGeometry;
+  readonly label: string;
+  readonly onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+  readonly onNudge: (deltaPx: number) => void;
+  readonly onReset: () => void;
+}) {
+  return (
+    <div
+      className="canvas-companion-divider"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      tabIndex={0}
+      data-canvas-blocker
+      style={{
+        left: Math.round(geometry.x),
+        top: Math.round(geometry.y),
+        width: Math.round(geometry.width),
+        height: Math.round(geometry.height),
+        zIndex: geometry.zIndex,
+      } satisfies CSSProperties}
+      onPointerDown={onPointerDown}
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onNudge(-COMPANION_KEYBOARD_STEP_PX);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onNudge(COMPANION_KEYBOARD_STEP_PX);
+        }
+      }}
+    >
+      <span className="canvas-companion-divider-grip" aria-hidden="true" />
+    </div>
+  );
 }
 
 /* 캡션 없는(hideCaption) companion — 슬롯이 비워 둔 캡션 띠를 본문 높이로 되돌린다. */
@@ -1567,6 +1777,16 @@ function renderPluginOperation(operation: OperationNode, options: {
   };
   const onSetCompanionPanelVisible = (companionPanelId: string, visible: boolean) => {
     setCompanionPanelVisible(operation.id, companionPanelId, visible);
+    if (visible) return;
+    // companion 배치를 벗어나는 것은 **마지막** 패널을 닫을 때뿐이다.
+    //
+    // 이 판단은 호스트가 진다. 닫기 경로가 여럿이고(캡션 칩·단축키·패널 안 닫기) 부르는 쪽은
+    // 자기 패널만 알기 때문에, 각자 "이제 배치를 걷어도 되나"를 물으면 하나를 닫는 것이 전부를
+    // 닫는 일이 된다 — 실제로 그랬다. 무엇이 남았는지 아는 곳은 목록을 쥔 여기 하나다.
+    const overrides = getCompanionPanelVisibilityOverrides(operation.id);
+    const stillVisible = availableCompanionPanels(descriptor.companions ?? [], operation)
+      .some((panel) => overrides[panel.id] ?? !panel.defaultHidden);
+    if (!stillVisible) clearCompanionOperationId();
   };
   const frame = (
     <Fragment key={operation.id}>

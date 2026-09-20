@@ -472,8 +472,9 @@ function toggleCompanionPanel(
     context.onSetCompanionPanelVisible(companionId, true);
     return;
   }
+  // 숨기기만 요청한다 — companion 배치를 걷는 판단은 호스트 몫이다. 여기서 함께 걷으면
+  // 나란히 열어 둔 다른 패널까지 사라진다.
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
-  context.onRequestCompanions?.(false);
 }
 
 /** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
