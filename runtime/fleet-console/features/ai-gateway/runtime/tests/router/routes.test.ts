@@ -202,6 +202,49 @@ describe("delegation assignment", () => {
     expect(providerLoad.get("xai")).toBe(2);
   });
 
+  it("never assigns a model the user reserved for the host, whatever the dispatch carries", async () => {
+    // 호스트 전용은 "위임에 주지 말라"는 뜻이다. 후보 목록에서 빼는 것만으로는 지켜지지
+    // 않는다 — 실려 온 모델을 그대로 돌려주는 길이 그 옆에 있으면 거기로 샌다.
+    const reserved = "claude-gateway--xai--grok-4.6";
+    const hostOnly = {
+      delegationRoutingEnabled: true,
+      delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+    } satisfies GatewayAssignmentExposure;
+
+    const decision = decideGatewayRoutingAssignment(
+      { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine", requestedModel: reserved },
+      hostOnly,
+    );
+
+    expect(decision.model).not.toBe(reserved);
+    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+  });
+
+  it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
+    // 스테이지는 스폰을 지나지 않아 세션의 모델을 그대로 물려받는다. 그것을 결정으로 읽으면
+    // 한 워크플로우의 스테이지 전부가 같은 모델에 몰리고 배분이 아예 돌지 않는다.
+    const providerLoad = new Map<string, number>();
+    const inherited = "claude-gateway--xai--grok-4.6";
+    const exposure = {
+      delegationRoutingEnabled: true,
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      providerLoad,
+    } satisfies GatewayAssignmentExposure;
+
+    const carried = [0, 1, 2, 3].map(() => decideGatewayRoutingAssignment(
+      { surface: "stage", requestedModel: inherited },
+      exposure,
+    ).model);
+
+    expect(carried).not.toContain(inherited);
+    expect(new Set(carried).size).toBe(2);
+    expect(providerLoad.get("cursor")).toBe(2);
+    expect(providerLoad.get("xai")).toBe(2);
+  });
+
   it("leaves a fork on the session model", async () => {
     const res = await assign({ surface: "agent", fork: true, subagentType: "general-purpose" });
 

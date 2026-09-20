@@ -17,6 +17,7 @@
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 
 import type { GatewayModel, GatewayEffortExposure, GatewayProvider } from "../models.js";
+import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type { GatewayQuotaSnapshot } from "./quota-snapshot.js";
 import { modelPressure } from "./routing-allowance.js";
 import {
@@ -106,6 +107,11 @@ export interface GatewayAssignmentExposure {
   readonly providerLoad?: Map<string, number>;
 }
 
+/** 이 모델을 위임에 줄 수 있는가. 호스트 전용과 노출되지 않은 모델은 줄 수 없다. */
+function isDelegable(modelId: string, exposure: GatewayAssignmentExposure): boolean {
+  return exposure.delegationModels.some((model) => toClaudeGatewayModelId(model) === modelId);
+}
+
 /** 아무것도 바꾸지 않는 답. 세션 모델을 그대로 탄다. */
 function inherit(because: string): GatewayAssignmentDecision {
   return { label: "session model", because };
@@ -163,8 +169,22 @@ export function decideGatewayRoutingAssignment(
       because: "this agent's definition chooses its model",
     };
   }
-  // 이미 게이트웨이 모델이 실려 있으면 누군가 이미 정한 것이다.
-  if (request.requestedModel !== undefined && request.requestedModel.startsWith(GATEWAY_PREFIX)) {
+  // 이미 게이트웨이 모델이 실려 있으면 누군가 이미 정한 것이다 — **스폰에 한해서.**
+  //
+  // 스테이지가 싣고 오는 모델은 아무도 고른 적이 없다. Workflow는 스폰을 지나지 않아 세션의
+  // 모델을 그대로 물려받고, 그것을 결정으로 읽으면 두 가지가 한꺼번에 깨진다: 한 워크플로우의
+  // 스테이지 전부가 같은 모델에 몰리고(배분이 아예 돌지 않는다), 사용자가 호스트 전용으로
+  // 둔 모델이 위임 실행을 끌게 된다.
+  //
+  // 그리고 어느 표면이든 **배정 후보가 아닌 모델은 배정하지 않는다.** 호스트 전용은 "위임에
+  // 주지 말라"는 뜻이고, 그 약속은 후보 목록을 거르는 것만으로는 지켜지지 않는다 — 실려 온
+  // 모델을 그대로 돌려주는 길이 그 옆에 있으면 거기로 샌다.
+  if (
+    request.surface === "agent"
+    && request.requestedModel !== undefined
+    && request.requestedModel.startsWith(GATEWAY_PREFIX)
+    && isDelegable(request.requestedModel, exposure)
+  ) {
     return {
       model: request.requestedModel,
       ...(request.requestedEffort === undefined ? {} : { effort: request.requestedEffort }),
