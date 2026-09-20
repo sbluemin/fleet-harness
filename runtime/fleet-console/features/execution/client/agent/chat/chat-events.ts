@@ -122,6 +122,8 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  /** 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 그 턴 안에 선다. */
+  | { readonly kind: "turn-inject"; readonly text: string; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -263,6 +265,11 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       if (typeof event.text !== "string") return null;
       const attachments = readChatAttachments(event.attachments);
       return { ...journal, event: { kind: "dispatch", text: event.text, ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
+    }
+    case "turn-inject": {
+      if (typeof event.text !== "string") return null;
+      const attachments = readChatAttachments(event.attachments);
+      return { ...journal, event: { kind: "turn-inject", text: event.text, ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
     }
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
@@ -561,7 +568,11 @@ export interface AgentChatTurnItem {
    * 아이템이 나르는 것은 "그 사이 N초가 지났다"뿐이다. 서버 저널 시각으로 다시 계산되므로
    * 브라우저 재연결과 프로세스 재시작 뒤에도 같은 흔적이 복원된다.
    */
-  readonly type: "text" | "tool" | "ask" | "thought";
+  /**
+   * `inject`는 도는 턴이 도중에 집어간 사용자의 말이다. 턴을 여는 `dispatch`와 달리 이미
+   * 돌던 턴 **안에** 서며, 그 자리가 곧 "여기서 방향이 바뀌었다"는 좌표다.
+   */
+  readonly type: "text" | "tool" | "ask" | "thought" | "inject";
   /** type="thought"의 길이. */
   readonly durationMs?: number;
   /** type="ask"일 때의 카드. 대기 중이면 누를 수 있고, 결말이 붙으면 한 줄로 접힌다. */
@@ -578,6 +589,12 @@ export interface AgentChatTurnItem {
   readonly result?: string;
   readonly outside?: boolean;
   readonly change?: AgentChatChange;
+  /** type="inject"가 함께 나른 이미지의 미리보기 좌표. */
+  readonly attachments?: readonly AgentChatAttachment[];
+  /** type="inject"를 보낸 저자 — 사람이 아니면 실린다. */
+  readonly by?: AgentChatOrigin;
+  /** type="inject"의 수신 시각. */
+  readonly at?: number;
 }
 
 export interface AgentChatTurn {
@@ -930,6 +947,17 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         draft: "",
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
+    }
+    case "turn-inject": {
+      // 새 턴을 열지 않는다 — 이 말은 도는 턴이 도중에 읽은 것이고, 그 사실이 이 아이템의 전부다.
+      // 턴이 없으면(재생 중간 잘림) `appendItem`이 디스패치 없는 턴으로 담는다.
+      return appendItem(wakeLastTurn(state, now), {
+        type: "inject",
+        text: event.text,
+        ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}),
+        ...(event.by ? { by: event.by } : {}),
+        ...(event.at !== undefined ? { at: event.at } : {}),
+      });
     }
     // 자식의 초기화 신호 자체는 화면이 그리지 않는다 — 서버가 그것을 받아 저널을 비우고
     // `cleared`를 내며, 화면은 그 결과만 따른다. 두 곳에서 각자 지우면 재생과 라이브가 갈린다.
