@@ -4,7 +4,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildSessionArgs(context.sessionCoordinate),
-    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
+    ...buildSystemPromptArgs(context.claudeCodeSystemPrompt, context.claudeCodeCustomSystemPromptFile),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -126,13 +126,30 @@ function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinat
 }
 
 /**
- * 사용자가 Claude Code 기본 프롬프트를 껐는지만 반영한다.
+ * 사용자가 고른 시스템 프롬프트 구성을 CLI 플래그로 옮긴다. Fleet이 지어낸 글은 여기 없다 —
+ * 실리는 본문은 전부 사용자가 쓴 것이고, 쓰지 않았으면 아무것도 붙지 않는다.
  *
  * 한때는 여기에 Fleet 라우팅 진입점을 덧붙였다. 호스트가 게이트웨이 모델을 고르게 만드는
  * 것이 그 글의 일이었는데, 지금은 Console이 실행마다 모델을 배정하므로 그 일이 없다.
+ *
+ * `off`에 본문이 없을 때만 남는 `--system-prompt ""`는 문서화된 계약이 아니라 이 CLI가
+ * 빈 문자열을 교체 본문으로 받아 주는 성질에 기댄다. 빈 문자열은 falsy라 교체 플래그끼리의
+ * 상호배타 검사를 통과하므로, 이 인자는 파일 플래그와 절대 같은 런치에 실리지 않는다 —
+ * 아래 분기가 둘 중 하나만 내보내는 이유다.
  */
-function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined): string[] {
-  return claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : [];
+function buildSystemPromptArgs(
+  claudeCodeSystemPrompt: "on" | "append" | "off" | undefined,
+  customSystemPromptFile: string | undefined,
+): string[] {
+  if (claudeCodeSystemPrompt === "append") {
+    return customSystemPromptFile === undefined ? [] : ["--append-system-prompt-file", customSystemPromptFile];
+  }
+  if (claudeCodeSystemPrompt === "off") {
+    return customSystemPromptFile === undefined
+      ? ["--system-prompt", ""]
+      : ["--system-prompt-file", customSystemPromptFile];
+  }
+  return [];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

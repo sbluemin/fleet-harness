@@ -45,7 +45,11 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
-import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSystemPrompt } from "../../../settings/host/execution-settings-routes.js";
+import {
+  resolveClaudeCodeCustomSystemPrompt,
+  resolveClaudeCodeDisabledAgents,
+  resolveClaudeCodeSystemPrompt,
+} from "../../../settings/host/execution-settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
@@ -1927,10 +1931,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ? undefined
       : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
-    // admiral이 정한다 — CLI는 끌 때만 플래그를 싣고 SDK는 켤 때만 preset을 싣는, 서로 뒤집힌
-    // 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
+    // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
+    // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
     const chatGlobalOptions = deps.agentOptionsService.load();
     const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(chatGlobalOptions);
+    const chatClaudeCodeCustomSystemPrompt = resolveClaudeCodeCustomSystemPrompt(chatGlobalOptions);
     const chatClaudeCodeDisabledAgents = resolveClaudeCodeDisabledAgents(chatGlobalOptions);
     const mcpTokenLabel = `chat:${node.id}`;
     return {
@@ -1989,6 +1994,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           dataDir: ctx.host.paths.consoleDataDir,
           plugin: ctx.agentCliPlugin,
           claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
+          claudeCodeCustomSystemPrompt: chatClaudeCodeCustomSystemPrompt,
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           origin: sessionOrigin.kind === "resume"
             ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }

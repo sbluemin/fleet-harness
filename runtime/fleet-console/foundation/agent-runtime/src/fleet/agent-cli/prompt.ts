@@ -25,6 +25,9 @@ export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-quick-launch-";
 export const LAUNCH_PROMPT_FILE_NAME = "prompt.md";
 export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch prompt file: ";
 
+export const CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX = "fleet-system-prompt-";
+export const CUSTOM_SYSTEM_PROMPT_FILE_NAME = "system-prompt.md";
+
 export function launchPromptHasCmdUnsafeChars(prompt: string): boolean {
   return CMD_UNSAFE_PROMPT_PATTERN.test(prompt);
 }
@@ -244,24 +247,71 @@ export function writeLaunchPromptFile(
   body: string,
   onCleanup: (cleanup: () => void) => void,
 ): { readonly cleanup: () => void; readonly filePath: string; readonly instruction: string } {
+  const written = writePromptFile(body, onCleanup, LAUNCH_PROMPT_TEMP_DIR_PREFIX, LAUNCH_PROMPT_FILE_NAME);
+  return {
+    cleanup: written.cleanup,
+    filePath: written.filePath,
+    instruction: formatLaunchPromptFileInstruction(written.filePath),
+  };
+}
+
+/**
+ * 사용자가 쓴 시스템 프롬프트를 파일에 두고 그 절대 경로를 돌려준다.
+ *
+ * 본문이 argv를 지나지 않는 것이 요점이다. 인라인으로 실으면 Windows 명령줄 예산을 본문
+ * 길이만큼 먹고(그 예산을 넘기면 런치가 거절된다), cmd shim은 따옴표 안에서도 `%`를 전개하고
+ * 줄바꿈에서 명령을 끊어 사용자의 지침을 조용히 다른 글로 만든다. 경로만 실으면 본문은
+ * 무엇이든 담을 수 있고, 검사할 것은 짧은 경로 하나로 줄어든다.
+ *
+ * 파일은 런치 프롬프트와 같은 수명을 쓴다 — 호출자의 cleanup 스택에 올라가 세션이 끝날 때
+ * 함께 사라진다.
+ */
+export function writeCustomSystemPromptFile(
+  body: string,
+  onCleanup: (cleanup: () => void) => void,
+  cmdWrapped: boolean,
+): string {
+  const written = writePromptFile(
+    body,
+    onCleanup,
+    CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX,
+    CUSTOM_SYSTEM_PROMPT_FILE_NAME,
+  );
+  try {
+    assertLaunchPromptShimSafe(written.filePath, cmdWrapped ? ["cmd-shim"] : []);
+  } catch (error) {
+    written.cleanup();
+    if (error instanceof LaunchPromptError && error.code === "prompt_unsafe_for_shim") {
+      throw new LaunchPromptError(
+        "prompt_unsafe_for_shim",
+        'The system prompt file path contains a character cmd.exe would reinterpret (" & < > ( ) @ ^ | %) while running the Windows shim. Fleet cannot start this launch from the current Windows temp directory.',
+      );
+    }
+    throw error;
+  }
+  return written.filePath;
+}
+
+function writePromptFile(
+  body: string,
+  onCleanup: (cleanup: () => void) => void,
+  tempDirPrefix: string,
+  fileName: string,
+): { readonly cleanup: () => void; readonly filePath: string } {
   // os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를 돌려준다. Claude의 cwd는 Theater라
-  // 상대 포인터는 방금 만든 파일을 찾지 못한다 — 지시에는 절대 경로만 실어야 한다.
+  // 상대 경로는 방금 만든 파일을 찾지 못한다 — argv에는 절대 경로만 실어야 한다.
   const tempRoot = path.resolve(os.tmpdir());
   mkdirSync(tempRoot, { recursive: true });
-  const tempDir = mkdtempSync(path.join(tempRoot, LAUNCH_PROMPT_TEMP_DIR_PREFIX));
+  const tempDir = mkdtempSync(path.join(tempRoot, tempDirPrefix));
   const cleanup = () => rmBestEffort(tempDir);
   try {
-    const filePath = path.join(tempDir, LAUNCH_PROMPT_FILE_NAME);
+    const filePath = path.join(tempDir, fileName);
     writeFileSync(filePath, body, { encoding: "utf8", flag: "wx", mode: LAUNCH_PROMPT_FILE_MODE });
     chmodBestEffort(filePath, LAUNCH_PROMPT_FILE_MODE);
     // 쓰기가 끝난 뒤에만 호출자 cleanup 스택에 올린다. 그 전에 실패하면 이 함수가
     // 디렉터리를 거두고, 호출자가 받은 콜백을 실행할 기회 없이 누수하지 않는다.
     onCleanup(cleanup);
-    return {
-      cleanup,
-      filePath,
-      instruction: formatLaunchPromptFileInstruction(filePath),
-    };
+    return { cleanup, filePath };
   } catch (error) {
     cleanup();
     throw error;

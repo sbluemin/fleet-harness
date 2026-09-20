@@ -35,6 +35,10 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     const injected = await injectAgentCliProfile(profile, {
       plugin: options.runtime.agentCliPlugin,
       ...(claudeCodeSystemPrompt ? { claudeCodeSystemPrompt } : {}),
+      // 사용자가 쓴 시스템 프롬프트도 같은 전역 옵션이다 — 키 부재는 지침 없음이다.
+      ...(globalOptions.claudeCodeCustomSystemPrompt
+        ? { claudeCodeCustomSystemPrompt: globalOptions.claudeCodeCustomSystemPrompt }
+        : {}),
       // 승인 게이트도 같은 전역 옵션을 읽는다 — 한쪽만 배선하면 Console과 `fleet`이
       // 조용히 다른 권한 정책으로 뜬다. 키 부재는 건너뛰지 않음(false)이다.
       claudeCodeSkipPermissions: globalOptions.claudeCodeSkipPermissions === true,

@@ -12,7 +12,12 @@ import { createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSessi
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
-import { resolveClaudeCodeDisabledAgents, resolveClaudeCodeSkipPermissions, resolveClaudeCodeSystemPrompt } from "../../../settings/host/execution-settings-routes.js";
+import {
+  resolveClaudeCodeCustomSystemPrompt,
+  resolveClaudeCodeDisabledAgents,
+  resolveClaudeCodeSkipPermissions,
+  resolveClaudeCodeSystemPrompt,
+} from "../../../settings/host/execution-settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
@@ -115,7 +120,8 @@ export async function prepareChatClaudeSession(
   deps: Omit<TerminalLaunchResolverDeps, "infraServices"> & {
     readonly cwd: string;
     readonly origin: ClaudeSessionOrigin;
-    readonly claudeCodeSystemPrompt?: "on" | "off";
+    readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
+    readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeDisabledAgents?: readonly string[];
   },
 ): Promise<ClaudeSessionHandle> {
@@ -128,6 +134,7 @@ export async function prepareChatClaudeSession(
     plugin: deps.plugin,
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
+    ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
@@ -283,6 +290,7 @@ async function createAgentCliLaunchSpec(options: {
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.agentOptionsService.load()),
+      claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(options.infraServices.agentOptionsService.load()),
       claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.agentOptionsService.load()),
       claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.

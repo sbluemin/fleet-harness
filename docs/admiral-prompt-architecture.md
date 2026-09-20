@@ -41,8 +41,22 @@ alike), the `fleet-ai-gateway` MCP server, the `assets/ai-gateway/` prose, and t
 gateway models; assignment is now decided in code per dispatch (section 2.1), so a
 served copy of that doctrine would only publish stale claims at runtime.
 
-`claudeCodeSystemPrompt` (`on` | `off`, default `on`) controls the harness's own
-prompt. Fleet adds no text under either setting.
+`claudeCodeSystemPrompt` (`on` | `append` | `off`, default `on`) controls the harness's
+own prompt, and `claudeCodeCustomSystemPrompt` carries the user's own instructions:
+`append` puts them after the harness prompt, `off` makes them the whole system prompt,
+and an empty body leaves `off` running without one. Fleet still writes no text of its
+own under any setting — carrying a body the user authored is a different thing from
+authoring one, and nothing on this path may add to, summarize, or reword it.
+
+The two surfaces express the same setting inversely, so they are mapped in one place
+(`agent-cli/session.ts` and `agent-cli/builders/claude.ts`) rather than by each host.
+The CLI omits every flag when the harness prompt is used, while the SDK must say
+`{ mode: "preset" }` there — omitting `systemPrompt` on that surface yields a minimal
+prompt, not the harness one. The SDK also rejects an empty `replace`/`append` body, so
+the "no system prompt" state that the CLI writes as `--system-prompt ""` is an omission
+on the SDK side. A user body never travels through argv: it is written to a file and
+passed as `--append-system-prompt-file` / `--system-prompt-file`, which keeps it clear
+of the Windows command-line budget and of `cmd`'s reinterpretation.
 
 The one prompt Fleet still ships is the execution contract in
 `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/execution-contract.ts`.

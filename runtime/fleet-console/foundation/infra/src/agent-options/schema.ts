@@ -8,7 +8,26 @@
  * 같은 값을 쓰는 누수가 있었다. 저장 자리는 주입으로만 건너온다.
  */
 
-export type ClaudeCodeSystemPromptMode = "on" | "off";
+/**
+ * What a new gateway session receives as its system prompt.
+ *
+ * - `on` — Claude Code's own base prompt, which is what a launch without any prompt flag
+ *   already does. The key being absent means this.
+ * - `append` — that base prompt followed by the user's own instructions.
+ * - `off` — no base prompt. The user's instructions become the whole system prompt, and
+ *   when there are none the session runs without one.
+ *
+ * `on` and `off` predate `append` and keep their stored meaning, so a settings file written
+ * by an older Console needs no migration.
+ */
+export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
+
+/**
+ * Upper bound on the user's own system prompt, in characters. The same ceiling the launch
+ * prompt carries: past it a caller is pasting a document, not writing an instruction, and
+ * every turn of every session would pay for it.
+ */
+export const MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS = 16_000;
 
 export interface AgentOptionsData {
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
@@ -18,6 +37,15 @@ export interface AgentOptionsData {
    * which is what a launch without any prompt flag already does.
    */
   readonly claudeCodeSystemPrompt?: ClaudeCodeSystemPromptMode;
+  /**
+   * The user's own system prompt, carried verbatim to both surfaces. Fleet writes nothing
+   * into it — this is the user's text, and the only reason it lives here is that the user
+   * asked for it to reach every new session.
+   *
+   * Key absent means there is none, so `append` falls back to the base prompt alone and
+   * `off` runs without a system prompt.
+   */
+  readonly claudeCodeCustomSystemPrompt?: string;
   /**
    * Whether Fleet launches Claude Code with its permission gate skipped. Key absent means
    * `false`: the child boots on its own default and asks before each tool. Turning this on is
@@ -54,23 +82,27 @@ export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidation
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
+  const claudeCodeCustomSystemPrompt = sanitizeClaudeCodeCustomSystemPrompt(value.claudeCodeCustomSystemPrompt);
   const claudeCodeSkipPermissions = sanitizeClaudeCodeSkipPermissions(value.claudeCodeSkipPermissions);
   const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
   const data: AgentOptionsData = {
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
+    ...(claudeCodeCustomSystemPrompt !== undefined ? { claudeCodeCustomSystemPrompt } : {}),
     ...(claudeCodeSkipPermissions !== undefined ? { claudeCodeSkipPermissions } : {}),
     ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
   };
   const allowedKeys = new Set([
     "agentIdleDormantMinutes",
     "claudeCodeSystemPrompt",
+    "claudeCodeCustomSystemPrompt",
     "claudeCodeSkipPermissions",
     "claudeCodeDisabledAgents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
     ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined) ||
+    ("claudeCodeCustomSystemPrompt" in value && claudeCodeCustomSystemPrompt !== value.claudeCodeCustomSystemPrompt) ||
     ("claudeCodeSkipPermissions" in value && claudeCodeSkipPermissions === undefined) ||
     ("claudeCodeDisabledAgents" in value && !sameStringList(value.claudeCodeDisabledAgents, claudeCodeDisabledAgents));
 
@@ -84,7 +116,28 @@ function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefi
 }
 
 function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptMode | undefined {
-  return value === "on" || value === "off" ? value : undefined;
+  return value === "on" || value === "append" || value === "off" ? value : undefined;
+}
+
+/**
+ * The user's text survives as written, minus the characters that would break the surfaces
+ * carrying it: this body travels as an argv file on one surface and a JSON option on the
+ * other, so NUL and the other C0 controls go, while newlines and tabs stay — they are the
+ * instruction's own shape.
+ *
+ * A body past the ceiling drops the key rather than being silently truncated: half an
+ * instruction is a different instruction. The route refuses it before it ever reaches here.
+ */
+export function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+  if (normalized.length === 0) return undefined;
+  return normalized.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS ? undefined : normalized;
 }
 
 /**

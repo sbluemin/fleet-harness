@@ -49,7 +49,10 @@ export interface AiGatewayCatalog {
   readonly providers: readonly AiGatewayCatalogProvider[];
 }
 
-export type ClaudeCodeSystemPromptMode = "on" | "off";
+export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
+
+/** 서버 PUT 상한. 초과 본문은 400. */
+export const CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS = 16_000;
 
 /** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */
 export type XaiEndpointPreference = "direct" | "cli-proxy";
@@ -60,6 +63,8 @@ export type DelegationRoutingMode = "jev" | "model";
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
+  /** 사용자 지침 본문. 와이어에 없으면 빈 문자열. */
+  readonly claudeCodeCustomSystemPrompt: string;
   readonly claudeCodeSkipPermissions: boolean;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
@@ -78,6 +83,7 @@ export interface SystemPromptSettingsState {
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
+  | { readonly claudeCodeCustomSystemPrompt: string }
   | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
@@ -138,6 +144,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
+    || (payload.claudeCodeCustomSystemPrompt !== undefined && typeof payload.claudeCodeCustomSystemPrompt !== "string")
     || typeof payload.claudeCodeSkipPermissions !== "boolean"
     || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
@@ -153,6 +160,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
+    claudeCodeCustomSystemPrompt: payload.claudeCodeCustomSystemPrompt ?? "",
     claudeCodeSkipPermissions: payload.claudeCodeSkipPermissions,
     claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
@@ -180,7 +188,7 @@ function isDelegationRoutingMode(value: unknown): value is DelegationRoutingMode
 }
 
 function isClaudeCodeSystemPromptMode(value: unknown): value is ClaudeCodeSystemPromptMode {
-  return value === "on" || value === "off";
+  return value === "on" || value === "append" || value === "off";
 }
 
 function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
@@ -205,7 +213,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -318,6 +326,9 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "claudeCodeSystemPrompt") {
     return { claudeCodeSystemPrompt: state.claudeCodeSystemPrompt };
+  }
+  if (field === "claudeCodeCustomSystemPrompt") {
+    return { claudeCodeCustomSystemPrompt: state.claudeCodeCustomSystemPrompt };
   }
   if (field === "claudeCodeDisabledAgents") {
     return { claudeCodeDisabledAgents: state.claudeCodeDisabledAgents };

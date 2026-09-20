@@ -44,12 +44,18 @@ import { BROWSER_COMPANION_ID } from "./browser-companion.js";
 import { createChatLinkInterceptor, useLinkOpenChoice } from "./link-open.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
-import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
+import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "../../../settings/client/execution-settings.js";
+import {
+  CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS,
+  loadSystemPromptSettings,
+  setSystemPromptSettingsField,
+  useSystemPromptSettingsStore,
+  type ClaudeCodeSystemPromptMode,
+} from "../../../settings/client/execution-settings.js";
 import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
@@ -1077,7 +1083,8 @@ function HarnessSection() {
  * 그 수만큼 서고, 방의 구조는 그대로다.
  */
 function ClaudeCodeHarnessCard() {
-  const t = getT(useTerminalLocale());
+  const locale = useTerminalLocale();
+  const t = getT(locale);
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;
@@ -1089,7 +1096,7 @@ function ClaudeCodeHarnessCard() {
         {t("terminal.settings.harnessClaudeCode")}
         <SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>
       </h3>
-      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {settings.error ? <p className="global-settings-error" role="alert">{translateServerMessage(locale, settings.error)}</p> : null}
       {state ? (
         <>
           {/* 행 제목이 컨트롤의 이름이 되도록 그룹으로 묶는다 — 토글 자신이 말하는 것은
@@ -1117,27 +1124,12 @@ function ClaudeCodeHarnessCard() {
               onChange={(next) => void setSystemPromptSettingsField("claudeCodeSkipPermissions", next)}
             />
           </div>
-          <div className="global-settings-row">
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                <span id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</span>
-                <SettingsHelp title={t("terminal.settings.claudeSystemPromptTitle")}>{t("terminal.settings.claudeSystemPromptHelp")}</SettingsHelp>
-              </p>
-            </div>
-            <Select
-              aria-labelledby="claude-code-system-prompt-label"
-              value={state.claudeCodeSystemPrompt}
-              disabled={saving.has("claudeCodeSystemPrompt")}
-              options={[
-                { value: "on", label: t("terminal.settings.claudeSystemPromptOn") },
-                { value: "off", label: t("terminal.settings.claudeSystemPromptOff") },
-              ]}
-              onChange={(value) => void setSystemPromptSettingsField(
-                "claudeCodeSystemPrompt",
-                value as "on" | "off",
-              )}
-            />
-          </div>
+          <ClaudeCodeSystemPromptRow
+            mode={state.claudeCodeSystemPrompt}
+            savedPrompt={state.claudeCodeCustomSystemPrompt}
+            savingMode={saving.has("claudeCodeSystemPrompt")}
+            savingPrompt={saving.has("claudeCodeCustomSystemPrompt")}
+          />
           <ClaudeBuiltInAgentsRows
             disabled={state.claudeCodeDisabledAgents}
             saving={saving.has("claudeCodeDisabledAgents")}
@@ -1148,6 +1140,114 @@ function ClaudeCodeHarnessCard() {
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
     </section>
+  );
+}
+
+
+function claudeSystemPromptCaptionKey(mode: ClaudeCodeSystemPromptMode, body: string): TerminalMessageKey {
+  if (mode === "on") return "terminal.settings.claudeSystemPromptCaptionOn";
+  const empty = body.length === 0;
+  if (mode === "append") {
+    return empty
+      ? "terminal.settings.claudeSystemPromptCaptionAppendEmpty"
+      : "terminal.settings.claudeSystemPromptCaptionAppend";
+  }
+  return empty
+    ? "terminal.settings.claudeSystemPromptCaptionOffEmpty"
+    : "terminal.settings.claudeSystemPromptCaptionOff";
+}
+
+/**
+ * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 적용을 눌러야 PUT이 나간다.
+ */
+function ClaudeCodeSystemPromptRow({
+  mode,
+  savedPrompt,
+  savingMode,
+  savingPrompt,
+}: {
+  readonly mode: ClaudeCodeSystemPromptMode;
+  readonly savedPrompt: string;
+  readonly savingMode: boolean;
+  readonly savingPrompt: boolean;
+}) {
+  const locale = useTerminalLocale();
+  const t = getT(locale);
+  const promptId = React.useId();
+  const countId = React.useId();
+  const overLimitId = React.useId();
+  const [draft, setDraft] = React.useState(savedPrompt);
+  const limit = CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
+  const overLimit = draft.length > limit;
+  const dirty = draft !== savedPrompt;
+  const canApply = dirty && !savingPrompt && !overLimit;
+  const showEditor = mode === "append" || mode === "off";
+  const formatCount = (value: number) => value.toLocaleString(locale === "ko" ? "ko-KR" : "en-US");
+
+  return (
+    <div className="global-settings-row is-stack" role="group" aria-labelledby="claude-code-system-prompt-label">
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            <span id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</span>
+            <SettingsHelp title={t("terminal.settings.claudeSystemPromptTitle")}>{t("terminal.settings.claudeSystemPromptHelp")}</SettingsHelp>
+          </p>
+        </div>
+        <Select
+          aria-labelledby="claude-code-system-prompt-label"
+          value={mode}
+          disabled={savingMode}
+          options={[
+            { value: "on", label: t("terminal.settings.claudeSystemPromptOn") },
+            { value: "append", label: t("terminal.settings.claudeSystemPromptAppend") },
+            { value: "off", label: t("terminal.settings.claudeSystemPromptOff") },
+          ]}
+          onChange={(value) => {
+            if (value !== "on" && value !== "append" && value !== "off") return;
+            void setSystemPromptSettingsField("claudeCodeSystemPrompt", value);
+          }}
+        />
+      </div>
+      {showEditor ? (
+        <div className="agent-cli-path-form">
+          <label htmlFor={promptId}>{t("terminal.settings.claudeSystemPromptBody")}</label>
+          <textarea
+            id={promptId}
+            className="ai-gateway-routing-task"
+            rows={8}
+            value={draft}
+            disabled={savingPrompt}
+            aria-invalid={overLimit}
+            aria-describedby={overLimit ? `${countId} ${overLimitId}` : countId}
+            onChange={(event) => { setDraft(event.target.value); }}
+          />
+          <div className="agent-cli-path-actions">
+            <p id={countId} className="global-settings-help">
+              {t("terminal.settings.claudeSystemPromptCount", {
+                used: formatCount(draft.length),
+                limit: formatCount(limit),
+              })}
+            </p>
+            <button
+              type="button"
+              className="agent-cli-path-button is-primary"
+              disabled={!canApply}
+              aria-busy={savingPrompt}
+              onClick={() => { void setSystemPromptSettingsField("claudeCodeCustomSystemPrompt", draft); }}
+            >
+              {savingPrompt ? t("terminal.settings.claudeSystemPromptApplying") : t("terminal.settings.claudeSystemPromptApply")}
+            </button>
+          </div>
+          {overLimit ? (
+            <p id={overLimitId} className="agent-cli-path-error" role="alert">
+              {t("terminal.settings.claudeSystemPromptOverLimit", { limit: formatCount(limit) })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      <p className="global-settings-help">{t(claudeSystemPromptCaptionKey(mode, savedPrompt))}</p>
+      <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptApplies")}</p>
+    </div>
   );
 }
 
