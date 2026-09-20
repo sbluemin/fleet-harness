@@ -60,8 +60,11 @@ function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | null>):
     host.appendChild(probe);
     const read = () => {
       const style = window.getComputedStyle(host);
+      // 레이아웃 px로만 잰다. 캔버스는 패널에 scale 변환을 걸어 두므로 getBoundingClientRect는 줌이
+      // 곱해진 값을 돌려주고, clientWidth/offsetWidth는 곱해지지 않은 값을 돌려준다. 둘을 섞으면
+      // 줌이 1이 아닌 순간 프리셋 비교가 통째로 틀어진다 — 컨테이너 질의가 보는 단위도 이쪽이다.
       const available = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const reading = probe.getBoundingClientRect().width;
+      const reading = probe.offsetWidth;
       if (!(available > 0) || !(reading > 0)) return;
       const drawn = [Math.min(reading, available), Math.min(reading * WIDE_OVER_READING, available), available];
       // 값이 커지는 순서라 바로 뒤 단계와만 비교하면 된다. 같은 폭이 겹치면 **나중 단**을 남긴다:
