@@ -112,7 +112,8 @@ describe("queue POST actions", () => {
 });
 
 function durableArchiveMetaPath(patchId: string): string {
-  const workspace = resolveWorkspaceDirectory(fleetDataDir, tempDir);
+  // 워크스페이스 지식은 Console 슬롯 아래 산다 — 인스턴스마다 자기 것을 갖는다.
+  const workspace = resolveWorkspaceDirectory(path.join(fleetDataDir, "console"), tempDir);
   return path.join(workspace.path, "knowledge", "archive", patchId, "meta.json");
 }
 

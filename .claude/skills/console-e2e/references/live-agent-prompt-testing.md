@@ -70,13 +70,12 @@ env -u CLAUDE_CODE_CHILD_SESSION \
 ## A fresh runtime directory exposes no gateway models
 
 `/model` lists a gateway entry — labelled `From gateway` — only for models the Console was
-told to expose, and that list is **isolated per runtime directory**: it lives at
-`<fleet-data-dir>/ai-gateway.json`, which under `FLEET_CONSOLE_DATA_DIR=<e2e-dir>` resolves to
-`<e2e-dir>/ai-gateway.json` — measured, not inferred. That promotion of the Console slot to
-the Fleet root only happens while `FLEET_DATA_DIR` is unset; set the root explicitly and the
-file follows the root instead, leaving the Console slot to state and locks alone. (The store also takes a `legacyDir`
-pointing at the plugin data directory, but that is a one-time migration source, never where
-current settings are written.) A fresh runtime directory has no such file, so the picker
+told to expose, and that list is **isolated per Console slot**: it lives at
+`<console-slot>/ai-gateway.json`, so `FLEET_CONSOLE_DATA_DIR=<e2e-dir>` puts it at
+`<e2e-dir>/ai-gateway.json` and a plain `FLEET_DATA_DIR=<root>` puts it at
+`<root>/console/ai-gateway.json`. (The store also takes `legacyDirs` pointing at the places
+this file used to live — the Fleet root, then the plugin data directory — but those are
+one-time carry-over sources, never where current settings are written.) A fresh slot has no such file, so the picker
 shows only the Claude entries and it reads as though gateway models were unsupported. They
 are not. Add one first:
 

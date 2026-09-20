@@ -163,7 +163,7 @@ describe("ai-gateway settings store", () => {
       defaultModel: "cursor--auto",
       wireLogEnabled: false,
     });
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
 
     // 레거시 defaultModel은 승계 시 조용히 버린다.
     expect(store.read()).toEqual({
@@ -191,7 +191,7 @@ describe("ai-gateway settings store", () => {
     const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
     createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "kimi--k3" }] });
 
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     expect(store.read()).toEqual({ version: 1, models: [{ id: "kimi--k3" }] });
   });
 
@@ -201,7 +201,7 @@ describe("ai-gateway settings store", () => {
     // 사용자가 전부 지운 상태. 정규형은 승계 전과 구분되지 않으므로 파일 존재로만 판정해야 한다.
     createAiGatewaySettingsStore({ dataDir }).write(undefined);
 
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     expect(store.read()).toEqual({ version: 1 });
   });
 
@@ -217,7 +217,7 @@ describe("ai-gateway settings store", () => {
           "utf-8",
         );
       }
-      const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+      const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
       expect(store.read()).toEqual({ version: 1 });
       expect(existsSync(store.path)).toBe(false);
     }
@@ -256,7 +256,7 @@ describe("ai-gateway settings store", () => {
       defaultModel: "cursor--auto",
       cursorDiagnosticsEnabled: true,
     });
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
 
     mutate(store);
     expect(store.read()).toEqual(expected);
@@ -270,7 +270,7 @@ describe("ai-gateway settings store", () => {
     mkdirSync(lockDir, { recursive: true });
     const store = createAiGatewaySettingsStore({
       dataDir,
-      legacyDir,
+      legacyDirs: [legacyDir],
       timeoutMs: 50,
       staleLockMs: 10 * 60 * 1000,
     });
@@ -303,7 +303,7 @@ describe("ai-gateway settings store", () => {
     }
     if (readable) return;
 
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     // 읽기는 관대하다 — 미구성으로 답하되 목적지 파일을 만들어 결론을 굳히지 않는다.
     expect(store.read()).toEqual({ version: 1 });
     expect(existsSync(store.path)).toBe(false);
@@ -326,7 +326,7 @@ describe("ai-gateway settings store", () => {
     // 막는 것은 원래 막으려던 손실보다 나쁘므로, 결론(`nothing`)으로 접고 진행해야 한다.
     const legacyDir = path.join(dataDir, "console", "plugins", "terminal");
     mkdirSync(path.join(legacyDir, "ai-gateway.json"), { recursive: true });
-    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
 
     store.writeCursorDiagnosticsEnabled(true);
     expect(store.read()).toEqual({ version: 1, cursorDiagnosticsEnabled: true });

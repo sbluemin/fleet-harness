@@ -6,6 +6,8 @@ import {
 } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
+import { createConsoleDataPaths } from "../../core/host/bootstrap/paths.js";
+
 import { collectGatewayModels } from "./report.js";
 import { startGatewayHttpServer, type FleetCliGatewayServer } from "./server.js";
 import { applyStoredWireLog } from "../runtime/runtime.js";
@@ -68,10 +70,11 @@ export async function runGatewayServe(
     io.stderr.write(`${parsed.message}\n`);
     return 1;
   }
-  const dataDir = deps.dataDir ?? getFleetDataDir();
-  const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir })))(dataDir);
+  const slot = resolveGatewaySlot(deps.dataDir);
+  const dataDir = slot.dataDir;
+  const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir, legacyDirs: slot.legacyDirs })))(dataDir);
   applyStoredWireLog(store, dataDir);
-  const authService = (deps.createAuthService ?? (() => createProviderAuthService({ dataDir })))();
+  const authService = (deps.createAuthService ?? (() => createProviderAuthService({ dataDir, legacyDirs: slot.legacyDirs })))();
 
   let server: FleetCliGatewayServer;
   try {
@@ -161,4 +164,12 @@ function describeListenFailure(error: unknown, port: number | undefined): string
     return `Port ${port} needs elevated privileges. Choose a port above 1023.`;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 이 실행이 쓸 Console 슬롯과 그 옛 자리. Console 서버와 같은 규칙으로 풀어야 `fleet`이
+ * Console에서 고른 선별과 로그인을 그대로 읽는다.
+ */
+function resolveGatewaySlot(explicit: string | undefined): { readonly dataDir: string; readonly legacyDirs: readonly string[] } {
+  return { dataDir: explicit ?? createConsoleDataPaths().dir, legacyDirs: [getFleetDataDir()] };
 }

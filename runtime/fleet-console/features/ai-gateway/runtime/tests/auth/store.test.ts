@@ -19,17 +19,32 @@ describe("provider auth storage", () => {
     }
   });
 
-  it("places auth.json on the Fleet data root", () => {
-    // 경로는 호출 시각에 해석된다 — 모듈 로드 시각이 아니라. 격리 실행이 자기 루트를 정한
-    // 뒤에 물어봐도 그 루트를 따라야 한다.
-    expect(resolveProviderAuthPath()).toBe(path.join(getFleetDataDir(), "auth.json"));
-  });
-
-  it("follows an explicit data root over the ambient one", () => {
+  it("places auth.json in the directory the host gives it", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-auth-root-"));
     tempRoots.push(tempRoot);
 
     expect(resolveProviderAuthPath(tempRoot)).toBe(path.join(tempRoot, "auth.json"));
+  });
+
+  it("refuses to write while a previous auth file cannot be read, then carries it over", async () => {
+    // 승계는 한 번뿐이고, 목적지 파일이 생기는 순간 끝난 것으로 읽힌다. 옛 파일을 읽지 못한
+    // 채로 쓰면 사용자의 로그인이 그 자리에서 조용히 사라진다.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-auth-carry-"));
+    tempRoots.push(base);
+    const slot = path.join(base, "console");
+    fs.mkdirSync(slot, { recursive: true });
+    const legacy = path.join(base, "auth.json");
+    fs.writeFileSync(legacy, JSON.stringify({ [PRIMARY_PROVIDER_ID]: { key: "carried" } }));
+    fs.chmodSync(legacy, 0o000);
+
+    const auth = createProviderAuthService({ dataDir: slot, legacyDirs: [base] });
+    await expect(auth.setApiKey("other", "new")).rejects.toThrow(/were not written/);
+    expect(fs.existsSync(path.join(slot, "auth.json"))).toBe(false);
+
+    fs.chmodSync(legacy, 0o600);
+    expect(await auth.getApiKey(PRIMARY_PROVIDER_ID)).toBe("carried");
+    await auth.setApiKey("other", "new");
+    expect((await auth.listProviderIds()).sort()).toEqual([PRIMARY_PROVIDER_ID, "other"].sort());
   });
 
   it("stores and reads provider keys from the configured auth path", async () => {
