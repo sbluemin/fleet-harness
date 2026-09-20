@@ -1,4 +1,5 @@
 import { EMBEDDED_AGENT_CLI_HOOK_ASSETS } from "../assets.generated.js";
+import { EXECUTION_CONTRACT_PLACEHOLDER, FLEET_EXECUTION_CONTRACT } from "../execution-contract.js";
 import { FLEET_PLUGIN_NAME } from "../types.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
@@ -48,14 +49,23 @@ function toJsonContent(value: unknown): string {
 }
 
 /**
- * 라우팅 Mod 원본. 치환하지 않는다 — 스냅숏은 내용 해시로 발행되는 공유 트리라, 노출 목록을
- * 여기 구워 넣으면 모델을 하나 켤 때마다 새 트리가 발행된다. 어떤 정체성을 올릴지는 Mod가
- * 세션 시작에 Console에 물어 정한다.
+ * 라우팅 Mod 원본. 치환하는 것은 **실행 계약 하나뿐**이다.
+ *
+ * 스냅숏은 내용 해시로 발행되는 공유 트리다. 값이 바뀔 때마다 새 트리가 발행되고, 그 발행이
+ * 그때 열려 있던 모든 세션의 훅을 다시 싣게 한다. 그래서 노출 목록이나 배정 판정처럼 세션
+ * 중에 변하는 것은 절대 굽지 않는다 — 그쪽은 Mod가 배정할 때마다 Console에 묻는다.
+ *
+ * 실행 계약은 반대다. Fleet 버전당 상수라 릴리스에서만 바뀌고, 그때는 어차피 트리가 새로
+ * 발행된다. 굽는 비용이 없으므로 세션마다 물어볼 이유도 없다.
  */
 function routingModSource(): string {
   const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === ROUTING_MOD_SCRIPT_NAME);
   if (!asset) throw new Error(`Missing embedded ${ROUTING_MOD_SCRIPT_NAME} hook asset`);
-  return asset.content;
+  const placeholder = JSON.stringify(EXECUTION_CONTRACT_PLACEHOLDER);
+  if (!asset.content.includes(placeholder)) {
+    throw new Error(`${ROUTING_MOD_SCRIPT_NAME} carries no execution contract placeholder`);
+  }
+  return asset.content.replace(placeholder, JSON.stringify(FLEET_EXECUTION_CONTRACT));
 }
 
 /**

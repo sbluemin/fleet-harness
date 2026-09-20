@@ -215,12 +215,18 @@ export interface AiGatewayRouteDeps {
   /** Process-local hook credential injected into Fleet-launched Claude children. */
   readonly compactionHookToken?: string;
   /**
-   * 라우팅 Mod가 `/v1/fleet/routing`을 부를 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 —
-   * 두 소비자가 같은 비밀을 공유하면 하나를 회수할 때 다른 하나가 같이 끊긴다.
+   * 라우팅 Mod가 배정을 물을 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 — 두 소비자가 같은
+   * 비밀을 공유하면 하나를 회수할 때 다른 하나가 같이 끊긴다.
+   *
+   * 이 자격은 편의가 아니라 권한 게이트다. 배정 요청은 호스트가 발행한 원문 프롬프트를
+   * 싣고 오므로, 같은 기계의 아무 프로세스나 이 경로를 두드릴 수 있으면 안 된다.
    */
   readonly modHookToken?: string;
-  /** 호출 시점의 노출로 라우팅 표를 만든다. 생략하면 이 세션의 위임은 재작성되지 않는다. */
-  readonly readRoutingTable?: () => Promise<unknown> | unknown;
+  /**
+   * 위임 하나를 무엇으로 보낼지 판정한다. 호출 시점의 노출을 읽으므로 세션 중 설정 변경이
+   * 다음 배정부터 먹는다. 생략하면 이 세션의 위임은 재작성되지 않는다.
+   */
+  readonly assignRouting?: (request: unknown) => Promise<unknown> | unknown;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
@@ -372,25 +378,33 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       res.end("{}");
       return true;
     }
-    // 라우팅 Mod가 위임을 배정할 때 지금의 후보를 묻는 자리. 플러그인 스냅숏은 내용 해시로
-    // 발행되는 공유 트리라 노출 목록을 거기 구워 넣으면 모델을 켤 때마다 새 트리가 발행된다.
-    // 스냅숏은 정적으로 두고, 그때그때의 노출은 여기서 답한다 — 세션을 다시 띄울 필요가 없다.
-    if (pathname.endsWith("/v1/fleet/routing")) {
-      if (req.method !== "GET") {
+    // 라우팅 Mod가 위임 하나를 무엇으로 보낼지 묻는 자리. 판정은 전부 Console이 한다 —
+    // 훅은 사실만 싣고 답을 그대로 적용한다. 플러그인 스냅숏은 내용 해시로 발행되는 공유
+    // 트리라 노출이나 판정을 거기 구워 넣으면 모델을 켤 때마다 새 트리가 발행되고, 그때
+    // 열려 있던 모든 세션이 훅을 다시 싣는다. 스냅숏은 정적으로 두고 답은 여기서 낸다.
+    if (pathname.endsWith("/v1/fleet/routing/assign")) {
+      if (req.method !== "POST") {
         writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
         return true;
       }
       const modToken = req.headers["x-fleet-mod-token"];
-      if (!deps.readRoutingTable || !deps.modHookToken || modToken !== deps.modHookToken) {
+      if (!deps.assignRouting || !deps.modHookToken || modToken !== deps.modHookToken) {
         writeAnthropicError(res, 401, "authentication_error", "Invalid mod credential");
         return true;
       }
       try {
-        const table = await deps.readRoutingTable();
+        // 원문 프롬프트가 실려 오므로 본문이 클 수 있다. 상한은 훅이 먼저 자르지만 여기서도
+        // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
+        const request = await readJsonBody<Record<string, unknown>>(req, 1024 * 1024);
+        if (!request) {
+          writeAnthropicError(res, 400, "invalid_request_error", "Invalid routing request");
+          return true;
+        }
+        const decision = await deps.assignRouting(request);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(table));
+        res.end(JSON.stringify(decision));
       } catch {
-        writeAnthropicError(res, 500, "api_error", "Could not read the delegation routing table");
+        writeAnthropicError(res, 500, "api_error", "Could not assign a model to the delegated run");
       }
       return true;
     }

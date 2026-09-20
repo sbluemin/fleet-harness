@@ -28,10 +28,19 @@ import {
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
+  decideGatewayRoutingAssignment,
   errorMessage,
+  findGatewayModel,
+  parseGatewayAssignmentRequest,
 } from "../../src/index.js";
 import type { AiGatewayRouteDeps } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
+
+function requireGatewayModel(id: string) {
+  const model = findGatewayModel(id);
+  if (!model) throw new Error(`missing gateway model fixture: ${id}`);
+  return model;
+}
 
 function aiGatewaySettingsStub(settings: AiGatewayStoredSettings): () => AiGatewayStoredSettings {
   return () => settings;
@@ -67,6 +76,83 @@ describe("Claude Codex compaction routing", () => {
       rawBody: { hook_event_name: "PreCompact", session_id: "session", trigger: "auto" },
     }));
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * 위임 배정. 라우팅 Mod가 사실을 보내고 Console이 모델과 강도를 답하는 경로다.
+ *
+ * 이 계약을 여기서 고정하는 이유는 세 가지가 한 요청 안에서 동시에 성립해야 하기 때문이다:
+ * 자격 없는 호출은 원문 프롬프트를 실은 본문을 읽지 못해야 하고, 답은 훅이 그대로 스폰에
+ * 실을 수 있는 모양이어야 하며, Fleet 자신의 실행 정체성을 호스트가 이름으로 불렀다고 해서
+ * 배정이 꺼지면 안 된다 — 마지막 것은 목록에 보이는 이름 하나가 배정을 통째로 끄는 함정을
+ * 실제로 만들었던 자리다.
+ */
+describe("delegation assignment", () => {
+  const MOD_TOKEN = "mod-token";
+  const exposure = {
+    delegationRoutingEnabled: true,
+    delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+  };
+  const assigningRouter = () => createAiGatewayRouter({
+    readAuth,
+    modHookToken: MOD_TOKEN,
+    assignRouting: (request) => decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), exposure),
+  });
+  // 자격 없음은 `null`로 말한다. `undefined`를 넘기면 기본 인자가 되살아나 자격이 실린다.
+  const assign = async (body: Record<string, unknown>, token: string | null = MOD_TOKEN) => {
+    const res = response();
+    await assigningRouter().handle(ctx({
+      res,
+      method: "POST",
+      pathname: `${BASE}/v1/fleet/routing/assign`,
+      headers: token === null ? {} : { "x-fleet-mod-token": token },
+      rawBody: body,
+    }));
+    return res;
+  };
+
+  it("refuses an assignment request that carries no mod credential", async () => {
+    const res = await assign({ surface: "agent", prompt: "secret host prompt" }, null);
+    expect(res.status).toBe(401);
+  });
+
+  it("assigns a model and effort to a run that named none", async () => {
+    const res = await assign({
+      surface: "agent",
+      prompt: "map the delegation surfaces",
+      description: "map surfaces",
+      subagentType: "general-purpose",
+      providerPlugin: "engine",
+      requestedEffort: null,
+      fork: false,
+    });
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      model: "claude-gateway--cursor--composer-2.5",
+      because: "no model named → work",
+    });
+  });
+
+  it("still assigns when the host names Fleet's own execution identity", async () => {
+    // 엔진은 이 정체성을 플러그인 소유로 보고한다. 모델을 소유하는 쪽은 배정이므로,
+    // 이름을 불렀다는 이유로 남의 정의처럼 비켜서면 안 된다.
+    const res = await assign({
+      surface: "agent",
+      subagentType: "fleet:execute",
+      providerPlugin: "fleet",
+    });
+
+    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--cursor--composer-2.5" });
+  });
+
+  it("leaves a fork on the session model", async () => {
+    const res = await assign({ surface: "agent", fork: true, subagentType: "general-purpose" });
+
+    const decision = JSON.parse(res.body) as Record<string, unknown>;
+    expect(decision).not.toHaveProperty("model");
+    expect(decision.label).toBe("session model");
   });
 });
 

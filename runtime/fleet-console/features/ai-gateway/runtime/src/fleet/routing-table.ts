@@ -19,7 +19,6 @@
 import { buildGatewayModelConstraints, type GatewayEffortExposure, type GatewayModel, type GatewayProvider, type GatewayReasoningEffort } from "../models.js";
 import { exposedEffortLadder } from "./gateway-agents.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
-import { GENERAL_PURPOSE_AGENT_PROMPT } from "./gateway-agents.js";
 
 /**
  * 위임의 등급. 호스트가 Agent 도구에 적은 모델 별칭과 agent 종류에서 읽어 낸다.
@@ -50,29 +49,12 @@ export interface GatewayRoutingCandidate {
 }
 
 export interface GatewayRoutingTable {
-  /**
-   * 라우팅된 실행이 함께 싣는 실행 계약. 정체성을 등록하던 시절에는 정의의 프롬프트가
-   * 날랐는데, 등록이 사라지면 내장 general-purpose의 기본값("search broadly")으로
-   * 돌아가 버린다. 그 기본값을 버리는 것이 Fleet 정의의 존재 이유였으므로 표가 대신 나른다.
-   */
-  readonly prompt: string;
   /** 등급 → 시도 순서대로의 후보. 어느 등급도 비어 있지 않거나, 표 전체가 비어 있다. */
   readonly tiers: Readonly<Record<GatewayRoutingTier, readonly GatewayRoutingCandidate[]>>;
 }
 
-/** 위임 후보가 하나도 없는 표. 이 표를 받은 Mod는 아무것도 재작성하지 않는다. */
+/** 위임 후보가 하나도 없는 표. 이 표를 받은 판정은 아무것도 배정하지 않는다. */
 export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
-  prompt: GENERAL_PURPOSE_AGENT_PROMPT,
-  tiers: { scan: [], work: [], deep: [] },
-};
-
-/**
- * 배정을 끈 세션이 받는 표. 후보가 없는 것에 더해 실행 계약도 비운다 — 계약이 실리면 Mod가
- * 정체성을 올리고 위임이 그 정의로 흐르는데, Off의 뜻은 "하네스가 하던 대로"이지 "모델만
- * 그대로"가 아니다. 둘을 같은 표로 답하면 Off가 절반만 꺼진다.
- */
-export const DISABLED_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
-  prompt: "",
   tiers: { scan: [], work: [], deep: [] },
 };
 
@@ -150,7 +132,7 @@ export function buildGatewayRoutingTable(
     }
     return [tier, Object.freeze(list)];
   })) as Record<GatewayRoutingTier, readonly GatewayRoutingCandidate[]>;
-  return { prompt: GENERAL_PURPOSE_AGENT_PROMPT, tiers: Object.freeze(tiers) };
+  return { tiers: Object.freeze(tiers) };
 }
 
 /**

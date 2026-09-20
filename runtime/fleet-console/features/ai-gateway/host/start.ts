@@ -1,5 +1,5 @@
 import path from "node:path";
-import { DEFAULT_WIRE_LOG_MAX_BYTES, DISABLED_GATEWAY_ROUTING_TABLE, buildGatewayRoutingTable, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { DEFAULT_WIRE_LOG_MAX_BYTES, decideGatewayRoutingAssignment, parseGatewayAssignmentRequest, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 interface GatewayStartContext {
@@ -63,16 +63,16 @@ export function startAiGateway(ctx: GatewayStartContext) {
   registerTerminalModelAuthRoutes(ctx, { authService });
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     readAiGatewaySettings: aiGatewayStore.read,
-    // 호출 시점의 노출을 읽어 라우팅 표를 만든다. 세션 중에 모델을 켜고 끄면 다음 위임부터
-    // 반영된다 — 정체성을 등록하던 시절에는 이 값이 세션 시작에 고정돼, 설정을 바꿔도
-    // CLI를 다시 띄우기 전에는 먹지 않았다.
-    readRoutingTable: () => {
+    // 위임 하나를 무엇으로 보낼지 Console이 판정한다. 호출 시점의 노출을 읽으므로 세션
+    // 중에 모델을 켜고 끄면 다음 위임부터 반영된다 — 정체성을 등록하던 시절에는 이 값이
+    // 세션 시작에 고정돼, 설정을 바꿔도 CLI를 다시 띄우기 전에는 먹지 않았다.
+    assignRouting: (request) => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
-      // 끈 세션은 빈 표를 받는다. 조회는 배정마다 일어나므로 토글은 다음 위임부터 먹는다.
-      if (!selection.delegationRoutingEnabled) return DISABLED_GATEWAY_ROUTING_TABLE;
-      return buildGatewayRoutingTable(selection.delegationModels, {
-        effortExposure: selection.effortExposure,
-        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
+      return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), {
+        delegationRoutingEnabled: selection.delegationRoutingEnabled,
+        delegationModels: selection.delegationModels,
+        ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
+        ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
       });
     },
     readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),

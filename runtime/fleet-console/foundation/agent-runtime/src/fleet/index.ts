@@ -120,4 +120,10 @@ export {
   type PtyWriteSink,
 } from "./agent-runtime/pty-message-writer.js";
 
+export {
+  EXECUTION_CONTRACT_PLACEHOLDER,
+  FLEET_EXECUTION_AGENT,
+  FLEET_EXECUTION_AGENT_TYPE,
+  FLEET_EXECUTION_CONTRACT,
+} from "./agent-cli/execution-contract.js";
 export { FLEET_PLUGIN_NAME } from "./agent-cli/types.js";

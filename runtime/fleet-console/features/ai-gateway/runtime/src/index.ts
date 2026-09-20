@@ -180,11 +180,9 @@ export {
 } from "./fleet/quota-snapshot.js";
 export {
   FLEET_PLUGIN_NAME,
-  GENERAL_PURPOSE_AGENT_PROMPT,
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
-  DISABLED_GATEWAY_ROUTING_TABLE,
   EMPTY_GATEWAY_ROUTING_TABLE,
   GATEWAY_ROUTING_TIERS,
   buildGatewayRoutingTable,
@@ -194,4 +192,12 @@ export {
   type GatewayRoutingTable,
   type GatewayRoutingTier,
 } from "./fleet/routing-table.js";
+export {
+  decideGatewayRoutingAssignment,
+  parseGatewayAssignmentRequest,
+  type GatewayAssignmentDecision,
+  type GatewayAssignmentExposure,
+  type GatewayAssignmentRequest,
+  type GatewayAssignmentSurface,
+} from "./fleet/routing-assignment.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
