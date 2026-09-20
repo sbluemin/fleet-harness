@@ -292,23 +292,16 @@ function AiGatewayCompactTimingCard() {
           <strong>{formatAiGatewayContextWindow(previewWindow)}</strong>
         </div>
       </div>
-      <p className={`compact-timing-note${crowded || lateBeforeAuto ? " is-warn" : ""}`}>
-        {crowded
-          ? t("terminal.settings.compactTimingCrowd")
-          : lateBeforeAuto
-            ? t("terminal.settings.compactTimingLateBeforeAuto", {
+      {crowded || lateBeforeAuto ? (
+        <p className="compact-timing-note">
+          {crowded
+            ? t("terminal.settings.compactTimingCrowd")
+            : t("terminal.settings.compactTimingLateBeforeAuto", {
               late: formatCompactTokens(at),
               auto: formatCompactTokens(compactAtTokens(previewWindow, null)),
-            })
-            : policy === "auto"
-              ? t("terminal.settings.compactTimingAutoNote", {
-                at: formatCompactTokens(at),
-                window: formatAiGatewayContextWindow(previewWindow) ?? "",
-              })
-              : policy === "custom"
-                ? t("terminal.settings.compactTimingCustomNote", { percent: String(typeof liveCeiling === "number" ? liveCeiling : shownPercent) })
-                : t(policy === "early" ? "terminal.settings.compactTimingEarlyNote" : "terminal.settings.compactTimingLateNote")}
-      </p>
+            })}
+        </p>
+      ) : null}
     </section>
   );
 }
