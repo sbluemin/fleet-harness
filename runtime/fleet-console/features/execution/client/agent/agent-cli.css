@@ -220,6 +220,7 @@
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
 .ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--provider-kimi); }
 .ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
+.ai-gateway-provider.is-typesafe { --ai-gateway-provider-tone: var(--provider-typesafe); }
 .ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }
 
 .ai-gateway-provider-glyph {
@@ -1250,8 +1251,8 @@
 /* 서비스 자격증명 — 카탈로그 모델이 아니라서 로스터에서 다르게 선다. 테두리를 강조색으로
    두르는 것은 장식이 아니라 구분이다: 이 줄은 고를 수 있는 모델이 아니라고 말한다. */
 .ai-gateway-service-group {
-  border-color: var(--brass-deep);
-  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  border-color: color-mix(in oklch, var(--ai-gateway-provider-tone) 42%, transparent);
+  background: color-mix(in oklch, var(--ai-gateway-provider-tone) 7%, transparent);
 }
 
 .ai-gateway-service-wrap {

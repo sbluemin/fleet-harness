@@ -52,7 +52,7 @@ const MODEL_AUTH_SERVICE_MODELS: Readonly<Partial<Record<TerminalModelAuthProvid
 const MODEL_AUTH_DISPLAY_NAMES: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
   kimi: "Kimi for AI Gateway",
   opencode: "OpenCode Go for AI Gateway",
-  typesafe: "TypeSafe System One",
+  typesafe: "TypeSafe",
 });
 
 export function isTerminalModelAuthProviderId(value: string): value is TerminalModelAuthProviderId {

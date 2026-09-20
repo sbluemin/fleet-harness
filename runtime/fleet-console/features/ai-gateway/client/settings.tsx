@@ -1,4 +1,4 @@
-import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
+import { launchProviderGlyph, serviceGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
@@ -715,10 +715,11 @@ function AiGatewayServiceGroup({ service, busy }: {
   const t = getT(useTerminalLocale());
   return (
     <section
-      className="ai-gateway-provider-group ai-gateway-service-group"
+      className="ai-gateway-provider-group ai-gateway-provider is-typesafe ai-gateway-service-group"
       aria-label={service.displayName}
     >
       <div className="ai-gateway-group-head">
+        <span className="ai-gateway-provider-glyph" aria-hidden="true">{serviceGlyph("typesafe")}</span>
         <span className="ai-gateway-provider-name">{service.displayName}</span>
         <span className="ai-gateway-service-wrap">
           <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayServiceBadge")}</span>
@@ -1229,6 +1230,9 @@ function AiGatewayModelPalette({
             key={service.provider}
             service={service}
             busy={authBusy === service.provider}
+            keyLineOpen={keyLineFor === service.provider}
+            onToggleKeyLine={() => setKeyLineFor((current) => current === service.provider ? null : service.provider)}
+            onKeyLineDone={() => setKeyLineFor(null)}
           />
         ))}
         {headingProviders.length === 0 && serviceHits.length === 0 ? (
@@ -1353,33 +1357,51 @@ function AiGatewayXaiEndpointRow({ saving }: { readonly saving: boolean }) {
 }
 
 /**
- * 팔레트의 서비스 그룹. 여기서 로그인하고, 그 서비스가 여는 모델 이름을 읽는다. 항목에
- * `role="option"`을 주지 않는 것이 요점이다 — 고를 수 있는 모습을 하면 대화 모델로 오인된다.
+ * 팔레트의 서비스 그룹. 머리글 문법은 다른 공급자와 같다 — 글리프·이름·칩·인증 셀 순서,
+ * `API key` 글자가 곧 로그인 버튼이고 열리면 그 아래 키 줄이 접힌다. 다른 점은 항목에
+ * `role="option"`을 주지 않는다는 것뿐이다: 고를 수 있는 모습을 하면 대화 모델로 오인된다.
  */
-function AiGatewayPaletteServiceGroup({ service, busy }: {
+function AiGatewayPaletteServiceGroup({ service, busy, keyLineOpen, onToggleKeyLine, onKeyLineDone }: {
   readonly service: ModelAuthProviderState;
   readonly busy: boolean;
+  readonly keyLineOpen: boolean;
+  readonly onToggleKeyLine: () => void;
+  readonly onKeyLineDone: () => void;
 }) {
   const t = getT(useTerminalLocale());
   return (
     <>
-      <div className="ai-gateway-palette-group ai-gateway-palette-service-head">
-        <span className="ai-gateway-provider-name">{service.displayName}</span>
+      <div className="ai-gateway-palette-group ai-gateway-provider is-typesafe" role="presentation">
+        <span className="ai-gateway-provider-glyph" aria-hidden="true">{serviceGlyph("typesafe")}</span>
+        <span className="ai-gateway-palette-group-name">{service.displayName}</span>
         <span className="ai-gateway-service-wrap">
           <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayServiceBadge")}</span>
           <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
         </span>
-        {service.signedIn ? (
-          <button
-            type="button"
-            className="ai-gateway-key-signout"
-            disabled={busy}
-            aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
-            onClick={() => void signOutModel(service.provider)}
-          >
-            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
-          </button>
-        ) : null}
+        <span className="ai-gateway-palette-group-controls">
+          {service.signedIn ? (
+            <button
+              type="button"
+              className="ai-gateway-key-signout"
+              disabled={busy}
+              aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
+              onClick={() => void signOutModel(service.provider)}
+            >
+              {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ai-gateway-palette-signin"
+              aria-expanded={keyLineOpen}
+              aria-label={t("terminal.auth.apiKeyAria", { name: service.displayName })}
+              disabled={busy}
+              onClick={onToggleKeyLine}
+            >
+              {busy ? t("terminal.auth.verifying") : t("terminal.settings.aiGatewayAuthApiKey")}
+            </button>
+          )}
+        </span>
       </div>
       {(service.models ?? []).map((model) => (
         <div className="ai-gateway-palette-service-model" key={model.id} tabIndex={0}>
@@ -1388,7 +1410,9 @@ function AiGatewayPaletteServiceGroup({ service, busy }: {
           <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceModelTip")}</span>
         </div>
       ))}
-      {service.signedIn ? null : <AiGatewayKeyForm provider={service} busy={busy} compact />}
+      {!service.signedIn && keyLineOpen ? (
+        <AiGatewayKeyForm provider={service} busy={busy} compact onSignedIn={onKeyLineDone} />
+      ) : null}
     </>
   );
 }
