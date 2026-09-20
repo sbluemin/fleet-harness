@@ -159,7 +159,7 @@ fleet console stop
 fleet-console
 ```
 
-Prefer `fleet console`. The transitional `fleet-console` bin still works. The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
+Prefer `fleet console`. The transitional `fleet-console` bin still works. The launcher ensures the local console server is running and prints its `/console/` address — free of browser token fragments — for you to open yourself; it never launches a browser on your behalf.
 
 The AI Gateway is configured from the same launcher, against the same `ai-gateway.json` the Console screen edits:
 

@@ -8,8 +8,7 @@ import { fileURLToPath } from "node:url";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
-import { openBrowser, type BrowserOpenResult, type OpenBrowserDeps } from "../shell/browser.js";
-import { describeConsoleLaunch, describeDaemonStartFailure } from "../transport/failure-notice.js";
+import { describeDaemonStartFailure } from "../transport/failure-notice.js";
 import { createConsoleHealthClient } from "./health.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
@@ -64,16 +63,13 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly health?: ReturnType<typeof createConsoleHealthClient>;
 }
 
-export interface OpenFleetConsoleDeps {
+export interface StartFleetConsoleDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
-  readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void | Promise<BrowserOpenResult>;
 }
 
-export interface OpenFleetConsoleResult {
+export interface StartFleetConsoleResult {
+  /** 사용자가 직접 열 주소. CLI는 화면을 대신 열지 않고 이것만 건넨다. */
   readonly url: string;
-  /** 브라우저 실행기가 실제로 떴는지. 거짓이면 호출자가 주소를 사용자에게 직접 건네야 한다. */
-  readonly browserOpened: boolean;
-  readonly browserError?: string;
 }
 
 export interface ConsoleStatusDeps {
@@ -97,7 +93,6 @@ export type ConsoleHookCommand =
 
 export interface ConsoleRestartDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
-  readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void;
 }
 
 export interface BuildConsoleHelpTextOptions {
@@ -128,7 +123,7 @@ interface ConsoleDaemonChildObservation {
 const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
-  // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
+  // 인자가 없으면 기본 동작은 start(서버를 보장하고 그 주소를 출력한다)다.
   if (argv.length === 0) return "start";
   const [first, ...rest] = argv;
   if (first === "--help" || first === "-h") return "help";
@@ -185,9 +180,9 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
-    `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server, then open it in your browser. (default)", colorEnabled)}`,
+    `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server and print its address. (default)", colorEnabled)}`,
     `  ${command("stop", colorEnabled)}    ${dim("Stop the local Fleet Console server.", colorEnabled)}`,
-    `  ${command("restart", colorEnabled)} ${dim("Restart the local Fleet Console server, then open it in your browser.", colorEnabled)}`,
+    `  ${command("restart", colorEnabled)} ${dim("Restart the local Fleet Console server and print its address.", colorEnabled)}`,
     `  ${command("status", colorEnabled)}  ${dim("Show the local Fleet Console server status.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),
@@ -530,19 +525,18 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 }
 
-export async function openFleetConsole(deps: OpenFleetConsoleDeps = {}): Promise<OpenFleetConsoleResult> {
+/**
+ * 서버를 보장하고 그 주소를 돌려준다. 화면을 여는 것은 CLI의 일이 아니다 — 터미널에서
+ * 주소를 읽은 사용자가 어느 브라우저로 갈지 스스로 정한다.
+ */
+export async function startFleetConsole(deps: StartFleetConsoleDeps = {}): Promise<StartFleetConsoleResult> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   await lifecycle.ensureDaemon();
   const status = await lifecycle.probe();
   if (!status.healthy || !status.lock) {
     throw new Error("Fleet Console server is not healthy after ensure");
   }
-  const url = `${status.lock.endpoint}console/`;
-  // 실행기가 뜨지 않아도 서버는 살아 있다 — 실패를 삼키는 대신 결과로 올려 호출자가
-  // "열었다" 대신 주소를 건네게 한다.
-  const browser = await (deps.openBrowser ?? openBrowser)(url);
-  const result = browser ?? { opened: true };
-  return result.opened ? { url, browserOpened: true } : { url, browserOpened: false, browserError: result.reason };
+  return { url: `${status.lock.endpoint}console/` };
 }
 
 export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<string> {
@@ -584,11 +578,11 @@ export function isLockProcessAlive(pid: number): boolean {
   }
 }
 
-export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<OpenFleetConsoleResult> {
+export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
-  // 기존 데몬을 정지한 뒤 새 데몬을 띄우고 브라우저를 연다.
+  // 기존 데몬을 정지한 뒤 새 데몬을 띄운다.
   await lifecycle.stop();
-  return openFleetConsole({ lifecycle, openBrowser: deps.openBrowser });
+  return startFleetConsole({ lifecycle });
 }
 
 export async function main(): Promise<void> {
@@ -667,12 +661,20 @@ export async function runConsolePublishedCommand(
     return;
   }
   if (mode === "restart") {
-    const restarted = await runConsoleRestart();
-    io.stdout.write(`${describeConsoleLaunch("Fleet Console restarted.", restarted)}\n${await runConsoleStatus()}\n`);
+    await runConsoleRestart();
+    io.stdout.write(`${describeConsoleReady("Fleet Console restarted.")}\n${await runConsoleStatus()}\n`);
     return;
   }
-  const opened = await openFleetConsole();
-  io.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
+  await startFleetConsole();
+  io.stdout.write(`${describeConsoleReady("Fleet Console is ready.")}\n${await runConsoleStatus()}\n`);
+}
+
+/**
+ * 화면을 대신 열지 않는 대신, 바로 뒤에 붙는 상태 출력의 `console` 줄이 사용자가 열 주소라는
+ * 사실을 한 줄로 말해 둔다.
+ */
+function describeConsoleReady(headline: string): string {
+  return `${headline} Open the console address below in your browser.`;
 }
 
 export function resolveDefaultServerModulePath(moduleUrl: string = import.meta.url): string {

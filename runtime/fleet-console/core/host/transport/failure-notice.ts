@@ -20,25 +20,6 @@ export function formatFailureNotice(notice: FailureNotice): string {
   return lines.join("\n");
 }
 
-export interface ConsoleLaunchOutcome {
-  readonly url: string;
-  readonly browserOpened: boolean;
-  readonly browserError?: string;
-}
-
-/**
- * 데몬은 떴지만 브라우저 실행기가 답하지 않은 경우를 성공과 구분해 말한다. 예전에는 두 경우가
- * 같은 "opened." 한 줄로 나가, 아무것도 뜨지 않은 화면 앞의 사용자에게 주소조차 건네지 않았다.
- */
-export function describeConsoleLaunch(successLine: string, outcome: ConsoleLaunchOutcome): string {
-  if (outcome.browserOpened) return successLine;
-  return formatFailureNotice({
-    what: "Fleet Console is running, but no browser opened on this machine.",
-    why: outcome.browserError ?? "the browser launcher did not start",
-    next: [`Open this address yourself: ${outcome.url}`],
-  });
-}
-
 export interface DaemonStartFailureInput {
   readonly spawnError: string | null;
   readonly childError: string | null;
