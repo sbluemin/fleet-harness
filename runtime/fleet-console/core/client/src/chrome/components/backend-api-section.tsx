@@ -32,7 +32,12 @@ export interface ApiCatalogHierarchy {
 const SILENT_GATE: ApiCatalogEntry["gate"] = "origin-write";
 const SILENT_TRANSPORT: ApiCatalogEntry["transport"] = "http";
 
-const METHOD_FACETS: readonly ApiCatalogEntry["method"][] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+/**
+ * 칩이 서는 차례. 카탈로그가 실제로 가진 메서드만 이 차례대로 선다 — 목록이 아니라 순서다.
+ * 와일드카드(`*`)도 선언될 수 있는 값이라(AI Gateway 프록시가 그렇게 선언한다) 함께 세운다.
+ * 빠뜨리면 그 라우트는 메서드로 좁힐 수 없고, 나머지 메서드를 모두 골라도 조용히 빠진다.
+ */
+const METHOD_FACET_ORDER: readonly ApiCatalogEntry["method"][] = ["GET", "POST", "PUT", "PATCH", "DELETE", "*"];
 
 type FacetKey = `method:${string}` | `gate:${string}` | `transport:${string}`;
 
@@ -334,7 +339,7 @@ export function availableFacets(entries: readonly ApiCatalogEntry[]): readonly F
   const gates = new Set(entries.map((entry) => entry.gate).filter((gate) => gate !== SILENT_GATE));
   const transports = new Set(entries.map((entry) => entry.transport).filter((transport) => transport !== SILENT_TRANSPORT));
   return [
-    ...METHOD_FACETS.filter((method) => methods.has(method)).map((method) => `method:${method}` as FacetKey),
+    ...METHOD_FACET_ORDER.filter((method) => methods.has(method)).map((method) => `method:${method}` as FacetKey),
     ...[...gates].sort().map((gate) => `gate:${gate}` as FacetKey),
     ...[...transports].sort().map((transport) => `transport:${transport}` as FacetKey),
   ];
