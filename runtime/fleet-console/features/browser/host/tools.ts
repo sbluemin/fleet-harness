@@ -1,5 +1,6 @@
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { BrowserPolicyError, type BrowserService } from "./service.js";
+import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
 export interface BrowserToolDeps {
@@ -59,14 +60,15 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
    * 들어가니, 같은 장이 스무 배 넘게 싸면서 더 확실히 닿는다.
    */
   const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<TextBlock[]> => {
-    const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg" });
+    const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg", signal });
+    const pixelLine = shot.pixels ? `Image ${shot.pixels.width}x${shot.pixels.height} pixels; pixel-to-CSS scale [${shot.width / shot.pixels.width}, ${shot.height / shot.pixels.height}]. Geometry ${shot.geometryVersion}.` : "";
     const viewportLine = `Reported viewport ${shot.viewport.width}x${shot.viewport.height} (${shot.viewport.preset}${shot.viewport.followsPane ? ", follows pane" : ", emulated"}).`;
     const layoutLine = shot.layout ? `Page layout metrics ${shot.layout.width}x${shot.layout.height}.` : "Page layout metrics unavailable.";
     const stale = shot.staleViewport
       ? " WARNING: stored viewport disagreed with page layout before this capture — prior screenshot coordinates may be stale; take a fresh screenshot before clicking by coordinate."
       : "";
     const origin = clip ? `Capture offset in the viewport is [${clip.x}, ${clip.y}]; add this offset to points measured in the cropped image.` : "Capture offset in the viewport is [0, 0].";
-    const geometry = `Screenshot capture ${shot.width}x${shot.height} CSS px. ${viewportLine} ${layoutLine}${stale} ${origin} Coordinates for computer actions are CSS pixels relative to the top-left of the viewport, not the crop.`;
+    const geometry = `Screenshot capture ${shot.width}x${shot.height} CSS px. ${pixelLine} ${viewportLine} ${layoutLine}${stale} ${origin} Coordinates for computer actions are CSS pixels relative to the top-left of the viewport, not the crop.`;
     // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
     // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
     if (signal.aborted) return [{ type: "text", text: geometry }];
@@ -80,6 +82,41 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     }
   };
 
+  const targetProperties = { ref: { type: "string" }, role: { type: "string" }, name: { type: "string" }, exact: { type: "boolean", description: "Default true." }, selector: { type: "string" } };
+  const targetSchema = { type: "object", properties: { ...targetProperties, within: { type: "object", properties: targetProperties, additionalProperties: false } }, additionalProperties: false };
+  const conditionSchema = { type: "object", properties: { target: targetSchema, state: { type: "string", enum: ["visible", "hidden", "enabled", "disabled", "checked", "unchecked"] }, attribute: { type: "string" }, equals: { type: "string" }, value: { type: "string" }, url: { type: "string" } }, additionalProperties: false };
+  const observation = async (mode: string | undefined, operationId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<TextBlock[]> => {
+    if (!mode || mode === "none") return [];
+    // 입력 이후 관측 실패는 입력 실패가 아니다. 재전송을 유도하지 않는다.
+    try {
+      if (mode === "screenshot") return await screenshotBlock(operationId, tabId, signal);
+      return [{ type: "text", text: JSON.stringify(await service.readPage(operationId, { tabId, filter: "interactive", maxChars: 12000 })) }];
+    } catch (error) { return [{ type: "text", text: JSON.stringify({ observationError: error instanceof Error ? error.message : "unavailable", retryInput: false }) }]; }
+  };
+  const observe = spec("observe", "Observe without images. Omit target for a bounded accessibility snapshot with observation-scoped refs. Use within/max_depth/max_chars to narrow it. Supply target for a small state result (visible, enabled, checked, value, text, requested attributes). Targets are unique ref, role/name (exact by default), or CSS selector, optionally within a unique scope. No match and ambiguous matches are distinct errors.", {
+    type: "object", properties: { target: targetSchema, within: targetSchema, filter: { type: "string", enum: ["interactive", "all"] }, max_depth: { type: "integer", minimum: 0, maximum: 100 }, max_chars: { type: "integer", minimum: 200, maximum: 50000 }, attributes: { type: "array", maxItems: 20, items: { type: "string" } }, tabId: TAB_ID }, additionalProperties: false,
+  }, async (args, operationId) => {
+    if (args.target) { const ref = await service.targetRef(operationId, args.target as BrowserTarget, args.tabId); return text({ ref, ...await service.elementState(operationId, ref, args.attributes ?? [], args.tabId) }); }
+    return text(await service.readPage(operationId, { tabId: args.tabId, within: args.within, filter: args.filter ?? "interactive", maxDepth: args.max_depth, maxChars: args.max_chars }));
+  });
+  const waitFor = spec("wait_for", "Wait for a declared URL or element condition without sending input. Exact URL, visible/hidden/enabled/disabled/checked/unchecked, attribute equals, or value. Timeouts return matched=false. Does not retry a prior action. Prefer this to sleeps.", {
+    type: "object", properties: { condition: conditionSchema, timeout_ms: { type: "integer", minimum: 0, maximum: 30000 }, tabId: TAB_ID }, required: ["condition"], additionalProperties: false,
+  }, async (args, operationId, signal) => text(await waitForBrowser(service, operationId, args.condition as BrowserCondition, args.tabId, signal, args.timeout_ms)));
+  const act = spec("act", "Act on a unique element: click, fill, select, check, uncheck. Use ref from observe/read_page or role/name/selector with optional within. No automatic screenshot. An optional expect checks a postcondition without retrying input; observed success is separate from input dispatch. Optional observe returns snapshot or screenshot after input. Never automatically repeat an action after a postcondition timeout.", {
+    type: "object", properties: { action: { type: "string", enum: ["click", "fill", "select", "check", "uncheck"] }, target: targetSchema, value: { type: ["string", "number", "boolean"] }, expect: conditionSchema, timeout_ms: { type: "integer", minimum: 0, maximum: 30000 }, observe: { type: "string", enum: ["none", "snapshot", "screenshot"] }, tabId: TAB_ID }, required: ["action", "target"], additionalProperties: false,
+  }, async (args, operationId, signal) => {
+    const dispatch = await actOnBrowser(service, operationId, { action: args.action, target: args.target, value: args.value, tabId: args.tabId }, signal);
+    let verification: unknown = { requested: false };
+    if (args.expect) {
+      try { verification = await waitForBrowser(service, operationId, args.expect, args.tabId, signal, args.timeout_ms); }
+      catch (error) { verification = { matched: false, error: error instanceof Error ? error.message : "unavailable", retryInput: false }; }
+    }
+    return { content: [{ type: "text", text: JSON.stringify({ input: dispatch, verification, retryInput: false }) }, ...await observation(args.observe, operationId, args.tabId, signal)], isError: false };
+  });
+  const capture = spec("capture", "Explicit screenshot only. Waits for native pane/layout readiness. Returns a local image file with actual pixel size, CSS capture area, offset and geometry version. Never infer page-action success from capture. Input coordinates remain viewport CSS pixels.", {
+    type: "object", properties: { tabId: TAB_ID, region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 } }, additionalProperties: false,
+  }, async (args, operationId, signal) => ({ content: await screenshotBlock(operationId, args.tabId, signal, args.region ? { x: args.region[0], y: args.region[1], width: args.region[2], height: args.region[3] } : undefined), isError: false }));
+
   const navigate = spec("navigate", "Navigate a tab to a URL, or go back/forward/reload in its history. Without tabId the active tab is used; if no tab is open, one is created. Any http(s) URL is allowed.", {
     type: "object", properties: { url: { type: "string", description: "Absolute URL, or one of \"back\", \"forward\", \"reload\"." }, tabId: TAB_ID }, required: ["url"], additionalProperties: false,
   }, async (args, operationId) => {
@@ -87,10 +124,12 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). Every action answers with the path of a screenshot file on this machine — read that file to see the page.", {
+  const computer = spec("computer", "Use a mouse and keyboard on the Browser pane's page and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
     type: "object", properties: {
+      observe: { type: "string", enum: ["none", "snapshot", "screenshot"], description: "Optional post-action observation; default none." },
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
       coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in viewport CSS pixels. Add the capture offset when using a zoom crop." },
+      geometry_version: { type: "string", description: "Geometry from capture; reject coordinate input if viewport changed. Recommended for coordinates." },
       start_coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Drag start for left_click_drag." },
       text: { type: "string", description: "Text for type, or the key chord for key." },
       scroll_direction: { type: "string", enum: ["up", "down", "left", "right"] },
@@ -103,6 +142,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   }, async (args, operationId, signal) => {
     const tabId = args.tabId ?? null;
     const xy = (value: unknown): { x: number; y: number } => { if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === "number" && Number.isFinite(n))) throw new BrowserPolicyError("browser_coordinate_invalid", "coordinate must be [x, y] numbers from the latest screenshot."); return { x: value[0], y: value[1] }; };
+    if (args.geometry_version && (args.coordinate || args.start_coordinate) && args.geometry_version !== await service.geometryVersion(operationId, tabId)) throw new BrowserPolicyError("browser_viewport_stale", "Viewport changed since capture. Capture again; no input was dispatched.");
     let dispatchSummary: string | null = null;
     switch (args.action) {
       case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal), isError: false };
@@ -136,12 +176,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       case "wait": { const seconds = Math.min(10, Math.max(0, Number(args.duration ?? 1))); await new Promise<void>((resolve) => { const timer = setTimeout(resolve, seconds * 1000); signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true }); }); return text(`Waited for ${seconds} seconds`); }
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 120));
     const summary = dispatchSummary ?? `${args.action}: input dispatched. Confirm with the screenshot or page state; do not assume success.`;
-    return { content: [{ type: "text", text: summary }, ...await screenshotBlock(operationId, tabId, signal)], isError: false };
+    return { content: [{ type: "text", text: summary }, ...await observation(args.observe, operationId, tabId, signal)], isError: false };
   });
 
-  const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry [ref_N] ids for form_input, computer clicks/scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
+  const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry observation-scoped ref ids for form_input, computer clicks/scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
     type: "object", properties: { filter: { type: "string", enum: ["interactive", "all"] }, max_chars: { type: "number" }, tabId: TAB_ID }, additionalProperties: false,
   }, async (args, operationId) => { const page = await service.readPage(operationId, { tabId: args.tabId ?? null, filter: args.filter, maxChars: typeof args.max_chars === "number" ? args.max_chars : undefined }); return text(page.text || "(empty page)"); });
 
@@ -185,7 +224,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const tabsClose = spec("tabs_close", "Close one Browser pane tab. Close tabs you opened when you are done, unless the user wants them kept.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.closeTab(operationId, String(args.tabId)); return text({ closed: args.tabId, ...tabsContext(operationId) }); });
   const tabsSelect = spec("tabs_select", "Bring one Browser pane tab to the front for the user.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.selectTab(operationId, String(args.tabId)); return text(tabsContext(operationId)); });
 
-  const singles = [navigate, computer, readPage, find, formInput, getPageText, consoleMessages, network, javascript, resizeWindow, tabsContextTool, tabsCreate, tabsClose, tabsSelect];
+  const singles = [observe, act, waitFor, capture, navigate, computer, readPage, find, formInput, getPageText, consoleMessages, network, javascript, resizeWindow, tabsContextTool, tabsCreate, tabsClose, tabsSelect];
   const byName = new Map(singles.map((tool) => [tool.id, tool]));
 
   const batch: AgentToolSpec = {

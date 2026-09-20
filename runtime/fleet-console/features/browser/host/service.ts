@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { capturePixels } from "./capture-geometry.js";
+import type { BrowserTarget, BrowserElementState } from "./semantic.js";
 import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
@@ -334,6 +336,8 @@ export class BrowserService {
   }
 
   // ---------- Operation 컨텍스트 ----------
+
+  private observationSerial = 0;
 
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
@@ -1041,12 +1045,32 @@ export class BrowserService {
 
   // ---------- 관찰 ----------
 
-  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg" } = {}): Promise<{ data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
+  async geometryVersion(operationId: string, tabId?: string | null): Promise<string> {
+    const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
+    const layout = await this.layoutViewport(client, tab);
+    if (!layout) throw new BrowserPolicyError("browser_capture_not_ready", "Page geometry unavailable.");
+    return `${tab.id}:${layout.width}x${layout.height}:${this.paneOf(op)?.scale ?? op.viewport.scale}`;
+  }
+
+  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
     const op = this.operation(operationId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
-    const layout = await this.layoutViewport(client, tab);
+    // 초기 native pane 크기/배율 통지가 오기 전의 추정값으로 캡처하지 않는다.
+    let layout: { width: number; height: number } | null = null;
+    let previous = "";
+    let ready = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      this.throwIfAborted(options.signal);
+      const pane = this.paneOf(op);
+      layout = await this.layoutViewport(client, tab);
+      const geometry = JSON.stringify([pane, layout]);
+      if (pane && pane.width > 0 && pane.height > 0 && layout && geometry === previous) { ready = true; op.viewport = { ...op.viewport, scale: pane.scale }; break; }
+      previous = geometry;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (!ready || !layout) throw new BrowserPolicyError("browser_capture_not_ready", "Native pane geometry is not ready. Observe the page and request capture again; do not retry input.");
     // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
     const storedBeforeHeal = { width: op.viewport.width, height: op.viewport.height };
     const staleViewport = !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
@@ -1056,8 +1080,14 @@ export class BrowserService {
     }
     // 캡처는 실제 페이지 layout(또는 명시 clip)을 쓴다 — 저장된 논리 크기와 어긋나도 잘리지 않게.
     const clip = options.clip ?? { x: 0, y: 0, width: layout?.width ?? op.viewport.width, height: layout?.height ?? op.viewport.height };
+    this.throwIfAborted(options.signal);
     const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / op.viewport.scale }, captureBeyondViewport: false }, tab.sessionId);
+    const pixels = capturePixels(result.data);
+    const after = await this.layoutViewport(client, tab);
+    if (!after || after.width !== layout.width || after.height !== layout.height) throw new BrowserPolicyError("browser_capture_changed", "Viewport changed during capture; capture again before coordinate input.");
     return {
+      pixels,
+      geometryVersion: `${tab.id}:${layout.width}x${layout.height}:${op.viewport.scale}`,
       data: result.data,
       mimeType: format === "png" ? "image/png" : "image/jpeg",
       width: clip.width,
@@ -1100,37 +1130,42 @@ export class BrowserService {
    * 접근성 트리를 YAML 비슷한 들여쓰기 목록으로. DOM 노드가 있는 항목엔 `ref_N`이 붙고, 그 번호는
    * 다음 read_page 까지 유효하다(form_input·scroll_to·click 이 씀).
    */
-  async readPage(operationId: string, options: { tabId?: string | null; filter?: "interactive" | "all"; maxChars?: number } = {}): Promise<{ text: string; refs: number; truncated: boolean; total: number }> {
+  async readPage(operationId: string, options: { tabId?: string | null; filter?: "interactive" | "all"; maxChars?: number; maxDepth?: number; within?: BrowserTarget } = {}): Promise<{ text: string; refs: number; truncated: boolean; total: number; observationId: string }> {
     const op = this.operation(operationId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
+    const scope = options.within ? await this.targetRef(operationId, options.within, options.tabId) : null;
+    const scopeBackend = scope ? tab.refs.get(scope) : null;
     const tree = await client.send<{ nodes: AxNode[] }>("Accessibility.getFullAXTree", {}, tab.sessionId);
+    const observationId = `o${++this.observationSerial}`;
     tab.refs.clear();
     const byId = new Map(tree.nodes.map((node) => [node.nodeId, node]));
     const interactive = options.filter === "interactive";
     const lines: string[] = [];
     let refCount = 0;
     const walk = (node: AxNode, depth: number) => {
+      if (depth > (options.maxDepth ?? 100)) return;
       const role = node.role?.value ?? "";
       const name = node.name?.value ?? "";
       const ignored = node.ignored === true;
       const isInteractive = INTERACTIVE_ROLES.has(role);
       if (!ignored && (!interactive || isInteractive) && (role !== "generic" && role !== "none" || name)) {
         let ref = "";
-        if (node.backendDOMNodeId !== undefined && (isInteractive || !interactive)) { refCount += 1; ref = `ref_${refCount}`; tab.refs.set(ref, node.backendDOMNodeId); }
+        if (node.backendDOMNodeId !== undefined && (isInteractive || !interactive)) { refCount += 1; ref = `ref_${observationId}_${refCount}`; tab.refs.set(ref, node.backendDOMNodeId); }
         const value = node.value?.value;
         const props = (node.properties ?? []).filter((prop) => ["checked", "expanded", "selected", "disabled", "focused", "pressed", "invalid", "required"].includes(prop.name) && prop.value?.value !== false && prop.value?.value !== "false").map((prop) => `${prop.name}=${String(prop.value?.value)}`);
         lines.push(`${"  ".repeat(Math.min(depth, 12))}- ${role}${name ? ` "${name.slice(0, 200)}"` : ""}${ref ? ` [${ref}]` : ""}${value !== undefined && value !== "" ? ` value="${String(value).slice(0, 120)}"` : ""}${props.length ? ` {${props.join(", ")}}` : ""}`);
       }
       for (const childId of node.childIds ?? []) { const child = byId.get(childId); if (child) walk(child, ignored ? depth : depth + 1); }
     };
-    const root = tree.nodes.find((node) => !node.parentId) ?? tree.nodes[0];
+    const root = scopeBackend ? tree.nodes.find((node) => node.backendDOMNodeId === scopeBackend) : tree.nodes.find((node) => !node.parentId) ?? tree.nodes[0];
+    if (scopeBackend && !root) throw new BrowserPolicyError("browser_target_missing", "Scope is absent from the accessibility tree.");
     if (root) walk(root, 0);
     const full = lines.join("\n");
-    const limit = options.maxChars ?? 50_000;
+    const limit = Math.max(200, Math.min(400_000, options.maxChars ?? 12_000));
     const truncated = full.length > limit;
     const text = truncated ? full.slice(0, full.lastIndexOf("\n", limit)) + `\n…(truncated: ${full.length} chars total; pass a larger max_chars or use filter "interactive")` : full;
-    return { text, refs: refCount, truncated, total: full.length };
+    return { text, refs: refCount, truncated, total: full.length, observationId };
   }
 
   async find(operationId: string, query: string, tabId?: string | null): Promise<string> {
@@ -1138,6 +1173,59 @@ export class BrowserService {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     const hits = page.text.split("\n").filter((line) => { if (/^\s*- (InlineTextBox|StaticText)\b/.test(line)) return false; const lower = line.toLowerCase(); return terms.every((term) => lower.includes(term)); }).slice(0, 40);
     return hits.length ? hits.map((line) => line.trim()).join("\n") : `No elements match "${query}". Use read_page to see the tree.`;
+  }
+
+  /** AX 이름을 사용하며 accessible name을 임의로 추측하지 않는다. 대상과 범위는 항상 유일해야 한다. */
+  async targetRef(operationId: string, target: BrowserTarget, tabId?: string | null): Promise<string> {
+    const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
+    const modes = Number(!!target.ref) + Number(!!target.selector) + Number(!!target.role || target.name !== undefined);
+    if (modes !== 1) throw new BrowserPolicyError("browser_target_invalid", "Choose exactly one of ref, selector, or role/name.");
+    const scopeRef = target.within ? await this.targetRef(operationId, target.within, tabId) : null;
+    const scope = scopeRef ? await this.resolveRef(client, tab, scopeRef) : null;
+    let nodes: number[] = [];
+    if (target.ref) {
+      const resolved = await this.resolveRef(client, tab, target.ref);
+      nodes = [resolved.backendNodeId];
+    } else if (target.selector) {
+      const result = await client.send<{ result: { objectId?: string }; exceptionDetails?: unknown }>("Runtime.evaluate", { expression: `Array.from(document.querySelectorAll(${JSON.stringify(target.selector)}))` }, tab.sessionId);
+      if (result.exceptionDetails || !result.result.objectId) throw new BrowserPolicyError("browser_target_invalid", "Invalid CSS selector.");
+      try {
+        const properties = await client.send<{ result: { name: string; value?: { objectId?: string } }[] }>("Runtime.getProperties", { objectId: result.result.objectId, ownProperties: true }, tab.sessionId);
+        for (const property of properties.result) if (/^\d+$/.test(property.name) && property.value?.objectId) {
+          const described = await client.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { objectId: property.value.objectId }, tab.sessionId);
+          nodes.push(described.node.backendNodeId);
+        }
+      } finally { await client.send("Runtime.releaseObject", { objectId: result.result.objectId }, tab.sessionId).catch(() => undefined); }
+    } else {
+      const tree = await client.send<{ nodes: AxNode[] }>("Accessibility.getFullAXTree", {}, tab.sessionId);
+      nodes = tree.nodes.filter(node => !node.ignored && node.backendDOMNodeId !== undefined && (!target.role || node.role?.value === target.role) && (target.name === undefined || (target.exact !== false ? node.name?.value === target.name : (node.name?.value ?? "").includes(target.name)))).map(node => node.backendDOMNodeId!);
+    }
+    if (scope) {
+      const scoped: number[] = [];
+      for (const backendNodeId of nodes) {
+        const node = await client.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId }, tab.sessionId);
+        const inside = await client.send<{ result: { value?: boolean } }>("Runtime.callFunctionOn", { objectId: scope.objectId, functionDeclaration: "function(node){for(let n=node;n;n=n.parentNode||n.host){if(n===this)return true}return false}", arguments: [{ objectId: node.object.objectId }], returnByValue: true }, tab.sessionId);
+        if (inside.result.value) scoped.push(backendNodeId);
+      }
+      nodes = scoped;
+    }
+    nodes = [...new Set(nodes)];
+    if (!nodes.length) throw new BrowserPolicyError("browser_target_missing", "No matching element.");
+    if (nodes.length !== 1) throw new BrowserPolicyError("browser_target_ambiguous", "More than one element matches; narrow the target with within.", { matches: nodes.length });
+    const ref = target.ref ?? `ref_t${nodes[0]}`;
+    tab.refs.set(ref, nodes[0]!);
+    return ref;
+  }
+
+  async elementState(operationId: string, ref: string, attributes: string[] = [], tabId?: string | null): Promise<BrowserElementState> {
+    const tab = this.tab(this.operation(operationId), tabId), client = await this.engineClient();
+    const { objectId } = await this.resolveRef(client, tab, ref);
+    const result = await client.send<{ result: { value?: BrowserElementState } }>("Runtime.callFunctionOn", { objectId, arguments: [{ value: attributes.slice(0, 20) }], returnByValue: true, functionDeclaration: `function(attrs){
+      const el=this, r=el.getBoundingClientRect(), style=getComputedStyle(el);
+      return {tag:el.tagName.toLowerCase(), type:el.type||null, editable:el.isContentEditable, connected:el.isConnected, visible:el.isConnected&&r.width>0&&r.height>0&&style.visibility!=='hidden'&&style.display!=='none', enabled:!(el.matches(':disabled')||el.closest('[inert],[aria-disabled="true"]')), checked:typeof el.checked==='boolean'?el.checked:el.getAttribute('aria-checked')===null?null:el.getAttribute('aria-checked')==='true', value:el.type==='password'?null:typeof el.value==='string'?el.value:null, text:(el.innerText||'').slice(0,2000), attributes:Object.fromEntries(attrs.map(a=>[a,el.type==='password'&&a==='value'?null:el.getAttribute(a)]))};
+    }` }, tab.sessionId);
+    if (!result.result.value) throw new BrowserPolicyError("browser_ref_unknown", "Element state unavailable; observe again.");
+    return result.result.value;
   }
 
   private async resolveRef(client: CdpClient, tab: Tab, ref: string): Promise<{ objectId: string; backendNodeId: number }> {
