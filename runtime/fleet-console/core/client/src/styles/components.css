@@ -3025,6 +3025,14 @@
   color: var(--text-primary);
 }
 
+/* hover로 드러내는 손잡이는 포인터가 있을 때만 성립한다 — 터치 기기에서는 카드가 넓어도
+   드러낼 방법이 없어 투명한 채로 눌리는 자리만 남는다. 그런 기기에서는 처음부터 선다. */
+@media (hover: none) {
+  .backend-api-copy {
+    opacity: 1;
+  }
+}
+
 .backend-api-copy:focus-visible {
   outline: none;
   box-shadow: var(--control-focus-ring);
