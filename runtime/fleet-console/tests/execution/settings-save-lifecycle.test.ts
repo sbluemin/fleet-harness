@@ -5,6 +5,7 @@ import type { SystemPromptSettingsState } from "../../features/settings/client/e
 const BASE: SystemPromptSettingsState = {
   agentIdleDormantMinutes: 60,
   claudeCodeSystemPrompt: "on",
+  claudeCodeCustomSystemPrompt: "",
   claudeCodeSkipPermissions: false,
   claudeCodeDisabledAgents: [],
   aiGateway: null,

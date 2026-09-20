@@ -95,11 +95,20 @@ export interface AgentCliInjectionContext {
   readonly pluginRoots: readonly string[];
   readonly sessionCoordinate: ClaudeSessionCoordinate;
   /**
-   * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략은 `on`이며 플래그가
-   * 붙지 않는다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다 —
+   * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략은 `on`이며 플래그가 붙지 않는다.
+   * `off`는 사용자 본문이 없을 때 빈 본문을 세워 기본 프롬프트를 대체한다 —
    * 실측(2.1.235, haiku): 턴당 총 입력 토큰 26,036 → 19,546.
    */
-  readonly claudeCodeSystemPrompt?: "on" | "off";
+  readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
+  /**
+   * 사용자가 쓴 시스템 프롬프트가 담긴 파일의 절대 경로. 본문이 아니라 경로인 이유는 이
+   * 글이 argv를 지나가기 때문이다 — 인라인으로 실으면 Windows 명령줄 예산을 먹고, cmd
+   * shim이 `% & < > ( ) ^ |`를 재해석해 본문을 조용히 바꾼다.
+   *
+   * `append`면 `--append-system-prompt-file`, `off`면 `--system-prompt-file`로 실린다.
+   * 생략은 사용자 본문이 없다는 뜻이다.
+   */
+  readonly claudeCodeCustomSystemPromptFile?: string;
   /**
    * 이 런치가 Claude Code의 승인 게이트를 건너뛸지. 생략은 `false`이며 플래그가 붙지 않는다 —
    * 그때 자식은 자기 기본 권한 모드로 떠서 도구마다 터미널에서 승인을 묻는다.

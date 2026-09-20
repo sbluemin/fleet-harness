@@ -7,6 +7,7 @@ import { buildClaudeGatewayArgs } from "./builders/claude.js";
 import {
   assertLaunchCommandLineBudget,
   assertLaunchPromptShimSafe,
+  writeCustomSystemPromptFile,
   writeLaunchPromptFile,
   LaunchPromptError,
   launchPromptHasCmdLineBreak,
@@ -42,10 +43,17 @@ export interface InjectAgentCliProfileOptions {
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   /**
-   * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략하면 `on` —
-   * 플래그 없는 런치가 이미 하는 일이다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다.
+   * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략하면 `on` — 플래그 없는 런치가 이미
+   * 하는 일이다. `append`는 기본 프롬프트 뒤에 사용자 본문을 잇고, `off`는 사용자 본문이
+   * 그 자리를 대신한다(본문이 없으면 빈 본문으로 기본 프롬프트를 대체한다).
    */
-  readonly claudeCodeSystemPrompt?: "on" | "off";
+  readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
+  /**
+   * 사용자가 쓴 시스템 프롬프트 본문. `append`·`off`에서만 쓰이고, 그때 이 패키지가 파일로
+   * 옮겨 경로만 argv에 싣는다. 이 글은 사용자의 것이라 손대지 않는다 — Fleet이 보탤 지침은
+   * 없다.
+   */
+  readonly claudeCodeCustomSystemPrompt?: string;
   /**
    * Claude Code의 승인 게이트를 이 런치에서 건너뛸지. 생략하면 `false` — 자식이 도구마다
    * 터미널에서 묻는다. argv 표면에만 실린다(SDK 표면은 `session.ts` 참조).
@@ -132,6 +140,19 @@ export async function injectAgentCliProfile(
         convertPromptToFile(body);
       }
     }
+    // 사용자 본문은 기본 프롬프트를 잇거나(`append`) 대신할(`off`) 때만 실린다. `on`에서는
+    // 파일도 만들지 않는다 — 쓰이지 않을 글을 디스크에 남길 이유가 없다.
+    const customSystemPromptBody = options.claudeCodeSystemPrompt === "append"
+      || options.claudeCodeSystemPrompt === "off"
+      ? options.claudeCodeCustomSystemPrompt
+      : undefined;
+    const customSystemPromptFile = customSystemPromptBody === undefined || customSystemPromptBody.length === 0
+      ? undefined
+      : writeCustomSystemPromptFile(
+        customSystemPromptBody,
+        (cleanupFn) => tempCleanups.push(cleanupFn),
+        cmdWrapped,
+      );
     const session = await prepareClaudeSession({
       cliId: profile.id,
       cwd: profile.cwd,
@@ -141,6 +162,7 @@ export async function injectAgentCliProfile(
         ? { kind: "external" }
         : options.origin ?? { kind: "new" },
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
+      ...(customSystemPromptBody ? { claudeCodeCustomSystemPrompt: customSystemPromptBody } : {}),
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       plugin: options.plugin,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
@@ -162,6 +184,7 @@ export async function injectAgentCliProfile(
       sessionCoordinate: session.coordinate,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
+      ...(customSystemPromptFile ? { claudeCodeCustomSystemPromptFile: customSystemPromptFile } : {}),
       ...(options.claudeCodeSkipPermissions !== undefined
         ? { claudeCodeSkipPermissions: options.claudeCodeSkipPermissions }
         : {}),

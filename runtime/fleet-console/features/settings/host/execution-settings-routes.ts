@@ -10,7 +10,14 @@ interface ExecutionSettingsContext {
 }
 import type http from "node:http";
 
-import { sanitizeClaudeCodeDisabledAgents, type ClaudeCodeSystemPromptMode, type AgentOptionsData, type AgentOptionsService } from "@fleet-console/infra";
+import {
+  MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS,
+  sanitizeClaudeCodeCustomSystemPrompt,
+  sanitizeClaudeCodeDisabledAgents,
+  type ClaudeCodeSystemPromptMode,
+  type AgentOptionsData,
+  type AgentOptionsService,
+} from "@fleet-console/infra";
 
 import {
   buildAiGatewayCatalog,
@@ -41,6 +48,7 @@ interface TerminalSettingsRouteDeps {
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
   readonly claudeCodeSystemPrompt?: unknown;
+  readonly claudeCodeCustomSystemPrompt?: unknown;
   readonly claudeCodeSkipPermissions?: unknown;
   readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
@@ -56,6 +64,7 @@ interface TerminalSettingsBody {
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
+  | { readonly claudeCodeCustomSystemPrompt: string | undefined }
   | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
@@ -72,6 +81,7 @@ const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
+  readonly claudeCodeCustomSystemPrompt: string;
   readonly claudeCodeSkipPermissions: boolean;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
@@ -193,6 +203,12 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
           const { claudeCodeDisabledAgents: _cleared, ...rest } = current;
           return rest;
         }
+        // 빈 본문은 키 자체를 지운다. `undefined`를 남기면 저장 파일에 죽은 키가 앉고,
+        // "지침 없음"과 "지침이 빈 문자열"이 서로 다른 상태처럼 굳는다.
+        if ("claudeCodeCustomSystemPrompt" in update && update.claudeCodeCustomSystemPrompt === undefined) {
+          const { claudeCodeCustomSystemPrompt: _cleared, ...rest } = current;
+          return rest;
+        }
         return { ...current, ...update };
       });
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
@@ -220,6 +236,7 @@ function toTerminalSettingsState(
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
+    claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(data),
     claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(data),
     claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(data),
     aiGateway: configured
@@ -242,6 +259,14 @@ function toTerminalSettingsState(
 /** 키가 없으면 켜진 것으로 읽는다 — 플래그 없는 런치가 이미 하는 일이다. */
 export function resolveClaudeCodeSystemPrompt(data: AgentOptionsData): ClaudeCodeSystemPromptMode {
   return data.claudeCodeSystemPrompt ?? "on";
+}
+
+/**
+ * 키가 없으면 빈 문자열 — 사용자가 쓴 지침이 없다는 뜻이고, 그때 `append`는 기본 프롬프트만
+ * 싣고 `off`는 시스템 프롬프트 없이 연다.
+ */
+export function resolveClaudeCodeCustomSystemPrompt(data: AgentOptionsData): string {
+  return data.claudeCodeCustomSystemPrompt ?? "";
 }
 
 /**
@@ -286,9 +311,19 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     return { claudeCodeDisabledAgents: sanitizeClaudeCodeDisabledAgents(body.claudeCodeDisabledAgents) };
   }
   if (keys[0] === "claudeCodeSystemPrompt") {
-    return body.claudeCodeSystemPrompt === "on" || body.claudeCodeSystemPrompt === "off"
+    return body.claudeCodeSystemPrompt === "on"
+      || body.claudeCodeSystemPrompt === "append"
+      || body.claudeCodeSystemPrompt === "off"
       ? { claudeCodeSystemPrompt: body.claudeCodeSystemPrompt }
       : null;
+  }
+  if (keys[0] === "claudeCodeCustomSystemPrompt") {
+    if (typeof body.claudeCodeCustomSystemPrompt !== "string") return null;
+    // 상한은 정화기보다 먼저 판정한다. 정화기는 넘친 본문의 키를 조용히 지우는데, 그러면
+    // 저장에 실패한 글이 성공으로 보고되어 사용자가 지운 줄 모르고 세션을 연다.
+    if (body.claudeCodeCustomSystemPrompt.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS) return null;
+    // 빈 본문은 키를 지워 "지침 없음"으로 돌아간다 — 목록 설정이 이미 쓰는 규칙과 같다.
+    return { claudeCodeCustomSystemPrompt: sanitizeClaudeCodeCustomSystemPrompt(body.claudeCodeCustomSystemPrompt) };
   }
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);

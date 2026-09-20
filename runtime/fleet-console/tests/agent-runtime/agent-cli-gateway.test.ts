@@ -118,6 +118,71 @@ describe("claude-gateway argument composition", () => {
     const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
     expect(untouched.sdk.request).not.toHaveProperty("disallowedTools");
   });
+
+  /**
+   * 한 스위치가 두 표면에서 같은 세션을 만드는지 본다.
+   *
+   * 두 표면의 표현이 서로 뒤집혀 있어 사상이 갈리기 쉽다: CLI는 기본 프롬프트를 쓸 때 아무
+   * 플래그도 싣지 않고, SDK는 그때 `preset`을 실어야 한다(생략은 최소 프롬프트다). 실제로
+   * 한 번 갈려서, Chat은 사용자가 기본 프롬프트를 껐을 때 빈 `replace`를 보내 vendor가
+   * 턴마다 `TypeError`로 거절했고 화면에는 원인 없는 실패만 남았다.
+   */
+  it("maps one system prompt setting onto argv and the SDK projection alike", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-system-prompt-");
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
+    const body = "한국어로 답합니다.";
+
+    // 기본 프롬프트만: argv는 아무 플래그도 싣지 않고, SDK는 preset을 명시한다.
+    const preset = await injectAgentCliProfile(profile, baseInjectOptions(root, { claudeCodeSystemPrompt: "on" }));
+    try {
+      expect(preset.args).not.toContain("--system-prompt");
+      expect(preset.args).not.toContain("--append-system-prompt-file");
+      expect(preset.session.sdk.request.systemPrompt).toEqual({ mode: "preset" });
+    } finally {
+      preset.cleanup?.();
+    }
+
+    // 기본 + 사용자 지침: 본문은 argv가 아니라 파일로 가고, SDK는 같은 본문을 append한다.
+    const appended = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      claudeCodeSystemPrompt: "append",
+      claudeCodeCustomSystemPrompt: body,
+    }));
+    try {
+      const filePath = appended.args[appended.args.indexOf("--append-system-prompt-file") + 1];
+      expect(filePath).toBeDefined();
+      expect(readFileSync(filePath!, "utf8")).toBe(body);
+      expect(appended.args).not.toContain(body);
+      expect(appended.session.sdk.request.systemPrompt).toEqual({ mode: "append", text: body });
+    } finally {
+      appended.cleanup?.();
+    }
+
+    // 사용자 지침만: 교체 플래그도 파일로 가고, SDK는 replace가 된다.
+    const replaced = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      claudeCodeSystemPrompt: "off",
+      claudeCodeCustomSystemPrompt: body,
+    }));
+    try {
+      const filePath = replaced.args[replaced.args.indexOf("--system-prompt-file") + 1];
+      expect(filePath).toBeDefined();
+      expect(readFileSync(filePath!, "utf8")).toBe(body);
+      // 빈 문자열은 falsy라 이 CLI의 교체 플래그 상호배타 검사를 통과한다. 둘이 같은
+      // 런치에 실리면 어느 쪽이 이기는지가 조용히 뒤집힌다.
+      expect(replaced.args).not.toContain("--system-prompt");
+      expect(replaced.session.sdk.request.systemPrompt).toEqual({ mode: "replace", text: body });
+    } finally {
+      replaced.cleanup?.();
+    }
+
+    // 지침 없이 끈 경우만 빈 본문으로 남는다. SDK에서는 빈 본문을 실을 수 없어 생략이 그 자리다.
+    const cleared = await injectAgentCliProfile(profile, baseInjectOptions(root, { claudeCodeSystemPrompt: "off" }));
+    try {
+      expect(cleared.args[cleared.args.indexOf("--system-prompt") + 1]).toBe("");
+      expect(cleared.session.sdk.request).not.toHaveProperty("systemPrompt");
+    } finally {
+      cleared.cleanup?.();
+    }
+  });
 });
 
 describe("claude-gateway disabled skills", () => {
@@ -197,7 +262,8 @@ function baseInjectOptions(
   root: string,
   overrides: {
     readonly captureSessionHookExec?: FleetHookExec;
-    readonly claudeCodeSystemPrompt?: "on" | "off";
+    readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
+    readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeSkipPermissions?: boolean;
     readonly claudeCodeDisabledAgents?: readonly string[];
   } = {},
@@ -205,6 +271,9 @@ function baseInjectOptions(
   return {
     plugin: pluginStub,
     ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
+    ...(overrides.claudeCodeCustomSystemPrompt
+      ? { claudeCodeCustomSystemPrompt: overrides.claudeCodeCustomSystemPrompt }
+      : {}),
     ...(overrides.claudeCodeSkipPermissions !== undefined
       ? { claudeCodeSkipPermissions: overrides.claudeCodeSkipPermissions }
       : {}),
