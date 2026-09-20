@@ -63,7 +63,6 @@ export interface AdmiralMcpSession {
     readonly cwd: string;
     readonly signal?: AbortSignal;
     readonly includeTool?: (toolId: string) => boolean;
-    readonly registeredAgentNames?: readonly string[];
   }): readonly { readonly name: string; readonly token: string }[];
   releaseSessionToken(label: string): void;
   cleanup(): void;

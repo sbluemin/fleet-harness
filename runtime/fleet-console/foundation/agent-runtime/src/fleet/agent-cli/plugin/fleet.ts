@@ -13,6 +13,11 @@ export const assetBundle: AssetPluginBundle = {
 
 const MODEL_GUARD_SCRIPT_NAME = "fleet-gateway-model-guard.mjs";
 const COMPACT_EVENT_SCRIPT_NAME = "fleet-compact-event.mjs";
+/**
+ * 라우팅 Mod. hooks.json의 `modules`가 이 파일을 지목하면 Claude Code가 함수 훅 모듈로
+ * 싣는다. 명령 훅(.mjs)과 달리 세션 안에서 돌며 `agent.spawn`을 가로채고 판을 그린다.
+ */
+const ROUTING_MOD_SCRIPT_NAME = "fleet-routing-mod.tsx";
 
 /** 스냅숏에 들어갈 파일 하나. relativePath는 `/` 구분의 스냅숏 루트 상대 경로다. */
 export interface AssetPluginFile {
@@ -37,15 +42,24 @@ export function buildAssetPluginFiles(
   const compactAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === COMPACT_EVENT_SCRIPT_NAME);
   if (!compactAsset) throw new Error(`Missing embedded ${COMPACT_EVENT_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${COMPACT_EVENT_SCRIPT_NAME}`, content: compactAsset.content });
+  files.push({ relativePath: `hooks/${ROUTING_MOD_SCRIPT_NAME}`, content: routingModSource() });
   files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, version)) });
-  for (const file of options.gatewayAgents ?? []) {
-    files.push({ relativePath: `agents/${file.fileName}`, content: file.content });
-  }
   return files;
 }
 
 function toJsonContent(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/**
+ * 라우팅 Mod 원본. 치환하지 않는다 — 스냅숏은 내용 해시로 발행되는 공유 트리라, 노출 목록을
+ * 여기 구워 넣으면 모델을 하나 켤 때마다 새 트리가 발행된다. 어떤 정체성을 올릴지는 Mod가
+ * 세션 시작에 Console에 물어 정한다.
+ */
+function routingModSource(): string {
+  const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === ROUTING_MOD_SCRIPT_NAME);
+  if (!asset) throw new Error(`Missing embedded ${ROUTING_MOD_SCRIPT_NAME} hook asset`);
+  return asset.content;
 }
 
 /**
@@ -93,6 +107,9 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
     hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
   }];
   return {
+    // 함수 훅 모듈(Mod). 명령 훅과 같은 파일이 선언하지만 다른 표면이다 — 이쪽은 세션
+    // 안에서 돌며 이벤트를 가로채고 화면을 그린다.
+    modules: [`./${ROUTING_MOD_SCRIPT_NAME}`],
     hooks: {
       SessionStart: [{
         hooks: [claudeCommandHook(modelGuardHook("plugin-version", version))],

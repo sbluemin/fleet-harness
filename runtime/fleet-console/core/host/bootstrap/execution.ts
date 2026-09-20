@@ -61,6 +61,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
       routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
       origin: () => ctx.host.server.origin(),
       compactHookToken: aiGatewayRuntime.compactHookToken,
+      modHookToken: aiGatewayRuntime.modHookToken,
     },
     // 턴의 끝은 브라우저의 에이전트 사용 세션도 닫는다 — 호출 단위가 아니라 턴 단위로 「사용 중」이 켜져 있게.
     onTurnEnded: (operationId) => sessionWatch.onTurnEnded(operationId),

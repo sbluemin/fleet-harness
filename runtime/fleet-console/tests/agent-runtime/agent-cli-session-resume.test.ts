@@ -1,4 +1,3 @@
-import { buildFleetAgentRegistrations } from "@fleet-console/ai-gateway";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -110,7 +109,6 @@ function baseInjectOptions(
     readonly backgroundReportHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
-    readonly gatewayDelegationModels?: Parameters<typeof buildFleetAgentRegistrations>[0];
     readonly inputWaitingHookExec?: FleetHookExec;
     readonly origin?: Parameters<typeof injectAgentCliProfile>[1]["origin"];
     readonly turnEndHookExec?: FleetHookExec;
@@ -123,7 +121,6 @@ function baseInjectOptions(
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
     ...(overrides.backgroundReportHookExec ? { backgroundReportHookExec: overrides.backgroundReportHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.gatewayDelegationModels ? { gatewayAgents: buildFleetAgentRegistrations(overrides.gatewayDelegationModels) } : {}),
     ...(overrides.inputWaitingHookExec ? { inputWaitingHookExec: overrides.inputWaitingHookExec } : {}),
     ...(overrides.origin ? { origin: overrides.origin } : {}),
     ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),

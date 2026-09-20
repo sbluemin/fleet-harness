@@ -67,7 +67,6 @@ export interface ExecutorSessionRequest {
    * Omit to expose every registered agent tool.
    */
   readonly includeTool?: (toolId: string) => boolean;
-  readonly registeredAgentNames?: readonly string[];
 }
 
 export interface ExecutorServerToken {

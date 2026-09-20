@@ -119,4 +119,4 @@ export {
   type PtyWriteSink,
 } from "./agent-runtime/pty-message-writer.js";
 
-export { FLEET_PLUGIN_NAME, type FleetAgentRegistration } from "./agent-cli/types.js";
+export { FLEET_PLUGIN_NAME } from "./agent-cli/types.js";

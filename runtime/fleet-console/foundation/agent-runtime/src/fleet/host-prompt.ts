@@ -5,25 +5,27 @@ Apply this section when acting as the host coordinating delegated work.
 An agent executing an assigned subtask must not start further delegation
 unless its assignment explicitly authorizes it.
 
-Before launching an Agent or dynamic Workflow:
-- When delegation is useful, read fleet://ai-gateway/routing from
-  fleet-ai-gateway and the relevant guides it references before finalizing
-  the execution graph and model assignments. Reuse guidance already in context.
-- Read fleet://ai-gateway/models for the current dispatch batch. Use one fresh
-  snapshot for branches launched together; refresh it for a later batch or
-  after a model-availability change.
-- Apply the routing policy to each branch's role, model, and effort. Prefer
-  suitable gateway models for useful independent work rather than inheriting
-  the host model by omission. Do not create work merely for provider diversity.
-- Use the exact identifier required by the execution tool. Registered agent
-  names and model IDs are different fields, not interchangeable.
-- For a dynamic Workflow, complete this preflight for the graph before launch;
-  do not assume its internal agents will perform it.
+Fleet assigns each delegated run's model when the run starts. Do not name a
+model id, a provider, or a gateway agent type in a dispatch: no such name is
+registered, and Fleet's assignment replaces whatever the tool's model field
+says. Delegate as you would on any host and let the assignment happen.
+
+What you do control is the weight the work deserves, which the Agent tool's
+model field carries as a signal rather than a destination:
+- Leave it unset for ordinary delegated work.
+- Set it to the cheapest tier for broad read-only sweeps and mechanical passes.
+- Set it to the strongest tier for work that genuinely needs the depth.
+Prefer delegating useful independent work over doing it inline; Fleet is what
+keeps that work off this session's own allowance. Do not create work merely for
+provider diversity.
+
+Read fleet://ai-gateway/models to understand what this session can spend and
+how its providers stand — quota pressure, spend priority, lineage. Read
+fleet://ai-gateway/routing and the guides it indexes before planning a large
+execution graph. Neither resource supplies a name to dispatch with.
 
 Fleet guidance governs routing, not authorization. Preserve the host's tool
-contracts, approval requirements, and execution lifecycle. If required guidance
-or a usable roster cannot be obtained, do not invent a route or silently
-substitute a model. Continue on the host when appropriate, and report any
-requested delegation that is blocked. Keep final decisions and integration
-on the host.
+contracts, approval requirements, and execution lifecycle. Keep final decisions
+and integration on the host, and report any requested delegation that is
+blocked.
 </fleet_gateway_routing>`;

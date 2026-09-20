@@ -49,6 +49,16 @@ export interface AiGatewayStoredSettings {
    */
   readonly wireLogEnabled?: boolean;
   /**
+   * Whether Fleet assigns a model to delegated runs. Absent means on.
+   *
+   * Off hands delegation back to the harness: the routing table is served empty,
+   * so the mod rewrites nothing and a subagent runs on whatever Claude Code would
+   * have given it. `false` is kept in the normalized form rather than folded away —
+   * absence is the default, and folding would turn every Off back on at the next
+   * write.
+   */
+  readonly delegationRoutingEnabled?: boolean;
+  /**
    * The user's opt-in ordered preference for which provider allowances to spend
    * first. It weights the allowance axis of run distribution only and never
    * overrides quality evidence; absent means no preference.
@@ -138,6 +148,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(models.length > 0 ? { models } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
+    ...(value.delegationRoutingEnabled === false ? { delegationRoutingEnabled: false } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
@@ -185,6 +196,8 @@ export interface AiGatewaySelection {
   readonly effortExposure: GatewayEffortExposure;
   /** Opt-in provider allowance spend order; absent means no preference. */
   readonly providerPriority: readonly GatewayProvider[] | undefined;
+  /** Whether Fleet assigns a model to delegated runs. Off leaves them to the harness. */
+  readonly delegationRoutingEnabled: boolean;
 }
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
@@ -205,7 +218,13 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   // on the wire regardless of Add-click membership order.
   const models = sortGatewayModelsByProvider(enabled);
   const delegationModels = models.filter((model) => !hostOnlyIds.has(model.id));
-  return { models, delegationModels, effortExposure, providerPriority: settings?.providerPriority };
+  return {
+    models,
+    delegationModels,
+    effortExposure,
+    providerPriority: settings?.providerPriority,
+    delegationRoutingEnabled: settings?.delegationRoutingEnabled !== false,
+  };
 }
 
 /**
