@@ -64,6 +64,19 @@ export interface SettingsToggleProps {
   readonly disabled?: boolean;
 }
 
+export interface SettingsCheckboxProps {
+  /** `"mixed"`는 묶음 머리 전용이다 — 아래 항목이 일부만 골라진 상태. */
+  readonly checked: boolean | "mixed";
+  /** 혼합 상태에서 누르면 무엇이 되는지는 호출부가 정한다(보통 전부 끄기). */
+  readonly onChange: (next: boolean) => void;
+  readonly label: string;
+  /** 이름 아래 한 줄. 무엇을 고르는지가 이름만으로 서지 않을 때 쓴다. */
+  readonly description?: string;
+  /** 이름을 CLI가 보고한 철자 그대로 보일 때 mono로 세운다. */
+  readonly monoLabel?: boolean;
+  readonly disabled?: boolean;
+}
+
 export interface SettingsFieldProps {
   readonly label: string;
   readonly hint?: string;
@@ -284,6 +297,42 @@ export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled =
         <span className="settings-switch-knob" />
       </span>
       {label ? <span className="fc-settings-toggle__label">{label}</span> : null}
+    </label>
+  );
+}
+
+/**
+ * 집합에서 여럿을 고르는 자리의 한 모양. 스위치와 갈리는 기준은 모양 취향이 아니라 **뜻**이다 —
+ * 스위치는 "이 설정 하나를 켠다/끈다"이고, 체크박스는 "이 목록에서 쓸 것을 고른다"이다. 목록
+ * 하나에 독립 설정용 스위치를 개수만큼 세우면 각 스위치가 낱말 하나를 지는 벽이 되고, 같은
+ * 카드에서 위험한 단일 설정(승인 게이트)과 목록 항목이 같은 무게로 읽힌다.
+ *
+ * 그래서 이 컨트롤은 스위치를 대체하지 않는다. 불리언 설정은 계속 `SettingsToggle`이 진다.
+ */
+export function SettingsCheckbox({ checked, onChange, label, description, monoLabel = false, disabled = false }: SettingsCheckboxProps): React.ReactElement {
+  const id = React.useId();
+  const descriptionId = React.useId();
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  // 혼합 상태는 속성이 아니라 DOM 프로퍼티라 렌더 뒤에 직접 세운다.
+  React.useEffect(() => {
+    if (inputRef.current) inputRef.current.indeterminate = checked === "mixed";
+  }, [checked]);
+  return (
+    <label className="fc-settings-check" htmlFor={id}>
+      <input
+        id={id}
+        ref={inputRef}
+        className="fc-settings-check__input"
+        type="checkbox"
+        checked={checked === true}
+        disabled={disabled}
+        aria-describedby={description ? descriptionId : undefined}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="fc-settings-check__copy">
+        <span className={monoLabel ? "fc-settings-check__label is-mono" : "fc-settings-check__label"}>{label}</span>
+        {description ? <span className="fc-settings-check__desc" id={descriptionId}>{description}</span> : null}
+      </span>
     </label>
   );
 }

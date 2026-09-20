@@ -208,6 +208,12 @@ let snapshot: SystemPromptSettingsStoreState = {
 let loadGeneration = 0;
 const savingFields = new Set<SystemPromptSettingsField>();
 const failedFields = new Map<SystemPromptSettingsField, string>();
+/**
+ * 저장이 도는 동안 같은 필드에 들어온 다음 값. 목록형 필드(체크박스 여러 개)는 연달아 누르는
+ * 것이 정상 사용이라, 저장 중 조작을 거절하면 사용자가 만진 것이 조용히 사라진다. 중간 값은
+ * 서버에 보낼 이유가 없으므로 필드당 마지막 의도 하나만 남긴다.
+ */
+const pendingValues = new Map<SystemPromptSettingsField, unknown>();
 
 export function useSystemPromptSettingsStore(): SystemPromptSettingsStoreState {
   return React.useSyncExternalStore(subscribe, getSystemPromptSettingsStoreState, getSystemPromptSettingsStoreState);
@@ -246,26 +252,48 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
   value: SystemPromptSettingsState[Field],
 ): Promise<boolean> {
   const current = snapshot.state;
-  if (!current || savingFields.has(field)) return false;
+  if (!current) return false;
   loadGeneration += 1;
-  const optimistic = { ...current, [field]: value };
-  const update = toSettingsUpdate(field, optimistic);
+  // 낙관 갱신은 조건 없이 즉시 선다 — 저장이 도는 중이어도 화면은 방금 누른 것을 보여 준다.
+  setSnapshot({ state: { ...current, [field]: value }, loading: false, error: currentError() });
+  if (savingFields.has(field)) {
+    // 진행 중인 저장이 이 값을 이어 보낸다.
+    pendingValues.set(field, value);
+    return true;
+  }
+
+  // 이 연쇄가 시작되기 전 값 — 실패하면 중간 의도가 아니라 여기로 되감는다.
+  const rollback = current[field];
   savingFields.add(field);
   failedFields.delete(field);
-  setSnapshot({ state: optimistic, loading: false, error: currentError() });
-  try {
-    const state = await saveSystemPromptSettings(update);
-    savingFields.delete(field);
-    failedFields.delete(field);
-    // 전체 응답은 다른 필드의 낙관값과 카탈로그를 되감는다. 저장한 필드만 확정한다.
-    setSnapshot({ state: { ...snapshot.state!, [field]: state[field] }, error: currentError() });
-    return true;
-  } catch (error) {
-    savingFields.delete(field);
-    failedFields.set(field, toErrorMessage(error));
-    setSnapshot({ state: { ...snapshot.state!, [field]: current[field] }, error: currentError() });
-    return false;
+  setSnapshot({});
+
+  let sending: SystemPromptSettingsState[Field] | undefined = value;
+  let ok = true;
+  while (sending !== undefined) {
+    const update = toSettingsUpdate(field, { ...snapshot.state!, [field]: sending });
+    try {
+      const state = await saveSystemPromptSettings(update);
+      failedFields.delete(field);
+      // 전체 응답은 다른 필드의 낙관값과 카탈로그를 되감는다. 저장한 필드만 확정하되,
+      // 그 사이 새 의도가 들어왔으면 서버가 확인해 준 이전 값으로 화면을 되돌리지 않는다.
+      if (!pendingValues.has(field)) {
+        setSnapshot({ state: { ...snapshot.state!, [field]: state[field] }, error: currentError() });
+      }
+    } catch (error) {
+      ok = false;
+      failedFields.set(field, toErrorMessage(error));
+      pendingValues.delete(field);
+      setSnapshot({ state: { ...snapshot.state!, [field]: rollback }, error: currentError() });
+      break;
+    }
+    sending = pendingValues.has(field) ? pendingValues.get(field) as SystemPromptSettingsState[Field] : undefined;
+    pendingValues.delete(field);
   }
+
+  savingFields.delete(field);
+  setSnapshot({});
+  return ok;
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
