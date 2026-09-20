@@ -607,11 +607,23 @@ async function isPlaced($: Engine): Promise<boolean> {
 }
 
 function redraw($: Engine): void {
-  // 프롬프트 아래 고정 줄을 엔진은 경고 표식과 함께 그린다. 그러니 경고할 일이 있을 때만
-  // 건다 — 중립적인 사실에 붙은 경고 표식은 읽는 사람을 잘못 이끈다. 세션 모델을 물려받은
-  // 위임이 생겼을 때가 그 한 경우다.
-  $.ui.status(onHost === 0 ? undefined : `fleet: ${onHost} of ${offHost + onHost} inherited the session model`);
+  // 프롬프트 아래 고정 줄. 엔진이 플러그인 이름을 앞에 붙여 그리므로(`x1e(plugin, text)` →
+  // `fleet: <text>`) 여기서 다시 적지 않는다. 적으면 `fleet: fleet: …`가 된다.
+  //
+  // 이 줄은 경고가 아니라 사실이다. 배정이 일어난 세션에는 그 요약을, 전부 상속한 세션에는
+  // 그 사실을 적는다 — 어느 쪽도 잘못된 상태가 아니고, 무엇으로 돌고 있는지 물어볼 자리가
+  // 판뿐이면 판을 닫은 사람에게는 답이 없다.
+  $.ui.status(statusLine());
   if (paneOpen) $.ui.invalidate("ui.render");
+}
+
+/** 고정 줄에 적을 한 마디. 아직 위임이 없으면 줄을 걸지 않는다. */
+function statusLine(): string | undefined {
+  const total = offHost + onHost;
+  if (total === 0) return undefined;
+  if (onHost === 0) return `${total} ${total === 1 ? "run" : "runs"} routed`;
+  if (offHost === 0) return `${onHost} of ${total} on the session model`;
+  return `${offHost} of ${total} routed`;
 }
 
 function startTicker($: Engine): void {
@@ -689,7 +701,7 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text dimColor>{clip(summaryLine(), width - 2)}</Text>
+        <Text color="green" dimColor>{clip(summaryLine(), width - 2)}</Text>
       </Box>
     </Box>
   );
