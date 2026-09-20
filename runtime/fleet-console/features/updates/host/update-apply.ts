@@ -185,10 +185,9 @@ async function main() {
   await installPackages(manager);
   writeStatus("starting-daemon");
   const lock = await startNewDaemon();
-  // 같은 주소로 돌아왔으면 열려 있던 화면이 스스로 다시 붙는다 — 새 창은 그 복귀를
-  // 덮어쓸 뿐이다. 주소를 되찾지 못했을 때만, 갈 곳을 잃지 않도록 창을 연다.
+  // 같은 주소로 돌아왔으면 열려 있던 화면이 스스로 다시 붙는다. 주소를 되찾지 못한 경우는
+  // 기록으로만 남긴다 — Fleet은 사용자의 브라우저를 대신 열지 않는다.
   const endpointChanged = !isSameEndpoint(lock.endpoint, config.currentEndpoint);
-  if (endpointChanged) openBrowser(new URL("console/", lock.endpoint).toString());
   writeStatus("completed", endpointChanged ? { endpointChanged: true } : {});
 }
 
@@ -381,25 +380,6 @@ function isSameEndpoint(left, right) {
   } catch {
     return false;
   }
-}
-
-function openBrowser(url) {
-  const platform = os.platform();
-  if (platform === "darwin") {
-    spawnBrowser("open", [url]);
-    return;
-  }
-  if (platform === "win32") {
-    spawnBrowser("cmd", ["/c", "start", "", url]);
-    return;
-  }
-  spawnBrowser("xdg-open", [url]);
-}
-
-function spawnBrowser(command, args) {
-  const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
-  child.once("error", () => {});
-  child.unref();
 }
 
 function spawnExit(command, args) {

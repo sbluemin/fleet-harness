@@ -16,14 +16,13 @@ import {
   isCliDirectRun,
   isLockProcessAlive,
   main,
-  openFleetConsole,
+  startFleetConsole,
   parseConsoleCliMode,
   parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
 } from "../core/host/bootstrap/cli.js";
-import { defaultSpawnBrowser, openBrowser } from "../core/host/shell/browser.js";
-import { describeConsoleLaunch, describeDaemonStartFailure, formatFailureNotice } from "../core/host/transport/failure-notice.js";
+import { describeDaemonStartFailure } from "../core/host/transport/failure-notice.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
@@ -172,11 +171,11 @@ describe("fleet console CLI", () => {
     });
   });
 
-  it("ensures the server and opens the console URL without browser tokens", async () => {
+  // CLI는 화면을 대신 열지 않는다 — 서버를 보장하고 사용자가 직접 열 주소만 건넨다.
+  it("ensures the server and hands back the console URL without browser tokens", async () => {
     const calls: string[] = [];
-    const opened: string[] = [];
 
-    const result = await openFleetConsole({
+    const result = await startFleetConsole({
       lifecycle: {
         ensureDaemon: async () => {
           calls.push("ensure");
@@ -187,15 +186,11 @@ describe("fleet console CLI", () => {
           return { healthy: true, lock: LOCK, buildStale: false };
         },
       },
-      openBrowser: (url) => {
-        opened.push(url);
-      },
     });
 
     expect(calls).toEqual(["ensure", "probe"]);
-    expect(opened).toEqual(["http://127.0.0.1:37283/console/"]);
-    expect(result.url).toBe(opened[0]);
-    expect(opened[0]).not.toContain("#");
+    expect(result.url).toBe("http://127.0.0.1:37283/console/");
+    expect(result.url).not.toContain("#");
   });
 
   // 실패 화법 계약: 사용자에게 도달하는 실패는 무슨 일 · 왜 · 지금 할 일 세 조각을 갖는다.

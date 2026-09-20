@@ -9,7 +9,7 @@ export {
   isLockProcessAlive,
   main,
   resolveDefaultServerModulePath,
-  openFleetConsole,
+  startFleetConsole,
   parseConsoleCliMode,
   parseConsoleHookCommand,
   runConsoleRestart,
@@ -24,8 +24,8 @@ export {
   type ConsoleRestartDeps,
   type ConsoleStatusDeps,
   type ConsoleStopDeps,
-  type OpenFleetConsoleDeps,
-  type OpenFleetConsoleResult,
+  type StartFleetConsoleDeps,
+  type StartFleetConsoleResult,
 } from "./console-lifecycle.js";
 
 import { main } from "./console-lifecycle.js";

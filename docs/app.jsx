@@ -431,7 +431,7 @@ function Nav({ onFlip }) {
 const BOOT_LINES = [
   { cls: "d", text: "$ npm install -g @dotobokuri/fleet-console" },
   { cls: "c", text: "$ fleet console" },
-  { cls: "", text: "Fleet Console opened." },
+  { cls: "", text: "Fleet Console is ready. Open the console address below in your browser." },
   { cls: "", text: "Fleet Console server: running" },
   { cls: "p", text: "  console    http://127.0.0.1:52696/console/" },
 ];
