@@ -191,7 +191,6 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
         t("settings.experiments.aiCard"),
         t("settings.experiments.promptRefine.title"),
         t("settings.experiments.sessionWatch.title"),
-        t("settings.experiments.consoleControl.title"),
         t("settings.computerUse.title"),
         "Computer Use",
         t("settings.core.experiments.keywords"),

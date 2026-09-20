@@ -692,7 +692,7 @@ export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsDa
 function isExperimentSettingsInput(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if ("computerUseBackend" in value && !isComputerUseBackendId(value.computerUseBackend)) return false;
-  for (const key of ["promptRefine", "sessionWatch", "consoleControl", "computerUse"]) {
+  for (const key of ["promptRefine", "sessionWatch", "computerUse"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
   for (const key of ["promptRefineModel", "sessionWatchModel", "coworkModel", "analystModel"]) {

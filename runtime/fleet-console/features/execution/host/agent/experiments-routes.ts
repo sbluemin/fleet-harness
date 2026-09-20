@@ -405,7 +405,6 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
    */
   async function handleConsoleUse(req: http.IncomingMessage, res: http.ServerResponse, operationId: string): Promise<boolean> {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!readExperiments(ctx).consoleControl) { ctx.host.http.writeJson(res, 404, { error: "experiment_disabled" }); return true; }
     const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
     if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const language = body.language === "ko" ? "ko" : "en";

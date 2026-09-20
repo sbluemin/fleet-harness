@@ -108,19 +108,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           </div>
         );
       })}
-      <div className="global-settings-row experiments-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.experiments.consoleControl.title")}
-            <SettingsHelp title={t("settings.experiments.consoleControl.title")}>{t("settings.experiments.consoleControl.help")}</SettingsHelp>
-          </p>
-        </div>
-        <div className="experiments-row-controls">
-          <SettingsToggle checked={experiments.consoleControl} disabled={saving}
-            ariaLabel={t("settings.experiments.consoleControl.title")}
-            onChange={(next) => save({ ...experiments, consoleControl: next })} />
-        </div>
-      </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
     </section>
   );

@@ -40,8 +40,7 @@ export class ConsoleControlError extends Error {
 
 /**
  * Operation 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. `payload.watch`와 같은
- * 자리·같은 모양이다. 실험 옵트인을 꺼도 이 기록은 남는다: 두 축이 다르고, 허용이 둘의 AND라
- * 남은 기록만으로는 아무 권한도 서지 않는다.
+ * 자리·같은 모양이다. 전역 Console Use는 항상 열려 있고, 이 Operation 토글이 실제 권한이다.
  */
 export function readConsoleUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
   const value = payload?.consoleUse;
@@ -61,7 +60,6 @@ export interface ConsoleExecutionAdapter {
   execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, caller: ConsoleCaller): Promise<{ readonly operationId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
 }
 export interface ConsoleControlDeps {
-  readonly enabled: () => boolean;
   readonly directory: string;
   readonly operations: () => readonly OperationNode[];
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
@@ -125,7 +123,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
    *
    * 이 판정이 여기에도 서야 하는 이유는 자동 운영이다: 정책은 소유자를 대신해 **나중에** 실행되므로,
    * 도구 호출 경로에만 게이트를 두면 이미 예약된 정책이 그 게이트를 우회해 돌아 버린다.
-   * 플러그인 소유자는 Operation을 갖지 않으며 실험 옵트인(`deps.enabled`)이 그 자리를 지킨다.
+   * 플러그인 소유자는 Operation 토글이 없다. 살아 있는 도구 호출은 연결의 `enabled`(부관 grant)가
+   * 막고 존재는 `pluginAvailable`이 지킨다. `console_automation`은 화면 자리에서 빠져 새 정책이
+   * 살아 있는 도구로 서지 않으므로, 여기서 플러그인 grant를 다시 묻지 않는다.
    */
   function callerAuthorized(caller: ConsoleCaller) {
     if (caller.kind !== "operation") return true;
@@ -174,7 +174,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (hash(duplicate.input) !== hash(input)) fail("request_conflict");
       return duplicate;
     }
-    if (!deps.enabled()) fail("console_control_disabled");
     validTarget(input);
     state.actions = state.actions.filter((a) => now() - Date.parse(a.createdAt) < RETENTION_DAYS * 86_400_000 || pendingStatuses.has(a.status));
     if (state.actions.length >= ACTION_LIMIT) fail("action_capacity");
@@ -190,7 +189,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!entry || entry.status !== "accepted") return fail("action_not_pending");
     if (!adapter) return fail("capability_unavailable");
     const assertCurrent = () => {
-      if (disposed || !deps.enabled() || storageError) fail("control_paused");
+      if (disposed || storageError) fail("control_paused");
       if (Date.parse(entry.expiresAt) <= now()) fail("request_expired");
       if (!callerAvailable(entry.caller)) fail("caller_unavailable");
       if (!callerAuthorized(entry.caller)) fail("console_use_not_authorized");
@@ -218,7 +217,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   function automation(caller: ConsoleCaller, raw: ConsoleAutomationInput) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
-    if (!deps.enabled()) fail("console_control_disabled");
     const input = automationSchema.parse(raw);
     const expires = Date.parse(input.expiresAt);
     if (expires <= now() || expires > now() + 30 * 86_400_000) fail("invalid_expiry");
@@ -263,7 +261,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         if (!node(action.operationId)) updateAction(action.id, { status: "outcome_unknown", error: "target_removed" });
         else if (now() - Date.parse(action.updatedAt) > 24 * 60 * 60_000) updateAction(action.id, { status: "outcome_unknown", error: "observation_timeout" });
       }
-      if (!deps.enabled()) return;
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
         if (!callerAvailable(item.caller) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
@@ -310,18 +307,17 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     getAction(id: string, caller?: ConsoleCaller) { return state.actions.find((a) => a.id === id && (!caller || sameCaller(a.caller, caller))) ?? null; },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },
-    state(): ConsoleControlState { return { paused: !deps.enabled(), actions: state.actions, automations: state.automations, retention: { actionDays: RETENTION_DAYS, actionLimit: ACTION_LIMIT, deduplication: "retained_receipts" } }; },
+    state(): ConsoleControlState { return { paused: disposed || storageError, actions: state.actions, automations: state.automations, retention: { actionDays: RETENTION_DAYS, actionLimit: ACTION_LIMIT, deduplication: "retained_receipts" } }; },
     resumeAutomation(id: string, caller: ConsoleCaller) {
       const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) return fail("automation_not_found");
       {
-        if (!deps.enabled()) fail("console_control_disabled");
+        if (disposed || storageError) fail("control_paused");
         if (Date.parse(item.input.expiresAt) <= now()) fail("request_expired");
         if (item.runs >= item.input.maxRuns) fail("budget_exhausted");
         if (item.input.action.kind !== "briefing") validTarget(item.input.action, item.input.theaterId);
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
-    enabled: deps.enabled,
     dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); adapter = null; },
   };
 }

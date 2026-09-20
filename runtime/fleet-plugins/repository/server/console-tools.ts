@@ -15,7 +15,7 @@ import { parseStatusV2 } from "./status.js";
 /**
  * Console Use 에 싣는 저장소 읽기 도구. HTTP 라우트와 같은 부품(`resolveGitCwd`·`runGit`·파서)을 쓰되
  * 인자는 에이전트가 쓰기 쉬운 모양이다. 쓰기(스테이지·커밋·스태시·푸시)는 여기에 없다 — 그것은 그
- * Theater 의 Operation 에 시키는 일이다. 게이트는 호스트가 진다(실험 옵트인 AND 호출자 토글).
+ * Theater 의 Operation 에 시키는 일이다. 게이트는 호스트가 진다(호출자 Operation 토글 또는 부관 grant).
  */
 
 const ids = z.string().min(1).max(128);

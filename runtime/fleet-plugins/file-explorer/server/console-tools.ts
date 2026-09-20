@@ -8,7 +8,7 @@ import { listTheaterContents } from "./tree-services.js";
 
 /**
  * Console Use 에 싣는 파일 읽기 도구. 탐색기와 같은 서비스(경로 봉쇄·숨김 규칙·크기 상한)를 그대로 쓴다.
- * 쓰기는 없다. 게이트는 호스트가 진다(실험 옵트인 AND 호출자 토글).
+ * 쓰기는 없다. 게이트는 호스트가 진다(호출자 Operation 토글 또는 부관 grant).
  */
 
 const ids = z.string().min(1).max(128);

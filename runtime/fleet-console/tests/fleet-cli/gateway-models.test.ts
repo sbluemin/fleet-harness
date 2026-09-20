@@ -16,14 +16,13 @@ afterEach(async () => {
 });
 
 describe("fleet-console-use host", () => {
-  it("requires blanket opt-in, deduplicates actions and bounds automation across restart", async () => {
+  it("requires Operation authorization, deduplicates actions and bounds automation across restart", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-control-"));
     let time = Date.now();
-    let enabled = false;
     let activity: "idle" | "running" = "idle";
     const operations = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
     const allow = (on: boolean) => { if (on) operations[0]!.payload = { consoleUse: { enabled: true, language: "ko" } }; else operations[0]!.payload = {}; };
-    const deps = { enabled: () => enabled, directory, now: () => time, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
+    const deps = { directory, now: () => time, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
     let executions = 0;
     const adapter = {
@@ -32,7 +31,7 @@ describe("fleet-console-use host", () => {
     };
     control.attach(adapter);
     const onOperationUse = vi.fn();
-    const host = createConsoleUseMcpHost({ ...deps, control, onOperationUse, experimentEnabled: () => enabled, language: () => "ko" });
+    const host = createConsoleUseMcpHost({ ...deps, control, onOperationUse, language: () => "ko" });
     const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -42,15 +41,9 @@ describe("fleet-console-use host", () => {
         const json = await response.json();
         return JSON.parse(json.result.content[0].text);
       };
-      // 도구가 실려 있다는 것이 허용이 아니다. 기본은 거부이고, 실험 옵트인과 그 Operation의
-      // 토글이 둘 다 참일 때만 통과한다 — 거부는 어느 쪽이 막았는지와 어디를 켜야 하는지를 싣는다.
+      // 도구가 실려 있다는 것이 허용이 아니다. 기본은 거부이고, 그 Operation의 토글이
+      // 참일 때만 통과한다 — 거부는 어디를 켜야 하는지를 싣는다.
       const args = { requestId: "request-a", operationId: "op-a", text: "Check build" };
-      const offConsole = await call("console_context", {});
-      expect(offConsole).toMatchObject({ error: "console_use_not_authorized", reason: "experiment_disabled", retryable: true, retryAfter: "user_action", remedy: { actor: "user", surface: "settings" } });
-      expect(offConsole.agentInstruction).toContain("Settings > Experiments > Console use");
-      expect(offConsole.message).toContain("설정 > 실험 기능 > 콘솔 사용");
-      enabled = true;
-      // 읽기도 함께 막힌다.
       for (const [name, body] of [["console_context", {}], ["console_operations", {}], ["console_send", args]] as const) {
         expect(await call(name, body)).toMatchObject({ error: "console_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
       }
@@ -70,7 +63,7 @@ describe("fleet-console-use host", () => {
       await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
       expect(executions).toBe(1);
       expect((await call("console_send", args)).id).toBe(receipt.id);
-      const policy = control.automation({ kind: "operation", operationId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
+      control.automation({ kind: "operation", operationId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       time += 300_001;
       await control.tick();
       expect(control.state().automations[0]).toMatchObject({ runs: 1, briefing: { total: 1, unknown: 0 } });
@@ -84,12 +77,6 @@ describe("fleet-console-use host", () => {
       await control.tick();
       expect(control.state().automations.find((a) => a.id === automated.id)?.status).toBe("exhausted");
       const pending = control.automation({ kind: "operation", operationId: "op-a" }, { name: "Later", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
-      enabled = false;
-      time += 300_001;
-      await control.tick();
-      expect(control.state().automations.find((a) => a.id === pending.id)?.runs).toBe(0);
-      expect(() => control.request({ kind: "operation", operationId: "op-a" }, "disabled", { kind: "send", operationId: "op-a", text: "No" })).toThrow("console_control_disabled");
-      enabled = true;
       // 허용을 거두면 이미 예약된 자동 운영도 더는 돌지 않는다 — 도구 호출만 막으면 여기가 우회로가 된다.
       allow(false);
       await vi.waitFor(() => expect(onOperationUse).toHaveBeenLastCalledWith("op-a", false));
@@ -116,12 +103,12 @@ describe("fleet-console-use host", () => {
   });
   it("binds aide execution to the host plugin owner without an Operation and revokes it on unload", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));
-    let enabled = true; let available = true; let time = Date.now(); let executions = 0;
-    const deps = { enabled: () => enabled, directory, now: () => time, operations: () => [], theaters: () => [{ id: "theater-a", name: "Project" }], pluginAvailable: (id: string) => available && id === "scuttlebutt" };
+    let granted = true; let available = true; let time = Date.now(); let executions = 0;
+    const deps = { directory, now: () => time, operations: () => [], theaters: () => [{ id: "theater-a", name: "Project" }], pluginAvailable: (id: string) => available && id === "scuttlebutt" };
     const control = createConsoleControl(deps);
     control.attach({ observe: () => null, execute: async (_input, assertCurrent, settled) => { assertCurrent(); executions++; settled("succeeded"); return { operationId: "new-op", delivery: "confirmed" }; } });
     const host = createConsoleUseMcpHost({ ...deps, control });
-    const aide = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => enabled });
+    const aide = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
     const readOnly = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS });
     const unbound = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
     const other = host.forPlugin("other").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
@@ -149,12 +136,12 @@ describe("fleet-console-use host", () => {
       await aide.dispose();
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
-      const nextChat = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => enabled });
+      const nextChat = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
       expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
-      enabled = false;
+      granted = false;
       expect((await call(nextChat, "console_launch", { ...args, requestId: "disabled" })).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
-      enabled = true; available = false;
+      granted = true; available = false;
       expect((await call(nextChat, "console_launch", { ...args, requestId: "unloaded" })).error).toBe("caller_unavailable");
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ status: "paused", runs: 1, lastError: "scope_unavailable" });

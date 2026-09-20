@@ -108,12 +108,10 @@ async function handleStart(
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   let consoleUse: Awaited<ReturnType<typeof createConsoleUseTools>> | undefined;
   try {
-    // 실험이 켜진 뒤 시작한 부관 세션에 도구를 주입한다. 허용은 호출마다 이 부관의 스위치와 실험을
-    // 함께 다시 읽으므로, 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
+    // Console Use 도구는 항상 주입한다. 허용은 호출마다 이 부관의 grant를 다시 읽으므로,
+    // 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. Computer Use는 실험 옵트인을 유지한다.
     const experiments = ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
-    consoleUse = experiments.consoleControl
-      ? await createConsoleUseTools(ctx, () => snapshots.get(chatId) ?? null, () => granted("consoleUse"))
-      : undefined;
+    consoleUse = await createConsoleUseTools(ctx, () => snapshots.get(chatId) ?? null, () => granted("consoleUse"));
     const computerUse = experiments.computerUse
       ? { computerUse: { enabled: () => granted("computerUse"), language: () => body.locale ?? null }, promptAddendum: COMPUTER_PROMPT_ADDENDUM }
       : undefined;

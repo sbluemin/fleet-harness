@@ -54,8 +54,6 @@ export interface ConsoleUseDeps {
   readonly transport?: McpHttpTransport;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
-  /** 실험 「콘솔 사용」 옵트인. 없으면 꺼진 것으로 읽는다 — 옵트인의 기본은 꺼짐이다. */
-  readonly experimentEnabled?: () => boolean;
   /**
    * 거부 문구의 언어 폴백. Operation이 한 번도 허용된 적 없으면 payload에 언어가 없으므로,
    * 콘솔 설정이 언어를 못박고 있을 때 그것을 쓴다. `auto`는 브라우저가 푸는 값이라 여기서는 null이다.
@@ -67,7 +65,7 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: Array.isArray(value) ? { items: value } : value, isError: false };
 }
 
-type ConsoleUseRefusal = "experiment_disabled" | "operation_not_authorized" | "caller_unresolved";
+type ConsoleUseRefusal = "operation_not_authorized" | "caller_unresolved";
 
 /**
  * 거부는 에러 코드 하나로 끝나지 않는다. 이 응답을 읽는 것은 사람이 아니라 호스트 에이전트이고,
@@ -76,22 +74,16 @@ type ConsoleUseRefusal = "experiment_disabled" | "operation_not_authorized" | "c
  * 옮길 문장이다 — 섞으면 에이전트가 자기 지침을 사용자에게 읽어 준다.
  */
 const REFUSAL_REMEDY = {
-  experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Console use"] },
   operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Console use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
 } as const satisfies Record<ConsoleUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ConsoleUseRefusal, string> = {
-  experiment_disabled: "Console use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Settings > Experiments > Console use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   operation_not_authorized: "This Operation has not been authorized to use the Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Console use in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Operation, so these tools can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the Console.",
 };
 
 const REFUSAL_MESSAGE: Record<ConsoleUseRefusal, Record<"en" | "ko", string>> = {
-  experiment_disabled: {
-    en: "Console use is turned off. Turn on Settings > Experiments > Console use — it applies immediately, with no restart.",
-    ko: "Console 사용이 꺼져 있습니다. 설정 > 실험 기능 > 콘솔 사용을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
-  },
   operation_not_authorized: {
     en: "This Operation is not allowed to use the Console. Turn on Console use in this Operation's ··· menu — it applies immediately, with no restart.",
     ko: "이 Operation에 Console 사용이 허용되지 않았습니다. 이 Operation의 ··· 메뉴에서 「콘솔 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
@@ -142,8 +134,7 @@ function refuse(reason: ConsoleUseRefusal, operationId: string | null, language:
 }
 
 /**
- * 호출자 Operation 단위 판정. 실험 플래그와 그 Operation의 토글이 **둘 다** 참일 때만 통과하고,
- * 어느 쪽이 막았는지를 구분해 돌려준다 — 사용자가 어디를 켜야 하는지가 둘에서 다르기 때문이다.
+ * 호출자 Operation 단위 판정. 그 Operation의 콘솔 사용 토글이 켜져 있어야 통과한다.
  * 신원이 풀리지 않으면 거부한다(fail-closed).
  */
 function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
@@ -154,7 +145,6 @@ function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
   if (!operation) return refuse("caller_unresolved", null, fallback);
   const flag = readConsoleUseFlag(operation.payload);
   const language = flag?.language ?? fallback;
-  if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", operation.id, language);
   if (!flag) return refuse("operation_not_authorized", operation.id, language);
   return null;
 }
@@ -253,7 +243,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         theaters: theaters(),
         using: readActions().using?.() ?? { console: [], computer: null, browser: [] },
         focus: "unavailable",
-        capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "Experiments > Console use and, for an Operation caller, that Operation's own Console use toggle must both be on. Both being on is blanket authorization; no individual approvals.", enabled: control?.enabled() ?? false },
+        capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "For an Operation caller, that Operation's own Console use toggle must be on. That toggle is blanket authorization; no individual approvals.", enabled: !!control },
         coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length },
         pausedAutomations: callerId && control ? control.listAutomations(callerId).filter((a) => a.status === "paused").length : 0,
         semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
@@ -466,7 +456,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   // ---------------------------------------------------------------------------------------------
   // Quick Launch
   // ---------------------------------------------------------------------------------------------
-  specs.push(define("console_launch", "Open Quick Launch and start a new Operation in a Theater: prompt, optional model/effort/view, optional groupId (same Theater) and title so it is born organized. The person sees the sheet fill and start, and the new caption carries your name. Requires Experiments > Console use opt-in and the caller Operation's own toggle. Returns a receipt, NOT completion. Reuse requestId after timeout.", z.object({ requestId: ids, theaterId: ids, text: z.string().min(1).max(32000), model: ids.optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), groupId: ids.optional(), title: title.optional() }).strict(), (args, ctx) => {
+  specs.push(define("console_launch", "Open Quick Launch and start a new Operation in a Theater: prompt, optional model/effort/view, optional groupId (same Theater) and title so it is born organized. The person sees the sheet fill and start, and the new caption carries your name. Requires the caller Operation's own Console use toggle. Returns a receipt, NOT completion. Reuse requestId after timeout.", z.object({ requestId: ids, theaterId: ids, text: z.string().min(1).max(32000), model: ids.optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), groupId: ids.optional(), title: title.optional() }).strict(), (args, ctx) => {
     const me = requireCaller(ctx);
     if (args.groupId && !(readActions().groups?.(args.theaterId) ?? []).some((g) => g.id === args.groupId)) throw new ConsoleControlError("unknown_group");
     const { requestId, ...input } = args;

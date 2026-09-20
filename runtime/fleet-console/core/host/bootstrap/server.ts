@@ -646,7 +646,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), enabled: () => readExperimentSettings(consoleSettingsStore).consoleControl, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
   const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
@@ -726,7 +726,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const consoleOperations: string[] = [];
     for (const [id] of consoleUseActivity) {
       if (!current.some((operation) => operation.id === id)) continue;
-      if (experiments.consoleControl && current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+      if (current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
@@ -750,7 +750,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
-    experimentEnabled: () => readExperimentSettings(consoleSettingsStore).consoleControl,
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -1188,7 +1187,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const consoleOperations: string[] = [];
     for (const [id] of consoleUseActivity) {
       if (!current.some((operation) => operation.id === id)) continue;
-      if (experiments.consoleControl && current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+      if (current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;

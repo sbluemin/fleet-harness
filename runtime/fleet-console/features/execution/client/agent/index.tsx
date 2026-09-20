@@ -872,7 +872,7 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
   const computerUseEnabled = readComputerUseEnabled(payload);
   const rows = [
     experiments.sessionWatch === true ? { id: "session-watch" as const, kind: "watch" as const, checked: watchEnabled, glyph: <CaptionWatchGlyph />, name: t("terminal.experiments.menuWatch"), hint: watchHint, busy: watchEnabled && review?.phase === "started" } : null,
-    experiments.consoleControl === true ? { id: "console-use" as const, kind: "console" as const, checked: consoleUseEnabled, glyph: <CaptionConsoleUseGlyph />, name: t("terminal.experiments.menuConsoleUse"), hint: t(consoleUseEnabled ? "terminal.experiments.menuConsoleUseOn" : "terminal.experiments.menuConsoleUseOff"), busy: false } : null,
+    { id: "console-use" as const, kind: "console" as const, checked: consoleUseEnabled, glyph: <CaptionConsoleUseGlyph />, name: t("terminal.experiments.menuConsoleUse"), hint: t(consoleUseEnabled ? "terminal.experiments.menuConsoleUseOn" : "terminal.experiments.menuConsoleUseOff"), busy: false },
     experiments.computerUse === true ? { id: "computer-use" as const, kind: "computer" as const, checked: computerUseEnabled, glyph: <CaptionComputerUseGlyph />, name: t("terminal.experiments.menuComputerUse"), hint: t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff"), busy: false } : null,
   ].filter((row) => row !== null);
   if (rows.length === 0) return null;

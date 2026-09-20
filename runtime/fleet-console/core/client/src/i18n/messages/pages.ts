@@ -1,7 +1,4 @@
 export const pagesEn = {
-  "settings.experiments.consoleControl.title": "Console use",
-  "settings.experiments.consoleControl.help": "Let aides and agents manage Operations without asking each time. Usage may incur costs; agents also need per-Operation permission.",
-
   // settings
   "settings.title": "Settings",
   "settings.saving": "Saving…",
@@ -492,9 +489,6 @@ export const pagesEn = {
 } as const;
 
 export const pagesKo: Record<keyof typeof pagesEn, string> = {
-  "settings.experiments.consoleControl.title": "콘솔 사용",
-  "settings.experiments.consoleControl.help": "부관과 에이전트가 매번 확인 없이 Operation을 관리합니다. 사용량이 소비될 수 있으며, 에이전트는 Operation별 허용도 필요합니다.",
-
   "settings.title": "설정",
   "settings.saving": "저장 중…",
   "settings.group.setup": "환경",
