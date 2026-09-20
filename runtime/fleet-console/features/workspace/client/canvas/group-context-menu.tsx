@@ -80,16 +80,18 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onClose);
+    window.addEventListener("blur", onClose);
     window.addEventListener("scroll", onClose, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onClose);
+      window.removeEventListener("blur", onClose);
       window.removeEventListener("scroll", onClose, true);
     };
   }, [onClose]);
 
   return createPortal(
-    <div className="group-context-menu-overlay" data-keep-operation-active role="presentation" onPointerDown={onClose}>
+    <div className="group-context-menu-overlay" data-native-browser-transparent data-keep-operation-active role="presentation" onPointerDown={onClose}>
       <div
         ref={cardRef}
         className="group-context-menu-card"

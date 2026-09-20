@@ -868,7 +868,7 @@ export function OperationsSideBar({
   const closeActiveContextMenu = useCallback(() => {
     const returnFocus = activeContextMenu?.returnFocus ?? null;
     setActiveContextMenu(null);
-    returnFocus?.focus();
+    if (document.hasFocus()) returnFocus?.focus();
   }, [activeContextMenu]);
   contextMenuReturnFocusRef.current = activeContextMenu?.returnFocus ?? null;
   useContextMenuKeyboard({
@@ -1852,10 +1852,12 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onClose);
+    window.addEventListener("blur", onClose);
     window.addEventListener("scroll", onClose, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onClose);
+      window.removeEventListener("blur", onClose);
       window.removeEventListener("scroll", onClose, true);
     };
   }, [onClose]);
@@ -1867,7 +1869,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
   };
 
   return createPortal(
-    <div className="group-context-menu-overlay" role="presentation" onPointerDown={onClose}>
+    <div className="group-context-menu-overlay" data-native-browser-transparent role="presentation" onPointerDown={onClose}>
       <div
         ref={menuRef}
         className="theater-menu side-bar-theater-menu"

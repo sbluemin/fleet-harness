@@ -643,7 +643,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
   // 이중 호출에서 focus()가 두 번 실행된다.
   const closeOperationMenu = useCallback(() => {
-    operationMenuReturnFocusRef.current?.focus();
+    if (document.hasFocus()) operationMenuReturnFocusRef.current?.focus();
     setOperationMenu(null);
   }, []);
   // 주인 패널이 focus layer 뒤로 숨었을 때의 회수. 보이지 않는 패널의 메뉴가 조작 가능한 채로
