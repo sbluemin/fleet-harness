@@ -141,8 +141,8 @@ interface Row {
   readonly surface: "agent" | "workflow";
   /** 호스트가 붙인 짧은 설명. */
   description: string;
-  /** 호스트가 부른 이름. 생략했으면 `inherit`. */
-  asked: string;
+  /** 호스트가 부른 이름. 생략했으면 `inherit`. 부른 이름 자체가 없는 실행에서는 비운다. */
+  asked?: string;
   /** 실제로 실린 정체성의 사람이 읽는 이름. */
   carried?: string;
   /** 좌석 배정 근거 한 줄. */
@@ -251,8 +251,8 @@ export const register: Register = (on) => {
     }
   });
 
-  // Workflow는 스테이지를 자기 안에서 돌린다. 접수증이 돌아온 순간을 한 줄로 남기고,
-  // 스테이지 각각은 아래 agent.spawn이 자기 행으로 받는다.
+  // Workflow는 스테이지를 자기 안에서 돌리고, 그 스테이지는 agent.spawn을 지나지 않는다.
+  // 여기서는 판을 띄워 두기만 하고, 스테이지 각각은 turn.step이 관측 행으로 받는다.
   on("tool.call", { tool: "Workflow" }, async ($, e, next) => {
     await openPane($);
     redraw($);
@@ -260,7 +260,8 @@ export const register: Register = (on) => {
   });
 
   /**
-   * 라우팅이 실제로 일어나는 자리. Agent 도구와 Workflow 스테이지가 모두 이 문을 지난다.
+   * 라우팅이 실제로 일어나는 유일한 자리. Agent 도구가 지나고, Workflow 스테이지는 지나지
+   * 않는다 — 그쪽은 내장 workflow-subagent로 돌아 재배정할 수 없다.
    * 어느 분기에서도 반드시 next로 흘려보낸다 — 여기서 답해 버리면 subagent가 시작되지 않는다.
    */
   on("agent.spawn", async ($, e, next) => {
@@ -269,7 +270,7 @@ export const register: Register = (on) => {
       addRow({
         key: `${e.tool_use_id}:${ledger.length}`,
         surface: "workflow",
-        description: e.description || "workflow stage",
+        description: e.description || "subagent",
         asked: e.subagentType || "inherit",
         state: "asked",
         startedAt: Date.now(),
@@ -341,10 +342,11 @@ export const register: Register = (on) => {
     const row = addRow({
       key: `turn:${agentId}`,
       surface: "workflow",
-      description: "workflow stage",
-      asked: "not routed by Fleet",
+      // 워크플로우 스테이지가 대부분이지만 엔진 자신의 fork(압축·메모리)도 같은 모양으로
+      // 온다. 구별할 방법이 없으므로 아는 것만 적는다 — 이 루프의 주소.
+      description: `run ${agentId.slice(0, 6)}`,
       carried: modelLabel(e.model, e.effort),
-      because: "dispatched outside agent.spawn, so no seat applied",
+      because: "chosen by its caller, not by a Fleet seat",
       state: "running",
       startedAt: Date.now(),
       agentId,
@@ -566,7 +568,9 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
           </Box>
           {row.because === undefined ? null : (
             <Box>
-              <Text dimColor>{`  ${clip(`${row.asked} → ${row.because}`, width - 4)}`}</Text>
+              <Text dimColor>
+                {`  ${clip(row.asked === undefined ? row.because : `${row.asked} → ${row.because}`, width - 4)}`}
+              </Text>
             </Box>
           )}
         </Box>
