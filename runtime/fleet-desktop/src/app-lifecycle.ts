@@ -1,18 +1,20 @@
-import type { App, BrowserWindow } from "electron";
+import type { App } from "electron";
 
-export interface DesktopLifecycle { attachWindow(window: BrowserWindow): void; start(): Promise<void>; show(): Promise<BrowserWindow>; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
+import type { DesktopShellWindow } from "./shell-window.js";
 
-export function createDesktopLifecycle(app: App, createWindow: () => Promise<BrowserWindow>, stopSidecar: () => Promise<void>): DesktopLifecycle {
-  let window: BrowserWindow | null = null;
-  let windowCreation: Promise<BrowserWindow> | null = null;
+export interface DesktopLifecycle { attachWindow(window: DesktopShellWindow): void; start(): Promise<void>; show(): Promise<DesktopShellWindow>; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
+
+export function createDesktopLifecycle(app: App, createWindow: () => Promise<DesktopShellWindow>, stopSidecar: () => Promise<void>): DesktopLifecycle {
+  let window: DesktopShellWindow | null = null;
+  let windowCreation: Promise<DesktopShellWindow> | null = null;
   let quitPreparation: Promise<void> | null = null;
-  const closeGuardAttached = new WeakSet<BrowserWindow>();
+  const closeGuardAttached = new WeakSet<DesktopShellWindow>();
 
-  const attachWindow = (created: BrowserWindow): void => {
+  const attachWindow = (created: DesktopShellWindow): void => {
     window = created;
     if (closeGuardAttached.has(created)) return;
     closeGuardAttached.add(created);
-    created.on("close", (event) => {
+    created.base.on("close", (event) => {
       if (!quitPreparation && process.platform !== "darwin") {
         event.preventDefault();
         created.hide();
@@ -20,7 +22,7 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
     });
   };
 
-  const ensureWindow = (): Promise<BrowserWindow> => {
+  const ensureWindow = (): Promise<DesktopShellWindow> => {
     if (window && !window.isDestroyed()) return Promise.resolve(window);
     if (!windowCreation) {
       windowCreation = createWindow().then((created) => {
@@ -30,7 +32,7 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
     }
     return windowCreation;
   };
-  const show = async (): Promise<BrowserWindow> => {
+  const show = async (): Promise<DesktopShellWindow> => {
     if (window && !window.isDestroyed()) {
       revealWindow(window);
       return window;
@@ -69,7 +71,7 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Bro
   return { attachWindow, start, show, prepareToQuit, quit };
 }
 
-function revealWindow(window: BrowserWindow): void {
+function revealWindow(window: DesktopShellWindow): void {
   if (window.isMinimized?.()) window.restore();
   window.show();
   window.focus();

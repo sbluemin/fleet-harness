@@ -553,6 +553,8 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     op.activeTabId = tab.id;
     if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 뷰가 사라지는 중 */ } }
+    const size = this.paneOfTab(tab);
+    if (size) this.applyNativePane(op, size);
     this.emitState(op);
   }
 
@@ -736,18 +738,10 @@ export class BrowserService {
     const p = event.params as Record<string, any>;
     switch (event.method) {
       case "Fleet.viewResized": {
-        // 셸이 놓은 네이티브 뷰 실측. 에뮬레이션 중에도 pane 은 갱신하고, 반응형일 때만 논리 뷰포트에 반영한다.
+        // 요청 탭의 실측만 본다. 다른 탭·parking 창 크기 이벤트로 활성 pane 을 덮지 않는다.
+        if (tab.id !== op.activeTabId) return;
         const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
-        const paneSame = op.pane !== null && width === op.pane.width && height === op.pane.height && scale === op.pane.scale;
-        op.pane = { width, height, scale };
-        if (!op.viewportFollowsPane) {
-          if (scale !== op.viewport.scale) { op.viewport = { ...op.viewport, scale }; this.emitState(op); }
-          else if (!paneSame) this.emitState(op);
-          return;
-        }
-        if (width === op.viewport.width && height === op.viewport.height && scale === op.viewport.scale) return;
-        op.viewport = { ...op.viewport, width, height, scale };
-        this.emitState(op);
+        this.applyNativePane(op, { width, height, scale });
         return;
       }
       case "Target.detachedFromTarget": {
@@ -822,16 +816,35 @@ export class BrowserService {
 
   // ---------- 뷰포트 ----------
 
-  /** 네이티브 pane 실측 — 셸 이벤트 또는 활성 뷰에 이미 기록된 크기. */
-  private paneOf(op: OperationBrowser): { width: number; height: number; scale: number } | null {
-    if (op.pane) return op.pane;
-    if (!op.activeTabId) return null;
-    const tab = op.tabs.get(op.activeTabId);
-    if (!tab) return null;
+  /** 요청한 탭 뷰의 실제 크기. 활성 탭 pane 과 섞지 않는다. */
+  private paneOfTab(tab: Tab): { width: number; height: number; scale: number } | null {
     const size = this.deps.desktop.viewSize(tab.targetId);
-    if (!size) return null;
-    op.pane = { width: size.width, height: size.height, scale: size.scale };
-    return op.pane;
+    if (!size || size.width < 1 || size.height < 1) return null;
+    return size;
+  }
+
+  /** 활성 탭의 네이티브 실측 — 논리 뷰포트 복원(responsive)용. 캡처 clip 에는 쓰지 않는다. */
+  private paneOf(op: OperationBrowser): { width: number; height: number; scale: number } | null {
+    const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
+    if (active) {
+      const size = this.paneOfTab(active);
+      if (size) { op.pane = size; return size; }
+    }
+    return op.pane && op.pane.width >= 1 && op.pane.height >= 1 ? op.pane : null;
+  }
+
+  /** 활성 탭의 실측만 논리 pane/뷰포트에 반영한다. */
+  private applyNativePane(op: OperationBrowser, size: { width: number; height: number; scale: number }): void {
+    const paneSame = op.pane !== null && size.width === op.pane.width && size.height === op.pane.height && size.scale === op.pane.scale;
+    op.pane = size;
+    if (!op.viewportFollowsPane) {
+      if (size.scale !== op.viewport.scale) { op.viewport = { ...op.viewport, scale: size.scale }; this.emitState(op); }
+      else if (!paneSame) this.emitState(op);
+      return;
+    }
+    if (size.width === op.viewport.width && size.height === op.viewport.height && size.scale === op.viewport.scale) return;
+    op.viewport = { ...op.viewport, width: size.width, height: size.height, scale: size.scale };
+    this.emitState(op);
   }
 
   /** 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다. */
@@ -1049,7 +1062,7 @@ export class BrowserService {
     const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
     const layout = await this.layoutViewport(client, tab);
     if (!layout) throw new BrowserPolicyError("browser_capture_not_ready", "Page geometry unavailable.");
-    return `${tab.id}:${layout.width}x${layout.height}:${this.paneOf(op)?.scale ?? op.viewport.scale}`;
+    return `${tab.id}:${layout.width}x${layout.height}:${this.paneOfTab(tab)?.scale ?? op.viewport.scale}`;
   }
 
   async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
@@ -1057,37 +1070,43 @@ export class BrowserService {
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
-    // 초기 native pane 크기/배율 통지가 오기 전의 추정값으로 캡처하지 않는다.
+    // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
+    // cssLayoutViewport.clientWidth 는 스크롤바를 빼므로 native pane 과 다를 수 있다 — 같기를 기다리지 않는다.
+    // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
+    let pane: { width: number; height: number; scale: number } | null = null;
     let previous = "";
     let ready = false;
     for (let attempt = 0; attempt < 20; attempt++) {
       this.throwIfAborted(options.signal);
-      const pane = this.paneOf(op);
+      pane = this.paneOfTab(tab);
       layout = await this.layoutViewport(client, tab);
       const geometry = JSON.stringify([pane, layout]);
-      if (pane && pane.width > 0 && pane.height > 0 && layout && geometry === previous) { ready = true; op.viewport = { ...op.viewport, scale: pane.scale }; break; }
+      if (pane && pane.width >= 1 && pane.height >= 1 && layout && geometry === previous) { ready = true; op.viewport = { ...op.viewport, scale: pane.scale }; break; }
       previous = geometry;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    if (!ready || !layout) throw new BrowserPolicyError("browser_capture_not_ready", "Native pane geometry is not ready. Observe the page and request capture again; do not retry input.");
+    if (!ready || !layout || !pane) throw new BrowserPolicyError("browser_capture_not_ready", "Native pane geometry is not ready. Observe the page and request capture again; do not retry input.");
     // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
     const storedBeforeHeal = { width: op.viewport.width, height: op.viewport.height };
     const staleViewport = !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
-    if (op.viewportFollowsPane && layout && (layout.width !== op.viewport.width || layout.height !== op.viewport.height)) {
+    if (op.viewportFollowsPane && tab.id === op.activeTabId && layout && (layout.width !== op.viewport.width || layout.height !== op.viewport.height)) {
       op.viewport = { ...op.viewport, width: layout.width, height: layout.height };
       this.emitState(op);
     }
-    // 캡처는 실제 페이지 layout(또는 명시 clip)을 쓴다 — 저장된 논리 크기와 어긋나도 잘리지 않게.
-    const clip = options.clip ?? { x: 0, y: 0, width: layout?.width ?? op.viewport.width, height: layout?.height ?? op.viewport.height };
+    // 캡처 clip 은 요청 탭의 layout 만 쓴다 — 다른 활성 탭 pane 과 섞지 않는다.
+    const clip = options.clip ?? { x: 0, y: 0, width: layout.width, height: layout.height };
     this.throwIfAborted(options.signal);
-    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / op.viewport.scale }, captureBeyondViewport: false }, tab.sessionId);
+    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
     const pixels = capturePixels(result.data);
     const after = await this.layoutViewport(client, tab);
-    if (!after || after.width !== layout.width || after.height !== layout.height) throw new BrowserPolicyError("browser_capture_changed", "Viewport changed during capture; capture again before coordinate input.");
+    const paneAfter = this.paneOfTab(tab);
+    if (!after || after.width !== layout.width || after.height !== layout.height || !paneAfter || paneAfter.width !== pane.width || paneAfter.height !== pane.height || paneAfter.scale !== pane.scale) {
+      throw new BrowserPolicyError("browser_capture_changed", "Viewport changed during capture; capture again before coordinate input.");
+    }
     return {
       pixels,
-      geometryVersion: `${tab.id}:${layout.width}x${layout.height}:${op.viewport.scale}`,
+      geometryVersion: `${tab.id}:${layout.width}x${layout.height}:${pane.scale}`,
       data: result.data,
       mimeType: format === "png" ? "image/png" : "image/jpeg",
       width: clip.width,

@@ -123,7 +123,14 @@ export const DESKTOP_BROWSER_EVENT = "desktop:browser";
 
 export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
 
-/** 셸이 띄워야 하는 뷰 하나. `bounds` 가 없거나 `visible` 이 false 면 만들어 두되 보이지 않는다. */
+/**
+ * 셸이 띄워야 하는 뷰 하나.
+ *
+ * `visible` 은 **사용자 presentation** 뿐이다 — Companion 패널에 이 탭을 그릴지. 셸은 macOS CDP 를 위해
+ * 네이티브 뷰를 숨기거나 0×0 으로 두지 않고, 보이지 않을 때는 Console 뒤에 parking 한 뒤 실제 DIP 를
+ * `sizes` 로 올린다. `bounds` 는 Companion 자리(placement)이지 실행 뷰포트가 아니다. Companion 이 닫혀
+ * `bounds` 가 없어도 뷰는 살아 있고, 실행 크기는 그 뷰의 `sizes` relay 가 말한다.
+ */
 export interface DesktopBrowserView {
   readonly id: string;
   readonly operationId: string;
@@ -138,8 +145,9 @@ export interface DesktopBrowserView {
    * 그러지 않으면 스냅샷 하나가 통째로 거부되어 새 Desktop 이 옛 Console 에서 탭을 열지 못한다.
    */
   readonly profile?: string | null;
+  /** Companion 에 이 탭을 그릴지. 네이티브 `setVisible` 이 아니다. */
   readonly visible: boolean;
-  /** 콘솔 창의 CSS px 좌표. 셸이 창의 줌 배율을 곱해 DIP 로 놓는다. */
+  /** Companion 패널의 CSS px 자리. `null` 이면 셸이 parking 한다. 실행 크기와 섞지 않는다. */
   readonly bounds: DesktopBrowserBounds | null;
   /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
   readonly url: string;
@@ -183,7 +191,10 @@ export interface DesktopBrowserRelay {
   readonly hello?: { readonly product: string; readonly userAgent: string };
   readonly attached?: readonly string[];
   readonly detached?: readonly string[];
-  /** 뷰의 실제 크기(DIP)와 화면 배율. bounds 를 놓을 때마다 알린다. */
+  /**
+   * 뷰 **하나**의 실제 크기(DIP)와 화면 배율. parking·presented 모두, 생성 직후와 bounds 가 바뀔 때마다
+   * 올린다. 다른 탭·활성 패널 자리와 섞지 않는다 — 캡처·입력은 요청한 `viewId` 의 이 값만 본다.
+   */
   readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
   readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
   readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];

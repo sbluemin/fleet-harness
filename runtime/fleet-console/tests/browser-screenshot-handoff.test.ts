@@ -123,8 +123,10 @@ type StubOptions = {
 function createStubDesktop(options: StubOptions = {}) {
   const listeners = new Set<CdpListener>();
   const sizes = new Map<string, { width: number; height: number; scale: number }>();
-  const viewId = "view-stub";
-  let layout = options.layout ?? { width: 1386, height: 1163 };
+  const layouts = new Map<string, { width: number; height: number }>();
+  let seq = 0;
+  let lastViewId = "view-stub";
+  const defaultLayout = options.layout ?? { width: 1386, height: 1163 };
   const desktop = {
     currentHost: "local" as string | null,
     get connected() { return true; },
@@ -142,22 +144,26 @@ function createStubDesktop(options: StubOptions = {}) {
     publish: () => undefined,
     on(listener: CdpListener) { listeners.add(listener); return () => listeners.delete(listener); },
     emit(event: CdpEvent) { for (const listener of listeners) listener(event); },
-    setPaneSize(size: { width: number; height: number; scale?: number }) {
+    setPaneSize(size: { width: number; height: number; scale?: number }, id = lastViewId) {
       const next = { width: size.width, height: size.height, scale: size.scale ?? 1 };
-      sizes.set(viewId, next);
-      desktop.emit({ method: "Fleet.viewResized", params: next, sessionId: viewId });
+      sizes.set(id, next);
+      desktop.emit({ method: "Fleet.viewResized", params: next, sessionId: id });
     },
-    setLayout(next: { width: number; height: number }) { layout = next; },
+    setLayout(next: { width: number; height: number }, id = lastViewId) { layouts.set(id, next); },
     async send<T = Record<string, unknown>>(method: string, _params: Record<string, unknown> = {}, _sessionId?: string): Promise<T> {
       switch (method) {
         case "Browser.getVersion":
           return { product: "Chrome/150.0.0.0", userAgent: "Mozilla/5.0 Chrome/150.0.0.0", protocolVersion: "1.3" } as T;
         case "Target.createBrowserContext":
           return { browserContextId: "ctx-stub" } as T;
-        case "Target.createTarget":
-          return { targetId: viewId } as T;
+        case "Target.createTarget": {
+          lastViewId = `view-stub-${++seq}`;
+          const initial = options.layout ?? { width: 1280, height: 800 };
+          sizes.set(lastViewId, { width: initial.width, height: initial.height, scale: 1 });
+          return { targetId: lastViewId } as T;
+        }
         case "Target.attachToTarget":
-          return { sessionId: viewId } as T;
+          return { sessionId: String(_params.targetId ?? lastViewId) } as T;
         case "Target.activateTarget":
         case "Target.closeTarget":
         case "Target.disposeBrowserContext":
@@ -172,8 +178,12 @@ function createStubDesktop(options: StubOptions = {}) {
         case "Emulation.setDeviceMetricsOverride":
         case "Emulation.setEmulatedMedia":
           return {} as T;
-        case "Page.getLayoutMetrics":
-          return { cssLayoutViewport: { clientWidth: layout.width, clientHeight: layout.height } } as T;
+        case "Page.getLayoutMetrics": {
+          const id = String(_sessionId ?? lastViewId);
+          const size = sizes.get(id);
+          const box = layouts.get(id) ?? (size ? { width: size.width, height: size.height } : defaultLayout);
+          return { cssLayoutViewport: { clientWidth: box.width, clientHeight: box.height } } as T;
+        }
         case "Page.captureScreenshot":
           return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=" } as T;
         case "DOM.resolveNode":
@@ -308,6 +318,39 @@ describe("operation browser service contracts", () => {
       expect(shot.width).toBe(1386);
       expect(shot.height).toBe(1163);
       expect(shot.layout).toEqual({ width: 1386, height: 1163 });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("captures from a parked tab's own size without Companion placement or the active pane", async () => {
+    const desktop = createStubDesktop({ layout: { width: 1280, height: 800 } });
+    const service = createService(desktop);
+    try {
+      const first = await service.createTab(OPERATION, null, "agent");
+      desktop.setPaneSize({ width: 800, height: 600, scale: 1 });
+      const second = await service.createTab(OPERATION, null, "agent");
+      desktop.setPaneSize({ width: 1280, height: 800, scale: 1 });
+      await service.selectTab(OPERATION, first.id);
+
+      const parked = await service.screenshot(OPERATION, { tabId: second.id, format: "jpeg" });
+      expect(parked.layout).toEqual({ width: 1280, height: 800 });
+      expect(parked.width).toBe(1280);
+      expect(parked.height).toBe(800);
+
+      const shown = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
+      expect(shown.layout).toEqual({ width: 800, height: 600 });
+      expect(shown.width).toBe(800);
+      expect(shown.height).toBe(600);
+
+      // overflow: cssLayoutViewport.clientWidth 가 native pane 보다 좁다(스크롤바). 캡처는 layout clip 으로 성공해야 한다.
+      const firstTarget = (service as unknown as { operations: Map<string, { tabs: Map<string, { targetId: string }> }> }).operations.get(OPERATION)!.tabs.get(first.id)!.targetId;
+      desktop.setPaneSize({ width: 640, height: 800, scale: 1 }, firstTarget);
+      desktop.setLayout({ width: 625, height: 800 }, firstTarget);
+      const overflow = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
+      expect(overflow.layout).toEqual({ width: 625, height: 800 });
+      expect(overflow.width).toBe(625);
+      expect(overflow.height).toBe(800);
     } finally {
       await service.dispose();
     }

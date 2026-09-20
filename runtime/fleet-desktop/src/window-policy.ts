@@ -1,6 +1,7 @@
-import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from "electron";
+import type { BaseWindow, BaseWindowConstructorOptions, WebContents, WebContentsView } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
+import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
 
 export interface SecureWindowOptions {
   readonly iconPath: string;
@@ -47,21 +48,38 @@ export function trafficLightPosition(zoomFactor: number): { x: number; y: number
   return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((COMMAND_BAND_HEIGHT * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
 }
 
-export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, options: SecureWindowOptions): BrowserWindow {
-  const windowOptions: BrowserWindowConstructorOptions = {
+const SECURE_RENDERER_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } as const;
+
+function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConstructorOptions {
+  return {
     show: false,
     title: DESKTOP_WINDOW_TITLE,
     icon: options.iconPath,
     backgroundColor: CANVAS_FAR_BACKGROUND_COLOR,
     minWidth: 900,
     minHeight: 560,
-    ...(options.platform !== "darwin" ? { autoHideMenuBar: false } : {}),
     // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 신호등 계약과 함께 변경 시 양쪽을 동기화한다.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1) } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   };
-  return new BrowserWindowCtor(windowOptions);
+}
+
+/**
+ * BaseWindow + 명시적 Console WebContentsView.
+ * BrowserWindow 의 webContents 는 다른 View 로 adopt 할 수 없으므로 Console 은 처음부터 View 로 만든다.
+ */
+export function createSecureShellWindow(
+  BaseWindowCtor: typeof BaseWindow,
+  WebContentsViewCtor: typeof WebContentsView,
+  options: SecureWindowOptions,
+): DesktopShellWindow {
+  const base = new BaseWindowCtor(secureShellWindowOptions(options));
+  const consoleView = new WebContentsViewCtor({
+    webPreferences: { ...SECURE_RENDERER_PREFERENCES, backgroundThrottling: false },
+  });
+  consoleView.setBackgroundColor(CANVAS_FAR_BACKGROUND_COLOR);
+  const stack = createDesktopViewStack(base, consoleView);
+  return createDesktopShellWindow(base, consoleView, stack);
 }
 
 export function applyWindowPolicy(contents: WebContents, openExternal: (url: string) => Promise<void>): WindowPolicy;
