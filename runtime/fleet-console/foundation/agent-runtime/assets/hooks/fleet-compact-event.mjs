@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Relay Claude Code's compact lifecycle to the Fleet AI Gateway that launched this process.
-// The token and base URL exist only on Fleet gateway sessions; every other Claude session is a no-op.
 
 const baseUrl = process.env.FLEET_COMPACT_BASE_URL;
 const token = process.env.FLEET_COMPACT_HOOK_TOKEN;
@@ -22,6 +20,4 @@ try {
   });
   await response.body?.cancel();
 } catch {
-  // Compaction must remain available when the host is shutting down. The gateway's
-  // dedicated plaintext fallback applies only after the event was recorded.
 }

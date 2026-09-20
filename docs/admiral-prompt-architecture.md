@@ -96,6 +96,21 @@ constrains the destination and the host never has to name a seat. Effort has no 
 `turn.step` applies it. Registering one identity per model, the earlier design, also fixed the
 roster at session start, so enabling a model did not take effect until relaunch.
 
+**Engine facts the mod is built around.** Each was measured against the running
+harness, and each one dictates a shape that reads as arbitrary without it. A `turn.step`
+hook must be an async generator; registered as a plain function the whole module fails to
+load. A model carried by `agent.spawn` lasts the run, but one applied in `turn.step` does
+not — the engine re-resolves every step to the session model (four steps all showed the
+parent in `saw=`, with only `usage.model` rewritten), which is why the mod pins its
+decision per `agentId` and re-applies it each step rather than deciding again. An identity
+hidden with `agent.offer` drops out of the dispatchable set and its spawn is refused
+(observed immediately after `subagentType rewritten by a hook`), so the one identity is
+registered visibly. And the pane the ledger draws is placed by the engine at its own
+thresholds — an unrequested open needs 144 columns, one the user asked for needs 110, and
+the judgement is remade on every open, so the mod re-opens against `isPlaced` instead of a
+module flag. The status row is prefixed by the engine with the plugin's own name, so the
+text the mod hands it carries none.
+
 **The ledger.** The mod records what was dispatched and what carried it, because otherwise the
 only way to ask whether a run inherited the session model is to ask the model. `agent.spawn`
 records each Agent-tool dispatch and `$.ui.notice` puts that under the dispatch's own row. A
