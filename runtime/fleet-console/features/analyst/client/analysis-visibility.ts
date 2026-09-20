@@ -11,8 +11,9 @@ export function isCompanionPanelVisible(context: OperationRenderContext, compani
 
 export function closeAnalystCompanionPanels(context: OperationRenderContext): void {
   if (!context.companionsOpen || !context.onSetCompanionPanelVisible) return;
+  // Analyst만 걷는다. 함께 열어 둔 브라우저까지 내리는 것은 이 함수의 약속이 아니고,
+  // 마지막 패널이었다면 호스트가 companion 배치를 알아서 벗어난다.
   for (const id of ANALYST_COMPANION_IDS) {
     if (isCompanionPanelVisible(context, id)) context.onSetCompanionPanelVisible(id, false);
   }
-  context.onRequestCompanions?.(false);
 }

@@ -5044,6 +5044,67 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
 }
 
+/* Companion 배치의 분할선 — 슬롯 사이 8px 틈이 곧 손잡이다.
+   쉬고 있을 때는 짧은 눈금만 남고, 잡히는 순간 띠 전체로 자란다: 틈을 상시 선으로 그리면
+   나란히 선 패널 사이에 없던 경계가 하나 더 생긴다. 확대 표면 분할선과 같은 문법이다. */
+.canvas-companion-divider {
+  position: absolute;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.canvas-companion-divider-grip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  inset-block: 24%;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+  transition: background var(--duration-fast) var(--ease-glide),
+    inset-block var(--duration-base) var(--ease-spring);
+}
+
+.canvas-companion-divider:hover > .canvas-companion-divider-grip,
+.canvas-companion-divider.is-dragging > .canvas-companion-divider-grip,
+.canvas-companion-divider:focus-visible > .canvas-companion-divider-grip {
+  inset-block: 4%;
+  background: var(--brass);
+  box-shadow: var(--brass-halo);
+}
+
+.canvas-companion-divider:focus-visible {
+  outline: none;
+}
+
+/* 초점 링은 8px 틈에 들어가지 않는다 — 눈금을 감싸는 캡슐이 그 자리를 대신한다. */
+.canvas-companion-divider:focus-visible::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  inset-block: 2%;
+  width: 12px;
+  border: 1px solid color-mix(in oklab, var(--brass) 55%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+/* 끄는 동안 본문이 글자를 집지 않게 한다 — 터미널 위를 지나는 제스처가 선택으로 새면
+   손을 떼는 순간 화면의 절반이 파랗게 남는다. */
+body[data-companion-resizing="true"] {
+  user-select: none;
+  cursor: col-resize;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-companion-divider-grip {
+    transition: none;
+  }
+}
+
 .canvas-companion-caption-dot {
   width: 6px;
   height: 6px;

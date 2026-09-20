@@ -76,6 +76,7 @@ export const canvasEn = {
   "canvas.frame.closeArmed": "Close?",
 
   "canvas.companion.aria": "Companion {title}",
+  "canvas.companion.dividerAria": "Resize panels",
   "canvas.plugin.operationFailed": "Plugin operation failed to render.",
   "canvas.plugin.companionFailed": "Plugin companion failed to render.",
 
@@ -303,6 +304,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.frame.closeArmed": "닫을까요?",
 
   "canvas.companion.aria": "Companion {title}",
+  "canvas.companion.dividerAria": "패널 폭 조절",
   "canvas.plugin.operationFailed": "Plugin Operation을 렌더하지 못했습니다.",
   "canvas.plugin.companionFailed": "Plugin Companion을 렌더하지 못했습니다.",
 
