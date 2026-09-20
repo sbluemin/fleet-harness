@@ -101,6 +101,15 @@ export function BackendApiSection() {
           aria-label={t("chrome.backendApi.findAria")}
           autoComplete="off"
           onChange={(event) => setQuery(event.target.value)}
+          // 설정 패인은 Escape를 잡아 preventDefault한 뒤 패널을 닫는다 — 그대로 두면 라우트를
+          // 찾던 중의 Escape가 입력을 지우는 대신 설정 전체를 접는다. 찾는 말이 남아 있는 동안은
+          // 이 입력이 Escape를 자기 것으로 쓰고, 비어 있으면 패널의 닫기로 넘긴다.
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || query === "") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setQuery("");
+          }}
         />
       </div>
 
@@ -259,13 +268,14 @@ function ApiCatalogList({ id, entries, query }: {
 
 function ApiCatalogRow({ entry, query }: { readonly entry: ApiCatalogEntry; readonly query?: string }) {
   const t = useT();
-  const [copied, setCopied] = useState(false);
+  const [outcome, setOutcome] = useState<"idle" | "copied" | "failed">("idle");
 
   const copy = () => {
-    // 복사 실패는 이 행 안에서만 말한다 — 카탈로그 전체를 에러 화면으로 바꿀 이유가 없다.
+    // 복사 실패는 이 행 안에서만 말한다 — 카탈로그 전체를 에러 화면으로 바꿀 이유가 없다. 다만
+    // 누른 자리가 침묵하면 성공과 구분되지 않으므로 버튼이 실패를 자기 글자로 말한다.
     void navigator.clipboard.writeText(entry.path)
-      .then(() => setCopied(true))
-      .catch(() => setCopied(false));
+      .then(() => setOutcome("copied"))
+      .catch(() => setOutcome("failed"));
   };
 
   return (
@@ -282,9 +292,11 @@ function ApiCatalogRow({ entry, query }: { readonly entry: ApiCatalogEntry; read
         className="backend-api-copy"
         aria-label={t("chrome.backendApi.copyAria", { path: entry.path })}
         onClick={copy}
-        onBlur={() => setCopied(false)}
+        onBlur={() => setOutcome("idle")}
       >
-        {copied ? t("chrome.backendApi.copied") : t("chrome.backendApi.copy")}
+        {outcome === "copied" ? t("chrome.backendApi.copied")
+          : outcome === "failed" ? t("chrome.backendApi.copyFailed")
+          : t("chrome.backendApi.copy")}
       </button>
     </div>
   );
