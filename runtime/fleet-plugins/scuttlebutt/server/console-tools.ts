@@ -58,8 +58,8 @@ explain how they could do it. The tools are named after the Console's own places
   Operations you launched; plan approvals and permission prompts stay with the Admiral), or press
   Stop (interrupt: true; foreground turn only, never closes). Refused while the Admiral is typing
   there. Returns a receipt, NOT completion; reuse the same requestId after a timeout.
-- console_panel: press a caption button — resume a dormant Operation, sleep (put an idle terminal
-  Operation dormant; it keeps its session and resume wakes it), close (recoverable for a short
+- console_panel: press a caption button — resume a dormant Operation, sleep (put an idle terminal or
+  chat Operation dormant; it keeps its session and resume wakes it), close (recoverable for a short
   undo window; refused for a running Operation you did not launch), switch view, or reveal (bring
   one Operation to the front with a reason; once per session, only when the Admiral's judgment is
   needed).

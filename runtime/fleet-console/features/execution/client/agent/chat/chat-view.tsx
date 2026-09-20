@@ -6,7 +6,7 @@ import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/his
 
 import { getT } from "../i18n/index.js";
 import { useChatReadingWidth, useTerminalFontFamily } from "../../terminal/shared/terminal-preferences.js";
-import { agentChatAttachmentPreviewUrl, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
+import { agentChatAttachmentPreviewUrl, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { AgentGlyph } from "../agent-glyphs.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
@@ -38,6 +38,53 @@ import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
+
+/**
+ * Ctrl+C 무장이 서 있는 시간. 이 창을 넘기면 다음 Ctrl+C는 다시 첫 번째 누름이다. 안내를 읽고
+ * 판단할 만큼은 되어야 하지만, 무장은 시간보다 **다음 행동**이 먼저 거둔다(아래 키 분기).
+ */
+const SLEEP_ARM_WINDOW_MS = 8_000;
+
+/** 이것만 눌린 상태는 아직 조합 중이다 — Ctrl+C 무장을 거두지 않는다. */
+const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock"]);
+
+/** 이 키가 제 것이 아님을 말하는 자리들 — 남의 입력창과 그 위에 선 면. */
+const FOREIGN_KEY_SURFACES = "input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [role='menu'], [role='listbox'], dialog";
+
+/**
+ * 이 채팅 패널이 이 키를 자기 것으로 읽어도 되는가.
+ *
+ * 초점이 컴포저에 있을 때만 듣는 것으로는 부족하다 — 사람이 패널을 눌러 활성으로 만들었을 뿐
+ * 초점은 본문이나 캔버스에 있는 것이 보통이고, 그때도 이 Operation이 키보드의 주인이다. 그래서
+ * 문서에서 듣되 **남의 것**만 걸러낸다: 다른 Operation의 프레임 안, 그리고 어디에 있든 남의
+ * 입력창·대화상자·메뉴. 이 패널 안에서 난 키는 컴포저를 포함해 언제나 이 패널의 것이다.
+ */
+function ownsChatKeyboardEvent(panel: HTMLElement | null, operationId: string, target: EventTarget | null): boolean {
+  if (!(target instanceof Node)) return true;
+  if (panel?.contains(target)) return true;
+  const element = target instanceof Element ? target : target.parentElement;
+  if (!element) return true;
+  if (element.closest(FOREIGN_KEY_SURFACES)) return false;
+  const frame = element.closest<HTMLElement>("[data-operation-id]");
+  if (frame) return frame.dataset.operationId === operationId;
+  return true;
+}
+
+/**
+ * 지금 Ctrl+C가 복사해야 할 선택이 있는가.
+ *
+ * 입력 요소 안의 선택은 문서 선택에 나타나지 않으므로 두 축을 모두 본다 — 한쪽만 보면
+ * 컴포저에 쓰던 문장을 복사하려던 손이 대화를 휴면으로 보낸다.
+ */
+function hasCopyableSelection(): boolean {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) {
+    const { selectionStart, selectionEnd } = active;
+    if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) return true;
+  }
+  const selection = window.getSelection();
+  return selection !== null && !selection.isCollapsed && selection.toString().trim().length > 0;
+}
 
 /**
  * Chat Mode의 Operation 본문 — 지휘 로그.
@@ -79,6 +126,10 @@ export function AgentChatView({
   const { terminalError } = useViewSwitchState(context.operationId);
   const [stopping, setStopping] = React.useState(false);
   const [stopFailed, setStopFailed] = React.useState(false);
+  // Ctrl+C 한 번은 무장이고, 두 번째가 휴면이다 — CLI에서 같은 손가락이 하는 일을 이 표면에도
+  // 둔다. 무장은 이 패널 안에서만 살고 잠시 뒤 스스로 풀린다.
+  const [sleepArmed, setSleepArmed] = React.useState(false);
+  const [sleepFailed, setSleepFailed] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
   const [following, setFollowing] = React.useState(true);
@@ -100,6 +151,8 @@ export function AgentChatView({
   // 문 다음에서 이어져야 하고, 그 문은 언제나 같은 자리에 서 있다.
   const ledgeToggleRef = React.useRef<HTMLButtonElement>(null);
   const workSheetRef = React.useRef<HTMLElement>(null);
+  /** 이 패널의 뿌리 — 어떤 키가 이 패널 안에서 났는지 가리는 좌표다. */
+  const panelRef = React.useRef<HTMLElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -353,16 +406,81 @@ export function AgentChatView({
     workSheetRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
   }, [workOpen, selectedJob?.id]);
 
+  // 무장은 스스로 풀린다 — 몇 분 전에 한 번 눌러 둔 Ctrl+C가 지금의 복사 시도를 휴면으로
+  // 바꾸면 안 된다.
+  React.useEffect(() => {
+    if (!sleepArmed) return;
+    const timer = window.setTimeout(() => { setSleepArmed(false); }, SLEEP_ARM_WINDOW_MS);
+    return () => { window.clearTimeout(timer); };
+  }, [sleepArmed]);
+
+  const sleepChat = React.useCallback(async () => {
+    setSleepFailed(false);
+    try {
+      // 성공하면 세션 갱신이 도착해 이 패널 자리에 휴면 카드가 선다 — 여기서 화면을 바꾸지 않는다.
+      await sleepAgentChat(context.operationId);
+    } catch {
+      setSleepFailed(true);
+    }
+  }, [context.operationId]);
+
   // Esc는 이 채팅 패널 안에서 생긴 키만 bubble 단계에서 듣는다. document에 걸면 다른 패널의
   // Esc까지 삼키고, capture 단계면 컴포저의 더 구체적인 덱 닫기보다 먼저 시트를 접는다. 자식이
   // 이미 소비한 Esc와 IME 조합 중 Esc는 그대로 두고, 남은 일반 Esc만 시트를 닫는다.
   const onPanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (!workOpen || event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.key !== "Escape") return;
+    // 무장을 풀 길은 Esc가 먼저다 — 작업 면이 열려 있어도, 지금 서 있는 안내부터 거둔다.
+    if (sleepArmed) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSleepArmed(false);
+      return;
+    }
+    if (!workOpen) return;
     event.preventDefault();
     event.stopPropagation();
     collapseWork();
     ledgeToggleRef.current?.focus();
-  }, [workOpen, collapseWork]);
+  }, [workOpen, collapseWork, sleepArmed]);
+
+  /**
+   * Ctrl+C 제스처. 듣는 자리는 문서이고, 듣는 조건은 **이 Operation이 활성일 때**다 — 사람이
+   * 패널을 눌러 활성으로 만들었다면 초점이 컴포저에 있든 본문에 있든 이 패널이 키보드의 주인이다.
+   * 남의 프레임·입력창·대화상자에서 난 키는 ownsChatKeyboardEvent가 걸러낸다.
+   */
+  React.useEffect(() => {
+    if (!context.active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "c" || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        // 다른 키를 눌렀다면 사용자는 이미 다음 일을 하고 있다 — 무장은 그 순간 풀린다. 수식키만
+        // 누른 상태는 아직 Ctrl+C를 조합하는 중이므로 그대로 둔다.
+        if (!MODIFIER_KEYS.has(event.key)) setSleepArmed(false);
+        return;
+      }
+      // 두 번 눌러야 확정되며, 길게 누른 반복 입력으로는 확정되지 않는다 — 무장과 확정이 한 번의
+      // 누름으로 이어지면 안전장치가 아니다. 선택이 서 있으면 복사가 이긴다(Windows·Linux의 복사 키).
+      if (event.repeat || hasCopyableSelection()) return;
+      if (!ownsChatKeyboardEvent(panelRef.current, context.operationId, event.target)) return;
+      event.preventDefault();
+      setSleepArmed((armed) => {
+        if (armed) {
+          void sleepChat();
+          return false;
+        }
+        setSleepFailed(false);
+        return true;
+      });
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); };
+  }, [context.active, context.operationId, sleepChat]);
+
+  // 활성에서 물러나면 무장도 함께 거둔다 — 다른 패널을 보다 돌아온 사람에게 예전 무장이 남아
+  // 있으면, 첫 Ctrl+C가 안내 없이 곧바로 휴면으로 간다.
+  React.useEffect(() => {
+    if (!context.active) setSleepArmed(false);
+  }, [context.active]);
 
   // 시트가 덮지 않은 대화 위를 누르면 시트가 물러난다 — 콘솔의 팝오버와 같은 문법이다. 원장의
   // 잡 앵커는 예외다: 그것은 시트를 여는 문이라, 누르는 순간 닫히면 문이 스스로를 지운다.
@@ -374,6 +492,7 @@ export function AgentChatView({
 
   return (
     <section
+      ref={panelRef}
       className="agent-chat"
       data-reading-width={readingWidth}
       /* 터미널 글꼴을 Chat 로컬 토큰으로만 흘린다 — 전역 --font-mono를 덮으면 Codex·파일 탐색기·
@@ -473,6 +592,9 @@ export function AgentChatView({
       {stopFailed
         ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.stopFailed")}</div>
         : null}
+      {sleepFailed
+        ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.sleepFailed")}</div>
+        : null}
       {state.connection === "lost"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
         : null}
@@ -490,6 +612,15 @@ export function AgentChatView({
             다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
             떠 있는 컨트롤은 전부 대화 면 안에 산다 — 패널 전체에 걸어 두면 작업 면이 열린
             순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */}
+        {/* Ctrl+C 한 번이 세우는 안내. 모달이 아니다 — 초점을 가져가면 두 번째 누름이 이 패널
+            밖에서 일어나고, 그러면 확정할 손가락이 갈 곳을 잃는다. */}
+        {sleepArmed ? (
+          <div className="agent-chat-sleep-hint" role="status">
+            <span className="agent-chat-sleep-hint-line">{t(turnRunning ? "terminal.chat.sleepHintRunning" : "terminal.chat.sleepHint")}</span>
+            <span className="agent-chat-sleep-hint-fine">{t("terminal.chat.sleepHintFine")}</span>
+          </div>
+        ) : null}
+
         {!following ? (
           <button
             type="button"

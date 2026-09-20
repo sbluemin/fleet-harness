@@ -757,7 +757,8 @@ const SORTIE_RIBBON_INLINE_LIMIT = 2;
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
-  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
+  const observed = state.sessions[context.operationId];
+  const session = observed ?? sessionFromOperation(context);
   const chatMode = context.operation.payload.chatMode === true;
   const sessionStatus = session.status;
   const { chatPromptOpen } = useViewSwitchState(context.operationId);
@@ -774,6 +775,16 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
 
   if (chatMode) {
+    // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
+    // 휴면은 **관측된** 사실일 때만 그린다: 아직 세션을 받지 못한 프레임의 '모름'을 휴면으로
+    // 읽으면 방금 띄운 채팅이 한 프레임 동안 휴면 카드로 깜빡인다.
+    if (observed && observed.status === "dormant" && observed.chatActive !== true) {
+      return (
+        <div className="agent-stream-host">
+          <DormantChatView context={context} session={observed} />
+        </div>
+      );
+    }
     return (
       <div className="agent-stream-host">
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
@@ -1635,6 +1646,42 @@ async function shouldResumeFresh(operationId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * 휴면한 채팅의 프레임. 터미널 휴면 카드와 같은 자리·같은 옷을 입되, 여기에는 "새로 시작"이
+ * 없다 — 채팅의 재개는 언제나 그 대화로 돌아가는 것이고, 어느 좌표에서 이어붙일지는 서버가
+ * transcript로 판정한다.
+ */
+function DormantChatView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
+  const t = getT(context.language ?? "en");
+  const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error">("idle");
+  const resume = React.useCallback(async () => {
+    setResumeState("resuming");
+    try {
+      await resumeSession(session.sessionId, { fresh: false });
+      context.notifications.dismiss(session.sessionId);
+    } catch (error) {
+      setResumeState("error");
+      context.notifications.emit({
+        kind: agentResumeFailedNotification.id,
+        operationId: session.sessionId,
+        message: resumeFailureMessage(error, context.language),
+      });
+    }
+  }, [context, session.sessionId]);
+
+  return (
+    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(); }}>
+      <span className="canvas-operation-dormant-status">{t("terminal.chat.dormantStatus")}</span>
+      <span className="canvas-operation-dormant-body">
+        {resumeState === "error" ? t("terminal.chat.dormantResumeFailed") : t("terminal.chat.dormantBody")}
+      </span>
+      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+        {resumeState === "resuming" ? t("terminal.chat.dormantResuming") : t(resumeState === "error" ? "terminal.dormant.tryAgain" : "terminal.chat.dormantResume")}
+      </span>
+    </button>
+  );
 }
 
 // dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
