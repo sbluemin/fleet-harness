@@ -2741,14 +2741,18 @@ describe("Instrument core design contract", () => {
     // 로그 위에 떠 있는 줄은 이제 Follow 하나뿐이다 — 바닥을 놓친 동안에만 서는 일시적 문이다.
     const chatFollowBottom = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0].match(/bottom: ([^;]+);/)?.[1] ?? "";
     expect(chatFollowBottom).toBe("var(--space-3)");
-    // 선반은 in-flow다 — 떠다니지 않고, 잡이 있는 동안 컴포저 바로 위 같은 자리에 선다.
+    // 선반은 컴포저 **표시줄의 가운데 칸**이다 — 자기 행도, 자기 헤어라인도, 자기 measure도 없다.
+    // 그 셋은 표시줄이 이미 지고 있고, 선반이 따로 들던 시절에는 잡이 하나라도 태어나면 대화가
+    // 33px(32px + 헤어라인)을 영구히 내줬다.
     const ledgeBlock = chat.match(/^\.agent-chat-ledge \{[^}]*\}/m)?.[0] ?? "";
-    expect(ledgeBlock).toContain("flex: none;");
     expect(ledgeBlock).not.toContain("position: absolute");
-    // 선반과 composer frame은 같은 measure와 가운데 좌표를 공유한다. 선반만 패널 전폭으로
-    // 돌아가면 두 표면이 다시 갈라져 보이므로, 좁은 패널 gutter까지 이 계약에 포함한다.
-    expect(ledgeBlock).toContain("width: min(var(--agent-chat-measure), calc(100% - var(--space-3) - var(--space-3)));");
-    expect(ledgeBlock).toContain("margin-inline: auto;");
+    expect(ledgeBlock).not.toContain("border-top");
+    expect(ledgeBlock).not.toContain("--agent-chat-measure");
+    // 표시줄은 세 칸이다: 양 끝(좌표·폭 글리프)은 자기 크기만 쓰고 가운데(선반)가 남는 폭을
+    // 가져간다 — 좁아질 때 줄어드는 것은 선반의 제목 하나이고, 두 과녁은 제자리다.
+    const composerMetaBlock = chat.match(/^\.agent-chat-composer-meta \{[^}]*\}/m)?.[0] ?? "";
+    expect(composerMetaBlock).toContain("display: grid;");
+    expect(composerMetaBlock).toContain("grid-template-columns: auto minmax(0, 1fr) auto;");
     // 한 줄 컴포저 — 입력은 30px 한 줄에서 시작해 여섯 줄까지 자란다(위아래 5px 패딩 포함). rows=3이면
     // 첫 입력 순간 SDK의 scrollHeight가 되튀어 하한이 무효다.
     const compactComposerInputBlock = chat.match(/^\.agent-chat-composer-input \{[^}]*\}/m)?.[0] ?? "";
@@ -2756,8 +2760,8 @@ describe("Instrument core design contract", () => {
     expect(compactComposerInputBlock).toContain("max-height: calc(1.5em * 6 + 10px);");
     expect(chatComposer0).toContain("rows={1}");
     expect(chatComposer0).not.toContain("rows={3}");
-    expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}`}');
-    expect(chatView0).toContain("{hasJobs ? (");
+    expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}${compact ? " is-compact" : ""}`}');
+    expect(chatView0).toContain("ledge={hasJobs ?");
     // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 그 상태 전체가 여닫는 표면이다.
     expect(chatComposer0).not.toContain("agent-chat-composer-work");
     expect(chat).not.toContain(".agent-chat-composer-work");
@@ -2968,9 +2972,9 @@ describe("Instrument core design contract", () => {
     expect(chat).toMatch(
       /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-step-verb\.agent-chat-live-text \{\s*color: var\(--text-secondary\);\s*\}/,
     );
-    // 원장에 서는 잡은 카드가 아니라 한 줄이다. 카드의 몸(종류·누구·토큰·도구·소요)은 작업 면이
-    // 이미 더 자세히 지고 있었고, 원장에서는 읽는 흐름을 두 줄짜리 상자로 끊었다. 남는 것은
-    // "여기서 태어났다"와 거기로 가는 문뿐이므로 면도 테두리도 두르지 않는다.
+    // 잡은 원장 본문에 자기 줄을 갖지 않는다 — 집계의 한 절이 그 수를 말하고, 그 잡으로 가는
+    // 문은 집계를 펼쳤을 때 선다. 앵커가 본문에 서던 시절, 완료한 잡이 많은 턴은 꼬리가 결말
+    // 칩의 목록이 됐다(✓ 옆에 「완료」를 적는 줄이 잡마다 하나씩).
     const chatJobAnchorBlock = chat.match(/^\.agent-chat-job-anchor \{[^}]*\}/m)?.[0] ?? "";
     expect(chatJobAnchorBlock).toContain("background: none;");
     expect(chatJobAnchorBlock).toContain("border: none;");
@@ -2978,8 +2982,35 @@ describe("Instrument core design contract", () => {
     // 글자만큼만 넓다 — 블록으로 두면 파선이 패널을 가로질러 구분선으로 읽힌다(실측 적발).
     expect(chatJobAnchorBlock).toContain("width: max-content;");
     expect(chatView0).toContain('className={`agent-chat-job-anchor ${jobStateClass(job)}`}');
-    // 카드 자체는 남는다 — 작업 면이 그 몸의 주인이다.
-    expect(chatView0).toContain("function JobCard(");
+    // 잡 절은 예외를 함께 말한다 — 도는 것과 실패한 것을 수 하나에 섞으면 접기가 감추기가 된다.
+    expect(chatView0).toContain("agent-chat-tally-jobs-open");
+    expect(chatView0).toContain("agent-chat-tally-jobs-fail");
+    // 작업 면의 잡은 카드가 아니라 한 줄이다. 카드는 57px에 테두리를 둘러, 열일곱 건이면
+    // 62%짜리 시트에 여덟 건이 채 서지 못했다(실측 1,097px).
+    expect(chatView0).not.toContain("function JobCard(");
+    expect(chatView0).toContain("function JobRow(");
+    expect(chat).not.toMatch(/^\.agent-chat-job \{/m);
+    const chatJobRowBlock = chat.match(/^\.agent-chat-job-row \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatJobRowBlock).toContain("min-height: 28px;");
+    expect(chatJobRowBlock).toContain("background: transparent;");
+    expect(chatJobRowBlock).toContain("border: 0;");
+    // 끝난 잡의 종류 가지. 줄기는 헤어라인 한 겹이고 상태색도 brass도 쥐지 않는다 — 구조를
+    // 말하는 선이지 선택을 말하는 띠가 아니다(왼쪽 강조 띠 금지와 같은 규율).
+    const chatBranchKidsBlock = chat.match(/^\.agent-chat-work-branch-kids \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatBranchKidsBlock).toContain("border-left: 1px solid var(--hairline);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatBranchKidsBlock).not.toContain(signal);
+    }
+    // 집계를 펼친 줄기도 같은 규율이다. 잎은 상자를 벗고(33px → 24px) 계열 글자를 스스로 든다 —
+    // 줄기를 계열로 가르면 "무엇 다음에 무엇"이 사라지므로 갈래는 시간 하나뿐이다.
+    const chatTallyBodyBlock = chat.match(/^\.agent-chat-tally-body \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyBodyBlock).toContain("border-left: 1px solid var(--hairline);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatTallyBodyBlock).not.toContain(signal);
+    }
+    const chatLeafBlock = chat.match(/^\.agent-chat-step\.is-leaf \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatLeafBlock).toContain("background: none;");
+    expect(chatLeafBlock).toContain("border: 0;");
     const chatTallyChevBlock = chat.match(/^\.agent-chat-tally-chev \{[^}]*\}/m)?.[0] ?? "";
     expect(chatTallyChevBlock).toContain("color: var(--text-tertiary);");
     expect(chatTallyChevBlock).not.toContain("--hairline-strong");
@@ -3012,7 +3043,10 @@ describe("Instrument core design contract", () => {
     }
     const chatView0Glyphs = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     expect(chatView0Glyphs).not.toContain("FAMILY_GLYPHS");
-    expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={group.family} /></span>');
+    // 집계 절의 표식도 같은 알파벳에서 온다. 잡 절만 자기 글자가 없어 위임 글자를 빌린다 —
+    // 원장의 위임 절과 작업 면의 위임 카드가 이미 쓰는 그 글자다.
+    expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true">');
+    expect(chatView0Glyphs).toContain('<AgentGlyph name={group.family === AGENT_CHAT_JOB_FAMILY ? "delegate" : group.family} />');
     // 분석가 시길도 같은 알파벳을 쓴다 — 같은 뜻을 두 면이 다른 기호로 부르지 않는다.
     for (const panel of ["analysis-chat-panel.tsx", "analysis-artifacts-panel.tsx"]) {
       const source0 = fs.readFileSync(fileURLToPath(new URL(`../features/analyst/client/${panel}`, import.meta.url)), "utf8");

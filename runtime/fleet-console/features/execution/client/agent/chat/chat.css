@@ -674,6 +674,13 @@
   color: var(--text-secondary);
 }
 
+/* 잡 절 — 이 구간이 배경으로 넘긴 일의 수. 절이 삼킨 예외(도는 것·실패한 것)는 그 뒤에
+   자기 잉크로 붙는다: 접기로 줄인 소음이 감춘 사실이 되지 않게, 수만 말하고 끝내지 않는다. */
+.agent-chat-tally-clause.is-jobs { color: var(--text-secondary); }
+
+.agent-chat-tally-jobs-open { color: var(--aurora-ink); }
+.agent-chat-tally-jobs-fail { color: var(--coral-ink); }
+
 /* 집계 줄은 열쇠다 — 누르면 그 줄이 세고 있던 스텝이 펼쳐진다. 눌린다는 사실은 꺾쇠와
    hover 잉크가 말한다. brass는 위치·포커스 채널이므로 여기서는 쓰지 않는다. */
 .agent-chat-tally-fold > summary {
@@ -715,11 +722,51 @@
   transform: rotate(180deg);
 }
 
+/* ── 집계를 펼친 줄기 ─────────────────────────────────────────────────────
+   잎은 상자를 벗는다. 예전에는 스텝마다 자기 테두리와 면을 든 상자가 섰고(실측 33px/행),
+   여덟 개가 이어지면 원장 안에서 가장 시끄러운 덩어리였다. 지금은 헤어라인 한 겹이 위에서
+   아래로 흐르고 잎마다 짧은 가지가 붙는다 — 24px/행.
+
+   줄기는 계열로 갈리지 않는다. 가지를 계열로 세우면 "무엇 다음에 무엇"이 사라지는데, 도구
+   호출을 되짚는 사람이 묻는 것의 절반이 그 순서다. 계열은 잎이 자기 글자로 말한다.
+   [doctrine] 왼쪽 세로선은 선택 표식이 아니라 구조선이다 — 상태색도 brass도 쥐지 않고
+   헤어라인 한 겹으로만 선다. */
 .agent-chat-tally-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   margin-top: var(--space-1);
+  /* 줄기가 집계 줄의 계열 글자 아래를 지난다 — 접힌 줄과 펼친 줄이 같은 축에 선다. */
+  margin-left: 7px;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--hairline);
+}
+
+/* 잎의 가지 — 줄기에서 잎으로 건너가는 짧은 가로 획. 마지막 잎도 줄기를 끊지 않는다:
+   구간은 여기서 끝나도 원장은 계속되고, 끊긴 선은 그 사실을 잘못 말한다. */
+.agent-chat-tally-body > .agent-chat-step.is-leaf::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-3) * -1);
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.agent-chat-step.is-leaf {
+  position: relative;
+  min-height: 24px;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* 잎의 계열 글자. 마크 다음, 동사 앞 — 집계 줄의 절이 쓰는 것과 같은 순서다. */
+.agent-chat-step-family {
+  flex: none;
+  display: inline-flex;
+  color: var(--text-tertiary);
 }
 
 .agent-chat-step {
@@ -1365,16 +1412,28 @@
   background: var(--brass-glow);
 }
 
-/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용)와 폭 토글, 오류 알림이 선다. 읽기 컬럼과 같은 폭에 정렬한다. */
+/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용)와 백그라운드 작업 선반, 폭 토글, 오류 알림이 선다.
+   읽기 컬럼과 같은 폭에 정렬한다.
+
+   세 칸 그리드인 이유가 이 줄의 요점이다. `space-between` 시절 가운데는 늘 비어 있었고, 선반은
+   그 위에 자기 행(32px + 헤어라인)을 따로 세웠다 — 잡이 하나라도 태어나면 대화가 33px을 영구히
+   내주는 값이었다(실측). 양 끝을 `auto`로 못박고 가운데만 `minmax(0, 1fr)`로 두면 좌표와 글리프의
+   과녁은 폭이 어떻든 제자리이고, 좁아질 때 줄어드는 것은 선반의 제목 하나다. */
 .agent-chat-composer-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   max-width: var(--agent-chat-measure);
   margin-inline: auto;
   min-width: 0;
   padding: 0 2px 6px;
+}
+
+/* 선반이 없는 세션의 가운데 칸. 칸을 아예 비워 두면 `auto` 양 끝이 서로 붙어 예전 좌·우 배치가
+   무너진다 — 자리를 지키는 빈 자국 하나가 선다. */
+.agent-chat-composer-gap {
+  min-width: 0;
 }
 
 /* 한 줄 컴포저 — 첨부 트레이(있을 때)와 [입력][첨부][계기][중지][전송] 행이 세로로 선다.
@@ -2629,35 +2688,39 @@
 
 .agent-chat-job-anchor .agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
 
-.agent-chat-job {
+/* 작업 면의 잡 한 줄. 카드(테두리 + 두 줄, 실측 57px)를 대신한다 — 열일곱 건이면 목록이
+   1,097px이라 62%짜리 시트에 여덟 건이 채 서지 못했다. 테두리 열일곱 겹은 헤어라인 한 겹으로
+   줄고, 카드의 둘째 줄이 들던 값은 이 줄의 꼬리로 옮겨 오른쪽에 정렬된다.
+   상태는 카드 테두리가 아니라 마크와 결말 글자가 지고, 면은 hover에서만 뜬다. */
+.agent-chat-job-row {
   appearance: none;
   cursor: pointer;
   text-align: left;
   width: 100%;
+  flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-panel-raised);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
+  gap: 2px;
+  min-height: 28px;
+  padding: 3px var(--space-2) 3px 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
   color: var(--text-tertiary);
   font-family: var(--font-body);
-  transition: border-color var(--duration-fast);
+  transition: background var(--duration-fast);
 }
 
-.agent-chat-job:hover { border-color: var(--hairline-strong); }
+.agent-chat-job-row:hover { background: var(--control-rest-hover); }
 
-.agent-chat-job:focus-visible {
+.agent-chat-job-row:focus-visible {
   outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
-.agent-chat-job.is-open { border-color: color-mix(in oklch, var(--aurora) 32%, var(--hairline)); }
-.agent-chat-job.is-fail { border-color: color-mix(in oklch, var(--coral) 32%, var(--hairline)); }
-.agent-chat-job.is-stopped { border-color: color-mix(in oklch, var(--warn) 30%, var(--hairline)); }
-
-.agent-chat-job-head {
+/* 제목과 꼬리가 한 줄에 선다. 꼬리는 자기 크기만큼만 쓰고 제목이 남는 폭을 가진다 — 좁은
+   패널에서 먼저 줄어드는 것은 제목이지 결말이 아니다. */
+.agent-chat-job-line {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2666,8 +2729,8 @@
 }
 
 .agent-chat-job-mark { flex: none; width: 9px; text-align: center; color: var(--text-tertiary); }
-.agent-chat-job.is-done .agent-chat-job-mark { color: var(--positive); }
-.agent-chat-job.is-fail .agent-chat-job-mark { color: var(--coral); }
+.agent-chat-job-row.is-done .agent-chat-job-mark { color: var(--positive); }
+.agent-chat-job-row.is-fail .agent-chat-job-mark { color: var(--coral); }
 
 .agent-chat-job-glyph { flex: none; display: inline-flex; color: var(--text-tertiary); }
 
@@ -2679,8 +2742,19 @@
   min-width: 0;
 }
 
-.agent-chat-job-outcome {
+/* 카드의 메타 줄이 오던 자리. 숫자가 여럿 서므로 tabular로 고정해 행끼리 자릿수가 맞는다. */
+.agent-chat-job-tail {
   margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-job-outcome {
   flex: none;
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
@@ -2690,33 +2764,83 @@
   color: var(--text-tertiary);
 }
 
-.agent-chat-job.is-open .agent-chat-job-outcome,
+.agent-chat-job-row.is-open .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-open {
   color: var(--aurora-ink);
   border-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
 }
 
-.agent-chat-job.is-done .agent-chat-job-outcome,
+.agent-chat-job-row.is-done .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-done { color: var(--positive); }
 
-.agent-chat-job.is-fail .agent-chat-job-outcome,
+.agent-chat-job-row.is-fail .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-fail { color: var(--coral-ink); }
 
-.agent-chat-job.is-stopped .agent-chat-job-outcome,
+.agent-chat-job-row.is-stopped .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-stopped { color: var(--warn-ink); }
 
 .agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
 
-.agent-chat-job-meta {
+/* ── 끝난 잡의 종류 가지 ──────────────────────────────────────────────────
+   가지 머리는 접힌 채로도 자기 안의 실패 수를 말한다 — 그러지 않으면 접기가 손댈 것을 감춘다.
+   가지는 왼쪽 줄기 하나로만 묶는다: 면도 테두리도 얹지 않아, 걷어낸 카드가 가지 단위로 되살아나지
+   않는다. */
+.agent-chat-work-branch { flex: none; }
+
+.agent-chat-work-branch-head {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-2);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-  padding-left: 17px;
+  min-height: 26px;
+  padding: 0 var(--space-2) 0 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  transition: color var(--duration-fast);
 }
+
+.agent-chat-work-branch-head:hover { color: var(--text-primary); }
+
+.agent-chat-work-branch-head:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: -2px;
+}
+
+.agent-chat-work-branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-chat-work-branch-fail {
+  flex: none;
+  font-size: var(--t-2xs);
+  color: var(--coral-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-work-branch-chev {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--t-xs);
+  line-height: 1;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast);
+}
+
+.agent-chat-work-branch[data-open="true"] .agent-chat-work-branch-chev { transform: rotate(180deg); }
+
+/* 가지 안의 잎은 줄기에서 한 단 들여선다. 줄기는 헤어라인 한 겹이고 상태색도 brass도 쥐지
+   않는다 — 구조를 말하는 선이지 선택을 말하는 띠가 아니다. */
+.agent-chat-work-branch-kids {
+  margin-left: 11px;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--hairline);
+}
+
+.agent-chat-work-branch-kids > .agent-chat-job-row:last-child { border-bottom: 0; }
 
 /* 도는 잡의 "지금 무엇을" 한 줄. 카드가 열리기 전에 답하는 자리이므로 제목과 같은 들여쓰기에
    서고, 동사만 상태 잉크를 든다 — 그 옆의 note는 자식이 쓴 자유 텍스트라 중립으로 남는다. */
@@ -2828,20 +2952,15 @@
 /* 선반. 컴포저 프레임과 같은 읽기 폭·가운데 좌표를 써 하나의 하단 작업 자리로 읽히되,
    독립된 헤어라인 이음새는 유지한다. 좁은 패널에서는 양쪽 composer gutter를 따라 줄어들고,
    잡이 하나라도 있는 동안만 서며 떠다니지 않는다. */
+/* 선반은 컴포저 표시줄의 가운데 칸이다. 자기 행도, 자기 헤어라인도, 자기 폭 계산도 없다 —
+   그 셋은 이 줄이 이미 지고 있고, 선반이 따로 들면 같은 자리가 두 번 그려진다. 남는 일은
+   하나다: 남는 폭 안에서 가운데에 서고, 넘치면 제목부터 줄인다. */
 .agent-chat-ledge {
-  flex: none;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  width: min(var(--agent-chat-measure), calc(100% - var(--space-3) - var(--space-3)));
-  min-height: 32px;
-  margin-inline: auto;
-  padding: 0 var(--space-3) 0 clamp(var(--space-4), 4vw, var(--space-8));
-  border-top: 1px solid var(--hairline);
+  justify-content: center;
   font-family: var(--font-body);
-  /* measure의 ch가 composer frame과 같은 14px 문맥에서 계산되게 하고, 보이는 선반 글자는
-     아래 자식 규칙에서 기존 t-xs를 유지한다. */
-  font-size: var(--font-body-size);
   color: var(--text-secondary);
 }
 
@@ -2863,6 +2982,7 @@
 .agent-chat-ledge-toggle {
   appearance: none;
   min-width: 0;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
