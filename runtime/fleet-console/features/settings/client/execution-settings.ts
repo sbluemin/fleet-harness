@@ -33,7 +33,6 @@ export interface AiGatewayCatalogModel {
   readonly name: string;
   readonly contextWindow: number | null;
   readonly oneMillion: boolean;
-  readonly maxMode: boolean;
   readonly fast: boolean;
   /** 부재(`null`) = 라우팅 별칭이라 어떤 단일 등급도 참이 아닌 모델. */
   readonly capabilityClass: AiGatewayCapabilityClass | null;

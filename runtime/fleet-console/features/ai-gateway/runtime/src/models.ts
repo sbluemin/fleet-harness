@@ -204,7 +204,6 @@ const GatewayModelEntrySchema = z.object({
    */
   variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
-  cursorMaxMode: z.literal(true).optional(),
   quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
@@ -266,13 +265,12 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
-  /** Cursor Run's modelDetails.maxMode flag; omitted for standard-mode models. */
-  readonly cursorMaxMode?: true;
   /**
    * Sub-allowance this model is billed against, when its provider splits one
-   * subscription across pools. Cursor spends Auto-tier and API-tier models from
-   * separate budgets, so the provider's combined usage figure cannot tell a
-   * caller whether this particular model still has room.
+   * subscription across pools. Cursor spends Auto-tier models from a separate
+   * budget than any API-tier pool the subscription still reports, so the
+   * provider's combined usage figure cannot tell a caller whether this
+   * particular model still has room.
    */
   readonly quotaScope?: GatewayQuotaScope;
   /** Upstream wire protocol; OpenCode Go only. Omission means `anthropic`. */
@@ -522,10 +520,9 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
 
 export interface CursorModelSelection {
   readonly upstreamModelId: string;
-  readonly maxMode: boolean;
 }
 
-/** Resolve one picker-visible Cursor model to its exact wire id and billing/context mode. */
+/** Resolve one picker-visible Cursor model to its exact wire id. */
 export function resolveCursorModelSelection(
   modelId: string,
   requestedEffort?: ReasoningEffort,
@@ -537,12 +534,12 @@ export function resolveCursorModelSelection(
       || upstreamModelId(candidate) === modelId
     ));
   if (!model || model.provider !== "cursor") {
-    return { upstreamModelId: modelId, maxMode: false };
+    return { upstreamModelId: modelId };
   }
 
   const upstreamId = upstreamModelId(model);
   if (!model.effort.supported) {
-    return { upstreamModelId: upstreamId, maxMode: model.cursorMaxMode === true };
+    return { upstreamModelId: upstreamId };
   }
   // 카탈로그는 모델별 기본 effort를 정의하지 않는다. Claude Code는 effort 미설정 세션에도
   // 항상 자기 세션 기본값 "high"를 명시해 보내므로(2026-08-02 실측), effort를 생략하는
@@ -557,7 +554,6 @@ export function resolveCursorModelSelection(
     upstreamModelId: exactModelId
       ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort)
       ?? upstreamId,
-    maxMode: model.cursorMaxMode === true,
   };
 }
 
@@ -686,7 +682,6 @@ function toGatewayModel(
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
-    ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
@@ -814,9 +809,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       if (model.serviceTier && provider !== "codex") {
         throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
-      }
-      if (model.cursorMaxMode && provider !== "cursor") {
-        throw new Error(`Gateway Cursor Max Mode is only supported by Cursor: ${provider}/${model.modelId}`);
       }
       // Cursor is the only provider observed to split one subscription across
       // pools. Declaring a scope elsewhere would invite a caller to look for a

@@ -349,8 +349,6 @@ export interface AiGatewayCatalogModel {
   readonly contextWindow: number | null;
   /** True when Claude Code accounts this model on its 1M coordinate (`[1m]` alias). */
   readonly oneMillion: boolean;
-  /** Cursor Run's Max Mode models carry separate billing semantics. */
-  readonly maxMode: boolean;
   /** Fast variants are separate catalog models paired by the `-fast` id suffix. */
   readonly fast: boolean;
   /**
@@ -387,7 +385,6 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     name: bareModelName(model),
     contextWindow: model.contextWindow ?? null,
     oneMillion: hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)),
-    maxMode: model.cursorMaxMode === true,
     fast: model.id.endsWith("-fast"),
     capabilityClass: model.capabilityClass ?? null,
     description: model.description ?? null,

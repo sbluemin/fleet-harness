@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-09-06T00:00:00Z",
+  "updatedAt": "2026-09-20T00:00:00Z",
   "normalization": {
     "method": "cohort-min-max",
     "sourceWeighting": "equal",
@@ -300,10 +300,10 @@
         }
       },
       "normalized": {
-        "score": 72.261042,
+        "score": 87.654321,
         "sourceScores": {
-          "cursorbench": 64.893617,
-          "livebench": 79.628466
+          "cursorbench": 75.308642,
+          "livebench": 100
         }
       }
     },
@@ -361,10 +361,10 @@
         }
       },
       "normalized": {
-        "score": 43.465742,
+        "score": 52.658628,
         "sourceScores": {
-          "cursorbench": 40.425532,
-          "livebench": 46.505951
+          "cursorbench": 46.91358,
+          "livebench": 58.403676
         }
       }
     },
@@ -429,67 +429,6 @@
         }
       }
     },
-    "claude-fable-5": {
-      "effort": "max",
-      "measurements": {
-        "cursorbench": {
-          "model": "Fable 5 Max",
-          "metrics": {
-            "score": 70.5,
-            "tokensPerTask": 103525,
-            "stepsPerTask": 72,
-            "costPerTask": 17.32
-          }
-        },
-        "livebench": {
-          "model": "claude-fable-5-max-effort",
-          "metrics": {
-            "score": 82.970798,
-            "reasoning": 89.65375,
-            "coding": 85.992,
-            "agenticCoding": 62.171667,
-            "mathematics": 95.98575,
-            "dataAnalysis": 80.537667,
-            "language": 90.684,
-            "instructionFollowing": 75.77075,
-            "avgInputTokens": 1264.0,
-            "avgOutputTokens": 20255.0,
-            "costPerQuestion": 1.1939,
-            "costPerSuccessfulTask": 1.4777,
-            "questions_theory_of_mind": 52,
-            "questions_zebra_puzzle": 50,
-            "questions_spatial": 50,
-            "questions_logic_with_navigation": 50,
-            "questions_code_generation": 71,
-            "questions_code_completion": 46,
-            "questions_javascript": 22,
-            "questions_typescript": 30,
-            "questions_python": 20,
-            "questions_AMPS_Hard": 100,
-            "questions_integrals_with_game": 100,
-            "questions_math_comp": 102,
-            "questions_olympiad": 77,
-            "questions_consecutive_events": 47,
-            "questions_tablejoin": 52,
-            "questions_tablereformat": 51,
-            "questions_connections": 50,
-            "questions_plot_unscrambling": 50,
-            "questions_typos": 50,
-            "questions_paraphrase": 50,
-            "questions_simplify": 50,
-            "questions_story_generation": 50,
-            "questions_summarize": 50
-          }
-        }
-      },
-      "normalized": {
-        "score": 100.0,
-        "sourceScores": {
-          "cursorbench": 100.0,
-          "livebench": 100.0
-        }
-      }
-    },
     "gemini-3.7-flash": {
       "effort": "high",
       "measurements": {
@@ -544,10 +483,10 @@
         }
       },
       "normalized": {
-        "score": 30.639586,
+        "score": 38.224622,
         "sourceScores": {
-          "cursorbench": 5.319149,
-          "livebench": 55.960022
+          "cursorbench": 6.17284,
+          "livebench": 70.276403
         }
       }
     },
@@ -605,10 +544,10 @@
         }
       },
       "normalized": {
-        "score": 55.140374,
+        "score": 65.139394,
         "sourceScores": {
-          "cursorbench": 86.170213,
-          "livebench": 24.110535
+          "cursorbench": 100,
+          "livebench": 30.278789
         }
       }
     }
@@ -616,6 +555,9 @@
   "excluded": {
     "claude-opus-5": {
       "reason": "LiveBench cost 원본의 nq_AMPS_Hard가101이며 나머지 cohort는100이다. 추가 표본 의미를 확인하지 못해 동일 데이터 조건에 따라 제외한다. 성능이 낮다는 뜻이 아니다."
+    },
+    "claude-fable-5": {
+      "reason": "Cursor API-tier 재판매가 카탈로그에서 빠지며 정규화 코호트에서 제외한다. 이전 6모델 complete-case 점수를 재사용하지 않는다."
     },
     "composer-2.5": {
       "reason": "동일 LiveBench release에 해당 모델의 완전한 측정 행이 없다."

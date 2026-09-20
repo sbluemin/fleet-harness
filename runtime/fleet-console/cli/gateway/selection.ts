@@ -100,7 +100,6 @@ function describeCatalogModel(model: AiGatewayCatalogModel): string {
   const axes = [
     model.capabilityClass ?? undefined,
     model.oneMillion ? "1M" : undefined,
-    model.maxMode ? "max mode" : undefined,
     model.fast ? "fast" : undefined,
     model.effort ? `effort ${model.effort.levels.join("·")}` : undefined,
   ].filter((axis): axis is string => axis !== undefined);
