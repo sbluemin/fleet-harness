@@ -588,6 +588,13 @@ class AgentChatSession {
   /** 자식이 스냅숏에서 직접 말한 좌표. 도착하기 전에는 모델 id에서 유도한다. */
   private observedClaudeCoordinate: number | null = null;
 
+  /**
+   * 이 세션에 마지막으로 무슨 일이 일어난 시각. 유휴 자동 휴면의 문턱이 읽는 좌표이므로 PTY
+   * 세션의 활동 시각과 같은 단조 시계(performance.now)를 쓴다 — 저널의 `at`(벽시계)은 화면이
+   * 읽는 값이라 시계 보정 한 번에 문턱이 뒤로 뛴다.
+   */
+  private lastActivityMonotonic = performance.now();
+
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
     this.seed = seed;
@@ -600,6 +607,11 @@ class AgentChatSession {
 
   get busy(): boolean {
     return this.pendingTurns > 0;
+  }
+
+  /** 마지막 활동 시각(performance.now 축). 재생만 끝난 세션은 생성 시각이 그 값이다. */
+  get lastActivityAt(): number {
+    return this.lastActivityMonotonic;
   }
 
   async replayTranscript(): Promise<void> {
@@ -1536,6 +1548,7 @@ class AgentChatSession {
   }
 
   private push(event: AgentChatStreamEvent, at = Date.now()): void {
+    this.lastActivityMonotonic = performance.now();
     const entry: AgentChatJournalEvent = { seq: ++this.seq, at, event };
     // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
     // 리듀서도 통째로 갈아 끼운다. 저널에 겹겹이 쌓으면 재접속이 이미 지나간 트리를 수십 번
@@ -1556,6 +1569,7 @@ class AgentChatSession {
    * 그 완성 이벤트가 델타 유실의 정정 앵커를 겸한다. seq는 저널과 한 축을 공유한다.
    */
   private pushEphemeral(event: AgentChatStreamEvent): void {
+    this.lastActivityMonotonic = performance.now();
     const entry: AgentChatJournalEvent = { seq: ++this.seq, at: Date.now(), event };
     for (const listener of this.listeners) listener(entry);
   }

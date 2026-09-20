@@ -2151,6 +2151,38 @@
    비워 둔 바닥 여백이 그 자리이고, 위층에 서 있던 동안에는 그 여백 밖이라 늘 문장 위였다.
    Follow는 바닥을 놓친 동안에만 서고 누르면 사라지는 일시적 문이라, 잡이 사는 내내 상주하던
    스트립과 달리 이 자리를 계속 쥐지 않는다. */
+/* Ctrl+C 한 번이 세우는 안내. Follow 칩과 같은 부유층·같은 자리를 쓴다 — 대화를 밀어내지
+   않고 컴포저 바로 위에 서서, 두 번째 누름이 무엇을 할지 두 줄로 말한다. 버튼이 없는 이유는
+   이것이 컨트롤이 아니라 지금 키보드가 어떤 상태인지에 대한 안내이기 때문이다. */
+.agent-chat-sleep-hint {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  z-index: 4;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(92%, 34rem);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--hairline-strong));
+  box-shadow: var(--shadow-soft);
+  font-family: var(--font-body);
+  text-align: center;
+}
+
+.agent-chat-sleep-hint-line {
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
+
+.agent-chat-sleep-hint-fine {
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
 .agent-chat-follow {
   position: absolute;
   left: 50%;

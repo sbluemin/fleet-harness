@@ -231,6 +231,18 @@ export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal)
  * 성공은 "자식이 중단 요청을 받았다"까지다 — 잡 줄이 닫히는 것은 자식이 보내는 결말 알림이
  * 하는 일이므로, 호출부가 낙관적으로 상태를 고쳐 쓰지 않는다.
  */
+/**
+ * 채팅 표면을 휴면으로 접는다 — 채팅 뷰의 Ctrl+C 두 번이 두드리는 문이다. SDK 자식과 원장은
+ * 여기서 거둬지고, 재개는 같은 대화를 transcript 재생으로 되살린다.
+ */
+export async function sleepAgentChat(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-sleep`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
 export async function stopAgentChatJob(sessionId: string, jobId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-job-stop`, {
     method: "POST",

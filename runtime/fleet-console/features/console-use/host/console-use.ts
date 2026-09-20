@@ -116,10 +116,10 @@ const NEXT_ACTION: Record<string, string> = {
   not_launched_by_caller: "Only Operations this caller launched can be answered. Ask the person instead.",
   unsupported_ask: "Plan approvals and permission prompts are for the person. Do not answer them.",
   target_busy: "The Operation is working and was not launched by you. Do not close it; ask the person.",
-  not_dormant: "Only a dormant terminal Operation can be resumed. A chat Operation is never dormant here: console_send wakes it.",
+  not_dormant: "Only a dormant Operation can be resumed. A live one is already there; console_send reaches it.",
   already_dormant: "The Operation is already dormant. Nothing to do; console_panel resume wakes it.",
   not_idle: "Only an idle Operation can be put to sleep. Wait for its turn and background work to end, or press Stop with console_send interrupt first.",
-  chat_never_dormant: "A chat Operation has no dormant state: it rests when idle and console_send wakes it. Close it with console_panel close if it is finished.",
+  chat_not_active: "That Operation is not on the chat surface. Use console_panel view to move it there first.",
   not_resumable: "This Operation has no captured provider session, so ending its process would delete it rather than park it. Use console_panel close if that is what you want.",
   cannot_sleep_self: "You cannot put your own Operation to sleep from inside it.",
   composer_busy: "The person is typing in that Operation's input right now. Wait a moment and retry with the same requestId, or ask them.",
@@ -395,7 +395,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     gesture(ctx, "console_send", `${op.title} 에 메시지 보냄`, "input", opTarget(op.id));
     return control!.request(me, args.requestId, { kind: "send", operationId: op.id, text: args.text! });
   }));
-  specs.push(define("console_panel", "Press a caption button of an Operation: resume (dormant only; live ones take console_send), sleep (put an idle terminal Operation dormant: its process ends, the card stays on the Ended shelf and resume wakes it with its session; refused for yourself, for a chat Operation, and while it is running, awaiting, or has background work), close (kept recoverable for a short undo window; refused for yourself and for a running Operation you did not launch), view (chat/terminal; interrupts the in-flight turn like the button does), or reveal (bring it to the front with a one-line reason; once per session, only when the person's judgment is needed).", z.object({ operationId: ids, action: z.enum(["resume", "sleep", "close", "view", "reveal"]), mode: z.enum(["chat", "terminal"]).optional(), reason: z.string().trim().min(1).max(200).optional() }).strict(), async (args, ctx) => {
+  specs.push(define("console_panel", "Press a caption button of an Operation: resume (dormant only; live ones take console_send), sleep (put an idle Operation dormant on either surface: its terminal process or chat session ends, the card stays on the Ended shelf and resume wakes it with its session and, on chat, its previous conversation; refused for yourself and while it is running, awaiting, or has background work), close (kept recoverable for a short undo window; refused for yourself and for a running Operation you did not launch), view (chat/terminal; interrupts the in-flight turn like the button does), or reveal (bring it to the front with a one-line reason; once per session, only when the person's judgment is needed).", z.object({ operationId: ids, action: z.enum(["resume", "sleep", "close", "view", "reveal"]), mode: z.enum(["chat", "terminal"]).optional(), reason: z.string().trim().min(1).max(200).optional() }).strict(), async (args, ctx) => {
     const me = requireCaller(ctx);
     const op = node(args.operationId);
     if (args.action === "resume") {
@@ -412,7 +412,6 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const obs = control?.observe(op.id);
       if (!obs) throw new ConsoleControlError("capability_unavailable");
       if (obs.lifecycle === "dormant") throw new ConsoleControlError("already_dormant");
-      if (obs.surface === "chat") throw new ConsoleControlError("chat_never_dormant");
       if (obs.activity !== "idle") throw new ConsoleControlError("not_idle");
       const result = await need("sleep")(op.id);
       if (!result.ok) throw new ConsoleControlError(result.error);

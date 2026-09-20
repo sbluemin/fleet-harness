@@ -144,6 +144,7 @@ export async function registerAgentRoutes(
     { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Removed — Chat Mode observation uses the ticketed WebSocket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/chat-sleep", summary: "Put an Agent chat session dormant.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -221,6 +222,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         return { error: "session_not_found" };
       }
       if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { error: "chat_not_active" };
+      // 휴면한 채팅은 소켓으로 깨어나지 않는다 — 휴면 카드의 재개나 첫 메시지만이 SDK 자식을
+      // 다시 세운다. 이 문을 열어 두면 화면 밖 본문 풀이 붙는 것만으로 휴면이 풀린다(PTY
+      // 휴면이 ticket을 거절하는 것과 같은 자리).
+      if (observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) return { error: "chat_dormant" };
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { error: seed.error };
       if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
@@ -340,10 +345,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
     // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
     // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
+    //
+    // 채팅 표면에는 접을 PTY가 없다 — 대신 SDK 자식과 원장을 거두는 같은 결말을 밟고, 그
+    // 전이는 그 자리에서 끝나므로 기다릴 것도 없다.
     sleep: async (operationId) => {
       const session = observability.getTerminalSessionInfo(operationId);
       if (!session) return { ok: false, error: "unknown_operation" };
-      if (session.chatActive) return { ok: false, error: "chat_never_dormant" };
+      if (ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+        const slept = await sleepChatOperation(operationId);
+        return slept.ok ? { ok: true, lifecycle: "dormant" } : { ok: false, error: slept.error };
+      }
       if (session.status === "dormant") return { ok: false, error: "already_dormant" };
       if (!readProviderSession(ctx.host.operations.get(operationId)?.payload)) return { ok: false, error: "not_resumable" };
       if (!terminalRuntime.terminate(operationId)) return { ok: false, error: "not_resumable" };
@@ -489,13 +500,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       const runtime = sessionRuntime(session);
       const chat = chatRegistry.get(operationId);
+      // 표면은 소유권이 아니라 마커가 말한다 — 휴면한 채팅도 여전히 채팅이고, 재개하면
+      // 터미널이 아니라 대화로 돌아온다. 살아 있는 산출(output)만 소유권을 따른다.
+      const chatSurface = session.chatActive === true || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       return {
         activity: runtime.lifecycle === "dormant" ? "ended" : runtime.activity,
         lifecycle: runtime.lifecycle, observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
         attention: { kind: session.status === "error" ? "failure" : session.attentionPending ? consoleAttentionReasons.get(operationId) ?? "input" : "none" },
-        surface: session.chatActive ? "chat" : "terminal",
+        surface: chatSurface ? "chat" : "terminal",
         supportedActions: ["send", ...(runtime.lifecycle === "live" && (runtime.activity === "running" || (session.chatActive && runtime.activity === "awaiting")) && (session.chatActive || terminalRuntime.getSessionLastActivityAt(operationId) !== null) ? ["interrupt" as const] : [])],
-        output: session.chatActive ? chat?.readConsoleOutput() ?? { status: "unavailable", outcome: "unknown" } : consoleTerminal.read(operationId),
+        output: chatSurface ? chat?.readConsoleOutput() ?? { status: "unavailable", outcome: "unknown" } : consoleTerminal.read(operationId),
       };
     },
     async execute(input, assertCurrent, settled, caller) {
@@ -554,6 +568,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
     hasProviderSessionCapture: (sessionId) => readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined,
     terminate: (sessionId) => terminalRuntime.terminate(sessionId),
+    getChatLastActivityAt: (sessionId) => chatRegistry.get(sessionId)?.lastActivityAt ?? null,
+    sleepChat: (sessionId) => { void sleepChatOperation(sessionId).catch(() => undefined); },
     registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),
   });
 
@@ -646,6 +662,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (channel === "chat") {
         if (operation.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
           ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+          return true;
+        }
+        // PTY 휴면의 ticket 거절과 같은 방어선 — 휴면 뒤에 도착한 stale 클라이언트가 채팅
+        // 자식을 되살리지 못하게 한다. 재개는 /resume 이 소유권을 세운 뒤에만 ticket을 얻는다.
+        if (observability.getTerminalSessionInfo(operation.id)?.chatActive !== true) {
+          ctx.host.http.writeJson(res, 409, { error: "chat_dormant" });
           return true;
         }
         ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
@@ -943,6 +965,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "chat-stream") return handleChatStream(req, res, sessionId);
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
+    if (action === "chat-sleep") return handleChatSleep(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
     if (action === "chat-catalog") return handleChatCatalog(req, res, sessionId);
     if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
@@ -1182,7 +1205,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     //
     // chat 여부로는 판단할 수 없다: 캡션의 복귀 버튼은 chat 마커를 먼저 걷고 이 라우트를 부르므로
     // 이 시점의 payload에는 이미 없다. 그래서 Chat 진입의 resolveChatSeed와 같은 source 판정을 쓴다.
-    // chat 모드 Operation의 resume은 터미널 복귀다 — 응답 완주를 기다리지 않고
+    // 휴면한 채팅의 재개는 그 대화로 돌아가는 것이다 — 표면을 갈아 끼우지 않는다. 이전 대화는
+    // seed의 transcript 재생이 되살린다.
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true && observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) {
+      const woken = await wakeChatOperation(sessionId);
+      return woken.ok ? { ok: true, resumed: woken.session } : { ok: false, status: woken.status, error: woken.error };
+    }
+    // 살아 있는 chat 모드 Operation의 resume은 터미널 복귀다 — 응답 완주를 기다리지 않고
     // chat 세션을 접고 모드 마커를 걷은 뒤 재기동해 같은 세션의 이중 필자를 막는다.
     let resumeNode = node;
     let resumeProviderSession = providerSession;
@@ -1376,9 +1405,28 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         reply(409, { error: "chat_not_active" });
         return true;
       }
+      // 휴면한 채팅에 온 메시지는 그 자체가 재개 요청이다(dormant PTY 세션이 재기동 후
+      // 전달받는 것과 같은 제품 결정). 소유권을 먼저 세워야 첫 턴의 활동 보고가 자리를 찾는다.
+      const wokeHere = observability.getTerminalSessionInfo(sessionId)?.chatActive !== true;
+      if (wokeHere) {
+        const woken = observability.setTerminalSessionChatActive(sessionId, true);
+        if (woken) observability.notifySessionUpdated(woken);
+        const cwd = readPayloadString(node.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(node.theaterId) ?? "");
+        if (cwd) workspaceContext.observe(sessionId, node.theaterId, cwd);
+      }
+      // 깨우려다 실패했으면 휴면으로 되돌린다 — 살아 있다고 말하면서 자식이 없는 채팅은
+      // 화면에 끊어진 소켓과 답하지 않는 컴포저로 남는다.
+      const revertWake = () => {
+        if (!wokeHere) return;
+        workspaceContext.forget(sessionId);
+        observability.setTerminalSessionWorkspace(sessionId, null);
+        const reverted = observability.setTerminalSessionChatActive(sessionId, false);
+        if (reverted) observability.notifySessionUpdated(reverted);
+      };
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
         if (!chat.canReportActivity()) {
+          revertWake();
           settleAttachments(false);
           reply(503, { error: "chat_activity_unavailable" });
           return true;
@@ -1393,6 +1441,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           by,
         );
       } catch (error) {
+        revertWake();
         settleAttachments(false);
         if (error instanceof ConsoleControlError) throw error;
         reply(503, { error: "chat_unavailable" });
@@ -1470,6 +1519,75 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
       throw error;
     }
+  }
+
+  // ── Chat 휴면 ──────────────────────────────────────────────────────────────
+  // 채팅에도 CLI와 같은 휴면이 있다. 휴면은 상태 플래그가 아니라 **살아 있는 생산자의 부재**다:
+  // PTY 표면에서 그것이 PTY의 종료라면, 채팅 표면에서는 SDK 자식과 원장을 거두고 활동축의
+  // 소유권(chatActive)을 놓는 것이다. 표면 마커(chatMode)는 남으므로 재개는 터미널이 아니라
+  // 대화로 돌아오고, 이전 대화는 seed의 transcript 재생이 되살린다.
+
+  /** 채팅 표면을 휴면으로 접는다. 도는 턴·예약·백그라운드 작업은 자식과 함께 거둬진다. */
+  async function sleepChatOperation(operationId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const node = ctx.host.operations.get(operationId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, error: "unknown_operation" };
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
+    const session = observability.getTerminalSessionInfo(operationId);
+    if (!session) return { ok: false, error: "unknown_operation" };
+    if (session.chatActive !== true) return { ok: false, error: "already_dormant" };
+    await chatRegistry.dispose(operationId);
+    // 전이 전 발급된 미소비 ticket이 휴면을 되돌리지 못하게 한다(handleExit와 같은 방어선).
+    terminalRuntime.invalidateTicketsForSession(operationId);
+    // 휴면은 추적 대상이 아니다 — "지금 어디" 축도 PTY 휴면과 같이 거둔다.
+    workspaceContext.forget(operationId);
+    observability.setTerminalSessionWorkspace(operationId, null);
+    // 관측 세션은 지우지 않는다. 지우면 활동축이 사라져 재개 후 첫 턴이 보고할 자리를 잃는다.
+    observability.updateTerminalSessionStatus(operationId, "dormant");
+    const released = observability.setTerminalSessionChatActive(operationId, false);
+    const parked = released ?? observability.getTerminalSessionInfo(operationId);
+    if (parked) observability.notifySessionUpdated(parked);
+    return { ok: true };
+  }
+
+  /**
+   * 휴면한 채팅을 깨운다. 소유권을 먼저 세우는 이유는 활동 보고의 문지기가 chatActive이기
+   * 때문이다 — 자식이 먼저 서면 그 첫 턴의 보고가 주인 없는 자리로 떨어진다. 세우지 못하면
+   * 되돌린다.
+   */
+  async function wakeChatOperation(operationId: string): Promise<{ ok: true; session: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+    const node = ctx.host.operations.get(operationId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, status: 404, error: "session_not_found" };
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, status: 409, error: "chat_not_active" };
+    const current = observability.getTerminalSessionInfo(operationId) ?? injectOperation(node);
+    if (current.chatActive === true) return { ok: true, session: current };
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok) return { ok: false, status: seed.status, error: seed.error };
+    const adopted = observability.setTerminalSessionChatActive(operationId, true);
+    if (adopted) observability.notifySessionUpdated(adopted);
+    try {
+      await chatRegistry.ensure(operationId, () => seed.seed);
+    } catch {
+      const reverted = observability.setTerminalSessionChatActive(operationId, false);
+      if (reverted) observability.notifySessionUpdated(reverted);
+      return { ok: false, status: 503, error: "chat_unavailable" };
+    }
+    const cwd = readPayloadString(node.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(node.theaterId) ?? "");
+    if (cwd) workspaceContext.observe(operationId, node.theaterId, cwd);
+    const woken = observability.getTerminalSessionInfo(operationId) ?? adopted ?? current;
+    return { ok: true, session: woken };
+  }
+
+  /** 채팅 뷰의 Ctrl+C 두 번이 두드리는 문. 휴면 판정과 전이는 sleepChatOperation 하나가 진다. */
+  async function handleChatSleep(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const slept = await sleepChatOperation(sessionId);
+    if (!slept.ok) {
+      ctx.host.http.writeJson(res, slept.error === "unknown_operation" ? 404 : 409, { error: slept.error });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, observability.getTerminalSessionInfo(sessionId) ?? { ok: true });
+    return true;
   }
 
   // ── Chat Mode ──────────────────────────────────────────────────────────────
@@ -2158,6 +2276,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   async function cleanup(): Promise<void> {
+    // Console 종료는 모든 Operation의 휴면이다. PTY는 터미널 런타임의 stop()이 접고 그 종료가
+    // handleExit로 휴면을 확정하며, 채팅은 자식을 거두기 전에 여기서 소유권을 놓는다 — 붙어
+    // 있던 화면은 마지막 세션 갱신으로 휴면 카드를 받고, 그 Operation은 다음 부팅에서도 휴면이다.
+    for (const session of observability.listTerminalSessions()) {
+      if (session.chatActive !== true) continue;
+      const released = observability.setTerminalSessionChatActive(session.sessionId, false);
+      if (released) observability.notifySessionUpdated(released);
+    }
     consoleTerminal.dispose();
     reminderWriter.cancelAll();
     unsubscribeRename();
@@ -2271,16 +2397,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         continue;
       }
       const dormant = injectOperation(operation);
-      // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
-      // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채
-      // 사이드바만 휴면이라고 말한다(이 결함의 재시작 판).
+      // 복원된 Operation은 표면과 무관하게 휴면이다. 채팅도 여기서 소유권을 되세우지 않는다 —
+      // Console이 죽는 순간 SDK 자식과 원장은 함께 사라졌고, 마커(chatMode)만 남아 그 Operation이
+      // 어느 표면으로 재개되는지를 말한다. 패널은 채팅 휴면 카드를 세우고, 재개나 첫 메시지가
+      // transcript 재생과 함께 대화를 되살린다.
       const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
-      if (operation.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
-        const adopted = observability.setTerminalSessionChatActive(operation.id, true);
-        if (adopted) observability.notifySessionUpdated(adopted);
-        // 복원된 채팅 Operation은 화면상 살아 있다 — 다음 턴을 기다리지 않고 "지금 어디" 축도 되세운다.
-        if (cwd) workspaceContext.observe(operation.id, operation.theaterId, cwd);
-      }
       ctx.host.operations.patch(operation.id, {
         payload: {
           ...toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle),
