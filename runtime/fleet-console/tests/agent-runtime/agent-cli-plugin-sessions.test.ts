@@ -29,7 +29,7 @@ describe("agent CLI shared plugin store", () => {
     expect(plugin.pluginRoots).toEqual([plugin.pluginRoot]);
     expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
     expect(existsSync(path.join(dataDir, "workspaces"))).toBe(false);
   });
@@ -37,8 +37,8 @@ describe("agent CLI shared plugin store", () => {
   it("leaves the previous tree intact when staging the next render fails", async () => {
     const { dataDir, cwd } = createRoots("fleet-admiral-shared-stage-failure-");
     const plugin = await createAgentCliPlugin(options({ cwd, dataDir }));
-    const guardPath = path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs");
-    const guardBefore = readFileSync(guardPath, "utf8");
+    const hookPath = path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs");
+    const hookBefore = readFileSync(hookPath, "utf8");
 
     expect(() => publishSharedPlugin(dataDir, plugin.pluginRoot, [{
       relativePath: "hooks/blocked/file.txt",
@@ -48,7 +48,7 @@ describe("agent CLI shared plugin store", () => {
       content: "not a directory\n",
     }])).toThrow();
 
-    expect(readFileSync(guardPath, "utf8")).toBe(guardBefore);
+    expect(readFileSync(hookPath, "utf8")).toBe(hookBefore);
     expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
   });
 
