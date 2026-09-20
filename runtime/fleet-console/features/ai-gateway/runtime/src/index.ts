@@ -120,6 +120,7 @@ export {
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
   TYPESAFE_DEFAULT_MODEL,
+  TYPESAFE_MODELS,
   validateKimiAuthKey,
   validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,

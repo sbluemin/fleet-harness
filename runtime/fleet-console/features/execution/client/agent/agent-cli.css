@@ -1247,31 +1247,92 @@
   opacity: var(--control-disabled-opacity);
 }
 
-/* 서비스 자격증명 — 모델 팔레트 밖에 서는 로그인 줄. 모델 행과 같은 칸 리듬을 쓰되
-   순위·추론 강도 같은 모델 전용 손잡이가 없어 더 조용하다. */
-.ai-gateway-service-list {
-  display: grid;
-  gap: var(--space-3);
+/* 서비스 자격증명 — 카탈로그 모델이 아니라서 로스터에서 다르게 선다. 테두리를 강조색으로
+   두르는 것은 장식이 아니라 구분이다: 이 줄은 고를 수 있는 모델이 아니라고 말한다. */
+.ai-gateway-service-group {
+  border-color: var(--brass-deep);
+  background: color-mix(in oklch, var(--brass) 7%, transparent);
 }
 
-.ai-gateway-service {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.ai-gateway-service-head {
-  display: flex;
+.ai-gateway-service-wrap {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
-.ai-gateway-service-name {
+/* 모델 행 그리드가 아니라 자기 흐름을 쓴다 — 순위·강도 칸이 없어 칸을 맞출 상대가 없다. */
+.ai-gateway-service-rows {
+  display: grid;
+  gap: 2px;
+}
+
+/* 로스터·팔레트 양쪽의 서비스 줄. 순위·강도 손잡이가 없는 자리를 모델 id가 채운다. */
+.ai-gateway-service-row,
+.ai-gateway-palette-service-model {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+.ai-gateway-palette-service-model {
+  padding-left: 34px;
+}
+
+.ai-gateway-service-row:hover,
+.ai-gateway-service-row:focus-visible,
+.ai-gateway-palette-service-model:hover,
+.ai-gateway-palette-service-model:focus-visible {
+  background: var(--surface-panel-raised);
+  outline: none;
+}
+
+.ai-gateway-service-model {
   font-weight: var(--weight-medium);
 }
 
-.ai-gateway-service-controls {
+.ai-gateway-service-id {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+/* 말풍선은 순위 셀렉트의 관례를 그대로 쓴다 — hover와 키보드 포커스 양쪽에서 뜬다. */
+.ai-gateway-service-tip {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  visibility: hidden;
+  width: max-content;
+  max-width: 300px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.ai-gateway-service-wrap:hover .ai-gateway-service-tip,
+.ai-gateway-service-wrap:has(:focus-visible) .ai-gateway-service-tip,
+.ai-gateway-service-row:hover .ai-gateway-service-tip,
+.ai-gateway-service-row:focus-visible .ai-gateway-service-tip,
+.ai-gateway-palette-service-model:hover .ai-gateway-service-tip,
+.ai-gateway-palette-service-model:focus-visible .ai-gateway-service-tip {
+  visibility: visible;
+}
+
+.ai-gateway-palette-service-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);

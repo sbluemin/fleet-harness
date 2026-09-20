@@ -4,11 +4,18 @@
  */
 export type ModelAuthProviderKind = "model-provider" | "service";
 
+/** 서비스 자격증명이 열어 주는 모델 한 줄. 고를 수 있는 항목이 아니다. */
+export interface ModelAuthServiceModel {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface ModelAuthProviderState {
   readonly provider: string;
   readonly kind: ModelAuthProviderKind;
   readonly displayName: string;
   readonly signedIn: boolean;
+  readonly models?: readonly ModelAuthServiceModel[];
 }
 
 export interface ModelAuthState {
@@ -75,6 +82,11 @@ function assertMutationResult(value: unknown, status: number): ModelAuthMutation
   return { state: assertModelAuthState(payload.state, status) };
 }
 
+function isServiceModel(value: unknown): value is ModelAuthServiceModel {
+  const entry = value as Partial<ModelAuthServiceModel> | null;
+  return entry !== null && typeof entry === "object" && typeof entry.id === "string" && typeof entry.name === "string";
+}
+
 function assertModelAuthState(value: unknown, status: number): ModelAuthState {
   const payload = value as { readonly providers?: unknown };
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.providers)) {
@@ -97,6 +109,7 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
     kind: payload.kind === "service" ? "service" : "model-provider",
     displayName: payload.displayName,
     signedIn: payload.signedIn,
+    ...(Array.isArray(payload.models) ? { models: payload.models.filter(isServiceModel) } : {}),
   };
 }
 

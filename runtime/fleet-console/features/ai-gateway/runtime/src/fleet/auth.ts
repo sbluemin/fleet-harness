@@ -1,6 +1,6 @@
 import { KIMI_AUTH_PROVIDER_ID, KIMI_CODE_API_BASE_URL, KIMI_CODE_MODEL } from "../models.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_API_BASE_URL, OPENCODE_GO_MODEL } from "../upstream/opencode-go/index.js";
-import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_DEFAULT_MODEL, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
+import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_DEFAULT_MODEL, TYPESAFE_MODELS, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
 import { isAuthValidationSuccess, validateAnthropicCompatibleApiKey } from "../auth/validation.js";
 import { type AuthValidationFailureResult, type AuthValidationFailureStatus } from "../auth/types.js";
 
@@ -17,6 +17,7 @@ export {
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
   TYPESAFE_DEFAULT_MODEL,
+  TYPESAFE_MODELS,
 };
 
 export type AuthKeyValidationResult =

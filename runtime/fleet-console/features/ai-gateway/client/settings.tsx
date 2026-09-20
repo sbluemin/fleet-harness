@@ -576,6 +576,9 @@ function AiGatewayModelsCard() {
   const providerCount = groups.length;
   const authOf = (id: string): ModelAuthProviderState | undefined =>
     auth.state?.providers.find((entry) => entry.provider === id);
+  // 카탈로그 밖 서비스 자격증명. 팔레트는 전부(로그인 자리로), 로스터는 로그인된 것만 세운다.
+  const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
+  const signedInServices = services.filter((entry) => entry.signedIn);
 
   // 선택지는 켠 공급자 수까지만이다. 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가
   // 늘지 않는다 — 한 칸 더 주면 placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
@@ -624,6 +627,7 @@ function AiGatewayModelsCard() {
             {paletteOpen ? (
               <AiGatewayModelPalette
                 providers={providers}
+                services={services}
                 selection={selection}
                 authOf={authOf}
                 authBusy={auth.busyProvider}
@@ -639,10 +643,13 @@ function AiGatewayModelsCard() {
             </span>
           ) : null}
         </div>
-        {roster.length === 0 ? (
+        {roster.length === 0 && signedInServices.length === 0 ? (
           <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
         ) : (
           <div className="ai-gateway-groups">
+            {signedInServices.map((service) => (
+              <AiGatewayServiceGroup key={service.provider} service={service} busy={auth.busyProvider === service.provider} />
+            ))}
             {groups.map((group) => {
               const providerId = group.provider.id as AiGatewayProviderId;
               return (
@@ -692,72 +699,55 @@ function AiGatewayModelsCard() {
         )}
         </div>
       </section>
-      <AiGatewayServiceCredentials
-        services={auth.state?.providers.filter((entry) => entry.kind === "service") ?? []}
-        busyProvider={auth.busyProvider}
-      />
     </>
   );
 }
 
 /**
- * 라우팅되는 모델이 없는 서비스의 자격증명. 모델 팔레트는 카탈로그 공급자에만 로그인
- * 자리를 주므로, 카탈로그 밖 자격증명은 여기 선다. 목록이 비면 섹션 자체가 나타나지
- * 않는다 — 호스트가 서비스를 하나도 선언하지 않았다는 뜻이다.
+ * 로스터의 서비스 줄. 카탈로그 모델이 아니므로 순위·추론 강도·제거 손잡이를 갖지 않고,
+ * 왜 다르게 생겼는지는 hover·포커스에서 뜨는 말풍선이 말한다. 이름을 보여 주는 것이
+ * 목적이지 고르게 하는 것이 아니다 — 고를 수 있게 만들면 대화 모델로 오인된다.
  */
-function AiGatewayServiceCredentials({ services, busyProvider }: {
-  readonly services: readonly ModelAuthProviderState[];
-  readonly busyProvider: string | null;
+function AiGatewayServiceGroup({ service, busy }: {
+  readonly service: ModelAuthProviderState;
+  readonly busy: boolean;
 }) {
   const t = getT(useTerminalLocale());
-  if (services.length === 0) return null;
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayServices")}>
-      <div className="agent-cli-head">
-        <p className="global-settings-resp-title">
-          {t("terminal.settings.aiGatewayServices")}
-          <SettingsHelp title={t("terminal.settings.aiGatewayServices")}>
-            <p>{t("terminal.settings.aiGatewayServicesHelp")}</p>
-          </SettingsHelp>
-        </p>
+    <section
+      className="ai-gateway-provider-group ai-gateway-service-group"
+      aria-label={service.displayName}
+    >
+      <div className="ai-gateway-group-head">
+        <span className="ai-gateway-provider-name">{service.displayName}</span>
+        <span className="ai-gateway-service-wrap">
+          <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayServiceBadge")}</span>
+          <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
+        </span>
+        <span className="ai-gateway-group-controls">
+          <button
+            type="button"
+            className="ai-gateway-key-signout"
+            disabled={busy}
+            aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
+            onClick={() => void signOutModel(service.provider)}
+          >
+            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
+          </button>
+        </span>
       </div>
-      <div className="ai-gateway-service-list">
-        {services.map((service) => {
-          const busy = busyProvider === service.provider;
-          const blurb = AI_GATEWAY_SERVICE_BLURB_KEYS[service.provider];
-          return (
-            <div className="ai-gateway-service" key={service.provider}>
-              <div className="ai-gateway-service-head">
-                <span className="ai-gateway-service-name">{service.displayName}</span>
-                {service.signedIn ? (
-                  <span className="ai-gateway-service-controls">
-                    <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayServiceSignedIn")}</span>
-                    <button
-                      type="button"
-                      className="ai-gateway-key-signout"
-                      disabled={busy}
-                      aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
-                      onClick={() => void signOutModel(service.provider)}
-                    >
-                      {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
-                    </button>
-                  </span>
-                ) : null}
-              </div>
-              {blurb ? <p className="global-settings-help">{t(blurb)}</p> : null}
-              {service.signedIn ? null : <AiGatewayKeyForm provider={service} busy={busy} />}
-            </div>
-          );
-        })}
+      <div className="ai-gateway-service-rows">
+        {(service.models ?? []).map((model) => (
+          <div className="ai-gateway-service-row" key={model.id} tabIndex={0}>
+            <span className="ai-gateway-service-model">{model.name}</span>
+            <code className="ai-gateway-service-id">{model.id}</code>
+            <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceModelTip")}</span>
+          </div>
+        ))}
       </div>
     </section>
   );
 }
-
-/** 서비스가 무엇을 해 주는지 한 줄. 키가 없는 서비스는 설명 없이 로그인 줄만 선다. */
-const AI_GATEWAY_SERVICE_BLURB_KEYS: Readonly<Record<string, TerminalMessageKey | undefined>> = {
-  typesafe: "terminal.settings.aiGatewayServiceTypesafe",
-};
 
 /** 컨텍스트 변형의 id 접미사 — `-524k`, `-1m`, `-256k`. 이름 쪽은 대소문자만 다르다. */
 const AI_GATEWAY_CONTEXT_SUFFIX = /-(\d+[km])$/i;
@@ -902,6 +892,8 @@ export function filterAiGatewayPalette(
 
 interface AiGatewayModelPaletteProps {
   readonly providers: readonly AiGatewayCatalogProvider[];
+  /** 카탈로그 밖 서비스 자격증명 — 로그인 자리와 그 서비스가 여는 모델 이름을 이 목록이 진다. */
+  readonly services: readonly ModelAuthProviderState[];
   readonly selection: AiGatewaySettings;
   readonly authOf: (id: string) => ModelAuthProviderState | undefined;
   readonly authBusy: string | null;
@@ -1030,6 +1022,7 @@ function useAiGatewayPaletteResize(rootRef: React.RefObject<HTMLDivElement | nul
  */
 function AiGatewayModelPalette({
   providers,
+  services,
   selection,
   authOf,
   authBusy,
@@ -1065,6 +1058,13 @@ function AiGatewayModelPalette({
   // 로그인되지 않은 공급자의 모델은 고를 수 없으므로 목록에서 감춘다 — 머리글만 남아 로그인 자리가 된다.
   const hits = matched.filter((hit) => !isLocked(hit.provider.id));
   const headingProviders = matched.map((hit) => hit.provider).filter((provider, index, all) => all.indexOf(provider) === index);
+  // 서비스는 이름과 모델 id 어느 쪽으로도 찾을 수 있다 — 사용자가 "jev"를 칠 수 있어야 한다.
+  const serviceQuery = query.trim().toLowerCase();
+  const serviceHits = services.filter((service) =>
+    serviceQuery.length === 0
+    || service.displayName.toLowerCase().includes(serviceQuery)
+    || (service.models ?? []).some((model) =>
+      model.id.toLowerCase().includes(serviceQuery) || model.name.toLowerCase().includes(serviceQuery)));
 
   // 검색어가 있으면 첫 항목이 활성이라 Enter 한 번이 선택이다. 고른 항목이 검색에서 사라지면
   // 선택도 함께 접힌다 — 보이지 않는 계열에 변형 줄이 붙어 있으면 무엇을 켜는지 알 수 없다.
@@ -1224,7 +1224,14 @@ function AiGatewayModelPalette({
             </React.Fragment>
           );
         })}
-        {headingProviders.length === 0 ? (
+        {serviceHits.map((service) => (
+          <AiGatewayPaletteServiceGroup
+            key={service.provider}
+            service={service}
+            busy={authBusy === service.provider}
+          />
+        ))}
+        {headingProviders.length === 0 && serviceHits.length === 0 ? (
           <p className="ai-gateway-palette-empty">{t("terminal.settings.aiGatewayNoMatch", { query: query.trim() })}</p>
         ) : null}
       </div>
@@ -1342,6 +1349,47 @@ function AiGatewayXaiEndpointRow({ saving }: { readonly saving: boolean }) {
         </button>
       </div>
     </span>
+  );
+}
+
+/**
+ * 팔레트의 서비스 그룹. 여기서 로그인하고, 그 서비스가 여는 모델 이름을 읽는다. 항목에
+ * `role="option"`을 주지 않는 것이 요점이다 — 고를 수 있는 모습을 하면 대화 모델로 오인된다.
+ */
+function AiGatewayPaletteServiceGroup({ service, busy }: {
+  readonly service: ModelAuthProviderState;
+  readonly busy: boolean;
+}) {
+  const t = getT(useTerminalLocale());
+  return (
+    <>
+      <div className="ai-gateway-palette-group ai-gateway-palette-service-head">
+        <span className="ai-gateway-provider-name">{service.displayName}</span>
+        <span className="ai-gateway-service-wrap">
+          <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayServiceBadge")}</span>
+          <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
+        </span>
+        {service.signedIn ? (
+          <button
+            type="button"
+            className="ai-gateway-key-signout"
+            disabled={busy}
+            aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
+            onClick={() => void signOutModel(service.provider)}
+          >
+            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
+          </button>
+        ) : null}
+      </div>
+      {(service.models ?? []).map((model) => (
+        <div className="ai-gateway-palette-service-model" key={model.id} tabIndex={0}>
+          <span className="ai-gateway-palette-hit-name">{model.name}</span>
+          <code className="ai-gateway-service-id">{model.id}</code>
+          <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceModelTip")}</span>
+        </div>
+      ))}
+      {service.signedIn ? null : <AiGatewayKeyForm provider={service} busy={busy} compact />}
+    </>
   );
 }
 

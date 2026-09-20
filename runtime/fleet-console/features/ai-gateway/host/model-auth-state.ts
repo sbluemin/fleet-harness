@@ -1,4 +1,4 @@
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_MODELS } from "@fleet-console/ai-gateway";
 import type { AuthService } from "@fleet-console/ai-gateway";
 
 export type TerminalModelAuthProviderId = "kimi" | "opencode" | "typesafe";
@@ -10,11 +10,22 @@ export type TerminalModelAuthProviderId = "kimi" | "opencode" | "typesafe";
  */
 export type TerminalModelAuthProviderKind = "model-provider" | "service";
 
+/** 서비스가 내놓는 모델 한 줄. 고를 수 있는 항목이 아니라 무엇을 쓰게 되는지의 표시다. */
+export interface TerminalModelAuthServiceModel {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface TerminalModelAuthProviderState {
   readonly provider: TerminalModelAuthProviderId;
   readonly kind: TerminalModelAuthProviderKind;
   readonly displayName: string;
   readonly signedIn: boolean;
+  /**
+   * `service` 자격증명이 열어 주는 모델들. 카탈로그를 거치지 않으므로 `/model` 픽커와
+   * Operation 실행 메뉴에는 나타나지 않는다 — 설정 화면에만 보이는 이름이다.
+   */
+  readonly models?: readonly TerminalModelAuthServiceModel[];
 }
 
 export interface TerminalModelAuthState {
@@ -32,6 +43,10 @@ const MODEL_AUTH_KINDS: Readonly<Record<TerminalModelAuthProviderId, TerminalMod
   kimi: "model-provider",
   opencode: "model-provider",
   typesafe: "service",
+});
+
+const MODEL_AUTH_SERVICE_MODELS: Readonly<Partial<Record<TerminalModelAuthProviderId, readonly TerminalModelAuthServiceModel[]>>> = Object.freeze({
+  typesafe: TYPESAFE_MODELS,
 });
 
 const MODEL_AUTH_DISPLAY_NAMES: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
@@ -54,6 +69,7 @@ export async function buildModelAuthState(
       kind: MODEL_AUTH_KINDS[provider],
       displayName: MODEL_AUTH_DISPLAY_NAMES[provider],
       signedIn: signedInIds.has(MODEL_AUTH_STORE_IDS[provider]),
+      ...(MODEL_AUTH_SERVICE_MODELS[provider] ? { models: MODEL_AUTH_SERVICE_MODELS[provider] } : {}),
     })),
   };
 }
