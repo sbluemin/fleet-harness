@@ -36,11 +36,6 @@ export interface AgentSessionOptions {
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
     /**
-     * fleet-ai-gateway 리소스(라우팅 가이드·노출 모델 로스터)를 이 세션에 연결한다. 도구는 없고
-     * 읽기뿐이므로 호스트가 MCP 리소스 읽기 내장 도구를 함께 연다. 위임 실행 능력은 주지 않는다.
-     */
-    readonly aiGateway?: boolean;
-    /**
      * 컴퓨터 사용(실험). 도구는 세션이 열릴 때 실리고 허용은 호출마다 `enabled()`로 다시 묻는다 —
      * 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 허용을 거둔 순간 진행 중 호출까지 끊으려면
      * {@link AgentSession.revokeComputerUse}를 부른다. 실험 스위치 자체는 호스트가 따로 본다.

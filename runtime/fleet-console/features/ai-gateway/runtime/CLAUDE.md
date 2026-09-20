@@ -1,6 +1,6 @@
 # AI Gateway Runtime
 
-Translates an Agent CLI's wire onto provider backends. Downstream is the client (harness), upstream is the provider, and `src/canonical/` is their neutral vocabulary. Provider wire code owns neither Fleet policy nor host lifecycle. `src/fleet/` owns Gateway model exposure, delegation identities, and routing resources without importing core or CLI.
+Translates an Agent CLI's wire onto provider backends. Downstream is the client (harness), upstream is the provider, and `src/canonical/` is their neutral vocabulary. Provider wire code owns neither Fleet policy nor host lifecycle. `src/fleet/` owns Gateway model exposure and the delegation routing decision without importing core or CLI.
 
 ## Task references
 
@@ -31,4 +31,4 @@ When changing layer placement, model registration, request shaping, or provider 
 - Do not re-exclude Cursor models from the live client-tool bridge without measurement. The reference and adapter classifiers own provider-specific exceptions and rationale.
 - `FLEET_GATEWAY_WIRE_LOG` records request bodies, tool arguments, and response events as unlimited-append JSONL. An explicit in-process override wins over the environment; only overrides with `maxBytes` rotate. Do not treat these logs as ordinary output or external publication material.
 
-- `assets/ai-gateway/` owns English routing-resource prose and model selection policy. Preserve live roster preflight, host opt-in, isolated writers, and explicit failures. Host-native tools own execution mechanics. `src/fleet/assets.generated.ts` is generated, never hand-edited.
+- `src/fleet/routing-assignment.ts` owns which model and effort one delegated run gets, with `routing-table.ts` and `routing-allowance.ts`. The decision belongs here, not in the routing mod: the mod ships in a content-hashed shared tree that tests cannot reach. Read exposure and quota at call time, never from a session-start snapshot, and respect the host's delegation-routing opt-in.

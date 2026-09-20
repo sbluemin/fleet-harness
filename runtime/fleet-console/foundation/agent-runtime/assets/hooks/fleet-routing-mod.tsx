@@ -1,22 +1,4 @@
-/**
- * fleet-routing-mod — 위임을 게이트웨이 모델로 배정하고, 무엇이 무엇으로 돌았는지 보여주는
- * Claude Code Mod.
- *
- * 두 가지 일을 한다.
- *
- *   1. 배정. 서브에이전트가 시작되기 직전(`agent.spawn`)에 그 실행의 모델을 정해 실어 준다.
- *      Agent 도구가 모델을 Claude 별칭으로만 받기 때문에 한때는 모델마다 Agent 정체성을
- *      등록하고 호스트가 그 이름을 부르게 했다. 그 방식은 호스트의 협조에 기댔고 — 이름을
- *      부르지 않으면 조용히 세션 모델을 상속했다 — 등록이 세션 시작에 고정돼 설정 변경이
- *      재시작 전까지 먹지 않았다. 지금은 호스트가 이름을 대지 않는다. 스폰 레코드의 `model`을
- *      직접 바꾸므로 도구의 enum과 무관하고, 후보는 배정할 때마다 Console에 묻는다.
- *
- *   2. 원장. 배정 하나하나를 `Fleet Routing` 판에 적는다. 판이 없으면 "무엇으로 돌았는가"를
- *      물어볼 방법이 모델에게 묻는 것밖에 없다.
- *
- * 주소와 자격은 런치가 환경변수로 넘긴다(FLEET_MOD_BASE_URL·FLEET_MOD_TOKEN). 둘이 없거나
- * 조회가 실패하면 아무것도 재작성하지 않고 관측만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
- */
+
 interface PaneElements {
   readonly Box: unknown;
   readonly Text: unknown;
@@ -38,7 +20,7 @@ interface Engine {
   readonly http: {
     readonly fetch: (
       url: string,
-      init?: { method?: string; headers?: Record<string, string> },
+      init?: { method?: string; headers?: Record<string, string>; body?: string },
     ) => Promise<{ ok: boolean; status: number; text: string }>;
   };
   readonly agent: {
@@ -52,13 +34,8 @@ interface Engine {
   };
 }
 
-/** 한 훅. `next(e)`는 나머지 플러그인과 엔진 자신의 동작으로 이어진다. */
 type Hook<E, R> = ($: Engine, e: E, next: (event: E) => Promise<R> | R) => Promise<R> | R;
 
-/**
- * `turn.step`만 스트리밍이다. 훅은 async generator여야 하고, `yield* next(e)`가 아래 스트림을
- * 흘려보내면서 그 단계의 결과로 평가된다. 일반 함수로 걸면 모듈이 실리지 않는다.
- */
 type StreamHook<E, R> = ($: Engine, e: E, next: (event: E) => AsyncGenerator<unknown, R>) => AsyncGenerator<unknown, R>;
 
 interface On {
@@ -69,102 +46,61 @@ interface On {
 
 type Register = (on: On, options?: unknown) => unknown;
 
-/**
- * `agent.spawn`이 싣는 것 중 배정에 쓰는 것들. `model`·`subagentType`·`prompt`는 재작성할 수
- * 있고 `fork`·`provider`·`parentModel`은 스폰의 정체성이라 고정이다.
- */
 interface SpawnInput {
   readonly tool_use_id: string;
   readonly description: string;
+
+  readonly prompt?: string;
   readonly subagentType: string;
   readonly fork: boolean;
   readonly model?: string;
   readonly parentModel: string;
-  /** 이 agent를 누가 제공하는가. 내장은 `{ plugin: "engine" }`. */
+
   readonly provider?: { readonly plugin: string };
 }
 
-/** 위임의 등급. 호스트가 적은 모델 별칭과 agent 종류에서 읽어 낸다. */
-type Tier = "scan" | "work" | "deep";
-
-/** 한 등급의 후보 하나. 앞에 있을수록 먼저 시도한다. */
-interface Candidate {
-  readonly model: string;
-  /** 이 등급이 이 모델에 요청할 강도. 강도를 지원하지 않는 모델에는 없다. */
+interface Assignment {
+  readonly model?: string;
   readonly effort?: string;
   readonly label: string;
+  readonly because: string;
 }
 
-interface RoutingTable {
-  readonly prompt: string;
-  readonly tiers: Readonly<Record<Tier, readonly Candidate[]>>;
-}
-
-const NO_TABLE: RoutingTable = { prompt: "", tiers: { scan: [], work: [], deep: [] } };
-
-/**
- * 지금의 후보를 Console에 묻는다. **배정할 때마다** 묻는다 — 세션 시작에 한 번 읽어 두면
- * 그 순간의 노출에 갇혀서, 설정에서 모델을 켜거나 끈 변화가 CLI를 다시 띄우기 전에는 먹지
- * 않는다. 위임은 드물게 일어나고 주소는 같은 기계의 Console이라, 매번 묻는 값이 그 정확함보다
- * 싸지 않다.
- *
- * 실패는 전부 빈 표로 접는다. 후보를 못 읽는 것과 위임을 못 하는 것은 다르다 — 빈 표를 받은
- * 배정은 아무것도 바꾸지 않고 원래대로 흘려보낸다.
- */
-async function fetchRoutingTable($: Engine): Promise<RoutingTable> {
+async function requestAssignment($: Engine, request: Record<string, unknown>): Promise<Assignment> {
   const base = await $.env.get("FLEET_MOD_BASE_URL");
   const token = await $.env.get("FLEET_MOD_TOKEN");
-  if (!base || !token) return NO_TABLE;
-  const response = await $.http.fetch(`${base.replace(/\/+$/, "")}/v1/fleet/routing`, {
-    headers: { "x-fleet-mod-token": token },
-  });
-  if (!response.ok) throw new Error(`routing table unavailable (${response.status})`);
-  const parsed: unknown = JSON.parse(response.text);
-  if (parsed === null || typeof parsed !== "object") return NO_TABLE;
-  const table = parsed as RoutingTable;
-  if (table.tiers === null || typeof table.tiers !== "object") return NO_TABLE;
-  for (const tier of ["scan", "work", "deep"] as const) {
-    if (!Array.isArray(table.tiers[tier])) return NO_TABLE;
+  if (!base || !token) {
+    return { label: "session model", because: "no gateway is attached to this session" };
   }
-  return table;
+  const response = await $.http.fetch(`${base.replace(/\/+$/, "")}/v1/fleet/routing/assign`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-fleet-mod-token": token },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`routing assignment unavailable (${response.status})`);
+  const parsed: unknown = JSON.parse(response.text);
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error("routing assignment was not an object");
+  }
+  const assignment = parsed as Assignment;
+  if (typeof assignment.label !== "string" || typeof assignment.because !== "string") {
+    throw new Error("routing assignment carried no label");
+  }
+  return assignment;
 }
 
-/**
- * 호스트가 보낸 것을 등급으로 읽는다.
- *
- * `model`은 **목적지가 아니라 등급 신호다.** Agent 도구가 말할 수 있는 모델은 Claude 별칭뿐이라
- * 목적지로 읽으면 어차피 전부 세션 계열로 간다. 호스트가 `haiku`라고 적은 것은 "Haiku를 써라"가
- * 아니라 "싼 것으로 충분하다"는 판단이고, 그 판단은 유효하다 — 어느 모델이 그 등급인지만
- * 호스트가 모를 뿐이다.
- *
- * 이름을 아예 대지 않은 경우(실측상 대부분)가 곧 상속이고, 없애려는 것이 그것이다.
- */
-function tierOf(model: string | undefined, subagentType: string): Tier {
-  const alias = (model ?? "").toLowerCase();
-  if (alias.includes("haiku")) return "scan";
-  if (alias.includes("opus") || alias.includes("fable")) return "deep";
-  if (alias.includes("sonnet")) return "work";
-  // 읽기 전용으로 넓게 훑는 실행. 긴 컨텍스트를 쓰고 추론 깊이는 덜 쓴다고 스스로 말한다.
-  if (subagentType === "Explore") return "scan";
-  return "work";
+const MAX_PROMPT_CHARS = 64 * 1024;
+
+function boundedPrompt(prompt: string | undefined): string | undefined {
+  if (typeof prompt !== "string" || prompt === "") return undefined;
+  return prompt.length > MAX_PROMPT_CHARS ? prompt.slice(0, MAX_PROMPT_CHARS) : prompt;
 }
 
-/**
- * 이 세션이 올리는 단 하나의 정체성. 모델을 고르는 이름이 아니라 **실행 계약을 나르는 그릇**이다.
- *
- * 정체성을 모델마다 등록하던 시절에는 그 정의가 Fleet의 실행 프롬프트를 날랐다. 등록을
- * 없애면 위임이 내장 general-purpose의 "search broadly / Be thorough" 기본값으로 돌아가는데,
- * 그 기본값을 버리는 것이 Fleet 정의의 존재 이유였다. 스폰의 `prompt`를 덮어쓰는 방법도
- * 있지만 그 글은 도구 파라미터로 되읽혀 트랜스크립트에 상주한다. `agent.offer`로 감추는
- * 방법은 성립하지 않는다 — 감춰진 agent는 디스패치 가능 집합에서도 빠져 스폰이 거부된다
- * (측정: `subagentType rewritten by a hook` 직후 거부).
- *
- * 그래서 하나만, 보이게 올린다. 호스트가 이 이름을 부르든 부르지 않든 모델은 아래가 정하므로,
- * 목록에 뜨는 한 줄이 잘못된 선택을 부를 여지가 없다.
- */
 const EXECUTION_AGENT = "execute";
 const EXECUTION_AGENT_TYPE = `fleet:${EXECUTION_AGENT}`;
-/** 실행 계약을 실은 정체성이 이 세션에 실제로 올라갔는가. 실패하면 종류를 바꾸지 않는다. */
+
+const EXECUTION_CONTRACT = "__FLEET_EXECUTION_CONTRACT__";
+
 let executionAgentReady = false;
 
 const PANE_ID = "fleet-routing";
@@ -172,10 +108,8 @@ const PANE_TITLE = "Fleet Routing";
 const COMMAND_NAME = "fleet-routing";
 type RowState = "asked" | "seated" | "running" | "done" | "denied";
 
-/** 게이트웨이 모델 id의 접두사. 이 표식이 붙은 모델만 Fleet이 중계한다. */
 const GATEWAY_PREFIX = "claude-gateway--";
 
-/** `claude-gateway--cursor--grok-4.6-fast` → `cursor/grok-4.6-fast`. 게이트웨이가 아니면 그대로. */
 function modelLabel(model: string, effort?: string): string {
   if (!model.startsWith(GATEWAY_PREFIX)) return model;
   const scoped = model.slice(GATEWAY_PREFIX.length).replace("--", "/");
@@ -184,55 +118,41 @@ function modelLabel(model: string, effort?: string): string {
 
 interface Row {
   readonly key: string;
-  /** Agent 도구 호출인지 Workflow 스테이지인지. */
+
   readonly surface: "agent" | "workflow";
-  /** 호스트가 붙인 짧은 설명. */
+
   description: string;
-  /** 호스트가 부른 이름. 생략했으면 `inherit`. 부른 이름 자체가 없는 실행에서는 비운다. */
+
   asked?: string;
-  /** 실제로 실린 정체성의 사람이 읽는 이름. */
+
   carried?: string;
-  /** 좌석 배정 근거 한 줄. */
+
   because?: string;
   state: RowState;
   startedAt: number;
   endedAt?: number;
   agentId?: string;
-  /** Fleet이 좌석을 준 실행이 아니라 turn 이벤트로 발견한 실행. */
+
   observed?: true;
 }
 
-/** 이 세션에서 본 디스패치. 새 것이 뒤에 붙는다. */
 const ledger: Row[] = [];
-/**
- * 이 세션에서 배정했다가 실패한 모델. 다음 배정은 건너뛴다 — 후보가 목록인 이유가 이것이고,
- * "지금 쓸 수 있는 첫 번째"의 `지금`을 이 집합이 판정한다.
- */
+
 const unreachable = new Set<string>();
-/** Agent 도구 호출 중 아직 spawn이 오지 않은 것: tool_use_id → 행. */
+
 const awaitingSpawn = new Map<string, Row>();
-/** 살아 있는 subagent: agentId → 행. */
+
 const running = new Map<string, Row>();
-/**
- * 이 세션이 배정한 실행: agentId → 후보.
- *
- * 스폰이 실어 준 **모델**은 그 실행 내내 이어지지만 `turn.step`에서 실은 모델은 이어지지
- * 않는다 — 엔진은 스텝마다 세션 모델로 다시 해석한다(측정: 네 스텝 모두 `saw=` 가 부모
- * 모델이었고 `usage.model` 만 재작성된 값이었다). 그래서 한 번 정한 값을 여기 붙잡아 두고
- * 매 스텝 다시 싣는다. 스텝마다 새로 고르면 한 실행이 모델을 갈아탄다.
- *
- * **강도**는 스폰이 아예 나르지 못한다 — `agent.spawn`에 그 필드가 없다. 그래서 스폰이
- * 배정한 실행도 여기 들어온다: 모델은 이미 실려 있고, 강도만 매 스텝 얹는다.
- */
-const assigned = new Map<string, Candidate>();
+
+const assigned = new Map<string, Decision>();
 
 let paneOpen = false;
 let ticker: { cancel: () => void } | undefined;
-/** 세션 모델을 타지 않은 디스패치 수. */
+
 let offHost = 0;
-/** 세션 모델을 상속한 디스패치 수. */
+
 let onHost = 0;
-/** Fleet이 배정하지 않았지만 게이트웨이 모델로 돈 실행 수(워크플로우 스테이지 등). */
+
 let observed = 0;
 
 const MAX_ROWS = 64;
@@ -252,23 +172,15 @@ function elapsed(row: Row, now: number): string {
 }
 
 export const register: Register = (on) => {
-  // 세션이 준비되면 판을 여는 커맨드를 등록한다. 후보 조회는 여기서 하지 않는다 — 세션
-  // 시작에 읽어 두면 그 순간의 노출에 갇히고, 그 고정이 바로 등록 방식의 결함이었다.
   on("session.start", async ($, e, next) => {
-    // 실행 계약은 노출에 의존하지 않는 상수라, 여기서 한 번 올려도 낡지 않는다. 후보 조회만
-    // 배정 시점으로 미룬다.
     try {
-      const table = await fetchRoutingTable($);
-      if (table.prompt.length > 0) {
-        await $.agent.register({
-          name: EXECUTION_AGENT,
-          description: "Fleet execution agent. Fleet assigns its model; naming it is never required.",
-          prompt: table.prompt,
-        });
-        executionAgentReady = true;
-      }
+      await $.agent.register({
+        name: EXECUTION_AGENT,
+        description: "Fleet execution agent. Fleet assigns its model; naming it is never required.",
+        prompt: EXECUTION_CONTRACT,
+      });
+      executionAgentReady = true;
     } catch (error) {
-      // 계약을 못 실어도 위임은 산다. 내장 정의로 돌 뿐이다.
       $.ui.log(`could not register the execution agent: ${String(error)}`, { to: "debug" });
     }
     try {
@@ -278,7 +190,6 @@ export const register: Register = (on) => {
         immediate: true,
       });
     } catch {
-      // 커맨드가 없어도 판은 디스패치에서 뜬다.
     }
     return next(e);
   });
@@ -288,7 +199,6 @@ export const register: Register = (on) => {
     return { text: summaryLine() };
   });
 
-  // 호스트가 Agent 도구를 집은 순간. spawn보다 먼저 와서, 판이 빈 자리를 먼저 그린다.
   on("tool.call", { tool: "Agent" }, async ($, e, next) => {
     const call = e as { tool_use_id: string; description?: string; subagent_type?: string };
     const row = addRow({
@@ -309,23 +219,12 @@ export const register: Register = (on) => {
     }
   });
 
-  // Workflow는 스테이지를 자기 안에서 돌리고, 그 스테이지는 agent.spawn을 지나지 않는다.
-  // 여기서는 판을 띄워 두기만 하고, 스테이지 각각은 turn.step이 관측 행으로 받는다.
   on("tool.call", { tool: "Workflow" }, async ($, e, next) => {
     await openPane($);
     redraw($);
     return next(e);
   });
 
-  /**
-   * 위임 하나의 모델이 정해지는 자리. 스폰 레코드의 `model`은 Agent 도구의 파라미터와 달리
-   * 열린 문자열이라, 여기서 게이트웨이 모델 id를 직접 실어 줄 수 있다 — 도구의 enum은
-   * 호스트가 적을 수 있는 철자만 제한하지 실제로 무엇이 도는지를 정하지 않는다.
-   *
-   * 어느 분기에서도 반드시 next로 흘려보낸다 — 여기서 답해 버리면 subagent가 시작되지 않는다.
-   * Workflow 스테이지는 이 훅을 지나지 않는다(측정: 스테이지 4개에 스폰 0건). 그쪽은 내장
-   * workflow-subagent로 돌아 아래 turn.step이 관측 행으로 받는다.
-   */
   on("agent.spawn", async ($, e, next) => {
     const row =
       awaitingSpawn.get(e.tool_use_id) ??
@@ -341,16 +240,16 @@ export const register: Register = (on) => {
     row.description = e.description || row.description;
     row.asked = e.fork ? "fork" : e.subagentType || "inherit";
 
-    const decision = await decide($, e);
+    const decision = await assignSpawn($, e);
     row.state = "seated";
     row.carried = decision.carried;
     row.because = decision.because;
     if (decision.model === undefined) onHost += 1;
     else offHost += 1;
     $.ui.notice(e.tool_use_id, `Fleet: ${decision.carried} — ${decision.because}`);
-    // 사람이 보는 자리는 판이고, 이 줄은 사후 진단용이라 디버그 로그에만 남긴다.
+
     $.ui.log(
-      `dispatch: asked=${e.model ?? "(none)"}/${row.asked} tier=${decision.tier} carried=${decision.carried}`,
+      `dispatch: asked=${e.model ?? "(none)"}/${row.asked} carried=${decision.carried}`,
       { to: "debug" },
     );
     redraw($);
@@ -361,7 +260,7 @@ export const register: Register = (on) => {
         : {
             ...e,
             model: decision.model,
-            // 이미 Fleet 정체성이면 그대로 둔다. 남의 플러그인 agent는 decide가 이미 걸러냈다.
+
             ...(executionAgentReady && e.subagentType !== EXECUTION_AGENT_TYPE
               ? { subagentType: EXECUTION_AGENT_TYPE }
               : {}),
@@ -372,41 +271,32 @@ export const register: Register = (on) => {
       row.state = "denied";
       row.because = result.deny;
       row.endedAt = Date.now();
-      // 배정한 모델이 거절됐다면 그 모델은 이 세션에서 닿지 않는다. 다음 위임은 다음 후보로
-      // 간다 — 같은 막힌 모델을 계속 고르면 후보가 목록인 의미가 없다.
+
       if (decision.model !== undefined) unreachable.add(decision.model);
     } else {
       row.state = "running";
       if (result.agentId !== undefined) {
         row.agentId = result.agentId;
         running.set(result.agentId, row);
-        // 모델은 스폰이 실었다. 강도는 실을 자리가 없었으므로 turn.step이 얹는다.
-        if (decision.seat !== undefined) assigned.set(result.agentId, decision.seat);
+
+        if (decision.model !== undefined) assigned.set(result.agentId, decision);
       }
       startTicker($);
     }
     redraw($);
     return result;
   }).catch(($, e, next) => {
-    // 배정이 실패해도 디스패치는 산다. 원본 그대로 흘려보낸다.
     return next(e);
   });
 
-  /**
-   * 모델 요청 하나마다 발화한다. `agent.spawn`이 닿지 않는 실행 — 다이나믹 Workflow의
-   * 스테이지가 그렇다 — 을 여기서 발견한다. 그 실행은 재배정할 수 없지만, 게이트웨이
-   * 모델을 쓴 이상 원장에는 있어야 한다. 원장이 "Fleet이 배정한 것"만 담으면 실제로 무엇이
-   * 무엇으로 돌았는지 묻는 사람에게 절반만 답하는 셈이다.
-   */
   on("turn.step", async function* ($, e, next) {
     const agentId = e.agentId;
-    // agentId가 없으면 메인 루프, 곧 호스트 자신의 턴이다. 위임이 아니므로 손대지 않는다.
+
     if (agentId === undefined) return yield* next(e);
     const known = running.get(agentId);
     if (known !== undefined) {
       const seat = assigned.get(agentId);
-      // 배정한 실행은 매 스텝 다시 싣는다 — 모델은 스폰이 실었으면 같은 값이라 무해하고,
-      // 강도는 여기서만 실을 수 있어 매번 필요하다.
+
       if (seat !== undefined) {
         return yield* next({
           ...e,
@@ -420,18 +310,14 @@ export const register: Register = (on) => {
       return yield* next(e);
     }
 
-    // 처음 보는 루프. `agent.spawn`이 닿지 않는 실행이 여기로 온다 — 다이나믹 Workflow의
-    // 스테이지가 그렇다(측정: 스테이지 둘에 스폰 0건, turn.step 발화 확인). 엔진 자신의
-    // fork(압축·메모리)도 같은 모양으로 오지만 그쪽은 이미 게이트웨이 모델을 달고 오거나
-    // 호스트 문맥을 물려받은 실행이라, 아래 판정이 함께 걸러낸다.
-    const seat = await seatStage($, e.model);
+    const seat = await assignStage($, e.model);
     const row = addRow({
       key: `turn:${agentId}`,
       surface: "workflow",
-      // 스테이지인지 엔진 fork인지 구별할 방법이 없으므로 아는 것만 적는다 — 이 루프의 주소.
+
       description: `run ${agentId.slice(0, 6)}`,
-      carried: seat?.label ?? modelLabel(e.model, e.effort),
-      because: seat === undefined ? "its caller chose this model" : "not from the Agent tool → work",
+      carried: seat?.carried ?? modelLabel(e.model, e.effort),
+      because: seat?.because ?? "its caller chose this model",
       state: "running",
       startedAt: Date.now(),
       agentId,
@@ -447,23 +333,22 @@ export const register: Register = (on) => {
     void openPane($);
     redraw($);
     $.ui.log(
-      `stage: agentId=${agentId} saw=${e.model} carried=${seat?.label ?? "(unchanged)"}`,
+      `stage: agentId=${agentId} saw=${e.model} carried=${seat?.carried ?? "(unchanged)"}`,
       { to: "debug" },
     );
     return yield* next(
       seat === undefined
         ? e
-        : { ...e, model: seat.model, ...(seat.effort === undefined ? {} : { effort: seat.effort }) },
+        : { ...e, model: seat.model as string, ...(seat.effort === undefined ? {} : { effort: seat.effort }) },
     );
   });
 
-  // subagent가 끝나면 그 행을 닫는다.
   on("turn.complete", ($, e, next) => {
     const row = e.agentId === undefined ? undefined : running.get(e.agentId);
     if (row) {
       row.state = "done";
       row.endedAt = Date.now();
-      // 마지막 응답의 모델이 실제로 무엇이었는지가 여기서 확정된다.
+
       const model = e.usage?.model;
       if (model !== undefined) row.carried = modelLabel(model);
       running.delete(e.agentId as string);
@@ -487,97 +372,64 @@ export const register: Register = (on) => {
 };
 
 interface Decision {
-  /** 실어 줄 모델 id. `undefined`면 아무것도 바꾸지 않는다. */
   readonly model?: string;
-  /** 고른 후보 그대로. 강도는 스폰이 못 나르므로 turn.step이 이것을 보고 얹는다. */
-  readonly seat?: Candidate;
-  /** 읽은 등급. 배정하지 않은 실행에서는 그 이유가 등급 자리에 온다. */
-  readonly tier: string;
-  /** 이 실행이 무엇으로 도는지, 사람이 읽는 이름. */
+
+  readonly effort?: string;
+
   readonly carried: string;
-  /** 왜 그것이 됐는지 한 줄. */
+
   readonly because: string;
 }
 
-/** 아무것도 바꾸지 않는 판정. 세션 모델을 그대로 탄다. */
-function passThrough(tier: string, because: string): Decision {
-  return { tier, carried: "session model", because };
-}
-
-/**
- * 디스패치 하나를 어느 모델로 보낼지 정한다.
- *
- * 손대지 않는 세 가지를 먼저 걸러낸다. fork는 부모의 문맥과 모델을 물려받고 `model`이 아예
- * 무시된다. 다른 플러그인이 등록한 agent는 그 정의가 모델을 소유하므로 남의 결정을 덮지
- * 않는다. 이미 게이트웨이 모델이 실려 있으면 누군가 이미 정한 것이다.
- */
-async function decide($: Engine, e: SpawnInput): Promise<Decision> {
-  if (e.fork) return passThrough("fork", "a fork inherits the parent's context and model");
-  if (e.provider !== undefined && e.provider.plugin !== "engine") {
-    return { tier: "foreign", carried: `${e.subagentType} (own definition)`, because: "this agent's definition chooses its model" };
-  }
-  if (e.model !== undefined && e.model.startsWith(GATEWAY_PREFIX)) {
-    return { model: e.model, tier: "pinned", carried: modelLabel(e.model), because: "already carried a gateway model" };
-  }
-
-  let table: RoutingTable = NO_TABLE;
-  try {
-    table = await fetchRoutingTable($);
-  } catch (error) {
-    $.ui.log(`could not read the routing table: ${String(error)}`, { to: "debug" });
-    return passThrough("unread", "the routing table could not be read");
-  }
-
-  const tier = tierOf(e.model, e.subagentType);
-  const candidates = table.tiers[tier] ?? [];
-  const seat = candidates.find((candidate) => !unreachable.has(candidate.model));
-  if (seat === undefined) {
-    // 후보가 아예 없다는 것은 위임 모델이 노출되지 않았다는 뜻이다. 사용자가 모델을 전부
-    // 호스트 전용으로 뒀다면 "위임은 내장 모델로 하라"는 명시적 선택이고, 뒤집지 않는다.
-    return passThrough(tier, candidates.length === 0 ? "no gateway model is exposed for delegation" : "every candidate is unreachable this session");
-  }
+function toDecision(assignment: Assignment): Decision {
   return {
-    model: seat.model,
-    seat,
-    tier,
-    carried: seat.label,
-    because: `${describeAsk(e.model, e.subagentType)} → ${tier}`,
+    ...(assignment.model === undefined ? {} : { model: assignment.model }),
+    ...(assignment.effort === undefined ? {} : { effort: assignment.effort }),
+    carried: assignment.label,
+    because: assignment.because,
   };
 }
 
-/**
- * `agent.spawn`을 지나지 않은 실행에 모델을 고른다. 작업 내용을 볼 수 없으므로 — 이 훅이
- * 싣는 것은 루프의 주소뿐이다 — 등급을 읽지 않고 기본 등급으로 보낸다.
- *
- * 이미 게이트웨이 모델을 달고 있으면 누군가 이미 정한 것이라 두고, 표를 못 읽으면 아무것도
- * 바꾸지 않는다. 판정을 못 했다는 것과 상속해도 된다는 것은 다르지만, 여기서 틀린 모델을
- * 강제하는 것보다 원장에 상속으로 남기는 편이 읽는 사람을 덜 오도한다.
- */
-async function seatStage($: Engine, current: string): Promise<Candidate | undefined> {
-  if (current.startsWith(GATEWAY_PREFIX)) return undefined;
-  let table: RoutingTable = NO_TABLE;
+async function assignSpawn($: Engine, e: SpawnInput): Promise<Decision> {
   try {
-    table = await fetchRoutingTable($);
+    const assignment = await requestAssignment($, {
+      surface: "agent",
+      ...(boundedPrompt(e.prompt) === undefined ? {} : { prompt: boundedPrompt(e.prompt) }),
+      description: e.description,
+      ...(e.model === undefined ? {} : { requestedModel: e.model }),
+
+      requestedEffort: null,
+      subagentType: e.subagentType,
+      fork: e.fork,
+      ...(e.provider === undefined ? {} : { providerPlugin: e.provider.plugin }),
+      unreachable: [...unreachable],
+    });
+    return toDecision(assignment);
   } catch (error) {
-    $.ui.log(`could not read the routing table for a stage: ${String(error)}`, { to: "debug" });
-    return undefined;
+    $.ui.log(`could not assign a model: ${String(error)}`, { to: "debug" });
+    return { carried: "session model", because: "Console could not be reached for an assignment" };
   }
-  return table.tiers.work.find((candidate) => !unreachable.has(candidate.model));
 }
 
-/** 호스트가 실제로 무엇을 말했는지, 판에 적을 만큼 짧게. */
-function describeAsk(model: string | undefined, subagentType: string): string {
-  if (model !== undefined) return model;
-  return subagentType === "Explore" ? "Explore" : "no model named";
+async function assignStage($: Engine, current: string): Promise<Decision | undefined> {
+  try {
+    const assignment = await requestAssignment($, {
+      surface: "stage",
+      requestedModel: current,
+      unreachable: [...unreachable],
+    });
+    if (assignment.model === undefined) return undefined;
+    return toDecision(assignment);
+  } catch (error) {
+    $.ui.log(`could not assign a model to a stage: ${String(error)}`, { to: "debug" });
+    return undefined;
+  }
 }
 
 function summaryLine(): string {
   if (ledger.length === 0) return "No delegated run yet this session.";
   const runs = `${ledger.length} ${ledger.length === 1 ? "run" : "runs"}`;
-  // "세션 모델을 피했다"가 아니라 "상속했는가"가 세는 축이다. 세션 자신이 게이트웨이 모델로
-  // 도는 경우 배정이 같은 모델을 고를 수도 있어서, 전자로 적으면 거짓이 된다.
-  // 관측만 한 실행은 따로 센다. 배정한 실행과 같은 칸에 넣으면 Fleet이 라우팅한 범위를
-  // 실제보다 넓게 읽히게 한다.
+
   const parts: string[] = [];
   if (offHost + onHost > 0) parts.push(`${offHost} routed, ${onHost} inherited`);
   if (observed > 0) parts.push(`${observed} not from the Agent tool`);
@@ -585,24 +437,12 @@ function summaryLine(): string {
   return `${runs} · ${tally}`;
 }
 
-/**
- * 판을 연다.
- *
- * `asked`는 사람이 직접 부른 열기다. 엔진은 요청 없는 열기를 144칸 미만에서 자리 잡지 않고
- * 보류하지만 요청된 열기는 110칸까지 받아 주고, 그 판정을 **열 때마다 새로** 한다. 그래서
- * 모듈 플래그로 두 번째 열기를 건너뛰면 좁은 터미널에서 판이 영원히 안 나온다 — 첫 자동
- * 열기가 플래그만 세우고 그려지지는 않은 채로 끝나기 때문이다.
- *
- * 자동 경로도 플래그가 아니라 엔진의 기록(`isPlaced`)을 믿는다. 모듈이 다시 실렸거나 창이
- * 넓어진 뒤라면 다시 열어야 자리를 잡는다.
- */
 async function openPane($: Engine, asked = false): Promise<void> {
   if (!asked && paneOpen && (await isPlaced($))) return;
   try {
     await $.ui.open({ id: PANE_ID, title: PANE_TITLE, rows: 12 });
     paneOpen = true;
   } catch {
-    // 판이 열리지 않아도 알림줄은 남는다.
   }
 }
 
@@ -615,11 +455,16 @@ async function isPlaced($: Engine): Promise<boolean> {
 }
 
 function redraw($: Engine): void {
-  // 프롬프트 아래 고정 줄을 엔진은 경고 표식과 함께 그린다. 그러니 경고할 일이 있을 때만
-  // 건다 — 중립적인 사실에 붙은 경고 표식은 읽는 사람을 잘못 이끈다. 세션 모델을 물려받은
-  // 위임이 생겼을 때가 그 한 경우다.
-  $.ui.status(onHost === 0 ? undefined : `fleet: ${onHost} of ${offHost + onHost} inherited the session model`);
+  $.ui.status(statusLine());
   if (paneOpen) $.ui.invalidate("ui.render");
+}
+
+function statusLine(): string | undefined {
+  const total = offHost + onHost;
+  if (total === 0) return undefined;
+  if (onHost === 0) return `${total} ${total === 1 ? "run" : "runs"} routed`;
+  if (offHost === 0) return `${onHost} of ${total} on the session model`;
+  return `${offHost} of ${total} routed`;
 }
 
 function startTicker($: Engine): void {
@@ -654,10 +499,6 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
   const { Box, Text } = t;
   const now = Date.now();
   const width = Math.max(28, bodyColumns);
-  // 상태 글리프·여백·시간을 뺀 나머지를 요청과 정체성이 나눠 쓴다.
-  const timeWidth = 6;
-  const nameWidth = Math.max(10, Math.min(28, Math.floor((width - timeWidth - 4) * 0.42)));
-  const carriedWidth = Math.max(10, width - timeWidth - nameWidth - 6);
 
   if (ledger.length === 0) {
     return (
@@ -668,20 +509,20 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
     );
   }
 
+  const timeWidth = 5;
+  const body = Math.max(12, width - 2);
+  const nameWidth = Math.max(8, Math.min(30, Math.floor((body - timeWidth - 3) * 0.45)));
+  const carriedWidth = Math.max(8, Math.min(34, body - nameWidth - timeWidth - 3));
+
   const rows = ledger.slice(-12);
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box>
-        <Text bold>{pad("WHAT", nameWidth + 2)}</Text>
-        <Text bold>{pad("CARRIED BY", carriedWidth)}</Text>
-        <Text bold>{pad("", timeWidth)}</Text>
-      </Box>
       {rows.map((row) => (
         <Box flexDirection="column" key={row.key}>
           <Box>
             <Text color={COLOR[row.state]}>{`${GLYPH[row.state]} `}</Text>
             <Text>{pad(clip(row.description, nameWidth), nameWidth)}</Text>
-            <Text dimColor>{"  "}</Text>
+            <Text>{" "}</Text>
             <Text color={row.carried === "session model" ? "yellow" : undefined} dimColor={row.state === "done"}>
               {pad(clip(row.carried ?? "seating…", carriedWidth), carriedWidth)}
             </Text>
@@ -690,28 +531,63 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
           {row.because === undefined ? null : (
             <Box>
               <Text dimColor>
-                {`  ${clip(row.asked === undefined ? row.because : `${row.asked} → ${row.because}`, width - 4)}`}
+                {`  ${clip(row.asked === undefined ? row.because : `${row.asked} → ${row.because}`, body - 2)}`}
               </Text>
             </Box>
           )}
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text dimColor>{clip(summaryLine(), width - 2)}</Text>
+        <Text color="green" dimColor>{clip(summaryLine(), body)}</Text>
       </Box>
     </Box>
   );
 }
 
+function cellWidth(code: number): number {
+  if (code === 0x200d) return 0;
+  if (code >= 0x0300 && code <= 0x036f) return 0;
+  if (code >= 0xfe00 && code <= 0xfe0f) return 0;
+  const wide = (code >= 0x1100 && code <= 0x115f)
+    || code === 0x2329 || code === 0x232a
+    || (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f)
+    || (code >= 0xac00 && code <= 0xd7a3)
+    || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe30 && code <= 0xfe6f)
+    || (code >= 0xff00 && code <= 0xff60)
+    || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x1f300 && code <= 0x1f64f)
+    || (code >= 0x1f900 && code <= 0x1f9ff)
+    || (code >= 0x20000 && code <= 0x3fffd);
+  return wide ? 2 : 1;
+}
+
+function displayWidth(text: string): number {
+  let total = 0;
+  for (const character of text) total += cellWidth(character.codePointAt(0) ?? 0);
+  return total;
+}
+
 function clip(text: string, width: number): string {
   if (width <= 1) return "";
-  return text.length <= width ? text : `${text.slice(0, width - 1)}…`;
+  if (displayWidth(text) <= width) return text;
+  let out = "";
+  let used = 0;
+  for (const character of text) {
+    const next = used + cellWidth(character.codePointAt(0) ?? 0);
+    if (next > width - 1) break;
+    out += character;
+    used = next;
+  }
+  return `${out}…`;
 }
 
 function pad(text: string, width: number): string {
-  return text.length >= width ? text : text + " ".repeat(width - text.length);
+  const used = displayWidth(text);
+  return used >= width ? text : text + " ".repeat(width - used);
 }
 
 function padStart(text: string, width: number): string {
-  return text.length >= width ? text : " ".repeat(width - text.length) + text;
+  const used = displayWidth(text);
+  return used >= width ? text : " ".repeat(width - used) + text;
 }

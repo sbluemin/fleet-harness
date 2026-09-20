@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { FLEET_GATEWAY_HOST_PROMPT } from "../host-prompt.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -112,10 +111,6 @@ export async function injectAgentCliProfile(
     let deliveredViaFile = false;
     const cmdWrapped = profile.commandLineLimit?.via === "cmd-shim";
     const windowsLaunch = profile.commandLineLimit !== undefined;
-    const gatewayHostPromptFile = windowsLaunch
-      ? writeLaunchPromptFile(FLEET_GATEWAY_HOST_PROMPT, (cleanup) => tempCleanups.push(cleanup)).filePath
-      : undefined;
-    if (gatewayHostPromptFile) assertLaunchPromptShimSafe(gatewayHostPromptFile, cmdWrapped ? ["cmd-shim"] : []);
     const convertPromptToFile = (body: string) => {
       promptArgs = [writeLaunchPromptPointer(
         body,
@@ -160,7 +155,6 @@ export async function injectAgentCliProfile(
     options.onCleanup?.(cleanup);
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
-      ...(gatewayHostPromptFile ? { gatewayHostPromptFile } : {}),
       mcpServers,
       pluginRoot: session.pluginRoot,
       pluginRoots: session.pluginRoots,

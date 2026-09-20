@@ -205,9 +205,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
   });
 
-  it("accepts the roster spelling of an enabled gateway model", async () => {
-    // `fleet://ai-gateway/models`는 `claude-gateway--…[1m]` 표기를 싣는다. 그것을 옮겨 적은 호출자는
-    // 스코프 id를 적은 호출자와 같은 모델로 통과해야 한다.
+  it("accepts the gateway spelling of an enabled model", async () => {
+    // 게이트웨이 표기(`claude-gateway--…[1m]`)를 적은 호출자는 스코프 id를 적은 호출자와
+    // 같은 모델로 통과해야 한다.
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const resolve = createDefaultTerminalLaunchResolver({
       dataDir: launchDataDir,

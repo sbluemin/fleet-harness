@@ -251,8 +251,8 @@ async function createAgentCliLaunchSpec(options: {
       if (nativeAlias) {
         resolvedModel = nativeAlias;
       } else {
-        // 스코프 id와 `fleet://ai-gateway/models`가 싣는 `claude-gateway--…[1m]` 표기를 같은 모델로 받는다 —
-        // 로스터를 읽고 그대로 옮겨 적은 호출자가 거절당하면 안 된다.
+        // 스코프 id와 게이트웨이 표기(`claude-gateway--…[1m]`)를 같은 모델로 받는다 — 어느 철자를
+        // 옮겨 적은 호출자도 거절당하면 안 된다.
         const model = gatewaySelection ? findGatewayModel(resolvedModel, gatewaySelection.models) : undefined;
         if (!model) {
           throw new GatewayLaunchOptionError(

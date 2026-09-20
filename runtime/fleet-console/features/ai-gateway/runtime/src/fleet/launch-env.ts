@@ -14,7 +14,7 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly selection?: AiGatewaySelection;
 	readonly homeDir?: string;
 	readonly compactHookToken?: string;
-	/** 라우팅 Mod가 `/v1/fleet/agents`를 부를 때 쓰는 자격. */
+	/** 라우팅 Mod가 `/v1/fleet/routing/assign`을 부를 때 쓰는 자격. */
 	readonly modHookToken?: string;
 }
 
@@ -47,7 +47,7 @@ export function prepareAiGatewayLaunchProfile(
 				FLEET_COMPACT_HOOK_TOKEN: options.compactHookToken,
 			}
 			: {}),
-		// 라우팅 Mod는 세션 시작에 이 주소로 정체성을 묻는다. 없으면 정체성을 올리지 않고
+		// 라우팅 Mod는 위임마다 이 주소에 모델을 묻는다. 없으면 아무것도 재작성하지 않고
 		// 디스패치 기록만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
 		...(options.modHookToken
 			? {

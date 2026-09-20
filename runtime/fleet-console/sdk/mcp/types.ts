@@ -7,12 +7,6 @@ export interface PluginMcpTransport {
 
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
-export const FLEET_AI_GATEWAY_MCP_SERVER = "fleet-ai-gateway";
-
-export interface AiGatewayMcpHost {
-  connect(): ConsoleUseMcpConnection;
-}
-
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
 
 /**

@@ -1,11 +1,10 @@
-import { FLEET_GATEWAY_HOST_PROMPT } from "../../host-prompt.js";
 import { buildClaudeAgentDenyRules } from "../claude-agent-rules.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildSessionArgs(context.sessionCoordinate),
-    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt, context.gatewayHostPromptFile),
+    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -127,16 +126,13 @@ function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinat
 }
 
 /**
- * Claude Code 기본 프롬프트의 선택과 Fleet 라우팅 진입점을 분리한다.
- * 기본 프롬프트를 꺼도 짧은 호스트 라우팅 지침은 유지하며 상세 정책은 MCP에서 읽는다.
+ * 사용자가 Claude Code 기본 프롬프트를 껐는지만 반영한다.
+ *
+ * 한때는 여기에 Fleet 라우팅 진입점을 덧붙였다. 호스트가 게이트웨이 모델을 고르게 만드는
+ * 것이 그 글의 일이었는데, 지금은 Console이 실행마다 모델을 배정하므로 그 일이 없다.
  */
-function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined, promptFile?: string): string[] {
-  return [
-    ...(claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : []),
-    ...(promptFile
-      ? ["--append-system-prompt-file", promptFile]
-      : ["--append-system-prompt", FLEET_GATEWAY_HOST_PROMPT]),
-  ];
+function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined): string[] {
+  return claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : [];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

@@ -148,7 +148,6 @@ async function createHarness(options: {
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
     registerWsHandler: () => {},
     host: {
-      aiGatewayMcp: { connect: () => ({ embeddedServer: {}, getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [], releaseSessionToken: () => {}, cleanup: () => {}, dispose: async () => {} }) },
       admiralMcp: { connect: () => ({
         getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [],
         releaseSessionToken: () => {}, cleanup: () => {},

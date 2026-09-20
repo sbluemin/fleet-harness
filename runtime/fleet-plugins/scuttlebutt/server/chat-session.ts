@@ -245,7 +245,7 @@ export class ChatSession implements ChatSessionLike {
       settlement: "result",
       tools: {
         builtins: PET_TOOLS,
-        ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse, aiGateway: true } : {}),
+        ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse } : {}),
         ...(computerUse ? { computerUse: computerUse.computerUse } : {}),
       },
       onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
