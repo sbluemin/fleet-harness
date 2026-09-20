@@ -26,6 +26,27 @@ const DESKTOP_WINDOW_TITLE = "Fleet Console";
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 35 } as const;
 
+/**
+ * macOS 신호등의 자리는 Command Band와의 합의다 — 클라이언트 `--chrome-band-height: 36px`,
+ * 좌측 클러스터가 비워 두는 76px, 그리고 여기의 x·y가 한 좌표계를 나눠 갖는다.
+ *
+ * 그런데 신호등은 네이티브라 페이지 줌을 타지 않는다. 밴드만 줌에 비례해 자라므로 y를
+ * 생성 시점 상수로 굳히면 확대할수록 신호등이 밴드 천장에 붙고(실측 131%에서 7px 위),
+ * 축소하면 아래로 처진다. 가로는 클라이언트가 예약 폭을 DIP로 되돌려 맡고, 세로는 줌이
+ * 바뀔 때마다 여기서 다시 계산해 신호등을 밴드 한가운데로 옮긴다.
+ *
+ * x는 줌과 무관한 고정값이다 — 신호등 자체가 줌을 타지 않으니 창 모서리와의 거리도
+ * 변할 이유가 없고, 클라이언트의 예약 폭이 이 x에서 출발한 76px을 그대로 비워 둔다.
+ */
+const TRAFFIC_LIGHT_INSET_X = 16;
+const TRAFFIC_LIGHT_HEIGHT = 14;
+const COMMAND_BAND_HEIGHT = 36;
+
+export function trafficLightPosition(zoomFactor: number): { x: number; y: number } {
+  const factor = zoomFactor > 0 ? zoomFactor : 1;
+  return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((COMMAND_BAND_HEIGHT * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
+}
+
 export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, options: SecureWindowOptions): BrowserWindow {
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
@@ -35,8 +56,8 @@ export function createSecureWindow(BrowserWindowCtor: typeof BrowserWindow, opti
     minWidth: 900,
     minHeight: 560,
     ...(options.platform !== "darwin" ? { autoHideMenuBar: false } : {}),
-    // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 88px 인셋과 함께 변경 시 양쪽을 동기화한다.
-    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 10 } } : {}),
+    // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 신호등 계약과 함께 변경 시 양쪽을 동기화한다.
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1) } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   };

@@ -2363,7 +2363,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("shouldCloseCommandBandContextDeck");
     expect(commandBand).not.toContain("data-carrier");
     expect(commandBand).not.toContain("<PathContextDeck");
-    expect(layout).toContain("padding-inline-start: 88px;");
+    // 신호등이 차지한 76 DIP는 페이지 줌을 타지 않는다 — 예약분을 줌으로 나누지 않으면 확대에서
+    // 브랜드가 신호등과 멀어지고 축소에서 그 위로 올라탄다(셸의 trafficLightPosition과 한 계약).
+    expect(layout).toContain("padding-inline-start: calc(76px / var(--desktop-zoom, 1) + var(--space-3));");
     expect(layout).toContain("max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))");
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
     expect(layout).toContain(".command-band-left {");
@@ -2486,7 +2488,7 @@ describe("Instrument core design contract", () => {
     // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
     // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
     const darwinBandLeftBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band-left \{[^}]*\}/)?.[0] ?? "";
-    expect(darwinBandLeftBlock).toContain("padding-inline-start: 88px;");
+    expect(darwinBandLeftBlock).toContain("padding-inline-start: calc(76px / var(--desktop-zoom, 1) + var(--space-3));");
     // 전이는 전체화면 쪽에만 선다 — 창 모드 쪽에 두면 나올 때도 220ms 활주해, 이미 돌아온
     // 신호등 아래에 브랜드가 그동안 깔린다.
     expect(darwinBandLeftBlock).not.toContain("transition:");

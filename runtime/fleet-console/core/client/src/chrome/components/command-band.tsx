@@ -182,7 +182,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     setCopyFailedValue(null);
   };
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
-  // darwin Desktop은 traffic-light 인셋(88px)이 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
+  // darwin Desktop은 traffic-light 자리(76 DIP + 12px)가 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
   // Desktop 앱 안에서는 Desktop임이 자명하므로 칩은 "Local"로 축약하고, Desktop 구분은 팝오버의
   // Desktop data 행이 유지한다(대원수 재가).
   const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin"
