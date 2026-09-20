@@ -3168,8 +3168,15 @@ describe("Instrument core design contract", () => {
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
+    // 개수가 아니라 자리를 고정한다: 이 잉크는 덮는 면(스크림·오버레이)의 background 선언에만
+    // 설 수 있고, 패널 본문이 같은 값을 칠하면 여기서 걸린다.
     expect(chat).not.toContain("var(--ink-deep)");
-    expect(chat.match(/var\(--ink-abyss\)/g) ?? []).toHaveLength(1);
+    for (const block of chat.split("}")) {
+      if (!block.includes("var(--ink-abyss)")) continue;
+      const selector = block.slice(0, block.indexOf("{")).trim();
+      expect(selector, selector).toMatch(/-(scrim|interstitial)\b/);
+      expect(block, selector).toContain("inset: 0;");
+    }
   });
 
   it("pins the access-link QR colors outside every theme", () => {

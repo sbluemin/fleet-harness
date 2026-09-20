@@ -155,6 +155,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
   return { launchKinds: api.launchKinds, actions: api.actions };
 }
@@ -621,6 +622,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
     if (path === "/attachments") return handleAttachmentUpload(req, res);
+    const attachmentPreviewMatch = path.match(/^\/attachments\/([^/]+)\/preview$/);
+    if (attachmentPreviewMatch) return handleAttachmentPreview(req, res, decodeURIComponent(attachmentPreviewMatch[1] ?? ""));
     const attachmentMatch = path.match(/^\/attachments\/([^/]+)$/);
     if (attachmentMatch) return handleAttachmentDiscard(req, res, decodeURIComponent(attachmentMatch[1] ?? ""));
     if (path === "/ticket") {
@@ -724,6 +727,41 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
+  /**
+   * 보낸 첨부의 바이트를 원장 썸네일에 돌려준다.
+   *
+   * 브라우저가 쥔 것은 불투명 id뿐이고 경로는 이 함수 안에서만 산다 — 스토어가 id로 좌표를
+   * 풀어 주므로 경로 조립·정규화가 라우트에 없다. 실행에 묶이지 않은 업로드는 열지 않는다(스토어
+   * 계약): 그 바이트는 아직 컴포저의 것이고, 올린 브라우저가 자기 사본을 이미 들고 있다.
+   */
+  async function handleAttachmentPreview(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], attachmentId: string): Promise<boolean> {
+    if (req.method !== "GET") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const preview = launchAttachments.readPreview(attachmentId);
+    if (!preview) {
+      ctx.host.http.writeJson(res, 404, { error: "attachment_not_found" });
+      return true;
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await fs.promises.readFile(preview.filePath);
+    } catch {
+      // 세션이 거둬 간 파일이다 — 말풍선은 이 답을 바이트 없는 자리로 그린다.
+      ctx.host.http.writeJson(res, 404, { error: "attachment_not_found" });
+      return true;
+    }
+    res.writeHead(200, ctx.host.http.securityHeaders({
+      "Content-Type": preview.mime,
+      "Content-Length": String(bytes.byteLength),
+      // id는 한 바이트열에 못박혀 다시 쓰이지 않는다. 브라우저 캐시는 같은 원장을 다시 그릴 때
+      // 왕복을 없애고, private로 두어 중간 캐시가 남의 이미지를 들고 있지 않게 한다.
+      "Cache-Control": "private, max-age=3600",
+      "Content-Disposition": "inline",
+    }));
+    res.end(bytes);
+    return true;
+  }
+
   async function handleSessions(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -799,6 +837,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       await createSession(cwd, theaterId, cliId, (status, value) => ctx.host.http.writeJson(res, status, value), {
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
+        // 첨부가 붙으면 자식에게 갈 프롬프트와 원장에 설 문면이 갈린다 — 후자는 사용자가 실제로
+        // 친 문장이며, 첨부는 좌표로만 따라간다.
+        ...(prompt ? { displayPrompt: prompt } : {}),
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         ...(chatBorn ? { chatBorn: true as const } : {}),
         ...(geometry ? { geometry } : {}),
@@ -931,7 +972,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function startChatBornSession(
     sessionId: string,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly prompt?: string; readonly attachmentIds?: readonly string[]; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void },
+    launchOptions: { readonly prompt?: string; readonly displayPrompt?: string; readonly attachmentIds?: readonly string[]; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void },
   ): Promise<void> {
     const rollback = (status: number, error: string) => {
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
@@ -958,7 +999,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     } catch {
       return rollback(503, "chat_unavailable");
     }
-    if (launchOptions.prompt) chat.send(launchOptions.prompt, launchOptions.prompt, launchOptions.onSettled);
+    if (launchOptions.prompt) {
+      chat.send(
+        launchOptions.prompt,
+        {
+          display: launchOptions.displayPrompt ?? launchOptions.prompt,
+          attachments: (launchOptions.attachmentIds ?? []).map((id) => ({ id })),
+        },
+        launchOptions.onSettled,
+      );
+    }
     if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
       launchAttachments.bind(sessionId, launchOptions.attachmentIds);
       if (!ctx.host.operations.get(sessionId)) launchAttachments.releaseSession(sessionId);
@@ -973,7 +1023,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -1336,7 +1386,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 자식에게는 첨부 경로가 붙은 프롬프트를, 화면에는 사람이 쓴 문면을 준다 — 예약 칩이
         // 호스트 절대 경로를 브라우저로 실어 나르지 않게 하는 경계가 이 인자 둘이다.
         assertCurrent();
-        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string, text.trim(), onSettled, by);
+        chat.send(
+          composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string,
+          { display: text.trim(), attachments: attachmentIds.map((id) => ({ id })) },
+          onSettled,
+          by,
+        );
       } catch (error) {
         settleAttachments(false);
         if (error instanceof ConsoleControlError) throw error;
@@ -1802,6 +1857,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
+        // 재생이 만난 첨부 경로를 미리보기 좌표로 되돌리는 유일한 문. 스토어가 모르는 경로(지난
+        // 프로세스가 만든 것)는 null이고, 그 자리는 바이트 없는 첨부로 선다.
+        resolveAttachmentId: (filePath: string) => launchAttachments.idForPath(filePath),
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.

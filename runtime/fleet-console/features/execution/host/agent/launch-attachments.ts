@@ -103,10 +103,45 @@ export function composeLaunchPromptWithAttachments(prompt: string | undefined, f
   return prompt === undefined || prompt.length === 0 ? lines : `${prompt}\n\n${lines}`;
 }
 
+/**
+ * 합성된 경로 지시를 **표시 문면에서** 걷어낸다.
+ *
+ * 자식에게 보낼 프롬프트와 원장에 설 문면은 같은 문자열이 아니다 — 전자는 파일을 읽을 경로가
+ * 필요하고, 후자에 그 경로가 서면 사람이 쓴 적 없는 줄이 말풍선을 차지할 뿐 아니라 호스트
+ * 절대 경로가 브라우저 DTO에 오른다(이 저장소의 규약 위반). 걷어낸 경로는 호출부가 id로
+ * 되돌려 첨부 좌표로만 싣는다.
+ *
+ * 판정을 접두 하나로 두지 않는 이유는 사람이 같은 문장을 칠 수 있기 때문이다 — 경로가 Console이
+ * 만든 첨부 네임스페이스의 것일 때만 걷는다.
+ */
+export function splitLaunchAttachmentInstructions(text: string): { readonly text: string; readonly paths: readonly string[] } {
+  if (!text.includes(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX)) return { text, paths: [] };
+  const kept: string[] = [];
+  const paths: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.startsWith(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX)) {
+      const filePath = line.slice(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX.length);
+      if (isLaunchAttachmentPath(filePath)) {
+        paths.push(filePath);
+        continue;
+      }
+    }
+    kept.push(line);
+  }
+  if (paths.length === 0) return { text, paths: [] };
+  return { text: kept.join("\n").trimEnd(), paths };
+}
+
+/** 이 절대 경로가 Console이 만든 첨부 보관소의 것인가. 네임스페이스 디렉터리 이름으로만 판정한다. */
+export function isLaunchAttachmentPath(filePath: string): boolean {
+  return filePath.split(/[\\/]/).some((segment) => segment.startsWith(LAUNCH_ATTACHMENT_NAMESPACE_PREFIX));
+}
+
 interface LaunchAttachmentEntry {
   readonly id: string;
   readonly dir: string;
   readonly filePath: string;
+  readonly mime: string;
   /** 저장·해석 시점에 갱신된다 — 해석이 만졌다는 것은 발사가 임박했다는 뜻이라 TTL을 되돌린다. */
   createdAt: number;
   sessionId: string | null;
@@ -140,6 +175,17 @@ export interface LaunchAttachmentStore {
   releaseSession(sessionId: string): void;
   /** 컴포저에서 칩을 지운 사용자 의도 — 미발사·미예약분만 지울 수 있다. */
   discard(id: string): void;
+  /**
+   * 보낸 첨부의 바이트 좌표. 원장 썸네일이 이미지를 되찾는 유일한 문이며, **실행에 묶인** 항목만
+   * 연다 — 아직 보내지 않은 업로드는 올린 브라우저가 자기 사본을 들고 있고, 그 자리를 여기서
+   * 함께 열면 id 하나가 컴포저 초안까지 꺼내는 문이 된다.
+   */
+  readPreview(id: string): { readonly filePath: string; readonly mime: string } | null;
+  /**
+   * 트랜스크립트가 실어 온 경로를 id로 되돌린다. 재생만 쓰는 문이다 — 지난 프로세스가 만든
+   * 경로는 이 스토어가 모르므로 null이고, 그 자리는 바이트 없는 첨부로 그려진다.
+   */
+  idForPath(filePath: string): string | null;
   /** 플러그인 종료 — 남은 파일 전부 회수. */
   cleanup(): void;
 }
@@ -231,7 +277,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         throw error;
       }
       const id = crypto.randomUUID();
-      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
+      entries.set(id, { id, dir, filePath, mime: sniffed.mime, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
       return { id };
     },
     resolve(ids) {
@@ -297,6 +343,18 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         return;
       }
       removeEntry(entry);
+    },
+    readPreview(id) {
+      const entry = entries.get(id);
+      if (!entry || entry.sessionId === null) return null;
+      return { filePath: entry.filePath, mime: entry.mime };
+    },
+    idForPath(filePath) {
+      const resolved = path.resolve(filePath);
+      for (const entry of entries.values()) {
+        if (path.resolve(entry.filePath) === resolved) return entry.id;
+      }
+      return null;
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);

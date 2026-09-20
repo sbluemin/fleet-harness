@@ -237,6 +237,9 @@
 }
 
 .agent-chat-dispatch-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   max-width: 64ch;
   background: color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised));
   border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline));
@@ -247,6 +250,118 @@
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 보낸 첨부 — 말풍선 머리에 선다.
+
+   컴포저 칩과 같은 문법(같은 모서리·같은 테두리)을 쓰되 한 단 크다: 칩은 "지울 수 있는 초안"이고
+   이것은 "이미 보낸 사실"이라, 지우는 과녁 대신 읽을 수 있는 크기를 준다. 말풍선 **안**에 두는
+   이유는 첨부가 그 문장의 일부이기 때문이다 — 밖에 두면 어느 턴의 것인지 말풍선이 다시 말해야 한다. */
+.agent-chat-dispatch-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.agent-chat-dispatch-attachment {
+  width: 72px;
+  height: 54px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--id-cerulean) 28%, var(--hairline));
+  border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.agent-chat-dispatch-attachment:hover {
+  border-color: color-mix(in oklch, var(--id-cerulean) 55%, var(--hairline));
+}
+
+.agent-chat-dispatch-attachment img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 바이트가 거둬진 자리. 깨진 이미지 아이콘 대신 말로 말한다 — 사라진 것은 첨부가 아니라 보관이다. */
+.agent-chat-dispatch-attachment-lapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 8px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-dispatch-attachment-lapsed-box {
+  width: 34px;
+  height: 26px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(135deg, var(--hairline) 0 4px, var(--surface-panel-raised) 4px 8px);
+}
+
+/* 크게 보기 — 부유 모달의 공용 판독 계약(스크림·유리 틴트·블러)을 그대로 쓴다. */
+.agent-chat-attachment-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
+  backdrop-filter: var(--glass-backdrop-scrim);
+}
+
+.agent-chat-attachment-frame {
+  position: relative;
+  display: flex;
+  max-width: min(960px, 100%);
+  max-height: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+}
+
+.agent-chat-attachment-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - var(--space-6) * 2 - var(--space-2) * 2);
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+}
+
+.agent-chat-attachment-close {
+  position: absolute;
+  top: calc(var(--space-2) * -1 - 10px);
+  right: calc(var(--space-2) * -1 - 10px);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--glass-tint-panel);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.agent-chat-attachment-close:hover {
+  color: var(--text-primary);
 }
 
 /* 에이전트 턴 — 단일 열. 좌측 스파인·노드 띠는 퇴역했다: 상태는 본문의 시계·접힘 줄·결말 문구가

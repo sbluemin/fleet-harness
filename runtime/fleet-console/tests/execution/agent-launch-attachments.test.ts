@@ -62,6 +62,23 @@ describe("launch attachment store", () => {
     expect(existsSync(filePath as string)).toBe(true);
     expect(filePath).toMatch(/fleet-attachments-.*image\.png$/);
   });
+
+  it("opens a preview only after the attachment is bound to a session", () => {
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    // 아직 보내지 않은 업로드는 컴포저의 것이다 — id 하나가 남의 초안을 여는 문이 되지 않게 한다.
+    expect(store.readPreview(id)).toBeNull();
+
+    const [filePath] = store.resolve([id]);
+    store.bind("session-1", [id]);
+    expect(store.readPreview(id)).toEqual({ filePath, mime: "image/png" });
+    expect(store.idForPath(filePath as string)).toBe(id);
+
+    // 세션이 거둬 가면 그 좌표도 함께 닫힌다.
+    store.releaseSession("session-1");
+    expect(store.readPreview(id)).toBeNull();
+  });
 });
 
 describe("agent attachment routes", () => {

@@ -332,6 +332,14 @@ export async function uploadLaunchAttachment(file: Blob, signal?: AbortSignal): 
   return { id: payload.id };
 }
 
+/**
+ * 보낸 첨부의 미리보기 좌표. 브라우저가 이미지를 되찾는 유일한 주소이며, 쥔 것은 불투명 id뿐이다 —
+ * 호스트 경로는 서버에 남는다. 이미 거둬진 첨부는 404로 답하고, 말풍선이 그것을 자리표로 그린다.
+ */
+export function agentChatAttachmentPreviewUrl(id: string): string {
+  return `/api/v1/agent/attachments/${encodeURIComponent(id)}/preview`;
+}
+
 export async function discardLaunchAttachment(id: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/agent/attachments/${encodeURIComponent(id)}`, { method: "DELETE", signal });
   await assertOk(response);
