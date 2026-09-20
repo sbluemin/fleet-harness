@@ -1,22 +1,21 @@
 /**
- * fleet-routing-mod — 게이트웨이 정체성을 세션에 올리고, 위임이 무엇으로 돌았는지 보여주는
+ * fleet-routing-mod — 위임을 게이트웨이 모델로 배정하고, 무엇이 무엇으로 돌았는지 보여주는
  * Claude Code Mod.
  *
  * 두 가지 일을 한다.
  *
- *   1. 등록. 세션이 시작되면 Console에 지금 노출된 게이트웨이 모델을 묻고, 모델×강도마다
- *      정체성 하나를 `$.agent.register`로 올린다. 한때는 같은 정의를 플러그인 `agents/*.md`
- *      파일로 구웠다. 플러그인 스냅숏은 내용 해시로 발행되는 공유 트리라, 노출 목록이 거기
- *      들어가면 모델을 하나 켤 때마다 새 트리가 발행된다. 스냅숏을 정적으로 두고 목록은
- *      호출 시점에 묻는 편이 그 결합을 끊는다.
+ *   1. 배정. 서브에이전트가 시작되기 직전(`agent.spawn`)에 그 실행의 모델을 정해 실어 준다.
+ *      Agent 도구가 모델을 Claude 별칭으로만 받기 때문에 한때는 모델마다 Agent 정체성을
+ *      등록하고 호스트가 그 이름을 부르게 했다. 그 방식은 호스트의 협조에 기댔고 — 이름을
+ *      부르지 않으면 조용히 세션 모델을 상속했다 — 등록이 세션 시작에 고정돼 설정 변경이
+ *      재시작 전까지 먹지 않았다. 지금은 호스트가 이름을 대지 않는다. 스폰 레코드의 `model`을
+ *      직접 바꾸므로 도구의 enum과 무관하고, 후보는 배정할 때마다 Console에 묻는다.
  *
- *   2. 원장. 위임 하나하나가 무엇을 요청했고 무엇으로 돌았는지 `Fleet Routing` 판에 적는다.
- *      어느 모델을 쓸지는 호스트가 로스터를 읽고 정한다 — 이 모듈은 그 결정을 대신하지 않고,
- *      결정이 실제로 무엇이었는지 사후에 확인할 수 있게 만든다. 판이 없으면 "상속했는가"를
+ *   2. 원장. 배정 하나하나를 `Fleet Routing` 판에 적는다. 판이 없으면 "무엇으로 돌았는가"를
  *      물어볼 방법이 모델에게 묻는 것밖에 없다.
  *
  * 주소와 자격은 런치가 환경변수로 넘긴다(FLEET_MOD_BASE_URL·FLEET_MOD_TOKEN). 둘이 없거나
- * 조회가 실패하면 아무 정체성도 올리지 않고 관측만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
+ * 조회가 실패하면 아무것도 재작성하지 않고 관측만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
  */
 interface PaneElements {
   readonly Box: unknown;
@@ -41,15 +40,6 @@ interface Engine {
       url: string,
       init?: { method?: string; headers?: Record<string, string> },
     ) => Promise<{ ok: boolean; status: number; text: string }>;
-  };
-  readonly agent: {
-    readonly register: (spec: {
-      name: string;
-      description: string;
-      prompt: string;
-      model?: string;
-      effort?: string | number;
-    }) => Promise<unknown>;
   };
   readonly command: {
     readonly register: (spec: { name: string; description: string; immediate?: true }) => Promise<unknown>;
@@ -76,46 +66,87 @@ interface On {
 
 type Register = (on: On, options?: unknown) => unknown;
 
-/** 세션에 올릴 정체성 하나. */
-interface AgentSpec {
-  readonly name: string;
+/**
+ * `agent.spawn`이 싣는 것 중 배정에 쓰는 것들. `model`·`subagentType`·`prompt`는 재작성할 수
+ * 있고 `fork`·`provider`·`parentModel`은 스폰의 정체성이라 고정이다.
+ */
+interface SpawnInput {
+  readonly tool_use_id: string;
   readonly description: string;
+  readonly subagentType: string;
+  readonly fork: boolean;
+  readonly model?: string;
+  readonly parentModel: string;
+  /** 이 agent를 누가 제공하는가. 내장은 `{ plugin: "engine" }`. */
+  readonly provider?: { readonly plugin: string };
+}
+
+/** 위임의 등급. 호스트가 적은 모델 별칭과 agent 종류에서 읽어 낸다. */
+type Tier = "scan" | "work" | "deep";
+
+/** 한 등급의 후보 하나. 앞에 있을수록 먼저 시도한다. */
+interface Candidate {
   readonly model: string;
-  readonly effort?: string;
+  readonly label: string;
 }
 
-interface AgentSpecs {
-  /** 모든 정체성이 공유하는 실행 프롬프트. */
+interface RoutingTable {
   readonly prompt: string;
-  readonly agents: readonly AgentSpec[];
+  readonly tiers: Readonly<Record<Tier, readonly Candidate[]>>;
 }
 
-const NO_SPECS: AgentSpecs = { prompt: "", agents: [] };
+const NO_TABLE: RoutingTable = { prompt: "", tiers: { scan: [], work: [], deep: [] } };
 
 /**
- * 이 세션이 올릴 정체성을 Console에 묻는다. 실패는 전부 빈 명세로 접는다 — 정체성을 못
- * 올리는 것은 세션을 못 여는 것과 다르고, 무엇이 왜 비었는지는 호출부가 로그로 남긴다.
+ * 지금의 후보를 Console에 묻는다. **배정할 때마다** 묻는다 — 세션 시작에 한 번 읽어 두면
+ * 그 순간의 노출에 갇혀서, 설정에서 모델을 켜거나 끈 변화가 CLI를 다시 띄우기 전에는 먹지
+ * 않는다. 위임은 드물게 일어나고 주소는 같은 기계의 Console이라, 매번 묻는 값이 그 정확함보다
+ * 싸지 않다.
+ *
+ * 실패는 전부 빈 표로 접는다. 후보를 못 읽는 것과 위임을 못 하는 것은 다르다 — 빈 표를 받은
+ * 배정은 아무것도 바꾸지 않고 원래대로 흘려보낸다.
  */
-async function fetchAgentSpecs($: Engine): Promise<AgentSpecs> {
+async function fetchRoutingTable($: Engine): Promise<RoutingTable> {
   const base = await $.env.get("FLEET_MOD_BASE_URL");
   const token = await $.env.get("FLEET_MOD_TOKEN");
-  if (!base || !token) return NO_SPECS;
-  const response = await $.http.fetch(`${base.replace(/\/+$/, "")}/v1/fleet/agents`, {
+  if (!base || !token) return NO_TABLE;
+  const response = await $.http.fetch(`${base.replace(/\/+$/, "")}/v1/fleet/routing`, {
     headers: { "x-fleet-mod-token": token },
   });
-  if (!response.ok) throw new Error(`identities unavailable (${response.status})`);
+  if (!response.ok) throw new Error(`routing table unavailable (${response.status})`);
   const parsed: unknown = JSON.parse(response.text);
-  if (parsed === null || typeof parsed !== "object") return NO_SPECS;
-  const specs = parsed as AgentSpecs;
-  return Array.isArray(specs.agents) ? specs : NO_SPECS;
+  if (parsed === null || typeof parsed !== "object") return NO_TABLE;
+  const table = parsed as RoutingTable;
+  if (table.tiers === null || typeof table.tiers !== "object") return NO_TABLE;
+  for (const tier of ["scan", "work", "deep"] as const) {
+    if (!Array.isArray(table.tiers[tier])) return NO_TABLE;
+  }
+  return table;
+}
+
+/**
+ * 호스트가 보낸 것을 등급으로 읽는다.
+ *
+ * `model`은 **목적지가 아니라 등급 신호다.** Agent 도구가 말할 수 있는 모델은 Claude 별칭뿐이라
+ * 목적지로 읽으면 어차피 전부 세션 계열로 간다. 호스트가 `haiku`라고 적은 것은 "Haiku를 써라"가
+ * 아니라 "싼 것으로 충분하다"는 판단이고, 그 판단은 유효하다 — 어느 모델이 그 등급인지만
+ * 호스트가 모를 뿐이다.
+ *
+ * 이름을 아예 대지 않은 경우(실측상 대부분)가 곧 상속이고, 없애려는 것이 그것이다.
+ */
+function tierOf(model: string | undefined, subagentType: string): Tier {
+  const alias = (model ?? "").toLowerCase();
+  if (alias.includes("haiku")) return "scan";
+  if (alias.includes("opus") || alias.includes("fable")) return "deep";
+  if (alias.includes("sonnet")) return "work";
+  // 읽기 전용으로 넓게 훑는 실행. 긴 컨텍스트를 쓰고 추론 깊이는 덜 쓴다고 스스로 말한다.
+  if (subagentType === "Explore") return "scan";
+  return "work";
 }
 
 const PANE_ID = "fleet-routing";
 const PANE_TITLE = "Fleet Routing";
 const COMMAND_NAME = "fleet-routing";
-/** 이 이름들이 오면 세션 모델을 상속한다는 뜻이다. */
-const INHERITING_TYPES = new Set(["", "general-purpose", "task", "Explore", "Plan"]);
-
 type RowState = "asked" | "seated" | "running" | "done" | "denied";
 
 /** 게이트웨이 모델 id의 접두사. 이 표식이 붙은 모델만 Fleet이 중계한다. */
@@ -150,8 +181,11 @@ interface Row {
 
 /** 이 세션에서 본 디스패치. 새 것이 뒤에 붙는다. */
 const ledger: Row[] = [];
-/** 이 세션에 실제로 올라간 정체성 이름. 등록이 거절되면 여기 들어오지 않는다. */
-const registered = new Set<string>();
+/**
+ * 이 세션에서 배정했다가 실패한 모델. 다음 배정은 건너뛴다 — 후보가 목록인 이유가 이것이고,
+ * "지금 쓸 수 있는 첫 번째"의 `지금`을 이 집합이 판정한다.
+ */
+const unreachable = new Set<string>();
 /** Agent 도구 호출 중 아직 spawn이 오지 않은 것: tool_use_id → 행. */
 const awaitingSpawn = new Map<string, Row>();
 /** 살아 있는 subagent: agentId → 행. */
@@ -183,32 +217,9 @@ function elapsed(row: Row, now: number): string {
 }
 
 export const register: Register = (on) => {
-  // 세션이 준비되면 정체성을 올리고 판을 여는 커맨드를 등록한다. 이 훅은 첫 프롬프트 전에
-  // 기다려지므로, 여기서 올린 정체성은 첫 턴의 목록에 들어간다.
+  // 세션이 준비되면 판을 여는 커맨드를 등록한다. 후보 조회는 여기서 하지 않는다 — 세션
+  // 시작에 읽어 두면 그 순간의 노출에 갇히고, 그 고정이 바로 등록 방식의 결함이었다.
   on("session.start", async ($, e, next) => {
-    let specs: AgentSpecs = NO_SPECS;
-    try {
-      specs = await fetchAgentSpecs($);
-    } catch (error) {
-      $.ui.log(`could not read the exposed identities: ${String(error)}`, { to: "debug" });
-    }
-    for (const agent of specs.agents) {
-      try {
-        await $.agent.register({
-          name: agent.name,
-          description: agent.description,
-          prompt: specs.prompt,
-          model: agent.model,
-          ...(agent.effort === undefined ? {} : { effort: agent.effort }),
-        });
-        registered.add(`fleet:${agent.name}`);
-      } catch (error) {
-        // 하나가 거절돼도 나머지는 올린다. 정체성 하나가 빠진 세션이 정체성이 전혀 없는
-        // 세션보다 낫고, 무엇이 빠졌는지는 아래 한 줄이 남긴다.
-        $.ui.log(`agent.register refused ${agent.name}: ${String(error)}`, { to: "debug" });
-      }
-    }
-    $.ui.log(`registered ${registered.size} of ${specs.agents.length} gateway identities`, { to: "debug" });
     try {
       await $.command.register({
         name: COMMAND_NAME,
@@ -256,16 +267,20 @@ export const register: Register = (on) => {
   });
 
   /**
-   * Agent 도구의 디스패치를 기록하는 자리. Workflow 스테이지는 지나지 않는다 — 그쪽은
-   * 내장 workflow-subagent로 돌아 아래 turn.step이 관측 행으로 받는다.
+   * 위임 하나의 모델이 정해지는 자리. 스폰 레코드의 `model`은 Agent 도구의 파라미터와 달리
+   * 열린 문자열이라, 여기서 게이트웨이 모델 id를 직접 실어 줄 수 있다 — 도구의 enum은
+   * 호스트가 적을 수 있는 철자만 제한하지 실제로 무엇이 도는지를 정하지 않는다.
+   *
    * 어느 분기에서도 반드시 next로 흘려보낸다 — 여기서 답해 버리면 subagent가 시작되지 않는다.
+   * Workflow 스테이지는 이 훅을 지나지 않는다(측정: 스테이지 4개에 스폰 0건). 그쪽은 내장
+   * workflow-subagent로 돌아 아래 turn.step이 관측 행으로 받는다.
    */
   on("agent.spawn", async ($, e, next) => {
     const row =
       awaitingSpawn.get(e.tool_use_id) ??
       addRow({
         key: `${e.tool_use_id}:${ledger.length}`,
-        surface: "workflow",
+        surface: "agent",
         description: e.description || "subagent",
         asked: e.subagentType || "inherit",
         state: "asked",
@@ -275,26 +290,29 @@ export const register: Register = (on) => {
     row.description = e.description || row.description;
     row.asked = e.fork ? "fork" : e.subagentType || "inherit";
 
-    const reading = read(e.subagentType, e.fork);
+    const decision = await decide($, e);
     row.state = "seated";
-    row.carried = reading.carried;
-    row.because = reading.because;
-    // 세는 축은 "세션 모델을 탔는가" 하나다. 호스트가 게이트웨이 정체성을 지목했으면
-    // 세션 할당을 아낀 것이고, 이름을 대지 않았으면 태운 것이다.
-    if (reading.inheritsHost) onHost += 1;
+    row.carried = decision.carried;
+    row.because = decision.because;
+    if (decision.model === undefined) onHost += 1;
     else offHost += 1;
-    $.ui.notice(e.tool_use_id, `Fleet: ${reading.carried} — ${reading.because}`);
+    $.ui.notice(e.tool_use_id, `Fleet: ${decision.carried} — ${decision.because}`);
     // 사람이 보는 자리는 판이고, 이 줄은 사후 진단용이라 디버그 로그에만 남긴다.
-    $.ui.log(`dispatch: asked=${row.asked} carried=${reading.carried}`, { to: "debug" });
+    $.ui.log(
+      `dispatch: asked=${e.model ?? "(none)"}/${row.asked} tier=${decision.tier} carried=${decision.carried}`,
+      { to: "debug" },
+    );
     redraw($);
 
-    // 아무것도 바꾸지 않고 흘려보낸다.
-    const result = await next(e);
+    const result = await next(decision.model === undefined ? e : { ...e, model: decision.model });
 
     if (result.deny !== undefined) {
       row.state = "denied";
       row.because = result.deny;
       row.endedAt = Date.now();
+      // 배정한 모델이 거절됐다면 그 모델은 이 세션에서 닿지 않는다. 다음 위임은 다음 후보로
+      // 간다 — 같은 막힌 모델을 계속 고르면 후보가 목록인 의미가 없다.
+      if (decision.model !== undefined) unreachable.add(decision.model);
     } else {
       row.state = "running";
       if (result.agentId !== undefined) {
@@ -306,7 +324,7 @@ export const register: Register = (on) => {
     redraw($);
     return result;
   }).catch(($, e, next) => {
-    // 좌석 배정이 실패해도 디스패치는 산다. 원본 그대로 흘려보낸다.
+    // 배정이 실패해도 디스패치는 산다. 원본 그대로 흘려보낸다.
     return next(e);
   });
 
@@ -380,64 +398,80 @@ export const register: Register = (on) => {
   });
 };
 
-interface Reading {
-  /** 이 실행이 무엇으로 돌았는지, 사람이 읽는 이름. */
+interface Decision {
+  /** 실어 줄 모델 id. `undefined`면 아무것도 바꾸지 않는다. */
+  readonly model?: string;
+  /** 읽은 등급. 배정하지 않은 실행에서는 그 이유가 등급 자리에 온다. */
+  readonly tier: string;
+  /** 이 실행이 무엇으로 도는지, 사람이 읽는 이름. */
   readonly carried: string;
   /** 왜 그것이 됐는지 한 줄. */
   readonly because: string;
-  /** 세션 자신의 모델을 물려받았는가. */
-  readonly inheritsHost: boolean;
+}
+
+/** 아무것도 바꾸지 않는 판정. 세션 모델을 그대로 탄다. */
+function passThrough(tier: string, because: string): Decision {
+  return { tier, carried: "session model", because };
 }
 
 /**
- * 디스패치 하나를 읽는다. **아무것도 바꾸지 않는다** — 어느 모델로 보낼지는 호스트가
- * 로스터를 읽고 정하고, 이 모듈은 그 결정이 무엇이었는지만 기록한다.
+ * 디스패치 하나를 어느 모델로 보낼지 정한다.
  *
- * 한때는 여기서 좌석표를 보고 `subagentType`을 갈아 끼웠다. 그 방식은 호스트의 판단을
- * 대신하면서도 세션 시작에 고정된 표만 볼 수 있어, 쿼터가 움직이는 축을 놓쳤다.
+ * 손대지 않는 세 가지를 먼저 걸러낸다. fork는 부모의 문맥과 모델을 물려받고 `model`이 아예
+ * 무시된다. 다른 플러그인이 등록한 agent는 그 정의가 모델을 소유하므로 남의 결정을 덮지
+ * 않는다. 이미 게이트웨이 모델이 실려 있으면 누군가 이미 정한 것이다.
  */
-function read(subagentType: string, fork: boolean): Reading {
-  if (fork) {
-    return {
-      carried: "session model",
-      because: "a fork inherits the parent's context and model",
-      inheritsHost: true,
-    };
+async function decide($: Engine, e: SpawnInput): Promise<Decision> {
+  if (e.fork) return passThrough("fork", "a fork inherits the parent's context and model");
+  if (e.provider !== undefined && e.provider.plugin !== "engine") {
+    return { tier: "foreign", carried: `${e.subagentType} (own definition)`, because: "this agent's definition chooses its model" };
   }
-  if (subagentType.startsWith("fleet:")) {
-    const name = subagentType.slice("fleet:".length);
-    return {
-      carried: name,
-      because: registered.has(subagentType) ? "named by the host" : "named by the host, but not registered this session",
-      inheritsHost: false,
-    };
+  if (e.model !== undefined && e.model.startsWith(GATEWAY_PREFIX)) {
+    return { model: e.model, tier: "pinned", carried: modelLabel(e.model), because: "already carried a gateway model" };
   }
-  if (INHERITING_TYPES.has(subagentType)) {
-    return {
-      carried: "session model",
-      because: "no identity named, so the session's own model runs it",
-      inheritsHost: true,
-    };
+
+  let table: RoutingTable = NO_TABLE;
+  try {
+    table = await fetchRoutingTable($);
+  } catch (error) {
+    $.ui.log(`could not read the routing table: ${String(error)}`, { to: "debug" });
+    return passThrough("unread", "the routing table could not be read");
+  }
+
+  const tier = tierOf(e.model, e.subagentType);
+  const candidates = table.tiers[tier] ?? [];
+  const seat = candidates.find((candidate) => !unreachable.has(candidate.model));
+  if (seat === undefined) {
+    // 후보가 아예 없다는 것은 위임 모델이 노출되지 않았다는 뜻이다. 사용자가 모델을 전부
+    // 호스트 전용으로 뒀다면 "위임은 내장 모델로 하라"는 명시적 선택이고, 뒤집지 않는다.
+    return passThrough(tier, candidates.length === 0 ? "no gateway model is exposed for delegation" : "every candidate is unreachable this session");
   }
   return {
-    carried: `${subagentType} (own definition)`,
-    because: "this agent's definition chooses its model",
-    inheritsHost: false,
+    model: seat.model,
+    tier,
+    carried: seat.label,
+    because: `${describeAsk(e.model, e.subagentType)} → ${tier}`,
   };
+}
+
+/** 호스트가 실제로 무엇을 말했는지, 판에 적을 만큼 짧게. */
+function describeAsk(model: string | undefined, subagentType: string): string {
+  if (model !== undefined) return model;
+  return subagentType === "Explore" ? "Explore" : "no model named";
 }
 
 function summaryLine(): string {
   if (ledger.length === 0) return "No delegated run yet this session.";
   const runs = `${ledger.length} ${ledger.length === 1 ? "run" : "runs"}`;
   // "세션 모델을 피했다"가 아니라 "상속했는가"가 세는 축이다. 세션 자신이 게이트웨이 모델로
-  // 도는 경우 좌석이 같은 모델을 고를 수도 있어서, 전자로 적으면 거짓이 된다.
-  // 관측만 한 실행은 따로 센다. 좌석을 준 실행과 같은 칸에 넣으면 Fleet이 라우팅한 범위를
+  // 도는 경우 배정이 같은 모델을 고를 수도 있어서, 전자로 적으면 거짓이 된다.
+  // 관측만 한 실행은 따로 센다. 배정한 실행과 같은 칸에 넣으면 Fleet이 라우팅한 범위를
   // 실제보다 넓게 읽히게 한다.
   const parts: string[] = [];
-  if (offHost + onHost > 0) parts.push(`${offHost} named, ${onHost} inherited`);
+  if (offHost + onHost > 0) parts.push(`${offHost} routed, ${onHost} inherited`);
   if (observed > 0) parts.push(`${observed} not from the Agent tool`);
   const tally = parts.length === 0 ? "reading" : parts.join(" · ");
-  return `${runs} · ${tally} · ${registered.size} identities`;
+  return `${runs} · ${tally}`;
 }
 
 /**
@@ -518,7 +552,7 @@ function drawPane(t: PaneElements, bodyColumns: number): unknown {
     return (
       <Box flexDirection="column" paddingX={1}>
         <Text dimColor>No delegated run yet.</Text>
-        <Text dimColor>Fleet seats each run when one starts.</Text>
+        <Text dimColor>Fleet picks a model when one starts.</Text>
       </Box>
     );
   }

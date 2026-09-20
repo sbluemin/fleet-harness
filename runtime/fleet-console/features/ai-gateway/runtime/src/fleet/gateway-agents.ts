@@ -129,50 +129,6 @@ export function buildGatewayCustomAgents(
 }
 
 /**
- * 라우팅 Mod가 `$.agent.register`로 세션에 올릴 정체성 명세.
- *
- * 한때는 같은 정의를 플러그인 `agents/*.md` 파일로 구웠다. 파일은 Mods 표면이 없어도
- * 동작하지만 정체성마다 1.9KB짜리 파일이 하나씩 생기고, 프롬프트가 20벌 복제되며,
- * 등록 시점을 런치에 묶는다. 런타임 등록은 프로세스 안에서 한 번에 끝난다.
- *
- * 프롬프트는 한 번만 싣는다 — 정체성마다 같은 1.5KB를 복제하면 스냅숏이 그만큼 불어나고,
- * 그 사본은 전부 같은 문자열이라 어느 하나도 고유한 정보를 담지 않는다.
- */
-export interface GatewayAgentSpecs {
-  /** 모든 정체성이 공유하는 실행 프롬프트. */
-  readonly prompt: string;
-  readonly agents: readonly {
-    readonly name: string;
-    readonly description: string;
-    readonly model: string;
-    readonly effort?: GatewayReasoningEffort;
-  }[];
-}
-
-export function buildGatewayAgentSpecs(
-  exposed: readonly GatewayModel[],
-  exposure?: GatewayEffortExposure,
-): GatewayAgentSpecs {
-  return {
-    prompt: GENERAL_PURPOSE_AGENT_PROMPT,
-    agents: Object.entries(buildGatewayCustomAgents(exposed, exposure)).map(([name, definition]) => ({
-      name,
-      description: definition.description,
-      model: definition.model,
-      ...(definition.effort === undefined ? {} : { effort: definition.effort }),
-    })),
-  };
-}
-
-/** Mod 자산에 심을 JSON. foundation은 이 문자열을 해석하지 않고 그대로 나른다. */
-export function buildGatewayAgentSpecsJson(
-  exposed: readonly GatewayModel[],
-  exposure?: GatewayEffortExposure,
-): string {
-  return JSON.stringify(buildGatewayAgentSpecs(exposed, exposure));
-}
-
-/**
  * 호스트가 정체성을 고를 때 쓰는 철자. 플러그인 스코프가 붙은 이 이름만 Agent 자리에
  * 넣을 수 있고, 스코프 없는 stem은 파일 이름일 뿐이다.
  */
@@ -222,6 +178,6 @@ function gatewayAgentDescription(input: {
  * 이 목록으로 답하므로, 정체성을 만드는 변환과 같은 자리에서 뽑아야 둘이 어긋나지 않는다.
  */
 export function buildFleetAgentRegistrations(models: readonly GatewayModel[], exposure?: GatewayEffortExposure) {
-  return buildGatewayAgentSpecs(models, exposure).agents
-    .map((agent) => ({ name: `${FLEET_PLUGIN_NAME}:${agent.name}` }));
+  return Object.keys(buildGatewayCustomAgents(models, exposure))
+    .map((name) => ({ name: `${FLEET_PLUGIN_NAME}:${name}` }));
 }

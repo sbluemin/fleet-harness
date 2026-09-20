@@ -215,12 +215,12 @@ export interface AiGatewayRouteDeps {
   /** Process-local hook credential injected into Fleet-launched Claude children. */
   readonly compactionHookToken?: string;
   /**
-   * 라우팅 Mod가 `/v1/fleet/agents`를 부를 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 —
+   * 라우팅 Mod가 `/v1/fleet/routing`을 부를 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 —
    * 두 소비자가 같은 비밀을 공유하면 하나를 회수할 때 다른 하나가 같이 끊긴다.
    */
   readonly modHookToken?: string;
-  /** 호출 시점의 노출로 정체성 명세를 만든다. 생략하면 이 세션은 정체성을 올리지 않는다. */
-  readonly readAgentSpecs?: () => Promise<unknown> | unknown;
+  /** 호출 시점의 노출로 라우팅 표를 만든다. 생략하면 이 세션의 위임은 재작성되지 않는다. */
+  readonly readRoutingTable?: () => Promise<unknown> | unknown;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
@@ -372,25 +372,25 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       res.end("{}");
       return true;
     }
-    // 라우팅 Mod가 세션 시작에 이 세션이 올릴 정체성을 묻는 자리. 플러그인 스냅숏은 내용
-    // 해시로 발행되는 공유 트리라 노출 목록을 거기 구워 넣으면 모델을 켤 때마다 새 트리가
-    // 발행된다. 스냅숏은 정적으로 두고, 그때그때의 노출은 여기서 답한다.
-    if (pathname.endsWith("/v1/fleet/agents")) {
+    // 라우팅 Mod가 위임을 배정할 때 지금의 후보를 묻는 자리. 플러그인 스냅숏은 내용 해시로
+    // 발행되는 공유 트리라 노출 목록을 거기 구워 넣으면 모델을 켤 때마다 새 트리가 발행된다.
+    // 스냅숏은 정적으로 두고, 그때그때의 노출은 여기서 답한다 — 세션을 다시 띄울 필요가 없다.
+    if (pathname.endsWith("/v1/fleet/routing")) {
       if (req.method !== "GET") {
         writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
         return true;
       }
       const modToken = req.headers["x-fleet-mod-token"];
-      if (!deps.readAgentSpecs || !deps.modHookToken || modToken !== deps.modHookToken) {
+      if (!deps.readRoutingTable || !deps.modHookToken || modToken !== deps.modHookToken) {
         writeAnthropicError(res, 401, "authentication_error", "Invalid mod credential");
         return true;
       }
       try {
-        const specs = await deps.readAgentSpecs();
+        const table = await deps.readRoutingTable();
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(specs));
+        res.end(JSON.stringify(table));
       } catch {
-        writeAnthropicError(res, 500, "api_error", "Could not read the exposed identities");
+        writeAnthropicError(res, 500, "api_error", "Could not read the delegation routing table");
       }
       return true;
     }

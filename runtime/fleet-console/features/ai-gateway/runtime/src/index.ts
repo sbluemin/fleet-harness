@@ -145,15 +145,22 @@ export {
 export {
   FLEET_PLUGIN_NAME,
   GENERAL_PURPOSE_AGENT_PROMPT,
-  buildGatewayAgentSpecs,
-  buildGatewayAgentSpecsJson,
   buildGatewayCustomAgents,
   toGatewayAgentName,
   toGatewayAgentSelector,
   type ClaudeCustomAgentDefinition,
   type ClaudeCustomAgents,
-  type GatewayAgentSpecs,
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
+export {
+  EMPTY_GATEWAY_ROUTING_TABLE,
+  GATEWAY_ROUTING_TIERS,
+  buildGatewayRoutingTable,
+  routingTableIsEmpty,
+  toRoutingLabel,
+  type GatewayRoutingCandidate,
+  type GatewayRoutingTable,
+  type GatewayRoutingTier,
+} from "./fleet/routing-table.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 export { buildFleetAgentRegistrations } from "./fleet/gateway-agents.js";
