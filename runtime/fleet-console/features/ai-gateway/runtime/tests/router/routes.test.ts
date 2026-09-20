@@ -33,7 +33,7 @@ import {
   findGatewayModel,
   parseGatewayAssignmentRequest,
 } from "../../src/index.js";
-import type { AiGatewayRouteDeps } from "../../src/index.js";
+import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
 function requireGatewayModel(id: string) {
@@ -145,6 +145,61 @@ describe("delegation assignment", () => {
     });
 
     expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--cursor--composer-2.5" });
+  });
+
+  it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
+    // 고정 목록의 머리만 집으면 같은 등급의 팬아웃이 전원 한 모델로 간다. 공급자별 부하를
+    // 세는 것이 그 몰림을 막는 유일한 상태이므로, 그 상태가 실제로 돌아가는지 본다.
+    const providerLoad = new Map<string, number>();
+    const spread = {
+      delegationRoutingEnabled: true,
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      // xai는 소진 직전이다. 읽을 수 있는 대안이 있는 한 그쪽으로 보내지 않는다.
+      quota: {
+        cursor: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 99, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+      },
+      providerLoad,
+    } satisfies GatewayAssignmentExposure;
+
+    const carried = [0, 1, 2, 3].map(() => decideGatewayRoutingAssignment(
+      { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
+      spread,
+    ).model);
+
+    expect(carried.every((model) => model === "claude-gateway--cursor--composer-2.5")).toBe(true);
+    expect(providerLoad.get("cursor")).toBe(4);
+    expect(providerLoad.get("xai")).toBeUndefined();
+  });
+
+  it("alternates between providers whose allowances read the same", async () => {
+    const providerLoad = new Map<string, number>();
+    const even = {
+      delegationRoutingEnabled: true,
+      delegationModels: [
+        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+      ],
+      quota: {
+        cursor: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+      },
+      providerLoad,
+    } satisfies GatewayAssignmentExposure;
+
+    for (const _ of [0, 1, 2, 3]) {
+      decideGatewayRoutingAssignment(
+        { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
+        even,
+      );
+    }
+
+    // 넷을 둘로 나눈다. 한 공급자가 다른 쪽보다 한 갈래 넘게 앞서지 않는다.
+    expect(providerLoad.get("cursor")).toBe(2);
+    expect(providerLoad.get("xai")).toBe(2);
   });
 
   it("leaves a fork on the session model", async () => {

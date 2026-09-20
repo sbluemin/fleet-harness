@@ -16,7 +16,7 @@
  * 통째로 막히면 아래 등급으로 흘러내린다 — 위임을 죽이는 것보다 낫다.
  */
 
-import { buildGatewayModelConstraints, type GatewayEffortExposure, type GatewayModel, type GatewayProvider, type GatewayReasoningEffort } from "../models.js";
+import { buildGatewayModelConstraints, type GatewayModelConstraints, type GatewayEffortExposure, type GatewayModel, type GatewayProvider, type GatewayReasoningEffort } from "../models.js";
 import { exposedEffortLadder } from "./gateway-agents.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 
@@ -46,6 +46,10 @@ export interface GatewayRoutingCandidate {
   readonly effort?: GatewayReasoningEffort;
   /** 사람이 읽는 이름. 판과 알림줄이 그대로 쓴다. */
   readonly label: string;
+  /** 이 모델이 비용을 무는 공급자. 배정이 공급자 사이를 고르게 돌릴 때 이 값으로 센다. */
+  readonly provider: GatewayProvider;
+  /** 공급자가 풀을 나눠 재는 경우 이 모델을 묶는 풀. 허용량을 읽을 창을 이 값이 고른다. */
+  readonly quotaScope?: GatewayModelConstraints["quotaScope"];
 }
 
 export interface GatewayRoutingTable {
@@ -177,6 +181,8 @@ function toCandidate(
     model: modelId,
     ...(effort === undefined ? {} : { effort }),
     label: effort === undefined ? label : `${label} @${effort}`,
+    provider: model.provider,
+    ...(constraints.quotaScope === undefined ? {} : { quotaScope: constraints.quotaScope }),
   };
 }
 

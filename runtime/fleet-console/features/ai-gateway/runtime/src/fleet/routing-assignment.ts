@@ -17,6 +17,8 @@
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 
 import type { GatewayModel, GatewayEffortExposure, GatewayProvider } from "../models.js";
+import type { GatewayQuotaSnapshot } from "./model-loadout.js";
+import { modelPressure } from "./routing-allowance.js";
 import {
   buildGatewayRoutingTable,
   routingTableIsEmpty,
@@ -90,6 +92,18 @@ export interface GatewayAssignmentExposure {
   readonly delegationModels: readonly GatewayModel[];
   readonly effortExposure?: GatewayEffortExposure;
   readonly providerPriority?: readonly GatewayProvider[];
+  /** 호출 시점의 허용량. 읽지 못했으면 생략한다 — 부재는 여유가 아니다. */
+  readonly quota?: GatewayQuotaSnapshot;
+  /**
+   * 공급자별 누적 배정 수. **Console이 소유하는 가변 상태다.**
+   *
+   * 고정 목록의 머리만 집으면 같은 등급의 팬아웃이 전원 한 모델로 몰린다. 그 몰림을 막는
+   * 유일한 방법이 "지금까지 몇 번 보냈는가"를 기억하는 것이고, 훅은 그 기억을 가질 자리가
+   * 아니다 — 세션마다 따로 세면 세션 넷이 같은 공급자를 각자 처음인 줄 알고 고른다.
+   *
+   * 생략하면 회전 없이 목록 순서대로 고른다(우선순위가 지정된 경우가 그렇다).
+   */
+  readonly providerLoad?: Map<string, number>;
 }
 
 /** 아무것도 바꾸지 않는 답. 세션 모델을 그대로 탄다. */
@@ -172,18 +186,76 @@ export function decideGatewayRoutingAssignment(
   }
   const tier = tierOf(request);
   const blocked = new Set(request.unreachable ?? []);
-  const seat: GatewayRoutingCandidate | undefined = table.tiers[tier].find(
-    (candidate) => !blocked.has(candidate.model),
-  );
-  if (seat === undefined) {
+  const reachable = table.tiers[tier].filter((candidate) => !blocked.has(candidate.model));
+  if (reachable.length === 0) {
     return inherit("every candidate is unreachable this session");
   }
+  const seat = pickSeat(reachable, exposure);
+  if (exposure.providerLoad !== undefined) {
+    exposure.providerLoad.set(seat.model.provider, (exposure.providerLoad.get(seat.model.provider) ?? 0) + 1);
+  }
   return {
-    model: seat.model,
-    ...(seat.effort === undefined ? {} : { effort: seat.effort }),
-    label: seat.label,
-    because: `${describeAsk(request)} → ${tier}`,
+    model: seat.model.model,
+    ...(seat.model.effort === undefined ? {} : { effort: seat.model.effort }),
+    label: seat.model.label,
+    because: `${describeAsk(request)} → ${tier}${seat.suffix}`,
   };
+}
+
+/** 고른 좌석과, 원장에 덧붙일 한 마디. */
+interface Seat {
+  readonly model: GatewayRoutingCandidate;
+  readonly suffix: string;
+}
+
+/**
+ * 허용량이 허락하는 후보 중에서 지금 가장 덜 쓴 공급자를 고른다.
+ *
+ * 사용자가 소진 순서를 정해 뒀으면 그 순서가 이긴다 — 균등 분배를 사용자 의도로 대체하는
+ * 것이 그 설정의 뜻이고, 압박 예측도 그 앞에서는 양보한다. 정하지 않았을 때만 회전한다.
+ *
+ * 회전은 카운터가 아니라 **부하 최솟값**으로 한다. 커서를 돌리면 중간에 한 공급자가 막혔을
+ * 때 그 자리를 건너뛴 만큼 균형이 영구히 어긋나지만, 최솟값은 그 다음 배정에서 스스로
+ * 되돌아온다. 같은 부하면 목록 순서가 가른다 — 그래야 같은 상태에서 같은 답이 나온다.
+ */
+function pickSeat(
+  reachable: readonly GatewayRoutingCandidate[],
+  exposure: GatewayAssignmentExposure,
+): Seat {
+  if (exposure.providerPriority !== undefined && exposure.providerPriority.length > 0) {
+    // 목록은 이미 그 순서로 정렬돼 있다. 머리가 곧 가장 먼저 쓸 공급자다.
+    return { model: reachable[0] as GatewayRoutingCandidate, suffix: " · spend order" };
+  }
+  if (exposure.providerLoad === undefined) {
+    return { model: reachable[0] as GatewayRoutingCandidate, suffix: "" };
+  }
+  const scored = reachable.map((candidate, index) => {
+    const pressure = modelPressure(exposure.quota?.[candidate.provider], candidate);
+    return { candidate, index, pressure };
+  });
+  // `critical`은 모든 대안이 더 나쁠 때만 간다. 전부 critical이면 위임을 죽이는 것보다 낫다.
+  const usable = scored.filter((entry) => entry.pressure !== "critical");
+  const pool = usable.length > 0 ? usable : scored;
+  let best: (typeof pool)[number] | undefined;
+  let bestLoad = Number.POSITIVE_INFINITY;
+  for (const entry of pool) {
+    // `elevated`는 금지가 아니라 가벼운 쪽으로 기울이라는 뜻이고, 읽지 못한 허용량은
+    // 여유도 소진도 아니다. 둘 다 한 칸의 핸디캡으로 같게 취급한다 — 배제하지 않되
+    // 먼저 집지도 않는다.
+    const handicap = entry.pressure === "elevated" || entry.pressure === undefined ? 1 : 0;
+    const load = (exposure.providerLoad.get(entry.candidate.provider) ?? 0) + handicap;
+    if (load < bestLoad) {
+      best = entry;
+      bestLoad = load;
+    }
+  }
+  const chosen = best ?? pool[0] as (typeof pool)[number];
+  const suffix = usable.length === 0
+    ? " · every allowance is critical"
+    : chosen.pressure === "critical"
+      ? " · critical"
+      : "";
+  return { model: chosen.candidate, suffix };
 }
 
 /**
