@@ -1405,19 +1405,13 @@
 .compact-timing-note {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
+  border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--positive) 8%, transparent);
-  color: var(--positive-ink);
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  color: var(--warn-ink);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   line-height: 1.5;
-}
-
-.compact-timing-note.is-warn {
-  border-color: color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
-  background: color-mix(in oklch, var(--warn) 10%, transparent);
-  color: var(--warn-ink);
 }
 
 
