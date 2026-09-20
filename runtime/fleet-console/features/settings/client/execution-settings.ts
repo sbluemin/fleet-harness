@@ -54,6 +54,9 @@ export type ClaudeCodeSystemPromptMode = "on" | "off";
 /** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */
 export type XaiEndpointPreference = "direct" | "cli-proxy";
 
+/** How Fleet assigns models to delegated runs when routing is on. */
+export type DelegationRoutingMode = "jev" | "model";
+
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
@@ -66,6 +69,8 @@ export interface SystemPromptSettingsState {
   readonly wireLogEnabled: boolean;
   /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
   readonly delegationRoutingEnabled: boolean;
+  readonly delegationRoutingMode: DelegationRoutingMode;
+  readonly delegationRoutingModel: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -79,6 +84,8 @@ export type SystemPromptSettingsUpdate =
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
+  | { readonly delegationRoutingMode: DelegationRoutingMode }
+  | { readonly delegationRoutingModel: string | null }
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -137,6 +144,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
     || typeof payload.delegationRoutingEnabled !== "boolean"
+    || !isDelegationRoutingMode(payload.delegationRoutingMode)
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
   ) {
@@ -152,6 +160,8 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
     delegationRoutingEnabled: payload.delegationRoutingEnabled,
+    delegationRoutingModel: payload.delegationRoutingModel ?? null,
+    delegationRoutingMode: payload.delegationRoutingMode,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
   };
@@ -163,6 +173,10 @@ function isStringList(value: unknown): value is readonly string[] {
 
 function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {
   return value === "direct" || value === "cli-proxy";
+}
+
+function isDelegationRoutingMode(value: unknown): value is DelegationRoutingMode {
+  return value === "jev" || value === "model";
 }
 
 function isClaudeCodeSystemPromptMode(value: unknown): value is ClaudeCodeSystemPromptMode {
@@ -191,7 +205,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -320,6 +334,10 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "delegationRoutingEnabled") {
     return { delegationRoutingEnabled: state.delegationRoutingEnabled };
+  }
+  if (field === "delegationRoutingModel") return { delegationRoutingModel: state.delegationRoutingModel };
+  if (field === "delegationRoutingMode") {
+    return { delegationRoutingMode: state.delegationRoutingMode };
   }
   if (field === "compactCeiling") {
     return { compactCeiling: state.compactCeiling };

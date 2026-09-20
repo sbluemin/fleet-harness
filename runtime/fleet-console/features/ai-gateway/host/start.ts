@@ -1,5 +1,23 @@
 import path from "node:path";
-import { DEFAULT_WIRE_LOG_MAX_BYTES, decideGatewayRoutingAssignment, parseGatewayAssignmentRequest, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings, type GatewayQuotaSnapshot } from "@fleet-console/ai-gateway";
+import { chooseRoutingModel } from "./routing-model.js";
+import {
+  DEFAULT_WIRE_LOG_MAX_BYTES,
+  decideGatewayRoutingAssignment,
+  JEV_ROUTING_TIMEOUT_MS,
+  parseGatewayAssignmentRequest,
+  resolveAiGatewaySelection,
+  createAiGatewaySettingsStore,
+  createProviderAuthService,
+  setWireLogTarget,
+  wireLogEnabled,
+  KIMI_AUTH_PROVIDER_ID,
+  OPENCODE_AUTH_PROVIDER_ID,
+  SystemOneClient,
+  TYPESAFE_AUTH_PROVIDER_ID,
+  type AiGatewayStoredSettings,
+  type GatewayAssignmentExposure,
+  type GatewayQuotaSnapshot,
+} from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 interface GatewayStartContext {
@@ -90,23 +108,76 @@ export function startAiGateway(ctx: GatewayStartContext) {
       .catch(() => undefined)
       .finally(() => { allowanceReadAt = Date.now(); allowanceInFlight = false; });
   }
+  function currentExposure(): GatewayAssignmentExposure {
+    const selection = resolveAiGatewaySelection(aiGatewayStore.read());
+    return {
+      delegationRoutingEnabled: selection.delegationRoutingEnabled,
+      delegationRoutingMode: selection.delegationRoutingMode,
+      delegationModels: selection.delegationModels,
+      ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
+      ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
+      ...(allowance === undefined ? {} : { quota: allowance }),
+      providerLoad,
+    };
+  }
+  // 배정 경로 전용. 기본 30s·3재시도를 그대로 쓰면 spawn이 멈춘다.
+  const jevClient = new SystemOneClient({
+    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
+    timeoutMs: JEV_ROUTING_TIMEOUT_MS,
+    maxAttempts: 1,
+  });
+  async function assign(request: unknown, signal?: AbortSignal, test = false) {
+      refreshAllowanceSoon();
+      const parsed = parseGatewayAssignmentRequest(request);
+      const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad) } : currentExposure();
+      return await decideGatewayRoutingAssignment(parsed, exposure, {
+        ...(exposure.delegationRoutingMode === "model" ? {
+          choose: (input, signal) => chooseRoutingModel({
+            ...input, signal,
+            settings: aiGatewayStore.read(),
+            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
+            directory: path.join(ctx.dataDir, "routing-model"),
+          }),
+        } : { client: jevClient }),
+        forceDecision: test,
+        refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad } : currentExposure(),
+        ...(signal === undefined ? {} : { signal }),
+      });
+  }
+  let testing = false;
+  ctx.registerRouter("ai-gateway/routing-test", async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
+    const body = await ctx.host.http.readJsonBody<{ prompt?: unknown }>(req);
+    if (typeof body?.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 65536) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" }); return true;
+    }
+    const selection = currentExposure();
+    if (!selection.delegationRoutingEnabled || !selection.delegationModels.length) {
+      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
+    }
+    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
+    testing = true;
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    res.once("close", abort);
+    const started = Date.now();
+    try {
+      const decision = await assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, controller.signal, true);
+      if (!res.destroyed) ctx.host.http.writeJson(res, 200, {
+        mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
+        ...decision, fallback: decision.because.includes("fallback"),
+      });
+    } catch {
+      if (!res.destroyed) ctx.host.http.writeJson(res, 502, { error: "routing_test_failed" });
+    } finally { testing = false; res.off("close", abort); }
+    return true;
+  }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     readAiGatewaySettings: aiGatewayStore.read,
-    // 위임 하나를 무엇으로 보낼지 Console이 판정한다. 호출 시점의 노출을 읽으므로 세션
-    // 중에 모델을 켜고 끄면 다음 위임부터 반영된다 — 정체성을 등록하던 시절에는 이 값이
-    // 세션 시작에 고정돼, 설정을 바꿔도 CLI를 다시 띄우기 전에는 먹지 않았다.
-    assignRouting: (request) => {
-      refreshAllowanceSoon();
-      const selection = resolveAiGatewaySelection(aiGatewayStore.read());
-      return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), {
-        delegationRoutingEnabled: selection.delegationRoutingEnabled,
-        delegationModels: selection.delegationModels,
-        ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
-        ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
-        ...(allowance === undefined ? {} : { quota: allowance }),
-        providerLoad,
-      });
-    },
+    assignRouting: (request, options) => assign(request, options?.signal),
     readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });

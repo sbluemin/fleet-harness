@@ -174,21 +174,18 @@ export {
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
-  EMPTY_GATEWAY_ROUTING_TABLE,
-  GATEWAY_ROUTING_TIERS,
-  buildGatewayRoutingTable,
-  routingTableIsEmpty,
-  toRoutingLabel,
-  type GatewayRoutingCandidate,
-  type GatewayRoutingTable,
-  type GatewayRoutingTier,
-} from "./fleet/routing-table.js";
-export {
-  decideGatewayRoutingAssignment,
   parseGatewayAssignmentRequest,
   type GatewayAssignmentDecision,
   type GatewayAssignmentExposure,
   type GatewayAssignmentRequest,
   type GatewayAssignmentSurface,
+  type GatewayDelegationRoutingMode,
 } from "./fleet/routing-assignment.js";
+export {
+  JEV_ROUTING_TIMEOUT_MS,
+  decideGatewayRoutingAssignment,
+  type GatewayRoutingDecisionOptions,
+} from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
+
+export { fallbackGatewayRoutingAssignment } from "./fleet/routing-fallback.js";

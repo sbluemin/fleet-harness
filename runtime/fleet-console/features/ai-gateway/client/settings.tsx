@@ -3,7 +3,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
-import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling } from "../../settings/client/execution-settings.js";
+import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 export const aiGatewaySettingsSection = defineSettingsSection({
   id: "agent-cli",
@@ -314,39 +314,157 @@ function AiGatewayCompactTimingCard() {
 function AiGatewayRoutingCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
+  const auth = useModelAuthStore();
   const state = settings.state;
   const saving = settings.savingFields;
 
-  if (!state) {
-    return (
-      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayRouting")}>
-        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayRouting")}</p>
-        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
-      </section>
-    );
-  }
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadModelAuth(controller.signal);
+    return () => controller.abort();
+  }, []);
 
+  if (!state) {
+    return <section className="global-settings-card"><p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p></section>;
+  }
+  const typesafeSignedIn = auth.state?.providers.some(entry => entry.provider === "typesafe" && entry.signedIn) === true;
+  const mode = state.delegationRoutingMode;
+  const modeSaving = saving.has("delegationRoutingMode");
+  const routingSaving = saving.has("delegationRoutingEnabled");
+  const jevStored = mode === "jev";
+  const jevActive = jevStored && typesafeSignedIn;
+  const jevFallback = jevStored && !typesafeSignedIn;
+  const saveMode = (next: DelegationRoutingMode): void => {
+    if (next === "jev" && !typesafeSignedIn) return;
+    void setSystemPromptSettingsField("delegationRoutingMode", next);
+  };
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayRouting")}>
-      <p className="global-settings-resp-title">
-        {t("terminal.settings.aiGatewayRouting")}
-        <SettingsHelp title={t("terminal.settings.aiGatewayRouting")}>
-          <p>{t("terminal.settings.aiGatewayRoutingHelp")}</p>
-        </SettingsHelp>
-      </p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       <SettingToggleRow
-        title={t("terminal.settings.aiGatewayDelegationRouting")}
-        help={t("terminal.settings.aiGatewayDelegationRoutingHelp")}
+        title={t("terminal.settings.aiGatewayRouting")}
+        help={t("terminal.settings.aiGatewayRoutingHelp")}
         value={state.delegationRoutingEnabled}
-        disabled={saving.has("delegationRoutingEnabled")}
-        onToggle={() => void setSystemPromptSettingsField(
-          "delegationRoutingEnabled",
-          !state.delegationRoutingEnabled,
-        )}
+        disabled={routingSaving}
+        onToggle={() => void setSystemPromptSettingsField("delegationRoutingEnabled", !state.delegationRoutingEnabled)}
       />
+      {state.delegationRoutingEnabled ? (
+        <>
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                <span id="delegation-routing-mode-label">{t("terminal.settings.aiGatewayDelegationRoutingMode")}</span>
+                <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
+                  <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
+                </SettingsHelp>
+              </p>
+            </div>
+            <div className="segmented" role="group" aria-labelledby="delegation-routing-mode-label">
+              <SegmentedThumb />
+              <button
+                type="button"
+                className={`segmented-option${jevStored ? " is-active" : ""}`}
+                disabled={modeSaving || !typesafeSignedIn}
+                onClick={() => saveMode("jev")}
+              >
+                {t("terminal.settings.aiGatewayDelegationRoutingJev")}
+              </button>
+              <button type="button" className={`segmented-option${mode === "model" ? " is-active" : ""}`}
+                disabled={modeSaving} onClick={() => saveMode("model")}>
+                {t("terminal.settings.aiGatewayRoutingModel")}
+              </button>
+            </div>
+          </div>
+          {jevActive ? (
+            <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p>
+          ) : null}
+          {jevFallback ? (
+            <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevFallback")}</p>
+          ) : null}
+          {!typesafeSignedIn ? <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}</p> : null}
+          {mode === "model" ? (
+            <div className="global-settings-row">
+              <div className="global-settings-row-text">
+                <p className="global-settings-resp-title">
+                  <span id="routing-model-label">{t("terminal.settings.aiGatewayRoutingModel")}</span>
+                </p>
+              </div>
+              <ModelPicker
+                value={state.delegationRoutingModel ?? "sonnet"}
+                options={[
+                  { id: "opus", label: "Opus", provider: "anthropic" },
+                  { id: "sonnet", label: "Sonnet", provider: "anthropic" },
+                  ...state.aiGatewayCatalog.providers.flatMap(provider => provider.models
+                    .filter(model => state.aiGateway?.models?.some(selected => selected.id === model.id))
+                    .map(model => ({ id: model.id, label: model.name, provider: provider.id, contextWindow: model.contextWindow }))),
+                ]}
+                aria-labelledby="routing-model-label"
+                disabled={saving.has("delegationRoutingModel")}
+                onChange={id => void setSystemPromptSettingsField("delegationRoutingModel", id)}
+              />
+            </div>
+          ) : null}
+          {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
+          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn)} />
+        </>
+      ) : null}
     </section>
   );
+}
+
+function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode; readonly disabled: boolean }) {
+  const t = getT(useTerminalLocale());
+  const [prompt, setPrompt] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<{ model?: string; label?: string; effort?: string; elapsedMs: number; fallback: boolean; because: string } | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const active = React.useRef<AbortController | null>(null);
+  React.useEffect(() => () => active.current?.abort(), []);
+  const run = async () => {
+    if (active.current) return;
+    const controller = new AbortController(); active.current = controller;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const response = await fetch("/api/v1/ai-gateway/routing-test", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt }), signal: controller.signal,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+      if (!controller.signal.aborted) setResult(data);
+    } catch (e) {
+      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+      if (active.current === controller) active.current = null;
+    }
+  };
+  return <section className="ai-gateway-routing-test" aria-label={t("terminal.settings.routingTest")}>
+    <p className="global-settings-resp-title">{t("terminal.settings.routingTest")} · {mode === "jev" ? "Jev" : t("terminal.settings.aiGatewayRoutingModel")}</p>
+    <p className="global-settings-help">{t("terminal.settings.routingTestHelp")}</p>
+    <div className="ai-gateway-routing-presets" role="group" aria-label={t("terminal.settings.routingTestPresets")}>
+      {(["Light", "Medium", "Heavy"] as const).map(level => (
+        <button key={level} type="button" className="ai-gateway-add-button" disabled={busy}
+          onClick={() => { setPrompt(t(`terminal.settings.routingTest${level}Prompt`)); setResult(null); setError(null); }}>
+          {t(`terminal.settings.routingTest${level}`)}
+        </button>
+      ))}
+    </div>
+    <textarea className="ai-gateway-routing-task" aria-label={t("terminal.settings.routingTestTask")} rows={3} maxLength={65536}
+      value={prompt} disabled={busy}
+      placeholder={t("terminal.settings.routingTestTask")} onChange={event => { setPrompt(event.target.value); setResult(null); }} />
+    <button type="button" className="ai-gateway-add-button" disabled={disabled || busy || !prompt.trim()} onClick={() => void run()}>
+      {busy ? t("terminal.settings.routingTestRunning") : t("terminal.settings.routingTestRun")}
+    </button>
+    {error ? <p className="global-settings-error" role="alert">{error}</p> : null}
+    {result ? <div role="status" className="global-settings-help">
+      <p>{result.fallback ? t("terminal.settings.routingTestFallback") : t("terminal.settings.routingTestSuccess")}</p>
+      <p>{t("terminal.settings.routingTestAssignedModel")}: {result.label ?? t("terminal.settings.routingTestNoAssignment")}</p>
+      {result.effort ? <p>{t("terminal.settings.routingTestAssignedEffort")}: {result.effort}</p> : null}
+      <p>{t("terminal.settings.routingTestDuration")}: {result.elapsedMs} ms</p>
+      {result.fallback ? <p>{result.because}</p> : null}
+    </div> : null}
+  </section>;
 }
 
 function AiGatewayDiagnosticsCard() {
@@ -648,7 +766,7 @@ function AiGatewayModelsCard() {
         ) : (
           <div className="ai-gateway-groups">
             {signedInServices.map((service) => (
-              <AiGatewayServiceGroup key={service.provider} service={service} busy={auth.busyProvider === service.provider} />
+              <AiGatewayServiceGroup key={service.provider} service={service} />
             ))}
             {groups.map((group) => {
               const providerId = group.provider.id as AiGatewayProviderId;
@@ -708,9 +826,8 @@ function AiGatewayModelsCard() {
  * 왜 다르게 생겼는지는 hover·포커스에서 뜨는 말풍선이 말한다. 이름을 보여 주는 것이
  * 목적이지 고르게 하는 것이 아니다 — 고를 수 있게 만들면 대화 모델로 오인된다.
  */
-function AiGatewayServiceGroup({ service, busy }: {
+function AiGatewayServiceGroup({ service }: {
   readonly service: ModelAuthProviderState;
-  readonly busy: boolean;
 }) {
   const t = getT(useTerminalLocale());
   return (
@@ -725,26 +842,6 @@ function AiGatewayServiceGroup({ service, busy }: {
           <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayServiceBadge")}</span>
           <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
         </span>
-        <span className="ai-gateway-group-controls">
-          <button
-            type="button"
-            className="ai-gateway-key-signout"
-            disabled={busy}
-            aria-label={`${service.displayName} · ${t("terminal.auth.signOut")}`}
-            onClick={() => void signOutModel(service.provider)}
-          >
-            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
-          </button>
-        </span>
-      </div>
-      <div className="ai-gateway-service-rows">
-        {(service.models ?? []).map((model) => (
-          <div className="ai-gateway-service-row" key={model.id} tabIndex={0}>
-            <span className="ai-gateway-service-model">{model.name}</span>
-            <code className="ai-gateway-service-id">{model.id}</code>
-            <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceModelTip")}</span>
-          </div>
-        ))}
       </div>
     </section>
   );
@@ -1403,13 +1500,6 @@ function AiGatewayPaletteServiceGroup({ service, busy, keyLineOpen, onToggleKeyL
           )}
         </span>
       </div>
-      {(service.models ?? []).map((model) => (
-        <div className="ai-gateway-palette-service-model" key={model.id} tabIndex={0}>
-          <span className="ai-gateway-palette-hit-name">{model.name}</span>
-          <code className="ai-gateway-service-id">{model.id}</code>
-          <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceModelTip")}</span>
-        </div>
-      ))}
       {!service.signedIn && keyLineOpen ? (
         <AiGatewayKeyForm provider={service} busy={busy} compact onSignedIn={onKeyLineDone} />
       ) : null}

@@ -14,11 +14,14 @@ import { sanitizeClaudeCodeDisabledAgents, type ClaudeCodeSystemPromptMode, type
 
 import {
   buildAiGatewayCatalog,
+  findGatewayModel,
   normalizeCompactCeiling,
   parseAiGatewayUpdate,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
+  DELEGATION_ROUTING_MODES,
   XAI_ENDPOINT_PREFERENCES,
   type AiGatewayCatalog,
+  type DelegationRoutingMode,
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
@@ -44,6 +47,8 @@ interface TerminalSettingsBody {
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
   readonly delegationRoutingEnabled?: unknown;
+  readonly delegationRoutingMode?: unknown;
+  readonly delegationRoutingModel?: unknown;
   readonly compactCeiling?: unknown;
   readonly xaiEndpoint?: unknown;
 }
@@ -57,6 +62,8 @@ type TerminalSettingsUpdate =
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
+  | { readonly delegationRoutingMode: DelegationRoutingMode }
+  | { readonly delegationRoutingModel: string | null }
   | { readonly compactCeiling: CompactCeiling | undefined }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -74,6 +81,9 @@ export interface TerminalSettingsState {
   readonly wireLogEnabled: boolean;
   /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
   readonly delegationRoutingEnabled: boolean;
+  /** 위임 배정 방식. Off일 때도 읽기 값은 deterministic이다. */
+  readonly delegationRoutingMode: DelegationRoutingMode;
+  readonly delegationRoutingModel: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -125,6 +135,18 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       }
       if ("delegationRoutingEnabled" in update) {
         const stored = deps.aiGatewayStore.writeDelegationRoutingEnabled(update.delegationRoutingEnabled);
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
+      if ("delegationRoutingModel" in update) {
+        const stored = deps.aiGatewayStore.writeDelegationRoutingModel(update.delegationRoutingModel ?? undefined);
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled()));
+        return true;
+      }
+      if ("delegationRoutingMode" in update) {
+        const stored = deps.aiGatewayStore.writeDelegationRoutingMode(update.delegationRoutingMode);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
@@ -210,6 +232,8 @@ function toTerminalSettingsState(
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
     delegationRoutingEnabled: aiGateway.delegationRoutingEnabled !== false,
+    delegationRoutingModel: aiGateway.delegationRoutingModel ?? null,
+    delegationRoutingMode: aiGateway.delegationRoutingMode ?? "model",
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
@@ -278,6 +302,16 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "delegationRoutingEnabled") {
     return typeof body.delegationRoutingEnabled === "boolean"
       ? { delegationRoutingEnabled: body.delegationRoutingEnabled }
+      : null;
+  }
+  if (keys[0] === "delegationRoutingModel") {
+    return body.delegationRoutingModel === null || (typeof body.delegationRoutingModel === "string" && (["sonnet", "opus"].includes(body.delegationRoutingModel) || findGatewayModel(body.delegationRoutingModel)))
+      ? { delegationRoutingModel: body.delegationRoutingModel as string | null } : null;
+  }
+  if (keys[0] === "delegationRoutingMode") {
+    return typeof body.delegationRoutingMode === "string"
+      && DELEGATION_ROUTING_MODES.includes(body.delegationRoutingMode as DelegationRoutingMode)
+      ? { delegationRoutingMode: body.delegationRoutingMode as DelegationRoutingMode }
       : null;
   }
   if (keys[0] === "wireLogEnabled") {

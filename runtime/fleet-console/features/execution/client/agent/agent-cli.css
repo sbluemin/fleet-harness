@@ -1707,3 +1707,34 @@
     animation: none;
   }
 }
+
+.ai-gateway-routing-test {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--control-hover-rim);
+}
+.ai-gateway-routing-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ai-gateway-routing-task {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  border: 1px solid var(--control-hover-rim);
+  border-radius: var(--radius-xs);
+  background: var(--control-tint-fill);
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+.ai-gateway-routing-task::placeholder { color: var(--text-secondary); }
+.ai-gateway-routing-task:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+.ai-gateway-routing-test > .ai-gateway-add-button { justify-self: start; }

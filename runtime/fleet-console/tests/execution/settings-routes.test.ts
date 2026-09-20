@@ -38,9 +38,48 @@ describe("terminal settings routes", () => {
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      delegationRoutingEnabled: true,
+      delegationRoutingMode: "model",
       compactCeiling: null,
     });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
+  });
+
+  it("GET /api/v1/agent/settings resolves stored Jev routing mode", async () => {
+    const harness = createRouteHarness({
+      aiGateway: { version: 1, delegationRoutingMode: "jev" },
+    });
+    await harness.handle({ req: req("GET"), res: res(), pathname: "/api/v1/agent/settings" });
+    expect(harness.writes[0]?.body).toMatchObject({
+      delegationRoutingMode: "jev",
+    });
+  });
+
+  it("PUT /api/v1/agent/settings stores delegation routing mode independently", async () => {
+    const harness = createRouteHarness({
+      body: { delegationRoutingMode: "jev" },
+      aiGateway: { version: 1, models: [{ id: "cursor--auto" }] },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({ delegationRoutingMode: "jev" });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      delegationRoutingMode: "jev",
+    });
+
+    const cleared = createRouteHarness({
+      body: { delegationRoutingMode: "model" },
+      aiGateway: harness.currentAiGateway(),
+    });
+    await cleared.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
+    expect(cleared.writes[0]?.body).toMatchObject({ delegationRoutingMode: "model" });
+    expect(cleared.currentAiGateway()).toEqual({
+      version: 1,
+      delegationRoutingMode: "model",
+      models: [{ id: "cursor--auto" }],
+    });
   });
 
   it("PUT /api/v1/agent/settings stores the Claude Code permission opt-in", async () => {
@@ -140,6 +179,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
             : {}),
+          ...(aiGateway.delegationRoutingEnabled === false
+            ? { delegationRoutingEnabled: false }
+            : {}),
           ...(aiGateway.providerPriority
             ? { providerPriority: aiGateway.providerPriority }
             : {}),
@@ -148,6 +190,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
             : {}),
           ...(aiGateway.xaiEndpoint !== undefined
             ? { xaiEndpoint: aiGateway.xaiEndpoint }
+            : {}),
+          ...(aiGateway.delegationRoutingMode === "jev"
+            ? { delegationRoutingMode: "jev" }
             : {}),
           ...(value ?? {}),
         });
@@ -159,6 +204,16 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...aiGateway,
           delegationRoutingEnabled: enabled,
         });
+        return aiGateway;
+      },
+      writeDelegationRoutingModel: (model) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingModel: model });
+        return aiGateway;
+      },
+      writeDelegationRoutingMode: (mode) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingMode: mode });
         return aiGateway;
       },
       writeCursorDiagnosticsEnabled: (enabled) => {

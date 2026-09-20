@@ -266,6 +266,8 @@ export interface ClaudeGatewayTurn {
   readonly sessionId?: string;
   /** 재개할 때 이어 쓰지 않고 새 세션 id로 갈라 나간다. `sessionId`와 함께 주면 그 id가 갈래의 id다. */
   readonly forkSession?: boolean;
+  /** false면 SDK 세션 기록을 디스크에 저장하지 않으며 이후 재개할 수 없다. */
+  readonly persistSession?: boolean;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
   /**
@@ -320,6 +322,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "resume",
   "sessionId",
   "forkSession",
+  "persistSession",
   "maxTurns",
   "maxBudgetUsd",
   "tools",

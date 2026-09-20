@@ -225,8 +225,14 @@ export interface AiGatewayRouteDeps {
   /**
    * 위임 하나를 무엇으로 보낼지 판정한다. 호출 시점의 노출을 읽으므로 세션 중 설정 변경이
    * 다음 배정부터 먹는다. 생략하면 이 세션의 위임은 재작성되지 않는다.
+   *
+   * `signal`은 훅 연결이 끊길 때 올린다. Jev 대기를 끊지 않으면 끊긴 호출이 TypeSafe
+   * 예산을 끝까지 태운 뒤에야 결정론으로 내려앉는다.
    */
-  readonly assignRouting?: (request: unknown) => Promise<unknown> | unknown;
+  readonly assignRouting?: (
+    request: unknown,
+    options?: { readonly signal?: AbortSignal },
+  ) => Promise<unknown> | unknown;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
@@ -392,6 +398,20 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         writeAnthropicError(res, 401, "authentication_error", "Invalid mod credential");
         return true;
       }
+      const controller = new AbortController();
+      const abort = (): void => {
+        if (!res.writableEnded) {
+          controller.abort(new Error("client disconnected"));
+        }
+      };
+      if (res.destroyed && !res.writableEnded) {
+        abort();
+      } else if (typeof res.once === "function") {
+        res.once("close", abort);
+      }
+      if (typeof req.once === "function") {
+        req.once("aborted", abort);
+      }
       try {
         // 원문 프롬프트가 실려 오므로 본문이 클 수 있다. 상한은 훅이 먼저 자르지만 여기서도
         // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
@@ -400,11 +420,26 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           writeAnthropicError(res, 400, "invalid_request_error", "Invalid routing request");
           return true;
         }
-        const decision = await deps.assignRouting(request);
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(decision));
+        const decision = await deps.assignRouting(request, { signal: controller.signal });
+        if (!res.writableEnded) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(decision));
+        }
       } catch {
-        writeAnthropicError(res, 500, "api_error", "Could not assign a model to the delegated run");
+        if (!res.writableEnded) {
+          writeAnthropicError(res, 500, "api_error", "Could not assign a model to the delegated run");
+        }
+      } finally {
+        if (typeof res.off === "function") {
+          res.off("close", abort);
+        } else if (typeof (res as any).removeListener === "function") {
+          (res as any).removeListener("close", abort);
+        }
+        if (typeof req.off === "function") {
+          req.off("aborted", abort);
+        } else if (typeof (req as any).removeListener === "function") {
+          (req as any).removeListener("aborted", abort);
+        }
       }
       return true;
     }

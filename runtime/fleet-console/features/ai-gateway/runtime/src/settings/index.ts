@@ -58,6 +58,14 @@ export interface AiGatewayStoredSettings {
    */
   readonly delegationRoutingEnabled?: boolean;
   /**
+   * How delegated runs are assigned a model when {@link delegationRoutingEnabled}
+   * is on. Absent means AI model — Console asks the selected model
+   * using the complete model data. `"jev"` opts into TypeSafe/Jev choice selection;
+   * The default mode is "model"; the default decision model is Sonnet.
+   */
+  readonly delegationRoutingMode?: DelegationRoutingMode;
+  readonly delegationRoutingModel?: string;
+  /**
    * The user's opt-in ordered preference for which provider allowances to spend
    * first. It weights the allowance axis of run distribution only and never
    * overrides quality evidence; absent means no preference.
@@ -85,6 +93,11 @@ export interface AiGatewayStoredSettings {
 }
 
 /** Where an xAI subscription turn is sent first. */
+/** How Fleet assigns a model to each delegated run when routing is on. */
+export type DelegationRoutingMode = "jev" | "model";
+
+export const DELEGATION_ROUTING_MODES: readonly DelegationRoutingMode[] = ["jev", "model"];
+
 export type XaiEndpointPreference = "direct" | "cli-proxy";
 
 export const XAI_ENDPOINT_PREFERENCES: readonly XaiEndpointPreference[] = ["direct", "cli-proxy"];
@@ -147,7 +160,9 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(models.length > 0 ? { models } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
+    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
     ...(value.delegationRoutingEnabled === false ? { delegationRoutingEnabled: false } : {}),
+    ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
@@ -197,6 +212,8 @@ export interface AiGatewaySelection {
   readonly providerPriority: readonly GatewayProvider[] | undefined;
   /** Whether Fleet assigns a model to delegated runs. Off leaves them to the harness. */
   readonly delegationRoutingEnabled: boolean;
+  /** Resolved routing mode when delegation is on. Absent stored value uses the AI model. */
+  readonly delegationRoutingMode: DelegationRoutingMode;
 }
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
@@ -223,6 +240,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
     effortExposure,
     providerPriority: settings?.providerPriority,
     delegationRoutingEnabled: settings?.delegationRoutingEnabled !== false,
+    delegationRoutingMode: settings?.delegationRoutingMode ?? "model",
   };
 }
 
