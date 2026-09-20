@@ -60,9 +60,12 @@ Continue only when the unmerged list is empty. Repeat for each conflicted commit
 
 ## Verification
 
+Refresh workspace dependencies before the first check whenever the rebase pulled in commits that touched another package. The linked copies in `node_modules` still hold the pre-rebase build, so `typecheck` reports a burst of `has no exported member` and missing-property errors in packages you never edited — which reads as pre-existing base breakage and invites reporting a green base as red.
+
 Run available checks for resolved workspaces using their real script names:
 
 ```bash
+cd <worktree_path> && pnpm install --frozen-lockfile
 cd <worktree_path> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> build && pnpm --filter <pkg> test
 ```
 

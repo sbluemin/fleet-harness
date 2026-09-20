@@ -30,6 +30,23 @@ EOF
 
 Interpret evidence in this order: page errors/rejections, DOM presence and size, WebSocket churn, console/network symptoms, screenshot. A missing React tree, zero-sized layout, absent xterm, and closed-socket flood are different failures.
 
+## Event contracts: record the sequence before changing code
+
+When a fix turns on **which** event fires, in what order, or at which target, log the real sequence first. The specification and the engine disagree often enough that a listener placed by reasoning can silently never run, and the symptom — nothing happens — looks identical to a wrong fix. Record type, pointer id, and coordinate, install in the capture phase so nothing is missed, and read the order rather than the outcome:
+
+```js
+window.__ev = [];
+const rec = (name) => (event) => window.__ev.push(`${name}#${event.pointerId}@${Math.round(event.clientX)}`);
+for (const name of ["pointerdown", "pointerup", "pointercancel", "gotpointercapture", "lostpointercapture"]) {
+  window.addEventListener(name, rec(name), true);
+}
+document.addEventListener("lostpointercapture", rec("doc-lost"), false);
+```
+
+Two measured examples of why the reasoning fails: Chromium fires `lostpointercapture` at the **document**, not at the element that held capture, and defers it to the next pointer event rather than to the moment the element is removed; and it ends the first touch pointer the instant a second finger lands, so a terminal event that looks like it came from another pointer carries the drag's own id. Settle claims like these with the log, then decide.
+
+Drive input the interaction actually uses. When the browser driver cannot produce it — multiple simultaneous pointers, for example — send it over the page's CDP session (`Input.dispatchTouchEvent`, `Input.dispatchMouseEvent`) rather than dispatching synthetic DOM events, which reproduce neither pointer capture nor gesture arbitration.
+
 ## High-risk browser boundaries
 
 - For every modal, drawer, drop-up, or shared-state deck, verify initial focus, Tab wrap, Escape close, shortcut suppression behind the modal, pointer and keyboard open paths, mutual exclusion, and focus return.
