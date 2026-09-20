@@ -148,6 +148,7 @@ export {
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
+  DISABLED_GATEWAY_ROUTING_TABLE,
   EMPTY_GATEWAY_ROUTING_TABLE,
   GATEWAY_ROUTING_TIERS,
   buildGatewayRoutingTable,

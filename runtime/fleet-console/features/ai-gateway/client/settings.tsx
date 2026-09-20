@@ -335,6 +335,16 @@ function AiGatewayDiagnosticsCard() {
         )}
       />
       <SettingToggleRow
+        title={t("terminal.settings.aiGatewayDelegationRouting")}
+        help={t("terminal.settings.aiGatewayDelegationRoutingHelp")}
+        value={state.delegationRoutingEnabled}
+        disabled={saving.has("delegationRoutingEnabled")}
+        onToggle={() => void setSystemPromptSettingsField(
+          "delegationRoutingEnabled",
+          !state.delegationRoutingEnabled,
+        )}
+      />
+      <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
         value={state.wireLogEnabled}

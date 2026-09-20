@@ -43,6 +43,7 @@ interface TerminalSettingsBody {
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
+  readonly delegationRoutingEnabled?: unknown;
   readonly compactCeiling?: unknown;
   readonly xaiEndpoint?: unknown;
 }
@@ -55,6 +56,7 @@ type TerminalSettingsUpdate =
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
+  | { readonly delegationRoutingEnabled: boolean }
   | { readonly compactCeiling: CompactCeiling | undefined }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -70,6 +72,8 @@ export interface TerminalSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  /** Fleet이 위임 실행에 모델을 배정하는가. Off면 하네스가 하던 대로 둔다. */
+  readonly delegationRoutingEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -114,6 +118,13 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
         const stored = deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
           update.cursorDiagnosticsEnabled,
         );
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
+      if ("delegationRoutingEnabled" in update) {
+        const stored = deps.aiGatewayStore.writeDelegationRoutingEnabled(update.delegationRoutingEnabled);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
@@ -198,6 +209,7 @@ function toTerminalSettingsState(
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
+    delegationRoutingEnabled: aiGateway.delegationRoutingEnabled !== false,
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
@@ -261,6 +273,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "cursorDiagnosticsEnabled") {
     return typeof body.cursorDiagnosticsEnabled === "boolean"
       ? { cursorDiagnosticsEnabled: body.cursorDiagnosticsEnabled }
+      : null;
+  }
+  if (keys[0] === "delegationRoutingEnabled") {
+    return typeof body.delegationRoutingEnabled === "boolean"
+      ? { delegationRoutingEnabled: body.delegationRoutingEnabled }
       : null;
   }
   if (keys[0] === "wireLogEnabled") {

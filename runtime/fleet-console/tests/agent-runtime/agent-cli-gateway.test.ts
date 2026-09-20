@@ -6,7 +6,7 @@ import path from "node:path";
 import { findGatewayModel } from "@fleet-console/ai-gateway";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FLEET_PLUGIN_NAME, GENERAL_PURPOSE_AGENT_PROMPT, buildGatewayCustomAgents, toGatewayAgentName } from "@fleet-console/ai-gateway";
+import { FLEET_PLUGIN_NAME, GENERAL_PURPOSE_AGENT_PROMPT } from "@fleet-console/ai-gateway";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, buildDisabledSkillOverrides, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliProfile, type AgentCliProfile, type FleetHookExec } from "@fleet-console/agent-runtime/fleet";
 import { buildClaudeGatewayArgs } from "../../foundation/agent-runtime/src/fleet/agent-cli/builders/claude.js";
 import type { AgentCliInjectionContext } from "../../foundation/agent-runtime/src/fleet/agent-cli/types.js";

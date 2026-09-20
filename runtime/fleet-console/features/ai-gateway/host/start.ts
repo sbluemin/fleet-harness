@@ -1,5 +1,5 @@
 import path from "node:path";
-import { DEFAULT_WIRE_LOG_MAX_BYTES, buildGatewayRoutingTable, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { DEFAULT_WIRE_LOG_MAX_BYTES, DISABLED_GATEWAY_ROUTING_TABLE, buildGatewayRoutingTable, resolveAiGatewaySelection, createAiGatewaySettingsStore, createProviderAuthService, setWireLogTarget, wireLogEnabled, KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 interface GatewayStartContext {
@@ -66,6 +66,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // CLI를 다시 띄우기 전에는 먹지 않았다.
     readRoutingTable: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
+      // 끈 세션은 빈 표를 받는다. 조회는 배정마다 일어나므로 토글은 다음 위임부터 먹는다.
+      if (!selection.delegationRoutingEnabled) return DISABLED_GATEWAY_ROUTING_TABLE;
       return buildGatewayRoutingTable(selection.delegationModels, {
         effortExposure: selection.effortExposure,
         ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),

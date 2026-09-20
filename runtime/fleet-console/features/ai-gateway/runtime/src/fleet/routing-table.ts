@@ -67,6 +67,16 @@ export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
 };
 
 /**
+ * 배정을 끈 세션이 받는 표. 후보가 없는 것에 더해 실행 계약도 비운다 — 계약이 실리면 Mod가
+ * 정체성을 올리고 위임이 그 정의로 흐르는데, Off의 뜻은 "하네스가 하던 대로"이지 "모델만
+ * 그대로"가 아니다. 둘을 같은 표로 답하면 Off가 절반만 꺼진다.
+ */
+export const DISABLED_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
+  prompt: "",
+  tiers: { scan: [], work: [], deep: [] },
+};
+
+/**
  * capabilityClass가 등급 소속을 정한다. 공급자가 스스로 밝힌 라인업 위치라, Fleet이 모델
  * 이름에서 추측하는 것보다 정확하고 카탈로그가 늘어도 따라온다.
  *
