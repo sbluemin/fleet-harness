@@ -98,7 +98,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
   let allowance: GatewayQuotaSnapshot | undefined;
   let allowanceReadAt = 0;
   let allowanceInFlight = false;
-  const ALLOWANCE_TTL_MS = 60_000;
+  const ALLOWANCE_TTL_MS = 2 * 60_000;
   function refreshAllowanceSoon(): void {
     if (allowanceInFlight || Date.now() - allowanceReadAt < ALLOWANCE_TTL_MS) return;
     allowanceInFlight = true;
