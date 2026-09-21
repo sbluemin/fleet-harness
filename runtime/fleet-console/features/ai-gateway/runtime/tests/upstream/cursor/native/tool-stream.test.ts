@@ -50,7 +50,8 @@ describe("Cursor client tool suspension", () => {
     // The id the caller sees has to be one it accepts. Claude Code drops a tool chunk whose id
     // carries anything outside this set, which ends the turn with `stop_reason: "tool_use"` and no
     // tool call to run, and both events must name the same call for the result to correlate.
-    const emittedCallId = added?.type === "response.output_item.added" ? added.item.call_id : undefined;
+    const addedItem = added?.type === "response.output_item.added" ? added.item : undefined;
+    const emittedCallId = addedItem?.type === "function_call" ? addedItem.call_id : undefined;
     expect(emittedCallId).toMatch(/^[A-Za-z0-9_-]+$/u);
     expect(done).toMatchObject({ item: { call_id: emittedCallId } });
     expect(done).toMatchObject({
