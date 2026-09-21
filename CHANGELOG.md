@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.105.0] - 2026-09-21
+
+### fleet-console
+
+#### Added
+- Choose native Claude models for AI Gateway delegation, with context variants grouped under each model.
+
+#### Changed
+- Let AI Gateway routing account for earlier provider assignments during bursts between quota refreshes, while retaining AI/Jev model and effort selection.
+- Limit OpenCode Go to the latest DeepSeek, MuseSpark, and GLM lineups, and remove the superseded Gemini 3.7 Flash from Antigravity.
+- AI Gateway routing gives AI models and Jev normalized quota headroom and recovery estimates, prioritizing work continuity while selecting suitable models; configured provider order now serves as a tie-breaker for these decisions.
+- Upgrade AI Gateway's xAI and Cursor Grok lineup to Grok 4.7 and Fast, with 256k and 500k context choices on Cursor.
+
+#### Fixed
+- Expanding earlier conversation in a chat keeps you where you were reading instead of jumping to the first message of the session.
+
 ## [1.104.2] - 2026-09-21
 
 ### fleet-console

@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.105.0] - 2026-09-21
+
+### fleet-console
+
+#### Added
+- AI Gateway 위임에 네이티브 Claude 모델을 선택하고, 각 모델 안에서 컨텍스트 변형을 고를 수 있습니다.
+
+#### Changed
+- AI Gateway가 쿼터 갱신 사이의 버스트 위임에서 앞선 공급자 배정을 반영하며, 모델과 추론 강도는 기존처럼 AI/Jev가 선택합니다.
+- OpenCode Go는 DeepSeek·MuseSpark·GLM의 라인업별 최신 버전만 제공하고, Antigravity에서는 이전 세대인 Gemini 3.7 Flash를 제거합니다.
+- AI Gateway의 AI 모델·Jev 라우팅에 정규화된 쿼터 여유와 회복 전망을 제공하고, 작업 지속 가능성을 우선하면서 적합한 모델을 선택하도록 개선했습니다. 설정된 공급자 순서는 이 판단에서 동률 해소 기준으로 사용합니다.
+- AI Gateway의 xAI·Cursor Grok 모델을 Grok 4.7과 Fast로 갱신하고, Cursor에서 256k·500k 컨텍스트를 선택할 수 있습니다.
+
+#### Fixed
+- 채팅에서 이전 대화를 펼쳐도 세션의 첫 메시지로 튀지 않고 읽던 자리에 머뭅니다.
+
 ## [1.104.2] - 2026-09-21
 
 ### fleet-console
