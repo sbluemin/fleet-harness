@@ -392,6 +392,26 @@ function forChatCompletionsBackend(
   for (const item of request.input) {
     if (item.type === "function_call") {
       flushDeferredMessages();
+      if (pendingToolCalls.length === 0) {
+        // 도구 앞의 텍스트도 같은 assistant 연속 발화에 속한다. 따로 남기면 DeepSeek는
+        // 추론 없는 assistant 메시지로 받아 thinking-mode 재전송을 거부한다.
+        const leadingText: string[] = [];
+        const leadingReasoning: string[] = [];
+        while (messages.length > 0) {
+          const previous = messages[messages.length - 1]!;
+          if (previous.role !== "assistant" || "tool_calls" in previous) break;
+          messages.pop();
+          if (typeof previous.content === "string" && previous.content.length > 0) {
+            leadingText.unshift(previous.content);
+          }
+          if (previous.reasoning_content) leadingReasoning.unshift(previous.reasoning_content);
+        }
+        if (leadingText.length > 0) pendingAssistantText = leadingText.join("\n\n");
+        if (leadingReasoning.length > 0) {
+          if (replayReasoning && item.reasoning_content) leadingReasoning.push(item.reasoning_content);
+          pendingAssistantReasoning = leadingReasoning.join("\n\n");
+        }
+      }
       pendingToolCalls.push({
         id: item.call_id,
         type: "function",

@@ -12,6 +12,7 @@ import {
 } from "../../../../src/index.js";
 import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../../src/index.js";
 import { wireLogFixture } from "../../../helpers/wire-log.js";
+import { translateAnthropicRequest } from "../../../../src/downstream/wire/anthropic-messages/protocol.js";
 
 const CHAT_URL = "https://chat.example/v1/chat/completions";
 
@@ -65,8 +66,20 @@ describe("chat completions request translation", () => {
       input: [
         { type: "message", role: "developer", content: "House rules." },
         { type: "message", role: "user", content: "run both tools" },
-        { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{\"x\":1}", reasoning_content: "Run both tools." },
-        { type: "function_call", call_id: "call-b", name: "ToolB", arguments: "{}" },
+        ...translateAnthropicRequest({
+          model: "deepseek-v4.1-flash",
+          max_tokens: 128,
+          messages: [{ role: "assistant", content: [
+            { type: "thinking", thinking: "Check the request." },
+            { type: "text", text: "Checking." },
+          ] }, { role: "assistant", content: [
+            { type: "thinking", thinking: "Run both tools." },
+            { type: "text", text: "I will run both tools." },
+            { type: "tool_use", id: "call-a", name: "ToolA", input: { x: 1 } },
+            { type: "tool_use", id: "call-b", name: "ToolB", input: {} },
+            { type: "text", text: "Waiting for results." },
+          ] }],
+        }).input,
         { type: "function_call_output", call_id: "call-a", output: "alpha", is_error: true, tool_references: ["ToolB"] },
         { type: "function_call_output", call_id: "call-b", output: "beta" },
         { type: "message", role: "assistant", content: "done", reasoning_content: "Both tools finished." },
@@ -91,8 +104,8 @@ describe("chat completions request translation", () => {
       { role: "user", content: "run both tools" },
       {
         role: "assistant",
-        content: null,
-        reasoning_content: "Run both tools.",
+        content: "Checking.\n\nI will run both tools.\n\nWaiting for results.",
+        reasoning_content: "Check the request.\n\nRun both tools.",
         // 연속 function_call은 하나의 assistant 메시지로 합쳐져 tool 응답 인접성을 지킨다.
         tool_calls: [
           { id: "call-a", type: "function", function: { name: "ToolA", arguments: "{\"x\":1}" } },
