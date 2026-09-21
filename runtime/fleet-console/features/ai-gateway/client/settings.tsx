@@ -44,16 +44,17 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
 const AI_GATEWAY_KEY_PROVIDER_IDS: ReadonlySet<string> = new Set(["kimi", "opencode"]);
 
 /**
- * 공급자 표시 순서: 구독·CLI 로그인 공급자가 카탈로그 순서 그대로 먼저, API key 공급자가 뒤에
- * (OpenCode Go, Kimi). 프로바이더 카드와 팔레트 묶음이 같은 순서를 쓴다.
+ * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서,
+ * API key 공급자는 맨 뒤(OpenCode Go, Kimi). 표시 순서는 소진 우선순위를 바꾸지 않는다.
  */
 export function orderAiGatewayProviders<T extends { readonly id: string }>(providers: readonly T[]): T[] {
   const keyOrder = ["opencode", "kimi"];
-  const subscription = providers.filter((provider) => !AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
+  const claude = providers.filter((provider) => provider.id === "claude");
+  const subscription = providers.filter((provider) => provider.id !== "claude" && !AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
   const apiKey = providers
     .filter((provider) => AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id))
     .sort((a, b) => keyOrder.indexOf(a.id) - keyOrder.indexOf(b.id));
-  return [...subscription, ...apiKey];
+  return [...claude, ...subscription, ...apiKey];
 }
 
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
@@ -540,8 +541,8 @@ export function groupAiGatewayRoster(entries: readonly AiGatewayRosterEntry[]): 
 }
 
 /**
- * 로스터 정렬: 우선 소진 공급자가 순위대로 먼저, 나머지는 카탈로그 순, 같은 공급자 안에서는
- * 켠 순서. 순위를 바꾸면 줄이 자리를 옮기지만 그것이 곧 순위의 의미라 위치 기억과 충돌하지 않는다.
+ * 로스터의 모델 공급자는 Claude가 맨 앞, 나머지는 소진 우선순위와 카탈로그 순서,
+ * 같은 공급자 안에서는 켠 순서. TypeSafe 서비스는 이 모델 목록보다 먼저 렌더한다.
  */
 export function buildAiGatewayRoster(
   providers: readonly AiGatewayCatalogProvider[],
@@ -569,7 +570,8 @@ export function buildAiGatewayRoster(
     .sort((a, b) => {
       const rankA = a.rank < 0 ? Number.MAX_SAFE_INTEGER : a.rank;
       const rankB = b.rank < 0 ? Number.MAX_SAFE_INTEGER : b.rank;
-      return rankA - rankB
+      return Number(b.provider.id === "claude") - Number(a.provider.id === "claude")
+        || rankA - rankB
         || providerOrder(a.provider.id) - providerOrder(b.provider.id)
         || a.order - b.order;
     })
