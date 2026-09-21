@@ -448,36 +448,223 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   const shownFrame = stillFrame && activeTab && stillFrame.tabId === activeTab.id ? stillFrame : null;
   React.useEffect(() => { if (mode === "annotate" && !activeTab) setMode("none"); }, [mode, activeTab]);
 
+  // 메뉴·팝업·대화상자로 뷰가 가려질 때(parking) 보여 줄 마지막 웹 화면 스냅샷.
+  // 주석 모드의 stillFrame 과 분리해 입력·검사 이벤트 오염을 막는다.
+  const [backdropFrame, setBackdropFrame] = React.useState<Frame | null>(null);
+  const backdropFrameRef = React.useRef<Frame | null>(null);
+  backdropFrameRef.current = backdropFrame;
+  const shownBackdrop = backdropFrame && activeTab && backdropFrame.tabId === activeTab.id ? backdropFrame : null;
+
+  const pendingParkBoundsRef = React.useRef<Record<string, unknown> | null>(null);
+  const wantsHideRef = React.useRef(false);
+  const activeTabRef = React.useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  React.useEffect(() => {
+    setBackdropFrame(null);
+    backdropFrameRef.current = null;
+    pendingParkBoundsRef.current = null;
+  }, [activeTab?.id, activeTab?.url, mode]);
+
+  const placeRef = React.useRef<string>("");
+
+  // backdropFrame 이 커밋되어 DOM 에 그려진 뒤, 브라우저가 화면을 합성/페인트한 다음 네이티브 뷰를 주차(hide)한다.
+  React.useEffect(() => {
+    if (!backdropFrame) return;
+    const frameId = requestAnimationFrame(() => {
+      if (wantsHideRef.current && pendingParkBoundsRef.current) {
+        const body = pendingParkBoundsRef.current;
+        const key = JSON.stringify(body);
+        if (placeRef.current !== key) {
+          placeRef.current = key;
+          void post(operationId, "place", body).catch(() => undefined);
+        }
+      }
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [backdropFrame, operationId]);
+
   // ---- 네이티브 뷰의 자리 ----
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
-  const placeRef = React.useRef<string>("");
   React.useEffect(() => {
     if (!available) return;
     const element = nativeRef.current;
     const host = viewportRef.current;
     if (!element || !host) return;
-    const post_ = (body: Record<string, unknown>) => { const key = JSON.stringify(body); if (placeRef.current === key) return; placeRef.current = key; void post(operationId, "place", body).catch(() => undefined); };
+
+    let disposed = false;
+    let captureTask: { id: number; controller: AbortController; timeout: ReturnType<typeof setTimeout> } | null = null;
+    let captureTaskId = 0;
+    let captureFailed = false;
+    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const abortActiveCapture = () => {
+      if (!captureTask) return;
+      clearTimeout(captureTask.timeout);
+      captureTask.controller.abort();
+      captureTask = null;
+    };
+
+    const post_ = (body: Record<string, unknown>) => {
+      const key = JSON.stringify(body);
+      if (placeRef.current === key) return;
+      placeRef.current = key;
+      void post(operationId, "place", body).catch(() => undefined);
+    };
+
+    const captureBackdrop = (tabId: string, url: string, parkBounds: Record<string, unknown>) => {
+      abortActiveCapture();
+      const currentTaskId = ++captureTaskId;
+      const controller = new AbortController();
+
+      // 전체 캡처 예산(fetch + JSON 파싱 + img.decode): 800ms
+      // 타임아웃 발생 시 즉시 abort 하고 안전한 주차 폴백을 수행한다.
+      const timeout = setTimeout(() => {
+        if (disposed || captureTask?.id !== currentTaskId) return;
+        captureTask = null;
+        captureFailed = true;
+        controller.abort();
+        if (wantsHideRef.current) post_(parkBounds);
+      }, 800);
+
+      captureTask = { id: currentTaskId, controller, timeout };
+
+      void (async () => {
+        try {
+          const response = await fetch(`${base(operationId)}/screenshot`, { signal: controller.signal });
+          if (!response.ok) throw new Error("capture_failed");
+          const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
+
+          // URL / Tab provenance guard:
+          if (disposed || controller.signal.aborted || captureTask?.id !== currentTaskId || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) {
+            return;
+          }
+
+          const img = new Image();
+          img.src = `data:${shot.mimeType};base64,${shot.data}`;
+          // decode 실패 시 throw 되어 catch 의 안전한 주차 폴백으로 이동
+          await img.decode();
+
+          if (disposed || controller.signal.aborted || captureTask?.id !== currentTaskId || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) {
+            return;
+          }
+          if (!wantsHideRef.current) return;
+
+          const frame: Frame = { tabId, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height };
+          backdropFrameRef.current = frame;
+          pendingParkBoundsRef.current = parkBounds;
+          setBackdropFrame(frame);
+        } catch {
+          if (disposed || captureTask?.id !== currentTaskId) return;
+          captureFailed = true;
+          if (wantsHideRef.current) post_(parkBounds);
+        } finally {
+          if (captureTask?.id === currentTaskId) {
+            clearTimeout(captureTask.timeout);
+            captureTask = null;
+          }
+        }
+      })();
+    };
+
     const measure = () => {
       const rect = element.getBoundingClientRect();
       const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay;
-      const shown = activeTab !== null && mode === "none" && !covered && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
+      const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
+      const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
-      if (!visible) { post_({ x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false }); return; }
-      post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true });
+
+      if (visible) {
+        wantsHideRef.current = false;
+        captureFailed = false;
+        pendingParkBoundsRef.current = null;
+        abortActiveCapture();
+
+        // 실제 backdrop 이 표시 중일 때만 150ms 복원 전환 버퍼를 둔다 (해제 시점 분리).
+        if (backdropFrameRef.current !== null && !restoreTimer) {
+          restoreTimer = setTimeout(() => {
+            restoreTimer = null;
+            backdropFrameRef.current = null;
+            setBackdropFrame(null);
+          }, 150);
+        }
+
+        post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true });
+        return;
+      }
+
+      if (restoreTimer) {
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+      }
+
+      const parkBounds = { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
+
+      if (!live || !activeTab) {
+        wantsHideRef.current = false;
+        abortActiveCapture();
+        if (backdropFrameRef.current !== null) {
+          backdropFrameRef.current = null;
+          setBackdropFrame(null);
+        }
+        post_(parkBounds);
+        return;
+      }
+
+      wantsHideRef.current = true;
+      pendingParkBoundsRef.current = parkBounds;
+
+      // 1. 이미 현재 탭의 스냅샷이 준비되어 있으면 주차 유지
+      if (backdropFrameRef.current && backdropFrameRef.current.tabId === activeTab.id) {
+        post_(parkBounds);
+        return;
+      }
+
+      // 2. 캡처/디코드가 실패했던 세션이면 재시도하지 않고 안전하게 주차 폴백
+      if (captureFailed) {
+        post_(parkBounds);
+        return;
+      }
+
+      // 3. 이미 캡처가 진행 중이면 완료를 기다린다 (hide 지연 유지)
+      if (captureTask !== null) {
+        return;
+      }
+
+      // 4. 스냅샷 캡처 및 디코드 완료 전까지 네이티브 뷰를 숨기지 않고 캡처 시작
+      captureBackdrop(activeTab.id, activeTab.url, parkBounds);
     };
+
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     window.addEventListener("resize", measure);
     document.addEventListener("visibilitychange", measure);
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); document.removeEventListener("visibilitychange", measure); clearInterval(timer); };
+
+    return () => {
+      disposed = true;
+      abortActiveCapture();
+      if (restoreTimer) {
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+      }
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("visibilitychange", measure);
+      clearInterval(timer);
+    };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
-  }, [available, operationId, activeTab !== null, mode, context.bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
+  }, [available, operationId, activeTab?.id, activeTab?.url, mode, context.bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
-  React.useEffect(() => () => { if (placeRef.current) { placeRef.current = ""; void post(operationId, "place", { visible: false }).catch(() => undefined); } }, [operationId]);
+  React.useEffect(() => () => {
+    if (placeRef.current) {
+      placeRef.current = "";
+      void post(operationId, "place", { visible: false }).catch(() => undefined);
+    }
+  }, [operationId]);
 
   React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), 4000); return () => clearTimeout(timer); }, [info]);
@@ -922,8 +1109,17 @@ export function BrowserPanel({ context, services }: BrowserProps) {
             </div>
           </div>
         ) : activeTab ? (
-          // 네이티브 뷰가 이 자리 위에 그려진다 — 여기에는 아무것도 두지 않는다(가려질 때 배경만 보인다).
-          <div className="op-browser__native" ref={nativeRef} aria-hidden="true" />
+          // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
+          <div className="op-browser__native" ref={nativeRef} aria-hidden="true">
+            {shownBackdrop ? (
+              <img
+                className="op-browser__backdrop"
+                src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
+                alt=""
+                draggable={false}
+              />
+            ) : null}
+          </div>
         ) : (
           <div className="op-browser__empty">
             <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
