@@ -95,6 +95,8 @@ function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly Ope
   // Claude Code displayName prefix.
   const groups: OperationLaunchVariantGroup[] = [native];
   for (const provider of GATEWAY_PROVIDERS) {
+    // Claude 카탈로그는 위임 후보이며, 호스트에는 기존 네이티브 행만 노출한다.
+    if (provider === "claude") continue;
     const models = selection.models.filter((model) => model.provider === provider);
     if (models.length === 0) continue;
     groups.push({
