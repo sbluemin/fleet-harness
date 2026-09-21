@@ -344,20 +344,22 @@ export function applyDesktopShellMarker(): void {
         ? "darwin"
         : "linux";
     document.documentElement.setAttribute("data-desktop-platform", platform);
-    if (platform === "darwin") trackDesktopZoomFactor();
+    if (platform === "darwin" || platform === "win32") trackDesktopZoomFactor();
   }
 }
 
 /**
- * macOS 신호등은 네이티브라 페이지 줌을 타지 않는다 — 창 모서리에서 76 DIP를 차지한 자리에
- * 그대로 머문다. 그런데 그 자리를 비워 두는 좌측 클러스터의 예약 폭은 CSS px이라 줌에 비례해
- * 자라고 줄었다: 확대하면 브랜드가 신호등에서 떨어져 나가고(실측 131%에서 40 DIP), 축소하면
- * 신호등 위로 올라탔다(76%에서 8.5 DIP 겹침).
+ * 네이티브 창 컨트롤은 페이지 줌을 타지 않는다 — macOS 신호등은 좌측 76 DIP에, Windows 캡션
+ * 버튼 스트립은 우측 138 DIP에 그대로 머문다. 그런데 그 자리를 비워 두는 밴드 양 끝의 예약
+ * 폭은 CSS px이라 줌에 비례해 자라고 줄었다: 확대하면 브랜드가 신호등에서 떨어져 나가고(실측
+ * 131%에서 40 DIP), 축소하면 신호등 위로 올라탔다(76%에서 8.5 DIP 겹침). Windows에서는 같은
+ * 어긋남이 축소 쪽에서 도움말·호스트 칩을 캡션 버튼 아래로 밀어 넣는다.
  *
- * 창 폭(outerWidth, DIP)과 뷰포트 폭(innerWidth, CSS px)의 비가 곧 줌이다 — 신호등을 가진
- * hiddenInset 창에는 웹 콘텐츠 밖의 크롬이 없어 두 값이 같은 창을 잰다. 그 비를 문서에 심어
- * 예약 폭을 DIP로 되돌리면 브랜드는 어느 줌에서든 신호등 오른쪽 같은 자리에 선다.
- * 세로 정렬은 이 축의 몫이 아니다 — 셸이 신호등을 밴드 중앙으로 옮겨 맡는다(window-policy.ts).
+ * 창 폭(outerWidth, DIP)과 뷰포트 폭(innerWidth, CSS px)의 비가 곧 줌이다 — 타이틀바를 숨긴
+ * 창(hiddenInset·hidden)에는 웹 콘텐츠 밖의 가로 크롬이 없어 두 값이 같은 창을 잰다. 그 비를
+ * 문서에 심어 예약 폭을 DIP로 되돌리면 양 끝 클러스터는 어느 줌에서든 네이티브 컨트롤 옆
+ * 같은 자리에 선다. 세로 정렬은 이 축의 몫이 아니다 — 셸이 신호등을 밴드 중앙으로 옮기고
+ * 캡션 스트립 높이를 줌만큼 키워 맡는다(window-policy.ts·title-bar-overlay-refresh.ts).
  */
 function trackDesktopZoomFactor(): void {
   const apply = (): void => {

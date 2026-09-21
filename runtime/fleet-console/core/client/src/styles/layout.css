@@ -960,6 +960,33 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band.is
   transition: padding-inline-start var(--duration-base) var(--ease-glide);
 }
 
+/* Windows 캡션 버튼(최소화·최대화·닫기)은 신호등의 반대편 짝이다 — 네이티브라 웹 콘텐츠
+   **위에** 그려지므로, 우측 클러스터가 그 폭을 비워 두지 않으면 호스트 칩과 도움말이 스트립
+   아래로 깔린다(칠해지긴 해서 리사이즈 중 스트립이 늦게 다시 칠해질 때만 잠깐 비친다).
+
+   예약분의 출처를 둘로 두고 큰 쪽을 쓰는 이유: 창 골격이 BaseWindow + Console WebContentsView로
+   바뀐 뒤(window-policy.ts:createSecureShellWindow) WCO 기하 env(titlebar-area-*)는 창의 내장
+   webContents에만 전달되고 자식 View에는 오지 않는다. 그런데 그 fallback이 100vw라 식 전체가
+   조용히 0으로 접혀 예약이 통째로 사라졌다 — 기하가 틀린 게 아니라 없는 것이 0으로 읽혔다.
+   그래서 스트립 폭 계약(46 DIP × 3)을 두 번째 항으로 세운다: env가 사는 창에서는 실측이,
+   죽은 창에서는 계약이 자리를 지키고, 어느 쪽도 상대를 좁히지 못한다.
+
+   계약분만 줌으로 나누는 것은 좌측 신호등과 같은 이유다 — 스트립은 네이티브라 페이지 줌을
+   타지 않는다(--desktop-zoom은 셸에서만 심긴다). 그 줌은 outerWidth/innerWidth라 창 테두리
+   몇 DIP를 함께 세어 1~2% 높게 읽히고, 그만큼 예약이 2px 남짓 짧아진다 — 덮이는 쪽으로 틀리는
+   오차이므로 var(--space-2) 고정 여백이 그 몫을 흡수한다(실측: 도움말 우측 끝과 스트립 경계
+   사이 8px 여유). */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band-right {
+  padding-inline-end: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1)));
+}
+
+/* 스트립 자리는 스트립이 있을 때만 뜻이 있다 — 네이티브 전체화면은 캡션 버튼을 거두므로,
+   계약분을 계속 붙들면 우측 클러스터만 138px 안쪽으로 물러난 빈 칸이 남는다(darwin 신호등
+   자리와 같은 판정). 이때도 env 항은 살아 있어 스트립이 돌아오면 실측이 다시 자리를 연다. */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band.is-native-fullscreen .command-band-right {
+  padding-inline-end: calc(var(--space-2) + max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+}
+
 /* ── 전면 해도(full-bleed chart) ─────────────────────────────────────────────
    구 3열 그리드(사이드바 | 캔버스 | 레일)는 퇴역했다 — 캔버스가 body 전면 레이어가 되고
    사이드바·레일은 그 위에 뜬 유리 카드다. body가 컨테이닝 블록이어야 한다: 없으면 absolute

@@ -25,6 +25,17 @@ export interface WindowPolicy {
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
+/**
+ * Windows 캡션 버튼 스트립도 Command Band와의 합의다 — 높이 35px + 밴드 하단 divider 1px가
+ * 클라이언트 `--chrome-band-height: 36px`를 채우고, 폭 138 DIP(46×3)는 우측 클러스터가 비워
+ * 두는 자리다. 폭은 Chromium이 정하므로 여기서 지정하지도, 되읽지도 못한다.
+ *
+ * 그 폭을 클라이언트에 알려 주던 길은 WCO 기하 env(titlebar-area-*)였는데, Console이
+ * BaseWindow의 내장 webContents가 아니라 자식 WebContentsView로 그려지면서 끊겼다
+ * (createSecureShellWindow). env의 fallback은 값이 없다는 말을 0으로 바꿔 놓으므로 예약이
+ * 조용히 사라진다 — 그래서 layout.css가 이 138 DIP를 계약으로 함께 들고 큰 쪽을 쓴다.
+ * 여기를 고치면 그쪽도 같이 고친다.
+ */
 export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 35 } as const;
 
 /**
