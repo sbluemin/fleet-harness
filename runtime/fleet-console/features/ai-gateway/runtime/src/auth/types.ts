@@ -25,6 +25,7 @@ export interface AuthValidationRequest {
   baseUrl: string;
   model?: string;
   timeoutMs?: number;
+  headers?: Readonly<Record<string, string>>;
 }
 
 export interface AuthValidationResult {

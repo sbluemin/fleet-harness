@@ -1,5 +1,6 @@
 import { KIMI_AUTH_PROVIDER_ID, KIMI_CODE_API_BASE_URL, KIMI_CODE_MODEL } from "../models.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_API_BASE_URL, OPENCODE_GO_MODEL } from "../upstream/opencode-go/index.js";
+import { opencodeSessionHeaders } from "../upstream/opencode-go/session.js";
 import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_DEFAULT_MODEL, TYPESAFE_MODELS, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
 import { isAuthValidationSuccess, validateAnthropicCompatibleApiKey } from "../auth/validation.js";
 import { type AuthValidationFailureResult, type AuthValidationFailureStatus } from "../auth/types.js";
@@ -37,6 +38,7 @@ export async function validateOpencodeGoAuthKey(apiKey: string): Promise<AuthKey
     providerId: OPENCODE_AUTH_PROVIDER_ID,
     baseUrl: OPENCODE_GO_API_BASE_URL,
     model: OPENCODE_GO_MODEL,
+    headers: opencodeSessionHeaders(undefined),
   });
 }
 
@@ -62,13 +64,14 @@ export async function validateTypesafeAuthKey(apiKey: string): Promise<AuthKeyVa
 
 async function validateAnthropicCompatibleAuthKey(
   apiKey: string,
-  coordinates: { readonly providerId: string; readonly baseUrl: string; readonly model: string },
+  coordinates: { readonly providerId: string; readonly baseUrl: string; readonly model: string; readonly headers?: Readonly<Record<string, string>> },
 ): Promise<AuthKeyValidationResult> {
   const validation = await validateAnthropicCompatibleApiKey({
     providerId: coordinates.providerId,
     apiKey,
     baseUrl: coordinates.baseUrl,
     model: coordinates.model,
+    ...(coordinates.headers ? { headers: coordinates.headers } : {}),
   });
   if (isAuthValidationSuccess(validation)) {
     return { providerId: coordinates.providerId, status: "success" };

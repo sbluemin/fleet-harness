@@ -79,6 +79,7 @@ export async function validateAnthropicCompatibleApiKey(
     fetch(buildMessagesUrl(request.baseUrl), {
       method: "POST",
       headers: {
+        ...request.headers,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
         "x-api-key": request.apiKey,
