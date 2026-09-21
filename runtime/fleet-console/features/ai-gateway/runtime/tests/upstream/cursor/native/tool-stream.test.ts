@@ -47,6 +47,12 @@ describe("Cursor client tool suspension", () => {
     const done = first.events.find((event) => event.type === "response.output_item.done");
 
     expect(added).toMatchObject({ item: { name: "probe_tool" } });
+    // The id the caller sees has to be one it accepts. Claude Code drops a tool chunk whose id
+    // carries anything outside this set, which ends the turn with `stop_reason: "tool_use"` and no
+    // tool call to run, and both events must name the same call for the result to correlate.
+    const emittedCallId = added?.type === "response.output_item.added" ? added.item.call_id : undefined;
+    expect(emittedCallId).toMatch(/^[A-Za-z0-9_-]+$/u);
+    expect(done).toMatchObject({ item: { call_id: emittedCallId } });
     expect(done).toMatchObject({
       item: {
         name: "probe_tool",
@@ -165,7 +171,10 @@ async function runSyntheticToolTurn(userId: string): Promise<{
   readonly requestContextReply: unknown;
   readonly contentType: unknown;
 }> {
-  const callId = "call-probe-1";
+  // The measured wire shape: Cursor joins its own call id and the model's function-call id with a
+  // newline, so the fixture carries one too. A clean id here would let an illegal `tool_use.id`
+  // reach the caller unnoticed.
+  const callId = "call-probe-1\nfc_probe_1";
   const frames = [
     {
       execServerMessage: {
