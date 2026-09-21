@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.104.1] - 2026-09-21
+
+### fleet-desktop
+
+#### Fixed
+- On Windows, the help and host controls at the right end of the command bar no longer disappear behind the window buttons.
+
 ## [1.104.0] - 2026-09-21
 
 ### fleet-console

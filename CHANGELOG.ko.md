@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.104.1] - 2026-09-21
+
+### fleet-desktop
+
+#### Fixed
+- Windows에서 커맨드 바 오른쪽 끝의 도움말과 호스트 컨트롤이 창 버튼 뒤로 사라지지 않습니다.
+
 ## [1.104.0] - 2026-09-21
 
 ### fleet-console
