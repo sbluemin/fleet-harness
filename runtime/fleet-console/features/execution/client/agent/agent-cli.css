@@ -541,7 +541,7 @@
 /* 라벨 두 단어로는 "와이어에는 남고 로스터에서만 빠진다"를 읽을 수 없으므로, 한 줄 요약
    말풍선이 hover·키보드 포커스에서 그 설명을 진다. 네이티브 title은 쓰지 않는다: 브라우저가
    그려서 지연이 길고 토큰을 안 따르며 스크린샷에 잡히지 않아 떴는지 확인할 방법이 없다.
-   행이 기준 상자라 폭 상한이 행 폭이 된다. */
+   래퍼가 좁아도 순위 말풍선과 같은 상한을 쓴다. */
 .ai-gateway-host-only-tip {
   position: absolute;
   z-index: 1;
@@ -549,9 +549,9 @@
   right: 0;
   visibility: hidden;
   /* absolute 요소의 기본 폭은 기준 상자에 맞춰 줄어든다 — max-width만 걸면 한 줄 요약이
-     세로로 접힌다. max-content가 폭의 기준이고 상한은 행 폭이 진다. */
+     세로로 접힌다. max-content가 폭의 기준이고 상한은 순위 말풍선과 같다. */
   width: max-content;
-  max-width: 100%;
+  max-width: 260px;
   padding: 3px var(--space-2);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
