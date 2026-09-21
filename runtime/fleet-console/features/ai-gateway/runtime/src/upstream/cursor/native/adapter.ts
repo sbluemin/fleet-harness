@@ -394,6 +394,7 @@ interface CursorRunPreflight {
   readonly tools: readonly CursorWireTool[];
   readonly redirectTools: readonly CursorWireTool[];
   readonly wireModelId: string;
+  readonly maxMode?: true;
   readonly estimatedInputTokens: number;
 }
 
@@ -468,6 +469,7 @@ function prepareCursorRun(
       tools: toolBudget.tools,
       redirectTools,
       wireModelId,
+      ...(modelSelection.maxMode ? { maxMode: modelSelection.maxMode } : {}),
       estimatedInputTokens,
     },
     context: {
@@ -529,6 +531,7 @@ function buildPreparedCursorRunPlan(
       displayModelId: preflight.wireModelId,
       displayName: preflight.wireModelId,
       displayNameShort: preflight.wireModelId,
+      ...(preflight.maxMode ? { maxMode: preflight.maxMode } : {}),
     },
   };
   if (context.toolBudget.tools.length > 0) {
@@ -1373,9 +1376,10 @@ export class CursorAdapter implements AiGatewayAdapter {
     // 모든 진입 경로가 이 판정을 지나야 한다. bridge를 지원하는 모델은 tool 결과가
     // parked Run에 붙어 cold Run 경로를 건너뛰므로, 판정을 그 뒤에 두면 tool을 쓰는
     // 세션만 포화된 계기로 계속 달리게 된다.
+    // 256k와 500k는 wire ID가 같으므로 선택한 카탈로그 모델까지 체크포인트를 구분한다.
     const contextRecall = recallCursorContextCheckpoint(
       identity.conversationId,
-      preflight.wireModelId,
+      `${request.model}:${preflight.wireModelId}`,
       credentialFingerprint,
       preflight.estimatedInputTokens,
     );
@@ -1729,7 +1733,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       previousContextCheckpoint,
       onContextCheckpoint: (checkpoint) => rememberCursorContextCheckpoint(
         identity.conversationId,
-        plan.wireModelId,
+        `${request.model}:${plan.wireModelId}`,
         descriptor.credentialFingerprint,
         plan.estimatedInputTokens,
         checkpoint,

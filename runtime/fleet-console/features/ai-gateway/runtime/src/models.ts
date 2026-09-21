@@ -208,6 +208,7 @@ const GatewayModelEntrySchema = z.object({
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
+  cursorMaxMode: z.literal(true).optional(),
   effort: GatewayModelEffortSchema.optional(),
 }).strict();
 
@@ -266,6 +267,8 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
+  /** Cursor Run에서 확장 컨텍스트를 활성화하는 명시적 공급자 옵션. */
+  readonly cursorMaxMode?: true;
   /**
    * Sub-allowance this model is billed against, when its provider splits one
    * subscription across pools. Cursor spends Auto-tier models from a separate
@@ -512,6 +515,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
 
 export interface CursorModelSelection {
   readonly upstreamModelId: string;
+  readonly maxMode?: true;
 }
 
 /** Resolve one picker-visible Cursor model to its exact wire id. */
@@ -531,7 +535,7 @@ export function resolveCursorModelSelection(
 
   const upstreamId = upstreamModelId(model);
   if (!model.effort.supported) {
-    return { upstreamModelId: upstreamId };
+    return { upstreamModelId: upstreamId, ...(model.cursorMaxMode ? { maxMode: true } : {}) };
   }
   // 카탈로그는 모델별 기본 effort를 정의하지 않는다. Claude Code는 effort 미설정 세션에도
   // 항상 자기 세션 기본값 "high"를 명시해 보내므로(2026-08-02 실측), effort를 생략하는
@@ -543,6 +547,7 @@ export function resolveCursorModelSelection(
   ) as GatewayReasoningEffort;
   const exactModelId = model.effort.upstreamModelIds?.[effort];
   return {
+    ...(model.cursorMaxMode ? { maxMode: true } : {}),
     upstreamModelId: exactModelId
       ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort)
       ?? upstreamId,
@@ -680,6 +685,7 @@ function toGatewayModel(
     ...(benchmark ? { benchmark } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+    ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
     ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
   };

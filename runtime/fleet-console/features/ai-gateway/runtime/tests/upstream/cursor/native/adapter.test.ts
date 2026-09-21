@@ -53,6 +53,23 @@ describe("Cursor request budgets", () => {
     expect(systemText(plan)).toContain("no more than 8 searches");
   });
 
+  it("activates the selected extended context on the Cursor wire, not just in discovery", () => {
+    const plan = buildCursorRunPlan(request({
+      model: "cursor--grok-4.7-500k-fast",
+      reasoning: { effort: "xhigh", summary: "auto" },
+    }), "conversation-extended-context");
+    expect(encodedRunRequest(plan).modelDetails).toMatchObject({
+      modelId: "grok-4.7-xhigh-fast",
+      maxMode: true,
+    });
+    const standard = buildCursorRunPlan(request({
+      model: "cursor--grok-4.7-fast",
+      reasoning: { effort: "xhigh", summary: "auto" },
+    }), "conversation-standard-context");
+    expect(encodedRunRequest(standard).modelDetails.modelId).toBe("grok-4.7-xhigh-fast");
+    expect(encodedRunRequest(standard).modelDetails.maxMode).not.toBe(true);
+  });
+
   it("never sends a custom system prompt, which Cursor rejects the Run for", () => {
     const withInstructions = request({
       instructions: "Harness instructions.",
