@@ -78,7 +78,7 @@ export async function handleSummary(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
-  service: QuotaService,
+  service: Pick<QuotaService, "getSummary">,
 ): Promise<void> {
   if (req.method !== "GET") {
     ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
@@ -97,7 +97,7 @@ export async function handleConnect(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
-  service: QuotaService,
+  service: Pick<QuotaService, "getSummary">,
   serializeSettings: SettingsSerializer,
 ): Promise<void> {
   if (rejectUnlessJsonPost(req, res, ctx)) return;

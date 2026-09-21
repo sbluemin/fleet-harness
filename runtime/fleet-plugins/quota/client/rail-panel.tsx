@@ -258,7 +258,7 @@ function clampPercent(value: number): number {
 
 /**
  * The gateway's projection, but only while it is still a forecast. A reading
- * outlives it: the summary is cached for two minutes and served stale for
+ * outlives it: the summary is cached for five minutes and served stale for
  * thirty, so the target can pass before the next one lands. Both the hatching
  * and the note read the projection through here so a lapsed one cannot survive
  * in one channel after being suppressed in the other.

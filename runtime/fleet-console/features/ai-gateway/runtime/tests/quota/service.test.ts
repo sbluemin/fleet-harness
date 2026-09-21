@@ -44,7 +44,7 @@ describe("quota service", () => {
     expect(fetchCursor).not.toHaveBeenCalled();
   });
 
-  it("uses a 120-second cache, supports force bypass, and single-flights", async () => {
+  it("uses a five-minute cache, supports force bypass, and single-flights", async () => {
     let now = 1_000;
     let resolveClaude: ((value: ProviderSuccess) => void) | undefined;
     const fetchClaude = vi.fn(() => new Promise<ProviderSuccess>((resolve) => { resolveClaude = resolve; }));
@@ -64,14 +64,22 @@ describe("quota service", () => {
     resolveClaude?.(ok(now));
     await Promise.all([first, second]);
     expect(fetchClaude).toHaveBeenCalledTimes(1);
+    now += 299_999;
     await service.getSummary();
     expect(fetchClaude).toHaveBeenCalledTimes(1);
+    now += 1;
+    const expired = service.getSummary();
+    await Promise.resolve();
+    resolveClaude?.(ok(now));
+    await expired;
+    expect(fetchClaude).toHaveBeenCalledTimes(2);
     now += 1;
     const forced = service.getSummary({ force: true });
     await Promise.resolve();
     resolveClaude?.(ok(now));
     await forced;
-    expect(fetchClaude).toHaveBeenCalledTimes(2);
+    expect(fetchClaude).toHaveBeenCalledTimes(3);
+    expect(service.peekSummary()?.providers.claude.fetchedAt).toBe(now);
   });
 
   it("force-loads only the selected provider and preserves other cached snapshots", async () => {
@@ -153,7 +161,7 @@ describe("quota service", () => {
       fetchOpencode: async () => ({ status: "signed_out" }),
     });
     await service.getSummary();
-    now += 120_000;
+    now += 300_000;
     const limited = (await service.getSummary()).providers.claude;
     expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }] });
     await service.getSummary();

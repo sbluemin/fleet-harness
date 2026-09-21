@@ -33,7 +33,7 @@ describe("console quota snapshot", () => {
       return jsonResponse(summary);
     });
     const snapshot = await readConsoleQuotaSnapshot("http://127.0.0.1:57333", fetchImpl as typeof fetch);
-    expect(calls[0]?.url).toBe("http://127.0.0.1:57333/plugins/quota/summary");
+    expect(calls[0]?.url).toBe("http://127.0.0.1:57333/api/v1/ai-gateway/quota");
     expect(new Headers(calls[0]?.init?.headers).get("Origin")).toBe("http://127.0.0.1:57333");
     expect(calls[0]?.init?.redirect).toBe("error");
     expect(snapshot?.claude?.status).toBe("ok");

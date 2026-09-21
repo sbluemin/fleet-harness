@@ -17,8 +17,8 @@ import { registerTerminalSettingsRoutes } from "../../../features/settings/host/
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">) {
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime } = startAiGateway(ctx);
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"]) {
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime } = startAiGateway({ ...ctx, host: { ...ctx.host, storage: quotaStorage } });
   registerTerminalSettingsRoutes(ctx, {
     agentOptionsService: ctx.agentOptions,
     aiGatewayStore,

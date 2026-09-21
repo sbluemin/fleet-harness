@@ -2,6 +2,10 @@ import path from "node:path";
 import { chooseRoutingModel } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
+  createQuotaService,
+  createAiGatewayQuotaCollectors,
+  parseGatewayQuotaSnapshot,
+  GATEWAY_PROVIDERS,
   decideGatewayRoutingAssignment,
   JEV_ROUTING_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
@@ -16,7 +20,6 @@ import {
   TYPESAFE_AUTH_PROVIDER_ID,
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
-  type GatewayQuotaSnapshot,
 } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
@@ -30,10 +33,10 @@ interface GatewayStartContext {
     readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
     readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
     readonly server: Pick<FleetPluginHostCapabilities["server"], "origin">;
+    readonly storage: Pick<FleetPluginHostCapabilities["storage"], "readJson">;
   };
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
-import { readConsoleQuotaSnapshot } from "./gateway-loadout.js";
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
 
@@ -88,28 +91,35 @@ export function startAiGateway(ctx: GatewayStartContext) {
    * 세면 동시에 뜬 세션들이 저마다 처음인 줄 알고 같은 공급자를 고르므로, 한 자리에서 센다.
    */
   const providerLoad = new Map<string, number>();
-  /**
-   * 마지막으로 읽은 허용량. 배정은 **이 값을 기다리지 않는다.**
-   *
-   * 요약은 네 공급자를 모두 기다린 뒤 답하고 최악 대기가 20초를 넘는다. 그 조회를 배정
-   * 경로에 넣으면 위임 하나가 그만큼 멈춘다. 그래서 배정은 지금 손에 있는 값으로 결정하고
-   * 갱신은 뒤에서 돌린다 — 첫 배정 한 번이 허용량 없이 도는 대신, 어느 배정도 멈추지 않는다.
-   */
-  let allowance: GatewayQuotaSnapshot | undefined;
-  let allowanceReadAt = 0;
-  let allowanceInFlight = false;
-  const ALLOWANCE_TTL_MS = 2 * 60_000;
-  function refreshAllowanceSoon(): void {
-    if (allowanceInFlight || Date.now() - allowanceReadAt < ALLOWANCE_TTL_MS) return;
-    allowanceInFlight = true;
-    void readConsoleQuotaSnapshot(ctx.host.server.origin())
-      .then((snapshot) => { allowance = snapshot; })
-      // 실패해도 읽은 시각은 찍는다. 아니면 배정마다 같은 실패를 다시 두드린다.
-      .catch(() => undefined)
-      .finally(() => { allowanceReadAt = Date.now(); allowanceInFlight = false; });
-  }
+  // 저장된 연결 동의는 유지하되 공급자 조회와 캐시는 Gateway 한 인스턴스가 소유한다.
+  const isConnected = async (provider: "claude" | "cursor") => {
+    const settings = await ctx.host.storage.readJson("quota", "settings");
+    return settings !== null && typeof settings === "object"
+      && (settings as Record<string, unknown>)[`${provider}Connected`] === true;
+  };
+  const quota = createQuotaService({
+    isClaudeConnected: () => isConnected("claude"),
+    isCursorConnected: () => isConnected("cursor"),
+    ...createAiGatewayQuotaCollectors({ authService }),
+  });
+  ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const provider = url.searchParams.get("forceProvider");
+    if (provider !== null && !GATEWAY_PROVIDERS.includes(provider as typeof GATEWAY_PROVIDERS[number])) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_provider" }); return true;
+    }
+    const summary = await quota.getSummary({
+      force: url.searchParams.get("force") === "1",
+      ...(provider === null ? {} : { forceProvider: provider as typeof GATEWAY_PROVIDERS[number] }),
+    });
+    ctx.host.http.writeJson(res, 200, summary);
+    return true;
+  }, [{ method: "GET", path: "", summary: "Read or explicitly refresh the shared Gateway quota cache.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   function currentExposure(): GatewayAssignmentExposure {
     const selection = resolveAiGatewaySelection(aiGatewayStore.read());
+    const allowance = parseGatewayQuotaSnapshot(quota.peekSummary());
     return {
       delegationRoutingEnabled: selection.delegationRoutingEnabled,
       delegationRoutingMode: selection.delegationRoutingMode,
@@ -127,7 +137,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     maxAttempts: 1,
   });
   async function assign(request: unknown, signal?: AbortSignal, test = false) {
-      refreshAllowanceSoon();
+      // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
+      void quota.getSummary().catch(() => undefined);
       const parsed = parseGatewayAssignmentRequest(request);
       const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad) } : currentExposure();
       return await decideGatewayRoutingAssignment(parsed, exposure, {

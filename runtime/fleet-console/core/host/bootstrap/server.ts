@@ -2099,7 +2099,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           agentOptions,
           agentCliPlugin,
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-        }), consoleActions);
+        }), consoleActions, pluginHostCapabilities.storage);
         coreLaunchKinds = execution.launchKinds;
         consoleUse.activate({ ...consoleActions, ...execution.actions });
         await pluginHost.boot();

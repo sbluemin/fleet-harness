@@ -12,12 +12,13 @@ import { deriveQuotaWindowRisk } from "./pressure.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
 import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 
-const CACHE_TTL_MS = 120_000;
+export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
 const STALE_TTL_MS = 1_800_000;
 
 type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai";
 
 export interface QuotaService {
+  peekSummary(): QuotaSummaryDto | undefined;
   getSummary(options?: {
     readonly force?: boolean;
     readonly forceProvider?: ProviderId;
@@ -110,7 +111,9 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       (id === "claude" && !await deps.isClaudeConnected())
       || (id === "cursor" && !await deps.isCursorConnected())
     ) {
-      return { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
+      const value: ProviderDto = { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
+      cache.set(id, { value, expiresAt: now() });
+      return value;
     }
     const cached = cache.get(id);
     if (!force && cached && cached.expiresAt > now()) {
@@ -127,7 +130,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const task = fetchers[id]()
       .then((value) => {
         if (isProviderSuccess(value)) lastGood.set(id, value);
-        cache.set(id, { value, expiresAt: now() + CACHE_TTL_MS });
+        cache.set(id, { value, expiresAt: now() + QUOTA_CACHE_TTL_MS });
         return value;
       })
       .catch((error: unknown) => {
@@ -138,8 +141,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           ? { ...previous, status: "stale", message }
           : { status: "error", message };
         const expiresAt = value.status === "stale" && previous
-          ? Math.min(failedAt + CACHE_TTL_MS, previous.fetchedAt + STALE_TTL_MS)
-          : failedAt + CACHE_TTL_MS;
+          ? Math.min(failedAt + QUOTA_CACHE_TTL_MS, previous.fetchedAt + STALE_TTL_MS)
+          : failedAt + QUOTA_CACHE_TTL_MS;
         cache.set(id, { value, expiresAt });
         return value;
       })
@@ -165,6 +168,20 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   }
 
   return {
+    peekSummary() {
+      if (cache.size === 0) return undefined;
+      const read = (id: ProviderId): ProviderDto => {
+        const value = cache.get(id)?.value;
+        if (!value || (typeof value.fetchedAt === "number" && now() - value.fetchedAt > STALE_TTL_MS)) {
+          return { status: "error", message: "Quota has not been refreshed." };
+        }
+        return withRisk(value);
+      };
+      return { providers: {
+        claude: read("claude"), codex: read("codex"), cursor: read("cursor"),
+        kimi: read("kimi"), opencode: read("opencode"), xai: read("xai"), antigravity: read("antigravity"),
+      } };
+    },
     async getSummary(options = {}) {
       const [claude, codex, cursor, kimi, opencode, xai, antigravity] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),

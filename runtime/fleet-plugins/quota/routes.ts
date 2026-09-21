@@ -1,9 +1,5 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import {
-  createAiGatewayQuotaCollectors,
-  createProviderAuthService,
-  createQuotaService,
-} from "@fleet-console/ai-gateway";
+import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
 import { handleConnect, handleFold, handleOrder, handleSummary } from "./server/handlers.js";
 
@@ -16,23 +12,23 @@ export default definePlugin({
       settingsMutation = result.then(() => undefined, () => undefined);
       return result;
     };
-    const isConnected = async (provider: "claude" | "cursor") => {
-      const value = await ctx.host.storage.readJson("quota", "settings");
-      return value !== null
-        && typeof value === "object"
-        && !Array.isArray(value)
-        && (value as Record<string, unknown>)[`${provider}Connected`] === true;
+    // 공급자 수집과 캐시는 Gateway가 소유한다. 플러그인은 패널 설정과 명시적 새로고침만 전달한다.
+    const service: Pick<QuotaService, "getSummary"> = {
+      async getSummary(options = {}) {
+        const origin = ctx.host.server.origin();
+        if (!origin) throw new Error("Console is not listening");
+        const url = new URL("/api/v1/ai-gateway/quota", origin);
+        if (options.force) url.searchParams.set("force", "1");
+        if (options.forceProvider) url.searchParams.set("forceProvider", options.forceProvider);
+        const response = await fetch(url, {
+          headers: { Origin: origin, Accept: "application/json" },
+          redirect: "error",
+          signal: AbortSignal.timeout(25_000),
+        });
+        if (!response.ok) throw new Error("Gateway quota lookup failed");
+        return await response.json() as QuotaSummaryDto;
+      },
     };
-    const service = createQuotaService({
-      platform: process.platform,
-      isClaudeConnected: () => isConnected("claude"),
-      isCursorConnected: () => isConnected("cursor"),
-      ...createAiGatewayQuotaCollectors({
-        // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 격리 루트로 띄운 Console이
-        // 사용자의 진짜 auth.json을 읽는다.
-        authService: createProviderAuthService({ dataDir: ctx.host.paths.consoleDataDir }),
-      }),
-    });
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);
       return true;
