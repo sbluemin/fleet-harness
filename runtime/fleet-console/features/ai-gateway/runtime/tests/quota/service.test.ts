@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { KIMI_AUTH_PROVIDER_ID } from "../../src/models.js";
 import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.js";
+import { getJson } from "../../src/quota/windows.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
@@ -139,6 +140,7 @@ describe("quota service", () => {
     let now = 100_000;
     const fetchClaude = vi.fn()
       .mockResolvedValueOnce(ok(now, 41))
+      .mockImplementationOnce(() => getJson(async () => new Response(null, { status: 429 }), "https://quota.example/usage", {}))
       .mockRejectedValue(new Error("Bearer super-secret upstream unavailable"));
     const service = createQuotaService({
       now: () => now,
@@ -151,7 +153,12 @@ describe("quota service", () => {
       fetchOpencode: async () => ({ status: "signed_out" }),
     });
     await service.getSummary();
-    now += 1_799_999;
+    now += 120_000;
+    const limited = (await service.getSummary()).providers.claude;
+    expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }] });
+    await service.getSummary();
+    expect(fetchClaude).toHaveBeenCalledTimes(2);
+    now = 100_000 + 1_799_999;
     const stale = (await service.getSummary({ force: true })).providers.claude;
     expect(stale).toMatchObject({ status: "stale", windows: [{ usedPercent: 41 }] });
     expect(stale.message).not.toContain("super-secret");

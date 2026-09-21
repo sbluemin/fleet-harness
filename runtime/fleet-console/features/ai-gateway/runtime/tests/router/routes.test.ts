@@ -306,7 +306,7 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.providers.claude?.models.map((m) => m.modelId)).toEqual(["sonnet"]);
+    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
@@ -324,7 +324,7 @@ describe("delegation assignment", () => {
     expect(decision.label).toBe("session model");
   });
 
-  it("gives Jev the complete model data and falls back without double-counting load", async () => {
+  it("shares normalized routing evidence with Jev and AI models and preserves fallback lifecycle", async () => {
     const providerLoad = new Map<string, number>();
     const jevExposure = {
       delegationRoutingEnabled: true,
@@ -344,6 +344,9 @@ describe("delegation assignment", () => {
       providerPlugin: "engine",
     };
 
+    let jevState: unknown;
+    let jevInstructions: unknown;
+    let jevCriteria: unknown;
     const picking = new SystemOneClient({
       readApiKey: async () => "tsv_test",
       maxAttempts: 1,
@@ -352,10 +355,12 @@ describe("delegation assignment", () => {
         const body = JSON.parse(String(init?.body));
         expect(body.state).not.toHaveProperty("tier");
         expect(body.state.prompt).toBe(request.prompt);
-        expect(body.state.gateway_models.providers.cursor.models[0].constraints).toHaveProperty("effortLadder");
-        expect(body.state.gateway_models.providers.xai.quota.status).toBe("unsupported");
-        expect(body.state.gateway_models.quotaConsumptionPriority.providers[0].provider).toBe("cursor");
-        expect(body.state.candidates).toHaveLength(2);
+        jevState = body.state;
+        jevInstructions = body.questions.seat.instructions;
+        jevCriteria = body.questions.seat.criteria;
+        expect(body.state.gateway_models.models[0]).toMatchObject({ efforts: [], preferenceRank: 1, quotaPool: "cursor:auto" });
+        expect(body.state.gateway_models.quotaPools["xai:shared"]).toEqual({ observation: "unknown" });
+        expect(body.state).not.toHaveProperty("candidates");
         return new Response(JSON.stringify({
         model: "jev-latest",
         answers: {
@@ -375,6 +380,18 @@ describe("delegation assignment", () => {
     expect(picked.because).toContain("· jev");
     expect(providerLoad.get("xai")).toBe(1);
     expect(providerLoad.get("cursor")).toBeUndefined();
+
+    const aiPicked = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
+    }, { choose: async ({ state, criteria, instructions }) => {
+      expect(state).toEqual(jevState);
+      expect(instructions).toEqual(jevInstructions);
+      expect(criteria).toEqual(jevCriteria);
+      expect(criteria.c1).toContain("claude-gateway--xai--grok-composer-2.5-fast");
+      return "c1";
+    } });
+    expect(aiPicked.model).toBe(picked.model);
+    expect(aiPicked.because).toContain("AI model");
 
     const unsigned = new SystemOneClient({
       readApiKey: async () => undefined,
@@ -405,34 +422,32 @@ describe("delegation assignment", () => {
     expect(refreshed.because).not.toContain("· jev");
     expect(providerLoad.get("xai")).toBe(2);
 
-    // 정규화되지 않은 확률·choice 불일치는 수락하지 않고 결정론으로 접는다.
-    const invalid = await decideGatewayRoutingAssignmentWithJev(request, {
-      ...jevExposure,
-      delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
-        requireGatewayModel("xai--grok-composer-2.5-fast"),
-      ],
-    }, {
+    // 유효한 후보 선택은 부가 확률이 없거나 서로 맞지 않아도 수락한다.
+    for (const metadata of [{}, { confidence: 2, probabilities: { c0: 0.9, c1: 0.2 } }]) {
+      const chosen = await decideGatewayRoutingAssignmentWithJev(request, {
+        ...jevExposure, providerLoad: new Map(),
+      }, {
+        client: new SystemOneClient({
+          readApiKey: async () => "tsv_test", maxAttempts: 1,
+          fetch: async () => new Response(JSON.stringify({
+            answers: { seat: { type: "choice", choice: "c1", ...metadata } },
+          })),
+        }),
+      });
+      expect(chosen.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
+      expect(chosen.because).toContain("· jev");
+      expect(chosen.because).not.toContain("fallback");
+    }
+    // 확률 검증 제거가 후보 경계를 넓히지는 않는다.
+    const invalid = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
       client: new SystemOneClient({
-        readApiKey: async () => "tsv_test",
-        maxAttempts: 1,
-        timeoutMs: 2_000,
+        readApiKey: async () => "tsv_test", maxAttempts: 1,
         fetch: async () => new Response(JSON.stringify({
-          model: "jev-latest",
-          answers: {
-            seat: {
-              type: "choice",
-              choice: "c0",
-              confidence: 0.8,
-              probabilities: { c0: 0, c1: 0 },
-            },
-          },
-          usage: { input_tokens: 1, output_tokens: 1 },
-        }), { status: 200 }),
+          answers: { seat: { type: "choice", choice: "not-offered" } },
+        })),
       }),
     });
-    expect(invalid.because).toContain("fallback: routing decision failed: invalid probabilities");
-    expect(invalid.because).not.toContain("· jev");
+    expect(invalid.because).toContain("fallback: routing decision failed: invalid choice");
 
     // 좌석이 하나면 Jev를 부르지 않으므로 원장도 그렇게 말한다.
     const sole = await decideGatewayRoutingAssignmentWithJev(request, {
@@ -466,9 +481,73 @@ describe("delegation assignment", () => {
       client: cancelled,
       signal: abort.signal,
     })).rejects.toMatchObject({ name: "AbortError" });
-    // unsigned + invalid-probabilities 두 결정론 fallback이 cursor를 올렸다.
+    // unsigned + invalid-choice 두 결정론 fallback이 cursor를 올렸다.
     expect(providerLoad.get("cursor")).toBe(2);
     expect(providerLoad.get("xai")).toBe(2);
+  });
+
+  it("keeps simultaneous quota bottlenecks and uncertain observations in routing evidence", async () => {
+    const now = Date.now();
+    const hour = 3_600_000;
+    const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number, scope?: string) => ({
+      id, usedPercent, resetsAt: now + remainingHours * hour,
+      period: { durationMs: durationHours * hour, durationBasis: "upstream" },
+      ...(scope ? { scope } : {}),
+    });
+    const windows = [
+      window("session", 60, 5, 1),
+      window("week", 70, 168, 100.8),
+      window("month", 30, 720, 360, "auto"),
+      window("api", 100, 720, 360, "api"),
+      { ...window("aggregate", 100, 720, 360), isAggregate: true },
+    ];
+    const run = async (quota: GatewayAssignmentExposure["quota"]) => {
+      let data: any;
+      const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
+        delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
+        delegationModels: [requireGatewayModel("cursor--composer-2.5"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return "c0"; } });
+      expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+      return data;
+    };
+    const quota = { status: "ok", fetchedAt: now, windows };
+    const data = await run({ cursor: quota });
+    expect(Object.keys(data.quotaPools)).toEqual(["cursor:auto", "xai:shared"]);
+    expect(data.quotaPools["cursor:auto"]).toMatchObject({
+      observation: "fresh", remainingPercent: 30, sustainableHeadroom: 0.5,
+      recovery: { remainingPercent: 70 },
+    });
+    expect(data.quotaPools["cursor:auto"].recovery.inSeconds).toBeGreaterThan(100 * 3600);
+    expect(data.quotaPools["cursor:auto"].recovery.inSeconds).toBeLessThanOrEqual(100.8 * 3600);
+    expect(data.quotaPools["cursor:auto"]).not.toHaveProperty("windows");
+
+    // 리셋을 지난 관측이나 오래된 캐시에서 가짜 여유를 만들지 않는다.
+    for (const old of [
+      { ...quota, windows: [window("expired", 100, 5, -0.01, "auto")] },
+    ]) {
+      const stale = (await run({ cursor: old })).quotaPools["cursor:auto"];
+      expect(stale.observation).toBe("stale");
+      expect(stale).not.toHaveProperty("remainingPercent");
+      expect(stale).not.toHaveProperty("recovery");
+    }
+    const retained = (await run({ cursor: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } })).quotaPools["cursor:auto"];
+    expect(retained).toMatchObject({ observation: "stale", remainingPercent: 30 });
+    expect(retained.ageSeconds).toBeGreaterThanOrEqual(240);
+    const partial = (await run({ cursor: { ...quota, windows: [{ id: "auto", scope: "auto", usedPercent: 100 }] } })).quotaPools["cursor:auto"];
+    expect(partial).toMatchObject({ observation: "partial", remainingPercent: 0 });
+    expect(partial).not.toHaveProperty("sustainableHeadroom");
+    const missingPool = (await run({ cursor: { ...quota, windows: windows.filter(w => w.scope !== "auto") } })).quotaPools["cursor:auto"];
+    expect(missingPool.observation).toBe("partial");
+    expect(missingPool).not.toHaveProperty("remainingPercent");
+    const invalid = (await run({ cursor: { ...quota, windows: [{ id: "auto", scope: "auto", usedPercent: NaN }] } })).quotaPools["cursor:auto"];
+    expect(invalid).not.toHaveProperty("remainingPercent");
+    const almostReset = (await run({ cursor: { ...quota, windows: [window("month", 99.9999, 720, 0.1, "auto")] } })).quotaPools["cursor:auto"];
+    expect(almostReset.remainingPercent).toBeGreaterThan(0);
+    expect(almostReset.remainingPercent).toBeLessThan(0.001);
+    const exhausted = (await run({ cursor: { ...quota, windows: [window("month", 105, 720, 0.1, "auto")] } })).quotaPools["cursor:auto"];
+    expect(exhausted).toMatchObject({ remainingPercent: 0, sustainableHeadroom: 0 });
+    const future = (await run({ cursor: { ...quota, fetchedAt: now + hour } })).quotaPools["cursor:auto"];
+    expect(future).toEqual({ observation: "unknown" });
   });
 
   it("falls back for a stage that carries no work text instead of guessing quietly", async () => {
