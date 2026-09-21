@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.104.2] - 2026-09-21
+
+### fleet-console
+
+#### Changed
+- The Chat panel keeps the latest reply close to the message box instead of leaving a wide empty band between them.
+
+#### Fixed
+- Cursor models now run their tool calls instead of ending the turn with "The model's tool call could not be parsed".
+
 ## [1.104.1] - 2026-09-21
 
 ### fleet-desktop

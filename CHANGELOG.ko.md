@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.104.2] - 2026-09-21
+
+### fleet-console
+
+#### Changed
+- 채팅 패널에서 마지막 답변과 입력창 사이에 넓게 비어 있던 자리가 줄어, 방금 읽은 답 바로 아래에서 이어 쓰게 됩니다.
+
+#### Fixed
+- Cursor 모델이 "The model's tool call could not be parsed"로 턴을 끝내지 않고 도구 호출을 정상적으로 실행합니다.
+
 ## [1.104.1] - 2026-09-21
 
 ### fleet-desktop
