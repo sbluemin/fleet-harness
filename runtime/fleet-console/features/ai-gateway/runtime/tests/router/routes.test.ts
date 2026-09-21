@@ -306,7 +306,7 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.providers.claude?.models.map((m) => m.modelId)).toEqual(["sonnet"]);
+    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
