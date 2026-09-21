@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.104.0] - 2026-09-21
+
+### fleet-console
+
+#### Added
+- Drag the line between a session and its Session Analyst or Browser panels to divide the width as you like, with arrow keys for fine steps and a double-click to return to equal. Each panel keeps the width you gave it the next time you open it.
+- Write your own system prompt in Settings and have it reach every new session, either after Claude Code's own prompt or in place of it.
+
+#### Changed
+- Chat now marks skill runs with an open-book icon instead of the anonymous dot it shared with every unrecognised tool, and names a few more of the tools it used to leave unlabelled.
+- The Backend API list in Advanced settings now opens as a short group index with a find box, so you can search a route by path, summary, or gate and copy it instead of scrolling the whole catalog.
+
+#### Fixed
+- Closing Session Analyst or Browser while both are open no longer closes the other one too.
+- Chat no longer fails every turn when the Claude Code system prompt is turned off, and turning it on now loads that prompt in Chat as it already did in the terminal.
+- Agents can keep using each Operation's browser in the background while you open, switch, or close its Companion in Fleet Desktop.
+- Chat Workflow now names the model that actually answered each step, and leaves the cell blank until that is known instead of showing the parent or requested identity.
+
 ## [1.103.0] - 2026-09-20
 
 ### fleet-cli
