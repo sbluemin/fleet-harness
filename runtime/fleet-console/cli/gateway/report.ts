@@ -53,7 +53,7 @@ export function collectGatewayModels(settings: AiGatewayStoredSettings): readonl
       name: entry.model.name,
       contextWindow: entry.model.contextWindow,
       efforts: selection.effortExposure[model.id] ?? entry.model.effort?.levels ?? [],
-      hostOnly: hostOnlyIds.has(model.id),
+      hostOnly: entry.provider !== "claude" && hostOnlyIds.has(model.id),
     }];
   });
 }

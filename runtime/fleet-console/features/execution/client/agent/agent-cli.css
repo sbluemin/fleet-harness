@@ -566,8 +566,13 @@
   pointer-events: none;
 }
 
-.ai-gateway-host-only:hover + .ai-gateway-host-only-tip,
-.ai-gateway-host-only:focus-visible + .ai-gateway-host-only-tip {
+.ai-gateway-host-only-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.ai-gateway-host-only-wrap:hover .ai-gateway-host-only-tip,
+.ai-gateway-host-only-wrap:has(:focus-visible) .ai-gateway-host-only-tip {
   visibility: visible;
 }
 

@@ -945,25 +945,13 @@
     "claude": {
       "name": "Claude",
       "defaultModel": "sonnet",
-      "source": "Claude Code native execution model catalog: haiku, sonnet, opus, fable and 1m context coordinates",
+      "source": "Claude Code native execution model catalog: fable, opus, sonnet, haiku and 1m context coordinates",
       "models": [
         {
-          "modelId": "haiku",
-          "name": "Haiku",
-          "capabilityClass": "light",
-          "providerModelId": "haiku",
-          "effort": {
-            "supported": false
-          },
-          "aliases": [
-            "haiku"
-          ]
-        },
-        {
-          "modelId": "sonnet",
-          "name": "Sonnet",
-          "capabilityClass": "standard",
-          "providerModelId": "sonnet",
+          "modelId": "fable",
+          "name": "Fable",
+          "capabilityClass": "flagship",
+          "providerModelId": "fable",
           "effort": {
             "supported": true,
             "levels": [
@@ -975,15 +963,15 @@
             ]
           },
           "aliases": [
-            "sonnet"
+            "fable"
           ]
         },
         {
-          "modelId": "sonnet-1m",
-          "name": "Sonnet",
-          "capabilityClass": "standard",
-          "providerModelId": "sonnet[1m]",
-          "variantOf": "sonnet",
+          "modelId": "fable-1m",
+          "name": "Fable",
+          "capabilityClass": "flagship",
+          "providerModelId": "fable[1m]",
+          "variantOf": "fable",
           "contextWindow": 1000000,
           "effort": {
             "supported": true,
@@ -996,7 +984,7 @@
             ]
           },
           "aliases": [
-            "sonnet[1m]"
+            "fable[1m]"
           ]
         },
         {
@@ -1040,10 +1028,10 @@
           ]
         },
         {
-          "modelId": "fable",
-          "name": "Fable",
-          "capabilityClass": "flagship",
-          "providerModelId": "fable",
+          "modelId": "sonnet",
+          "name": "Sonnet",
+          "capabilityClass": "standard",
+          "providerModelId": "sonnet",
           "effort": {
             "supported": true,
             "levels": [
@@ -1055,15 +1043,15 @@
             ]
           },
           "aliases": [
-            "fable"
+            "sonnet"
           ]
         },
         {
-          "modelId": "fable-1m",
-          "name": "Fable",
-          "capabilityClass": "flagship",
-          "providerModelId": "fable[1m]",
-          "variantOf": "fable",
+          "modelId": "sonnet-1m",
+          "name": "Sonnet",
+          "capabilityClass": "standard",
+          "providerModelId": "sonnet[1m]",
+          "variantOf": "sonnet",
           "contextWindow": 1000000,
           "effort": {
             "supported": true,
@@ -1076,7 +1064,19 @@
             ]
           },
           "aliases": [
-            "fable[1m]"
+            "sonnet[1m]"
+          ]
+        },
+        {
+          "modelId": "haiku",
+          "name": "Haiku",
+          "capabilityClass": "light",
+          "providerModelId": "haiku",
+          "effort": {
+            "supported": false
+          },
+          "aliases": [
+            "haiku"
           ]
         }
       ]

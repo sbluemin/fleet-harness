@@ -12,6 +12,7 @@ import {
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
   GATEWAY_PROVIDERS,
   GATEWAY_PROVIDER_NAMES,
+  findGatewayModel,
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type GatewayProvider,
@@ -142,17 +143,24 @@ async function adjustModelDetail(deps: GatewayInteractiveDeps): Promise<void> {
     if (isCancel(target) || target === "") return;
 
     const ladder = effortLadderFor(target);
+    const claudeNative = findGatewayModel(target)?.provider === "claude";
+    if (ladder.length === 0 && claudeNative) {
+      log.info("Claude models are native to Claude Code — host-only does not apply.");
+      continue;
+    }
     const axis = await select<"efforts" | "host-only">({
       message: models.find((model) => model.id === target)?.name ?? target,
       options: [
         ...(ladder.length > 0
           ? [{ value: "efforts" as const, label: "Effort levels", hint: ladder.join("·") }]
           : []),
-        {
-          value: "host-only" as const,
-          label: "Host-only",
-          hint: "stays on the wire, but is not offered as a delegation identity",
-        },
+        ...(!claudeNative
+          ? [{
+            value: "host-only" as const,
+            label: "Host-only",
+            hint: "stays on the wire, but is not offered as a delegation identity",
+          }]
+          : []),
       ],
     });
     if (isCancel(axis)) continue;

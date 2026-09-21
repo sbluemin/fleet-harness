@@ -1,5 +1,6 @@
 import {
   buildAiGatewayCatalog,
+  findGatewayModel,
   GATEWAY_PROVIDER_NAMES,
   type AiGatewayCatalogModel,
   type AiGatewayStoredModel,
@@ -74,12 +75,13 @@ export function withModelEfforts(
   });
 }
 
-/** 한 모델의 host-only 표식만 뒤집는다. 저장 정규형은 true만 남긴다. */
+/** 한 모델의 host-only 표식만 뒤집는다. 저장 정규형은 true만 남긴다. Claude는 적용하지 않는다. */
 export function withModelHostOnly(
   models: readonly AiGatewayStoredModel[],
   id: string,
   hostOnly: boolean,
 ): readonly AiGatewayStoredModel[] {
+  if (findGatewayModel(id)?.provider === "claude") return models;
   return models.map((entry) => {
     if (entry.id !== id) return entry;
     const rest = { id: entry.id, ...(entry.efforts?.length ? { efforts: entry.efforts } : {}) };

@@ -557,7 +557,7 @@ export function buildAiGatewayRoster(
           provider,
           model,
           efforts: entry.efforts,
-          hostOnly: entry.hostOnly === true,
+          hostOnly: entry.hostOnly === true && provider.id !== "claude",
           rank: priority.indexOf(provider.id as AiGatewayProviderId),
           order,
         }];
@@ -566,6 +566,8 @@ export function buildAiGatewayRoster(
     return [];
   });
   const providerOrder = (id: string): number => providers.findIndex((provider) => provider.id === id);
+  const catalogOrder = (entry: { readonly provider: AiGatewayCatalogProvider; readonly model: AiGatewayCatalogModel }): number =>
+    entry.provider.models.findIndex((model) => model.id === entry.model.id);
   return entries
     .sort((a, b) => {
       const rankA = a.rank < 0 ? Number.MAX_SAFE_INTEGER : a.rank;
@@ -573,7 +575,9 @@ export function buildAiGatewayRoster(
       return Number(b.provider.id === "claude") - Number(a.provider.id === "claude")
         || rankA - rankB
         || providerOrder(a.provider.id) - providerOrder(b.provider.id)
-        || a.order - b.order;
+        || (a.provider.id === "claude" && b.provider.id === "claude"
+          ? catalogOrder(a) - catalogOrder(b)
+          : a.order - b.order);
     })
     .map(({ order: _order, ...entry }) => entry);
 }
@@ -683,6 +687,7 @@ function AiGatewayModelsCard() {
     });
   };
   const setModelHostOnly = (model: AiGatewayCatalogModel, next: boolean): void => {
+    if (model.id.startsWith("claude--")) return;
     save({
       ...selection,
       models: enabled.map((entry) => {
@@ -1609,6 +1614,7 @@ export function AiGatewayModelRow({
   const { model, efforts, hostOnly } = entry;
   const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
   const ladder = model.effort?.levels ?? [];
+  const claudeNative = entry.provider.id === "claude";
 
   return (
     <div className="ai-gateway-model-row">
@@ -1629,19 +1635,24 @@ export function AiGatewayModelRow({
             onSetEfforts={onSetEfforts}
           />
         ) : null}
-        <button
-          type="button"
-          className={`ai-gateway-host-only ${hostOnly ? "is-on" : ""}`}
-          aria-pressed={hostOnly}
-          aria-label={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
-          disabled={saving}
-          onClick={onToggleHostOnly}
-        >
-          {t("terminal.settings.aiGatewayHostOnly")}
-        </button>
-        {/* 인접 형제여야 hover·focus 선택자가 닿는다 — 사이에 무엇도 끼우지 말 것. */}
-        <span className="ai-gateway-host-only-tip" role="tooltip">
-          {t("terminal.settings.aiGatewayHostOnlyTip")}
+        <span className="ai-gateway-host-only-wrap">
+          <button
+            type="button"
+            className={`ai-gateway-host-only ${hostOnly ? "is-on" : ""}`}
+            aria-pressed={hostOnly}
+            aria-label={claudeNative
+              ? t("terminal.settings.aiGatewayHostOnlyClaudeAria", { name: model.name })
+              : t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
+            disabled={saving || claudeNative}
+            onClick={onToggleHostOnly}
+          >
+            {t("terminal.settings.aiGatewayHostOnly")}
+          </button>
+          <span className="ai-gateway-host-only-tip" role="tooltip">
+            {t(claudeNative
+              ? "terminal.settings.aiGatewayHostOnlyClaudeTip"
+              : "terminal.settings.aiGatewayHostOnlyTip")}
+          </span>
         </span>
         <button
           type="button"

@@ -30,8 +30,14 @@ export interface AiGatewayStoredModel {
   /**
    * true면 모델은 와이어(`/v1/models`, `/v1/messages` 노출 게이트, 실행 선택기)에 남지만
    * 위임 배정 후보에서는 빠진다. 부재는 위임 가능이며, 저장 정규형은 true만 보존한다.
+   * Claude family는 Claude Code 네이티브 모델이라 이 표식이 위임에서 빼지 않는다.
    */
   readonly hostOnly?: boolean;
+}
+
+/** 위임 후보에서만 본다. Claude 저장 hostOnly는 지우지 않고 위임에서도 빼지 않는다. */
+function retainStoredHostOnly(model: GatewayModel, hostOnly: unknown): boolean {
+  return hostOnly === true && model.provider !== "claude";
 }
 
 /** AI Gateway 설정 파일에 저장되는 형태. models 부재/공백 = 미구성(노출 없음). */
@@ -215,7 +221,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   for (const entry of settings?.models ?? []) {
     const model = findGatewayModel(entry.id);
     if (!model) continue;
-    if (entry.hostOnly === true) hostOnlyIds.add(model.id);
+    if (retainStoredHostOnly(model, entry.hostOnly)) hostOnlyIds.add(model.id);
     if (enabled.includes(model)) continue;
     enabled.push(model);
     const exposed = narrowEffortLadder(model, entry.efforts);
