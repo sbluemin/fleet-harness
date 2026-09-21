@@ -32,7 +32,10 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
   // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
   probePaths: ["/api/hello"],
   acceptsCredential: (credential) => credential.startsWith(ANTHROPIC_CREDENTIAL_PREFIX),
-  findModel: findClaudeGatewayModel,
+  findModel: (id, catalog) => {
+    const model = findClaudeGatewayModel(id, catalog);
+    return model?.provider === "claude" ? undefined : model;
+  },
   // 접두가 붙은 id는 게이트웨이를 지목한 것이므로 카탈로그에 없으면 오타이고, 접두 없는 id는
   // Claude Code가 자기 네이티브 모델을 부르는 표기다. 라우터가 갖고 있던 판정 그대로다.
   relaysUnmatchedModel: (id) => !id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX),

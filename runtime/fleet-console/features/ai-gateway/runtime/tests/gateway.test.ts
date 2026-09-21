@@ -522,6 +522,7 @@ function minimalRegistry() {
       kimi: provider("Kimi", "k3"),
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
+      claude: provider("Claude", "sonnet"),
     },
     pricing: {
       source: "openrouter" as const,

@@ -67,8 +67,14 @@ export interface GatewayRequestPolicy {
   ) => AnthropicMessagesRequest;
 }
 
+const claudeRequestPolicy: GatewayRequestPolicy = {
+  provider: "claude",
+  shapeRequest: (request) => request,
+};
+
 const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
   antigravity: antigravityRequestPolicy,
+  claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
   cursor: cursorRequestPolicy,
   kimi: kimiRequestPolicy,

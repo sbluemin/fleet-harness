@@ -12,6 +12,8 @@ import type {
 } from "../../../src/index.js";
 import type { GatewayHarnessProfile } from "../../../src/downstream/harness/contract.js";
 import { claudeCodeHarnessProfile } from "../../../src/downstream/harness/claude-code/profile.js";
+import { grokBuildHarnessProfile } from "../../../src/downstream/harness/grok-build/profile.js";
+import { toGrokGatewayModelId } from "../../../src/downstream/harness/grok-build/discovery.js";
 import type { GatewayHttpHandlerContext } from "../../../src/router/types.js";
 
 /**
@@ -99,6 +101,27 @@ describe("gateway harness profile seam", () => {
     await router.handle(ctx({ res, token: "grok-local-key", model: "codex--typo-not-a-model" }));
     expect(res.status).toBe(400);
     expect(res.body).toContain("Unknown AI gateway model");
+  });
+
+  it("keeps Claude native delegation out of Grok discovery and transport", async () => {
+    const native = findGatewayModel("sonnet")!;
+    let upstreamCalls = 0;
+    const router = createAiGatewayRouter({
+      originator: "test",
+      harness: grokBuildHarnessProfile,
+      readAuth: () => null,
+      readCursorToken: () => null,
+      fetch: async () => { upstreamCalls++; throw new Error("네이티브 Claude 요청을 전송하면 안 됩니다"); },
+    });
+    const alias = toGrokGatewayModelId(native);
+    const discovery = response();
+    await router.handle(ctx({ res: discovery, token: "grok-local-key", pathname: `${BASE}/v1/models` }));
+    expect(discovery.status).toBe(200);
+    expect(JSON.parse(discovery.body).data.map((entry: { id: string }) => entry.id)).not.toContain(alias);
+    const rejected = response();
+    await router.handle(ctx({ res: rejected, token: "grok-local-key", model: alias }));
+    expect(rejected.status).toBe(400);
+    expect(upstreamCalls).toBe(0);
   });
 
   it("forwards the harness model resolver into translation", async () => {

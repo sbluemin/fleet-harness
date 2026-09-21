@@ -941,6 +941,145 @@
           "contextWindow": 200000
         }
       ]
+    },
+    "claude": {
+      "name": "Claude",
+      "defaultModel": "sonnet",
+      "source": "Claude Code native execution model catalog: haiku, sonnet, opus, fable and 1m context coordinates",
+      "models": [
+        {
+          "modelId": "haiku",
+          "name": "Haiku",
+          "capabilityClass": "light",
+          "providerModelId": "haiku",
+          "effort": {
+            "supported": false
+          },
+          "aliases": [
+            "haiku"
+          ]
+        },
+        {
+          "modelId": "sonnet",
+          "name": "Sonnet",
+          "capabilityClass": "standard",
+          "providerModelId": "sonnet",
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "sonnet"
+          ]
+        },
+        {
+          "modelId": "sonnet-1m",
+          "name": "Sonnet",
+          "capabilityClass": "standard",
+          "providerModelId": "sonnet[1m]",
+          "variantOf": "sonnet",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "sonnet[1m]"
+          ]
+        },
+        {
+          "modelId": "opus",
+          "name": "Opus",
+          "capabilityClass": "flagship",
+          "providerModelId": "opus",
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "opus"
+          ]
+        },
+        {
+          "modelId": "opus-1m",
+          "name": "Opus",
+          "capabilityClass": "flagship",
+          "providerModelId": "opus[1m]",
+          "variantOf": "opus",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "opus[1m]"
+          ]
+        },
+        {
+          "modelId": "fable",
+          "name": "Fable",
+          "capabilityClass": "flagship",
+          "providerModelId": "fable",
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "fable"
+          ]
+        },
+        {
+          "modelId": "fable-1m",
+          "name": "Fable",
+          "capabilityClass": "flagship",
+          "providerModelId": "fable[1m]",
+          "variantOf": "fable",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "fable[1m]"
+          ]
+        }
+      ]
     }
   },
   "pricing": {

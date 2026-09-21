@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk } from "@fleet-console/agent-runtime/claude";
-import { claudeGatewayModelPolicy, buildGatewayModelConstraints, findGatewayModel, resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, buildGatewayModelConstraints, findGatewayModel, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 
 /** 판단 전용 실행. 도구·플러그인·사용자 작업 디렉터리를 제공하지 않는다. */
 export async function chooseRoutingModel(input: {
@@ -13,13 +13,13 @@ export async function chooseRoutingModel(input: {
   readonly signal?: AbortSignal;
 }): Promise<string> {
   const selected = input.settings.delegationRoutingModel ?? "sonnet";
-  const native = ["sonnet", "opus"].includes(selected);
-  const model = native ? undefined : findGatewayModel(selected);
+  const model = findGatewayModel(selected);
+  const isClaude = model?.provider === "claude" || ["sonnet", "opus"].includes(selected);
   const selection = resolveAiGatewaySelection(input.settings);
-  if (!native && (!model || !selection.models.some(entry => entry.id === model.id))) {
+  if (!["sonnet", "opus"].includes(selected) && (!model || !selection.models.some(entry => entry.id === model.id))) {
     throw new Error("Routing model is not exposed");
   }
-  const id = model ? `claude-gateway--${model.id}` : selected;
+  const id = isClaude ? (model ? toClaudeGatewayModelId(model) : selected) : (model ? `claude-gateway--${model.id}` : selected);
   const constraints = model ? buildGatewayModelConstraints(model) : undefined;
   const ladder = model && constraints ? selection.effortExposure[model.id] ?? constraints.effortLadder : [];
   const effort = constraints ? (constraints.effortSupported

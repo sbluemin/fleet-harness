@@ -56,7 +56,7 @@ export function findGrokGatewayModel(
 ): GatewayModel | undefined {
   if (!id.startsWith(GROK_GATEWAY_MODEL_ALIAS_PREFIX)) return undefined;
   const slug = id.slice(GROK_GATEWAY_MODEL_ALIAS_PREFIX.length);
-  return catalog.find((candidate) => toGrokModelSlug(candidate.id) === slug);
+  return catalog.find((candidate) => candidate.provider !== "claude" && toGrokModelSlug(candidate.id) === slug);
 }
 
 /** Grok Build gateway model discovery (`GET /v1/models`). */
@@ -64,8 +64,9 @@ export function buildGrokModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
+  const exposed = models.filter((model) => model.provider !== "claude");
   return buildAnthropicModelListPayload(
-    models,
+    exposed,
     createdAt,
     (model) => ({ id: toGrokGatewayModelId(model), displayName: model.displayName }),
     (model) => anthropicModelCapabilities(model.effort),

@@ -22,7 +22,7 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "kimi"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "kimi", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -228,6 +228,7 @@ const GatewayModelsRegistrySchema = z.object({
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
+    claude: GatewayProviderSchema,
   }).strict(),
   pricing: GatewayPricingRegistrySchema,
 }).strict();
@@ -478,14 +479,6 @@ export interface GatewayModelConstraints {
   readonly effortLadder: readonly GatewayReasoningEffort[];
   readonly effortSupported: boolean;
   /**
-   * True when the model shares Anthropic's lineage, and therefore its blind
-   * spots, with a Claude Code session's own model. Such a model can move spend
-   * off the parent's subscription, but adds nothing to a panel that depends on
-   * independent judgement. Vendors keep the `claude-` prefix stable, so new
-   * Anthropic entries are recognized without further declaration.
-   */
-  readonly homolineage: boolean;
-  /**
    * The provider's stated lineup positioning ({@link GatewayCapabilityClass}).
    * The quality prior for seats whose product is judgment; allowance never
    * implies it. Absent on routing aliases.
@@ -511,7 +504,6 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
-    homolineage: upstreamModelId(model).toLowerCase().startsWith("claude"),
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
     ...(model.benchmark && ladder.includes(model.benchmark.effort) ? { benchmark: model.benchmark } : {}),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),

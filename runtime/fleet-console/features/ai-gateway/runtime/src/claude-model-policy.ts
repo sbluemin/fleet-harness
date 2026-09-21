@@ -1,6 +1,6 @@
 import { findClaudeGatewayModel as findGatewayModel, GATEWAY_MODEL_ALIAS_PREFIX, toClaudeGatewayModelId, buildAnthropicModelList } from "./downstream/harness/claude-code/discovery.js";
 
-const NATIVE_MODEL_ALIASES = new Set(["sonnet", "opus", "opus[1m]", "haiku", "fable", "fable[1m]"]);
+const NATIVE_MODEL_ALIASES = new Set(["sonnet", "sonnet[1m]", "opus", "opus[1m]", "haiku", "fable", "fable[1m]"]);
 
 /** SDK는 실행을, Gateway는 모델 검증·별칭·discovery 의미를 소유한다. */
 export const claudeGatewayModelPolicy = {
@@ -9,7 +9,7 @@ export const claudeGatewayModelPolicy = {
       throw new TypeError("A model id must be a non-empty string.");
     }
     const model = findGatewayModel(requested);
-    if (model) {
+    if (model && model.provider !== "claude") {
       const id = toClaudeGatewayModelId(model);
       const discovery = buildAnthropicModelList([model]).data.find((entry) => entry.id === id);
       if (!discovery) throw new Error(`Missing model discovery entry: ${id}`);

@@ -28,6 +28,7 @@ describe("buildAgentCliLaunchKinds", () => {
     const resolved = resolveAiGatewaySelection({
       version: 1,
       models: [
+        { id: "claude--sonnet-1m" },
         { id: "kimi--k3", efforts: ["max"] },
         { id: "codex--gpt-5.6-sol-fast" },
       ],
