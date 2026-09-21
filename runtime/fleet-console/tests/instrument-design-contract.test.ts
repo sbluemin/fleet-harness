@@ -3175,17 +3175,18 @@ describe("Instrument core design contract", () => {
     const chatFollowHoverBlock = chat.match(/^\.agent-chat-follow:hover,\n\.agent-chat-follow:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(chatFollowHoverBlock).toContain("border-color: var(--brass);");
     expect(chatFollowHoverBlock).toContain("outline: none;");
-    // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
-    // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
-    // 위쪽 34px은 전환 칩 줄의 몫이었고, 그 줄이 캡션으로 떠난 지금 로그는 패널 상단에서 바로
-    // 시작한다. 아래 여백만 남아 자기 컨트롤(작업 스트립)을 넘어서는지 고정한다.
+    // 상주하는 부유 컨트롤만이 자기 몫의 로그 여백을 가진다 — 로그 위에 계속 서 있는 면이라야
+    // 바닥까지 내린 마지막 줄을 영구히 가두기 때문이다. 그런 면은 이제 하나도 없다: 작업 스트립은
+    // 컴포저 표시줄로 내려갔고, 남은 Follow 칩과 Ctrl+C 안내는 일시적이라 한 번의 스크롤로
+    // 칩과 함께 풀려난다. 위쪽 34px(전환 칩 줄)에 이어 아래 45px도 사라져, 읽는 여백 하나가
+    // 위아래를 함께 진다 — 마지막 답과 그 답에 이어 쓰는 자리가 메신저 한 화면 안에 든다.
     const chatLogBlock = chat.match(/^\.agent-chat-log \{[^}]*\}/m)?.[0] ?? "";
     const chatLogPadding = chatLogBlock.match(/padding: ([^;]+);/)?.[1] ?? "";
     expect(chatLogPadding.startsWith("var(--space-3) ")).toBe(true);
     expect(chatLogPadding).not.toContain("34px");
-    expect(chatLogPadding).toContain("calc(var(--space-3) + 45px)");
-    // 아래 여백이 피하는 것은 이제 Follow 칩 하나뿐이다 — 백그라운드 작업 글리프는 컴포저 툴
-    // 행(in-flow) 안으로, 중지는 컴포저의 발사 자리로 들어가 더 이상 로그 위에 얹히지 않는다.
+    expect(chatLogPadding).not.toContain("45px");
+    // 백그라운드 작업 글리프는 컴포저 툴 행(in-flow) 안으로, 중지는 컴포저의 발사 자리로
+    // 들어가 더 이상 로그 위에 얹히지 않는다.
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
@@ -4575,8 +4576,8 @@ describe("War Room deck panel grammar", () => {
     // 선택된 칸, 또는 판 위로 끌어올린 칸에서 다시 그려진다.
     expect(hide).not.toContain("is-active");
     expect(hide).not.toContain("is-quicklook");
-    // 카드의 로그는 초대 하한만 되돌린다. 여백은 손대지 않는다 — 피할 부유 칩이 사라져 베이스가
-    // 이미 space-3이고, 하단 45px는 Follow 칩의 몫이라 단축 padding으로 덮으면 죽는다.
+    // 카드의 로그는 초대 하한만 되돌린다. 여백은 손대지 않는다 — 베이스가 이미 위아래 모두
+    // 읽는 여백 하나라, 카드가 따로 덮을 값이 없다.
     const logOnTile = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-log \{[^}]*\}/)?.[0] ?? "";
     expect(logOnTile).toContain("min-height: 0;");
     expect(logOnTile).not.toContain("45px");
