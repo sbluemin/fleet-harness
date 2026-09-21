@@ -54,7 +54,16 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       return true;
     }
     if (req.method === "GET" && action === "screenshot") {
-      try { writeJson(res, 200, await browserService.screenshot(operationId, { format: "png" })); } catch (error) { fail(error); }
+      const controller = new AbortController();
+      const onClose = () => { if (!res.writableEnded) controller.abort(); };
+      res.on("close", onClose);
+      try {
+        writeJson(res, 200, await browserService.screenshot(operationId, { format: "png", signal: controller.signal }));
+      } catch (error) {
+        if (!res.writableEnded && !res.destroyed) fail(error);
+      } finally {
+        res.off("close", onClose);
+      }
       return true;
     }
     if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
