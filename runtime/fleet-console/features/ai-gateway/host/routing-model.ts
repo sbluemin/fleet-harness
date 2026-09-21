@@ -16,7 +16,7 @@ export async function chooseRoutingModel(input: {
   const model = findGatewayModel(selected);
   const isClaude = model?.provider === "claude" || ["sonnet", "opus"].includes(selected);
   const selection = resolveAiGatewaySelection(input.settings);
-  if (!isClaude && (!model || !selection.models.some(entry => entry.id === model.id))) {
+  if (!["sonnet", "opus"].includes(selected) && (!model || !selection.models.some(entry => entry.id === model.id))) {
     throw new Error("Routing model is not exposed");
   }
   const id = isClaude ? (model ? toClaudeGatewayModelId(model) : selected) : (model ? `claude-gateway--${model.id}` : selected);
