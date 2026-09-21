@@ -407,7 +407,10 @@ function forChatCompletionsBackend(
           if (previous.reasoning_content) leadingReasoning.unshift(previous.reasoning_content);
         }
         if (leadingText.length > 0) pendingAssistantText = leadingText.join("\n\n");
-        if (leadingReasoning.length > 0) pendingAssistantReasoning = leadingReasoning.join("\n\n");
+        if (leadingReasoning.length > 0) {
+          if (replayReasoning && item.reasoning_content) leadingReasoning.push(item.reasoning_content);
+          pendingAssistantReasoning = leadingReasoning.join("\n\n");
+        }
       }
       pendingToolCalls.push({
         id: item.call_id,

@@ -70,6 +70,9 @@ describe("chat completions request translation", () => {
           model: "deepseek-v4.1-flash",
           max_tokens: 128,
           messages: [{ role: "assistant", content: [
+            { type: "thinking", thinking: "Check the request." },
+            { type: "text", text: "Checking." },
+          ] }, { role: "assistant", content: [
             { type: "thinking", thinking: "Run both tools." },
             { type: "text", text: "I will run both tools." },
             { type: "tool_use", id: "call-a", name: "ToolA", input: { x: 1 } },
@@ -101,8 +104,8 @@ describe("chat completions request translation", () => {
       { role: "user", content: "run both tools" },
       {
         role: "assistant",
-        content: "I will run both tools.\n\nWaiting for results.",
-        reasoning_content: "Run both tools.",
+        content: "Checking.\n\nI will run both tools.\n\nWaiting for results.",
+        reasoning_content: "Check the request.\n\nRun both tools.",
         // 연속 function_call은 하나의 assistant 메시지로 합쳐져 tool 응답 인접성을 지킨다.
         tool_calls: [
           { id: "call-a", type: "function", function: { name: "ToolA", arguments: "{\"x\":1}" } },
