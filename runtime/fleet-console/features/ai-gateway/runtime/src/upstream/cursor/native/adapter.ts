@@ -1123,8 +1123,14 @@ interface CursorLiveRunDescriptor {
 }
 
 interface CursorPendingToolCorrelation {
-  /** Anthropic-visible tool_use id. */
+  /** Anthropic-visible tool_use id, rewritten when Cursor's own id is not a legal one. */
   readonly callId: string;
+  /**
+   * The identifier Cursor labels its own tool-update frames with, when it differs from
+   * {@link toolCallId}. Sealing it is what lets a resumed call's echo be recognized once
+   * {@link callId} no longer repeats Cursor's spelling.
+   */
+  readonly upstreamCallId?: string;
   /** Cursor MCP id sealed from mcpArgs. */
   readonly toolCallId: string;
   /** Cursor exec envelope id sealed from execServerMessage. */
@@ -2527,7 +2533,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
 
     activeSegment.outputIndex += 1;
     const entry: CursorToolItem = {
-      itemId: call.publicCallId ?? call.toolCallId ?? call.callId,
+      itemId: cursorAnthropicToolUseId(call.publicCallId ?? call.toolCallId ?? call.callId),
       index: activeSegment.outputIndex,
       name: call.name,
       arguments: "",
@@ -2796,6 +2802,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             ? undefined
             : {
               callId: entry.itemId,
+              ...(entry.publicCallId === undefined ? {} : { upstreamCallId: entry.publicCallId }),
               toolCallId: call.toolCallId,
               execId: call.execId,
               messageId: call.messageId,
@@ -2838,6 +2845,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
           ? undefined
           : {
             callId: entry.itemId,
+            ...(entry.publicCallId === undefined ? {} : { upstreamCallId: entry.publicCallId }),
             toolCallId: redirect.call.toolCallId,
             execId: redirect.call.execId,
             messageId: redirect.call.messageId,
@@ -2992,6 +3000,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     // it resumes, and the continuation segment has no memory of the segment that sealed them.
     for (const call of calls) {
       settledToolIdentifiers.add(call.callId);
+      if (call.upstreamCallId !== undefined) settledToolIdentifiers.add(call.upstreamCallId);
       settledToolIdentifiers.add(call.toolCallId);
     }
     const segment = createSegment(signal, continuationEstimatedInputTokens);
@@ -3483,6 +3492,32 @@ function cursorSchemaRequiresString(schema: unknown): boolean {
     && schema.type.every((type) => type === "string" || type === "null");
 }
 
+/** An Anthropic `tool_use.id`: letters, digits, `_` or `-`, and nothing else. */
+const ANTHROPIC_TOOL_USE_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Cursor's call id is not usable as an Anthropic `tool_use.id`. Measured 2026-09-21: the server
+ * joins its own call id and the model's function-call id with a newline —
+ * `call-<uuid>-0\nfc_<uuid>_0` — on every tool call, both the MCP path and a redirected native
+ * exec, and this adapter forwarded it verbatim.
+ *
+ * A newline costs the whole turn rather than merely looking wrong. Claude Code's plugin engine
+ * validates each tool chunk a `turn.step` hook relays and requires this shape, so Fleet's own
+ * routing hook was skipped and the chunk dropped; the turn then reached the caller with
+ * `stop_reason: "tool_use"` and no `tool_use` block, which it reports as a tool call it could not
+ * parse. Nothing upstream depends on the downstream spelling — {@link CursorPendingToolCorrelation}
+ * carries Cursor's own identifiers for the reply — so only this id is rewritten.
+ *
+ * The digest keeps two ids that differ only in rejected characters apart, which a plain
+ * substitution would merge into one and then fail to correlate.
+ */
+function cursorAnthropicToolUseId(rawId: string): string {
+  if (ANTHROPIC_TOOL_USE_ID.test(rawId)) return rawId;
+  const digest = createHash("sha256").update(rawId).digest("hex").slice(0, 12);
+  const stem = rawId.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96);
+  return stem.length === 0 ? `cursor_call_${digest}` : `${stem}_${digest}`;
+}
+
 function mcpCallFromToolUpdate(value: Record<string, unknown>): CursorMcpCall | null {
   const toolCall = isRecord(value.toolCall) ? value.toolCall : undefined;
   const args = toolCall ? mcpArgsFromToolCall(toolCall) : undefined;
@@ -3577,7 +3612,11 @@ function isCursorParkedResidueFrame(
   if (isRecord(update.tokenDelta)) return true;
   const identifiers = cursorToolUpdateIdentifiers(update);
   if (identifiers === undefined || identifiers.length === 0 || parked === undefined) return false;
-  const sealed = new Set(parked.flatMap((call) => [call.callId, call.toolCallId]));
+  const sealed = new Set(parked.flatMap((call) => [
+    call.callId,
+    ...(call.upstreamCallId === undefined ? [] : [call.upstreamCallId]),
+    call.toolCallId,
+  ]));
   return identifiers.some((identifier) => sealed.has(identifier));
 }
 
