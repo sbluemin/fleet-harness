@@ -924,18 +924,13 @@ describe("OpenCode conversation routing", () => {
       expect(session).not.toContain("private-user");
       sessions.push(session!);
       const endpoint = String(url);
-      if (endpoint.endsWith("/messages")) {
-        return new Response('data: {"type":"message_stop"}\n\n', {
-          headers: { "content-type": "text/event-stream" },
-        });
-      }
       return new Response(endpoint.endsWith("/responses")
-        ? 'data: {"type":"response.completed","response":{"id":"r","model":"grok-4.6","usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
+        ? 'data: {"type":"response.completed","response":{"id":"r","model":"muse-spark-1.3-contributor","usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
         : 'data: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
     });
     const router = createAiGatewayRouter({ fetch: fetchMock, readOpencodeApiKey: async () => "test-key" });
     try {
-      for (const model of ["minimax-m3", "grok-4.6", "deepseek-v4.1-flash"]) {
+      for (const model of ["muse-spark-1.3-contributor", "deepseek-v4.1-flash"]) {
         for (const userId of ["private-user-session-a", "private-user-session-a", "private-user-session-b", null, null]) {
           const res = response();
           await router.handle(ctx({
@@ -945,7 +940,7 @@ describe("OpenCode conversation routing", () => {
           expect(res.status).toBe(200);
         }
       }
-      expect(sessions).toHaveLength(15);
+      expect(sessions).toHaveLength(10);
       for (let index = 0; index < sessions.length; index += 5) {
         expect(sessions[index]).toBe(sessions[0]);
         expect(sessions[index + 1]).toBe(sessions[index]);

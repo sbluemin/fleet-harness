@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-09-20T00:00:00Z",
+  "updatedAt": "2026-09-22T00:00:00Z",
   "normalization": {
     "method": "cohort-min-max",
     "sourceWeighting": "equal",
@@ -269,8 +269,8 @@
             "dataAnalysis": 79.840667,
             "language": 87.683667,
             "instructionFollowing": 71.846,
-            "avgInputTokens": 181163.0,
-            "avgOutputTokens": 11729.0,
+            "avgInputTokens": 181163,
+            "avgOutputTokens": 11729,
             "costPerQuestion": 0.4178,
             "costPerSuccessfulTask": 0.507,
             "questions_theory_of_mind": 52,
@@ -330,8 +330,8 @@
             "dataAnalysis": 79.306667,
             "language": 82.892667,
             "instructionFollowing": 64.6165,
-            "avgInputTokens": 179096.0,
-            "avgOutputTokens": 22145.0,
+            "avgInputTokens": 179096,
+            "avgOutputTokens": 22145,
             "costPerQuestion": 0.2743,
             "costPerSuccessfulTask": 0.3437,
             "questions_theory_of_mind": 52,
@@ -391,8 +391,8 @@
             "dataAnalysis": 78.033333,
             "language": 72.567,
             "instructionFollowing": 60.121,
-            "avgInputTokens": 126025.0,
-            "avgOutputTokens": 21799.0,
+            "avgInputTokens": 126025,
+            "avgOutputTokens": 21799,
             "costPerQuestion": 0.1246,
             "costPerSuccessfulTask": 0.1677,
             "questions_theory_of_mind": 52,
@@ -422,71 +422,10 @@
         }
       },
       "normalized": {
-        "score": 0.0,
+        "score": 0,
         "sourceScores": {
-          "cursorbench": 0.0,
-          "livebench": 0.0
-        }
-      }
-    },
-    "gemini-3.7-flash": {
-      "effort": "high",
-      "measurements": {
-        "cursorbench": {
-          "model": "Gemini 3.7 Flash High",
-          "metrics": {
-            "score": 61.6,
-            "tokensPerTask": 38448,
-            "stepsPerTask": 99,
-            "costPerTask": 1.2
-          }
-        },
-        "livebench": {
-          "model": "gemini-3.7-flash-high",
-          "metrics": {
-            "score": 78.826012,
-            "reasoning": 87.798,
-            "coding": 78.8885,
-            "agenticCoding": 58.283,
-            "mathematics": 93.468,
-            "dataAnalysis": 67.964333,
-            "language": 85.455,
-            "instructionFollowing": 79.92525,
-            "avgInputTokens": 285829.0,
-            "avgOutputTokens": 22610.0,
-            "costPerQuestion": 0.1238,
-            "costPerSuccessfulTask": 0.1571,
-            "questions_theory_of_mind": 52,
-            "questions_zebra_puzzle": 50,
-            "questions_spatial": 50,
-            "questions_logic_with_navigation": 50,
-            "questions_code_generation": 71,
-            "questions_code_completion": 46,
-            "questions_javascript": 22,
-            "questions_typescript": 30,
-            "questions_python": 20,
-            "questions_AMPS_Hard": 100,
-            "questions_integrals_with_game": 100,
-            "questions_math_comp": 102,
-            "questions_olympiad": 77,
-            "questions_consecutive_events": 47,
-            "questions_tablejoin": 52,
-            "questions_tablereformat": 51,
-            "questions_connections": 50,
-            "questions_plot_unscrambling": 50,
-            "questions_typos": 50,
-            "questions_paraphrase": 50,
-            "questions_simplify": 50,
-            "questions_story_generation": 50,
-            "questions_summarize": 50
-          }
-        }
-      },
-      "normalized": {
-        "score": 38.224622,
-        "sourceScores": {
-          "cursorbench": 6.17284,
-          "livebench": 70.276403
+          "cursorbench": 0,
+          "livebench": 0
         }
       }
     },
@@ -513,8 +452,8 @@
             "dataAnalysis": 54.005667,
             "language": 87.792667,
             "instructionFollowing": 81.4125,
-            "avgInputTokens": 607424.0,
-            "avgOutputTokens": 42786.0,
+            "avgInputTokens": 607424,
+            "avgOutputTokens": 42786,
             "costPerQuestion": 0.233,
             "costPerSuccessfulTask": 0.3073,
             "questions_theory_of_mind": 52,
@@ -636,6 +575,9 @@
     },
     "qwen3.8-max": {
       "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gemini-3.7-flash": {
+      "reason": "2026-09-22: Antigravity 카탈로그에서 Gemini 3.8 Flash로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
     }
   },
   "sourceAudit": {

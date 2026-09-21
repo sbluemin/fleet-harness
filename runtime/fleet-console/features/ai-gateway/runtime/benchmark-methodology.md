@@ -53,7 +53,7 @@ LiveBench raw: [점수](https://livebench.ai/table_2026_06_25.csv), [분야](htt
 
 LiveBench 사이트는 CC-BY-SA-4.0을 표시한다. `benchmarks.json`의 LiveBench 발췌 및 이를 변형한 데이터는 LiveBench 기여자를 표시하고 같은 조건으로 제공한다. 코드 라이선스로 데이터 이용조건을 덮지 않는다. CursorBench는 공개된 개별 사실의 인용이며 별도 데이터 라이선스가 확인됐다는 뜻은 아니다. 어느 쪽도 문제·답변·전체 실행 로그 재배포 권한을 뜻하지 않는다.
 
-현재 complete-case는 GPT-5.6 Sol/Terra/Luna max, Gemini 3.7/3.8 Flash high의 5개다. Claude Fable 5는 Cursor API-tier 재판매가 카탈로그에서 빠지며 코호트에서 제외했고, 이전 6모델 점수는 재사용하지 않는다. Claude Opus 5는 LiveBench 비용 원본의 AMPS_Hard 표본이 101개로 다른 모델의 100개와 달라 추가 표본 의미를 확인하기 전까지 제외했다. 이는 낮은 성능이라는 판단이 아니다. 다른 모델은 `excluded`에서 이유를 확인한다. Kimi K2.7 Code에는 양쪽 점수가 있으나 무표기 effort를 자의적으로 채우지 않는다. Fable 5.1과 Sonnet 5의 공식 벤치 결과가 존재하더라도 공급자 catalog identity가 먼저 확인되지 않으면 벤치 갱신만으로 새 모델을 생성하지 않는다.
+현재 complete-case는 GPT-5.6 Sol/Terra/Luna max, Gemini 3.8 Flash high의 4개다. Gemini 3.7 Flash는 2026-09-22에 이전 세대로 카탈로그에서 제거하여 코호트에서도 제외하고 남은 모델 전체를 재정규화했다. Claude Fable 5는 Cursor API-tier 재판매가 카탈로그에서 빠지며 코호트에서 제외했고, 이전 6모델 점수는 재사용하지 않는다. Claude Opus 5는 LiveBench 비용 원본의 AMPS_Hard 표본이 101개로 다른 모델의 100개와 달라 추가 표본 의미를 확인하기 전까지 제외했다. 이는 낮은 성능이라는 판단이 아니다. 다른 모델은 `excluded`에서 이유를 확인한다. Kimi K2.7 Code에는 양쪽 점수가 있으나 무표기 effort를 자의적으로 채우지 않는다. Fable 5.1과 Sonnet 5의 공식 벤치 결과가 존재하더라도 공급자 catalog identity가 먼저 확인되지 않으면 벤치 갱신만으로 새 모델을 생성하지 않는다.
 
 ### 다시 검토할 때의 주의
 
