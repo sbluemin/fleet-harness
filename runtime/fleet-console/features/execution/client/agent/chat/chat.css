@@ -2220,6 +2220,10 @@
   bottom: var(--space-3);
   z-index: 4;
   transform: translateX(-50%);
+  /* 로그가 자기 바닥을 부유물에 내주지 않게 된 뒤로 이 안내는 마지막 답 위에 겹친다 — 겹침 자체는
+     받아들인다(밀어내지 않는 것이 이 안내의 요점이다). 겹친 동안 아래의 글과 링크까지 죽는 것은
+     별개이고, 그건 받아들이지 않는다: 이것은 컨트롤이 아니라 문장이므로 포인터를 통과시킨다. */
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
