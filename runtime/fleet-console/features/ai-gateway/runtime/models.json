@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-20T00:00:00Z",
+  "updatedAt": "2026-09-22T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -580,7 +580,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "auto",
-      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05). This catalog keeps only Auto-pool models (auto, Composer, Grok). API-tier resales were withdrawn 2026-09-20",
+      "source": "Cursor GetUsableModels and cursor-agent 2026.09.18-9a7762b live ordinary/Fast replies, observed 2026-09-22. Grok 4.7 uses grok-4.7-{effort}[-fast] (no cursor- prefix); Run checkpoint reports 256000 normally and 500000 with modelDetails.maxMode=true. Grok 4.7 Auto-pool membership is owner-confirmed; GetCurrentPeriodUsage autoBucketModels still omits it on this date. Composer metadata retained from 2026-08-01. Only Auto-pool models are exposed; API-tier resales withdrawn 2026-09-20.",
       "models": [
         {
           "modelId": "auto",
@@ -608,41 +608,8 @@
           "contextWindow": 200000
         },
         {
-          "modelId": "grok-4.5",
-          "name": "Grok-4.5",
-          "capabilityClass": "flagship",
-          "quotaScope": "auto",
-          "contextWindow": 256000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}"
-          }
-        },
-        {
-          "modelId": "grok-4.5-fast",
-          "name": "Grok-4.5-Fast",
-          "capabilityClass": "flagship",
-          "variantOf": "grok-4.5",
-          "quotaScope": "auto",
-          "contextWindow": 256000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
-          }
-        },
-        {
-          "modelId": "grok-4.6",
-          "name": "Grok-4.6",
+          "modelId": "grok-4.7",
+          "name": "Grok-4.7",
           "capabilityClass": "flagship",
           "quotaScope": "auto",
           "contextWindow": 256000,
@@ -654,14 +621,13 @@
               "high",
               "xhigh"
             ],
-            "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}"
+            "upstreamModelIdTemplate": "grok-4.7-{effort}"
           }
         },
         {
-          "modelId": "grok-4.6-fast",
-          "name": "Grok-4.6-Fast",
+          "modelId": "grok-4.7-fast",
+          "name": "Grok-4.7-Fast",
           "capabilityClass": "flagship",
-          "variantOf": "grok-4.6",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -672,8 +638,47 @@
               "high",
               "xhigh"
             ],
-            "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}-fast"
-          }
+            "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
+          },
+          "variantOf": "grok-4.7"
+        },
+        {
+          "modelId": "grok-4.7-500k",
+          "name": "Grok-4.7-500k",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}"
+          },
+          "variantOf": "grok-4.7",
+          "cursorMaxMode": true
+        },
+        {
+          "modelId": "grok-4.7-500k-fast",
+          "name": "Grok-4.7-500k-Fast",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
+          },
+          "variantOf": "grok-4.7",
+          "cursorMaxMode": true
         }
       ]
     },
@@ -914,12 +919,12 @@
     },
     "xai": {
       "name": "xAI",
-      "defaultModel": "grok-4.6",
-      "source": "official Grok CLI 1.0.4 ~/.grok/models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models (grok-4.6 observed 2026-08-13); grok-composer-2.5-fast is the account-verified OpenCodex xAI identity, live POST /v1/responses accepted on the Grok CLI proxy 2026-08-19 (absent from the public docs.x.ai catalog)",
+      "defaultModel": "grok-4.7",
+      "source": "Official Grok CLI 1.0.40 models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models and live CLI ordinary/Fast replies observed 2026-09-22: grok-4.7 and grok-4.7-build-fast, 500000 context, low/medium/high/xhigh. grok-composer-2.5-fast retains the account-verified OpenCodex xAI identity and live Responses acceptance from 2026-08-19.",
       "models": [
         {
-          "modelId": "grok-4.6",
-          "name": "Grok-4.6",
+          "modelId": "grok-4.7",
+          "name": "Grok-4.7",
           "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 500000,
@@ -932,6 +937,24 @@
               "xhigh"
             ]
           }
+        },
+        {
+          "modelId": "grok-4.7-fast",
+          "name": "Grok-4.7-Fast",
+          "capabilityClass": "flagship",
+          "wire": "responses",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "providerModelId": "grok-4.7-build-fast",
+          "variantOf": "grok-4.7"
         },
         {
           "modelId": "grok-composer-2.5-fast",
