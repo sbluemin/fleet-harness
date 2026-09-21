@@ -29,11 +29,13 @@ import {
   OPENCODE_MESSAGES_URL,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
+  buildAnthropicModelList,
   createAiGatewayRouter as createCoreAiGatewayRouter,
   fallbackGatewayRoutingAssignment as decideGatewayRoutingAssignment,
   decideGatewayRoutingAssignment as decideGatewayRoutingAssignmentWithJev,
   errorMessage,
   findGatewayModel,
+  GATEWAY_MODELS,
   parseGatewayAssignmentRequest,
   SystemOneClient,
   SystemOneError,
@@ -41,6 +43,7 @@ import {
 import {
   pickSeat,
 } from "../../src/fleet/routing-fallback.js";
+import { buildGatewayLoadout } from "../../src/fleet/model-loadout.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -263,6 +266,54 @@ describe("delegation assignment", () => {
     expect(new Set(carried).size).toBe(2);
     expect(providerLoad.get("cursor")).toBe(2);
     expect(providerLoad.get("xai")).toBe(2);
+  });
+
+  it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
+      expect(JSON.parse(String(init?.body)).model).toBe("sonnet");
+      return new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", content: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const router = createAiGatewayRouter({ fetch: fetchMock });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "sonnet",
+      messages: [{ role: "user", content: "hello" }],
+    }));
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Verify /v1/models excludes native Claude aliases (no duplicate advertisement)
+    const discovery = buildAnthropicModelList(GATEWAY_MODELS);
+    const discoveredIds = discovery.data.map((entry) => entry.id);
+    expect(discoveredIds.some((id) => id.startsWith("claude-gateway--claude--") || id === "sonnet" || id === "opus[1m]")).toBe(false);
+  });
+
+  it("routes delegation to Claude native models without gateway prefix", () => {
+    const sonnet = requireGatewayModel("claude--sonnet");
+    const exposure = {
+      delegationRoutingEnabled: true,
+      delegationModels: [sonnet],
+      quota: { claude: { status: "ok" } },
+    } satisfies GatewayAssignmentExposure;
+
+    const loadout = buildGatewayLoadout(exposure);
+    expect(loadout.providers.claude?.models.map((m) => m.modelId)).toEqual(["sonnet"]);
+
+    const decision = decideGatewayRoutingAssignment(
+      { surface: "agent", requestedModel: "sonnet" },
+      exposure,
+    );
+    expect(decision.model).toBe("sonnet");
+    expect(decision.effort).toBe("medium");
   });
 
   it("leaves a fork on the session model", async () => {

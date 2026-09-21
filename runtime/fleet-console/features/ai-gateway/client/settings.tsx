@@ -29,6 +29,7 @@ function AiGatewaySection() {
 }
 const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
+  claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
   kimi: "terminal.settings.aiGatewayProviderKimi",
@@ -392,10 +393,11 @@ function AiGatewayRoutingCard() {
               <ModelPicker
                 value={state.delegationRoutingModel ?? "sonnet"}
                 options={[
-                  { id: "opus", label: "Opus", provider: "anthropic" },
-                  { id: "sonnet", label: "Sonnet", provider: "anthropic" },
+                  { id: "opus", label: "Opus", provider: "claude" },
+                  { id: "sonnet", label: "Sonnet", provider: "claude" },
                   ...state.aiGatewayCatalog.providers.flatMap(provider => provider.models
                     .filter(model => state.aiGateway?.models?.some(selected => selected.id === model.id))
+                    .filter(model => model.id !== "claude--sonnet" && model.id !== "claude--opus")
                     .map(model => ({ id: model.id, label: model.name, provider: provider.id, contextWindow: model.contextWindow }))),
                 ]}
                 aria-labelledby="routing-model-label"
@@ -884,6 +886,7 @@ export interface AiGatewayModelFamily {
  */
 export function groupAiGatewayModelFamilies(
   models: readonly AiGatewayCatalogModel[],
+  baseContextLabel?: string,
 ): AiGatewayModelFamily[] {
   const groups = new Map<string, Array<Omit<AiGatewayModelVariant, "label">>>();
   for (const model of models) {
@@ -900,8 +903,8 @@ export function groupAiGatewayModelFamilies(
     else groups.set(key, [variant]);
   }
 
-  const windowOf = (variant: { readonly model: AiGatewayCatalogModel }): number =>
-    variant.model.contextWindow ?? Number.MAX_SAFE_INTEGER;
+  const windowOf = (variant: { readonly model: AiGatewayCatalogModel; readonly contextKey: string }): number =>
+    variant.contextKey === AI_GATEWAY_BASE_CONTEXT ? 0 : (variant.model.contextWindow ?? Number.MAX_SAFE_INTEGER);
 
   return [...groups.entries()].flatMap(([key, variants]) => {
     const ordered = [...variants].sort((a, b) =>
@@ -914,7 +917,11 @@ export function groupAiGatewayModelFamilies(
       if (reference.contextKey !== AI_GATEWAY_BASE_CONTEXT) name = name.replace(AI_GATEWAY_CONTEXT_SUFFIX, "");
     }
     const labeled: AiGatewayModelVariant[] = ordered.map((variant) => {
-      const context = formatAiGatewayContextWindow(variant.model.contextWindow) ?? variant.contextKey.toUpperCase();
+      const isBaseWithoutKnownWindow =
+        variant.contextKey === AI_GATEWAY_BASE_CONTEXT && !variant.model.contextWindow;
+      const context = (isBaseWithoutKnownWindow && baseContextLabel)
+        ? baseContextLabel
+        : formatAiGatewayContextWindow(variant.model.contextWindow) ?? variant.contextKey.toUpperCase();
       return { ...variant, label: variant.fast ? `${context} Fast` : context };
     });
     return [{ key, name, capabilityClass: reference.model.capabilityClass, variants: labeled }];
@@ -1140,9 +1147,10 @@ function AiGatewayModelPalette({
   const listboxId = React.useId();
 
   const providerLabel = (id: string): string => t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id as AiGatewayProviderId]);
+  const baseContextLabel = t("terminal.settings.aiGatewayContextBase");
   const entries = React.useMemo<AiGatewayPaletteHit[]>(
-    () => providers.flatMap((provider) => groupAiGatewayModelFamilies(provider.models).map((family) => ({ provider, family }))),
-    [providers],
+    () => providers.flatMap((provider) => groupAiGatewayModelFamilies(provider.models, baseContextLabel).map((family) => ({ provider, family }))),
+    [providers, baseContextLabel],
   );
   const matched = filterAiGatewayPalette(entries, query, providerLabel);
   const enabledIds = new Set((selection.models ?? []).map((entry) => entry.id));

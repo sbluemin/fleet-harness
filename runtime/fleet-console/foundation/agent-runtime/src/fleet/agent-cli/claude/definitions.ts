@@ -3,22 +3,25 @@ import { createClaudeFamilyCliDefinition } from "./factory.js";
 // Claude Code's bare `fable` and `opus` aliases use their default context windows.
 // Console launches their 1M coordinates while keeping the plain menu labels.
 export const NATIVE_CLAUDE_MODEL_ALIASES = ["fable[1m]", "opus[1m]", "sonnet"] as const;
+export const ALL_NATIVE_CLAUDE_MODEL_ALIASES = [
+  "fable[1m]",
+  "opus[1m]",
+  "sonnet",
+  "haiku",
+  "opus",
+  "fable",
+  "sonnet[1m]",
+] as const;
 export const NATIVE_CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
-const NATIVE_CLAUDE_MODEL_ALIAS_REWRITES = {
-  fable: "fable[1m]",
-  opus: "opus[1m]",
-} as const satisfies Readonly<Record<string, (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number]>>;
-
-/** Resolve a Console-native Claude Code model alias, rewriting legacy bare aliases to 1M coordinates. */
+/** 네이티브 alias의 컨텍스트 선택은 바꾸지 않고 Claude Code에 전달한다. */
 export function resolveNativeClaudeModelAlias(
   model: string,
-): (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number] | undefined {
-  const rewritten =
-    NATIVE_CLAUDE_MODEL_ALIAS_REWRITES[model as keyof typeof NATIVE_CLAUDE_MODEL_ALIAS_REWRITES] ?? model;
-  return NATIVE_CLAUDE_MODEL_ALIASES.includes(rewritten as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])
-    ? (rewritten as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])
-    : undefined;
+): (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number] | undefined {
+  if (ALL_NATIVE_CLAUDE_MODEL_ALIASES.includes(model as (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
+    return model as (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number];
+  }
+  return undefined;
 }
 
 

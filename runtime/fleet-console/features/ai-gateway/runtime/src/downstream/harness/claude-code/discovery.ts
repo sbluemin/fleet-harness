@@ -57,6 +57,11 @@ export function toGatewayModelAlias(modelId: string): string {
  * absolute compaction reserve.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
+  if (model.provider === "claude") {
+    return model.upstreamId ?? (isClaudeOneMillionContextWindow(model.contextWindow)
+      ? `${model.id.replace(/^claude--/, "").replace(/-1m$/, "")}${CLAUDE_ONE_MILLION_MARKER}`
+      : model.id.replace(/^claude--/, ""));
+  }
   const alias = toGatewayModelAlias(model.id);
   return isClaudeOneMillionContextWindow(model.contextWindow)
     ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
@@ -86,7 +91,7 @@ export function findClaudeGatewayModel(
   if (!id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) return findGatewayModel(id, catalog);
   const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
   const model = catalog.find((candidate) => candidate.id === scopedId);
-  if (!model) return undefined;
+  if (!model || model.provider === "claude") return undefined;
   return hasClaudeOneMillionMarker(id)
     && !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model))
     ? undefined
@@ -100,8 +105,9 @@ export function buildAnthropicModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
+  const exposed = models.filter((model) => model.provider !== "claude");
   return buildAnthropicModelListPayload(
-    models,
+    exposed,
     createdAt,
     (model) => ({
       id: toClaudeGatewayModelId(model),

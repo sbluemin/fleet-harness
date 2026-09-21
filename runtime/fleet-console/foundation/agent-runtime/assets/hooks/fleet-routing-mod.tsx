@@ -149,7 +149,7 @@ type RowState = "asked" | "seated" | "running" | "done" | "denied";
 const GATEWAY_PREFIX = "claude-gateway--";
 
 function modelLabel(model: string, effort?: string): string {
-  if (!model.startsWith(GATEWAY_PREFIX)) return model;
+  if (!model.startsWith(GATEWAY_PREFIX)) return effort === undefined ? model : `${model} @${effort}`;
   const scoped = model.slice(GATEWAY_PREFIX.length).replace("--", "/");
   return effort === undefined ? scoped : `${scoped} @${effort}`;
 }

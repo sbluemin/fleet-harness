@@ -152,7 +152,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(models.length > 0 ? { models } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
-    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
+    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus", "haiku", "fable", "sonnet[1m]", "opus[1m]", "fable[1m]"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
