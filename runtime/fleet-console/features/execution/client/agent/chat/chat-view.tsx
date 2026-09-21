@@ -49,6 +49,16 @@ const SLEEP_ARM_WINDOW_MS = 8_000;
 /** 이것만 눌린 상태는 아직 조합 중이다 — Ctrl+C 무장을 거두지 않는다. */
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock"]);
 
+/**
+ * 이전 대화를 펼쳤을 때 위로 내미는 꼬리의 높이.
+ *
+ * 펼치기가 자리를 지키면 화면이 한 픽셀도 움직이지 않고, 그러면 눌렸는지 알 수 없다. 이 값만큼만
+ * 덜 지켜서 직전 답의 마지막 줄이 현재 문답 위로 넘어오게 한다 — "위에 생겼다"를 말하는 최소치다.
+ * 바닥을 따라가는 중에는 0이다: 그때 자리를 지킨다는 것은 바닥에 머무는 것이고, 꼬리를 내밀면
+ * 팔로우가 곧바로 되돌려 깜빡임만 남는다.
+ */
+const HISTORY_PEEK_PX = 56;
+
 /** 이 키가 제 것이 아님을 말하는 자리들 — 남의 입력창과 그 위에 선 면. */
 const FOREIGN_KEY_SURFACES = "input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [role='menu'], [role='listbox'], dialog";
 
@@ -248,8 +258,38 @@ export function AgentChatView({
     setHistoryOpen(false);
     requestAnimationFrame(() => applyScrollTop(0));
   }, [applyScrollTop, state.observedTurns, state.snapshotting, state.turns.length]);
-  const revealHistory = React.useCallback(() => setHistoryOpen(true), []);
+  // 펼침과 접힘은 현재 문답 **위쪽**의 높이만 바꾼다. 그래서 바닥까지의 거리를 기억해 두면
+  // 자리를 되찾을 수 있다 — 아래쪽은 한 줄도 달라지지 않기 때문이다.
+  //
+  // 삽입된 높이를 그대로 더하지 않는 이유가 있다. 스크롤이 맨 위가 아닌 자리에서는 브라우저의
+  // 기본 앵커링이 이미 같은 보정을 하고 있어서, 높이 차를 한 번 더 더하면 두 배로 튄다. 바닥까지의
+  // 거리로 목표 좌표를 새로 계산하면 누가 먼저 손을 댔든 결과가 같다.
+  const historyAnchorRef = React.useRef<number | null>(null);
+  const markHistoryAnchor = React.useCallback(() => {
+    const log = logRef.current;
+    if (!log || log.clientHeight === 0) return;
+    historyAnchorRef.current = log.scrollHeight - log.scrollTop;
+  }, []);
+  const toggleHistory = React.useCallback(() => {
+    markHistoryAnchor();
+    setHistoryOpen((current) => !current);
+  }, [markHistoryAnchor]);
+  const revealHistory = React.useCallback(() => {
+    markHistoryAnchor();
+    setHistoryOpen(true);
+  }, [markHistoryAnchor]);
   useHistoryReveal({ ref: logRef, armed: !historyOpen && state.turns.length > 1, onReveal: revealHistory });
+
+  // 새 턴 도착이 밴드를 도로 접을 때는 좌표를 남기지 않는다 — 그 경로는 로그를 맨 위로 되돌리는
+  // 것이 의도이고, 여기서 자리를 지키면 그 의도를 덮는다.
+  React.useLayoutEffect(() => {
+    const anchor = historyAnchorRef.current;
+    historyAnchorRef.current = null;
+    const log = logRef.current;
+    if (anchor === null || !log || log.clientHeight === 0) return;
+    const peek = nearBottomRef.current ? 0 : HISTORY_PEEK_PX;
+    applyScrollTop(Math.max(0, log.scrollHeight - anchor + (historyOpen ? -peek : peek)));
+  }, [applyScrollTop, historyOpen]);
 
   React.useEffect(() => {
     const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;
@@ -550,11 +590,15 @@ export function AgentChatView({
         : null}
       {/* 마지막 턴만 선다. 앞선 턴은 밴드 뒤에 접힌 채 마운트를 유지한다 — 펼치면 문서 순서
           그대로 위에 서고, 접힘은 렌더가 아니라 표시만 거둔다(빠른 Shell 연속성 같은 턴 내부
-          상태가 접힘으로 사라지지 않게). */}
+          상태가 접힘으로 사라지지 않게).
+
+          펼친 높이는 전부 현재 문답 **위**에 생기므로 스크롤은 그만큼 따라가야 한다. 그러지 않으면
+          같은 좌표가 세션의 첫 질문을 가리키게 되어, 보던 자리를 잃는다. 위 레이아웃 효과가 바닥
+          까지의 거리로 그 자리를 지킨다. */}
       <HistoryBand
         count={state.turns.length - 1}
         open={historyOpen}
-        onToggle={() => setHistoryOpen((current) => !current)}
+        onToggle={toggleHistory}
         label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: state.turns.length - 1 })}
       />
       <div className="agent-chat-history" hidden={!historyOpen}>
