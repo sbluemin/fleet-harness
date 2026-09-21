@@ -951,7 +951,7 @@
           "modelId": "fable",
           "name": "Fable",
           "capabilityClass": "flagship",
-          "providerModelId": "fable",
+          "providerModelId": "claude-fable-5",
           "effort": {
             "supported": true,
             "levels": [
@@ -970,7 +970,7 @@
           "modelId": "fable-1m",
           "name": "Fable",
           "capabilityClass": "flagship",
-          "providerModelId": "fable[1m]",
+          "providerModelId": "claude-fable-5",
           "variantOf": "fable",
           "contextWindow": 1000000,
           "effort": {
@@ -991,7 +991,7 @@
           "modelId": "opus",
           "name": "Opus",
           "capabilityClass": "flagship",
-          "providerModelId": "opus",
+          "providerModelId": "claude-opus-5",
           "effort": {
             "supported": true,
             "levels": [
@@ -1010,7 +1010,7 @@
           "modelId": "opus-1m",
           "name": "Opus",
           "capabilityClass": "flagship",
-          "providerModelId": "opus[1m]",
+          "providerModelId": "claude-opus-5",
           "variantOf": "opus",
           "contextWindow": 1000000,
           "effort": {
@@ -1031,7 +1031,7 @@
           "modelId": "sonnet",
           "name": "Sonnet",
           "capabilityClass": "standard",
-          "providerModelId": "sonnet",
+          "providerModelId": "claude-sonnet-5",
           "effort": {
             "supported": true,
             "levels": [
@@ -1047,31 +1047,10 @@
           ]
         },
         {
-          "modelId": "sonnet-1m",
-          "name": "Sonnet",
-          "capabilityClass": "standard",
-          "providerModelId": "sonnet[1m]",
-          "variantOf": "sonnet",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "sonnet[1m]"
-          ]
-        },
-        {
           "modelId": "haiku",
           "name": "Haiku",
           "capabilityClass": "light",
-          "providerModelId": "haiku",
+          "providerModelId": "claude-haiku-4-5-20251001",
           "effort": {
             "supported": false
           },

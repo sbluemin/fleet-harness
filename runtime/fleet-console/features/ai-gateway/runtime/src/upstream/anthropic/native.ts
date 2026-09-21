@@ -17,6 +17,7 @@ export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
  */
 export function anthropicNativeHeaders(
   requestHeaders: Readonly<Record<string, unknown>>,
+  contextWindow?: number,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -27,6 +28,11 @@ export function anthropicNativeHeaders(
   for (const name of ["authorization", "x-api-key", "anthropic-beta", "user-agent"]) {
     const value = requestHeaders[name];
     if (typeof value === "string") headers[name] = value;
+  }
+  if (contextWindow !== undefined && contextWindow >= 1_000_000) {
+    const betas = new Set((headers["anthropic-beta"] ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+    betas.add("context-1m-2025-08-07");
+    headers["anthropic-beta"] = [...betas].join(",");
   }
   return headers;
 }

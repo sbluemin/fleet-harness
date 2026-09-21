@@ -547,7 +547,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 아는 호출자는 사용자가 끈 모델로 그 구독을 그대로 쓴다. 선별은 광고 목록이 아니라 지출 계약이므로
     // 여기서 함께 강제한다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고,
     // 선별 파일의 주인과 같은 사람이라 호출자 입력과 같은 신뢰 등급이 아니다.
-    if (target && modelOverride === undefined && !isModelExposed(target)) {
+    if (target && target.provider !== "claude" && modelOverride === undefined && !isModelExposed(target)) {
       writeAnthropicError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
       return true;
     }
@@ -623,9 +623,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const startedAt = Date.now();
 
     try {
-      if (!target) {
-        // Native Anthropic models keep the caller-owned credential and wire request unchanged.
-        await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal, harness.retryableStatus);
+      if (!target || target.provider === "claude") {
+        // 네이티브 모델의 전송 ID는 카탈로그가 소유한다. 호출자 인증과 기존 beta는 보존한다.
+        await proxyToAnthropic(req.headers, res,
+          target ? { ...body, model: target.upstreamId ?? body.model } : body,
+          fetchImpl, controller.signal, harness.retryableStatus, target?.contextWindow);
         return true;
       }
       // Claude Code meters every custom model on either its unmarked 200k coordinate
@@ -884,9 +886,10 @@ async function proxyToAnthropic(
   fetchImpl: typeof fetch,
   signal: AbortSignal,
   retryableStatus: ((status: number) => number) | undefined,
+  contextWindow?: number,
 ): Promise<void> {
   // 헤더·URL 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
-  const headers = anthropicNativeHeaders(requestHeaders);
+  const headers = anthropicNativeHeaders(requestHeaders, contextWindow);
   await proxyAnthropicMessages(res, body, {
     ...(retryableStatus ? { retryableStatus } : {}),
     keepAlive: true,

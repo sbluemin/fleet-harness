@@ -58,9 +58,10 @@ export function toGatewayModelAlias(modelId: string): string {
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   if (model.provider === "claude") {
-    return model.upstreamId ?? (isClaudeOneMillionContextWindow(model.contextWindow)
-      ? `${model.id.replace(/^claude--/, "").replace(/-1m$/, "")}${CLAUDE_ONE_MILLION_MARKER}`
-      : model.id.replace(/^claude--/, ""));
+    const id = model.upstreamId ?? model.id;
+    return isClaudeOneMillionContextWindow(model.contextWindow)
+      ? `${id}${CLAUDE_ONE_MILLION_MARKER}`
+      : id;
   }
   const alias = toGatewayModelAlias(model.id);
   return isClaudeOneMillionContextWindow(model.contextWindow)
@@ -88,7 +89,10 @@ export function findClaudeGatewayModel(
   id: string,
   catalog: readonly GatewayModel[] = GATEWAY_MODELS,
 ): GatewayModel | undefined {
-  if (!id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) return findGatewayModel(id, catalog);
+  if (!id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
+    return findGatewayModel(id, catalog)
+      ?? catalog.find((model) => model.provider === "claude" && toClaudeGatewayModelId(model) === id);
+  }
   const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
   const model = catalog.find((candidate) => candidate.id === scopedId);
   if (!model || model.provider === "claude") return undefined;

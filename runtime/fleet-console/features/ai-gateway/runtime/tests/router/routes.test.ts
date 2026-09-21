@@ -273,7 +273,7 @@ describe("delegation assignment", () => {
       expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
-      expect(JSON.parse(String(init?.body)).model).toBe("sonnet");
+      expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5");
       return new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", content: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -291,6 +291,23 @@ describe("delegation assignment", () => {
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
+    // 위임 훅은 CLI alias 해석을 거치지 않는다. 배정 ID를 그대로 보내도 API ID와 1M 헤더가 맞아야 한다.
+    const decision = decideGatewayRoutingAssignment(
+      { surface: "agent", requestedModel: "opus" },
+      { delegationRoutingEnabled: true, delegationModels: [requireGatewayModel("claude--opus-1m")] },
+    );
+    expect(decision.model).toBe("claude-opus-5[1m]");
+    const nativeRouter = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async (_url, init) => {
+      expect(JSON.parse(String(init?.body)).model).toBe("claude-opus-5");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
+      expect(headers.get("anthropic-beta")).toContain("context-1m-2025-08-07");
+      return new Response("{}", { status: 200 });
+    }) });
+    const delegated = response();
+    await nativeRouter.handle(ctx({ res: delegated, token: ANTHROPIC_CRED, model: decision.model!, messages: [{ role: "user", content: "hello" }] }));
+    expect(delegated.status).toBe(200);
+
     // Verify /v1/models excludes native Claude aliases (no duplicate advertisement)
     const discovery = buildAnthropicModelList(GATEWAY_MODELS);
     const discoveredIds = discovery.data.map((entry) => entry.id);
@@ -306,13 +323,13 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet"]);
+    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["claude-sonnet-5"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
       exposure,
     );
-    expect(decision.model).toBe("sonnet");
+    expect(decision.model).toBe("claude-sonnet-5");
     expect(decision.effort).toBe("medium");
   });
 
