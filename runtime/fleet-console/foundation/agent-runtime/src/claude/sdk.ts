@@ -119,6 +119,7 @@ export async function createClaudeGatewaySdk(
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
+    ...(request.outputFormat === undefined ? {} : { outputFormat: request.outputFormat }),
     ...(request.tools === undefined ? {} : { tools: [...request.tools] }),
     ...(request.allowedTools === undefined ? {} : { allowedTools: [...request.allowedTools] }),
     ...(request.disallowedTools === undefined ? {} : { disallowedTools: [...request.disallowedTools] }),

@@ -28,5 +28,7 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
         } } : {}),
       };
     });
-  return { quotaPools, models };
+  return { quotaPools, models,
+    ...(exposure.distribution ? { recentAssignments: exposure.distribution.snapshot(exposure) } : {}),
+  };
 }

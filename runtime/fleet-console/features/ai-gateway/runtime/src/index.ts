@@ -188,4 +188,5 @@ export {
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
+export { GatewayRoutingDistribution } from "./fleet/routing-distribution.js";
 export { fallbackGatewayRoutingAssignment } from "./fleet/routing-fallback.js";

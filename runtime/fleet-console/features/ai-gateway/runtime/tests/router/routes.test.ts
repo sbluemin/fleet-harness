@@ -36,6 +36,7 @@ import {
   errorMessage,
   findGatewayModel,
   GATEWAY_MODELS,
+  GatewayRoutingDistribution,
   parseGatewayAssignmentRequest,
   SystemOneClient,
   SystemOneError,
@@ -133,6 +134,55 @@ describe("delegation assignment", () => {
     expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
     expect(decision.because).toContain("fallback");
     expect(choose).not.toHaveBeenCalled();
+  });
+
+  it("runs burst decisions in parallel and reports committed assignments per quota observation", async () => {
+    const distribution = new GatewayRoutingDistribution();
+    const at = Date.now();
+    let current: GatewayAssignmentExposure = {
+      delegationRoutingEnabled: true, delegationRoutingMode: "model", distribution,
+      delegationModels: [requireGatewayModel("cursor--composer-2.5"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      quota: { cursor: { status: "ok", fetchedAt: at, windows: [] }, xai: { status: "ok", fetchedAt: at, windows: [] } },
+    };
+    let release!: () => void;
+    const barrier = new Promise<void>(resolve => { release = resolve; });
+    const seen: number[] = [];
+    let calls = 0;
+    const choose = vi.fn(async ({ state, criteria }: any) => {
+      // 동일 스냅샷으로 병렬 판단하되 이후 호출은 확정된 배정을 보아야 한다.
+      expect(Object.values(criteria).some((value: any) => value.includes("cursor"))).toBe(true);
+      expect(Object.values(criteria).some((value: any) => value.includes("xai"))).toBe(true);
+      seen.push(state.gateway_models.recentAssignments.providers.cursor.assignments);
+      calls++;
+      if (calls === 1) await barrier;
+      return Object.keys(criteria).find(key => criteria[key].includes("cursor"))!;
+    });
+    const options = { choose, refreshExposure: () => current };
+    const first = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
+    const controller = new AbortController();
+    const cancelled = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, { ...options, signal: controller.signal });
+    const rejected = expect(cancelled).rejects.toThrow();
+    controller.abort();
+    const second = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
+    await rejected;
+    expect(calls).toBe(3);
+    expect(seen).toEqual([0, 0, 0]);
+    release();
+    await Promise.all([first, second]);
+    expect(seen).toEqual([0, 0, 0]);
+    await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
+    expect(seen).toEqual([0, 0, 0, 2]);
+    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
+    current = { ...current, quota: { ...current.quota, xai: { status: "ok", fetchedAt: at + 1, windows: [] } } };
+    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
+    current = { ...current, quota: { ...current.quota, cursor: { status: "stale", fetchedAt: at, windows: [] } } };
+    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
+    current = { ...current, quota: { ...current.quota, cursor: { status: "ok", fetchedAt: at + 1, windows: [] } } };
+    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(0);
+    await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
+    expect(seen).toEqual([0, 0, 0, 2, 0]);
+    distribution.snapshot({ ...current, quota: { cursor: { status: "ok", fetchedAt: at, windows: [] } } });
+    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(1);
   });
 
   it("refuses an assignment request that carries no mod credential", async () => {

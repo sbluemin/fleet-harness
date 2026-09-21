@@ -49,15 +49,18 @@ export async function chooseRoutingModel(input: {
         'Return only one JSON object, {"choice":"..."}, containing an offered candidate key. Do not include explanations or Markdown.',
       ].join("\n\n") },
       prompt: JSON.stringify({ state: input.state, candidates: input.criteria }),
+      outputFormat: { type: "json_schema", schema: {
+        type: "object", properties: { choice: { type: "string", enum: Object.keys(input.criteria) } },
+        required: ["choice"], additionalProperties: false,
+      } },
       tools: [], persistSession: false, maxTurns: 1, permissionMode: "dontAsk", abortController: controller,
     });
-    let result: string | undefined;
+    let parsed: unknown;
     for await (const message of run) {
-      if (message.type === "result" && message.subtype === "success" && typeof message.result === "string") result = message.result;
+      if (message.type === "result" && message.subtype === "success") parsed = message.structured_output;
     }
     if (controller.signal.aborted) throw controller.signal.reason;
-    if (!result) throw new Error("Routing model returned no result");
-    const parsed: unknown = JSON.parse(result);
+    if (parsed === undefined) throw new Error("Routing model returned no structured result");
     if (!parsed || typeof parsed !== "object" || !("choice" in parsed) || typeof parsed.choice !== "string"
       || !Object.hasOwn(input.criteria, parsed.choice)) throw new Error("Invalid routing model choice");
     return parsed.choice;

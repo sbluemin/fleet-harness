@@ -56,6 +56,7 @@ export interface GatewayAssignmentExposure {
   readonly providerPriority?: readonly GatewayProvider[];
   readonly quota?: GatewayQuotaSnapshot;
   readonly providerLoad?: Map<string, number>;
+  readonly distribution?: import("./routing-distribution.js").GatewayRoutingDistribution;
 }
 export interface GatewayRoutingCandidate {
   readonly model: string;

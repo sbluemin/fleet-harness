@@ -6,6 +6,7 @@ import {
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
+  GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
   JEV_ROUTING_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
@@ -91,6 +92,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
    * 세면 동시에 뜬 세션들이 저마다 처음인 줄 알고 같은 공급자를 고르므로, 한 자리에서 센다.
    */
   const providerLoad = new Map<string, number>();
+  const distribution = new GatewayRoutingDistribution();
   // 저장된 연결 동의는 유지하되 공급자 조회와 캐시는 Gateway 한 인스턴스가 소유한다.
   const isConnected = async (provider: "claude" | "cursor") => {
     const settings = await ctx.host.storage.readJson("quota", "settings");
@@ -128,6 +130,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
       ...(allowance === undefined ? {} : { quota: allowance }),
       providerLoad,
+      distribution,
     };
   }
   // 배정 경로 전용. 기본 30s·3재시도를 그대로 쓰면 spawn이 멈춘다.
@@ -140,7 +143,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
       const parsed = parseGatewayAssignmentRequest(request);
-      const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad) } : currentExposure();
+      const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
       return await decideGatewayRoutingAssignment(parsed, exposure, {
         ...(exposure.delegationRoutingMode === "model" ? {
           choose: (input, signal) => chooseRoutingModel({
@@ -151,7 +154,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
           }),
         } : { client: jevClient }),
         forceDecision: test,
-        refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad } : currentExposure(),
+        refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad, distribution: exposure.distribution } : currentExposure(),
         ...(signal === undefined ? {} : { signal }),
       });
   }

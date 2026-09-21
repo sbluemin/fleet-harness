@@ -270,6 +270,8 @@ export interface ClaudeGatewayTurn {
   readonly persistSession?: boolean;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
+  /** 호출자가 소유하는 구조화 응답 스키마. vendor의 outputFormat으로 전달한다. */
+  readonly outputFormat?: { readonly type: "json_schema"; readonly schema: Record<string, unknown> };
   /**
    * 자식이 가질 수 있는 툴 집합의 절대 화이트리스트. 생략하면 vendor 기본값을 쓴다.
    *
@@ -325,6 +327,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "persistSession",
   "maxTurns",
   "maxBudgetUsd",
+  "outputFormat",
   "tools",
   "allowedTools",
   "disallowedTools",

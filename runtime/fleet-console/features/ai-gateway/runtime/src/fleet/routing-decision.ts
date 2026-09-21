@@ -1,3 +1,4 @@
+import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import { toRoutingLabel } from "./routing-table.js";
 import { fallbackGatewayRoutingAssignment } from "./routing-fallback.js";
 import { SYSTEM_ONE_MAX_CHOICE_OPTIONS, type SystemOneState } from "../upstream/typesafe/protocol.js";
@@ -35,6 +36,25 @@ export async function decideGatewayRoutingAssignment(
   exposure: GatewayAssignmentExposure,
   options: GatewayRoutingDecisionOptions,
 ): Promise<GatewayAssignmentDecision> {
+  const distribution = exposure.distribution;
+  if (!distribution || !exposure.delegationRoutingEnabled || request.surface === "stage" || guardGatewayRoutingAssignment(request, exposure)) {
+    return decideWithCurrentState(request, exposure, options);
+  }
+  if (options.signal?.aborted) throw abortError(options.signal);
+  const current = options.refreshExposure?.() ?? exposure;
+  const decision = await decideWithCurrentState(request, current, options);
+  if (options.signal?.aborted) throw abortError(options.signal);
+  const latest = options.refreshExposure?.() ?? current;
+  const model = latest.delegationModels.find(model => toClaudeGatewayModelId(model) === decision.model);
+  if (model) distribution.record(model.provider, latest);
+  return decision;
+}
+
+async function decideWithCurrentState(
+  request: GatewayAssignmentRequest,
+  exposure: GatewayAssignmentExposure,
+  options: GatewayRoutingDecisionOptions,
+): Promise<GatewayAssignmentDecision> {
   const guarded = guardGatewayRoutingAssignment(request, exposure);
   if (guarded) return guarded;
   const fallback = (reason: string, latest = options.refreshExposure?.() ?? exposure) => {
@@ -53,6 +73,7 @@ export async function decideGatewayRoutingAssignment(
   if (allowed.length === 1 && !options.forceDecision) {
     // 고를 좌석이 하나면 Jev를 부르지 않는다. 원장에 `· jev`를 찍으면 호출한 것처럼 보인다.
     const only = allowed[0] as GatewayRoutingCandidate;
+    if (options.signal?.aborted) throw abortError(options.signal);
     return finalizeJevSeat(only, exposure, "sole candidate");
   }
 
@@ -91,6 +112,7 @@ export async function decideGatewayRoutingAssignment(
     return fallback("stale or invalid routing choice");
   }
 
+  if (options.signal?.aborted) throw abortError(options.signal);
   return finalizeJevSeat(chosen, latestExposure, exposure.delegationRoutingMode === "model" ? "AI model" : "jev");
 }
 
@@ -156,7 +178,8 @@ async function askJevForCandidate(
           "Recovery: recovery gives the first time (inSeconds) the minimum remaining percentage improves and the resulting remainingPercent, assuming no additional consumption. It does not mean the entire provider fully recovers then. An imminent reset does not make a small or zero current allowance available now.",
           "Uncertainty: observation is fresh/partial/stale/unknown; ageSeconds is observation age. Missing, partial, or stale quota is neither evidence of headroom nor automatic exclusion. Use only supplied facts; do not invent workload capacity, prices, latency, or future consumption. Normalized headroom is not equal work capacity across providers or an allocation ratio.",
           "Quality: capabilityClass is vendor positioning, not measured performance. benchmark.score is relative within a common cohort and applies only to the recorded effort. Treat differences within tieBandPoints as ties. Missing benchmarks do not imply poor performance; never borrow scores from another model or effort. Do not infer capabilities from model aliases.",
-          "Selection: Compare current allowance, sustainable headroom, and recovery across suitable candidates to distribute work, then select the best-suited model and effort within that allocation. Account for task-relevant strengths, but do not increase exhaustion risk for marginal quality differences. When quota sustainability is comparable and multiple candidates meet task requirements, follow the user provider order. preferenceRank 1 is highest; unranked providers follow explicitly ranked ones. Override that order only with concrete supplied evidence, such as a missing required capability, insufficient context for the actual task, or comparable benchmark differences at the chosen effort. Treat equal capabilityClass as a quality tie when no evidence establishes a difference. Do not override priority because of fast in a model name, speculative speed/cost/quality preferences, or surplus context the task does not need. Priority never rescues an exhausted or clearly less sustainable provider.",
+          "Selection: Compare current allowance, sustainable headroom, and recovery across suitable candidates to distribute work, then select the best-suited model and effort within that allocation. Account for task-relevant strengths, but do not increase exhaustion risk for marginal quality differences. When quota sustainability is comparable and multiple candidates meet task requirements, consider recentAssignments first and prefer the provider with fewer post-observation assignments. When those counts are equal or unavailable, follow the user provider order. preferenceRank 1 is highest; unranked providers follow explicitly ranked ones. Apart from this burst adjustment, override that order only with concrete supplied evidence, such as a missing required capability, insufficient context for the actual task, or comparable benchmark differences at the chosen effort. Treat equal capabilityClass as a quality tie when no evidence establishes a difference. Do not override priority because of fast in a model name, speculative speed/cost/quality preferences, or surplus context the task does not need. Priority never rescues an exhausted or clearly less sustainable provider.",
+          "Burst continuity: recentAssignments.providers reports assignments since each provider quota observation. It includes only assignments committed before this snapshot was read. Concurrent decisions run in parallel and may see the same counts; pending decisions are not reservations. These counts are neither actual quota consumption nor active runs. Prioritize remaining quota and work continuity; avoid repeatedly spending the same cached allowance as though earlier assignments did not exist. Among task-suitable providers with comparable sustainability, prefer fewer post-observation assignments before provider preferenceRank. Do not equalize model or effort counts, infer consumption percentages, or send work to an exhausted provider merely to spread assignments. You retain selection of the provider, model and effort from all offered candidates.",
           "Stop: Once a clear choice is reached, do not repeat marginal comparisons that cannot change it. Choose exactly one offered candidate.",
         ],
         criteria,

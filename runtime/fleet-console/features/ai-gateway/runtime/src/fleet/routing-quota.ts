@@ -1,7 +1,9 @@
 import type { GatewayProviderQuota, GatewayQuotaWindow } from "./quota-snapshot.js";
 
-// 2분 캐시와 비동기 갱신 여유 1분. 오래된 성공값은 나이를 표시한 채 보존한다.
-const MAX_OBSERVATION_AGE_MS = 3 * 60_000;
+import { QUOTA_CACHE_TTL_MS } from "../quota/service.js";
+
+// 공유 캐시와 비동기 갱신 여유 1분. 오래된 성공값은 나이를 표시한 채 보존한다.
+const MAX_OBSERVATION_AGE_MS = QUOTA_CACHE_TTL_MS + 60_000;
 
 export interface RoutingQuota {
   readonly observation: "fresh" | "partial" | "stale" | "unknown";
