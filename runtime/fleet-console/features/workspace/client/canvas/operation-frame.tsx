@@ -636,7 +636,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </CaptionTipHost>
           {!triageStage && !deckTile && onMaximize ? (
             <CaptionTipHost label={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
-              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
+              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !maximized ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
                 {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
               </button>
             </CaptionTipHost>
