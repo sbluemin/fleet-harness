@@ -942,6 +942,11 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
         x: (screenX - state.viewport.x) / zoom,
         y: (screenY - state.viewport.y) / zoom + OPERATION_WINDOW_CAPTION_HEIGHT,
       };
+      // 규율이 켜져 있으면 불러온 자리도 정착시킨다 — 가운데에 이미 다른 패널이 있으면 겹친 채 서지 않는다.
+      if (state.stationKeeping) {
+        const spot = resolveStationKeepingPosition(next, visibleObstacles(sessionId));
+        next = { ...next, x: spot.x, y: spot.y };
+      }
     }
   }
   setState({
