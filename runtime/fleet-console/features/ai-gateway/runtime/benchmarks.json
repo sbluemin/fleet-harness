@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-09-22T00:00:00Z",
+  "updatedAt": "2026-09-23T00:00:00Z",
   "normalization": {
     "method": "cohort-min-max",
     "sourceWeighting": "equal",
@@ -246,67 +246,6 @@
     }
   },
   "models": {
-    "gpt-5.6-sol": {
-      "effort": "max",
-      "measurements": {
-        "cursorbench": {
-          "model": "GPT-5.6 Sol Max",
-          "metrics": {
-            "score": 67.2,
-            "tokensPerTask": 28320,
-            "stepsPerTask": 48,
-            "costPerTask": 5.69
-          }
-        },
-        "livebench": {
-          "model": "gpt-5.6-sol-max",
-          "metrics": {
-            "score": 81.053548,
-            "reasoning": 91.65375,
-            "coding": 83.941,
-            "agenticCoding": 56.212,
-            "mathematics": 96.19775,
-            "dataAnalysis": 79.840667,
-            "language": 87.683667,
-            "instructionFollowing": 71.846,
-            "avgInputTokens": 181163,
-            "avgOutputTokens": 11729,
-            "costPerQuestion": 0.4178,
-            "costPerSuccessfulTask": 0.507,
-            "questions_theory_of_mind": 52,
-            "questions_zebra_puzzle": 50,
-            "questions_spatial": 50,
-            "questions_logic_with_navigation": 50,
-            "questions_code_generation": 71,
-            "questions_code_completion": 46,
-            "questions_javascript": 22,
-            "questions_typescript": 30,
-            "questions_python": 20,
-            "questions_AMPS_Hard": 100,
-            "questions_integrals_with_game": 100,
-            "questions_math_comp": 102,
-            "questions_olympiad": 77,
-            "questions_consecutive_events": 47,
-            "questions_tablejoin": 52,
-            "questions_tablereformat": 51,
-            "questions_connections": 50,
-            "questions_plot_unscrambling": 50,
-            "questions_typos": 50,
-            "questions_paraphrase": 50,
-            "questions_simplify": 50,
-            "questions_story_generation": 50,
-            "questions_summarize": 50
-          }
-        }
-      },
-      "normalized": {
-        "score": 87.654321,
-        "sourceScores": {
-          "cursorbench": 75.308642,
-          "livebench": 100
-        }
-      }
-    },
     "gpt-5.6-terra": {
       "effort": "max",
       "measurements": {
@@ -361,71 +300,10 @@
         }
       },
       "normalized": {
-        "score": 52.658628,
-        "sourceScores": {
-          "cursorbench": 46.91358,
-          "livebench": 58.403676
-        }
-      }
-    },
-    "gpt-5.6-luna": {
-      "effort": "max",
-      "measurements": {
-        "cursorbench": {
-          "model": "GPT-5.6 Luna Max",
-          "metrics": {
-            "score": 61.1,
-            "tokensPerTask": 87973,
-            "stepsPerTask": 61,
-            "costPerTask": 0.39
-          }
-        },
-        "livebench": {
-          "model": "gpt-5.6-luna-max",
-          "metrics": {
-            "score": 73.559381,
-            "reasoning": 85.64425,
-            "coding": 82.915,
-            "agenticCoding": 48.434333,
-            "mathematics": 87.20075,
-            "dataAnalysis": 78.033333,
-            "language": 72.567,
-            "instructionFollowing": 60.121,
-            "avgInputTokens": 126025,
-            "avgOutputTokens": 21799,
-            "costPerQuestion": 0.1246,
-            "costPerSuccessfulTask": 0.1677,
-            "questions_theory_of_mind": 52,
-            "questions_zebra_puzzle": 50,
-            "questions_spatial": 50,
-            "questions_logic_with_navigation": 50,
-            "questions_code_generation": 71,
-            "questions_code_completion": 46,
-            "questions_javascript": 22,
-            "questions_typescript": 30,
-            "questions_python": 20,
-            "questions_AMPS_Hard": 100,
-            "questions_integrals_with_game": 100,
-            "questions_math_comp": 102,
-            "questions_olympiad": 77,
-            "questions_consecutive_events": 47,
-            "questions_tablejoin": 52,
-            "questions_tablereformat": 51,
-            "questions_connections": 50,
-            "questions_plot_unscrambling": 50,
-            "questions_typos": 50,
-            "questions_paraphrase": 50,
-            "questions_simplify": 50,
-            "questions_story_generation": 50,
-            "questions_summarize": 50
-          }
-        }
-      },
-      "normalized": {
-        "score": 0,
+        "score": 50,
         "sourceScores": {
           "cursorbench": 0,
-          "livebench": 0
+          "livebench": 100
         }
       }
     },
@@ -483,10 +361,10 @@
         }
       },
       "normalized": {
-        "score": 65.139394,
+        "score": 50,
         "sourceScores": {
           "cursorbench": 100,
-          "livebench": 30.278789
+          "livebench": 0
         }
       }
     }
@@ -523,6 +401,12 @@
       "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
     },
     "gpt-6-astra": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gpt-6-sol": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gpt-6-luna": {
       "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
     },
     "grok-4.5": {
@@ -578,6 +462,12 @@
     },
     "gemini-3.7-flash": {
       "reason": "2026-09-22: Antigravity 카탈로그에서 Gemini 3.8 Flash로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
+    },
+    "gpt-5.6-sol": {
+      "reason": "2026-09-23: Codex 카탈로그에서 GPT-6 Sol로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
+    },
+    "gpt-5.6-luna": {
+      "reason": "2026-09-23: Codex 카탈로그에서 GPT-6 Luna로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
     }
   },
   "sourceAudit": {

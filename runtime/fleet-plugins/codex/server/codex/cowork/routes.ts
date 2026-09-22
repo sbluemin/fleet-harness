@@ -22,7 +22,7 @@ const COWORK_EFFORTS = ["low", "medium", "high"] as const;
 function coworkModelRows(enabledGatewayModels: readonly GatewayModel[]): readonly CoworkModelRow[] {
   const native = CLAUDE_EXPERIMENT_MODEL_OPTIONS.map((option): CoworkModelRow => ({ id: option.id, label: option.label, provider: "claude" }));
   const gateway = enabledGatewayModels.map((model): CoworkModelRow => {
-    // 카탈로그 displayName은 "Codex-GPT-5.6-Luna"처럼 공급자 접두를 단다 — 밴드가 공급자를
+    // 카탈로그 displayName은 "Codex-GPT-6-Luna"처럼 공급자 접두를 단다 — 밴드가 공급자를
     // 말하므로 행에는 모델 이름만 남긴다.
     const prefix = `${model.provider}-`;
     const label = model.displayName.toLowerCase().startsWith(prefix) ? model.displayName.slice(prefix.length) : model.displayName;

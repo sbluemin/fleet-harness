@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CONFIRM_LIVE_PROVIDER = "--confirm-live-provider";
-const DEFAULT_MODEL = "claude-gateway--codex--gpt-5.6-luna";
+const DEFAULT_MODEL = "claude-gateway--codex--gpt-6-luna";
 const DEFAULT_MODE = "both";
 const DEFAULT_TIMEOUT_MS = 300_000;
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -91,8 +91,8 @@ function parseArguments(argv) {
   if (!new Set(["auto", "manual", "both"]).has(options.mode)) {
     throw new UsageError("--mode must be auto, manual, or both");
   }
-  if (!/^claude-gateway--codex--gpt-5\.6-luna(?:-(?:low|medium|high|xhigh|max))?$/.test(options.model)) {
-    throw new UsageError("--model must be an exact Codex gpt-5.6-luna gateway id");
+  if (!/^claude-gateway--codex--gpt-6-luna(?:-(?:low|medium|high|xhigh|max))?$/.test(options.model)) {
+    throw new UsageError("--model must be an exact Codex gpt-6-luna gateway id");
   }
   if (!confirmed) throw new UsageError(`missing required ${CONFIRM_LIVE_PROVIDER}`);
   return options;

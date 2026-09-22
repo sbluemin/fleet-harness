@@ -396,8 +396,8 @@ describe("pre-flight context window guard", () => {
           status: 200,
           headers: new Headers(),
           events: iterable<CanonicalResponseEvent>([
-            { type: "response.created", response: { id: "resp_guard", model: "gpt-5.6-sol", usage: null } },
-            { type: "response.completed", response: { id: "resp_guard", model: "gpt-5.6-sol", usage: { input_tokens: 1, output_tokens: 1 } } },
+            { type: "response.created", response: { id: "resp_guard", model: "gpt-6-sol", usage: null } },
+            { type: "response.completed", response: { id: "resp_guard", model: "gpt-6-sol", usage: { input_tokens: 1, output_tokens: 1 } } },
           ]),
         };
       },

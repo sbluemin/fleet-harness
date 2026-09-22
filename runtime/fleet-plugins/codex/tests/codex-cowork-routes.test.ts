@@ -47,8 +47,8 @@ describe("Cowork options", () => {
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
     const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
-    let experiments: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS, coworkModel: "claude-gateway--codex--gpt-5.6-luna", coworkEffort: "high" };
-    const luna = { id: "codex--gpt-5.6-luna", provider: "codex", displayName: "Codex-GPT-5.6-Luna", contextWindow: 400_000, effort: { supported: true, levels: ["low", "medium", "high"] } };
+    let experiments: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS, coworkModel: "claude-gateway--codex--gpt-6-luna", coworkEffort: "high" };
+    const luna = { id: "codex--gpt-6-luna", provider: "codex", displayName: "Codex-GPT-6-Luna", contextWindow: 400_000, effort: { supported: true, levels: ["low", "medium", "high"] } };
     let enabled: readonly (typeof luna)[] = [luna];
     const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true, enabledGatewayModels: enabled as never, readExperiments: () => experiments }));
     server.listen(0, "127.0.0.1");
@@ -58,8 +58,8 @@ describe("Cowork options", () => {
       if (!address || typeof address === "string") throw new Error("test server has no TCP address");
       const url = `http://127.0.0.1:${address.port}/api/cowork/options`;
       const enabledResponse = await (await fetch(url)).json() as { defaultModel: string; defaultEffort: string; fallback: boolean; rows: Array<{ id: string; label: string; provider: string }> };
-      expect(enabledResponse).toMatchObject({ defaultModel: "claude-gateway--codex--gpt-5.6-luna", defaultEffort: "high", fallback: false });
-      expect(enabledResponse.rows).toContainEqual({ id: "claude-gateway--codex--gpt-5.6-luna", label: "GPT-5.6-Luna", provider: "codex" });
+      expect(enabledResponse).toMatchObject({ defaultModel: "claude-gateway--codex--gpt-6-luna", defaultEffort: "high", fallback: false });
+      expect(enabledResponse.rows).toContainEqual({ id: "claude-gateway--codex--gpt-6-luna", label: "GPT-6-Luna", provider: "codex" });
       // Settings › AI Gateway에서 그 모델을 끄면 목록에서 빠지고 Sonnet으로 내려간다 — 강도는 설정값을 유지한다.
       enabled = [];
       expect(await (await fetch(url)).json()).toMatchObject({ defaultModel: "sonnet", defaultEffort: "high", fallback: true });

@@ -58,7 +58,7 @@ describe("gateway harness profile seam", () => {
 
     // A bare catalog id and a credential with no `sk-ant-` prefix are both accepted.
     const res = response();
-    await router.handle(ctx({ res, token: "grok-local-key", model: "codex--gpt-5.6-sol" }));
+    await router.handle(ctx({ res, token: "grok-local-key", model: "codex--gpt-6-sol" }));
     expect(res.status).toBe(200);
 
     // 221k of a 272k window reaches the client as 221k, not rescaled onto a 200k coordinate.
@@ -136,11 +136,11 @@ describe("gateway harness profile seam", () => {
     };
 
     await new AnthropicMessagesGateway(adapter).stream(
-      { model: "claude-gateway--codex--gpt-5.6-luna", max_tokens: 16, messages: [{ role: "user", content: "hi" }] } as never,
+      { model: "claude-gateway--codex--gpt-6-luna", max_tokens: 16, messages: [{ role: "user", content: "hi" }] } as never,
       { apiKey: "k", findModel: claudeCodeHarnessProfile.findModel },
     );
 
-    expect(seen).toBe("gpt-5.6-luna");
+    expect(seen).toBe("gpt-6-luna");
   });
 
   it("declines a probe path the client never dials", async () => {
@@ -193,7 +193,7 @@ function emptyAdapterResponse(): AdapterResponse {
     events: (async function* () {
       yield {
         type: "response.completed",
-        response: { id: "resp_stub", model: "gpt-5.6-luna", usage: { input_tokens: 1, output_tokens: 1 } },
+        response: { id: "resp_stub", model: "gpt-6-luna", usage: { input_tokens: 1, output_tokens: 1 } },
       } as const;
     })(),
   };
@@ -211,7 +211,7 @@ function stubGateway(): AnthropicMessagesGateway {
             type: "response.created",
             response: {
               id: "resp_stub",
-              model: "gpt-5.6-sol",
+              model: "gpt-6-sol",
               usage: { input_tokens: 221_000, output_tokens: 0 },
             },
           } as const;
@@ -219,7 +219,7 @@ function stubGateway(): AnthropicMessagesGateway {
             type: "response.completed",
             response: {
               id: "resp_stub",
-              model: "gpt-5.6-sol",
+              model: "gpt-6-sol",
               usage: { input_tokens: 221_000, output_tokens: 1 },
             },
           } as const;
@@ -273,7 +273,7 @@ function ctx(options: {
   readonly model?: string;
 }): GatewayHttpHandlerContext {
   const payload = JSON.stringify({
-    model: options.model ?? "codex--gpt-5.6-sol",
+    model: options.model ?? "codex--gpt-6-sol",
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     stream: true,

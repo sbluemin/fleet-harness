@@ -27,9 +27,9 @@ afterEach(async () => {
 
 describe("agent dormant ticket guards", () => {
   it("launches an enabled host-only model by its advertised gateway id", async () => {
-    const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-5.6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-5.6-luna", hostOnly: true }] } });
+    const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] } });
     await harness.createLiveSession();
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ model: "codex--gpt-5.6-luna", effort: "low" }));
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ model: "codex--gpt-6-luna", effort: "low" }));
     expect(harness.responses.at(-1)?.status).toBe(200);
   });
 

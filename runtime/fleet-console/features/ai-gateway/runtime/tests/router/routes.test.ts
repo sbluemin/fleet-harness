@@ -948,7 +948,7 @@ describe("Astra asynchronous tools", () => {
         base,
         { ...base, stream: false },
         { ...base, tool_choice: { type: "auto", disable_parallel_tool_use: true } },
-        { ...base, model: "claude-gateway--codex--gpt-5.6-sol" },
+        { ...base, model: "claude-gateway--codex--gpt-6-sol" },
       ]) {
         const res = response();
         await router.handle(ctx({ res, token: ANTHROPIC_CRED, rawBody }));
@@ -1173,7 +1173,7 @@ function ctx(options: {
   readonly rawBody?: unknown;
 }): GatewayHttpHandlerContext {
   const payload = JSON.stringify(options.rawBody ?? {
-    model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
+    model: options.model ?? "claude-gateway--codex--gpt-6-sol",
     messages: options.messages ?? [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     ...(options.thinking ? { thinking: options.thinking } : {}),
