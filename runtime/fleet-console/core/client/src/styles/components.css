@@ -8472,26 +8472,25 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--brass);
 }
 
-/* 캡션을 끌기 시작하면 아레나 위 가운데로 내려오는 손잡이 — 띠에 닿으면 이 자리에서 바가 자란다. */
+/* 캡션을 끌기 시작하면 Command Band 아랫변에 붙어 내려오는 넓은 손잡이(탭). 위 모서리는 띠에
+   물려 있으므로 각지고 아랫모서리만 둥글다 — 띠에서 뽑혀 나온 서랍의 문법. 폭은 JS가 아레나 비율로 준다. */
 .canvas-snap-handle {
   position: absolute;
   z-index: 21;
-  /* 바(≈350px)의 예고답게 넓게 — 짧은 필은 손잡이가 아니라 점으로 읽힌다. */
-  width: 132px;
-  height: 10px;
+  height: 14px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  /* 바와 같은 유리 — 손잡이는 바의 축소판이지 별개의 표식이 아니다. 색은 표면 토큰만 쓴다. */
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  box-shadow: inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, -12px);
+  transform: translate(-50%, -100%);
   transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
@@ -8499,6 +8498,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
 
 /* 놓일 자리 — 러버밴드와 같은 brass 점선·워시. 자리가 옮겨 갈 때 glide로 미끄러진다. */
 .canvas-snap-ghost {

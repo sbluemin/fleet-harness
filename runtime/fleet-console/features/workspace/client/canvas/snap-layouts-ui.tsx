@@ -71,14 +71,15 @@ function SnapPresetGlyph({ preset, presetIndex, hot, interactive, onPick }: Snap
 interface SnapHandleProps {
   /** 캡션을 끌기 시작하면 내려오고, 바가 열리거나 드래그가 끝나면 걷힌다. */
   readonly visible: boolean;
-  /** 캔버스 박스 좌표 — 아레나 가로 중심 x, 핸들 윗변 y. */
+  /** 캔버스 박스 좌표 — 아레나 가로 중심 x, Command Band 아랫변 y. */
   readonly anchorX: number;
   readonly anchorY: number;
+  readonly width: number;
 }
 
-/** 드래그가 시작되면 위에서 내려오는 작은 손잡이 — "여기로 올리면 분할 배치"의 예고. 띠에 닿으면 바로 자란다. */
-export function SnapHandle({ visible, anchorX, anchorY }: SnapHandleProps) {
-  return <div className={`canvas-snap-handle${visible ? " is-on" : ""}`} style={{ left: anchorX, top: anchorY }} aria-hidden="true" />;
+/** 드래그가 시작되면 Command Band에서 뽑혀 내려오는 넓은 손잡이 — "여기로 올리면 분할 배치"의 예고. 띠에 닿으면 바로 자란다. */
+export function SnapHandle({ visible, anchorX, anchorY, width }: SnapHandleProps) {
+  return <div className={`canvas-snap-handle${visible ? " is-on" : ""}`} style={{ left: anchorX, top: anchorY, width }} aria-hidden="true" />;
 }
 
 interface SnapLayoutBarProps {

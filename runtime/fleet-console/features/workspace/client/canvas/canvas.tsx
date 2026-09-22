@@ -1630,8 +1630,9 @@ export function OperationsCanvas({
       {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={screenViewport} /> : null}
       {snapEnabled ? <>
         <SnapGhost rect={snapGhost} />
-        <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 10} />
-        <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 10} />
+        {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
+        <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={Math.max(360, Math.min(760, Math.round(arena.width * 0.5)))} />
+        <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 8} />
         {snapMenu ? (
           <SnapLayoutMenu
             title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}
