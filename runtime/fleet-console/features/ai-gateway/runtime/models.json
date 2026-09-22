@@ -10,7 +10,8 @@
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "capabilityClass": "light",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gemini-3.8-flash",
           "providerModelId": "gemini-3.8-flash-high",
           "contextWindow": 1048576,
           "effort": {
@@ -25,13 +26,13 @@
               "medium": "gemini-3.8-flash-medium",
               "high": "gemini-3.8-flash-high"
             }
-          },
-          "benchmarkKey": "gemini-3.8-flash"
+          }
         },
         {
           "modelId": "gemini-3.1-pro",
           "name": "Gemini-3.1-Pro",
-          "capabilityClass": "flagship",
+          "capabilityClass": "light",
+          "benchmarkKey": "gemini-3.1-pro-preview",
           "providerModelId": "gemini-3.1-pro-low",
           "contextWindow": 1048576,
           "effort": {
@@ -57,6 +58,7 @@
           "modelId": "gpt-6-astra",
           "name": "GPT-6-Astra",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -76,6 +78,7 @@
           "modelId": "gpt-6-astra-fast",
           "name": "GPT-6-Astra-Fast",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -96,7 +99,8 @@
         {
           "modelId": "gpt-6-sol",
           "name": "GPT-6-Sol",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -115,7 +119,8 @@
         {
           "modelId": "gpt-6-sol-fast",
           "name": "GPT-6-Sol-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -137,6 +142,7 @@
           "modelId": "gpt-6-luna",
           "name": "GPT-6-Luna",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -156,6 +162,7 @@
           "modelId": "gpt-6-luna-fast",
           "name": "GPT-6-Luna-Fast",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -177,6 +184,7 @@
           "modelId": "gpt-5.6-terra",
           "name": "GPT-5.6-Terra",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -190,13 +198,13 @@
           },
           "aliases": [
             "gpt-5.6-terra"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-fast",
           "name": "GPT-5.6-Terra-Fast",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -212,13 +220,13 @@
           },
           "aliases": [
             "gpt-5.6-terra-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-6-astra-524k",
           "name": "GPT-6-Astra-524K",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "providerModelId": "gpt-6-astra",
           "contextWindow": 524288,
           "effort": {
@@ -239,6 +247,7 @@
           "modelId": "gpt-6-astra-524k-fast",
           "name": "GPT-6-Astra-524K-Fast",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -259,7 +268,8 @@
         {
           "modelId": "gpt-6-sol-524k",
           "name": "GPT-6-Sol-524K",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "providerModelId": "gpt-6-sol",
           "contextWindow": 524288,
           "effort": {
@@ -279,7 +289,8 @@
         {
           "modelId": "gpt-6-sol-524k-fast",
           "name": "GPT-6-Sol-524K-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -301,6 +312,7 @@
           "modelId": "gpt-6-luna-524k",
           "name": "GPT-6-Luna-524K",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "providerModelId": "gpt-6-luna",
           "contextWindow": 524288,
           "effort": {
@@ -321,6 +333,7 @@
           "modelId": "gpt-6-luna-524k-fast",
           "name": "GPT-6-Luna-524K-Fast",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -342,6 +355,7 @@
           "modelId": "gpt-5.6-terra-524k",
           "name": "GPT-5.6-Terra-524K",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "providerModelId": "gpt-5.6-terra",
           "contextWindow": 524288,
           "effort": {
@@ -356,13 +370,13 @@
           },
           "aliases": [
             "gpt-5.6-terra-524k"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-524k-fast",
           "name": "GPT-5.6-Terra-524K-Fast",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -378,13 +392,13 @@
           },
           "aliases": [
             "gpt-5.6-terra-524k-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-6-astra-1m",
           "name": "GPT-6-Astra-1M",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "providerModelId": "gpt-6-astra",
           "contextWindow": 1000000,
           "effort": {
@@ -405,6 +419,7 @@
           "modelId": "gpt-6-astra-1m-fast",
           "name": "GPT-6-Astra-1M-Fast",
           "capabilityClass": "flagship",
+          "benchmarkKey": "gpt-6-astra",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -425,7 +440,8 @@
         {
           "modelId": "gpt-6-sol-1m",
           "name": "GPT-6-Sol-1M",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "providerModelId": "gpt-6-sol",
           "contextWindow": 1000000,
           "effort": {
@@ -445,7 +461,8 @@
         {
           "modelId": "gpt-6-sol-1m-fast",
           "name": "GPT-6-Sol-1M-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "gpt-6-sol",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -467,6 +484,7 @@
           "modelId": "gpt-6-luna-1m",
           "name": "GPT-6-Luna-1M",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "providerModelId": "gpt-6-luna",
           "contextWindow": 1000000,
           "effort": {
@@ -487,6 +505,7 @@
           "modelId": "gpt-6-luna-1m-fast",
           "name": "GPT-6-Luna-1M-Fast",
           "capabilityClass": "light",
+          "benchmarkKey": "gpt-6-luna",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -508,6 +527,7 @@
           "modelId": "gpt-5.6-terra-1m",
           "name": "GPT-5.6-Terra-1M",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "providerModelId": "gpt-5.6-terra",
           "contextWindow": 1000000,
           "effort": {
@@ -522,13 +542,13 @@
           },
           "aliases": [
             "gpt-5.6-terra-1m"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-1m-fast",
           "name": "GPT-5.6-Terra-1M-Fast",
           "capabilityClass": "standard",
+          "benchmarkKey": "gpt-5.6-terra",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -544,8 +564,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-1m-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         }
       ]
     },
@@ -582,7 +601,8 @@
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -599,7 +619,8 @@
         {
           "modelId": "grok-4.7-fast",
           "name": "Grok-4.7-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -617,7 +638,8 @@
         {
           "modelId": "grok-4.7-500k",
           "name": "Grok-4.7-500k",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "quotaScope": "auto",
           "contextWindow": 500000,
           "effort": {
@@ -636,7 +658,8 @@
         {
           "modelId": "grok-4.7-500k-fast",
           "name": "Grok-4.7-500k-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "quotaScope": "auto",
           "contextWindow": 500000,
           "effort": {
@@ -663,6 +686,7 @@
           "modelId": "k3",
           "name": "K3-1M",
           "capabilityClass": "flagship",
+          "benchmarkKey": "kimi-k3",
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -680,6 +704,7 @@
           "modelId": "k3-256k",
           "name": "K3-256K",
           "capabilityClass": "flagship",
+          "benchmarkKey": "kimi-k3",
           "contextWindow": 262144,
           "effort": {
             "supported": true,
@@ -704,13 +729,15 @@
           "modelId": "glm-5.3",
           "name": "GLM-5.3",
           "capabilityClass": "flagship",
+          "benchmarkKey": "glm-5.3",
           "wire": "chat-completions",
           "contextWindow": 1000000
         },
         {
           "modelId": "glm-5.3-flash",
           "name": "GLM-5.3-Flash",
-          "capabilityClass": "light",
+          "capabilityClass": "standard",
+          "benchmarkKey": "glm-5.3-flash",
           "wire": "chat-completions",
           "contextWindow": 1000000
         },
@@ -718,6 +745,7 @@
           "modelId": "deepseek-v4-flash-vision-exp",
           "name": "DeepSeek-V4-Flash-Vision-Exp",
           "capabilityClass": "light",
+          "benchmarkKey": "deepseek-v4-flash-vision-exp",
           "wire": "chat-completions",
           "contextWindow": 1000000
         },
@@ -725,6 +753,7 @@
           "modelId": "muse-spark-1.3-contributor",
           "name": "Muse-Spark-1.3-Contributor",
           "capabilityClass": "flagship",
+          "benchmarkKey": "muse-spark-1.3",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {
@@ -740,7 +769,8 @@
         {
           "modelId": "deepseek-v4.1-flash",
           "name": "DeepSeek-V4.1-Flash",
-          "capabilityClass": "light",
+          "capabilityClass": "standard",
+          "benchmarkKey": "deepseek-v4.1-flash",
           "wire": "chat-completions",
           "contextWindow": 1000000
         },
@@ -761,7 +791,8 @@
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -777,7 +808,8 @@
         {
           "modelId": "grok-4.7-fast",
           "name": "Grok-4.7-Fast",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
+          "benchmarkKey": "grok-4.7",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -810,6 +842,7 @@
           "modelId": "fable",
           "name": "Fable",
           "capabilityClass": "flagship",
+          "benchmarkKey": "claude-fable-5",
           "providerModelId": "claude-fable-5",
           "effort": {
             "supported": true,
@@ -829,6 +862,7 @@
           "modelId": "fable-1m",
           "name": "Fable",
           "capabilityClass": "flagship",
+          "benchmarkKey": "claude-fable-5",
           "providerModelId": "claude-fable-5",
           "variantOf": "fable",
           "contextWindow": 1000000,
@@ -850,6 +884,7 @@
           "modelId": "opus",
           "name": "Opus",
           "capabilityClass": "flagship",
+          "benchmarkKey": "claude-opus-5",
           "providerModelId": "claude-opus-5",
           "effort": {
             "supported": true,
@@ -869,6 +904,7 @@
           "modelId": "opus-1m",
           "name": "Opus",
           "capabilityClass": "flagship",
+          "benchmarkKey": "claude-opus-5",
           "providerModelId": "claude-opus-5",
           "variantOf": "opus",
           "contextWindow": 1000000,
@@ -890,6 +926,7 @@
           "modelId": "sonnet",
           "name": "Sonnet",
           "capabilityClass": "standard",
+          "benchmarkKey": "claude-sonnet-5",
           "providerModelId": "claude-sonnet-5",
           "effort": {
             "supported": true,
@@ -909,6 +946,7 @@
           "modelId": "haiku",
           "name": "Haiku",
           "capabilityClass": "light",
+          "benchmarkKey": "claude-haiku-4-5-20251001",
           "providerModelId": "claude-haiku-4-5-20251001",
           "effort": {
             "supported": false
