@@ -29,6 +29,9 @@ export interface CanvasState {
   // Station Keeping — Cruise의 상시 비겹침 규율(옵트인, Theater별). 켜는 순간 한 번 펼치고,
   // 켜져 있는 동안 생성·이동·리사이즈·복원이 정착을 거친다. 끄는 것은 좌표를 되돌리지 않는다.
   readonly stationKeeping: boolean;
+  // 스냅하면 줌을 100%로 맞춤 — Cruise 캡슐의 옵트인(Theater별). 기본은 "보이는 그대로"(줌 유지).
+  // 켜져 있으면 스냅한 칸이 줌 100%에서 화면 한 칸이 되도록 카메라를 그 프레임으로 당긴다.
+  readonly snapZoomNormalize: boolean;
 }
 
 export interface CanvasViewportSize {
@@ -95,7 +98,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false, snapZoomNormalize: false };
 // Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
 // 충돌 상자는 본문이 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다.
 export const STATION_KEEPING_GAP = 16;
@@ -242,6 +245,7 @@ export function setState(patch: Partial<CanvasState>): void {
     minimized: patch.minimized ?? state.minimized,
     collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
     stationKeeping: patch.stationKeeping ?? state.stationKeeping,
+    snapZoomNormalize: patch.snapZoomNormalize ?? state.snapZoomNormalize,
   };
   scheduleSave();
   emit();
@@ -745,6 +749,71 @@ export function setStationKeeping(enabled: boolean): void {
   setState({ stationKeeping: true, ...(spread ? { operations: spread } : {}) });
 }
 
+export function getSnapZoomNormalize(): boolean {
+  return state.snapZoomNormalize;
+}
+
+export function useSnapZoomNormalize(): boolean {
+  return useSyncExternalStore(subscribe, getSnapZoomNormalize, getSnapZoomNormalize);
+}
+
+export function setSnapZoomNormalize(enabled: boolean): void {
+  if (state.snapZoomNormalize === enabled) return;
+  setState({ snapZoomNormalize: enabled });
+}
+
+/** 아레나 — 캔버스 박스에서 부유 크롬 인셋을 뺀 유효 뷰포트(캔버스 박스 좌표). 크기를 모르면 null. */
+export function getCanvasArenaRect(): CanvasWorldRect | null {
+  if (canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return null;
+  return {
+    x: canvasArenaInsets.left,
+    y: canvasArenaInsets.top,
+    width: Math.max(0, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right),
+    height: Math.max(0, canvasViewportSize.height - canvasArenaInsets.top - canvasArenaInsets.bottom),
+  };
+}
+
+/** 아레나-상대 화면 사각형을 현재 카메라로 월드 좌표로 환산한다(드래그와 같은 규칙: 화면 Δ / zoom). */
+export function arenaRectToWorld(rect: CanvasWorldRect, viewport: CanvasViewport = state.viewport): CanvasWorldRect {
+  return {
+    x: (rect.x - viewport.x) / viewport.zoom,
+    y: (rect.y - viewport.y) / viewport.zoom,
+    width: rect.width / viewport.zoom,
+    height: rect.height / viewport.zoom,
+  };
+}
+
+/**
+ * 스냅 — 아레나-상대 화면 칸(본문 사각형)에 패널을 앉힌다. 스냅은 사용자가 고른 자리라 Station
+ * Keeping 정착을 거치지 않고, 활성화와 같이 최상단으로 올라온다.
+ *
+ * 줌 정책: 기본은 "보이는 그대로" — 칸을 현재 카메라로 월드에 환산해 카메라는 움직이지 않는다.
+ * `snapZoomNormalize`(또는 ⌥ 1회 반전)가 켜지면 칸을 줌 100% 기준 월드 프레임으로 두고 카메라를
+ * 그 프레임으로 당긴다 — 패널의 고유 크기가 "화면 한 칸"으로 일정해진다. 돌려주는 값은 같은
+ * 정책으로 환산한 이웃 칸(가이드)이다.
+ */
+export function snapOperationToArenaRect(
+  sessionId: string,
+  bodyRect: CanvasWorldRect,
+  siblingRects: readonly CanvasWorldRect[] = [],
+  invertZoomPolicy = false,
+): readonly CanvasWorldRect[] {
+  const normalize = state.snapZoomNormalize !== invertZoomPolicy && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON;
+  const zIndex = claimTopZIndex();
+  if (!normalize) {
+    const world = arenaRectToWorld(bodyRect);
+    setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry({ ...world, zIndex }, zIndex), zIndex } } });
+    return siblingRects.map((rect) => arenaRectToWorld(rect));
+  }
+  // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
+  const originX = -state.viewport.x / state.viewport.zoom;
+  const originY = -state.viewport.y / state.viewport.zoom;
+  const world = { x: originX + bodyRect.x, y: originY + bodyRect.y, width: bodyRect.width, height: bodyRect.height };
+  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry({ ...world, zIndex }, zIndex), zIndex } } });
+  animateViewportTo({ x: -originX, y: -originY, zoom: 1 });
+  return siblingRects.map((rect) => ({ x: originX + rect.x, y: originY + rect.y, width: rect.width, height: rect.height }));
+}
+
 // 규율이 켜진 상태의 불변식 복구 — War Room 지도 이동처럼 규율 밖 쓰기가 남긴 겹침을 정착시킨다.
 export function enforceStationKeeping(): void {
   if (!state.stationKeeping) return;
@@ -1207,6 +1276,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
     minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
     stationKeeping: value.stationKeeping === true,
+    snapZoomNormalize: value.snapZoomNormalize === true,
   };
 }
 

@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../../integration/api.js";
-import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setSnapZoomNormalize, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useSnapZoomNormalize, useStationKeeping, type FormationLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../../../../../features/workspace/client/canvas/triage-watch-deck.js";
 import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
@@ -76,6 +76,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const triageActive = useTriageActive();
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   const stationKeeping = useStationKeeping();
+  const snapZoomNormalize = useSnapZoomNormalize();
   const triageDeckZoomLive = useTriageDeckZoomLive();
   const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
   const selectCanvasMode = (mode: CanvasMode) => {
@@ -131,7 +132,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     focusFirstModeTool();
   }, [modeToolsOpen]);
   const modeToolEcho = (mode: CanvasMode): boolean =>
-    mode === "cruise" ? stationKeeping : mode === "warRoom" ? !triageSpotlightEnabled || triageDeckZoomLive !== 1.0 : false;
+    mode === "cruise" ? stationKeeping || snapZoomNormalize : mode === "warRoom" ? !triageSpotlightEnabled || triageDeckZoomLive !== 1.0 : false;
   // 캡슐은 활성 세그먼트의 가로 중심 아래에 선다. 세그먼트를 감싸는 positioned 래퍼는
   // SegmentedThumb의 offset 좌표계를 깨뜨리므로, 스위치에 절대 배치하고 중심만 잰다.
   useLayoutEffect(() => {
@@ -443,6 +444,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 title={t("chrome.commandBand.stationKeeping")}
                 onClick={() => setStationKeeping(!stationKeeping)}
               ><StationKeepingIcon /></button>
+              <button
+                type="button"
+                className="command-band-mode-tool"
+                data-cruise-tool="snap-zoom"
+                aria-pressed={snapZoomNormalize}
+                disabled={state.activeTheaterId === null || !state.operationsHydrated}
+                aria-label={t("chrome.commandBand.snapZoomNormalize")}
+                title={t("chrome.commandBand.snapZoomNormalize")}
+                onClick={() => setSnapZoomNormalize(!snapZoomNormalize)}
+              ><SnapZoomIcon /></button>
             </> : null}
             {canvasMode === "warRoom" ? <>
               {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 순서가 바뀌어도
@@ -655,6 +666,11 @@ function FitAllIcon() {
 // Station Keeping — 패널 둘레의 이격 반경(점선 keep-clear 구역 안의 패널).
 function StationKeepingIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="6" height="6" fill="none" stroke="currentColor" strokeWidth="1.25" /><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2.2" opacity="0.75" /></svg>;
+}
+
+// 스냅하면 줌 100% — Station Keeping과 같은 점선 프레임 가족에 "1"(100%)을 세운다.
+function SnapZoomIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2.2" opacity="0.75" /><path d="M6.2 5.4 8 4.3v7.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function FormationColumnsIcon() {
