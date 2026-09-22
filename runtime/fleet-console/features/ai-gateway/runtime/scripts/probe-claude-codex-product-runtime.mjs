@@ -97,7 +97,7 @@ function closeServer(server) {
 
 export async function createProductProbeRuntime(gateway, options, trigger) {
   const target = gateway.findGatewayModel(options.model);
-  if (!target || target.provider !== "codex" || gateway.upstreamModelId(target) !== "gpt-5.6-luna") {
+  if (!target || target.provider !== "codex" || gateway.upstreamModelId(target) !== "gpt-6-luna") {
     throw new Error(`model is not the live Luna target: ${options.model}`);
   }
   const auth = await gateway.readCodexSubscriptionAuth();

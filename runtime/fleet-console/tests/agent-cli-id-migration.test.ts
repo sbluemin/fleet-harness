@@ -25,7 +25,7 @@ describe("Agent session durable migration", () => {
           launchKindId: "claude-gateway",
           cliLabel: "Claude (Gateway)",
           launchProvider: "codex",
-          launchModel: "codex--gpt-5.6-sol",
+          launchModel: "codex--gpt-6-sol",
           launchEffort: "medium",
           providerSession: {
             provider: "claude-gateway",
@@ -44,7 +44,7 @@ describe("Agent session durable migration", () => {
       cwd: "/work",
       session: {
         harness: "claude-code",
-        model: "codex--gpt-5.6-sol",
+        model: "codex--gpt-6-sol",
         effort: "medium",
         id: "provider-session",
         transcriptPath: "/secret/transcript.jsonl",
@@ -60,7 +60,7 @@ describe("Agent session durable migration", () => {
       operations: [{
         ...baseOperation,
         payload: {
-          launchModel: "codex--gpt-5.6-sol",
+          launchModel: "codex--gpt-6-sol",
           providerSession: {
             provider: "codex",
             sessionId: "codex-session",
@@ -75,7 +75,7 @@ describe("Agent session durable migration", () => {
 
     expect(state.operations[0]?.payload.session).toEqual({
       harness: "codex",
-      model: "codex--gpt-5.6-sol",
+      model: "codex--gpt-6-sol",
       id: "codex-session",
       transcriptPath: "/secret/codex.jsonl",
       capturedAt: "2026-08-23T00:00:00.000Z",

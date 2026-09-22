@@ -153,13 +153,14 @@ const PROVIDERS = [
     cred: "subscription",
     color: "#5fd673",
     mission: {
-      ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol·Terra·Luna 모두 low부터 max까지 노출하고, ULTRACODE는 하네스 능력으로 모든 행에 서므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
-      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol, Terra, and Luna each run from low through max, and ULTRACODE stands on every row as a harness capability, so one model serves both cheap mechanical work and hard judgment.",
+      ko: "GPT-6 계열과 GPT-5.6 Terra를 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Astra·Sol·Luna·Terra 모두 low부터 max까지 노출하고, ULTRACODE는 하네스 능력으로 모든 행에 서므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
+      en: "Brings the GPT-6 family and GPT-5.6 Terra onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Astra, Sol, Luna, and Terra each run from low through max, and ULTRACODE stands on every row as a harness capability, so one model serves both cheap mechanical work and hard judgment.",
     },
     models: [
-      { ko: "GPT-5.6 Sol — low~max, Fast 변형 포함", en: "GPT-5.6 Sol — low through max, Fast variant included" },
+      { ko: "GPT-6 Astra — low~max, Fast 변형 포함", en: "GPT-6 Astra — low through max, Fast variant included" },
+      { ko: "GPT-6 Sol — low~max, Fast 변형 포함", en: "GPT-6 Sol — low through max, Fast variant included" },
+      { ko: "GPT-6 Luna — low~max, Fast 변형 포함", en: "GPT-6 Luna — low through max, Fast variant included" },
       { ko: "GPT-5.6 Terra — low~max, Fast 변형 포함", en: "GPT-5.6 Terra — low through max, Fast variant included" },
-      { ko: "GPT-5.6 Luna — low~max, Fast 변형 포함", en: "GPT-5.6 Luna — low through max, Fast variant included" },
     ],
   },
   {

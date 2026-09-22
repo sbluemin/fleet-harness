@@ -15,7 +15,7 @@ import type { GatewayHttpHandlerContext } from "../../../../src/router/types.js"
 const BASE = "/ai-gateway";
 const CLAUDE_MESSAGES = `${BASE}/v1/messages`;
 const GROK_MESSAGES = `${BASE}/grok/v1/messages`;
-const GROK_MODEL = "grok-build-gateway--codex--gpt-5-6-sol";
+const GROK_MODEL = "grok-build-gateway--codex--gpt-6-sol";
 
 describe("grok build harness selector", () => {
   it("routes the selector segment to grok and leaves the bare mount on Claude Code", async () => {
@@ -99,11 +99,11 @@ function streamedResponse(): AdapterResponse {
     events: (async function* () {
       yield {
         type: "response.created",
-        response: { id: "resp_stub", model: "gpt-5.6-sol", usage: { input_tokens: 221_000, output_tokens: 0 } },
+        response: { id: "resp_stub", model: "gpt-6-sol", usage: { input_tokens: 221_000, output_tokens: 0 } },
       } as const;
       yield {
         type: "response.completed",
-        response: { id: "resp_stub", model: "gpt-5.6-sol", usage: { input_tokens: 221_000, output_tokens: 1 } },
+        response: { id: "resp_stub", model: "gpt-6-sol", usage: { input_tokens: 221_000, output_tokens: 1 } },
       } as const;
     })(),
   };

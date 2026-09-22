@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-22T00:00:00Z",
+  "updatedAt": "2026-09-23T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -51,7 +51,7 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-6-astra",
-      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 524K (524288) and explicit 1M (1000000) variants on the same upstream bases; 2026-09-05 codex app-server model/list (codex-cli 0.153.4) added gpt-6-astra as the lineup's new flagship and the entry that now carries isDefault, reporting low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out of the catalog under the same launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 2x speed. A live app-server turn that day reported modelContextWindow 258400 for gpt-6-astra and the identical figure for gpt-5.6-sol, so Astra shares the 272000 base this catalog records for that lineup and takes the same explicit 524K/1M variants. The GPT-5.6 models stay listed because the same model/list still serves them with no upgrade pointer and no retirement date, unlike its deprecated gpt-5.4-mini entry",
+      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 524K (524288) and explicit 1M (1000000) variants on the same upstream bases; 2026-09-05 codex app-server model/list (codex-cli 0.153.4) added gpt-6-astra as the lineup's new flagship and the entry that now carries isDefault, reporting low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out of the catalog under the same launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 2x speed. A live app-server turn that day reported modelContextWindow 258400 for gpt-6-astra and the identical figure for gpt-5.6-sol, so Astra shares the 272000 base this catalog records for that lineup and takes the same explicit 524K/1M variants. The GPT-5.6 models stay listed because the same model/list still serves them with no upgrade pointer and no retirement date, unlike its deprecated gpt-5.4-mini entry; 2026-09-23 codex app-server model/list (codex-cli 0.156.0) added gpt-6-sol and gpt-6-luna after gpt-6-astra, with Sol reporting low/medium/high/xhigh/max/ultra and Luna low/medium/high/xhigh/max reasoning efforts (ultra again stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 1.5x speed; the same client models_cache.json recorded context_window 272000 and max_context_window 872000 for both, identical to gpt-6-astra and the GPT-5.6 lineup, so both take the same explicit 524K/1M variants. GPT-5.6 Sol and GPT-5.6 Luna were then retired from this catalog in favor of their GPT-6 successors, while GPT-5.6 Terra stays because GPT-6 has no Terra counterpart",
       "models": [
         {
           "modelId": "gpt-6-astra",
@@ -94,8 +94,8 @@
           ]
         },
         {
-          "modelId": "gpt-5.6-sol",
-          "name": "GPT-5.6-Sol",
+          "modelId": "gpt-6-sol",
+          "name": "GPT-6-Sol",
           "capabilityClass": "flagship",
           "contextWindow": 272000,
           "effort": {
@@ -109,15 +109,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol"
+          ]
         },
         {
-          "modelId": "gpt-5.6-sol-fast",
-          "name": "GPT-5.6-Sol-Fast",
+          "modelId": "gpt-6-sol-fast",
+          "name": "GPT-6-Sol-Fast",
           "capabilityClass": "flagship",
-          "providerModelId": "gpt-5.6-sol",
+          "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 272000,
           "effort": {
@@ -131,9 +130,48 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol-fast"
+          ]
+        },
+        {
+          "modelId": "gpt-6-luna",
+          "name": "GPT-6-Luna",
+          "capabilityClass": "light",
+          "contextWindow": 272000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-6-luna"
+          ]
+        },
+        {
+          "modelId": "gpt-6-luna-fast",
+          "name": "GPT-6-Luna-Fast",
+          "capabilityClass": "light",
+          "providerModelId": "gpt-6-luna",
+          "serviceTier": "priority",
+          "contextWindow": 272000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-6-luna-fast"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra",
@@ -178,48 +216,6 @@
           "benchmarkKey": "gpt-5.6-terra"
         },
         {
-          "modelId": "gpt-5.6-luna",
-          "name": "GPT-5.6-Luna",
-          "capabilityClass": "light",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-5.6-luna"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
-        },
-        {
-          "modelId": "gpt-5.6-luna-fast",
-          "name": "GPT-5.6-Luna-Fast",
-          "capabilityClass": "light",
-          "providerModelId": "gpt-5.6-luna",
-          "serviceTier": "priority",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-5.6-luna-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
-        },
-        {
           "modelId": "gpt-6-astra-524k",
           "name": "GPT-6-Astra-524K",
           "capabilityClass": "flagship",
@@ -261,10 +257,10 @@
           ]
         },
         {
-          "modelId": "gpt-5.6-sol-524k",
-          "name": "GPT-5.6-Sol-524K",
+          "modelId": "gpt-6-sol-524k",
+          "name": "GPT-6-Sol-524K",
           "capabilityClass": "flagship",
-          "providerModelId": "gpt-5.6-sol",
+          "providerModelId": "gpt-6-sol",
           "contextWindow": 524288,
           "effort": {
             "supported": true,
@@ -277,15 +273,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol-524k"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol-524k"
+          ]
         },
         {
-          "modelId": "gpt-5.6-sol-524k-fast",
-          "name": "GPT-5.6-Sol-524K-Fast",
+          "modelId": "gpt-6-sol-524k-fast",
+          "name": "GPT-6-Sol-524K-Fast",
           "capabilityClass": "flagship",
-          "providerModelId": "gpt-5.6-sol",
+          "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 524288,
           "effort": {
@@ -299,15 +294,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol-524k-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol-524k-fast"
+          ]
         },
         {
-          "modelId": "gpt-5.6-luna-524k",
-          "name": "GPT-5.6-Luna-524K",
+          "modelId": "gpt-6-luna-524k",
+          "name": "GPT-6-Luna-524K",
           "capabilityClass": "light",
-          "providerModelId": "gpt-5.6-luna",
+          "providerModelId": "gpt-6-luna",
           "contextWindow": 524288,
           "effort": {
             "supported": true,
@@ -320,15 +314,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-luna-524k"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
+            "gpt-6-luna-524k"
+          ]
         },
         {
-          "modelId": "gpt-5.6-luna-524k-fast",
-          "name": "GPT-5.6-Luna-524K-Fast",
+          "modelId": "gpt-6-luna-524k-fast",
+          "name": "GPT-6-Luna-524K-Fast",
           "capabilityClass": "light",
-          "providerModelId": "gpt-5.6-luna",
+          "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 524288,
           "effort": {
@@ -342,9 +335,8 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-luna-524k-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
+            "gpt-6-luna-524k-fast"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-524k",
@@ -431,10 +423,10 @@
           ]
         },
         {
-          "modelId": "gpt-5.6-sol-1m",
-          "name": "GPT-5.6-Sol-1M",
+          "modelId": "gpt-6-sol-1m",
+          "name": "GPT-6-Sol-1M",
           "capabilityClass": "flagship",
-          "providerModelId": "gpt-5.6-sol",
+          "providerModelId": "gpt-6-sol",
           "contextWindow": 1000000,
           "effort": {
             "supported": true,
@@ -447,15 +439,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol-1m"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol-1m"
+          ]
         },
         {
-          "modelId": "gpt-5.6-sol-1m-fast",
-          "name": "GPT-5.6-Sol-1M-Fast",
+          "modelId": "gpt-6-sol-1m-fast",
+          "name": "GPT-6-Sol-1M-Fast",
           "capabilityClass": "flagship",
-          "providerModelId": "gpt-5.6-sol",
+          "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 1000000,
           "effort": {
@@ -469,15 +460,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-sol-1m-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-sol"
+            "gpt-6-sol-1m-fast"
+          ]
         },
         {
-          "modelId": "gpt-5.6-luna-1m",
-          "name": "GPT-5.6-Luna-1M",
+          "modelId": "gpt-6-luna-1m",
+          "name": "GPT-6-Luna-1M",
           "capabilityClass": "light",
-          "providerModelId": "gpt-5.6-luna",
+          "providerModelId": "gpt-6-luna",
           "contextWindow": 1000000,
           "effort": {
             "supported": true,
@@ -490,15 +480,14 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-luna-1m"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
+            "gpt-6-luna-1m"
+          ]
         },
         {
-          "modelId": "gpt-5.6-luna-1m-fast",
-          "name": "GPT-5.6-Luna-1M-Fast",
+          "modelId": "gpt-6-luna-1m-fast",
+          "name": "GPT-6-Luna-1M-Fast",
           "capabilityClass": "light",
-          "providerModelId": "gpt-5.6-luna",
+          "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 1000000,
           "effort": {
@@ -512,9 +501,8 @@
             ]
           },
           "aliases": [
-            "gpt-5.6-luna-1m-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-luna"
+            "gpt-6-luna-1m-fast"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-1m",

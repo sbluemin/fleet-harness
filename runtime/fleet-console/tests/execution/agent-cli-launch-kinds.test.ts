@@ -30,7 +30,7 @@ describe("buildAgentCliLaunchKinds", () => {
       models: [
         { id: "claude--sonnet-1m" },
         { id: "kimi--k3", efforts: ["max"] },
-        { id: "codex--gpt-5.6-sol-fast" },
+        { id: "codex--gpt-6-sol-fast" },
       ],
     });
 
@@ -47,18 +47,18 @@ describe("buildAgentCliLaunchKinds", () => {
         label: "Codex",
         rows: [
           {
-            id: "codex--gpt-5.6-sol-fast",
-            label: "GPT-5.6-Sol-Fast",
-            launch: { model: "codex--gpt-5.6-sol-fast" },
+            id: "codex--gpt-6-sol-fast",
+            label: "GPT-6-Sol-Fast",
+            launch: { model: "codex--gpt-6-sol-fast" },
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: [
-              gatewayChip("codex--gpt-5.6-sol-fast", "low", "LOW"),
-              gatewayChip("codex--gpt-5.6-sol-fast", "medium", "MED"),
-              gatewayChip("codex--gpt-5.6-sol-fast", "high", "HIGH"),
-              gatewayChip("codex--gpt-5.6-sol-fast", "xhigh", "XHIGH"),
-              gatewayChip("codex--gpt-5.6-sol-fast", "max", "MAX"),
-              gatewayChip("codex--gpt-5.6-sol-fast", "ultra", "ULTRACODE"),
+              gatewayChip("codex--gpt-6-sol-fast", "low", "LOW"),
+              gatewayChip("codex--gpt-6-sol-fast", "medium", "MED"),
+              gatewayChip("codex--gpt-6-sol-fast", "high", "HIGH"),
+              gatewayChip("codex--gpt-6-sol-fast", "xhigh", "XHIGH"),
+              gatewayChip("codex--gpt-6-sol-fast", "max", "MAX"),
+              gatewayChip("codex--gpt-6-sol-fast", "ultra", "ULTRACODE"),
             ],
           },
         ],

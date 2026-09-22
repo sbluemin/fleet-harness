@@ -13,7 +13,7 @@ import type { AnthropicModelList } from "../../wire/anthropic-messages/protocol.
  * Claude Code의 방언과 두 가지가 다르고, 두 차이 모두 Grok Build 쪽 사실에서 나온다.
  *
  * - **점이 없다.** Grok Build는 모델을 `~/.grok/config.toml`의 `[model.<id>]` 절로 받는데,
- *   TOML의 bare key는 점을 테이블 구분자로 읽는다. `[model.a--gpt-5.6-luna]`는 오류가 아니라
+ *   TOML의 bare key는 점을 테이블 구분자로 읽는다. `[model.a--gpt-5.6-terra]`는 오류가 아니라
  *   조용히 중첩 테이블이 되므로, 인용을 빠뜨린 손편집이 아무 진단 없이 모델을 잃는다.
  *   인용하면 점도 동작하지만(실측 확인), 그 함정을 남기는 것보다 문법에서 점을 없애는 쪽이 싸다.
  * - **1M 좌표 표식이 없다.** Grok Build는 창 크기를 자기 `context_window` 설정에서 읽으므로

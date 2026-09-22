@@ -42,8 +42,8 @@ vi.mock("../../foundation/agent-runtime/src/claude/vendor-sdk.js", () => ({
 const { createClaudeGatewaySdk } = await import("../../foundation/agent-runtime/src/claude/sdk.js");
 
 const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
-const LUNA = "claude-gateway--codex--gpt-5.6-luna-fast";
-const SOL = "claude-gateway--codex--gpt-5.6-sol-fast";
+const LUNA = "claude-gateway--codex--gpt-6-luna-fast";
+const SOL = "claude-gateway--codex--gpt-6-sol-fast";
 const FABLE_1M = "fable[1m]";
 
 async function drain(run: AsyncIterable<unknown>): Promise<void> {

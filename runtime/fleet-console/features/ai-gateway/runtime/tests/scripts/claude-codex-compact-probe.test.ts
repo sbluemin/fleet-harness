@@ -67,10 +67,10 @@ describe("Claude Code Codex compact probe", () => {
     const wrongModel = runScript(
       sourceScript,
       "--model",
-      "claude-gateway--codex--gpt-5.6-sol",
+      "claude-gateway--codex--gpt-6-sol",
       "--confirm-live-provider",
     );
     expect(wrongModel.status).toBe(2);
-    expect(wrongModel.stderr).toContain("gpt-5.6-luna");
+    expect(wrongModel.stderr).toContain("gpt-6-luna");
   });
 });

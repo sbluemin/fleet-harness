@@ -8,7 +8,7 @@ import {
 
 function request(): CanonicalResponseRequest {
   return {
-    model: "gpt-5.6-luna",
+    model: "gpt-6-luna",
     input: [
       { type: "message", role: "user", content: "Remember CANARY-1" },
       { type: "message", role: "assistant", content: "Stored CANARY-1" },
@@ -29,13 +29,13 @@ function sse(events: unknown[]): Response {
 }
 
 function created(id: string) {
-  return { type: "response.created", response: { id, model: "gpt-5.6-luna", usage: null } };
+  return { type: "response.created", response: { id, model: "gpt-6-luna", usage: null } };
 }
 
 function completed(id: string) {
   return {
     type: "response.completed",
-    response: { id, model: "gpt-5.6-luna", usage: { input_tokens: 10, output_tokens: 5 } },
+    response: { id, model: "gpt-6-luna", usage: { input_tokens: 10, output_tokens: 5 } },
   };
 }
 

@@ -15,7 +15,7 @@ import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../
 
 function request(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
   return {
-    model: "gpt-5.6-luna",
+    model: "gpt-6-luna",
     input: [{ type: "message", role: "user", content: "hi" }],
     stream: true,
     ...overrides,
