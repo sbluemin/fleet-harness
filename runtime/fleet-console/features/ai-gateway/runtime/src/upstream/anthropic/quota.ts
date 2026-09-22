@@ -2,6 +2,7 @@ import { defaultCredentialDeps } from "../../transport/credentials.js";
 import type {
   ProviderResult,
   QuotaWindow,
+  ResetCredits,
 } from "../../quota/types.js";
 import {
   HOUR_MS,
@@ -19,6 +20,7 @@ import {
   windowPeriod,
   type ProviderDeps,
 } from "../../quota/windows.js";
+import { resolveClaudeCliVersion } from "./cli-version.js";
 import { resolveClaudeCredentials } from "./credentials.js";
 
 // Claude states its window lengths only as block names (`five_hour`,
@@ -117,28 +119,67 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
   return { windows };
 }
 
+/**
+ * Claude's usage-limit resets arrive in the usage body's `cedar_ember` block as
+ * grants, each carrying its own remaining count and deadline. A grant counts
+ * toward what the user holds only while it can still be spent: not paused and
+ * not past `ends_at` — the same test Claude Code applies before offering one.
+ * An ineligible block (wrong surface, old CLI, plan without the program) is the
+ * absence of resets, not zero of them, so it yields nothing.
+ */
+export function parseClaudeResetCredits(payload: unknown, now: number): ResetCredits | undefined {
+  const block = object(object(payload)?.cedar_ember);
+  if (!block || block.eligible !== true) return undefined;
+  const grants = array(block.grants);
+  let available = 0;
+  let nextExpiresAt: number | undefined;
+  for (let index = 0; index < grants.length && index < MAX_CREDIT_ENTRIES; index += 1) {
+    const grant = object(grants[index]);
+    if (!grant || grant.paused === true) continue;
+    const left = grant.resets_left;
+    if (!Number.isSafeInteger(left) || (left as number) <= 0) continue;
+    const endsAt = safeTimestamp(grant.ends_at);
+    if (endsAt !== undefined && endsAt <= now) continue;
+    available += left as number;
+    if (endsAt !== undefined && (nextExpiresAt === undefined || endsAt < nextExpiresAt)) nextExpiresAt = endsAt;
+  }
+  return {
+    available,
+    ...(nextExpiresAt !== undefined ? { nextExpiresAt } : {}),
+  };
+}
+
 export async function fetchClaudeUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
   const credentials = await resolveClaudeCredentials(deps.credentials ?? defaultCredentialDeps);
   if (!credentials) return { status: "signed_out" };
   if (credentials.expiresAt !== undefined && credentials.expiresAt <= (deps.now ?? Date.now)()) {
     return { status: "expired", method: credentials.method };
   }
+  // The reset block rides the same request as the windows (`cedar_ember=1` only
+  // adds it), so resets cost no extra call against an endpoint that rate-limits.
+  // The server answers that block to the Claude Code CLI surface alone, which it
+  // reads from the CLI's own User-Agent form.
+  const version = await resolveClaudeCliVersion({ deps: deps.credentials ?? defaultCredentialDeps });
   try {
-    const parsed = parseClaudeUsage(await getJson(
+    const payload = await getJson(
       deps.fetch ?? fetch,
-      "https://api.anthropic.com/api/oauth/usage",
+      "https://api.anthropic.com/api/oauth/usage?cedar_ember=1",
       {
         Authorization: `Bearer ${credentials.accessToken}`,
         "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.0",
+        "User-Agent": `claude-cli/${version} (external, cli)`,
       },
-    ));
+    );
+    const parsed = parseClaudeUsage(payload);
+    const fetchedAt = (deps.now ?? Date.now)();
+    const credits = parseClaudeResetCredits(payload, fetchedAt);
     return {
       status: "ok",
       method: credentials.method,
       plan: formatClaudePlan(credentials.subscriptionType, credentials.rateLimitTier),
       windows: parsed.windows,
-      fetchedAt: (deps.now ?? Date.now)(),
+      ...(credits ? { credits } : {}),
+      fetchedAt,
     };
   } catch (error) {
     const result = expired(error);
