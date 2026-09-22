@@ -8410,6 +8410,163 @@ body[data-companion-resizing="true"] .canvas-operation {
   pointer-events: none;
 }
 
+/* ── Cruise 스냅 ──────────────────────────────────────────────────────────
+   끌던 패널이 위쪽 띠에 닿으면 내려오는 프리셋 바. 캡슐(command-band-mode-tray)과 같은 유리와
+   spring 리듬을 쓰되, 드래그 중 표면이라 입력은 받지 않는다(포인터는 캡션이 잡고 있다). */
+.canvas-snap-bar {
+  position: absolute;
+  z-index: 21;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -14px) scale(0.96);
+  transform-origin: top center;
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
+}
+
+.canvas-snap-bar.is-open {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.canvas-snap-preset {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 2px;
+  width: 64px;
+  height: 42px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.canvas-snap-preset.is-hot {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: var(--brass-glow);
+}
+
+.canvas-snap-zone {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--text-primary) 14%, transparent);
+  transition: background var(--duration-fast) ease;
+}
+
+.canvas-snap-zone.is-hot {
+  background: var(--brass);
+}
+
+/* 캡션을 끌기 시작하면 Command Band 아랫변에 붙어 내려오는 넓은 손잡이(탭). 위 모서리는 띠에
+   물려 있으므로 각지고 아랫모서리만 둥글다 — 띠에서 뽑혀 나온 서랍의 문법. 폭은 JS가 아레나 비율로 준다. */
+.canvas-snap-handle {
+  position: absolute;
+  z-index: 21;
+  height: 14px;
+  border: 1px solid var(--surface-rim);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  /* 밴드의 유리(--glass-tint-band·soft backdrop)를 그대로 잇는다 — 띠에서 뽑혀 나온 서랍이니 띠와
+     같은 색이어야지, 캡슐·바의 진한 유리를 쓰면 라이트 테마에서 흰 판으로 떠 보인다. */
+  background: var(--glass-tint-band);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  box-shadow: 0 8px 20px -14px oklch(0 0 0 / 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
+}
+
+.canvas-snap-handle.is-on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+
+/* 놓일 자리 — 러버밴드와 같은 brass 점선·워시. 자리가 옮겨 갈 때 glide로 미끄러진다. */
+.canvas-snap-ghost {
+  position: absolute;
+  z-index: 20;
+  border: 1px dashed var(--brass-bright);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent),
+    0 0 24px -12px var(--brass-glow);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-fast) ease,
+    left var(--duration-fast) var(--ease-glide),
+    top var(--duration-fast) var(--ease-glide),
+    width var(--duration-fast) var(--ease-glide),
+    height var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-snap-ghost.is-on {
+  opacity: 1;
+}
+
+/* 캡션 최대화 버튼에 머무르면 열리는 배치 메뉴 — 바와 같은 유리, 여기서는 칸이 버튼이다. */
+.canvas-snap-menu {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  animation: canvas-snap-menu-in 190ms var(--ease-spring) both;
+}
+
+@keyframes canvas-snap-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.canvas-snap-menu .canvas-snap-zone {
+  cursor: pointer;
+}
+
+.canvas-snap-menu .canvas-snap-zone:hover,
+.canvas-snap-menu .canvas-snap-zone:focus-visible {
+  background: var(--brass);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-snap-bar,
+  .canvas-snap-handle,
+  .canvas-snap-ghost,
+  .canvas-snap-menu {
+    transition: none;
+    animation: none;
+  }
+}
+
 .operations-canvas-empty {
   position: absolute;
   /* 부유 사이드바 점유 폭(--arena-left)을 지나 아레나 안에 선다 — 박스 기준 좌표는 덱 전체를

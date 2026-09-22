@@ -58,6 +58,20 @@ interface OperationFrameProps {
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
   readonly onRenderHiddenFocus?: () => void;
+  /**
+   * 캡션 드래그의 포인터 위치 통지(뷰포트 좌표). 부모(캔버스)가 스냅 칸·레이아웃 바를 히트테스트하는
+   * 데 쓴다 — 프레임은 자기 기하만 알고 아레나를 모른다. 드래그가 실제로 시작(임계 통과)한 뒤부터 온다.
+   */
+  readonly onDragPointer?: (pointer: OperationDragPointer) => void;
+  /** 드래그 해제 직전의 마지막 포인터. 이 뒤에 onGeometryCommit이 온다. */
+  readonly onDragRelease?: (pointer: OperationDragPointer) => void;
+  /** 최대화 버튼에 마우스가 잠시 머무르면 분할 배치 메뉴를 연다 — 앵커는 버튼 사각형(뷰포트 좌표). */
+  readonly onOpenSnapMenu?: (anchor: DOMRect) => void;
+}
+
+export interface OperationDragPointer {
+  readonly clientX: number;
+  readonly clientY: number;
 }
 
 interface DragState {
@@ -85,6 +99,8 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 3;
+// 최대화 버튼 위 머무름 → 분할 배치 메뉴. 캡션 툴팁과 같은 리듬의 짧은 지연이다.
+const SNAP_MENU_HOVER_DELAY_MS = 350;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
 // 포커스 도착 링의 수명 — CSS --duration-slow(0.36s)와 같은 값이다. 링은 전이 전용이라
@@ -93,7 +109,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -294,16 +310,48 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     onActivate();
     // 제자리 클릭·더블클릭은 캡처하지 않는다 — 캡처하면 제목 버튼의 dblclick이 캡션으로 간다.
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry, capturing: false };
+    // 캡처 전에는 pointerup이 캡션 밖에서 날 수 있다(포인터가 첫 move 전에 캡션을 벗어난 빠른 클릭).
+    // 그 up을 놓치면 dragRef가 남아, 나중에 버튼 없이 캡션을 지나가는 마우스가 "드래그"로 읽혀 패널이
+    // 제멋대로 움직인다. 창 전체에서 up 하나를 기다렸다가 캡처되지 않은 드래그를 지운다.
+    armPendingDragRelease();
   };
+
+  const pendingDragReleaseRef = useRef<(() => void) | null>(null);
+  const armPendingDragRelease = () => {
+    pendingDragReleaseRef.current?.();
+    const release = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === event.pointerId && !drag.capturing) dragRef.current = null;
+      disarmPendingDragRelease();
+    };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    pendingDragReleaseRef.current = () => {
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      pendingDragReleaseRef.current = null;
+    };
+  };
+  const disarmPendingDragRelease = () => pendingDragReleaseRef.current?.();
+  useEffect(() => disarmPendingDragRelease, []);
 
   const updateDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    // 버튼이 이미 떨어진 채 오는 move는 드래그가 아니다 — 놓친 up의 잔상이면 지우고, 캡처 중이었다면
+    // 지금 자리를 커밋해 마무리한다.
+    if (event.buttons === 0) {
+      if (drag.capturing) finishPointerManipulation(true);
+      else dragRef.current = null;
+      disarmPendingDragRelease();
+      return;
+    }
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     if (!drag.capturing) {
       if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      disarmPendingDragRelease();
       drag.capturing = true;
       setDragging(true);
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -317,6 +365,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     };
     drag.latest = next;
     onGeometryChange(next);
+    onDragPointer?.({ clientX: event.clientX, clientY: event.clientY });
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -334,9 +383,29 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       event.preventDefault();
       event.stopPropagation();
       event.currentTarget.releasePointerCapture(event.pointerId);
+      onDragRelease?.({ clientX: event.clientX, clientY: event.clientY });
       onGeometryCommit(drag.latest);
     }
   };
+
+  // 최대화 버튼 위에 마우스가 350ms 머무르면 분할 배치 메뉴 — hover는 마우스만의 것이다(터치·펜은
+  // 접촉과 함께 pointerenter를 내므로 뒤따르는 click(최대화)과 충돌한다).
+  const snapMenuTimerRef = useRef<number | null>(null);
+  const clearSnapMenuTimer = () => {
+    if (snapMenuTimerRef.current === null) return;
+    window.clearTimeout(snapMenuTimerRef.current);
+    snapMenuTimerRef.current = null;
+  };
+  const armSnapMenu = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!onOpenSnapMenu || event.pointerType !== "mouse" || maximized || interactionDisabled) return;
+    clearSnapMenuTimer();
+    const anchor = event.currentTarget;
+    snapMenuTimerRef.current = window.setTimeout(() => {
+      snapMenuTimerRef.current = null;
+      onOpenSnapMenu(anchor.getBoundingClientRect());
+    }, SNAP_MENU_HOVER_DELAY_MS);
+  };
+  useEffect(() => clearSnapMenuTimer, []);
 
   const beginResize = (direction: ResizeDirection, event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) return;
@@ -567,7 +636,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </CaptionTipHost>
           {!triageStage && !deckTile && onMaximize ? (
             <CaptionTipHost label={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
-              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
+              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !maximized ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
                 {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
               </button>
             </CaptionTipHost>

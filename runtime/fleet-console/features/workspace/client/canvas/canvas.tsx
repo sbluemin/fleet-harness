@@ -21,7 +21,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
+import { snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -32,7 +32,9 @@ import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { FleetMap } from "./fleet-map.js";
 import { anchorViewportToPoint, resolveFleetContentCenter, resolveFleetMapActive, resolveFleetMapZoomAnchor } from "./fleet-map-layout.js";
-import { OperationFrame } from "./operation-frame.js";
+import { OperationFrame, type OperationDragPointer } from "./operation-frame.js";
+import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapEdgeHitFor, snapPointInTopBand, snapZoneHitFor, type SnapRect } from "./snap-layouts.js";
+import { SnapGhost, SnapHandle, SnapLayoutBar, SnapLayoutMenu, type SnapZoneRef } from "./snap-layouts-ui.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
@@ -131,6 +133,14 @@ export function OperationsCanvas({
   }), []);
   const t = useT();
   const canvas = useCanvasState();
+  // ── Cruise 스냅 상태 ─────────────────────────────────────────────────────
+  // 손잡이·바·고스트·메뉴는 모두 화면(캔버스 박스) 좌표다 — 칸은 지금 보이는 아레나의 것이라 카메라와 무관하다.
+  const [snapDragging, setSnapDragging] = useState(false);
+  const [snapBar, setSnapBar] = useState<{ readonly open: boolean; readonly hover: SnapZoneRef | null }>({ open: false, hover: null });
+  const [snapGhost, setSnapGhost] = useState<SnapRect | null>(null);
+  const [snapMenu, setSnapMenu] = useState<{ readonly operationId: string; readonly anchor: SnapRect } | null>(null);
+  const snapBarRef = useRef<HTMLDivElement | null>(null);
+  const snapDragRef = useRef<{ operationId: string; barOpen: boolean; zone: SnapRect | null } | null>(null);
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const maximizedOperationId = useMaximizedOperationId();
@@ -890,6 +900,122 @@ export function OperationsCanvas({
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
     && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);
   const fleetMapActive = fleetMapActiveRef.current;
+
+  // ── Cruise 스냅 ──────────────────────────────────────────────────────────
+  // 스냅은 Cruise의 자유 배치 위에서만 산다. Tactical·War Room·최대화·companion은 프레임 드래그
+  // 자체가 잠겨 바가 뜰 경로가 없지만, 캡션 메뉴는 명시적으로 닫는다. Fleet Map(줌 < 0.2)에서는
+  // 패널이 지도 점이라 스냅 대상이 아니다.
+  const snapEnabled = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && canvas.viewport.zoom >= SNAP_MIN_ZOOM;
+  // 칸의 기준 상자는 Tactical 슬롯과 같은 모드 아레나(아레나-상대)다 — 부유 카드에서 8px 떨어져 선다.
+  const snapHitArena: SnapRect = { x: 0, y: 0, width: arena.width, height: arena.height };
+  // 손잡이 폭 — 아레나 절반(360~760px). 바를 내리는 띠도 이 폭 안에서만 반응한다.
+  const snapHandleWidth = Math.max(360, Math.min(760, Math.round(arena.width * 0.5)));
+  // 칸은 이 렌더의 인셋 prop(modeArena)에서 바로 편다 — 스토어의 인셋은 passive effect가 뒤늦게 갱신하므로,
+  // 사이드바를 여닫은 직후 렌더에서 스토어를 읽으면 이전 크롬 폭의 칸이 나온다.
+  const snapArena: SnapRect = { x: modeArena.x - arena.x, y: 0, width: modeArena.width, height: arena.height };
+  const arenaRectToBox = (rect: SnapRect): SnapRect => ({ x: rect.x + arena.x, y: rect.y + arena.y, width: rect.width, height: rect.height });
+  const frameOf = (body: SnapRect): SnapRect => ({ x: body.x, y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: body.width, height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT });
+  const arenaPointOf = (pointer: OperationDragPointer): { x: number; y: number } | null => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: pointer.clientX - rect.left - arena.x, y: pointer.clientY - rect.top - arena.y };
+  };
+  const resetSnapDragUi = () => {
+    setSnapDragging(false);
+    setSnapBar((previous) => (previous.open || previous.hover ? { open: false, hover: null } : previous));
+    setSnapGhost(null);
+  };
+  // 바의 어느 칸 위인가 — 포인터는 캡션이 잡고 있으므로 elementFromPoint 대신 칸 사각형으로 잰다.
+  // 프리셋 안 칸 사이 틈은 가장 가까운 칸으로 친다.
+  const hitTestSnapBar = (pointer: OperationDragPointer): SnapZoneRef | null => {
+    const bar = snapBarRef.current;
+    if (!bar) return null;
+    let best: { ref: SnapZoneRef; distance: number } | null = null;
+    for (const preset of bar.querySelectorAll<HTMLElement>("[data-snap-preset]:not([data-snap-zone])")) {
+      const presetRect = preset.getBoundingClientRect();
+      if (pointer.clientX < presetRect.left || pointer.clientX > presetRect.right || pointer.clientY < presetRect.top || pointer.clientY > presetRect.bottom) continue;
+      for (const zone of preset.querySelectorAll<HTMLElement>("[data-snap-zone]")) {
+        const zoneRect = zone.getBoundingClientRect();
+        const centerX = (zoneRect.left + zoneRect.right) / 2;
+        const centerY = (zoneRect.top + zoneRect.bottom) / 2;
+        const distance = (centerX - pointer.clientX) ** 2 + (centerY - pointer.clientY) ** 2;
+        if (best === null || distance < best.distance) best = { ref: { presetIndex: Number(zone.dataset.snapPreset), zoneIndex: Number(zone.dataset.snapZone) }, distance };
+      }
+    }
+    return best?.ref ?? null;
+  };
+  const pointerOverSnapBar = (pointer: OperationDragPointer): boolean => {
+    const rect = snapBarRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    const margin = 8;
+    return pointer.clientX >= rect.left - margin && pointer.clientX <= rect.right + margin && pointer.clientY >= rect.top - margin && pointer.clientY <= rect.bottom + margin;
+  };
+  const handleSnapDragPointer = (operationId: string, pointer: OperationDragPointer) => {
+    if (!snapEnabled) {
+      if (snapDragRef.current) { snapDragRef.current = null; resetSnapDragUi(); }
+      return;
+    }
+    const point = arenaPointOf(pointer);
+    if (!point) return;
+    const drag = snapDragRef.current?.operationId === operationId
+      ? snapDragRef.current
+      : { operationId, barOpen: false, zone: null };
+    if (snapDragRef.current !== drag) { snapDragRef.current = drag; setSnapDragging(true); }
+    // 위쪽 띠에 닿으면 손잡이가 바로 자라고, 열린 뒤에는 띠보다 조금 아래까지·바 위까지 붙잡는다(히스테리시스).
+    drag.barOpen = snapPointInTopBand(point, snapHitArena, drag.barOpen, arena.width / 2, snapHandleWidth) || (drag.barOpen && pointerOverSnapBar(pointer));
+    if (drag.barOpen) {
+      const hover = hitTestSnapBar(pointer);
+      drag.zone = hover ? snapZoneHitFor(snapArena, SNAP_PRESETS[hover.presetIndex]!, hover.zoneIndex).zone : null;
+      setSnapBar({ open: true, hover });
+      setSnapGhost(drag.zone ? arenaRectToBox(frameOf(drag.zone)) : null);
+      return;
+    }
+    setSnapBar((previous) => (previous.open || previous.hover ? { open: false, hover: null } : previous));
+    const edge = snapEdgeHitFor(point, snapHitArena, snapArena);
+    drag.zone = edge ? edge.zone : null;
+    setSnapGhost(edge ? arenaRectToBox(frameOf(edge.zone)) : null);
+  };
+  const handleSnapDragRelease = (operationId: string, pointer: OperationDragPointer) => {
+    // 마지막 포인터로 표적을 한 번 더 확정한다 — 해제 직전 이동이 히트테스트를 지나쳤을 수 있다.
+    if (snapDragRef.current?.operationId === operationId) handleSnapDragPointer(operationId, pointer);
+  };
+  // 드래그 해제에서 부모가 커밋 직전에 부른다 — 스냅 표적이 있으면 프레임이 보낸 자유 좌표 대신 그 칸이다.
+  const consumeSnapDrag = (operationId: string): boolean => {
+    const drag = snapDragRef.current;
+    if (!drag || drag.operationId !== operationId) return false;
+    snapDragRef.current = null;
+    resetSnapDragUi();
+    if (!drag.zone || !snapEnabled) return false;
+    snapOperationToArenaRect(operationId, drag.zone);
+    return true;
+  };
+  const openSnapMenu = (operationId: string, anchor: DOMRect) => {
+    if (!snapEnabled) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setSnapMenu({ operationId, anchor: { x: anchor.left - rect.left, y: anchor.top - rect.top, width: anchor.width, height: anchor.height } });
+  };
+  const closeSnapMenu = useCallback(() => setSnapMenu(null), []);
+  const pickSnapMenuZone = (zone: SnapZoneRef) => {
+    const menu = snapMenu;
+    setSnapMenu(null);
+    if (!menu || !snapEnabled) return;
+    setActiveOperation(menu.operationId);
+    snapOperationToArenaRect(menu.operationId, snapZoneHitFor(snapArena, SNAP_PRESETS[zone.presetIndex]!, zone.zoneIndex).zone);
+    const geometry = getCanvasSnapshot().operations[menu.operationId];
+    if (geometry) void updatePluginOperationGeometry(menu.operationId, geometry);
+  };
+  // 모드·Theater가 바뀌면 스냅 표면을 모두 거둔다.
+  useEffect(() => {
+    if (snapEnabled) return;
+    setSnapMenu(null);
+    snapDragRef.current = null;
+    resetSnapDragUi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapEnabled]);
+  useEffect(() => {
+    setSnapMenu(null);
+  }, [state.activeTheaterId]);
   // 퇴장은 한 박자 남긴다 — 판이 줌 한 노치에 즉시 사라지면 패널의 복귀 페이드와 어긋나 화면이 빈다.
   const [fleetMapLeaving, setFleetMapLeaving] = useState(false);
   const previousFleetMapActiveRef = useRef(false);
@@ -1371,10 +1497,18 @@ export function OperationsCanvas({
             },
             onGeometryCommit: (geometry) => {
               if (operationMaximized || operationCompanion || formationView) return;
+              // 스냅 표적이 있으면 그 칸이 자리다 — 사용자가 고른 칸이라 Station Keeping 정착을 건너뛴다.
+              if (consumeSnapDrag(operation.id)) {
+                void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
+                return;
+              }
               // Station Keeping: 해제 시점에 만진 패널만 정착시킨 뒤, 정착된 스냅샷을 durable로 보낸다.
               if (!triageActive) settleOperationGeometry(operation.id);
               void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
             },
+            onDragPointer: (pointer) => handleSnapDragPointer(operation.id, pointer),
+            onDragRelease: (pointer) => handleSnapDragRelease(operation.id, pointer),
+            onOpenSnapMenu: (anchor) => openSnapMenu(operation.id, anchor),
           });
         })}
         {companionDividersActive ? companionSlotIds.slice(0, -1).map((slotId, index) => (
@@ -1498,6 +1632,22 @@ export function OperationsCanvas({
         />
       ) : null}
       {interaction.rubberBand ? <RubberBand rect={interaction.rubberBand} viewport={screenViewport} /> : null}
+      {snapEnabled ? <>
+        <SnapGhost rect={snapGhost} />
+        {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
+        <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={snapHandleWidth} />
+        <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 8} />
+        {snapMenu ? (
+          <SnapLayoutMenu
+            title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}
+            anchor={snapMenu.anchor}
+            boundsWidth={canvasSize.width}
+            boundsHeight={canvasSize.height}
+            onPick={pickSnapMenuZone}
+            onClose={closeSnapMenu}
+          />
+        ) : null}
+      </> : null}
       {contextMenu ? createPortal(
         <CanvasContextMenu
           key={`${contextMenu.anchor.x}:${contextMenu.anchor.y}`}
@@ -1764,6 +1914,9 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
+  readonly onDragPointer?: (pointer: OperationDragPointer) => void;
+  readonly onDragRelease?: (pointer: OperationDragPointer) => void;
+  readonly onOpenSnapMenu?: (anchor: DOMRect) => void;
 }) {
   const descriptor = options.operationKindRegistry.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   const geometry = options.geometry;
@@ -1821,6 +1974,9 @@ function renderPluginOperation(operation: OperationNode, options: {
         onRenderHiddenDismissMenu={options.onRenderHiddenDismissMenu}
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}
+        onDragPointer={options.onDragPointer}
+        onDragRelease={options.onDragRelease}
+        onOpenSnapMenu={options.onOpenSnapMenu}
         onRenderHiddenFocus={options.onRenderHiddenFocus}
         // 덱 카드에도 그린다 — 카드의 캡션은 조작면이 아니라 표식면이며, 무엇을 남길지는 CSS(.is-deck-tile)가
         // 정한다: 에이전트 사용 배지와 「사용 중」인 브라우저 버튼만 남고 나머지 액션은 숨는다.
