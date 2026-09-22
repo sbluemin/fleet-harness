@@ -1640,6 +1640,7 @@ export function OperationsCanvas({
             title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}
             anchor={snapMenu.anchor}
             boundsWidth={canvasSize.width}
+            boundsHeight={canvasSize.height}
             onPick={pickSnapMenuZone}
             onClose={closeSnapMenu}
           />

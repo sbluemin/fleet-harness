@@ -15,6 +15,10 @@ const PRESET_LABEL_KEY: Readonly<Record<SnapPresetId, CoreMessageKey>> = {
   stack: "canvas.snap.presetStack",
 };
 
+// 메뉴 상자: 5px 패딩 + 42px 칸 + 5px 패딩 + 테두리 2px. 앵커 아래/위 판단에만 쓴다(렌더는 CSS가 정한다).
+const SNAP_MENU_HEIGHT = 54;
+const SNAP_MENU_GAP = 6;
+
 export interface SnapZoneRef {
   readonly presetIndex: number;
   readonly zoneIndex: number;
@@ -134,12 +138,13 @@ interface SnapLayoutMenuProps {
   /** 캔버스 박스 좌표 — 메뉴의 오른쪽 변을 앵커 오른쪽 변에 맞추고 앵커 아래에 선다. */
   readonly anchor: SnapRect;
   readonly boundsWidth: number;
+  readonly boundsHeight: number;
   readonly onPick: (zone: SnapZoneRef) => void;
   readonly onClose: () => void;
 }
 
 /** 캡션 최대화 버튼에 머무르면 열리는 배치 메뉴. 포인터가 메뉴와 앵커에서 멀어지면 스스로 닫힌다. */
-export function SnapLayoutMenu({ title, anchor, boundsWidth, onPick, onClose }: SnapLayoutMenuProps) {
+export function SnapLayoutMenu({ title, anchor, boundsWidth, boundsHeight, onPick, onClose }: SnapLayoutMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -176,13 +181,16 @@ export function SnapLayoutMenu({ title, anchor, boundsWidth, onPick, onClose }: 
   }, [onClose]);
   const width = SNAP_PRESETS.length * 70 + 6;
   const left = Math.max(8, Math.min(boundsWidth - width - 8, anchor.x + anchor.width - width));
+  // 캔버스는 overflow: clip이라 아래로 밀려난 메뉴는 닿을 수 없다 — 아래에 자리가 없으면 앵커 위로 편다.
+  const below = anchor.y + anchor.height + SNAP_MENU_GAP;
+  const top = below + SNAP_MENU_HEIGHT + 8 <= boundsHeight ? below : Math.max(8, anchor.y - SNAP_MENU_GAP - SNAP_MENU_HEIGHT);
   return (
     <div
       ref={menuRef}
       className="canvas-snap-menu"
       role="menu"
       aria-label={t("canvas.snap.menuAria", { title })}
-      style={{ left, top: anchor.y + anchor.height + 6 }}
+      style={{ left, top }}
       // 메뉴 안의 포인터다운이 캔버스 팬/빈 바다 클릭으로 새지 않게 막는다.
       onPointerDown={(event) => event.stopPropagation()}
     >

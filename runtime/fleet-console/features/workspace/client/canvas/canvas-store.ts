@@ -86,6 +86,8 @@ export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
 const OPERATION_FOCUS_PADDING = 96;
 // 불러온 패널이 아레나보다 클 때 왼쪽 위에 남기는 여백 — 모드 프레임 여백과 같은 값.
 const FOCUS_BRING_IN_INSET = 18;
+// 이 아래 줌은 판독 불가(Fleet Map 영역, 이탈 문턱 0.24 위) — 포커스가 카메라를 여기까지 끌어올린다.
+const FOCUS_READABLE_ZOOM = 0.25;
 // fit-all의 하한은 사용성 경계가 아니라 수치 안전 epsilon이다 — fit은 "전체를 담는" 계약이라
 // 임의의 사용성 하한(0.25, 0.1 등)은 초광폭 배치에서 가장자리 클리핑으로 계약을 깬다.
 const FIT_ALL_MIN_ZOOM = 0.02;
@@ -889,37 +891,62 @@ export function loadForTheater(theaterId: string | null): void {
 // 포커스(사이드바·검색 점프·Alt+화살표)는 카메라를 패널로 보내지 않고 패널을 지금 보는 화면으로 부른다.
 // 이미 아레나 안에 온전히 보이면 자리를 건드리지 않고 최상단으로만 올린다. 보이지 않으면 크기는 그대로
 // 두고 현재 줌에서 아레나 가운데에 앉힌다 — 아레나보다 크면 왼쪽 위를 모드 프레임 여백에 맞춘다.
+//
+// 두 예외는 카메라 쪽이 맞다. Fleet Map(줌이 판독 한계 아래)에서 점을 고른 것은 "그 패널로 내려가자"라
+// 지도 위에서 좌표만 옮기면 아무 일도 안 일어난 것처럼 보이므로, 예전처럼 패널을 향해 줌인한다.
+// Tactical·최대화·companion은 저장된 Cruise 좌표를 렌더에서 덮고 있을 뿐이라 보이지 않는 뷰포트를
+// 기준으로 좌표를 고쳐 쓰면 Cruise로 돌아왔을 때 손으로 놓은 자리가 사라진다 — 활성화·복원만 한다.
 export function focusOperation(sessionId: string, viewportSize: CanvasViewportSize): void {
   const geometry = state.operations[sessionId];
   if (!geometry) return;
-  const arena = getCanvasArenaRect() ?? { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height };
-  const zoom = state.viewport.zoom;
-  const frame = {
-    x: geometry.x * zoom + state.viewport.x,
-    y: (geometry.y - OPERATION_WINDOW_CAPTION_HEIGHT) * zoom + state.viewport.y,
-    width: geometry.width * zoom,
-    height: (geometry.height + OPERATION_WINDOW_CAPTION_HEIGHT) * zoom,
-  };
-  const visible = frame.x >= 0 && frame.y >= 0 && frame.x + frame.width <= arena.width && frame.y + frame.height <= arena.height;
   const zIndex = claimTopZIndex();
   const wasMinimized = state.minimized.includes(sessionId);
-  let next = geometry;
-  if (!visible) {
-    const inset = FOCUS_BRING_IN_INSET;
-    const screenX = frame.width + inset * 2 <= arena.width ? (arena.width - frame.width) / 2 : inset;
-    const screenY = frame.height + inset * 2 <= arena.height ? (arena.height - frame.height) / 2 : inset;
-    next = {
-      ...geometry,
-      x: (screenX - state.viewport.x) / zoom,
-      y: (screenY - state.viewport.y) / zoom + OPERATION_WINDOW_CAPTION_HEIGHT,
+  const unminimize = wasMinimized ? { minimized: state.minimized.filter((id) => id !== sessionId) } : {};
+  if (state.viewport.zoom < FOCUS_READABLE_ZOOM) {
+    const zoom = Math.max(FOCUS_READABLE_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
+      (viewportSize.width - OPERATION_FOCUS_PADDING) / geometry.width,
+      (viewportSize.height - OPERATION_FOCUS_PADDING) / geometry.height,
+    )));
+    const focusedViewport: CanvasViewport = {
+      x: viewportSize.width / 2 - (geometry.x + geometry.width / 2) * zoom,
+      y: viewportSize.height / 2 - (geometry.y + geometry.height / 2) * zoom,
+      zoom,
     };
+    // 진행 중 줌 보간을 취소하고 target을 포커스 결과로 맞춰, 마지막 tween 프레임이 포커스를 되돌리지 못하게 한다.
+    cancelZoomTween();
+    targetViewport = focusedViewport;
+    setState({
+      viewport: focusedViewport,
+      operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex } },
+      ...unminimize,
+    });
+    return;
+  }
+  let next = geometry;
+  if (!formationView && focusLayer === null) {
+    const arena = getCanvasArenaRect() ?? { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height };
+    const zoom = state.viewport.zoom;
+    const frame = {
+      x: geometry.x * zoom + state.viewport.x,
+      y: (geometry.y - OPERATION_WINDOW_CAPTION_HEIGHT) * zoom + state.viewport.y,
+      width: geometry.width * zoom,
+      height: (geometry.height + OPERATION_WINDOW_CAPTION_HEIGHT) * zoom,
+    };
+    const visible = frame.x >= 0 && frame.y >= 0 && frame.x + frame.width <= arena.width && frame.y + frame.height <= arena.height;
+    if (!visible) {
+      const inset = FOCUS_BRING_IN_INSET;
+      const screenX = frame.width + inset * 2 <= arena.width ? (arena.width - frame.width) / 2 : inset;
+      const screenY = frame.height + inset * 2 <= arena.height ? (arena.height - frame.height) / 2 : inset;
+      next = {
+        ...geometry,
+        x: (screenX - state.viewport.x) / zoom,
+        y: (screenY - state.viewport.y) / zoom + OPERATION_WINDOW_CAPTION_HEIGHT,
+      };
+    }
   }
   setState({
-    operations: {
-      ...state.operations,
-      [sessionId]: { ...normalizeOperationGeometry(next, zIndex), zIndex },
-    },
-    ...(wasMinimized ? { minimized: state.minimized.filter((id) => id !== sessionId) } : {}),
+    operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(next, zIndex), zIndex } },
+    ...unminimize,
   });
 }
 
