@@ -45,7 +45,7 @@ const launchDataDir = "/tmp/fleet-console-test/console";
 const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
 
 describe("createAgentTerminalLaunchResolver launch environment", () => {
-  it("advertises truecolor without replacing the compatible TERM entry", async () => {
+  it("advertises supported terminal capabilities without replacing the compatible TERM entry", async () => {
     const resolve = createAgentTerminalLaunchResolver({
       dataDir: launchDataDir,
       plugin: launchPluginStub,
@@ -65,6 +65,7 @@ describe("createAgentTerminalLaunchResolver launch environment", () => {
     expect(spec.env).toMatchObject({
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
+      FORCE_HYPERLINK: "1",
     });
     expect(spec.env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined();
   });

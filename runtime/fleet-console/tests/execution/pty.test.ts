@@ -15,7 +15,7 @@ describe("createShellTerminalLaunchResolver", () => {
   it("advertises truecolor without replacing the compatible TERM entry", async () => {
     const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
-      env: { COLORTERM: "256color", SHELL: "/bin/sh" } as NodeJS.ProcessEnv,
+      env: { COLORTERM: "256color", SHELL: "/bin/sh", FORCE_HYPERLINK: "0" } as NodeJS.ProcessEnv,
       platform: "linux",
     });
 
@@ -24,6 +24,7 @@ describe("createShellTerminalLaunchResolver", () => {
     expect(spec.env).toMatchObject({
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
+      FORCE_HYPERLINK: "0",
     });
   });
 });

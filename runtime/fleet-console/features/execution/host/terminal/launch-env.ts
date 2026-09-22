@@ -6,6 +6,9 @@ export function withTerminalCapabilities(env: NodeJS.ProcessEnv): NodeJS.Process
     // xterm.js의 24-bit SGR 렌더링을 알리되, TERM은 널리 호환되는 terminfo 항목을 유지한다.
     COLORTERM: "truecolor",
     TERM: TERMINAL_TERM,
+    // OSC 8은 표시된 줄 조각이 아니라 원래 URL을 운반한다. xterm이 지원하는 능력을 명시해
+    // CLI가 긴 링크를 일반 텍스트로 낮추지 않게 하되, 사용자가 명시적으로 끈 값은 보존한다.
+    FORCE_HYPERLINK: env.FORCE_HYPERLINK ?? "1",
   };
 }
 
