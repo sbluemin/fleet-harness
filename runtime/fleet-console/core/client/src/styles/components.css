@@ -8476,11 +8476,18 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-snap-handle {
   position: absolute;
   z-index: 21;
-  width: 44px;
-  height: 6px;
+  width: 48px;
+  height: 10px;
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 55%, var(--surface-rim-strong));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent), 0 6px 16px -8px var(--brass-glow);
+  /* 바와 같은 유리 — 손잡이는 바의 축소판이지 별개의 표식이 아니다. 색은 표면 토큰만 쓴다. */
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -12px);

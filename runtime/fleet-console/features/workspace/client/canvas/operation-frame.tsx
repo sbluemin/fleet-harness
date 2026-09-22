@@ -310,16 +310,48 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     onActivate();
     // 제자리 클릭·더블클릭은 캡처하지 않는다 — 캡처하면 제목 버튼의 dblclick이 캡션으로 간다.
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry, capturing: false };
+    // 캡처 전에는 pointerup이 캡션 밖에서 날 수 있다(포인터가 첫 move 전에 캡션을 벗어난 빠른 클릭).
+    // 그 up을 놓치면 dragRef가 남아, 나중에 버튼 없이 캡션을 지나가는 마우스가 "드래그"로 읽혀 패널이
+    // 제멋대로 움직인다. 창 전체에서 up 하나를 기다렸다가 캡처되지 않은 드래그를 지운다.
+    armPendingDragRelease();
   };
+
+  const pendingDragReleaseRef = useRef<(() => void) | null>(null);
+  const armPendingDragRelease = () => {
+    pendingDragReleaseRef.current?.();
+    const release = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === event.pointerId && !drag.capturing) dragRef.current = null;
+      disarmPendingDragRelease();
+    };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    pendingDragReleaseRef.current = () => {
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      pendingDragReleaseRef.current = null;
+    };
+  };
+  const disarmPendingDragRelease = () => pendingDragReleaseRef.current?.();
+  useEffect(() => disarmPendingDragRelease, []);
 
   const updateDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    // 버튼이 이미 떨어진 채 오는 move는 드래그가 아니다 — 놓친 up의 잔상이면 지우고, 캡처 중이었다면
+    // 지금 자리를 커밋해 마무리한다.
+    if (event.buttons === 0) {
+      if (drag.capturing) finishPointerManipulation(true);
+      else dragRef.current = null;
+      disarmPendingDragRelease();
+      return;
+    }
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     if (!drag.capturing) {
       if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      disarmPendingDragRelease();
       drag.capturing = true;
       setDragging(true);
       event.currentTarget.setPointerCapture(event.pointerId);
