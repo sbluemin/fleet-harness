@@ -8478,16 +8478,15 @@ body[data-companion-resizing="true"] .canvas-operation {
   position: absolute;
   z-index: 21;
   height: 14px;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--surface-rim);
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  /* 밴드의 유리(--glass-tint-band·soft backdrop)를 그대로 잇는다 — 띠에서 뽑혀 나온 서랍이니 띠와
+     같은 색이어야지, 캡슐·바의 진한 유리를 쓰면 라이트 테마에서 흰 판으로 떠 보인다. */
+  background: var(--glass-tint-band);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  box-shadow: 0 8px 20px -14px oklch(0 0 0 / 0.45);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -100%);

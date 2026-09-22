@@ -908,6 +908,8 @@ export function OperationsCanvas({
   const snapEnabled = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && canvas.viewport.zoom >= SNAP_MIN_ZOOM;
   // 칸의 기준 상자는 Tactical 슬롯과 같은 모드 아레나(아레나-상대)다 — 부유 카드에서 8px 떨어져 선다.
   const snapHitArena: SnapRect = { x: 0, y: 0, width: arena.width, height: arena.height };
+  // 손잡이 폭 — 아레나 절반(360~760px). 바를 내리는 띠도 이 폭 안에서만 반응한다.
+  const snapHandleWidth = Math.max(360, Math.min(760, Math.round(arena.width * 0.5)));
   const snapArena: SnapRect = getCanvasSnapArenaRect() ?? snapHitArena;
   const arenaRectToBox = (rect: SnapRect): SnapRect => ({ x: rect.x + arena.x, y: rect.y + arena.y, width: rect.width, height: rect.height });
   const frameOf = (body: SnapRect): SnapRect => ({ x: body.x, y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: body.width, height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT });
@@ -958,7 +960,7 @@ export function OperationsCanvas({
       : { operationId, barOpen: false, zone: null };
     if (snapDragRef.current !== drag) { snapDragRef.current = drag; setSnapDragging(true); }
     // 위쪽 띠에 닿으면 손잡이가 바로 자라고, 열린 뒤에는 띠보다 조금 아래까지·바 위까지 붙잡는다(히스테리시스).
-    drag.barOpen = snapPointInTopBand(point, snapHitArena, drag.barOpen) || (drag.barOpen && pointerOverSnapBar(pointer));
+    drag.barOpen = snapPointInTopBand(point, snapHitArena, drag.barOpen, arena.width / 2, snapHandleWidth) || (drag.barOpen && pointerOverSnapBar(pointer));
     if (drag.barOpen) {
       const hover = hitTestSnapBar(pointer);
       drag.zone = hover ? snapZoneHitFor(snapArena, SNAP_PRESETS[hover.presetIndex]!, hover.zoneIndex).zone : null;
@@ -1631,7 +1633,7 @@ export function OperationsCanvas({
       {snapEnabled ? <>
         <SnapGhost rect={snapGhost} />
         {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
-        <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={Math.max(360, Math.min(760, Math.round(arena.width * 0.5)))} />
+        <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={snapHandleWidth} />
         <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 8} />
         {snapMenu ? (
           <SnapLayoutMenu

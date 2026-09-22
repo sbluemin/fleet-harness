@@ -113,8 +113,15 @@ export function snapPointInRect(point: SnapPoint, rect: SnapRect): boolean {
   return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
 }
 
-/** 끌던 패널이 바를 내리는 띠 안에 있는가 — 열린 뒤에는 히스테리시스만큼 더 넓게 본다. */
-export function snapPointInTopBand(point: SnapPoint, arena: SnapRect, barOpen: boolean): boolean {
-  if (point.x < arena.x || point.x > arena.x + arena.width) return false;
+// 손잡이 좌우로 이만큼은 더 받아 준다 — 손잡이 끝을 스치듯 올려도 바가 열린다.
+export const SNAP_HANDLE_REACH = 24;
+
+/**
+ * 끌던 패널이 바를 내리는 띠 안에 있는가 — 가로로는 손잡이 폭(+여유) 안이어야 한다. 위쪽 어디로 가든
+ * 바가 열리면 위로 옮기려는 평범한 드래그마다 바가 튀어나온다. 열린 뒤에는 히스테리시스만큼 더 넓게 본다.
+ */
+export function snapPointInTopBand(point: SnapPoint, arena: SnapRect, barOpen: boolean, handleCenterX: number, handleWidth: number): boolean {
+  const reach = handleWidth / 2 + SNAP_HANDLE_REACH + (barOpen ? SNAP_TOP_BAND_HYSTERESIS : 0);
+  if (Math.abs(point.x - handleCenterX) > reach) return false;
   return point.y >= arena.y && point.y < arena.y + SNAP_TOP_BAND + (barOpen ? SNAP_TOP_BAND_HYSTERESIS : 0);
 }
