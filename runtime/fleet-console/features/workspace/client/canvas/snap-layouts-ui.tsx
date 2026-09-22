@@ -68,17 +68,29 @@ function SnapPresetGlyph({ preset, presetIndex, hot, interactive, onPick }: Snap
   );
 }
 
+interface SnapHandleProps {
+  /** 캡션을 끌기 시작하면 내려오고, 바가 열리거나 드래그가 끝나면 걷힌다. */
+  readonly visible: boolean;
+  /** 캔버스 박스 좌표 — 아레나 가로 중심 x, 핸들 윗변 y. */
+  readonly anchorX: number;
+  readonly anchorY: number;
+}
+
+/** 드래그가 시작되면 위에서 내려오는 작은 손잡이 — "여기로 올리면 분할 배치"의 예고. 띠에 닿으면 바로 자란다. */
+export function SnapHandle({ visible, anchorX, anchorY }: SnapHandleProps) {
+  return <div className={`canvas-snap-handle${visible ? " is-on" : ""}`} style={{ left: anchorX, top: anchorY }} aria-hidden="true" />;
+}
+
 interface SnapLayoutBarProps {
   readonly open: boolean;
   readonly hover: SnapZoneRef | null;
-  readonly lowZoom: boolean;
   /** 캔버스 박스 좌표 — 아레나 가로 중심 x, 바 윗변 y. */
   readonly anchorX: number;
   readonly anchorY: number;
 }
 
 /** 드래그 중에만 뜨는 프리셋 바. 포인터는 캡션이 잡고 있으므로 바는 히트테스트만 당하고 입력은 받지 않는다. */
-export const SnapLayoutBar = forwardRef<HTMLDivElement, SnapLayoutBarProps>(function SnapLayoutBar({ open, hover, lowZoom, anchorX, anchorY }, ref) {
+export const SnapLayoutBar = forwardRef<HTMLDivElement, SnapLayoutBarProps>(function SnapLayoutBar({ open, hover, anchorX, anchorY }, ref) {
   const t = useT();
   return (
     <div
@@ -92,7 +104,6 @@ export const SnapLayoutBar = forwardRef<HTMLDivElement, SnapLayoutBarProps>(func
       {SNAP_PRESETS.map((preset, presetIndex) => (
         <SnapPresetGlyph key={preset.id} preset={preset} presetIndex={presetIndex} hot={hover?.presetIndex === presetIndex ? hover.zoneIndex : null} interactive={false} />
       ))}
-      <span className={`canvas-snap-bar-note${open && lowZoom ? " is-on" : ""}`} aria-hidden="true">{t("canvas.snap.lowZoomNote")}</span>
     </div>
   );
 });

@@ -225,7 +225,7 @@ const MODES = [
     },
     points: [
       { ko: "**무한 캔버스** — 패널마다 위치·크기를 기억한다.", en: "**An infinite canvas** — every panel remembers its own position and size." },
-      { ko: "**분할 배치** — 패널을 위쪽으로 끌면 분할 프리셋이 내려오고, 좌우·모서리로 끌면 반쪽·사분면에 앉는다. 남은 칸은 가이드로 남는다.", en: "**Snap layouts** — drag a panel to the top for split presets, or to a side or corner for a half or quarter; the remaining slots stay as guides." },
+      { ko: "**분할 배치** — 패널을 위쪽으로 끌면 분할 프리셋이 내려오고, 좌우·모서리로 끌면 반쪽·사분면에 앉는다. 스냅하면 줌이 100%로 돌아온다.", en: "**Snap layouts** — drag a panel to the top for split presets, or to a side or corner for a half or quarter; snapping brings zoom back to 100%." },
       { ko: "**⌘K**로 모든 Theater에 걸쳐 검색, **⌘P**로 커맨드 팔레트.", en: "**⌘K** searches across every Theater; **⌘P** opens the command palette." },
     ],
   },

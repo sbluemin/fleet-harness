@@ -845,7 +845,6 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
 
 .command-band-mode-tray > .command-band-mode-tool:nth-child(2) { transition-delay: 80ms; }
 .command-band-mode-tray > .command-band-mode-tool:nth-child(3) { transition-delay: 110ms; }
-.command-band-mode-tray > .command-band-mode-tool:nth-child(4) { transition-delay: 140ms; }
 
 /* 열림 — 활성 세그먼트의 hover·포커스·클릭, 그리고 안내가 캡슐 또는 그 안의 도구를 짚는 동안. */
 .command-band-mode-tray.is-open,

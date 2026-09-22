@@ -29,9 +29,6 @@ export interface CanvasState {
   // Station Keeping — Cruise의 상시 비겹침 규율(옵트인, Theater별). 켜는 순간 한 번 펼치고,
   // 켜져 있는 동안 생성·이동·리사이즈·복원이 정착을 거친다. 끄는 것은 좌표를 되돌리지 않는다.
   readonly stationKeeping: boolean;
-  // 스냅하면 줌을 100%로 맞춤 — Cruise 캡슐의 옵트인(Theater별). 기본은 "보이는 그대로"(줌 유지).
-  // 켜져 있으면 스냅한 칸이 줌 100%에서 화면 한 칸이 되도록 카메라를 그 프레임으로 당긴다.
-  readonly snapZoomNormalize: boolean;
 }
 
 export interface CanvasViewportSize {
@@ -87,7 +84,8 @@ const OPERATION_GRID_PADDING = 0;
 // grid/rows 행 보폭에 넣어 아래 행 캡션이 위 행 본문을 침범하지 않게 한다.
 export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
 const OPERATION_FOCUS_PADDING = 96;
-const FOCUS_MIN_ZOOM = 0.25;
+// 불러온 패널이 아레나보다 클 때 왼쪽 위에 남기는 여백 — 모드 프레임 여백과 같은 값.
+const FOCUS_BRING_IN_INSET = 18;
 // fit-all의 하한은 사용성 경계가 아니라 수치 안전 epsilon이다 — fit은 "전체를 담는" 계약이라
 // 임의의 사용성 하한(0.25, 0.1 등)은 초광폭 배치에서 가장자리 클리핑으로 계약을 깬다.
 const FIT_ALL_MIN_ZOOM = 0.02;
@@ -98,7 +96,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false, snapZoomNormalize: false };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false };
 // Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
 // 충돌 상자는 본문이 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다.
 export const STATION_KEEPING_GAP = 16;
@@ -245,7 +243,6 @@ export function setState(patch: Partial<CanvasState>): void {
     minimized: patch.minimized ?? state.minimized,
     collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
     stationKeeping: patch.stationKeeping ?? state.stationKeeping,
-    snapZoomNormalize: patch.snapZoomNormalize ?? state.snapZoomNormalize,
   };
   scheduleSave();
   emit();
@@ -749,19 +746,6 @@ export function setStationKeeping(enabled: boolean): void {
   setState({ stationKeeping: true, ...(spread ? { operations: spread } : {}) });
 }
 
-export function getSnapZoomNormalize(): boolean {
-  return state.snapZoomNormalize;
-}
-
-export function useSnapZoomNormalize(): boolean {
-  return useSyncExternalStore(subscribe, getSnapZoomNormalize, getSnapZoomNormalize);
-}
-
-export function setSnapZoomNormalize(enabled: boolean): void {
-  if (state.snapZoomNormalize === enabled) return;
-  setState({ snapZoomNormalize: enabled });
-}
-
 /** 아레나 — 캔버스 박스에서 부유 크롬 인셋을 뺀 유효 뷰포트(캔버스 박스 좌표). 크기를 모르면 null. */
 export function getCanvasArenaRect(): CanvasWorldRect | null {
   if (canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return null;
@@ -773,13 +757,21 @@ export function getCanvasArenaRect(): CanvasWorldRect | null {
   };
 }
 
-/** 아레나-상대 화면 사각형을 현재 카메라로 월드 좌표로 환산한다(드래그와 같은 규칙: 화면 Δ / zoom). */
-export function arenaRectToWorld(rect: CanvasWorldRect, viewport: CanvasViewport = state.viewport): CanvasWorldRect {
+// 모드 프레임은 가로로 부유 카드에 다가선다(canvas.tsx modeArena: 인셋−14). 스냅 칸도 Tactical 슬롯과
+// 같은 상자를 쓴다 — 아레나 기준이면 칸이 사이드바·레일에서 한 걸음 더 물러나 좌우 여백이 벌어진다.
+const MODE_ARENA_CHROME_PULL = 14;
+
+/** 스냅 칸의 기준 상자 — 아레나-상대 좌표(아레나 원점이 0,0)로 돌려준다. 크기를 모르면 null. */
+export function getCanvasSnapArenaRect(): CanvasWorldRect | null {
+  const arena = getCanvasArenaRect();
+  if (!arena) return null;
+  const left = Math.max(0, canvasArenaInsets.left - MODE_ARENA_CHROME_PULL);
+  const right = Math.max(0, canvasArenaInsets.right - MODE_ARENA_CHROME_PULL);
   return {
-    x: (rect.x - viewport.x) / viewport.zoom,
-    y: (rect.y - viewport.y) / viewport.zoom,
-    width: rect.width / viewport.zoom,
-    height: rect.height / viewport.zoom,
+    x: left - canvasArenaInsets.left,
+    y: 0,
+    width: Math.max(0, canvasViewportSize.width - left - right),
+    height: arena.height,
   };
 }
 
@@ -787,31 +779,19 @@ export function arenaRectToWorld(rect: CanvasWorldRect, viewport: CanvasViewport
  * 스냅 — 아레나-상대 화면 칸(본문 사각형)에 패널을 앉힌다. 스냅은 사용자가 고른 자리라 Station
  * Keeping 정착을 거치지 않고, 활성화와 같이 최상단으로 올라온다.
  *
- * 줌 정책: 기본은 "보이는 그대로" — 칸을 현재 카메라로 월드에 환산해 카메라는 움직이지 않는다.
- * `snapZoomNormalize`(또는 ⌥ 1회 반전)가 켜지면 칸을 줌 100% 기준 월드 프레임으로 두고 카메라를
- * 그 프레임으로 당긴다 — 패널의 고유 크기가 "화면 한 칸"으로 일정해진다. 돌려주는 값은 같은
- * 정책으로 환산한 이웃 칸(가이드)이다.
+ * 줌은 항상 100%로 돌아온다 — 칸을 줌 100% 기준 월드 프레임으로 두고 카메라를 그 프레임으로 당긴다.
+ * 패널의 고유 크기가 "화면 한 칸"으로 일정해지고, 줌이 빠진 채 스냅해도 작은 글자의 큰 패널이 남지 않는다.
  */
-export function snapOperationToArenaRect(
-  sessionId: string,
-  bodyRect: CanvasWorldRect,
-  siblingRects: readonly CanvasWorldRect[] = [],
-  invertZoomPolicy = false,
-): readonly CanvasWorldRect[] {
-  const normalize = state.snapZoomNormalize !== invertZoomPolicy && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON;
+export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorldRect): void {
   const zIndex = claimTopZIndex();
-  if (!normalize) {
-    const world = arenaRectToWorld(bodyRect);
-    setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry({ ...world, zIndex }, zIndex), zIndex } } });
-    return siblingRects.map((rect) => arenaRectToWorld(rect));
-  }
   // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
   const originX = -state.viewport.x / state.viewport.zoom;
   const originY = -state.viewport.y / state.viewport.zoom;
-  const world = { x: originX + bodyRect.x, y: originY + bodyRect.y, width: bodyRect.width, height: bodyRect.height };
-  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry({ ...world, zIndex }, zIndex), zIndex } } });
-  animateViewportTo({ x: -originX, y: -originY, zoom: 1 });
-  return siblingRects.map((rect) => ({ x: originX + rect.x, y: originY + rect.y, width: rect.width, height: rect.height }));
+  const world = { x: originX + bodyRect.x, y: originY + bodyRect.y, width: bodyRect.width, height: bodyRect.height, zIndex };
+  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } } });
+  if (Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON || Math.abs(state.viewport.x + originX) > ZOOM_TWEEN_POSITION_EPSILON || Math.abs(state.viewport.y + originY) > ZOOM_TWEEN_POSITION_EPSILON) {
+    animateViewportTo({ x: -originX, y: -originY, zoom: 1 });
+  }
 }
 
 // 규율이 켜진 상태의 불변식 복구 — War Room 지도 이동처럼 규율 밖 쓰기가 남긴 겹침을 정착시킨다.
@@ -906,29 +886,38 @@ export function loadForTheater(theaterId: string | null): void {
   if (formationChanged) emitFormationView();
 }
 
+// 포커스(사이드바·검색 점프·Alt+화살표)는 카메라를 패널로 보내지 않고 패널을 지금 보는 화면으로 부른다.
+// 이미 아레나 안에 온전히 보이면 자리를 건드리지 않고 최상단으로만 올린다. 보이지 않으면 크기는 그대로
+// 두고 현재 줌에서 아레나 가운데에 앉힌다 — 아레나보다 크면 왼쪽 위를 모드 프레임 여백에 맞춘다.
 export function focusOperation(sessionId: string, viewportSize: CanvasViewportSize): void {
   const geometry = state.operations[sessionId];
   if (!geometry) return;
-  const zoom = Math.max(FOCUS_MIN_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
-    (viewportSize.width - OPERATION_FOCUS_PADDING) / geometry.width,
-    (viewportSize.height - OPERATION_FOCUS_PADDING) / geometry.height,
-  )));
-  const focusedViewport: CanvasViewport = {
-    x: viewportSize.width / 2 - (geometry.x + geometry.width / 2) * zoom,
-    y: viewportSize.height / 2 - (geometry.y + geometry.height / 2) * zoom,
-    zoom,
+  const arena = getCanvasArenaRect() ?? { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height };
+  const zoom = state.viewport.zoom;
+  const frame = {
+    x: geometry.x * zoom + state.viewport.x,
+    y: (geometry.y - OPERATION_WINDOW_CAPTION_HEIGHT) * zoom + state.viewport.y,
+    width: geometry.width * zoom,
+    height: (geometry.height + OPERATION_WINDOW_CAPTION_HEIGHT) * zoom,
   };
-  // 진행 중 줌 보간을 취소하고 target을 포커스 결과로 맞춰, 마지막 tween 프레임이 포커스를 되돌리지 못하게 한다.
-  cancelZoomTween();
-  targetViewport = focusedViewport;
+  const visible = frame.x >= 0 && frame.y >= 0 && frame.x + frame.width <= arena.width && frame.y + frame.height <= arena.height;
   const zIndex = claimTopZIndex();
-  // 포커스(사이드바·검색 점프·Alt+화살표)는 최소화 상태도 함께 해제한다 — 안 그러면 "포커스했는데 안 보임"이 된다.
   const wasMinimized = state.minimized.includes(sessionId);
+  let next = geometry;
+  if (!visible) {
+    const inset = FOCUS_BRING_IN_INSET;
+    const screenX = frame.width + inset * 2 <= arena.width ? (arena.width - frame.width) / 2 : inset;
+    const screenY = frame.height + inset * 2 <= arena.height ? (arena.height - frame.height) / 2 : inset;
+    next = {
+      ...geometry,
+      x: (screenX - state.viewport.x) / zoom,
+      y: (screenY - state.viewport.y) / zoom + OPERATION_WINDOW_CAPTION_HEIGHT,
+    };
+  }
   setState({
-    viewport: focusedViewport,
     operations: {
       ...state.operations,
-      [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex },
+      [sessionId]: { ...normalizeOperationGeometry(next, zIndex), zIndex },
     },
     ...(wasMinimized ? { minimized: state.minimized.filter((id) => id !== sessionId) } : {}),
   });
@@ -1276,7 +1265,6 @@ function normalizeCanvasState(value: unknown): CanvasState {
     minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
     stationKeeping: value.stationKeeping === true,
-    snapZoomNormalize: value.snapZoomNormalize === true,
   };
 }
 

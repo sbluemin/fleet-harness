@@ -11,7 +11,7 @@ import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../cor
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapFullZone, snapZoneHitFor } from "./canvas/snap-layouts.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
@@ -229,15 +229,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (snapCommand) {
         if (isTriageActive() || getFormationView() || getMaximizedOperationId() !== null || getCompanionOperationId() !== null) return;
         const operationId = stateRef.current.activeOperationId;
-        const arena = getCanvasArenaRect();
+        const arena = getCanvasSnapArenaRect();
         if (operationId === null || !arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return;
         if (!stateRef.current.operations.some((operation) => operation.id === operationId && operation.theaterId === stateRef.current.activeTheaterId)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        const arenaRel = { x: 0, y: 0, width: arena.width, height: arena.height };
         const zone = snapCommand === "operations.snap-full"
-          ? snapFullZone(arenaRel)
-          : snapZoneHitFor(arenaRel, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1).zone;
+          ? snapFullZone(arena)
+          : snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1).zone;
         snapOperationToArenaRect(operationId, zone);
         const geometry = getCanvasSnapshot().operations[operationId];
         // 캔버스의 드래그 커밋과 같은 durable 쓰기 — 기하는 patchOperation의 클라이언트 입력이 아니다.

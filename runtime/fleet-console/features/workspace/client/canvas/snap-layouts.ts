@@ -1,7 +1,7 @@
 // Cruise 패널 스냅 — 아레나(보이는 화면)를 분수로 나눈 칸에 패널 하나를 앉히는 순수 기하.
 //
-// 칸은 항상 "지금 보이는 아레나"의 화면 픽셀로 잰다. 줌은 Cruise의 카메라일 뿐이라, 놓는 순간
-// 화면 칸을 월드로 환산(canvas-store.snapOperationToArenaRect)하면 무슨 줌이든 보이는 그대로 앉는다.
+// 칸은 항상 "지금 보이는 아레나"의 화면 픽셀로 잰다. 놓는 순간 줌 100% 프레임으로 환산하고 카메라를
+// 그 프레임으로 당긴다(canvas-store.snapOperationToArenaRect) — 무슨 줌에서 끌었든 결과는 작업 크기다.
 // 칸 나누기 규칙은 Tactical 슬롯(calculateGridSlots)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
@@ -45,8 +45,6 @@ export const SNAP_TOP_BAND_HYSTERESIS = 12;
 export const SNAP_EDGE = 28;
 // Fleet Map(줌 < 0.2)에서는 패널이 지도 점이라 스냅 대상이 아니다. 지도 진입 문턱과 같은 값.
 export const SNAP_MIN_ZOOM = 0.2;
-// 이 아래 줌에서는 "현재 화면 크기 기준" 경고를 띄운다 — 스냅 결과가 월드에서 큰 패널이 된다.
-export const SNAP_LOW_ZOOM = 0.5;
 
 const EPSILON = 0.001;
 
@@ -94,20 +92,21 @@ export function snapZoneHitFor(arena: SnapRect, preset: SnapPreset, zoneIndex: n
 }
 
 /**
- * 가장자리·모서리 핫존 — 아레나-상대 포인터가 좌우 28px 안이면 반쪽, 모서리면 사분면.
- * 위쪽 띠는 레이아웃 바의 몫이라 여기서 다루지 않는다.
+ * 가장자리·모서리 핫존 — 포인터가 보이는 아레나(`hitArena`)의 좌우 28px 안이면 반쪽, 모서리면 사분면.
+ * 칸 자체는 `zoneArena`(모드 아레나)로 편다 — 핫존은 눈에 보이는 가장자리의 것이고 칸은 Tactical 슬롯과
+ * 같은 상자의 것이라 둘이 다르다. 위쪽 띠는 레이아웃 바의 몫이라 여기서 다루지 않는다.
  */
-export function snapEdgeHitFor(point: SnapPoint, arena: SnapRect): SnapZoneHit | null {
-  const left = point.x < arena.x + SNAP_EDGE;
-  const right = point.x > arena.x + arena.width - SNAP_EDGE;
+export function snapEdgeHitFor(point: SnapPoint, hitArena: SnapRect, zoneArena: SnapRect = hitArena): SnapZoneHit | null {
+  const left = point.x < hitArena.x + SNAP_EDGE;
+  const right = point.x > hitArena.x + hitArena.width - SNAP_EDGE;
   if (!left && !right) return null;
-  const top = point.y < arena.y + SNAP_EDGE;
-  const bottom = point.y > arena.y + arena.height - SNAP_EDGE;
+  const top = point.y < hitArena.y + SNAP_EDGE;
+  const bottom = point.y > hitArena.y + hitArena.height - SNAP_EDGE;
   if (top || bottom) {
     const index = top ? (left ? 0 : 1) : (left ? 2 : 3);
-    return snapZoneHitFor(arena, SNAP_PRESETS[2]!, index);
+    return snapZoneHitFor(zoneArena, SNAP_PRESETS[2]!, index);
   }
-  return snapZoneHitFor(arena, SNAP_PRESETS[0]!, left ? 0 : 1);
+  return snapZoneHitFor(zoneArena, SNAP_PRESETS[0]!, left ? 0 : 1);
 }
 
 export function snapPointInRect(point: SnapPoint, rect: SnapRect): boolean {

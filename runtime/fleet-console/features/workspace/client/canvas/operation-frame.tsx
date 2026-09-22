@@ -72,7 +72,6 @@ interface OperationFrameProps {
 export interface OperationDragPointer {
   readonly clientX: number;
   readonly clientY: number;
-  readonly altKey: boolean;
 }
 
 interface DragState {
@@ -334,7 +333,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     };
     drag.latest = next;
     onGeometryChange(next);
-    onDragPointer?.({ clientX: event.clientX, clientY: event.clientY, altKey: event.altKey });
+    onDragPointer?.({ clientX: event.clientX, clientY: event.clientY });
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -352,7 +351,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       event.preventDefault();
       event.stopPropagation();
       event.currentTarget.releasePointerCapture(event.pointerId);
-      onDragRelease?.({ clientX: event.clientX, clientY: event.clientY, altKey: event.altKey });
+      onDragRelease?.({ clientX: event.clientX, clientY: event.clientY });
       onGeometryCommit(drag.latest);
     }
   };

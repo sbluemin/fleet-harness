@@ -8472,23 +8472,24 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--brass);
 }
 
-/* 줌이 낮을 때 한 줄 — "현재 화면 크기 기준으로 배치됩니다". */
-.canvas-snap-bar-note {
+/* 캡션을 끌기 시작하면 아레나 위 가운데로 내려오는 손잡이 — 띠에 닿으면 이 자리에서 바가 자란다. */
+.canvas-snap-handle {
   position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-top: 6px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  z-index: 21;
+  width: 44px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--brass) 55%, var(--surface-rim-strong));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent), 0 6px 16px -8px var(--brass-glow);
   opacity: 0;
-  transition: opacity var(--duration-fast) ease;
+  pointer-events: none;
+  transform: translate(-50%, -12px);
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
-.canvas-snap-bar-note.is-on {
+.canvas-snap-handle.is-on {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* 놓일 자리 — 러버밴드와 같은 brass 점선·워시. 자리가 옮겨 갈 때 glide로 미끄러진다. */
@@ -8513,12 +8514,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .canvas-snap-ghost.is-on {
   opacity: 1;
-}
-
-/* 스냅이 남긴 가이드는 Tactical 가이드의 점선·번호를 그대로 쓴다. 끌던 패널이 위에 오면 밝아진다. */
-.canvas-formation-guide.is-snap-guide.is-hot {
-  border-color: var(--brass);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 /* 캡션 최대화 버튼에 머무르면 열리는 배치 메뉴 — 바와 같은 유리, 여기서는 칸이 버튼이다. */
@@ -8557,6 +8552,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-snap-bar,
+  .canvas-snap-handle,
   .canvas-snap-ghost,
   .canvas-snap-menu {
     transition: none;
