@@ -9,3 +9,6 @@ branch: cruise-snap-layouts
 #### Changed
 - Opening an Operation from the sidebar or search in Cruise now brings the panel into the view you are looking at instead of moving the view to the panel.
   ko: Cruise에서 사이드바나 검색으로 Operation을 열면 화면이 패널 쪽으로 이동하지 않고, 패널이 지금 보고 있는 화면 안으로 들어옵니다.
+#### Fixed
+- A panel no longer drifts when the mouse passes over its caption after a click-and-release that ended outside the caption.
+  ko: 캡션을 클릭한 채 캡션 밖에서 놓은 뒤 마우스만 캡션 위로 지나가도 패널이 제멋대로 움직이던 문제를 고쳤습니다.
