@@ -228,6 +228,7 @@ function createService(desktop: StubDesktop) {
     availability: () => ({ available: true, reason: null, host: "local" }),
     log: () => undefined,
     desktop: desktop as unknown as DesktopEngine,
+    defaultProfile: { read: () => null, write: () => undefined },
   });
 }
 

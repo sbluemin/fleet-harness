@@ -147,9 +147,19 @@ export function isValidRemoteBindHost(value: unknown): value is string {
   return typeof value === "string" && REMOTE_BIND_HOST.test(value) && !UNUSABLE_REMOTE_BIND_HOSTS.has(value);
 }
 
+/**
+ * Operation 브라우저 설정. `defaultProfile` 은 새 Operation 의 브라우저가 처음 열릴 때 쓰는 세션 —
+ * `null`(없음)이면 임시 세션, 문자열이면 그 이름의 영속 프로필이다. 공장 기본은 임시다: 에이전트가 모는
+ * 브라우저라 로그인이 저절로 남으면 안 되고, 남기기로 한 것은 사람의 선택이어야 한다.
+ */
+export interface ConsoleBrowserSettings {
+  readonly defaultProfile?: string | null;
+}
+
 export interface ConsoleSettingsData {
   readonly version: 1;
   readonly general?: ConsoleGeneralSettings;
+  readonly browser?: ConsoleBrowserSettings;
   readonly execution?: Record<string, unknown>;
   /**
    * Agent 실행 옵션. 형태와 정규화는 foundation의 공용 실행 정책이 소유하고, 이 파일은
@@ -227,13 +237,24 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   const execution = isRecord(value.execution) ? value.execution : plugins?.terminal;
   if (plugins) delete plugins.terminal;
   const agent = sanitizeAgentOptionsData(value.agent).data;
+  const browser = sanitizeConsoleBrowserSettings(value.browser);
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
     plugins: plugins ?? {},
     ...(execution ? { execution } : {}),
     ...(Object.keys(agent).length > 0 ? { agent } : {}),
+    ...(browser ? { browser } : {}),
   };
+}
+
+/** 프로필 id 는 짧은 slug 다 — 셸이 그 이름으로 디렉터리를 만드므로 경로 문자를 받지 않는다. */
+const BROWSER_PROFILE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+function sanitizeConsoleBrowserSettings(value: unknown): ConsoleBrowserSettings | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.defaultProfile === "string" && BROWSER_PROFILE_ID.test(value.defaultProfile)) return { defaultProfile: value.defaultProfile };
+  return undefined;
 }
 
 export function emptyConsoleSettingsData(): ConsoleSettingsData {

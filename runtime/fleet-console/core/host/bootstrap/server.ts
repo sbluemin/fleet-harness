@@ -687,6 +687,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     availability: browserAvailability,
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
     desktop: desktopEngine,
+    defaultProfile: {
+      read: () => consoleSettingsStore.load().browser?.defaultProfile ?? null,
+      write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: profile === null ? {} : { defaultProfile: profile } })); },
+    },
   });
   /**
    * 브라우저 상태는 Operation 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산

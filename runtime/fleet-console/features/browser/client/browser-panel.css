@@ -135,8 +135,14 @@
 .op-browser__dialog-glyph { flex: none; display: inline-flex; color: var(--text-secondary); }
 .op-browser__dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 /* 짧은 알림은 상태줄 대신 화면 아래에 떠 있다가 사라진다. */
-.op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--aurora-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; width: max-content; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--aurora-ink); text-align: center; line-height: 1.5; pointer-events: none; }
+/* 가운데 놓인 absolute 상자는 left:50% 만큼의 폭밖에 못 받아 좁게 접힌다 — 내용 폭으로 펴고 패널 폭에서만 접는다. */
 .op-browser__toast.is-error { color: var(--coral-ink); }
+/* 손잡이가 붙은 안내 — 누를 수 있어야 하므로 포인터를 받고, 동사는 위치 채널(brass)로 선다. */
+.op-browser__toast.has-action { pointer-events: auto; }
+.op-browser__toast-action { margin-inline-start: var(--space-2); }
+.op-browser__toast-action { appearance: none; border: 0; background: transparent; color: var(--brass-ink); font: inherit; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in oklch, currentColor 45%, transparent); border-radius: 2px; }
+.op-browser__toast-action:hover, .op-browser__toast-action:focus-visible { text-decoration-color: currentColor; outline: none; }
 .op-browser__icon svg { width: 14px; height: 14px; }
 .op-browser__highlight { position: absolute; pointer-events: none; border: 2px solid var(--aurora); background: var(--aurora-glow); border-radius: 2px; box-sizing: border-box; }
 /* 요소 댓글 — 번호 핀은 페이지 위 마크라 주석 잉크(정체성 톤)를 쓰고, 말풍선은 Console 표면이다. */
@@ -183,6 +189,16 @@
 .op-browser__menu-body strong { font-weight: var(--weight-medium); }
 .op-browser__menu-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 1px; white-space: normal; line-height: 1.35; }
 .op-browser__menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--hairline); }
+/* 행 끝 — 기본인 행은 「기본」 한 낱말이 늘 서고, 다른 행은 올렸을 때만 핀이 떠오른다. 폭을 미리 잡아 행이 흔들리지 않게. */
+.op-browser__menu-tail { flex: none; display: inline-flex; align-items: center; justify-content: flex-end; align-self: center; min-width: 34px; margin-left: auto; }
+.op-browser__menu-default { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0.02em; }
+.op-browser__menu-item[aria-checked="true"] .op-browser__menu-default { color: inherit; opacity: 0.8; }
+.op-browser__menu-pin { appearance: none; border: 0; background: transparent; color: var(--text-tertiary); width: 20px; height: 20px; border-radius: var(--radius-xs); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.12s ease; }
+.op-browser__menu-pin svg { width: 12px; height: 12px; }
+.op-browser__menu-item:hover .op-browser__menu-pin, .op-browser__menu-item:focus-within .op-browser__menu-pin { opacity: 1; }
+.op-browser__menu-pin:hover, .op-browser__menu-pin:focus-visible { color: var(--brass-ink); background: var(--control-hover-fill); outline: none; }
+.op-browser__menu-pin[data-tip]:hover::after, .op-browser__menu-pin[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
+@media (prefers-reduced-motion: reduce) { .op-browser__menu-pin { transition: none; } }
 /* 가져오기 대화상자의 도착지 줄 — 쿠키가 어디에 남는지. */
 .op-browser__dialog-item.is-target { border: 1px solid var(--positive); background: var(--positive-glow); }
 .op-browser__button--danger { border-color: var(--coral); color: var(--coral-ink); }

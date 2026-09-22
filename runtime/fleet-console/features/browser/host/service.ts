@@ -43,6 +43,8 @@ export interface BrowserOperationState {
   readonly operationId: string;
   /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
   readonly profile: string | null;
+  /** 새 Operation 의 브라우저가 처음 열릴 때 쓰는 세션. Console 전체의 설정이라 모든 Operation 의 상태가 같은 값을 싣는다. */
+  readonly defaultProfile: string | null;
   readonly tabs: readonly BrowserTabState[];
   readonly activeTabId: string | null;
   readonly viewport: BrowserViewport;
@@ -183,6 +185,8 @@ export interface BrowserServiceDeps {
   readonly log: (message: string) => void;
   /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진 — 유일한 엔진이다. */
   readonly desktop: DesktopEngine;
+  /** 새 Operation 의 기본 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
+  readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
 }
 
 export interface BrowserServiceStatus {
@@ -342,7 +346,9 @@ export class BrowserService {
   private operation(operationId: string): OperationBrowser {
     let op = this.operations.get(operationId);
     if (!op) {
-      op = { operationId, contextId: "", profile: null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
+      // 새로 열리는 Operation 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
+      const preferred = this.deps.defaultProfile.read();
+      op = { operationId, contextId: "", profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
@@ -369,6 +375,7 @@ export class BrowserService {
     return {
       operationId,
       profile: op.profile,
+      defaultProfile: this.defaultProfile(),
       available,
       reason,
       tabs: [...op.tabs.values()].map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 })),
@@ -677,6 +684,25 @@ export class BrowserService {
     // 전환이 마지막 탭을 닫았을 수 있다 — 그 길은 closeTab 을 거치지 않으므로 유휴 종료를 여기서 건다.
     this.scheduleIdle();
     return this.state(operationId);
+  }
+
+  /** 새 Operation 의 기본 세션. 모르는 이름이 저장돼 있으면 임시로 읽는다 — 화면이 있지도 않은 프로필을 기본이라 말하지 않게. */
+  defaultProfile(): string | null {
+    const value = this.deps.defaultProfile.read();
+    return value === DESKTOP_BROWSER_DEFAULT_PROFILE ? value : null;
+  }
+
+  /**
+   * 새 Operation 의 기본 세션을 정한다. 이미 열린 Operation 은 그대로다 — 기본은 시작점이지 지금 쓰는 세션이 아니다.
+   * 값은 모든 Operation 의 상태에 실리므로 어느 패널이 바꾸든 나머지 패널의 표식이 함께 옮겨 간다.
+   */
+  setDefaultProfile(profile: string | null): string | null {
+    if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
+    if (this.defaultProfile() === profile) return profile;
+    this.deps.defaultProfile.write(profile);
+    this.deps.log(`new Operations start with ${profile ?? "an ephemeral session"}`);
+    for (const op of this.operations.values()) this.emitState(op);
+    return profile;
   }
 
   /**
