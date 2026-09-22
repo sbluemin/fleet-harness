@@ -8476,7 +8476,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-snap-handle {
   position: absolute;
   z-index: 21;
-  width: 48px;
+  /* 바(≈350px)의 예고답게 넓게 — 짧은 필은 손잡이가 아니라 점으로 읽힌다. */
+  width: 132px;
   height: 10px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
