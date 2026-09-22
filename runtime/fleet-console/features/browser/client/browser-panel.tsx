@@ -43,6 +43,8 @@ interface BrowserState {
   readonly available: boolean; readonly reason: UnavailableReason | null;
   /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다. */
   readonly profile: string | null;
+  /** 새 Operation 의 브라우저가 시작하는 세션 — Console 전체의 설정. */
+  readonly defaultProfile: string | null;
 }
 interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
@@ -223,6 +225,8 @@ const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d=
 /* 세션의 정체 — 남는 것은 방패, 사라지는 것은 가림. 두 글리프의 대비가 표식 한 칸에서 읽혀야 한다. */
 const ProfileGlyph = () => glyph('<path d="M8 1.8 13 3.6v4.1c0 3-2 5.2-5 6.5-3-1.3-5-3.5-5-6.5V3.6z"/>');
 const EphemeralGlyph = () => glyph('<path d="M3 7.4 4.4 3.4h7.2L13 7.4"/><path d="M1.8 7.4h12.4"/><circle cx="5" cy="10.4" r="2"/><circle cx="11" cy="10.4" r="2"/><path d="M7 10.4h2"/>');
+/** 「새 Operation의 기본으로」 — 행 끝에 올렸을 때만 서는 핀. */
+const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z"/><path d="M8 8.9v4.5"/>');
 const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
 /** Google Chrome 로고 — 브랜드 색은 브랜드의 것이라 토큰이 아닌 고정값이다. */
 const ChromeGlyph = () => (
@@ -319,6 +323,7 @@ export function BrowserCaption({ context, services }: BrowserProps) {
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
   const persistent = (panel?.profile ?? null) !== null;
+  const defaultProfile = panel?.defaultProfile ?? null;
   const viewport = panel?.viewport ?? null;
   const viewportTip = viewport ? `${viewport.width}×${viewport.height} · ${t(`terminal.browser.preset.${viewport.preset}`)}${viewport.setBy === "agent" ? ` · ${t("terminal.browser.setByAgent")}` : ""}` : t("terminal.browser.viewport");
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
@@ -351,21 +356,41 @@ export function BrowserCaption({ context, services }: BrowserProps) {
         </button>
         {profileMenu ? (
           <div className="op-browser__menu" role="menu">
+            {/* 세션 행은 button 이 아니다 — 행 끝의 핀이 자기 버튼을 가져야 하고, button 안의 button 은 HTML 이 허용하지 않는다.
+                기본인 행은 끝에 「기본」 한 낱말을 늘 보이고, 다른 행은 올렸을 때만 핀을 내민다. 핀은 기본만 옮기고
+                이 Operation 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
             {([null, BROWSER_PROFILE] as const).map((value) => (
-              <button
+              <div
                 key={value ?? "ephemeral"}
-                type="button"
                 role="menuitemradio"
+                tabIndex={0}
                 aria-checked={(panel?.profile ?? null) === value}
                 className="op-browser__menu-item"
                 onClick={() => { setProfileMenu(false); panel?.actions.chooseProfile(value); }}
+                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setProfileMenu(false); panel?.actions.chooseProfile(value); } }}
               >
                 <span className="op-browser__menu-glyph" aria-hidden="true">{value ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
                 <span className="op-browser__menu-body">
                   <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
                   <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
                 </span>
-              </button>
+                <span className="op-browser__menu-tail">
+                  {defaultProfile === value
+                    ? <span className="op-browser__menu-default">{t("terminal.browser.profile.default")}</span>
+                    : (
+                      <button
+                        type="button"
+                        className="op-browser__menu-pin"
+                        aria-label={t("terminal.browser.profile.makeDefault")}
+                        data-tip={t("terminal.browser.profile.makeDefault")}
+                        onClick={(event) => { event.stopPropagation(); panel?.actions.setDefaultProfile(value); }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <PinGlyph />
+                      </button>
+                    )}
+                </span>
+              </div>
             ))}
             <div className="op-browser__menu-sep" role="separator" />
             <button
@@ -418,7 +443,9 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   const [busy, setBusy] = React.useState(false);
   const captionOverlay = useBrowserCaptionOverlay(operationId);
   const [notice, setNotice] = React.useState<string | null>(null);
-  const [info, setInfo] = React.useState<string | null>(null);
+  /** 정보 안내 한 줄. 동사가 붙을 수 있다 — 세션을 바꾼 직후 「새 Operation도 이렇게 열기」처럼, 그 순간에만 뜻이 있는 손잡이. */
+  const [info, setInfoState] = React.useState<{ readonly text: string; readonly action?: { readonly label: string; readonly run: () => void } } | null>(null);
+  const setInfo = React.useCallback((next: string | { readonly text: string; readonly action?: { readonly label: string; readonly run: () => void } } | null) => { setInfoState(typeof next === "string" ? { text: next } : next); }, []);
   const [mode, setMode] = React.useState<Mode>("none");
   const [profileSwitch, setProfileSwitch] = React.useState<string | null | undefined>(undefined);
   const [clearingProfile, setClearingProfile] = React.useState(false);
@@ -667,7 +694,8 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   }, [operationId]);
 
   React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
-  React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), 4000); return () => clearTimeout(timer); }, [info]);
+  // 손잡이가 붙은 안내는 읽고 누를 시간을 더 준다.
+  React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), info.action ? 8000 : 4000); return () => clearTimeout(timer); }, [info, setInfo]);
 
   // 페이지의 prefers-color-scheme 은 Console 테마 극성을 따른다 — 뷰가 OS 설정을 그대로 쓰면 라이트 테마에서도
   // 사이트가 어둡게 뜬다. 에이전트가 resize_window 로 따로 정한 값은 테마가 바뀔 때까지 존중한다.
@@ -880,8 +908,18 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     setProfileBusy(true);
     try {
       const ok = await run<BrowserState>("profile", { profile: next });
-      if (ok) setInfo(next ? t("terminal.browser.profile.switchedPersistent") : t("terminal.browser.profile.switchedEphemeral"));
+      // 세션을 바꾼 그 순간이 기본값이 필요하다고 느끼는 순간이다 — 기본이 이미 같으면 붙이지 않는다.
+      if (ok) setInfo({ text: next ? t("terminal.browser.profile.switchedPersistent") : t("terminal.browser.profile.switchedEphemeral"), ...(ok.defaultProfile !== next ? { action: { label: t("terminal.browser.profile.alsoDefault"), run: () => { void setDefaultProfile(next); } } } : {}) });
     } finally { setProfileBusy(false); setProfileSwitch(undefined); }
+  };
+  /** 새 Operation 의 기본 세션. Console 전체의 값이라 Operation 경로가 아니다; 답은 모든 패널의 스트림으로 온다. */
+  const setDefaultProfile = async (next: string | null) => {
+    setNotice(null);
+    try {
+      const response = await fetch("/api/v1/browser/default-profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile: next }) });
+      if (!response.ok) { await fail(response); return; }
+      setInfo(next ? t("terminal.browser.profile.defaultPersistent") : t("terminal.browser.profile.defaultEphemeral"));
+    } catch { setNotice(t("terminal.browser.requestFailed")); }
   };
   const chooseProfile = (next: string | null) => {
     if ((state?.profile ?? null) === next) return;
@@ -906,6 +944,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
       busy,
       available,
       profile: available ? state?.profile ?? null : null,
+      defaultProfile: state?.defaultProfile ?? null,
       actions: {
         selectTab: (tabId) => { void run("tabs", { action: "select", tabId }); },
         closeTab: (tabId) => { void run("tabs", { action: "close", tabId }); },
@@ -913,6 +952,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
         openImport: () => { void openImport(); },
         setViewport,
         chooseProfile,
+        setDefaultProfile: (profile) => { void setDefaultProfile(profile); },
         openClearProfile: () => setClearingProfile(true),
       },
     });
@@ -973,7 +1013,12 @@ export function BrowserPanel({ context, services }: BrowserProps) {
         <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
       </div>
       <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
-        {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? <div className="op-browser__toast" role="status">{info}</div> : null}
+        {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
+          <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
+            {info.text}
+            {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
+          </div>
+        ) : null}
         {importSources ? (
           <div className="op-browser__scrim" onClick={() => { if (!importing) setImportSources(null); }}>
             <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.import.title")} onClick={(event) => event.stopPropagation()}>

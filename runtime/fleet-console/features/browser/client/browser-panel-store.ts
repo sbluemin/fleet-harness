@@ -16,6 +16,8 @@ export interface BrowserPanelSnapshot {
   readonly available: boolean;
   /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션 — 캡션의 표식이 이것을 말한다. */
   readonly profile: string | null;
+  /** 새 Operation 이 시작하는 세션 — 메뉴의 「기본」 표식이 서는 행. */
+  readonly defaultProfile: string | null;
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
@@ -24,6 +26,8 @@ export interface BrowserPanelSnapshot {
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
     /** 세션을 바꾼다. 열린 탭이 있으면 패널이 먼저 확인을 받는다 — 세션은 뷰에 바꿔 끼울 수 없다. */
     readonly chooseProfile: (profile: string | null) => void;
+    /** 새 Operation 의 기본 세션을 정한다. 이 Operation 의 세션은 그대로다. */
+    readonly setDefaultProfile: (profile: string | null) => void;
     readonly openClearProfile: () => void;
   };
 }

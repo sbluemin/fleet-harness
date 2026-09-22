@@ -28,6 +28,19 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
       return true;
     }
+    if (pathname === "/api/v1/browser/default-profile") {
+      // Console 전체의 설정이라 Operation 아래가 아니다. 엔진이 없어도 정할 수 있다 — 다음 Operation 을 위한 값이다.
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req);
+      if (!body || (body.profile !== null && typeof body.profile !== "string")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+      try { writeJson(res, 200, { defaultProfile: browserService.setDefaultProfile(body.profile) }); }
+      catch (error) {
+        if (error instanceof BrowserPolicyError) writeJson(res, 400, { error: error.code, message: error.message });
+        else writeJson(res, 500, { error: "browser_request_failed" });
+      }
+      return true;
+    }
     const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import|profile|clear-profile)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
