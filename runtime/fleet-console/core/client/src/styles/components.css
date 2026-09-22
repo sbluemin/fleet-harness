@@ -8441,6 +8441,12 @@ body[data-companion-resizing="true"] .canvas-operation {
   transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
+/* 꼭대기 핫존 — 바 전체가 하나의 칸처럼 brass로 달아오른다(고스트가 아레나를 덮는 것과 짝). */
+.canvas-snap-bar.is-full {
+  border-color: var(--brass-bright);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 28%, transparent), 0 0 24px -10px var(--brass-glow), var(--glass-lift);
+}
+
 .canvas-snap-bar.is-open {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);

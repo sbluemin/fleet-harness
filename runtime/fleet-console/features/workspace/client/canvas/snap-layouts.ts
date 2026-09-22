@@ -42,6 +42,8 @@ export const SNAP_GAP = 8;
 // 끌던 패널이 이 띠(아레나 위쪽)에 닿으면 레이아웃 바가 내려온다. 열린 뒤에는 히스테리시스만큼 더 참는다.
 export const SNAP_TOP_BAND = 44;
 export const SNAP_TOP_BAND_HYSTERESIS = 12;
+// 바는 아레나 윗변에서 이만큼 내려와 선다. 그 위 — 손잡이 띠와 Command Band — 까지 밀어 올리면 전체 화면이다.
+export const SNAP_TOP_FULL_EDGE = 8;
 // 좌우 가장자리·모서리 핫존 폭 — 바 없이 반쪽/사분면으로 바로 간다.
 export const SNAP_EDGE = 28;
 // Fleet Map에서는 패널이 지도 점이라 스냅 대상이 아니다. 지도는 0.2에서 들어와 0.24를 넘어야 걷히므로
@@ -123,7 +125,20 @@ export const SNAP_HANDLE_REACH = 24;
  * 바가 열리면 위로 옮기려는 평범한 드래그마다 바가 튀어나온다. 열린 뒤에는 히스테리시스만큼 더 넓게 본다.
  */
 export function snapPointInTopBand(point: SnapPoint, arena: SnapRect, barOpen: boolean, handleCenterX: number, handleWidth: number): boolean {
+  if (!snapPointWithinHandle(point, barOpen, handleCenterX, handleWidth)) return false;
+  // 아래로만 막는다 — 아레나 위(Command Band)로 넘어가도 포인터는 캡션이 잡고 있고, 그곳은 전체 화면 핫존이다.
+  return point.y < arena.y + SNAP_TOP_BAND + (barOpen ? SNAP_TOP_BAND_HYSTERESIS : 0);
+}
+
+/**
+ * 끌던 패널이 바 위쪽 가장자리까지 올라갔는가 — Windows에서 창을 화면 꼭대기에 대면 최대화되듯,
+ * 바를 지나 손잡이 띠(아레나 윗변 8px)나 그 위 Command Band까지 밀면 아레나 전체 한 칸이다.
+ */
+export function snapPointAtTopEdge(point: SnapPoint, arena: SnapRect, handleCenterX: number, handleWidth: number): boolean {
+  return snapPointWithinHandle(point, true, handleCenterX, handleWidth) && point.y < arena.y + SNAP_TOP_FULL_EDGE;
+}
+
+function snapPointWithinHandle(point: SnapPoint, barOpen: boolean, handleCenterX: number, handleWidth: number): boolean {
   const reach = handleWidth / 2 + SNAP_HANDLE_REACH + (barOpen ? SNAP_TOP_BAND_HYSTERESIS : 0);
-  if (Math.abs(point.x - handleCenterX) > reach) return false;
-  return point.y >= arena.y && point.y < arena.y + SNAP_TOP_BAND + (barOpen ? SNAP_TOP_BAND_HYSTERESIS : 0);
+  return Math.abs(point.x - handleCenterX) <= reach;
 }

@@ -33,7 +33,7 @@ import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { FleetMap } from "./fleet-map.js";
 import { anchorViewportToPoint, resolveFleetContentCenter, resolveFleetMapActive, resolveFleetMapZoomAnchor } from "./fleet-map-layout.js";
 import { OperationFrame, type OperationDragPointer } from "./operation-frame.js";
-import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapEdgeHitFor, snapPointInTopBand, snapZoneHitFor, type SnapRect } from "./snap-layouts.js";
+import { SNAP_MIN_ZOOM, SNAP_PRESETS, SNAP_TOP_FULL_EDGE, snapEdgeHitFor, snapFullZone, snapPointAtTopEdge, snapPointInTopBand, snapZoneHitFor, type SnapRect } from "./snap-layouts.js";
 import { SnapGhost, SnapHandle, SnapLayoutBar, SnapLayoutMenu, type SnapZoneRef } from "./snap-layouts-ui.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
@@ -136,7 +136,7 @@ export function OperationsCanvas({
   // ── Cruise 스냅 상태 ─────────────────────────────────────────────────────
   // 손잡이·바·고스트·메뉴는 모두 화면(캔버스 박스) 좌표다 — 칸은 지금 보이는 아레나의 것이라 카메라와 무관하다.
   const [snapDragging, setSnapDragging] = useState(false);
-  const [snapBar, setSnapBar] = useState<{ readonly open: boolean; readonly hover: SnapZoneRef | null }>({ open: false, hover: null });
+  const [snapBar, setSnapBar] = useState<{ readonly open: boolean; readonly hover: SnapZoneRef | null; readonly full: boolean }>({ open: false, hover: null, full: false });
   const [snapGhost, setSnapGhost] = useState<SnapRect | null>(null);
   const [snapMenu, setSnapMenu] = useState<{ readonly operationId: string; readonly anchor: SnapRect } | null>(null);
   const snapBarRef = useRef<HTMLDivElement | null>(null);
@@ -922,7 +922,7 @@ export function OperationsCanvas({
   };
   const resetSnapDragUi = () => {
     setSnapDragging(false);
-    setSnapBar((previous) => (previous.open || previous.hover ? { open: false, hover: null } : previous));
+    setSnapBar((previous) => (previous.open || previous.hover || previous.full ? { open: false, hover: null, full: false } : previous));
     setSnapGhost(null);
   };
   // 바의 어느 칸 위인가 — 포인터는 캡션이 잡고 있으므로 elementFromPoint 대신 칸 사각형으로 잰다.
@@ -964,13 +964,15 @@ export function OperationsCanvas({
     // 위쪽 띠에 닿으면 손잡이가 바로 자라고, 열린 뒤에는 띠보다 조금 아래까지·바 위까지 붙잡는다(히스테리시스).
     drag.barOpen = snapPointInTopBand(point, snapHitArena, drag.barOpen, arena.width / 2, snapHandleWidth) || (drag.barOpen && pointerOverSnapBar(pointer));
     if (drag.barOpen) {
-      const hover = hitTestSnapBar(pointer);
-      drag.zone = hover ? snapZoneHitFor(snapArena, SNAP_PRESETS[hover.presetIndex]!, hover.zoneIndex).zone : null;
-      setSnapBar({ open: true, hover });
+      // 바를 지나 꼭대기까지 밀면(손잡이 띠·Command Band) Windows의 최대화처럼 아레나 전체 한 칸이다.
+      const full = snapPointAtTopEdge(point, snapHitArena, arena.width / 2, snapHandleWidth);
+      const hover = full ? null : hitTestSnapBar(pointer);
+      drag.zone = hover ? snapZoneHitFor(snapArena, SNAP_PRESETS[hover.presetIndex]!, hover.zoneIndex).zone : full ? snapFullZone(snapArena) : null;
+      setSnapBar({ open: true, hover, full });
       setSnapGhost(drag.zone ? arenaRectToBox(frameOf(drag.zone)) : null);
       return;
     }
-    setSnapBar((previous) => (previous.open || previous.hover ? { open: false, hover: null } : previous));
+    setSnapBar((previous) => (previous.open || previous.hover || previous.full ? { open: false, hover: null, full: false } : previous));
     const edge = snapEdgeHitFor(point, snapHitArena, snapArena);
     drag.zone = edge ? edge.zone : null;
     setSnapGhost(edge ? arenaRectToBox(frameOf(edge.zone)) : null);
@@ -1636,7 +1638,7 @@ export function OperationsCanvas({
         <SnapGhost rect={snapGhost} />
         {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
         <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={snapHandleWidth} />
-        <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} anchorX={arena.x + arena.width / 2} anchorY={arena.y + 8} />
+        <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} full={snapBar.full} anchorX={arena.x + arena.width / 2} anchorY={arena.y + SNAP_TOP_FULL_EDGE} />
         {snapMenu ? (
           <SnapLayoutMenu
             title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}

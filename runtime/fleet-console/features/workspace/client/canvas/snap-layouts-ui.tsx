@@ -89,18 +89,20 @@ export function SnapHandle({ visible, anchorX, anchorY, width }: SnapHandleProps
 interface SnapLayoutBarProps {
   readonly open: boolean;
   readonly hover: SnapZoneRef | null;
+  /** 포인터가 바를 지나 꼭대기에 닿아 아레나 전체가 표적인 상태 — 바 전체가 한 칸처럼 달아오른다. */
+  readonly full: boolean;
   /** 캔버스 박스 좌표 — 아레나 가로 중심 x, 바 윗변 y. */
   readonly anchorX: number;
   readonly anchorY: number;
 }
 
 /** 드래그 중에만 뜨는 프리셋 바. 포인터는 캡션이 잡고 있으므로 바는 히트테스트만 당하고 입력은 받지 않는다. */
-export const SnapLayoutBar = forwardRef<HTMLDivElement, SnapLayoutBarProps>(function SnapLayoutBar({ open, hover, anchorX, anchorY }, ref) {
+export const SnapLayoutBar = forwardRef<HTMLDivElement, SnapLayoutBarProps>(function SnapLayoutBar({ open, hover, full, anchorX, anchorY }, ref) {
   const t = useT();
   return (
     <div
       ref={ref}
-      className={`canvas-snap-bar${open ? " is-open" : ""}`}
+      className={`canvas-snap-bar${open ? " is-open" : ""}${full ? " is-full" : ""}`}
       style={{ left: anchorX, top: anchorY }}
       role="toolbar"
       aria-label={t("canvas.snap.barAria")}
