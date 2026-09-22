@@ -21,7 +21,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { getCanvasSnapArenaRect, snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
+import { snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -910,7 +910,9 @@ export function OperationsCanvas({
   const snapHitArena: SnapRect = { x: 0, y: 0, width: arena.width, height: arena.height };
   // 손잡이 폭 — 아레나 절반(360~760px). 바를 내리는 띠도 이 폭 안에서만 반응한다.
   const snapHandleWidth = Math.max(360, Math.min(760, Math.round(arena.width * 0.5)));
-  const snapArena: SnapRect = getCanvasSnapArenaRect() ?? snapHitArena;
+  // 칸은 이 렌더의 인셋 prop(modeArena)에서 바로 편다 — 스토어의 인셋은 passive effect가 뒤늦게 갱신하므로,
+  // 사이드바를 여닫은 직후 렌더에서 스토어를 읽으면 이전 크롬 폭의 칸이 나온다.
+  const snapArena: SnapRect = { x: modeArena.x - arena.x, y: 0, width: modeArena.width, height: arena.height };
   const arenaRectToBox = (rect: SnapRect): SnapRect => ({ x: rect.x + arena.x, y: rect.y + arena.y, width: rect.width, height: rect.height });
   const frameOf = (body: SnapRect): SnapRect => ({ x: body.x, y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: body.width, height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT });
   const arenaPointOf = (pointer: OperationDragPointer): { x: number; y: number } | null => {

@@ -902,7 +902,10 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
   const zIndex = claimTopZIndex();
   const wasMinimized = state.minimized.includes(sessionId);
   const unminimize = wasMinimized ? { minimized: state.minimized.filter((id) => id !== sessionId) } : {};
-  if (state.viewport.zoom < FOCUS_READABLE_ZOOM) {
+  // Tactical·최대화·companion은 Cruise 좌표와 카메라를 렌더에서 덮고 있을 뿐이다 — 숨은 뷰포트도 기하도
+  // 건드리지 않고 활성화·복원만 한다. 돌아왔을 때 떠난 그대로의 Cruise가 있어야 한다.
+  const projected = formationView || focusLayer !== null;
+  if (!projected && state.viewport.zoom < FOCUS_READABLE_ZOOM) {
     const zoom = Math.max(FOCUS_READABLE_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
       (viewportSize.width - OPERATION_FOCUS_PADDING) / geometry.width,
       (viewportSize.height - OPERATION_FOCUS_PADDING) / geometry.height,
@@ -923,7 +926,8 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
     return;
   }
   let next = geometry;
-  if (!formationView && focusLayer === null) {
+  let followViewport: CanvasViewport | null = null;
+  if (!projected) {
     const arena = getCanvasArenaRect() ?? { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height };
     const zoom = state.viewport.zoom;
     const frame = {
@@ -943,9 +947,20 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
         y: (screenY - state.viewport.y) / zoom + OPERATION_WINDOW_CAPTION_HEIGHT,
       };
       // 규율이 켜져 있으면 불러온 자리도 정착시킨다 — 가운데에 이미 다른 패널이 있으면 겹친 채 서지 않는다.
+      // 정착이 패널을 아레나 밖으로 밀어냈다면 카메라가 그만큼만 따라간다 — 불러온 패널이 안 보이면
+      // 포커스가 아무 일도 안 한 것이 되고, 겹치게 두면 규율이 깨진다.
       if (state.stationKeeping) {
         const spot = resolveStationKeepingPosition(next, visibleObstacles(sessionId));
         next = { ...next, x: spot.x, y: spot.y };
+        const settled = {
+          x: next.x * zoom + state.viewport.x,
+          y: (next.y - OPERATION_WINDOW_CAPTION_HEIGHT) * zoom + state.viewport.y,
+          width: frame.width,
+          height: frame.height,
+        };
+        const dx = settled.x < 0 ? -settled.x : settled.x + settled.width > arena.width ? arena.width - settled.x - settled.width : 0;
+        const dy = settled.y < 0 ? -settled.y : settled.y + settled.height > arena.height ? arena.height - settled.y - settled.height : 0;
+        if (dx !== 0 || dy !== 0) followViewport = { x: state.viewport.x + dx, y: state.viewport.y + dy, zoom };
       }
     }
   }
@@ -953,6 +968,7 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
     operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(next, zIndex), zIndex } },
     ...unminimize,
   });
+  if (followViewport) animateViewportTo(followViewport);
 }
 
 export function setMaximizedOperationId(operationId: string): void {
