@@ -65,8 +65,8 @@ describe("createAgentTerminalLaunchResolver launch environment", () => {
     expect(spec.env).toMatchObject({
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
-      FORCE_HYPERLINK: "1",
     });
+    expect(spec.env.FORCE_HYPERLINK).toBeUndefined();
     expect(spec.env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined();
   });
 });
@@ -102,7 +102,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     });
 
     expect(resolveProfile).toHaveBeenCalledWith(
-      expect.any(Object),
+      expect.objectContaining({ FORCE_HYPERLINK: "1" }),
       "/work/project",
       expect.objectContaining({
         cliId: "claude",
@@ -123,7 +123,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       plugin: launchPluginStub,
       infraServices: { agentOptionsService: { load: () => ({}), update: (mutate) => mutate({}) } },
       cwd: "/work",
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      env: { PATH: "/bin", FORCE_HYPERLINK: "0" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
       aiGateway: AI_GATEWAY_BINDING,
       injectProfile: injectProfile as never,
@@ -133,7 +133,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
 
     expect(resolveProfile).toHaveBeenCalledWith(
-      expect.any(Object),
+      expect.objectContaining({ FORCE_HYPERLINK: "0" }),
       "/work/project",
       expect.objectContaining({
         cliId: "claude",
