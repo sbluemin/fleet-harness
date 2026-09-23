@@ -11,6 +11,11 @@ export const MAX_TITLE = 200;
 export const MAX_NOTE = 20_000;
 export const MAX_STEPS = 40;
 export const MAX_STEP_TEXT = 200;
+/** 단계 기록 한 건의 줄 — 첫 줄이 결론, 나머지는 근거·남은 것. 산문을 한 줄에 몰아넣지 못하게 줄마다 길이를 묶는다. */
+export const MAX_RECORD_LINES = 3;
+export const MAX_RECORD_LINE = 160;
+/** 한 단계에 남기는 기록 수 — 오래된 것부터 밀려난다. */
+export const MAX_RECORDS = 20;
 
 export type SlotBy = "human" | { readonly operationId: string };
 
@@ -34,8 +39,13 @@ export interface TodoStep {
   /** 선행마다 붙는 이유 한 줄(선행 id → why). 사람이 이은 간선은 "human". */
   readonly why?: Readonly<Record<string, string>>;
   readonly slot: Slot | null;
-  /** 완료 때 조율자가 남긴 산출 요약 — 다음 단계에 넘길 내용의 기록. */
-  readonly result?: string;
+  /**
+   * 기록 — 셰프가 이 단계를 완료로 표시할 때마다 한 건씩 쌓인다(다시 작업해 다시 완료해도 한 건). 오래된 것부터.
+   * 가장 최근 기록이 다음 단계에 넘길 내용이다.
+   */
+  readonly records?: readonly StepRecord[];
+  /** 사람이 읽은 기록 수 — 이보다 많으면 안 읽은 기록이 있다. */
+  readonly seen?: number;
   /** 사전 배정 — self: 셰프가 직접 · route: 시작할 때 AI Gateway 라우팅이 난이도로 모델을 고름 · model: 이 모델·강도. 없으면 셰프 프리셋. */
   readonly assign?: StepAssign;
   /**
@@ -43,6 +53,30 @@ export interface TodoStep {
    * 사람이 레시피에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다. 사람은 단계를 더하기만 하고 자리는 셰프가 잡는다.
    */
   readonly unplaced?: true;
+}
+
+export interface StepRecord {
+  readonly id: string;
+  /** 남긴 시각 — 옛 결과(`result`)에서 옮긴 기록은 시각이 없다. */
+  readonly at: number | null;
+  /** 처음 완료인지, 기록이 이미 있는 단계를 다시 완료한 것인지. */
+  readonly kind: "done" | "redone";
+  /** 1–3줄. 첫 줄이 결론. */
+  readonly lines: readonly string[];
+  readonly by?: SlotBy;
+}
+
+export const latestRecord = (step: { readonly records?: readonly StepRecord[] }): StepRecord | null => step.records?.at(-1) ?? null;
+export const unseenRecords = (step: { readonly records?: readonly StepRecord[]; readonly seen?: number }): number => Math.max(0, (step.records?.length ?? 0) - (step.seen ?? 0));
+
+/**
+ * 셰프의 요약을 기록의 줄로 — 빈 줄은 버리고, 1–3줄이며 줄마다 160자 이하여야 한다. 맞지 않으면 null(도구가 거절한다).
+ * 문자열은 줄바꿈으로 나눈다(옛 `result` 인자).
+ */
+export function recordLines(summary: readonly string[] | string): readonly string[] | null {
+  const lines = (typeof summary === "string" ? summary.split("\n") : summary).map((line) => line.trim().replace(/^[·•*-]\s+/, "")).filter(Boolean);
+  if (lines.length === 0 || lines.length > MAX_RECORD_LINES) return null;
+  return lines.every((line) => line.length <= MAX_RECORD_LINE) ? lines : null;
 }
 
 export interface StepAssign {
@@ -173,7 +207,6 @@ export const stepPatchSchema = z.object({
   done: z.boolean().optional(),
   after: z.array(ids).max(MAX_STEPS).optional(),
   why: z.record(ids, z.string().max(300)).optional(),
-  result: z.string().max(4000).optional(),
   /** null 이면 배정을 지운다(셰프 프리셋 상속). */
   assign: stepAssignSchema.nullable().optional(),
 }).strict();

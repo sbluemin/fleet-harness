@@ -1,6 +1,6 @@
 import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
-import { stepReady, type TodoItem } from "../server/types.js";
+import { latestRecord, stepReady, type TodoItem } from "../server/types.js";
 import { openTodoSurface, operationSummaries, readAllTheaters, revealItem, subscribeTodo } from "./todo-state.js";
 
 /**
@@ -59,7 +59,8 @@ export function clustersOf(items: readonly TodoItem[], activity: Map<string, str
         label: `${byStep.get(step.id)}. ${step.text}`,
         after: step.after.map(idOf),
         progress: pending ? (step.done ? "done" : stepReady(item, step) ? "open" : "blocked") : progressOf(item, step.id, id, activity),
-        ...(step.result ? { result: step.result } : {}),
+        // 캡션 피커의 한 줄 — 가장 최근 기록의 결론.
+        ...((latest) => (latest ? { result: latest.lines[0] ?? "" } : {}))(latestRecord(step)),
       };
     });
     const open = (operationId?: string) => {

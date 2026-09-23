@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { coordinatorMode, stepReady, wouldCycle, type TodoItem } from "../server/types.js";
+import { coordinatorMode, stepReady, unseenRecords, wouldCycle, type TodoItem } from "../server/types.js";
 import type { TodoMessageKey } from "./i18n/index.js";
 
 /**
@@ -216,6 +216,8 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
             >
               <circle cx={p.x} cy={p.y} r={9} />
               <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="todo-num">{index + 1}</text>
+              {/* 안 읽은 단계 기록 — 노드 오른쪽 위 작은 점. 단계 줄의 기록 수를 펼치면 사라진다. */}
+              {unseenRecords(step) > 0 ? <circle className="todo-node-unseen" cx={p.x + 7} cy={p.y - 7} r={3} /> : null}
               {showLabels && !unplaced ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{shorten(step.text)}</text> : null}
               <title>{`${index + 1}. ${step.text}`}</title>
             </g>
