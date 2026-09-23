@@ -117,9 +117,9 @@ describe("ai-gateway settings store", () => {
 
   it("keeps the wire-log choice independent of model selection", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-    store.write({ models: [{ id: "kimi--k3" }] });
+    store.write({ models: [{ id: "opencode--glm-5.3" }] });
     store.writeWireLogEnabled(false);
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "kimi--k3" }], wireLogEnabled: false });
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "opencode--glm-5.3" }], wireLogEnabled: false });
     store.write(undefined);
     expect(store.read()).toEqual({ version: 1, wireLogEnabled: false });
     store.writeWireLogEnabled(undefined);
