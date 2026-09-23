@@ -223,6 +223,8 @@ function normalizeStoredPanelId(stored: string): string | null {
     return "repository";
   }
   if (stored === "alerts") return null;
+  // 「할 일」 플러그인이 「목표」로 이름을 바꿨다 — 레일에 붙여 두었던 패널이 업그레이드 뒤에도 그대로 열린다.
+  if (stored === "todo") return "objectives";
   return stored;
 }
 
