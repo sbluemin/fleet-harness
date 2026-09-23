@@ -47,7 +47,7 @@ export interface SideBarEntry {
  * 구성원의 이름은 제목 대신 짧은 라벨이다. 소속은 배치가 말하므로 칩은 묶음 이름을 되풀이하지 않는다.
  */
 export type SideBarChipCluster =
-  | { readonly role: "root"; readonly title: string; readonly collapsed: boolean; readonly strip: ReactNode; readonly onToggle: () => void }
+  | { readonly role: "root"; readonly title: string; readonly collapsed: boolean; readonly strip: ReactNode; readonly onToggle: () => void; readonly expandable: boolean }
   | { readonly role: "member"; readonly title: string; readonly label: string; readonly depth: number; readonly last: boolean; readonly progress: OperationClusterProgress; readonly afterTag: string | null };
 
 interface SideBarChipProps {
@@ -356,7 +356,7 @@ export function OperationsSideBarChip({
           띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 마크가 그 이름을 진다. 예외는 Shell 하나다: Shell은 활동 축을
           발행하지 않아 비콘이 늘 같은 값으로 굳으므로, 그 자리를 종류 글리프가 가져간다. */}
-      {cluster?.role === "root" && !preview ? (
+      {cluster?.role === "root" && cluster.expandable && !preview ? (
         <button
           type="button"
           className={["side-bar-chip-cluster-toggle", cluster.collapsed ? "is-collapsed" : ""].filter(Boolean).join(" ")}

@@ -20,7 +20,8 @@ export function clusterChipPropsFor(entry: SideBarEntry, index: ClusterIndex, fo
   const root = index.rootOf.get(entry.operation.id);
   if (root) {
     const isCollapsed = isClusterCollapsed(fold, root.cluster.id);
-    return { role: "root", title: root.cluster.title, collapsed: isCollapsed, strip: <ClusterStrip layout={root} rootActivity={entry.status} onOpen={root.cluster.open} />, onToggle: () => toggleClusterCollapsed(root.cluster.id) };
+    // 펼칠 것은 Operation 이 선 구성원뿐 — 자리표시(pending) 단계만 있으면 띠는 서되 접기 토글은 없다.
+    return { role: "root", title: root.cluster.title, collapsed: isCollapsed, strip: <ClusterStrip layout={root} rootActivity={entry.status} onOpen={root.cluster.open} />, onToggle: () => toggleClusterCollapsed(root.cluster.id), expandable: root.formation.members.length > 0 };
   }
   const member = index.memberOf.get(entry.operation.id);
   if (!member) return null;
@@ -28,7 +29,7 @@ export function clusterChipPropsFor(entry: SideBarEntry, index: ClusterIndex, fo
   // 「마지막」은 묶음 전체가 아니라 지금 이 목록에 실제로 이어 서는 행 기준이다 — 다음 행이 같은 묶음이 아니면 여기서 줄기가 멎는다.
   const at = siblings ? siblings.findIndex((candidate) => candidate.operation.id === entry.operation.id) : -1;
   const next = at >= 0 ? siblings![at + 1] : undefined;
-  const last = siblings ? !next || index.memberOf.get(next.operation.id)?.layout.cluster.id !== member.layout.cluster.id : member.laid.order === member.layout.members.length - 1;
+  const last = siblings ? !next || index.memberOf.get(next.operation.id)?.layout.cluster.id !== member.layout.cluster.id : member.laid.order === member.layout.formation.members.length - 1;
   return {
     role: "member",
     title: member.layout.cluster.title,

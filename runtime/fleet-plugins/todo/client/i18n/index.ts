@@ -149,9 +149,6 @@ export const todoEn = {
   "todo.link.none": "No Operation in this Theater is free",
   "todo.link.cancel": "Cancel",
   "todo.palette.subtitle": "To-do",
-  "todo.caption.coordinator": "Chef",
-  "todo.caption.step": "step {index}",
-  "todo.caption.goto": "Open the linked to-do",
 };
 
 export const todoKo: Record<keyof typeof todoEn, string> = {
@@ -302,9 +299,6 @@ export const todoKo: Record<keyof typeof todoEn, string> = {
   "todo.link.none": "이 작전구역에 비어 있는 Operation이 없습니다",
   "todo.link.cancel": "취소",
   "todo.palette.subtitle": "할 일",
-  "todo.caption.coordinator": "셰프",
-  "todo.caption.step": "단계 {index}",
-  "todo.caption.goto": "연결된 할 일 열기",
 };
 
 const TODO_MESSAGES = { en: todoEn, ko: todoKo } as const;

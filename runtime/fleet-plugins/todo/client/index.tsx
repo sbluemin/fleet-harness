@@ -2,7 +2,6 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
-import { TodoCaptionChip } from "./caption-chip.js";
 import { todoClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { TodoPanel } from "./todo-panel.js";
@@ -63,7 +62,6 @@ const todoPlugin = definePlugin({
   },
   railEntries: [todoEntry],
   expandedSurfaces: [todoSurface],
-  operationCaptionContributions: [{ id: "slot", render: (context) => <TodoCaptionChip {...context} /> }],
   // 조율자와 담당 Operation 은 한 묶음이다 — 사이드바 들여쓰기·캔버스 대형·간선은 호스트가 이 서술자로 그린다.
   operationClusters: todoClusterSource,
 });

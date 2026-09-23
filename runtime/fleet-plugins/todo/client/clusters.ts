@@ -36,28 +36,36 @@ function progressOf(item: TodoItem, stepId: string, operationId: string, activit
   return "open";
 }
 
+/** 아직 Operation 이 없는 단계의 자리표시 id — 띠의 사각 하나가 된다. 호스트는 pending 을 보고 행·패널을 세우지 않는다. */
+const placeholderId = (stepId: string) => `step:${stepId}`;
+
 export function clustersOf(items: readonly TodoItem[], activity: Map<string, string>): OperationCluster[] {
   const out: OperationCluster[] = [];
   for (const item of items) {
     const { coordinator, steps } = slotsOf(item);
-    if (!coordinator || steps.size === 0) continue;
+    // 셰프 Operation 이 살아 있으면 묶음이 선다 — 단계 Operation 이 하나도 없어도, 단계가 하나뿐이어도 띠는 같은 모양이다.
+    if (!coordinator || !activity.has(coordinator)) continue;
     const byStep = new Map(item.steps.map((step, index) => [step.id, index + 1]));
-    const members: OperationClusterMember[] = [];
-    if (!activity.has(coordinator)) continue; // 셰프 Operation 이 이미 없으면 묶음도 없다
-    for (const step of item.steps) {
-      const operationId = steps.get(step.id);
-      if (!operationId || operationId === coordinator || !activity.has(operationId)) continue;
-      members.push({
-        operationId,
+    const idOf = (stepId: string): string => {
+      const operationId = steps.get(stepId);
+      return operationId && operationId !== coordinator && activity.has(operationId) ? operationId : placeholderId(stepId);
+    };
+    const members: OperationClusterMember[] = item.steps.map((step) => {
+      const id = idOf(step.id);
+      const pending = id === placeholderId(step.id);
+      return {
+        operationId: id,
+        ...(pending ? { pending: true } : {}),
         label: `${byStep.get(step.id)}. ${step.text}`,
-        after: step.after.map((id) => steps.get(id)).filter((id): id is string => !!id && id !== coordinator),
-        progress: progressOf(item, step.id, operationId, activity),
+        after: step.after.map(idOf),
+        progress: pending ? (step.done ? "done" : stepReady(item, step) ? "open" : "blocked") : progressOf(item, step.id, id, activity),
         ...(step.result ? { result: step.result } : {}),
-      });
-    }
-    if (members.length === 0) continue;
+      };
+    });
     const open = (operationId?: string) => {
-      const stepId = operationId ? [...steps.entries()].find(([, id]) => id === operationId)?.[0] : undefined;
+      const stepId = operationId
+        ? operationId.startsWith("step:") ? operationId.slice(5) : [...steps.entries()].find(([, id]) => id === operationId)?.[0]
+        : undefined;
       revealItem(stepId ? { itemId: item.id, stepId } : { itemId: item.id });
       openTodoSurface();
     };
@@ -66,7 +74,7 @@ export function clustersOf(items: readonly TodoItem[], activity: Map<string, str
   return out;
 }
 
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.label, member.after, member.progress, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.label, member.after, member.progress, member.result ?? ""])]));
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";

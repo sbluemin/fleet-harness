@@ -153,19 +153,6 @@ export function useReveal(): RevealTarget | null {
   return useSyncExternalStore(subscribeTodo, () => reveal, () => reveal);
 }
 
-/** 어느 Theater 의 어느 항목·단계가 이 Operation 을 슬롯에 두고 있는가 — 캡션 칩이 읽는다. */
-export function findSlotOf(operationId: string): { readonly item: TodoItem; readonly stepId: string | null } | null {
-  for (const state of theaters.values()) {
-    for (const item of state.items) {
-      if (item.done) continue;
-      if (item.slot?.operationId === operationId) return { item, stepId: null };
-      const step = item.steps.find((candidate) => candidate.slot?.operationId === operationId);
-      if (step) return { item, stepId: step.id };
-    }
-  }
-  return null;
-}
-
 export function focusOperation(operationId: string): void {
   // 할 일 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
   if (installed?.surfaces.isOpen("todo")) installed.surfaces.closeSurface("todo");
