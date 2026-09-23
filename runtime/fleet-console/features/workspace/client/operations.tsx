@@ -13,7 +13,7 @@ import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnO
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
-import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapFullZone, snapZoneHitFor } from "./canvas/snap-layouts.js";
+import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
@@ -234,10 +234,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (!stateRef.current.operations.some((operation) => operation.id === operationId && operation.theaterId === stateRef.current.activeTheaterId)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        const zone = snapCommand === "operations.snap-full"
-          ? snapFullZone(arena)
-          : snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1).zone;
-        snapOperationToArenaRect(operationId, zone);
+        const hit = snapCommand === "operations.snap-full"
+          ? snapZoneHitFor(arena, SNAP_FULL_ZONES, 0)
+          : snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1);
+        // 키보드 스냅도 유지에 든다 — 다만 후보 판은 캔버스의 드래그·메뉴 스냅만 연다.
+        snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
         const geometry = getCanvasSnapshot().operations[operationId];
         // 캔버스의 드래그 커밋과 같은 durable 쓰기 — 기하는 patchOperation의 클라이언트 입력이 아니다.
         if (geometry) {

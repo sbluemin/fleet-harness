@@ -7,6 +7,9 @@ import { forwardRef, useEffect, useRef, type CSSProperties } from "react";
 import { useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { SNAP_PRESETS, type SnapPreset, type SnapPresetId, type SnapRect } from "./snap-layouts.js";
 
+// 빈 칸이 권하는 후보는 이만큼까지 — 넘치면 개수만 알린다(⌘K가 찾기의 자리다).
+const SNAP_ASSIST_MAX = 6;
+
 const PRESET_LABEL_KEY: Readonly<Record<SnapPresetId, CoreMessageKey>> = {
   half: "canvas.snap.presetHalf",
   thirds: "canvas.snap.presetThirds",
@@ -201,4 +204,73 @@ export function SnapLayoutMenu({ title, anchor, boundsWidth, boundsHeight, onPic
       ))}
     </div>
   );
+}
+
+export interface SnapAssistCandidate {
+  readonly id: string;
+  readonly title: string;
+  readonly minimized: boolean;
+}
+
+interface SnapAssistProps {
+  /** 비어 있는 칸들 — 캔버스 박스 좌표의 시각 프레임(캡션 포함). */
+  readonly zones: readonly { readonly index: number; readonly rect: SnapRect }[];
+  readonly candidates: readonly SnapAssistCandidate[];
+  readonly onPick: (operationId: string, zoneIndex: number) => void;
+  readonly onClose: () => void;
+}
+
+/**
+ * Snap Assist — 스냅 직후 한 번, 빈 칸 자체가 후보 판이 된다. 캔버스의 다른 자유 패널과 최소화된 패널을
+ * 타일로 늘어놓고 누르면 그 칸에 앉힌다. Esc·캔버스 클릭·다른 드래그로 사라지고, 사라진 빈 칸에는
+ * 아무것도 남지 않는다(격자를 남기는 안은 기각됐다).
+ */
+export function SnapAssist({ zones, candidates, onPick, onClose }: SnapAssistProps) {
+  const t = useT();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const shown = candidates.slice(0, SNAP_ASSIST_MAX);
+  const overflow = candidates.length - shown.length;
+  return <>
+    {zones.map(({ index, rect }) => (
+      <section
+        key={index}
+        className="canvas-snap-assist"
+        style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+        aria-label={t("canvas.snap.assistAria")}
+        data-canvas-blocker
+      >
+        <header className="canvas-snap-assist-head">
+          <span>{t("canvas.snap.assistTitle")}</span>
+          <kbd>Esc</kbd>
+        </header>
+        {shown.length > 0 ? (
+          <div className="canvas-snap-assist-tiles">
+            {shown.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                className={`canvas-snap-assist-tile${candidate.minimized ? " is-minimized" : ""}`}
+                onClick={() => onPick(candidate.id, index)}
+                title={t("canvas.snap.assistPickTitle", { title: candidate.title })}
+              >
+                <span className="canvas-snap-assist-tile-cap">{candidate.title}</span>
+                <span className="canvas-snap-assist-tile-body">{candidate.minimized ? t("canvas.snap.assistMinimized") : t("canvas.snap.assistOnCanvas")}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="canvas-snap-assist-none">{t("canvas.snap.assistNone")}</p>
+        )}
+        {overflow > 0 ? <p className="canvas-snap-assist-more">{t("canvas.snap.assistMore", { count: overflow })}</p> : null}
+      </section>
+    ))}
+  </>;
 }

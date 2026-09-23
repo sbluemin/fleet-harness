@@ -18,6 +18,7 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
+import { getLoadedTheaterId, useSnapHold } from "../canvas/canvas-store.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
 const DETAIL_HOVER_DELAY_MS = 400;
@@ -149,8 +150,12 @@ export function OperationsSideBarChip({
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
+  // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 ▣이 선다(캡션과 같은 표식).
+  const snapHold = useSnapHold();
+  const snapHeld = snapHold !== null && operation.theaterId === getLoadedTheaterId() && operation.id in snapHold.assignments;
   const chipClassName = [
     "side-bar-chip",
+    snapHeld ? "side-bar-chip--snapped" : "",
     consoleUseWrapClassName(wrap),
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",

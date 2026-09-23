@@ -8530,6 +8530,134 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 캡션 최대화 버튼에 머무르면 열리는 배치 메뉴 — 바와 같은 유리, 여기서는 칸이 버튼이다. */
+/* ── 스냅 유지 ── */
+/* 브래킷은 Tactical 프레임 그대로 — 자유 패널과 섞이는 표면이라 선만 조금 옅게, 모서리는 같은 무게다. */
+.canvas-mode-frame.is-snap-hold {
+  border-color: color-mix(in oklch, var(--brass) 11%, transparent);
+}
+
+/* 캡션 ▣ — 칸에 붙어 있다는 표식. 그룹 칩 앞, 제목과 같은 줄. */
+.canvas-operation-snap-mark {
+  flex: none;
+  font-size: var(--t-2xs);
+  line-height: 1;
+  color: color-mix(in oklch, var(--brass) 78%, var(--ink-muted));
+  padding-inline: 2px;
+}
+
+.side-bar-chip--snapped .side-bar-chip-name::after {
+  content: "▣";
+  margin-left: 6px;
+  font-size: var(--t-2xs);
+  vertical-align: 1px;
+  color: color-mix(in oklch, var(--brass) 78%, var(--ink-muted));
+}
+
+/* Snap Assist — 빈 칸 자체가 후보 판이다. 칸의 윤곽은 이 판이 떠 있는 동안만 보이고, 걷히면 아무것도 남지 않는다. */
+.canvas-snap-assist {
+  position: absolute;
+  z-index: 22;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  outline: 1px dashed color-mix(in oklch, var(--brass) 34%, transparent);
+  outline-offset: -1px;
+  background: color-mix(in oklch, var(--glass-tint-band) 70%, transparent);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  animation: canvas-snap-assist-in 180ms var(--ease-glide);
+}
+
+@keyframes canvas-snap-assist-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.canvas-snap-assist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.canvas-snap-assist-head kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  padding: 0 5px;
+  border: 1px solid var(--surface-rim);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--ink-muted);
+}
+
+.canvas-snap-assist-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.canvas-snap-assist-tile {
+  appearance: none;
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 8px;
+  background: var(--glass-tint-strong);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, transform var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-snap-assist-tile:hover,
+.canvas-snap-assist-tile:focus-visible {
+  border-color: var(--brass-bright);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.canvas-snap-assist-tile-cap {
+  display: block;
+  height: 24px;
+  line-height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  color: var(--ink-mid);
+  background: color-mix(in oklch, var(--ink-deep) 6%, transparent);
+}
+
+.canvas-snap-assist-tile-body {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+}
+
+.canvas-snap-assist-tile.is-minimized .canvas-snap-assist-tile-cap {
+  color: var(--ink-muted);
+}
+
+.canvas-snap-assist-none,
+.canvas-snap-assist-more {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+}
+
 .canvas-snap-menu {
   position: absolute;
   z-index: 40;
@@ -8567,6 +8695,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   .canvas-snap-bar,
   .canvas-snap-handle,
   .canvas-snap-ghost,
+  .canvas-snap-assist,
   .canvas-snap-menu {
     transition: none;
     animation: none;

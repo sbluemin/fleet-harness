@@ -22,11 +22,22 @@ export interface SnapPoint {
 
 export type SnapPresetId = "half" | "thirds" | "quad" | "wide" | "stack";
 
+export type SnapZoneFraction = readonly [number, number, number, number];
+
 export interface SnapPreset {
   readonly id: SnapPresetId;
   /** [x, y, width, height] — 아레나 분수. */
-  readonly zones: readonly (readonly [number, number, number, number])[];
+  readonly zones: readonly SnapZoneFraction[];
 }
+
+/** 칸 나누기 — 프리셋이거나, 유지 중 경계를 끌어 변한 칸들. */
+export interface SnapZoneSet {
+  readonly id: string;
+  readonly zones: readonly SnapZoneFraction[];
+}
+
+/** 아레나 전체 한 칸(위쪽 가장자리 드롭·⌘⌥↑). */
+export const SNAP_FULL_ZONES: SnapZoneSet = { id: "full", zones: [[0, 0, 1, 1]] };
 
 export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "half", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1]] },
@@ -56,7 +67,7 @@ const EPSILON = 0.001;
  * 프리셋의 모든 칸을 아레나-상대 화면 픽셀의 **본문** 사각형으로 편다. 캡션은 칸 위 띠를 채우므로
  * 본문 y는 캡션 높이만큼 내려가고 높이는 그만큼 준다. 아레나 밖으로 나가는 값은 만들지 않는다.
  */
-export function snapZonesFor(arena: SnapRect, preset: SnapPreset): readonly SnapRect[] {
+export function snapZonesFor(arena: SnapRect, preset: SnapZoneSet): readonly SnapRect[] {
   const innerX = arena.x + SNAP_FRAME_INSET;
   const innerY = arena.y + SNAP_FRAME_INSET;
   const innerWidth = Math.max(0, arena.width - SNAP_FRAME_INSET * 2);
@@ -81,18 +92,93 @@ export function snapZonesFor(arena: SnapRect, preset: SnapPreset): readonly Snap
 
 /** 아레나 전체 한 칸(위쪽 가장자리 드롭·⌘⌥↑). */
 export function snapFullZone(arena: SnapRect): SnapRect {
-  return snapZonesFor(arena, { id: "half", zones: [[0, 0, 1, 1]] })[0]!;
+  return snapZonesFor(arena, SNAP_FULL_ZONES)[0]!;
 }
 
 export interface SnapZoneHit {
   readonly zone: SnapRect;
-  /** 같은 프리셋의 나머지 칸 — 스냅 뒤 가이드로 남아 다음 패널을 받는다. */
-  readonly siblings: readonly SnapRect[];
+  /** 어느 나누기의 몇 번째 칸인가 — 스냅 유지가 이 셋으로 묶음을 만든다. */
+  readonly set: SnapZoneSet;
+  readonly zoneIndex: number;
 }
 
-export function snapZoneHitFor(arena: SnapRect, preset: SnapPreset, zoneIndex: number): SnapZoneHit {
-  const zones = snapZonesFor(arena, preset);
-  return { zone: zones[zoneIndex]!, siblings: zones.filter((_, index) => index !== zoneIndex) };
+export function snapZoneHitFor(arena: SnapRect, set: SnapZoneSet, zoneIndex: number): SnapZoneHit {
+  const zones = snapZonesFor(arena, set);
+  return { zone: zones[zoneIndex]!, set, zoneIndex };
+}
+
+/** 유지 중인 나누기의 빈 칸 위인가 — 바·핫존 없이 그 칸에 바로 놓는다. */
+export function snapEmptyZoneHitFor(point: SnapPoint, arena: SnapRect, set: SnapZoneSet, taken: ReadonlySet<number>): SnapZoneHit | null {
+  const zones = snapZonesFor(arena, set);
+  for (let index = 0; index < zones.length; index += 1) {
+    if (taken.has(index)) continue;
+    const frame = { x: zones[index]!.x, y: zones[index]!.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: zones[index]!.width, height: zones[index]!.height + OPERATION_WINDOW_CAPTION_HEIGHT };
+    if (snapPointInRect(point, frame)) return { zone: zones[index]!, set, zoneIndex: index };
+  }
+  return null;
+}
+
+/**
+ * 유지 패널의 크기 조절을 칸 분수로 되돌린다 — 움직인 변을 같은 선을 나누던 이웃 칸도 따라 옮긴다
+ * (Windows 스냅 묶음의 공유 경계). 이웃이 최소 폭·높이 아래로 줄어드는 만큼은 받지 않는다.
+ * `frame`은 캡션을 포함한 아레나-상대 화면 프레임.
+ */
+export function snapZonesResized(arena: SnapRect, zones: readonly SnapZoneFraction[], index: number, frame: SnapRect, minWidth: number, minHeight: number): readonly SnapZoneFraction[] {
+  const innerX = arena.x + SNAP_FRAME_INSET;
+  const innerY = arena.y + SNAP_FRAME_INSET;
+  const innerWidth = Math.max(1, arena.width - SNAP_FRAME_INSET * 2);
+  const innerHeight = Math.max(1, arena.height - SNAP_FRAME_INSET * 2);
+  const old = zones[index];
+  if (!old) return zones;
+  const [ofx, ofy, ofw, ofh] = old;
+  const leftGap = ofx > EPSILON ? SNAP_GAP / 2 : 0;
+  const rightGap = ofx + ofw < 1 - EPSILON ? SNAP_GAP / 2 : 0;
+  const topGap = ofy > EPSILON ? SNAP_GAP / 2 : 0;
+  const bottomGap = ofy + ofh < 1 - EPSILON ? SNAP_GAP / 2 : 0;
+  // 새 변의 분수 — 바깥 변(0·1)은 아레나에 붙어 있으니 움직이지 않는다.
+  const edges = {
+    left: ofx > EPSILON ? clamp01((frame.x - leftGap - innerX) / innerWidth) : 0,
+    right: ofx + ofw < 1 - EPSILON ? clamp01((frame.x + frame.width + rightGap - innerX) / innerWidth) : 1,
+    top: ofy > EPSILON ? clamp01((frame.y - topGap - innerY) / innerHeight) : 0,
+    bottom: ofy + ofh < 1 - EPSILON ? clamp01((frame.y + frame.height + bottomGap - innerY) / innerHeight) : 1,
+  };
+  const minW = (minWidth + SNAP_GAP) / innerWidth;
+  const minH = (minHeight + SNAP_GAP + OPERATION_WINDOW_CAPTION_HEIGHT) / innerHeight;
+  const next = zones.map((zone) => [...zone] as [number, number, number, number]);
+  const moveEdge = (axis: "x" | "y", from: number, to: number) => {
+    if (Math.abs(from - to) < EPSILON) return;
+    const min = axis === "x" ? minW : minH;
+    // 이 선을 나누는 모든 칸(자기 자신 포함) — 이웃이 최소 크기 아래로 가지 않는 범위로 한 번에 자른다.
+    let bounded = to;
+    for (const zone of next) {
+      const [zx, zy, zw, zh] = zone;
+      const start = axis === "x" ? zx : zy, size = axis === "x" ? zw : zh;
+      const crosses = axis === "x" ? overlaps(zy, zh, ofy, ofh) : overlaps(zx, zw, ofx, ofw);
+      if (!crosses) continue;
+      if (Math.abs(start + size - from) < EPSILON) bounded = Math.max(bounded, start + min);
+      if (Math.abs(start - from) < EPSILON) bounded = Math.min(bounded, start + size - min);
+    }
+    for (const zone of next) {
+      const si = axis === "x" ? 0 : 1, wi = axis === "x" ? 2 : 3;
+      const crosses = axis === "x" ? overlaps(zone[1], zone[3], ofy, ofh) : overlaps(zone[0], zone[2], ofx, ofw);
+      if (!crosses) continue;
+      if (Math.abs(zone[si] + zone[wi] - from) < EPSILON) zone[wi] = bounded - zone[si];
+      else if (Math.abs(zone[si] - from) < EPSILON) { zone[wi] = zone[si] + zone[wi] - bounded; zone[si] = bounded; }
+    }
+  };
+  moveEdge("x", ofx, edges.left);
+  moveEdge("x", ofx + ofw, edges.right);
+  moveEdge("y", ofy, edges.top);
+  moveEdge("y", ofy + ofh, edges.bottom);
+  return next;
+}
+
+function overlaps(start: number, size: number, otherStart: number, otherSize: number): boolean {
+  return start < otherStart + otherSize - EPSILON && otherStart < start + size - EPSILON;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 /**

@@ -29,6 +29,7 @@ export interface CanvasState {
   // Station Keeping — Cruise의 상시 비겹침 규율(옵트인, Theater별). 켜는 순간 한 번 펼치고,
   // 켜져 있는 동안 생성·이동·리사이즈·복원이 정착을 거친다. 끄는 것은 좌표를 되돌리지 않는다.
   readonly stationKeeping: boolean;
+  readonly snapHold: SnapHold | null;
 }
 
 export interface CanvasViewportSize {
@@ -53,6 +54,21 @@ export interface CanvasWorldRect {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+/**
+ * 스냅 유지 — 스냅한 패널만 아레나 분수 칸으로 기억한다. 유지 중인 패널은 카메라·크롬(사이드바·레일)이
+ * 어떻게 바뀌든 "지금 보이는 아레나"의 그 칸에 다시 깔리고, 비어 있는 칸은 다음 패널을 받는다.
+ * 칸은 프리셋에서 시작하되 유지 패널 사이 경계를 끌면 이웃과 함께 변한다. 자유 패널은 영향받지 않는다.
+ * Cruise에서 줌을 만지면 전부 풀리고, 유지 패널을 칸 밖에 놓거나 최소화·닫으면 그 패널만 풀린다.
+ * Tactical·War Room은 자기 기하로 덮을 뿐이라 왕복해도 남는다.
+ */
+export type SnapZoneFraction = readonly [number, number, number, number];
+export interface SnapHold {
+  readonly presetId: string;
+  readonly zones: readonly SnapZoneFraction[];
+  /** 세션 id → zones 인덱스. */
+  readonly assignments: Readonly<Record<string, number>>;
 }
 
 export interface GridSlotGeometry {
@@ -98,7 +114,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false, snapHold: null };
 // Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
 // 충돌 상자는 본문이 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다.
 export const STATION_KEEPING_GAP = 16;
@@ -245,6 +261,8 @@ export function setState(patch: Partial<CanvasState>): void {
     minimized: patch.minimized ?? state.minimized,
     collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
     stationKeeping: patch.stationKeeping ?? state.stationKeeping,
+    // null이 유효한 값이라 ??로 합치면 해제가 사라진다.
+    snapHold: patch.snapHold !== undefined ? patch.snapHold : state.snapHold,
   };
   scheduleSave();
   emit();
@@ -332,6 +350,8 @@ export function resetCanvasViewportSize(): void {
 
 export function fitAllOperations(): void {
   if (formationView || focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  // 맞춤도 줌이다 — 유지를 푼다.
+  releaseSnapHold();
   // 분모와 중심은 캔버스 박스가 아니라 아레나다 — 전면 캔버스에서 박스 크기로 맞추면
   // 가장자리 패널이 부유 크롬 밑에 착지하고 그 중심이 viewport로 영속된다.
   const arenaWidth = Math.max(1, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right);
@@ -528,7 +548,7 @@ export function minimizeOperation(sessionId: string): void {
   if (state.minimized.includes(sessionId)) return;
   if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
   if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
-  setState({ minimized: [...state.minimized, sessionId] });
+  setState({ minimized: [...state.minimized, sessionId], snapHold: snapHoldWithout(state.snapHold, [sessionId]) });
 }
 
 // 초기 부팅처럼 현재 존재하는 패널 집합을 최소화할 때 쓴다. 기존 최소화 순서는 보존하고 새 id만 뒤에 더한다.
@@ -549,7 +569,7 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
   const companionOperationId = getCompanionOperationId();
   if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
-  setState({ minimized });
+  setState({ minimized, snapHold: snapHoldWithout(state.snapHold, minimized) });
 }
 
 // 최소화한 Operation을 복원한다 — 목록에서 제거하고 보존된 geometry를 최상단 zIndex로 끌어올려 원위치·원크기로 되돌린다.
@@ -784,16 +804,82 @@ export function getCanvasSnapArenaRect(): CanvasWorldRect | null {
  * 줌은 항상 100%로 돌아온다 — 칸을 줌 100% 기준 월드 프레임으로 두고 카메라를 그 프레임으로 당긴다.
  * 패널의 고유 크기가 "화면 한 칸"으로 일정해지고, 줌이 빠진 채 스냅해도 작은 글자의 큰 패널이 남지 않는다.
  */
-export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorldRect): void {
+export interface SnapHoldTarget {
+  readonly presetId: string;
+  readonly zones: readonly SnapZoneFraction[];
+  readonly zoneIndex: number;
+}
+
+export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorldRect, target?: SnapHoldTarget): void {
   const zIndex = claimTopZIndex();
   // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
   const originX = -state.viewport.x / state.viewport.zoom;
   const originY = -state.viewport.y / state.viewport.zoom;
   const world = { x: originX + bodyRect.x, y: originY + bodyRect.y, width: bodyRect.width, height: bodyRect.height, zIndex };
-  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } } });
+  // 유지 — 같은 칸 나누기면 묶음에 합류하고(그 칸을 쓰던 패널은 풀린다), 다른 나누기면 새 묶음이 선다.
+  // 이전 묶음의 패널은 좌표를 그대로 둔 채 자유 패널로 남는다.
+  let snapHold = state.snapHold;
+  if (target) {
+    const sameZones = snapHold !== null && snapZonesEqual(snapHold.zones, target.zones);
+    const assignments: Record<string, number> = {};
+    if (sameZones) for (const [id, index] of Object.entries(snapHold!.assignments)) if (id !== sessionId && index !== target.zoneIndex) assignments[id] = index;
+    assignments[sessionId] = target.zoneIndex;
+    snapHold = { presetId: target.presetId, zones: sameZones ? snapHold!.zones : target.zones, assignments };
+  }
+  setState({
+    operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } },
+    minimized: state.minimized.includes(sessionId) ? state.minimized.filter((id) => id !== sessionId) : state.minimized,
+    snapHold,
+  });
   if (Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON || Math.abs(state.viewport.x + originX) > ZOOM_TWEEN_POSITION_EPSILON || Math.abs(state.viewport.y + originY) > ZOOM_TWEEN_POSITION_EPSILON) {
     animateViewportTo({ x: -originX, y: -originY, zoom: 1 });
   }
+}
+
+export function getSnapHold(): SnapHold | null {
+  return state.snapHold;
+}
+
+export function useSnapHold(): SnapHold | null {
+  return useSyncExternalStore(subscribe, getSnapHold, getSnapHold);
+}
+
+/** 캔버스가 렌더마다 칸에서 편 유지 패널의 월드 기하를 스토어에 되쓴다 — 영속·Station Keeping 장애물·해제가 같은 값을 본다. */
+export function syncSnapHoldGeometry(entries: readonly { readonly sessionId: string; readonly rect: CanvasWorldRect }[]): void {
+  let operations = state.operations;
+  for (const { sessionId, rect } of entries) {
+    const current = operations[sessionId];
+    if (!current) continue;
+    if (Math.abs(current.x - rect.x) < 0.01 && Math.abs(current.y - rect.y) < 0.01 && Math.abs(current.width - rect.width) < 0.01 && Math.abs(current.height - rect.height) < 0.01) continue;
+    operations = { ...operations, [sessionId]: { ...current, x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+  }
+  if (operations !== state.operations) setState({ operations });
+}
+
+export function setSnapHoldZones(zones: readonly SnapZoneFraction[]): void {
+  if (!state.snapHold || snapZonesEqual(state.snapHold.zones, zones)) return;
+  setState({ snapHold: { ...state.snapHold, zones } });
+}
+
+export function releaseSnapHold(): void {
+  if (state.snapHold) setState({ snapHold: null });
+}
+
+export function releaseSnapHoldOperation(sessionId: string): void {
+  const next = snapHoldWithout(state.snapHold, [sessionId]);
+  if (next !== state.snapHold) setState({ snapHold: next });
+}
+
+function snapHoldWithout(hold: SnapHold | null, sessionIds: readonly string[]): SnapHold | null {
+  if (!hold) return null;
+  const drop = sessionIds.filter((id) => id in hold.assignments);
+  if (drop.length === 0) return hold;
+  const assignments = Object.fromEntries(Object.entries(hold.assignments).filter(([id]) => !drop.includes(id)));
+  return Object.keys(assignments).length === 0 ? null : { ...hold, assignments };
+}
+
+function snapZonesEqual(left: readonly SnapZoneFraction[], right: readonly SnapZoneFraction[]): boolean {
+  return left.length === right.length && left.every((zone, index) => zone.every((value, k) => Math.abs(value - right[index]![k]!) < 0.0001));
 }
 
 // 규율이 켜진 상태의 불변식 복구 — War Room 지도 이동처럼 규율 밖 쓰기가 남긴 겹침을 정착시킨다.
@@ -851,8 +937,9 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
-  if (changed || minimizedChanged || orderChanged || accentChanged) {
-    setState({ operations, minimized, operationOrder, operationAccent });
+  const snapHold = snapHoldWithout(state.snapHold, Object.keys(state.snapHold?.assignments ?? {}).filter((sessionId) => !valid.has(sessionId)));
+  if (changed || minimizedChanged || orderChanged || accentChanged || snapHold !== state.snapHold) {
+    setState({ operations, minimized, operationOrder, operationAccent, snapHold });
   }
 }
 
@@ -862,6 +949,8 @@ export function loadForTheater(theaterId: string | null): void {
   saveFocusLayerForActiveTheater();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
+  // 유지는 줌 100%의 것이다 — 다른 줌으로 저장된 상태(구버전·손상)면 자유 배치로 떨어진다.
+  if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) state = { ...state, snapHold: null };
   // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
   // 같은 Theater가 다시 로드돼도 현재 레이아웃 모드와 대상 Operation을 함께 유지한다.
   const nextFocusLayer = theaterId ? focusLayersByTheater.get(theaterId) ?? null : null;
@@ -1313,7 +1402,24 @@ function normalizeCanvasState(value: unknown): CanvasState {
     minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
     stationKeeping: value.stationKeeping === true,
+    snapHold: normalizeSnapHold(value.snapHold, operations),
   };
+}
+
+function normalizeSnapHold(value: unknown, operations: Record<string, OperationGeometry>): SnapHold | null {
+  if (!isRecord(value) || typeof value.presetId !== "string" || !Array.isArray(value.zones) || !isRecord(value.assignments)) return null;
+  const zones: SnapZoneFraction[] = [];
+  for (const zone of value.zones) {
+    if (!Array.isArray(zone) || zone.length !== 4 || !zone.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1)) return null;
+    zones.push([zone[0], zone[1], zone[2], zone[3]]);
+  }
+  const assignments: Record<string, number> = {};
+  for (const [id, index] of Object.entries(value.assignments)) {
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= zones.length || !(id in operations)) continue;
+    assignments[id] = index;
+  }
+  if (zones.length === 0 || Object.keys(assignments).length === 0) return null;
+  return { presetId: value.presetId, zones, assignments };
 }
 
 function normalizeOperationOrder(value: unknown): readonly string[] {
