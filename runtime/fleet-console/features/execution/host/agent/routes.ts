@@ -41,6 +41,7 @@ import { maskChatText, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "../../../analyst/host/analysis-types.js";
+import { createTranscriptLinkReader, MAX_LINK_TEXT_CHARS, selectLinksIn } from "./transcript-links.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
@@ -151,6 +152,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-sleep", summary: "Put an Agent chat session dormant.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/links", summary: "Confirm which links in displayed terminal text appear in an Agent session's transcript.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -216,6 +218,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = testChatSdkFactory ? new AgentChatRegistry(testChatSdkFactory) : new AgentChatRegistry();
+  // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
+  const transcriptLinks = createTranscriptLinkReader();
   const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context) => {
     const sessionId = context.sessionId;
     attachAgentChatSocket(socket, async () => {
@@ -971,6 +975,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "chat-sleep") return handleChatSleep(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
     if (action === "chat-catalog") return handleChatCatalog(req, res, sessionId);
+    if (action === "links") return handleLinks(req, res, sessionId);
     if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -1815,6 +1820,33 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 못 읽었을 때 200에 빈 목록을 싣지 않는다 — 화면이 "이 세션엔 아무것도 없다"와 "아직 모른다"를
    * 구분해야 하고, 빈 목록은 전자만 뜻해야 한다.
    */
+  /**
+   * 터미널이 줄바꿈으로 가른 URL을 이을 때의 원문 확인. 클라이언트는 화면에서 이어 붙인 글을 보내고,
+   * 이 문은 그 글 **안에 이미 있는** 주소 가운데 이 세션 transcript에도 적힌 것만 돌려준다 — transcript의
+   * 내용이 브라우저로 새 나가지 않는다. 터미널을 볼 수 있는 호출자만 묻는다. transcript가 없거나(첫 턴 전,
+   * 다른 CLI) 읽을 수 없으면 빈 목록이며, 호출부는 원래 링크 동작으로 떨어진다.
+   */
+  async function handleLinks(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{ readonly text?: unknown }>(req);
+    const text = typeof body?.text === "string" ? body.text : "";
+    if (text.length === 0 || text.length > MAX_LINK_TEXT_CHARS) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_text" });
+      return true;
+    }
+    const capturePath = readProviderSession(node.payload)?.transcriptPath;
+    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath, node.ts.createdAt) : null;
+    const urls = transcriptPath ? selectLinksIn(text, await transcriptLinks.read(transcriptPath)) : [];
+    ctx.host.http.writeJson(res, 200, { urls });
+    return true;
+  }
+
   async function handleChatCatalog(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "GET") return methodNotAllowed(res);
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);

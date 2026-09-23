@@ -300,6 +300,23 @@ export async function readAgentChatCatalog(
   return readAgentChatCatalogPayload(payload);
 }
 
+/**
+ * 화면에서 이어 붙인 글 가운데 이 세션 transcript에 실제로 적힌 http(s) 주소 — 터미널이 줄바꿈으로
+ * 가른 URL을 이을 때의 원문 확인이다. 서버는 보낸 글 안에 있는 주소만 돌려준다.
+ * 확인하지 못하면 빈 목록이다: 호출부는 잇지 않고 원래 링크 동작을 쓴다.
+ */
+export async function confirmAgentSessionLinks(sessionId: string, text: string, signal?: AbortSignal): Promise<readonly string[]> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/links`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => null) as { readonly urls?: unknown } | null;
+  return Array.isArray(payload?.urls) ? payload.urls.filter((url): url is string => typeof url === "string" && text.includes(url)) : [];
+}
+
 export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
   if (!response.ok) {
