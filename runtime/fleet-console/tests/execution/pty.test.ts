@@ -25,7 +25,6 @@ describe("createShellTerminalLaunchResolver", () => {
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
     });
-    expect(spec.env.FORCE_HYPERLINK).toBeUndefined();
   });
 });
 

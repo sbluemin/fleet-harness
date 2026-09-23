@@ -45,7 +45,7 @@ const launchDataDir = "/tmp/fleet-console-test/console";
 const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
 
 describe("createAgentTerminalLaunchResolver launch environment", () => {
-  it("advertises supported terminal capabilities without replacing the compatible TERM entry", async () => {
+  it("advertises truecolor without replacing the compatible TERM entry", async () => {
     const resolve = createAgentTerminalLaunchResolver({
       dataDir: launchDataDir,
       plugin: launchPluginStub,
@@ -66,7 +66,6 @@ describe("createAgentTerminalLaunchResolver launch environment", () => {
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
     });
-    expect(spec.env.FORCE_HYPERLINK).toBeUndefined();
     expect(spec.env.CLAUDE_CODE_CHILD_SESSION).toBeUndefined();
   });
 });
@@ -102,7 +101,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     });
 
     expect(resolveProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ FORCE_HYPERLINK: "1" }),
+      expect.any(Object),
       "/work/project",
       expect.objectContaining({
         cliId: "claude",
@@ -123,7 +122,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       plugin: launchPluginStub,
       infraServices: { agentOptionsService: { load: () => ({}), update: (mutate) => mutate({}) } },
       cwd: "/work",
-      env: { PATH: "/bin", FORCE_HYPERLINK: "0" } as NodeJS.ProcessEnv,
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
       aiGateway: AI_GATEWAY_BINDING,
       injectProfile: injectProfile as never,
@@ -133,7 +132,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
     await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
 
     expect(resolveProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ FORCE_HYPERLINK: "0" }),
+      expect.any(Object),
       "/work/project",
       expect.objectContaining({
         cliId: "claude",

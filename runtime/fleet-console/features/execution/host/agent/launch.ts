@@ -281,13 +281,7 @@ async function createAgentCliLaunchSpec(options: {
         resolvedModel = toClaudeGatewayModelId(model);
       }
     }
-    // Claude Code가 원래 URL을 OSC 8로 출력하도록 지원을 알린다. 공통 Shell에 강제하면
-    // 리다이렉트된 명령 출력에도 제어 문자가 섞이므로 Claude 런치에만 적용한다.
-    // 사용자가 명시한 값은 보존한다.
-    const profileEnv = cliId === "claude"
-      ? { ...options.env, FORCE_HYPERLINK: options.env.FORCE_HYPERLINK ?? "1" }
-      : options.env;
-    const profile = await options.resolveProfile(profileEnv, options.cwd, {
+    const profile = await options.resolveProfile(options.env, options.cwd, {
       cliId,
       resumeSessionId: options.resumeSessionId,
       model: resolvedModel,
