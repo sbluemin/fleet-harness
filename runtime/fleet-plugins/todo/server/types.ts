@@ -271,6 +271,44 @@ export function wouldCycle(steps: readonly TodoStep[], from: string, to: string)
   return false;
 }
 
+/** 레시피에 아직 자리가 없는 단계 — 사람이 선행 없이 더했고 끝나지 않았다. 그래프의 「미분류」 칸과 목록 맨 아래에 선다. */
+export const isLoose = (step: TodoStep): boolean => !!step.unplaced && !step.done;
+
+/**
+ * 레시피 열 — 가장 긴 선행 사슬의 길이(선행 없음 = 0). 그래프의 열 배치와 단계 순서가 같은 값을 쓴다.
+ * 순환이 남아 있어도(옛 데이터) 끝난다.
+ */
+export function stepDepths(steps: readonly TodoStep[]): Map<string, number> {
+  const byId = new Map(steps.map((step) => [step.id, step]));
+  const depth = new Map<string, number>();
+  const depthOf = (id: string, seen: Set<string>): number => {
+    const cached = depth.get(id);
+    if (cached !== undefined) return cached;
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const step = byId.get(id);
+    const value = step && step.after.length ? Math.max(...step.after.map((parent) => (byId.has(parent) ? depthOf(parent, seen) + 1 : 0))) : 0;
+    depth.set(id, value);
+    return value;
+  };
+  for (const step of steps) if (!isLoose(step)) depthOf(step.id, new Set());
+  return depth;
+}
+
+/**
+ * 레시피 순 — 목록·번호·셰프 도구의 index·담당 세션 이름이 모두 이 순서를 쓴다.
+ * 열(깊이)이 앞선 단계가 먼저, 같은 열이면 지금 순서를 지킨다. 그래서 선행은 늘 뒤따르는 단계보다 앞에 서고,
+ * 그래프 번호는 왼쪽에서 오른쪽으로 커진다. 미분류 단계는 지금 순서대로 맨 아래.
+ * 이미 레시피 순이면 같은 배열을 돌려준다.
+ */
+export function recipeOrder(steps: readonly TodoStep[]): readonly TodoStep[] {
+  const depth = stepDepths(steps);
+  const at = new Map(steps.map((step, index) => [step.id, index]));
+  const rank = (step: TodoStep) => (isLoose(step) ? Number.MAX_SAFE_INTEGER : depth.get(step.id) ?? 0);
+  const sorted = [...steps].sort((a, b) => rank(a) - rank(b) || at.get(a.id)! - at.get(b.id)!);
+  return sorted.every((step, index) => step === steps[index]) ? steps : sorted;
+}
+
 export function hasCycle(steps: readonly TodoStep[]): boolean {
   const byId = new Map(steps.map((step) => [step.id, step]));
   const state = new Map<string, 1 | 2>();

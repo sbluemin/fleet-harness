@@ -8,6 +8,7 @@ import {
   MAX_RECORDS,
   MAX_STEPS,
   hasCycle,
+  recipeOrder,
   type CreateItemInput,
   type PatchItemInput,
   type PlanInput,
@@ -132,6 +133,11 @@ export function chefOperationOf(item: TodoItem): string | null {
   return item.slot?.operationId ?? item.done?.released.find((entry) => !entry.stepId)?.slot.operationId ?? null;
 }
 
+const inRecipeOrder = (item: TodoItem): TodoItem => {
+  const steps = recipeOrder(item.steps);
+  return steps === item.steps ? item : { ...item, steps: [...steps] };
+};
+
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
 
 export function createTodoStore(options: TodoStoreOptions): TodoStore {
@@ -145,7 +151,8 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
   const load = (theaterId: string): TodoItem[] => {
     let items = cache.get(theaterId);
     if (!items) {
-      items = [...readFile(fileFor(options.dir, theaterId)).items];
+      // 레시피 순이 아니던 옛 항목도 읽는 순간 레시피 순으로 본다 — 다음 쓰기에 그대로 저장된다.
+      items = readFile(fileFor(options.dir, theaterId)).items.map(inRecipeOrder);
       cache.set(theaterId, items);
       for (const item of items) index.set(item.id, theaterId);
     }
@@ -184,9 +191,11 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
 
   const update = (itemId: string, mutate: (item: TodoItem) => TodoItem): TodoItem => {
     const { theaterId, items, at, item } = locate(itemId);
-    const next = { ...mutate(item), updatedAt: now() };
-    if (next.steps.length > MAX_STEPS) throw new TodoStoreError("too_many_steps");
-    if (hasCycle(next.steps)) throw new TodoStoreError("dependency_cycle");
+    const mutated = { ...mutate(item), updatedAt: now() };
+    if (mutated.steps.length > MAX_STEPS) throw new TodoStoreError("too_many_steps");
+    if (hasCycle(mutated.steps)) throw new TodoStoreError("dependency_cycle");
+    // 선행이 바뀌면 단계도 레시피 순으로 다시 선다 — 목록·번호·셰프 도구의 index 가 레시피와 같은 순서를 말한다.
+    const next = inRecipeOrder(mutated);
     items[at] = next;
     commit(theaterId, items, next);
     return next;
@@ -267,7 +276,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
         slot: null,
         // 조율자 기본은 Opus · high — 사람이 바꾸기 전까지의 값이고, 카탈로그가 다르면 시작 시 호스트가 거절한다.
         launch: { model: "opus[1m]", effort: "high", view: "terminal" },
-        steps,
+        steps: [...recipeOrder(steps)],
         history: [],
         author: input.author ?? { kind: "human" },
         createdAt: at,

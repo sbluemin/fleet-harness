@@ -673,6 +673,10 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
     const records = step.records ?? [];
     return { ...current, [step.id]: new Set(records.slice(0, Math.min(step.seen ?? 0, records.length)).map((record) => record.id)) };
   });
+  // 짚은 단계 — 목록 행과 레시피 노드가 서로를 켠다(그 단계의 선행도 함께).
+  const [focusStep, setFocusStep] = useState<string | null>(null);
+  const focused = focusStep ? item.steps.find((step) => step.id === focusStep) ?? null : null;
+  const numberOf = (stepId: string) => item.steps.findIndex((step) => step.id === stepId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
   const awaiting = item.done ? null : (() => {
@@ -798,8 +802,16 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
             const recordsId = `todo-records-${step.id}`;
             return (
               <Fragment key={step.id}>
-              <div className={`todo-step${step.done ? " is-done" : ""}${recordsOpen ? " is-expanded" : ""}${highlightStep === step.id ? " is-highlight" : ""}`}>
+              <div
+                className={`todo-step${step.done ? " is-done" : ""}${!step.done && ready ? " is-ready" : ""}${recordsOpen ? " is-expanded" : ""}${highlightStep === step.id ? " is-highlight" : ""}${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
+                onPointerEnter={() => setFocusStep(step.id)}
+                onPointerLeave={() => setFocusStep(null)}
+                onFocus={() => setFocusStep(step.id)}
+                onBlur={() => setFocusStep(null)}
+              >
                 <button type="button" className={`todo-check${step.done ? " is-on" : ""}`} aria-label={t("todo.steps.done")} disabled={!editable} onClick={() => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { done: !step.done } })}><CheckGlyph /></button>
+                {/* 번호는 레시피 순서 — 그래프 노드와 같은 번호다. */}
+                <span className="todo-step-num" aria-hidden="true">{index + 1}</span>
                 <div className="todo-step-body">
                   <input className="todo-step-text" aria-label={`${index + 1}`} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
                   {/* 배정된 모델은 단계 이름 아래 dim 한 줄 — 풀네임 · 강도. 담당은 상태 점, 예약은 ✦. */}
@@ -812,7 +824,10 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
                     {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
                   </button>
                 ) : null}
-                {!step.slot && !step.done && !ready && !step.unplaced ? <span className="todo-wait" title={t("todo.steps.waiting")}>⏸</span> : null}
+                {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 담당이 있으면 담당 줄이 상태를 말한다. */}
+                {!step.slot && !step.done && !step.unplaced ? (ready
+                  ? <span className="todo-wait is-ready">{t("todo.steps.ready")}</span>
+                  : <span className="todo-wait" title={t("todo.steps.waiting")}>{t("todo.steps.after", { steps: step.after.filter((id) => !item.steps.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
                 <span className="todo-step-tools">
                   {!step.done && !step.slot && editable ? <AssignControl t={t} assign={step.assign ?? null} onChange={(assign) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } })} label={t("todo.steps.assign")} /> : null}
                   {step.slot && editable ? <button type="button" className="todo-glyph" title={t("todo.steps.unlink")} aria-label={t("todo.steps.unlink")} onClick={() => void call("/step/unlink", { itemId: item.id, stepId: step.id })}>×</button> : null}
@@ -847,12 +862,12 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
               </span>
             </div>
             <div className="todo-graph-wrap">
-              <div className="todo-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} /></div>
-              <div className="todo-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} /></div>
+              <div className="todo-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+              <div className="todo-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
             </div>
             {zoomOpen ? createPortal(
               <RecipeZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
-                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} />
+                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} />
               </RecipeZoom>,
               document.body,
             ) : null}

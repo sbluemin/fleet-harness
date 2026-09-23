@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { coordinatorMode, stepReady, unseenRecords, wouldCycle, type TodoItem } from "../server/types.js";
+import { coordinatorMode, isLoose, stepDepths, stepReady, unseenRecords, wouldCycle, type TodoItem } from "../server/types.js";
 import type { TodoMessageKey } from "./i18n/index.js";
 
 /**
@@ -25,9 +25,12 @@ interface GraphProps {
   readonly onZoom?: () => void;
   /** 이 단계의 선행을 사람이 바꿀 수 있는가 — 셰프가 일하는 동안은 시작 전 단계만. 없으면 모두. */
   readonly canEdit?: (stepId: string) => boolean;
+  /** 짚은 단계 — 단계 목록과 함께 켜진다. 그 단계와 선행, 들어오는 선이 강조된다. */
+  readonly focusStepId?: string | null;
+  readonly onFocusStep?: (stepId: string | null) => void;
 }
 
-export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, vertical = false, onZoom, canEdit }: GraphProps) {
+export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, vertical = false, onZoom, canEdit, focusStepId = null, onFocusStep }: GraphProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{ from: string; x0: number; y0: number; x: number; y: number; over: string | null } | null>(null);
   const movedRef = useRef(false);
@@ -36,21 +39,12 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
 
   const steps = item.steps;
   // 미분류 — 열·행 배치에서 빼고 아래 칸에 줄 세운다.
-  const loose = steps.filter((step) => step.unplaced && !step.done);
+  const loose = steps.filter(isLoose);
   const placedSteps = steps.filter((step) => !loose.includes(step));
-  const depth = new Map<string, number>();
+  // 열은 스토어가 단계 순서를 정할 때와 같은 값 — 그래서 번호가 왼쪽에서 오른쪽으로 커진다.
+  const depth = stepDepths(steps);
   const byId = new Map(steps.map((step) => [step.id, step]));
-  const depthOf = (id: string, seen = new Set<string>()): number => {
-    const cached = depth.get(id);
-    if (cached !== undefined) return cached;
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const step = byId.get(id);
-    const value = step && step.after.length ? Math.max(...step.after.map((parent) => (byId.has(parent) ? depthOf(parent, seen) + 1 : 0))) : 0;
-    depth.set(id, value);
-    return value;
-  };
-  placedSteps.forEach((step) => depthOf(step.id));
+  const focused = focusStepId ? byId.get(focusStepId) ?? null : null;
   const columns = placedSteps.length ? Math.max(...placedSteps.map((step) => depth.get(step.id) ?? 0)) + 1 : 0;
   const W = zoom ? 880 : 320;
   // 첫 열의 x — 확대본은 뿌리(셰프)와 첫 단계 사이를 넓혀 긴 제목이 뿌리 라벨을 덮지 않게 한다.
@@ -127,7 +121,12 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   if (vertical) return (
     <div className="todo-dag-box todo-dag-vertical">
       <div className="todo-dag-row is-root"><span className="todo-dag-dot" aria-hidden="true" /><span>{t("todo.graph.coordinator")}</span></div>
-      {steps.map((step, index) => <div key={step.id} className="todo-dag-row" title={step.after.length ? t("todo.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
+      {steps.map((step, index) => <div
+        key={step.id}
+        className={`todo-dag-row${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
+        onPointerEnter={onFocusStep ? () => onFocusStep(step.id) : undefined}
+        onPointerLeave={onFocusStep ? () => onFocusStep(null) : undefined}
+        title={step.after.length ? t("todo.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
         <span className={`todo-dag-dot${step.done ? " is-done" : step.slot ? " is-assigned" : ""}`}>{index + 1}</span><span className="todo-dag-step-name">{step.text}</span>
       </div>)}
       <span hidden>{mode}</span>
@@ -167,7 +166,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
                 return (
                   <path
                     key={`${parentId}-${step.id}`}
-                    className={`todo-edge${byId.get(parentId)?.done ? " is-met" : ""}`}
+                    className={`todo-edge${byId.get(parentId)?.done ? " is-met" : ""}${focused?.id === step.id ? " is-hot" : ""}`}
                     data-from={parentId}
                     data-to={step.id}
                     d={`M${q.x + 9},${q.y} C${q.x + 28},${q.y} ${p.x - 28},${p.y} ${p.x - 9},${p.y}`}
@@ -207,12 +206,16 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
           return (
             <g
               key={step.id}
-              className={`todo-node ${cls}${drag?.over === step.id ? " is-over" : ""}`}
+              className={`todo-node ${cls}${drag?.over === step.id ? " is-over" : ""}${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
               data-k={step.id}
               tabIndex={0}
               role="button"
               aria-label={t("todo.graph.nodeAria", { index: index + 1, text: step.text })}
               onPointerDown={onPointerDown(step.id)}
+              onPointerEnter={onFocusStep ? () => onFocusStep(step.id) : undefined}
+              onPointerLeave={onFocusStep ? () => onFocusStep(null) : undefined}
+              onFocus={onFocusStep ? () => onFocusStep(step.id) : undefined}
+              onBlur={onFocusStep ? () => onFocusStep(null) : undefined}
             >
               <circle cx={p.x} cy={p.y} r={9} />
               <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="todo-num">{index + 1}</text>

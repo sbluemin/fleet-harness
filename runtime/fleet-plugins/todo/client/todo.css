@@ -367,7 +367,16 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
 .todo-record-line { color: var(--text-secondary); }
 .todo-step-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
-.todo-step .todo-wait { font-size: var(--t-2xs); color: var(--text-tertiary); }
+/* 레시피 번호 — 체크 곁에 붙어 그래프 노드와 같은 번호를 말한다. */
+.todo-step-num { flex: none; min-width: 14px; margin: 0 -6px 0 -4px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.todo-step.is-ready .todo-step-num { color: var(--aurora); }
+.todo-step.is-done .todo-step-num { opacity: 0.7; }
+/* 선행 대기는 「2·3 뒤」, 시작할 수 있으면 「준비됨」 */
+.todo-step .todo-wait { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.todo-step .todo-wait.is-ready { color: var(--aurora); }
+/* 짚은 단계와 그 선행 — 레시피 노드와 함께 켜진다 */
+.todo-step.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
+.todo-step.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
 .todo-step-tools { display: inline-flex; gap: 2px; opacity: 0.45; transition: opacity 120ms; }
 .todo-step-tools .todo-glyph { border-color: transparent; }
 .todo-step:hover .todo-step-tools, .todo-step:focus-within .todo-step-tools { opacity: 1; }
@@ -531,6 +540,10 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-dag-dot.is-done { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
 .todo-dag-dot.is-assigned { border-color: var(--positive); }
 .todo-dag-row.is-root .todo-dag-dot { border-color: var(--text-tertiary); }
+/* 좁은 폭의 세로 레시피도 짚은 단계와 선행을 함께 켠다 */
+.todo-dag-row.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
+.todo-dag-row.is-focus .todo-dag-dot { border-color: var(--brass); }
+.todo-dag-row.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
 .todo-dag-step-name { min-width: 0; overflow-wrap: anywhere; }
 @container todo-detail (width < 420px) {
   .todo-graph-horizontal { display: none; }
@@ -742,3 +755,8 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-att-view-close { position: absolute; top: -34px; right: 0; }
 @media (prefers-reduced-motion: reduce) { .todo-att-spin { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .todo-records.is-open .todo-records-inner { animation: none; } }
+
+/* 짚은 단계(목록 행과 함께) — 그 노드는 brass, 선행은 aurora, 들어오는 선도 aurora */
+.todo-dag .todo-node.is-focus circle { stroke: var(--brass); stroke-width: 2.4; stroke-dasharray: none; }
+.todo-dag .todo-node.is-pre circle { stroke: var(--aurora); stroke-width: 2.2; stroke-dasharray: none; }
+.todo-dag .todo-edge.is-hot { stroke: var(--aurora); stroke-width: 2.2; }
