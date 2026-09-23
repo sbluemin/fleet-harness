@@ -1,8 +1,10 @@
 import path from "node:path";
 
+import { OPERATION_GROUPED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createTodoConsoleTools } from "./server/console-tools.js";
+import { createGroupSync } from "./server/group-sync.js";
 import { createLaunchService } from "./server/launch.js";
 import { createTodoRoutes } from "./server/routes.js";
 import { createTodoStore } from "./server/store.js";
@@ -31,7 +33,16 @@ export default definePlugin({
       if (typeof operationId === "string") launch.operationDeleted(operationId);
     });
     ctx.host.lifecycle.registerCleanup(offDeleted);
-    const routes = createTodoRoutes(ctx, store, launch);
+    // 항목은 셰프 Operation 의 그룹에 선다 — 셰프가 옮겨지면(사이드바·Console Use·그룹 삭제) 따라가고, 기동 때 갈라진 것을 맞춘다.
+    const groupSync = createGroupSync(ctx, store);
+    const offGrouped = ctx.host.events.subscribe(OPERATION_GROUPED_EVENT_CHANNEL, (payload) => {
+      const event = payload as Partial<OperationGroupedEvent> | null;
+      if (!event || typeof event.operationId !== "string" || typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
+      try { groupSync.operationGrouped(event as OperationGroupedEvent); } catch (error) { console.warn(`[todo] group follow failed: ${error instanceof Error ? error.message : String(error)}`); }
+    });
+    ctx.host.lifecycle.registerCleanup(offGrouped);
+    try { groupSync.reconcile(); } catch (error) { console.warn(`[todo] group reconcile failed: ${error instanceof Error ? error.message : String(error)}`); }
+    const routes = createTodoRoutes(ctx, store, launch, groupSync);
     for (const route of routes) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "To-do Plugin", gate: "origin-write", transport: "http" });
     }

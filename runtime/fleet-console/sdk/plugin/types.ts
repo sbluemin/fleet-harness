@@ -750,6 +750,7 @@ export interface FleetPluginOperationsHost {
    * Operation 그룹 — 사이드바가 Operation 을 묶는 그 그룹이다. 플러그인이 자기 목록을 따로 두는 대신 이 그룹을
    * 그대로 목록으로 쓸 수 있도록 연다. 만들기·이름·색은 사람의 PATCH 와 같은 길을 지나 영속되고
    * `group:changed` / `group:removed` 로 모든 브라우저에 닿는다. 없는 호스트(구버전·테스트 스텁)에서는 없다.
+   * Operation 이 그룹을 옮기면(누가 옮겼든) 서버 안 채널 `operation:grouped`(`OperationGroupedEvent`)가 난다.
    */
   readonly groups?: FleetPluginOperationGroupsHost;
 }

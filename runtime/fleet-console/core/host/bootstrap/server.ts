@@ -23,6 +23,7 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
+import { OPERATION_GROUPED_EVENT_CHANNEL } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -453,7 +454,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
-  const operations = createOperationStore();
+  // 그룹 이동은 서버 안 플러그인에도 사건이다 — 할 일 같은 플러그인이 연결 항목을 따라 옮긴다.
+  const operations = createOperationStore({ onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event) });
   const folderGrants = createFolderGrantStore();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   // 플러그인 fleet 루트: 명시 dataDir → (FLEET_DATA_DIR 부재 시) 콘솔 슬롯 override → getFleetDataDir.

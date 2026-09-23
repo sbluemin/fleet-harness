@@ -2,11 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import type { OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { imageInfo } from "../server/attachments.js";
 import { createTodoConsoleTools } from "../server/console-tools.js";
+import { createGroupSync } from "../server/group-sync.js";
 import { createLaunchService } from "../server/launch.js";
 import { createTodoStore, TodoStoreError } from "../server/store.js";
 import type { TodoItemEvent } from "../server/types.js";
@@ -30,6 +32,7 @@ function harness() {
   const operations = new Map<string, { id: string; theaterId: string; title: string; payload: Record<string, unknown>; groupId?: string | null }>();
   operations.set("coord", { id: "coord", theaterId: "t1", title: "Coordinator", payload: { consoleUse: { enabled: true, language: "en" } } });
   operations.set("stranger", { id: "stranger", theaterId: "t1", title: "Stranger", payload: {} });
+  const grouped: ((event: OperationGroupedEvent) => void)[] = [];
   const sent: { operationId: string; text: string }[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; disableSubagents?: boolean }[] = [];
   const ctx = {
@@ -38,8 +41,13 @@ function harness() {
       operations: {
         get: (id: string) => operations.get(id) ?? null,
         list: () => [...operations.values()],
-        patch: (id: string, input: { payload?: Record<string, unknown> }) => { const node = operations.get(id); if (!node) return null; if (input.payload) node.payload = input.payload; return node; },
-        groups: { list: () => [], get: () => null, create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
+        patch: (id: string, input: { payload?: Record<string, unknown>; groupId?: string | null }) => {
+          const node = operations.get(id); if (!node) return null; if (input.payload) node.payload = input.payload;
+          // 호스트처럼 그룹이 실제로 바뀌면 operation:grouped 를 낸다.
+          if (input.groupId !== undefined && (node.groupId ?? null) !== input.groupId) { const previousGroupId = node.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ operationId: id, theaterId: node.theaterId, groupId: input.groupId, previousGroupId }); }
+          return node;
+        },
+        groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
       },
       consoleControl: {
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; disableSubagents?: boolean }) => {
@@ -61,10 +69,36 @@ function harness() {
     const result = await tool!.execute(args, { cwd: dir, ...(caller ? { caller } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
     return result;
   };
-  return { dir, store, events, launch, tool: tool!, call, operations, sent, launches };
+  return { dir, store, events, launch, tool: tool!, call, operations, sent, launches, ctx, grouped };
 }
 
 describe("To-do contract", () => {
+  it("keeps an item in its Chef's Operation group: follows the Chef, reconciles on start, and moves the Chef when the item moves", async () => {
+    const { store, launch, operations, ctx, grouped } = harness();
+    const sync = createGroupSync(ctx, store);
+    grouped.push((event) => sync.operationGrouped(event));
+    const item = store.create({ theaterId: "t1", title: "Ship", groupId: "g-review", steps: [{ text: "a" }, { text: "b" }] });
+    store.stepPatch(item.id, item.steps[0]!.id, { assign: { mode: "model" } });
+    const chef = (await launch.startCoordinator(item.id)).operationId;
+    const worker = (await launch.delegateStep(item.id, item.steps[0]!.id)).operationId;
+    await launch.complete(item.id, "human");
+    // 사이드바에서 (완료된 항목의) 셰프를 옮기면 항목이 따라간다; 담당만 옮긴 것은 항목을 움직이지 않는다.
+    ctx.host.operations.patch(chef, { groupId: "g-done" });
+    expect(store.find(item.id)!.groupId).toBe("g-done");
+    ctx.host.operations.patch(worker, { groupId: "g-other" });
+    expect(store.find(item.id)!.groupId).toBe("g-done");
+    // 이 동기화 전에 갈라진 항목은 기동 때 셰프의 그룹으로 맞춰진다.
+    store.patch(item.id, { groupId: null });
+    sync.reconcile();
+    expect(store.find(item.id)!.groupId).toBe("g-done");
+    // 할 일에서 항목을 옮기면 셰프와 담당이 따라가고, 되돌아온 사건은 항목을 다시 쓰지 않는다.
+    const moved = store.patch(item.id, { groupId: "g-review" });
+    const writes = store.find(item.id)!.updatedAt;
+    sync.itemRegrouped(moved);
+    expect([operations.get(chef)!.groupId, operations.get(worker)!.groupId]).toEqual(["g-review", "g-review"]);
+    expect(store.find(item.id)!.updatedAt).toBe(writes);
+  });
+
   it("starts the coordinator and one named assignee session per step at once, and keeps storage consistent across completion, reopen and re-plan", async () => {
     const { dir, store, events, launch, sent, launches } = harness();
     const item = store.create({ theaterId: "t1", title: "Release", steps: [{ text: "a" }, { text: "b", after: [0] }, { text: "c", after: [1] }] });

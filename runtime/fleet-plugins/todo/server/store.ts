@@ -81,6 +81,8 @@ export interface TodoStore {
   setEdited(itemId: string, kinds: readonly TodoEditKind[] | null): TodoItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
   forgetOperation(operationId: string): readonly TodoItem[];
+  /** 셰프 Operation 이 그룹을 옮겼다 — 그 셰프의 항목(완료 항목 포함)을 같은 그룹으로. 이미 같으면 쓰지 않는다. 바뀐 항목을 돌려준다. */
+  followChefGroup(theaterId: string, operationId: string, groupId: string | null): readonly TodoItem[];
   /** 메모에 이미지를 붙인다 — 파일을 먼저 쓰고 항목에 싣는다. 형식·크기 판정은 부르는 쪽이 끝낸 뒤다. */
   attachmentAdd(itemId: string, input: { readonly name: string; readonly type: TodoAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: TodoItem; readonly attachment: TodoAttachment };
   attachmentRemove(itemId: string, attachmentId: string): TodoItem;
@@ -123,6 +125,11 @@ function writeFileAtomic(file: string, data: TodoTheaterFile): void {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
   fs.renameSync(tmp, file);
+}
+
+/** 항목의 셰프 — 지금 슬롯, 완료 뒤에는 되돌리기용으로 남긴 조율자 슬롯(stepId 없음). 담당 슬롯은 셰프가 아니다. */
+export function chefOperationOf(item: TodoItem): string | null {
+  return item.slot?.operationId ?? item.done?.released.find((entry) => !entry.stepId)?.slot.operationId ?? null;
 }
 
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -217,6 +224,14 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
           steps: current.steps.map((step) => (step.slot?.operationId === operationId ? { ...step, slot: null } : step)),
           done: current.done ? { ...current.done, released: current.done.released.filter((entry) => entry.slot.operationId !== operationId) } : null,
         })));
+      }
+      return touched;
+    },
+    followChefGroup(theaterId, operationId, groupId) {
+      const touched: TodoItem[] = [];
+      for (const item of load(theaterId)) {
+        if (item.groupId === groupId || chefOperationOf(item) !== operationId) continue;
+        touched.push(update(item.id, (current) => ({ ...current, groupId })));
       }
       return touched;
     },
