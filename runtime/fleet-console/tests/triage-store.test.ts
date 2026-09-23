@@ -131,43 +131,43 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
-  it("keeps a Chef off the idle arrival and triage queue until its live step stops", () => {
-    const chef = operation("chef", 1);
+  it("keeps a Commander off the idle arrival and triage queue until its live step stops", () => {
+    const commander = operation("commander", 1);
     const step = operation("step", 2);
-    setConsoleState({ operations: [chef, step], activeTheaterId: THEATER_ID, activeOperationId: null });
-    setOperationRuntimeClusters([{ id: "todo:item", theaterId: THEATER_ID, title: "Item", root: chef.id, members: [
+    setConsoleState({ operations: [commander, step], activeTheaterId: THEATER_ID, activeOperationId: null });
+    setOperationRuntimeClusters([{ id: "objectives:item", theaterId: THEATER_ID, title: "Item", root: commander.id, members: [
       { operationId: step.id, label: "Step", after: [], progress: "running" },
       { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
     ] }]);
     const off = subscribeOperationActivityTracking();
     try {
-      setOperationRuntime(chef.id, { lifecycle: "live", activity: "running" });
+      setOperationRuntime(commander.id, { lifecycle: "live", activity: "running" });
       setOperationRuntime(step.id, { lifecycle: "live", activity: "running" });
-      setOperationRuntime(chef.id, { lifecycle: "live", activity: "idle" });
-      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "background" });
-      expect(getIdleArrivalIds().has(chef.id)).toBe(false);
-      expect(resolveTriageQueue([chef], getState().operationRuntime)).toEqual([]);
+      setOperationRuntime(commander.id, { lifecycle: "live", activity: "idle" });
+      expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "background" });
+      expect(getIdleArrivalIds().has(commander.id)).toBe(false);
+      expect(resolveTriageQueue([commander], getState().operationRuntime)).toEqual([]);
 
       setOperationRuntime(step.id, { lifecycle: "live", activity: "awaiting" });
-      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
+      expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
       expect(getState().operationRuntime[step.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
-      expect(resolveTriageQueue([chef], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([chef.id]);
+      expect(resolveTriageQueue([commander], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([commander.id]);
 
       const unchangedRuntime = getState().operationRuntime;
-      setOperationRuntimeClusters([{ id: "todo:item", theaterId: THEATER_ID, title: "Renamed", root: chef.id, members: [
+      setOperationRuntimeClusters([{ id: "objectives:item", theaterId: THEATER_ID, title: "Renamed", root: commander.id, members: [
         { operationId: step.id, label: "Step", after: [], progress: "awaiting" },
         { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
       ] }]);
       expect(getState().operationRuntime).toBe(unchangedRuntime);
 
       setOperationRuntime(step.id, { lifecycle: "live", activity: "idle" });
-      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "idle" });
-      expect(getIdleArrivalIds().has(chef.id)).toBe(true);
-      expect(resolveTriageQueue([chef], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([chef.id]);
+      expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "idle" });
+      expect(getIdleArrivalIds().has(commander.id)).toBe(true);
+      expect(resolveTriageQueue([commander], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([commander.id]);
     } finally {
       off();
       setOperationRuntimeClusters([]);
-      clearOperationRuntime(chef.id);
+      clearOperationRuntime(commander.id);
       clearOperationRuntime(step.id);
       resetIdleArrivalForTests();
     }
