@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   DEFAULT_STEP_ASSIGN,
+  MAX_CRITERIA,
   MAX_RECORDS,
   MAX_STEPS,
   hasCycle,
   lineupOrder,
   type CreateItemInput,
+  type CriterionEvidence,
+  type ObjectiveCriterion,
   type PatchItemInput,
   type PlanInput,
   type Slot,
@@ -77,7 +80,11 @@ export interface ObjectiveStore {
   plan(itemId: string, input: PlanInput, by: SlotBy): ObjectiveItem;
   setSlot(itemId: string, stepId: string | null, slot: Slot | null): ObjectiveItem;
   setCooking(itemId: string, cooking: boolean): ObjectiveItem;
-  setReview(itemId: string, review: { readonly summary: string } | null): ObjectiveItem;
+  setReview(itemId: string, review: { readonly summary: string; readonly criteria?: readonly CriterionEvidence[] } | null): ObjectiveItem;
+  /** 달성 기준 — 사람이 쓰고, 비어 있을 때 구상 중인 지휘관이 제안한다(by). 고치거나 지워도 기준 id 는 다른 기준에 이어지지 않는다. */
+  criterionAdd(itemId: string, text: string, by: ObjectiveCriterion["by"]): ObjectiveItem;
+  criterionPatch(itemId: string, criterionId: string, text: string): ObjectiveItem;
+  criterionRemove(itemId: string, criterionId: string): ObjectiveItem;
   /** 사람의 편집을 쌓는다(지휘관이 있을 때만) · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(itemId: string, kinds: readonly ObjectiveEditKind[] | null): ObjectiveItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
@@ -136,6 +143,15 @@ export function commanderOperationOf(item: ObjectiveItem): string | null {
 const inLineupOrder = (item: ObjectiveItem): ObjectiveItem => {
   const steps = lineupOrder(item.steps);
   return steps === item.steps ? item : { ...item, steps: [...steps] };
+};
+
+/** 검토 기록에서 기준 하나의 근거를 거둔다 — 검토 대기 자체는 남긴다(완료는 여전히 사람의 판단이다). */
+const withoutEvidence = (item: ObjectiveItem, criterionId: string): ObjectiveItem => {
+  const evidence = item.review?.criteria;
+  if (!item.review || !evidence?.some((entry) => entry.id === criterionId)) return item;
+  const rest = evidence.filter((entry) => entry.id !== criterionId);
+  const { criteria: _criteria, ...review } = item.review;
+  return { ...item, review: rest.length ? { ...review, criteria: rest } : review };
 };
 
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -372,7 +388,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return update(itemId, (item) => ({ ...item, edited: { at: now(), kinds: merged } }));
     },
 
-    setReview: (itemId, review) => update(itemId, (item) => (review ? { ...item, review: { at: now(), summary: review.summary } } : item.review ? (({ review: _review, ...rest }) => rest)(item) : item)),
+    setReview: (itemId, review) => update(itemId, (item) => (review ? { ...item, review: { at: now(), summary: review.summary, ...(review.criteria?.length ? { criteria: review.criteria } : {}) } } : item.review ? (({ review: _review, ...rest }) => rest)(item) : item)),
+    criterionAdd: (itemId, text, by) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (criteria.length >= MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+      return { ...item, criteria: [...criteria, { id: randomUUID(), text: text.trim(), by, at: now() }] };
+    }),
+    criterionPatch: (itemId, criterionId, text) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
+      const next = { ...item, criteria: criteria.map((entry) => (entry.id === criterionId ? { ...entry, text: text.trim() } : entry)) };
+      // 문구가 바뀐 기준의 근거는 옛 문구에 대한 것이다 — 그 근거만 거둬 「미확인」으로 돌린다(다른 기준의 근거와 검토 대기는 그대로).
+      return criteria.find((entry) => entry.id === criterionId)!.text === text.trim() ? item : withoutEvidence(next, criterionId);
+    }),
+    criterionRemove: (itemId, criterionId) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
+      return withoutEvidence({ ...item, criteria: criteria.filter((entry) => entry.id !== criterionId) }, criterionId);
+    }),
 
     complete: (itemId, by) => update(itemId, (item) => {
       if (item.done) return item;

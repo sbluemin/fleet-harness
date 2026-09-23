@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_RECORD_LINE, MAX_RECORD_LINES, coordinatorMode, latestRecord, recordLines, stepReady, type SlotBy, type ObjectiveItem, type ObjectiveStep } from "./types.js";
+import { MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, coordinatorMode, latestRecord, recordLines, stepReady, type SlotBy, type ObjectiveItem, type ObjectiveStep } from "./types.js";
 
 /**
  * `console_objectives` — 한 도구. 읽기(view)는 게이트를 지난 누구나, 쓰기는 슬롯이 권한이다: 단계 완료·단계 추가·계획은
@@ -32,8 +32,8 @@ const argsSchema = z.object({
   step: z.object({ itemId: ids, add: z.string().trim().min(1).max(200).optional(), delegate: z.boolean().optional(), after: z.array(z.number().int().min(0)).max(40).optional(), index: z.number().int().min(0).optional(), stepId: ids.optional(), doneIndex: z.number().int().min(0).optional(), doneStepId: ids.optional(), summary: z.array(z.string().max(2000)).max(20).optional(),
     // 옛 인자 — 이 판 이전에 뜬 지휘관의 도구 설명에 있던 이름. 줄바꿈으로 나눠 summary 와 같은 검사를 거친다.
     result: z.string().max(4000).optional() }).strict().optional(),
-  review: z.object({ itemId: ids, summary: z.string().trim().min(1).max(2000) }).strict().optional(),
-  plan: z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), assign: z.enum(["self", "route"]).optional() })).min(1).max(40) }).strict().optional(),
+  review: z.object({ itemId: ids, summary: z.string().trim().min(1).max(2000), criteria: z.array(z.object({ n: z.number().int().min(1), met: z.boolean(), evidence: z.string().max(MAX_EVIDENCE).optional() }).strict()).max(MAX_CRITERIA).optional() }).strict().optional(),
+  plan: z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), assign: z.enum(["self", "route"]).optional() })).min(1).max(40), criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).max(MAX_CRITERIA).optional() }).strict().optional(),
 }).strict();
 type Args = z.output<typeof argsSchema>;
 const WRITE_KEYS = ["add", "step", "plan", "review"] as const;
@@ -82,13 +82,16 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
     // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
     attachments: (item.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(item, attachment) })),
     important: item.important, dueDate: item.dueDate, today: item.today,
+    // 달성 기준 — n 은 1부터, 달성 보고에서 기준을 가리키는 번호. evidence 는 받아들여진 달성 보고의 근거(검토 대기 동안만 있다).
+    criteria: (item.criteria ?? []).map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, ...(evidenceOf(item, criterion.id) ? { evidence: evidenceOf(item, criterion.id) } : {}) })),
     done: !!item.done, review: item.review ?? null, author: item.author, updatedAt: item.updatedAt, graph: graph(item),
   });
+  const evidenceOf = (item: ObjectiveItem, criterionId: string): string | undefined => item.review?.criteria?.find((entry) => entry.id === criterionId)?.evidence;
   const rowView = (item: ObjectiveItem) => ({ id: item.id, groupId: item.groupId, title: item.title, done: !!item.done, important: item.important, dueDate: item.dueDate, today: item.today, steps: `${item.steps.filter((step) => step.done).length}/${item.steps.length}`, mode: coordinatorMode(item), coordinator: item.slot?.operationId ?? null, author: item.author.kind });
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "The Objectives board of a Theater. An objective is an intent the person wants achieved; it is carried out by missions (the tool calls them steps) that form a lineup — a dependency graph linked by after, where a mission is ready when all of its prerequisites are done. Each objective has one Commander Operation, plus an assignee session for each mission the Commander chooses to delegate. The Commander is a named CLI session; assignees are named CLI sessions too (objective-<objective id prefix>-mission-<n>, n = index + 1) and talk with the Commander through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Missions are always listed in lineup order (earlier dependency columns first); any change to the missions or their dependencies can reorder them and shift indexes, so prefer stepId when you write, and an assignee session keeps the number it was launched with. Read with view mine (the calling Operation's own objective and role) | groups | items (filter today|due|all|agent) | item (missions, dependencies, readiness, assignee sessions, each mission's latest record and record count, the person's brief (note) and its attachments). attachments are images the person attached to the brief ('image n' in the brief means n): each path is an absolute file on this machine — open it with Read when you need to see it, and pass the path (not the image) to an assignee in SendMessage. Write one of: add (a new objective with optional missions); plan (replace the open unassigned missions with steps + dependencies + why + assign: self for missions the Commander will carry out itself, route for missions it intends to delegate; done and assigned missions, and missions the person added that are still unplaced, are kept — refer to them by stepId; Commander only); step with delegate: true and index or stepId (launch that mission's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: objective, exact mission text, latest records of prerequisites, constraints from the person's brief, paths, what not to touch, and the report you expect; it reports back by SendMessage; Commander only); step with add (append a mission that became necessary; Commander only); step with index or stepId and after (the indexes of its prerequisites, [] = it can start now — sets the dependencies of one open mission; Commander only); step with doneIndex or doneStepId and summary (mark one mission done and leave its record — summary is 1–3 lines, conclusion first: line 1 is the outcome in one sentence, the rest are what backs it or what is left; each line at most 160 characters, no prose paragraphs; the person reads every record of the mission in time order and the next mission receives the latest one; marking a mission that is already done again, after you went back to rework it, adds another record; Commander only); review with summary (every mission is done — hand the objective to the person for review; the person completes it; Commander only). Missions assigned self are the Commander's own work; whether to delegate a mission is the Commander's call at the moment it reaches that mission. Missions the person added are unplaced (unplaced: true, never ready) — they only added the mission; placing it is your call: before you continue, give each one its prerequisites with step after (and rewire any open mission that should now wait for it); plan keeps them, so do not repeat them in a plan. A plan is refused with board_changed when the person changed the objective since you last read it — read it again, then plan. While you work, and after you hand the objective for review, the person may add or edit missions and the brief; you then receive one line saying the objective changed — read it again and continue from what it now says (a review is withdrawn when that line arrives; hand it again once the work is done). A review is refused with board_changed when the person changed the objective since you last read it. Completing an objective, writing the brief and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
+    description: "The Objectives board of a Theater. An objective is an intent the person wants achieved; it is carried out by missions (the tool calls them steps) that form a lineup — a dependency graph linked by after, where a mission is ready when all of its prerequisites are done. Each objective has one Commander Operation, plus an assignee session for each mission the Commander chooses to delegate. The Commander is a named CLI session; assignees are named CLI sessions too (objective-<objective id prefix>-mission-<n>, n = index + 1) and talk with the Commander through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Missions are always listed in lineup order (earlier dependency columns first); any change to the missions or their dependencies can reorder them and shift indexes, so prefer stepId when you write, and an assignee session keeps the number it was launched with. Read with view mine (the calling Operation's own objective and role) | groups | items (filter today|due|all|agent) | item (missions, dependencies, readiness, assignee sessions, each mission's latest record and record count, the person's brief (note) and its attachments, and the success criteria — each with n, text and who wrote it). attachments are images the person attached to the brief ('image n' in the brief means n): each path is an absolute file on this machine — open it with Read when you need to see it, and pass the path (not the image) to an assignee in SendMessage. Write one of: add (a new objective with optional missions); plan (replace the open unassigned missions with steps + dependencies + why + assign: self for missions the Commander will carry out itself, route for missions it intends to delegate; when the objective has no success criteria you may propose them with criteria: [text] — the person writes them otherwise; done and assigned missions, and missions the person added that are still unplaced, are kept — refer to them by stepId; Commander only); step with delegate: true and index or stepId (launch that mission's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: objective, exact mission text, latest records of prerequisites, constraints from the person's brief, paths, what not to touch, and the report you expect; it reports back by SendMessage; Commander only); step with add (append a mission that became necessary; Commander only); step with index or stepId and after (the indexes of its prerequisites, [] = it can start now — sets the dependencies of one open mission; Commander only); step with doneIndex or doneStepId and summary (mark one mission done and leave its record — summary is 1–3 lines, conclusion first: line 1 is the outcome in one sentence, the rest are what backs it or what is left; each line at most 160 characters, no prose paragraphs; the person reads every record of the mission in time order and the next mission receives the latest one; marking a mission that is already done again, after you went back to rework it, adds another record; Commander only); review with summary (every mission is done — hand the objective to the person for review; the person completes it; Commander only). Success criteria sit below the missions: when the last mission is done you receive a criteria check — go through each criterion yourself, doubt your first answer, and add missions for any that do not hold yet; review is refused with criteria_unmet until you give criteria: [{ n, met: true, evidence }] for every criterion, each with one line of evidence. Missions assigned self are the Commander's own work; whether to delegate a mission is the Commander's call at the moment it reaches that mission. Missions the person added are unplaced (unplaced: true, never ready) — they only added the mission; placing it is your call: before you continue, give each one its prerequisites with step after (and rewire any open mission that should now wait for it); plan keeps them, so do not repeat them in a plan. A plan is refused with board_changed when the person changed the objective since you last read it — read it again, then plan. While you work, and after you hand the objective for review, the person may add or edit missions and the brief; you then receive one line saying the objective changed — read it again and continue from what it now says (a review is withdrawn when that line arrives; hand it again once the work is done). A review is refused with board_changed when the person changed the objective since you last read it. Completing an objective, writing the brief and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
       panelId: "objectives",
@@ -102,7 +105,7 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
         const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
         if (args.add) return { theaterId, summary: `목표 추가 「${short(args.add.title)}」`, view: "items", gesture: "create" };
         if (args.plan) return { theaterId, summary: `임무 ${args.plan.steps.length}개 구상`, view: "item", gesture: "create", ...(found ? { path: found.id } : {}) };
-        if (args.review) return { theaterId, summary: "검토 요청", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
+        if (args.review) return { theaterId, summary: "달성 보고", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
         if (args.step) return { theaterId, summary: args.step.add ? `임무 추가 「${short(args.step.add)}」` : args.step.delegate ? "임무 위임 — 담당 세션 띄움" : args.step.after ? "임무 선행 정함" : "임무 완료", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
         return { theaterId, summary: args.view === "item" ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "mine" ? "내 목표 봄" : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "mine" ? "items" : args.view ?? "items", ...(found ? { path: found.id } : {}) };
       },
@@ -160,20 +163,36 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
           // 완료는 기록 한 건과 함께다 — 결론 먼저 1–3줄. 산문이면 거절해 지휘관이 줄여 다시 쓰게 한다.
           const lines = recordLines(stepArgs.summary ?? stepArgs.result ?? []);
           if (!lines) return refuse("summary_format", { hint: `Pass summary as 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. Rewrite it shorter; do not pack a paragraph into a line.` });
-          return text({ ok: true, item: itemView(store.stepDone(item.id, target.id, lines, slotBy(caller))) });
+          const doneItem = store.stepDone(item.id, target.id, lines, slotBy(caller));
+          // 마지막 임무를 마쳤다 — 달성 보고 전에 달성 기준을 스스로 다시 따지게 한다. 첫 판단을 의심하라고 되묻는 것이 이 기능의 핵심이다.
+          const next = doneItem.steps.every((step) => step.done) ? criteriaCheckPrompt(doneItem) : undefined;
+          return text({ ok: true, ...(next ? { next } : {}), item: itemView(doneItem) });
         }
         // 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면(edited) 그 계획·검토 요청은 옛 보드로 한 것이다 — 사람의 편집을 덮거나 지나치지 않게 거절하고 다시 읽힌다.
         if ((key === "plan" || key === "review") && item.edited) return refuse("board_changed", { hint: `The person changed this item since you last read it. Read it again (view item or mine), then ${key === "plan" ? "plan" : "continue from what it now says"}.` });
-        if (key === "plan") return text({ ok: true, item: itemView(await launch.planApplied(item.id, { steps: args.plan!.steps }, slotBy(caller), { language })) });
+        if (key === "plan") {
+          // 달성 기준은 사람의 것이다 — 비어 있을 때만 지휘관이 제안할 수 있다. 스스로 정한 기준을 스스로 통과시키면 점검의 뜻이 옅어진다.
+          const proposed = args.plan!.criteria ?? [];
+          if (proposed.length > 0 && (item.criteria?.length ?? 0) > 0) return refuse("criteria_exist", { hint: "The person already wrote the success criteria. Leave criteria out of the plan; you may only propose them when there are none." });
+          let planned = await launch.planApplied(item.id, { steps: args.plan!.steps }, slotBy(caller), { language });
+          for (const criterion of proposed) planned = store.criterionAdd(item.id, criterion, "commander");
+          return text({ ok: true, item: itemView(planned) });
+        }
         if (key === "review") {
           // 가승인 — 완료가 아니다. 사람이 검토해 완료를 누른다. 열린 단계가 남았으면 거절한다.
           if (item.steps.some((step) => !step.done)) return refuse("steps_open", { open: item.steps.filter((step) => !step.done).length });
-          return text({ ok: true, item: itemView(store.setReview(item.id, { summary: args.review!.summary })) });
+          // 달성 보고 — 달성 기준이 있으면 기준마다 「충족」과 근거 한 줄이 있어야 받는다. 하나라도 빠지면 그 번호를 돌려주고 다시 따지게 한다.
+          const criteria = item.criteria ?? [];
+          const judged = new Map((args.review!.criteria ?? []).map((entry) => [entry.n, entry]));
+          const missing = criteria.map((_, index) => index + 1).filter((n) => { const entry = judged.get(n); return !entry || !entry.met || !entry.evidence?.trim(); });
+          if (missing.length > 0) return refuse("criteria_unmet", { missing, hint: `Success criteria ${missing.join(", ")} are not shown to hold. For each, check it against what actually changed; if it does not hold yet, add the mission it needs and carry on. Report again only when every criterion is met, each with one line of evidence.` });
+          const evidence = criteria.map((criterion, index) => ({ id: criterion.id, evidence: judged.get(index + 1)!.evidence!.trim() }));
+          return text({ ok: true, item: itemView(store.setReview(item.id, { summary: args.review!.summary, ...(evidence.length ? { criteria: evidence } : {}) })) });
         }
         return refuse("invalid_arguments");
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code);
-        return refuse("todo_failed");
+        return refuse("objectives_failed");
       }
     },
   };
@@ -213,4 +232,15 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
   }
 
   return [tool];
+}
+
+/**
+ * 달성 점검 — 마지막 임무를 마친 지휘관에게 도구 응답으로 되묻는 문장. 달성 기준이 있으면 기준마다 스스로 다시 따지고 근거를 대게 한다.
+ * 기준이 없으면 지금처럼 달성 보고로 넘기면 된다고만 말한다.
+ */
+export function criteriaCheckPrompt(item: ObjectiveItem): string {
+  const criteria = item.criteria ?? [];
+  if (criteria.length === 0) return "Every mission is done. When you have checked the work against the brief, report it with review (summary) so the person can review it.";
+  const list = criteria.map((criterion, index) => `${index + 1}. ${criterion.text}`).join("\n");
+  return `Every mission is done. Before you report, run the criteria check — read the success criteria again and, for each one, decide on your own evidence (mission records, test output, the files you changed) whether it truly holds now. Doubt your first answer. If any does not hold, add the mission it needs and carry on. Only when every criterion holds, report with review, giving criteria: [{ n, met: true, evidence }] for each.\n\nSuccess criteria:\n${list}`;
 }

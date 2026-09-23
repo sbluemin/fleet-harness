@@ -86,6 +86,8 @@ function dueLabel(iso: string, language: "en" | "ko"): string {
 const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></svg>;
 const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
 const CoordGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="4" r="2" /><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><path d="M7 5.7L5 10.3M9 5.7l2 4.6" /></svg>;
+/** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
+const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
 const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const WORKING = new Set(["running", "background"]);
@@ -877,6 +879,37 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         ) : null}
       </div>
 
+      {/* 달성 기준 — 임무 아래의 새 섹션. 사람이 쓰고(비어 있으면 구상 때 지휘관이 제안), 마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따진다.
+          충족·근거는 받아들여진 달성 보고에만 있다 — 검토 대기 동안만 「충족」과 근거 한 줄이 보이고, 새 작업이 검토를 거두면 「미확인」으로 돌아간다. */}
+      <div className="objectives-group objectives-criteria-group">
+        <div className="objectives-row is-static">
+          <span className="objectives-row-ic"><CriteriaGlyph /></span>
+          <span className="objectives-row-lab">{t("objectives.criteria.title")}</span>
+          {(item.criteria?.length ?? 0) > 0 ? <span className="objectives-row-tools"><span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria!.filter((criterion) => item.review?.criteria?.some((entry) => entry.id === criterion.id)).length, total: item.criteria!.length })}</span></span> : null}
+        </div>
+        {(item.criteria ?? []).map((criterion, index) => {
+          const evidence = item.review?.criteria?.find((entry) => entry.id === criterion.id)?.evidence;
+          return (
+            <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
+              <span className="objectives-criterion-mark" aria-hidden="true" />
+              <div className="objectives-criterion-body">
+                <input className="objectives-criterion-text" aria-label={t("objectives.criteria.itemAria", { n: index + 1 })} defaultValue={criterion.text} readOnly={!touchable} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== criterion.text) void call("/criterion/patch", { itemId: item.id, criterionId: criterion.id, patch: { text: value } }); else event.target.value = criterion.text; }} />
+                {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
+                  : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span> : null}
+              </div>
+              <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
+              {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { itemId: item.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}
+            </div>
+          );
+        })}
+        {touchable ? (
+          <div className="objectives-row objectives-step-add">
+            <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+            <input aria-label={t("objectives.criteria.add")} placeholder={t("objectives.criteria.add")} maxLength={300} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const text = target.value.trim(); target.value = ""; void call("/criterion/add", { itemId: item.id, criterion: { text } }); } }} />
+          </div>
+        ) : null}
+      </div>
+
       {/* 메모 — 본문 아래 첨부 띠. 메모에 이미지를 붙여넣거나 메모 구획에 끌어오면 띠에 들어간다. */}
       <div
         className={`objectives-group objectives-note-group${dropping ? " is-drop" : ""}`}
@@ -906,7 +939,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="objectives-group objectives-start-group">
           <button type="button" className="objectives-start is-review" title={item.review.summary} onClick={onComplete}>
             <span className="objectives-start-word">{t("objectives.review.complete")}</span>
-            <span className="objectives-start-sub">{t("objectives.review.sub")}</span>
+            <span className="objectives-start-sub">{t((item.criteria?.length ?? 0) > 0 && item.criteria!.every((criterion) => item.review?.criteria?.some((entry) => entry.id === criterion.id)) ? "objectives.review.subCriteria" : "objectives.review.sub")}</span>
             <span className="objectives-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>
