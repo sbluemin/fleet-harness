@@ -40,7 +40,7 @@ import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../featu
 import { connectOperationsSse } from "../integration/operations-sse.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setOperationRuntimeClusters, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 
 interface FleetConsoleRuntime {
@@ -114,6 +114,10 @@ if (app && hostPicker) {
   );
 } else if (app) {
   const registry = await loadPluginRegistry();
+  // React 구독보다 먼저 위상을 연결한다. 스토어 구독자인 유휴 도착 추적기도 항상 파생값을 본다.
+  const syncRuntimeClusters = () => setOperationRuntimeClusters(registry.operationClusters.get());
+  registry.operationClusters.subscribe(syncRuntimeClusters);
+  syncRuntimeClusters();
   installConsoleUseGestures({ operations: () => getState().operations, subscribeConsoleChannel });
   connectOperationsSse();
   createRoot(app).render(

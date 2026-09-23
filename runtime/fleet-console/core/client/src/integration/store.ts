@@ -1,7 +1,7 @@
 import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
 import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationCluster, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { fetchOperations, putOperationOrder } from "./api.js";
@@ -55,6 +55,9 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 };
 
 const listeners = new Set<Listener>();
+// 플러그인의 관측값은 원천으로 보존한다. 공개 축만 묶음 구성원의 살아 있는 활동을 반영한다.
+let rawOperationRuntime: Readonly<Record<string, OperationRuntimeState>> = {};
+let clusterMembersByRoot: ReadonlyMap<string, readonly string[]> = new Map();
 
 let notificationSeq = 0;
 
@@ -581,8 +584,9 @@ export function setOperationRuntime(operationId: string, next: OperationRuntimeS
   // live/idle도 명시 항목으로 저장한다. 항목 삭제로 유휴를 표현하면 resumeAvailable 마커를 가진
   // live 세션이 resolveOperationActivity 폭백에서 dormant로 재분류된다(Codex P1) —
   // "플러그인이 관측한 live idle"과 "미관측"은 구분되어야 한다.
-  if (sameRuntimeState(state.operationRuntime[operationId], next)) return;
-  setState({ operationRuntime: { ...state.operationRuntime, [operationId]: next } });
+  if (sameRuntimeState(rawOperationRuntime[operationId], next)) return;
+  rawOperationRuntime = { ...rawOperationRuntime, [operationId]: next };
+  setState({ operationRuntime: deriveClusterRuntime(rawOperationRuntime, clusterMembersByRoot, state.operationRuntime) });
 }
 
 function sameRuntimeState(current: OperationRuntimeState | undefined, next: OperationRuntimeState): boolean {
@@ -592,10 +596,52 @@ function sameRuntimeState(current: OperationRuntimeState | undefined, next: Oper
 }
 
 export function clearOperationRuntime(operationId: string): void {
-  if (!(operationId in state.operationRuntime)) return;
-  const operationRuntime = { ...state.operationRuntime };
-  delete operationRuntime[operationId];
-  setState({ operationRuntime });
+  if (!(operationId in rawOperationRuntime)) return;
+  const next = { ...rawOperationRuntime };
+  delete next[operationId];
+  rawOperationRuntime = next;
+  setState({ operationRuntime: deriveClusterRuntime(rawOperationRuntime, clusterMembersByRoot, state.operationRuntime) });
+}
+
+/** 코어 합성 지점이 묶음 원천을 구독해 밀어 넣는 위상 포트. 진행·표제 변화는 런타임 위상이 아니다. */
+export function setOperationRuntimeClusters(clusters: readonly OperationCluster[]): void {
+  const next = new Map<string, readonly string[]>();
+  for (const cluster of clusters) {
+    const members = cluster.members.filter((member) => !member.pending).map((member) => member.operationId);
+    next.set(cluster.root, [...(next.get(cluster.root) ?? []), ...members]);
+  }
+  if (next.size === clusterMembersByRoot.size && [...next].every(([root, members]) => {
+    const previous = clusterMembersByRoot.get(root);
+    return previous?.length === members.length && members.every((id, index) => id === previous[index]);
+  })) return;
+  clusterMembersByRoot = next;
+  const operationRuntime = deriveClusterRuntime(rawOperationRuntime, next, state.operationRuntime);
+  if (operationRuntime !== state.operationRuntime) setState({ operationRuntime });
+}
+
+function deriveClusterRuntime(
+  raw: Readonly<Record<string, OperationRuntimeState>>,
+  membersByRoot: ReadonlyMap<string, readonly string[]>,
+  previous: Readonly<Record<string, OperationRuntimeState>>,
+): Readonly<Record<string, OperationRuntimeState>> {
+  const result: Record<string, OperationRuntimeState> = { ...raw };
+  for (const [rootId, memberIds] of membersByRoot) {
+    const root = raw[rootId];
+    if (!root || root.lifecycle !== "live") continue;
+    const members = memberIds.map((id) => raw[id]).filter((value): value is Extract<OperationRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
+    const activity = root.activity === "awaiting" || members.some((member) => member.activity === "awaiting")
+      ? "awaiting"
+      : root.activity === "running"
+        ? "running"
+        : root.activity === "background" || members.some((member) => member.activity === "running" || member.activity === "background")
+          ? "background"
+          : root.activity;
+    if (activity !== root.activity) result[rootId] = { lifecycle: "live", activity };
+  }
+  const rawIds = Object.keys(result);
+  if (rawIds.length === Object.keys(previous).length && rawIds.every((id) => sameRuntimeState(previous[id], result[id]!))) return previous;
+  for (const id of rawIds) if (previous[id] && sameRuntimeState(previous[id], result[id]!)) result[id] = previous[id];
+  return result;
 }
 
 // 런타임 축의 신뢰도는 전역 하나로 둔다 — 지금 이 축을 보고하는 소유자는 터미널 플러그인 하나뿐이고,
